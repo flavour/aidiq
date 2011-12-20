@@ -1009,7 +1009,7 @@ s3_menu_dict = {
             [T("Projects"), False, aURL(f="project"),[
                 [T("Add New Project"), False, aURL(p="create", f="project", args="create")],
                 [T("List All Projects"), False, aURL(f="project")],
-                [T("List All Activities"), False, aURL(f="activity")],
+                #[T("List All Activities"), False, aURL(f="activity")],
                 [T("Search"), False, aURL(f="project", args="search")],
             ]],
             [T("Tasks"), False, aURL(f="task"),[
@@ -1017,30 +1017,35 @@ s3_menu_dict = {
                 [T("List All Tasks"), False, aURL(f="task")],
                 #[T("Search"), False, aURL(f="task", args="search")],
             ]],
-            [T("Reports"), False, aURL(f="report"),[
-                [T("Who is doing What Where"), False, aURL(f="activity", args="analyze")],
-                [T("Beneficiaries"),
-                 False, aURL(f="beneficiary",
-                             args="analyze",
-                             vars=Storage(rows="project_id",
-                                          cols="type",
-                                          fact="number",
-                                          aggregate="sum"))],
-                [T("Funding"), False, aURL(f="organisation", args="analyze")],
-            ]],
-            [T("Import"), False, aURL(f="index"),[
-                [T("Import Projects"), False, aURL(p="create", f="project",
-                                                   args="import.xml")],
-                [T("Import Project Organisations"), False, aURL(p="create", f="organisation",
-                                                                args="import.xml")],
-                [T("Import Project Activities"), False, aURL(p="create", f="activity",
-                                                             args="import.xml")],
-            ]],
-            [T("Activity Types"), False, aURL(f="activity_type"),[
-                [T("Add New Activity Type"), False, aURL(p="create", f="activity_type", args="create")],
-                [T("List All Activity Types"), False, aURL(f="activity_type")],
-                #[T("Search"), False, aURL(f="activity_type", args="search")]
-            ]],
+            #[T("Project Sites"), False, aURL(f="site"),[
+                #[T("Add New Project Site"), False, aURL(p="create", f="site", args="create")],
+                #[T("List All Project Sites"), False, aURL(f="site")],
+                ##[T("Search"), False, aURL(f="site", args="search")]
+            #]],
+            # [T("Reports"), False, aURL(f="report"),[
+                # [T("Who is doing What Where"), False, aURL(f="activity", args="analyze")],
+                # [T("Beneficiaries"),
+                 # False, aURL(f="beneficiary",
+                             # args="analyze",
+                             # vars=Storage(rows="project_id",
+                                          # cols="type",
+                                          # fact="number",
+                                          # aggregate="sum"))],
+                # [T("Funding"), False, aURL(f="organisation", args="analyze")],
+            # ]],
+            # [T("Import"), False, aURL(f="index"),[
+                # [T("Import Projects"), False, aURL(p="create", f="project",
+                                                   # args="import.xml")],
+                # [T("Import Project Organisations"), False, aURL(p="create", f="organisation",
+                                                                # args="import.xml")],
+                # [T("Import Project Activities"), False, aURL(p="create", f="activity",
+                                                             # args="import.xml")],
+            # ]],
+            # [T("Activity Types"), False, aURL(f="activity_type"),[
+                # [T("Add New Activity Type"), False, aURL(p="create", f="activity_type", args="create")],
+                # [T("List All Activity Types"), False, aURL(f="activity_type")],
+                ##[T("Search"), False, aURL(f="activity_type", args="search")]
+            # ]],
         ],
         "condition1": lambda: deployment_settings.get_project_drr(),
         "conditional1": [

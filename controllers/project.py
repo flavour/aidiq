@@ -35,7 +35,7 @@ def project():
 
     tabs = [(T("Basic Details"), None),
             (T("Organizations"), "organisation"),
-            (T("Activities"), "activity"),
+            #(T("Activities"), "activity"),
             (T("Tasks"), "task"),
            ]
     if deployment_settings.has_module("doc"):

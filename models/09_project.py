@@ -289,11 +289,11 @@ if deployment_settings.has_module("project"):
                                 sector_id(widget=lambda f, v: \
                                     CheckboxesWidget.widget(f, v, cols=3)),
 
-                                countries_id(#readable=False, writable=False
+                                countries_id(readable=False, writable=False
                                             ),
 
                                 multi_hazard_id(readable=drr, writable=drr),
-                                multi_theme_id(#readable=False, writable=False
+                                multi_theme_id(readable=False, writable=False
                                                ),
                                 Field("hfa", "list:integer",
                                       label = T("HFA Priorities"),
@@ -305,6 +305,8 @@ if deployment_settings.has_module("project"):
                                       widget = CheckboxesWidgetS3.widget),
 
                                 Field("objectives", "text",
+                                      readable=False,
+                                      writable=False,
                                       label = T("Objectives")),
                                 *s3_meta_fields())
 
@@ -1120,13 +1122,13 @@ if deployment_settings.has_module("project"):
                                                            T("hours"))),
                                 site_id,
                                 location_id(label=T("Deployment Location"),
-                                            #readable=False, writable=False
+                                            readable=False, writable=False
                                             ),
                                 *s3_meta_fields())
 
         # Comment these if you don't need a Site associated with Tasks
-        table.site_id.readable = table.site_id.writable = True
-        table.site_id.label = T("Check-in at Facility") # T("Managing Office")
+        #table.site_id.readable = table.site_id.writable = True
+        #table.site_id.label = T("Check-in at Facility") # T("Managing Office")
 
         # CRUD Strings
         ADD_TASK = T("Add Task")
@@ -1353,7 +1355,7 @@ if deployment_settings.has_module("project"):
                         if deployment_settings.has_module("doc"):
                             tabs.append((T("Attachments"), "document"))
                         if deployment_settings.has_module("hrm"):
-                            tabs.append((T("Roles"), "job_role"))
+                            #tabs.append((T("Roles"), "job_role"))
                             tabs.append((T("Assignments"), "human_resource"))
                         if deployment_settings.has_module("req"):
                             tabs.append((T("Requests"), "req"))
@@ -1364,15 +1366,15 @@ if deployment_settings.has_module("project"):
                             TR(
                                 TH("%s: " % table.name.label),
                                 record.name,
-                                TH("%s: " % table.site_id.label),
-                                org_site_represent(record.site_id),
+                                #TH("%s: " % table.site_id.label),
+                                #org_site_represent(record.site_id),
                                 ),
                             TR(
                                 TH("%s: " % table.pe_id.label),
                                 s3_pentity_represent(record.pe_id,
                                                      show_label=False),
-                                TH("%s: " % table.location_id.label),
-                                gis_location_represent(record.location_id),
+                                #TH("%s: " % table.location_id.label),
+                                #gis_location_represent(record.location_id),
                                 ),
                             TR(
                                 TH("%s: " % table.description.label),
