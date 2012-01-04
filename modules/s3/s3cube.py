@@ -73,13 +73,15 @@ class S3Cube(S3CRUD):
             @todo: support server-side chart generation
         """
 
+        manager = current.manager
+
         if r.http in ("GET", "POST"):
             if r.interactive:
                 output = self.analyze(r, **attr)
             else:
-                r.error(501, self.manager.ERROR.BAD_FORMAT)
+                r.error(501, manager.ERROR.BAD_FORMAT)
         else:
-            r.error(405, self.manager.ERROR.BAD_METHOD)
+            r.error(405, manager.ERROR.BAD_METHOD)
 
         return output
 
@@ -239,6 +241,8 @@ class S3Cube(S3CRUD):
         if self.fact and self.fact not in fields:
             fields.append(self.fact)
         list_fields = list(fields)
+        if pkey not in list_fields:
+            list_fields.append(pkey)
         lfields, join = self.get_list_fields(table, list_fields)
         lfields = Storage([(f.fieldname, f) for f in lfields])
 
@@ -288,7 +292,7 @@ class S3Cube(S3CRUD):
             # Pivoting
             try:
                 pt = df.pivot(fact, self.rows, self.cols,
-                              aggregate=aggregate)
+                                aggregate=aggregate)
             except:
                 r.error(400, "Could not generate contingency table",
                         next=r.url(vars=[]))
@@ -387,6 +391,9 @@ class S3Cube(S3CRUD):
             for r in rows:
                 value = r[field]
                 if isinstance(value, (list, tuple)):
+                    if not len(value):
+                        # Always have at least a None-entry
+                        value.append(None)
                     for v in value:
                         result = Storage(r)
                         result[field] = v
@@ -794,6 +801,7 @@ class S3ContingencyTable(TABLE):
                 _ctotal = ctotal[j]
             link = A(str(_ctotal), _href=r.url(method="", vars=fquery))
             tr.append(TD(link))
+
         # Grand total
         if len(cols):
             link = A(str(gtotal), _href=r.url(method="", vars=dict()))
@@ -813,6 +821,9 @@ class S3ContingencyTable(TABLE):
             @param lf: the list field
             @param value: the value
         """
+
+        if not lf.field:
+            return
 
         fn = "%s.%s" % (resource.name, lf.fieldname)
         if lf.field and str(lf.field.type).startswith("list:") and \

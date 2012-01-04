@@ -70,6 +70,11 @@ if deployment_settings.has_module(module): # or deployment_settings.has_module("
         s3mgr.model.add_component("req_commit_item",
                                   req_commit="commit_id")
 
+    if deployment_settings.has_module("hrm"):
+        # Commitment Persons as component of Commitment
+        s3mgr.model.add_component("req_commit_person",
+                                  req_commit="commit_id")
+
     def req_tables():
         """ Load the Request Tables when needed """
 
@@ -140,7 +145,8 @@ if deployment_settings.has_module(module): # or deployment_settings.has_module("
         resourcename = "req"
         tablename = "req_req"
         table = db.define_table(tablename,
-                                event_id(default=session.s3.event),
+                                event_id(default=session.s3.event,
+                                         ondelete="SET NULL"),
                                 Field("type", "integer",
                                       requires = IS_IN_SET(req_type_opts, zero=None),
                                       represent = lambda opt: \
@@ -211,7 +217,7 @@ if deployment_settings.has_module(module): # or deployment_settings.has_module("
                                                   label = T("Requested For"),
                                                   #default = s3_logged_in_human_resource()
                                                   ),
-                                super_link(db.org_site,
+                                super_link("site_id", "org_site",
                                            label = T("Requested For Facility"),
                                            default = auth.user.site_id if auth.is_logged_in() else None,
                                            readable = True,
@@ -330,7 +336,7 @@ if deployment_settings.has_module(module): # or deployment_settings.has_module("
                                                       sort=True),
                                  represent = req_represent,
                                  label = T("Request"),
-                                 ondelete = "RESTRICT")
+                                 ondelete = "CASCADE")
 
         #----------------------------------------------------------------------
         def req_onaccept(form):
@@ -740,7 +746,7 @@ if deployment_settings.has_module(module): # or deployment_settings.has_module("
                                                           limitby=(0, 1)).first().id
                                     transit_status = SPAN( transit_status,
                                                            "           ",
-                                                           A( "Incoming Shipments",
+                                                           A(T("Incoming Shipments"),
                                                              _href = URL(c = site_record.instance_type.split("_")[0],
                                                                          f = "incoming",
                                                                          vars = {"viewing" : "%s.%s" % (site_record.instance_type, id)}
@@ -1023,7 +1029,8 @@ if deployment_settings.has_module(module): # or deployment_settings.has_module("
                                     item_pack_id(),
                                     Field( "quantity",
                                            "double",
-                                           notnull = True),
+                                           notnull = True,
+                                           requires = IS_FLOAT_IN_RANGE(minimum=0)),
                                     Field("pack_value",
                                            "double",
                                            label = T("Value per Pack")),
@@ -1037,6 +1044,7 @@ if deployment_settings.has_module(module): # or deployment_settings.has_module("
                                             req_quantity_represent(quantity_commit,
                                                                    "commit"),
                                            default = 0,
+                                           requires = IS_FLOAT_IN_RANGE(minimum=0),
                                            writable = quantities_writable),
                                     Field( "quantity_transit",
                                            "double",
@@ -1045,6 +1053,7 @@ if deployment_settings.has_module(module): # or deployment_settings.has_module("
                                             req_quantity_represent(quantity_transit,
                                                                    "transit"),
                                            default = 0,
+                                           requires = IS_FLOAT_IN_RANGE(minimum=0),
                                            writable = quantities_writable),
                                     Field( "quantity_fulfil",
                                            "double",
@@ -1053,6 +1062,7 @@ if deployment_settings.has_module(module): # or deployment_settings.has_module("
                                             req_quantity_represent(quantity_fulfil,
                                                                    "fulfil"),
                                            default = 0,
+                                           requires = IS_FLOAT_IN_RANGE(minimum=0),
                                            writable = quantities_writable),
                                     s3_comments(),
                                     *s3_meta_fields())
@@ -1108,7 +1118,7 @@ if deployment_settings.has_module(module): # or deployment_settings.has_module("
                                            comment = DIV( _class="tooltip",
                                                           _title="%s|%s" % (T("Request Item"),
                                                                             T("Select Items from the Request"))),
-                                           ondelete = "RESTRICT",
+                                           ondelete = "CASCADE",
 script =
     SCRIPT("""
     $(document).ready(function() {
@@ -1178,7 +1188,7 @@ script =
                 db(db.req_req.id == req_id).update(**status_update)
 
             s3mgr.configure(tablename,
-                            super_entity=db.supply_item_entity,
+                            super_entity="supply_item_entity",
                             onaccept=req_item_onaccept,
                             create_next = URL(c="req",
                                               # Shows the inventory items which match a requested item
@@ -1318,14 +1328,13 @@ script =
                 else:
                     return None
 
-            if deployment_settings.has_module("project"):
-                s3mgr.load("project_task")
-                task_id = response.s3.task_id
-                tablename = "project_task_req"
-                table = db.define_table(tablename,
-                                        task_id(),
-                                        req_id(),
-                                        *s3_meta_fields())
+            s3mgr.load("project_task")
+            task_id = response.s3.project_task_id
+            tablename = "project_task_req"
+            table = db.define_table(tablename,
+                                    task_id(),
+                                    req_id(),
+                                    *s3_meta_fields())
 
             # On Accept to update req_req
             def req_skill_onaccept(form):
@@ -1418,10 +1427,8 @@ script =
                     table = db.project_task
                     task = table.insert(name=record.request_number,
                                         description=record.purpose,
-                                        person_id=record.requester_id,
                                         priority=record.priority,
                                         location_id=location,
-                                        organisation_id=organisation,
                                         site_id=record.site_id)
                     # Add the Request as a Component to the Task
                     table = db.project_task_req
@@ -1490,7 +1497,7 @@ script =
         resourcename = "commit"
         tablename = "req_commit"
         table = db.define_table(tablename,
-                                super_link(db.org_site,
+                                super_link("site_id", "org_site",
                                            label = T("From Facility"),
                                            default = auth.user.site_id if auth.is_logged_in() else None,
                                            # Non-Item Requests make False in the prep
@@ -1578,7 +1585,7 @@ script =
                                                               sort=True)),
                                     represent = commit_represent,
                                     label = T("Commitment"),
-                                    ondelete = "RESTRICT")
+                                    ondelete = "CASCADE")
 
         # -----------------------------------------------------------------
         def commit_onvalidation(form):

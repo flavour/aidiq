@@ -47,10 +47,10 @@ __all__ = ["URL2",
            "s3_filter_staff",
            "s3_fullname",
            "s3_represent_facilities",
+           "sort_dict_by_values",
            "jaro_winkler",
            "jaro_winkler_distance_row",
-           "soundex",
-           "docChecksum"]
+           "soundex"]
 
 import sys
 import os
@@ -60,6 +60,8 @@ import hashlib
 from gluon import *
 from gluon import current
 from gluon.storage import Storage
+
+from gluon.contrib.simplejson.ordered_dict import OrderedDict
 
 #try:
 #    from xlrd import *
@@ -104,7 +106,6 @@ def URL2(a=None, c=None, r=None):
     return url
 
 # =============================================================================
-
 def URL3(a=None, r=None):
     """
     example:
@@ -135,7 +136,6 @@ def URL3(a=None, r=None):
     return url
 
 # =============================================================================
-
 def s3_dev_toolbar():
     """
         Developer Toolbar - ported from gluon.Response.toolbar()
@@ -167,7 +167,6 @@ def s3_dev_toolbar():
         )
 
 # =============================================================================
-
 class Traceback(object):
     """ Generate the traceback for viewing in Tickets """
 
@@ -228,7 +227,6 @@ class Traceback(object):
         return result
 
 # =============================================================================
-
 def getBrowserName(userAgent):
     "Determine which browser is being used."
     if userAgent.find("MSIE") > -1:
@@ -241,7 +239,6 @@ def getBrowserName(userAgent):
         return "Unknown"
 
 # =============================================================================
-
 def s3_truncate(text, length=48, nice=True):
     """
         Nice truncating of text
@@ -260,7 +257,6 @@ def s3_truncate(text, length=48, nice=True):
         return text
 
 # =============================================================================
-
 def s3_mark_required(fields,
                      mark_required=None,
                      label_html=(lambda field_label:
@@ -322,7 +318,6 @@ def s3_mark_required(fields,
         return None
 
 # =============================================================================
-
 def s3_debug(message, value=None):
 
     """
@@ -344,7 +339,6 @@ def s3_debug(message, value=None):
     print >> sys.stderr, output
 
 # =============================================================================
-
 def s3_split_multi_value(value):
     """
         Converts a series of numbers delimited by |, or already in a
@@ -370,7 +364,6 @@ def s3_split_multi_value(value):
         return [str(value)]
 
 # =============================================================================
-
 def s3_get_db_field_value(tablename=None,
                           fieldname=None,
                           look_up_value=None,
@@ -410,7 +403,6 @@ def s3_get_db_field_value(tablename=None,
     return row and row[fieldname] or None
 
 # =============================================================================
-
 def s3_filter_staff(r):
     """
         Filter out people which are already staff for this facility
@@ -441,7 +433,6 @@ def s3_filter_staff(r):
         pass
 
 # =============================================================================
-
 def s3_fullname(person=None, pe_id=None, truncate=True):
     """
         Returns the full name of a person
@@ -504,7 +495,6 @@ def s3_fullname(person=None, pe_id=None, truncate=True):
         return DEFAULT
 
 # =============================================================================
-
 def s3_represent_facilities(db, site_ids, link=True):
 
     table = db.org_site
@@ -562,7 +552,15 @@ def s3_represent_facilities(db, site_ids, link=True):
     return results
 
 # =============================================================================
+def sort_dict_by_values(adict):
+    """
+        Sort a dict by value and return an OrderedDict
+        - used by modules/eden/irs.py
+    """
 
+    return OrderedDict(sorted(adict.items(), key = lambda item: item[1]))
+
+# =============================================================================
 def jaro_winkler(str1, str2):
     """
         Return Jaro_Winkler distance of two strings (between 0.0 and 1.0)
@@ -700,7 +698,6 @@ def jaro_winkler(str1, str2):
     return wn
 
 # =============================================================================
-
 def jaro_winkler_distance_row(row1, row2):
     """
         Calculate the percentage match for two db records
@@ -723,7 +720,6 @@ def jaro_winkler_distance_row(row1, row2):
     return dw
 
 # =============================================================================
-
 def soundex(name, len=4):
     """
         Code referenced from http://code.activestate.com/recipes/52213-soundex-algorithm/
@@ -755,15 +751,5 @@ def soundex(name, len=4):
 
     # return soundex code padded to len characters
     return (sndx + (len * "0"))[:len]
-
-# =============================================================================
-
-def docChecksum(docStr):
-    """
-        Calculate a checksum for a file
-    """
-
-    converted = hashlib.sha1(docStr).hexdigest()
-    return converted
 
 # END =========================================================================

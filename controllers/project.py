@@ -16,6 +16,9 @@ s3_menu(module)
 def index():
     """ Module's Home Page """
 
+    # Bypass home page & go direct to searching for Projects
+    return project()
+
     module_name = deployment_settings.modules[module].name_nice
     response.title = module_name
     return dict(module_name=module_name)
@@ -29,17 +32,31 @@ def create():
 def project():
     """ RESTful CRUD controller """
 
+    resourcename = "project"
     db.hrm_human_resource.person_id.comment = DIV(_class="tooltip",
                                                   _title="%s|%s" % (T("Person"),
                                                                     T("Select the person assigned to this role for this project.")))
 
+    if deployment_settings.get_project_community_activity():
+        activity_label = T("Communities")
+    else:
+        activity_label = T("Activities")
+
     tabs = [(T("Basic Details"), None),
             (T("Organizations"), "organisation"),
-            #(T("Activities"), "activity"),
+            (activity_label, "activity"),
             (T("Tasks"), "task"),
+            (T("Documents"), "document"),
            ]
-    if deployment_settings.has_module("doc"):
-        tabs.append((T("Documents"), "document"))
+
+    doc_table = s3db.table("doc_document", None)
+    if doc_table is not None:
+        doc_table.organisation_id.readable = False
+        doc_table.person_id.readable = False
+        doc_table.location_id.readable = False
+        doc_table.organisation_id.writable = False
+        doc_table.person_id.writable = False
+        doc_table.location_id.writable = False
 
     def prep(r):
         s3mgr.load("project_beneficiary")
@@ -51,12 +68,11 @@ def project():
                                                     filter_opts=[r.id],
                                                     sort=True))
         if r.interactive:
-           if r.component is not None:
+            if r.component is not None:
                 if r.component_name == "organisation":
                     if r.method != "update":
                         host_role = 1
-                        s3mgr.load("project_organisation")
-                        otable = db.project_organisation
+                        otable = s3db.project_organisation
                         query = (otable.deleted != True) & \
                                 (otable.role == host_role) & \
                                 (otable.project_id == r.id)
@@ -64,7 +80,7 @@ def project():
                                                limitby=(0, 1)).first()
                         if row:
                             project_organisation_roles = \
-                                dict(s3.project_organisation_types)
+                                dict(s3.project_organisation_roles)
                             del project_organisation_roles[host_role]
                             otable.role.requires = \
                                 IS_NULL_OR(IS_IN_SET(project_organisation_roles))
@@ -75,25 +91,10 @@ def project():
                         ltable = db.gis_location
                         query = (ltable.id.belongs(countries))
                         countries = db(query).select(ltable.code)
-                        deployment_settings.gis.countries = \
-                            [c.code for c in countries]
-                elif r.component_name == "document":
-                    s3mgr.load("doc_document")
-                    s3mgr.load("project_activity")
-                    if "doc_document" in db:
-                        dtable = db.doc_document
-                        atable = db.project_activity
-                        field = dtable.activity_id
-                        query = (atable.project_id == r.id)
-                        field.readable = True
-                        field.writable = True
-                        field.requires = requires = IS_NULL_OR(
-                                                IS_ONE_OF(db(query),
-                                                          "project_activity.id",
-                                                          "%(name)s",
-                                                          sort=True))
-                        field.widget = None
-                        field.comment = None
+                        deployment_settings.gis.countries = [c.code for c in countries]
+            elif not r.id and r.function == "index":
+                r.method = "search"
+
         return True
     response.s3.prep = prep
 
@@ -173,13 +174,21 @@ def activity():
     s3mgr.load(tablename)
     table = db[tablename]
 
-    tabs = [
-            (T("Details"), None),
-            (T("Beneficiaries"), "beneficiary"),
+    tabs = [(T("Details"), None),
+            #(T("Beneficiaries"), "beneficiary"),
             (T("Tasks"), "task"),
+            #(T("Documents"), "document"),
            ]
-    if deployment_settings.has_module("doc"):
-        tabs.append((T("Documents"), "document"))
+
+
+    doc_table = s3db.table("doc_document", None)
+    if doc_table is not None:
+        doc_table.organisation_id.readable = False
+        doc_table.person_id.readable = False
+        doc_table.location_id.readable = False
+        doc_table.organisation_id.writable = False
+        doc_table.person_id.writable = False
+        doc_table.location_id.writable = False
 
     rheader = lambda r: response.s3.project_rheader(r, tabs)
     return s3_rest_controller(module, resourcename,
@@ -203,12 +212,24 @@ def report():
 def task():
     """ RESTful CRUD controller """
 
-    s3mgr.load("project_task")
+    tablename = "project_task"
+    table = s3db[tablename]
     # Discussion can also be done at the Solution component level
     s3mgr.model.set_method(module, resourcename,
                            method="discuss",
                            action=discuss)
 
+    if "mine" in request.vars:
+        # Show the Open Tasks for this User
+        ptable = db.pr_person
+        query = (ptable.uuid == auth.user.person_uuid)
+        row = db(query).select(ptable.pe_id).first()
+        if row:
+            pe_id = row.pe_id
+            statuses = response.s3.project_task_active_statuses
+            response.s3.filter = (table.pe_id == pe_id) & \
+                                 (table.status.belongs(statuses))
+    
     # Pre-process
     def prep(r):
         if r.interactive:
@@ -226,7 +247,7 @@ def task():
     response.s3.prep = prep
 
     return s3_rest_controller(module, resourcename,
-                              rheader=response.s3.task_rheader)
+                              rheader=response.s3.project_rheader)
 
 # =============================================================================
 def person():
@@ -257,7 +278,7 @@ def discuss(r, **attr):
     id = r.id
 
     # Add the RHeader to maintain consistency with the other pages
-    rheader = response.s3.task_rheader(r)
+    rheader = response.s3.project_rheader(r)
 
     ckeditor = URL(c="static", f="ckeditor", args="ckeditor.js")
     response.s3.scripts.append(ckeditor)
@@ -454,8 +475,7 @@ def site_rheader(r):
         tablename, record = s3_rheader_resource(r)
         if tablename == "project_site" and record:
             site = record
-            tabs = [
-                    (T("Details"), None),
+            tabs = [(T("Details"), None),
                     #(T("Activities"), "activity"),
                     (T("Beneficiaries"), "beneficiary"),
                     #(T("Documents"), "document"),

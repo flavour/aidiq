@@ -3,7 +3,7 @@
 """
     Human Resource Management
 
-    @author: Dominic KÃ¶nig <dominic AT aidiq DOT com>
+    @author: Dominic König <dominic AT aidiq DOT com>
     @author: Fran Boon <fran AT aidiq DOT com>
 """
 
@@ -60,6 +60,7 @@ if deployment_settings.has_module(module):
                                                                           T("Add a new job role to the catalog."))))),
                                   ondelete = "RESTRICT")
 
+    response.s3.hrm_job_role_id = job_role_id
 
     # =========================================================================
     # Positions
@@ -158,7 +159,7 @@ if deployment_settings.has_module(module):
 
     tablename = "hrm_human_resource"
     table = db.define_table(tablename,
-                            super_link(db.sit_trackable),
+                            super_link("track_id", "sit_trackable"),
 
                             # Administrative data
                             organisation_id(widget=S3OrganisationAutocompleteWidget(default_from_profile=True),
@@ -208,6 +209,28 @@ if deployment_settings.has_module(module):
                                         writable=False),
                             site_id,
                             *s3_meta_fields())
+
+    # -------------------------------------------------------------------------
+    def hr_represent(id):
+        """ Simple representation of HRs """
+
+        repr_str = NONE
+        htable = db.hrm_human_resource
+        ptable = db.pr_person
+
+        query = (htable.id == id) & \
+                (ptable.id == htable.person_id)
+        person = db(query).select(ptable.first_name,
+                                  ptable.middle_name,
+                                  ptable.last_name,
+                                  limitby=(0, 1)).first()
+        if person:
+            repr_str = s3_fullname(person)
+
+        return repr_str
+
+    # Make available to global scope
+    response.s3.hr_represent = hr_represent
 
     # -------------------------------------------------------------------------
     def hrm_human_resource_represent(id,
@@ -520,7 +543,7 @@ if deployment_settings.has_module(module):
             hrm_update_staff_role(record, user_id)
 
     s3mgr.configure(tablename,
-                    super_entity = db.sit_trackable,
+                    super_entity = "sit_trackable",
                     deletable = False,
                     search_method = human_resource_search,
                     onaccept = hrm_human_resource_onaccept,
@@ -1356,6 +1379,7 @@ S3FilterFieldChange({
     s3mgr.loader(skills_tables, "hrm_skill_type",
                                 "hrm_skill",
                                 "hrm_competency",
+                                "hrm_credential",
                                 "hrm_training",
                                 "hrm_certificate",
                                 "hrm_certification",
@@ -1584,7 +1608,7 @@ S3FilterFieldChange({
                             ##Field("code"),
                             #Field("title"),
                             #Field("description", "text"),
-                            #super_link(db.org_site,
+                            #super_link("site_id", "org_site",
                                        #label=T("Facility"),
                                        #readable=False,
                                        #writable=False,

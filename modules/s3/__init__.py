@@ -46,6 +46,10 @@
 from s3tools import *
 from s3navigation import *
 
+# Model helpers
+from s3fields import *
+from s3model import S3Model
+
 # Authentication, Authorization, Accounting
 from s3aaa import *
 
@@ -76,9 +80,6 @@ from s3gis import *
 # Messaging
 from s3msg import *
 
-# VITA Person Data Toolkit
-from s3vita import *
-
 # Tracking System
 from s3track import *
 
@@ -90,3 +91,6 @@ from s3task import *
 
 # Charting
 from s3chart import *
+
+# Codecs for data export/import
+from s3codec import *

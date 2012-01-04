@@ -93,7 +93,7 @@ class S3Importer(S3CRUD):
 
             Known means of communicating with this module:
 
-            It expects a URL of the form: /prefix/name/import.xml
+            It expects a URL of the form: /prefix/name/import
 
             It will interpret the http requests as follows:
 
@@ -155,6 +155,7 @@ class S3Importer(S3CRUD):
         _debug("S3Importer.apply_method(%s)" % r)
 
         db = current.db
+        manager = current.manager
 
         # Messages
         T = current.T
@@ -163,6 +164,7 @@ class S3Importer(S3CRUD):
         messages.invalid_file_format = "Invalid File Format"
         messages.unsupported_file_type = "Unsupported file type of %s"
         messages.stylesheet_not_found = "No Stylesheet %s could be found to manage the import file."
+        messages.no_file = "No file submitted"
         messages.file_open_error = "Unable to open the file %s"
         messages.file_not_found = "The file to upload is missing"
         messages.no_records_to_import = "No records to import"
@@ -207,7 +209,7 @@ class S3Importer(S3CRUD):
         self.csv_extra_data = None
 
         # Environment
-        self.settings = self.manager.s3.crud
+        self.settings = manager.s3.crud
         self.controller = r.controller
         self.function = r.function
 
@@ -277,7 +279,7 @@ class S3Importer(S3CRUD):
             if upload_id != None:
                 output = self.delete_job(upload_id)
         else:
-            r.error(405, self.manager.ERROR.BAD_METHOD)
+            r.error(405, manager.ERROR.BAD_METHOD)
 
         return output
 
@@ -332,7 +334,10 @@ class S3Importer(S3CRUD):
         r = self.request
         r.read_body()
         sfilename = form.vars.file
-        ofilename = r.post_vars["file"].filename
+        try:
+            ofilename = r.post_vars["file"].filename
+        except:
+            form.errors.file = self.messages.no_file
 
         if form.errors:
             response.flash = ""
@@ -413,7 +418,7 @@ class S3Importer(S3CRUD):
             query = (table.id == upload_id)
             row = db(query).update(status = 2) # in error
             current.session.warning = self.messages.no_records_to_import
-            redirect(URL(r=request, f=self.function, args=["import.xml"]))
+            redirect(URL(r=request, f=self.function, args=["import"]))
 
         # Get the status of the upload job
         query = (table.id == upload_id)
@@ -436,7 +441,7 @@ class S3Importer(S3CRUD):
                       row.summary_ignored,
                      )
             self._display_completed_job(result, row.modified_on)
-            redirect(URL(r=request, f=self.function, args=["import.xml"]))
+            redirect(URL(r=request, f=self.function, args=["import"]))
         # otherwise display import items
         response.view = self._view(request, "list.html")
 
@@ -558,7 +563,7 @@ class S3Importer(S3CRUD):
         result = self._update_upload_job(upload_id)
         # redirect to the start page (removes all vars)
         self._display_completed_job(result)
-        redirect(URL(r=self.request, f=self.function, args=["import.xml"]))
+        redirect(URL(r=self.request, f=self.function, args=["import"]))
 
     # -------------------------------------------------------------------------
     def delete_job(self, upload_id):
@@ -756,7 +761,7 @@ class S3Importer(S3CRUD):
                          url=URL(r=request,
                                  c=controller,
                                  f=function,
-                                 args=["import.xml"],
+                                 args=["import"],
                                  vars={"job":"[id]"}),
                          restrict = restrictOpen
 
@@ -766,7 +771,7 @@ class S3Importer(S3CRUD):
                          url=URL(r=request,
                                  c=controller,
                                  f=function,
-                                 args=["import.xml"],
+                                 args=["import"],
                                  vars={"job":"[id]"}),
                          restrict = restrictView
                          ),
@@ -775,7 +780,7 @@ class S3Importer(S3CRUD):
                          url=URL(r=request,
                                  c=controller,
                                  f=function,
-                                 args=["import.xml"],
+                                 args=["import"],
                                  vars={"job":"[id]",
                                        "delete":"True"
                                       }
@@ -828,7 +833,7 @@ class S3Importer(S3CRUD):
                          _name="selected", _value="")
         form = FORM(table, job, mode, selected)
         output["items"] = form
-        response.s3.dataTableSelectSubmitURL = "import.xml?job=%s&" % upload_id
+        response.s3.dataTableSelectSubmitURL = "import?job=%s&" % upload_id
         response.s3.actions = [
                                 dict(label= str(self.messages.item_show_details),
                                      _class="action-btn",
@@ -1752,9 +1757,10 @@ class S3ImportItem(object):
             @param job: the import job this item belongs to
         """
 
+        manager = current.manager
+
         self.job = job
-        self.manager = job.manager
-        self.ERROR = job.manager.ERROR
+        self.ERROR = manager.ERROR
 
         # Locking and error handling
         self.lock = False
@@ -1831,7 +1837,7 @@ class S3ImportItem(object):
             @returns: True if successful, False if not (sets self.error)
         """
 
-        manager = self.manager
+        manager = current.manager
         db = current.db
         xml = manager.xml
         model = manager.model
@@ -1891,7 +1897,7 @@ class S3ImportItem(object):
         if self.id:
             return
 
-        manager = self.manager
+        manager = current.manager
         model = manager.model
         xml = manager.xml
         table = self.table
@@ -1921,7 +1927,7 @@ class S3ImportItem(object):
             Authorize the import of this item, sets self.permitted
         """
 
-        manager = self.manager
+        manager = current.manager
         db = current.db
         authorize = manager.permit
 
@@ -1967,7 +1973,7 @@ class S3ImportItem(object):
             Validate this item (=record onvalidation), sets self.accepted
         """
 
-        manager = self.manager
+        manager = current.manager
         model = manager.model
         xml = manager.xml
 
@@ -2017,7 +2023,7 @@ class S3ImportItem(object):
                                   (still reports errors)
         """
 
-        manager = self.manager
+        manager = current.manager
         db = current.db
         xml = manager.xml
         model = manager.model
@@ -2332,7 +2338,7 @@ class S3ImportItem(object):
             is not yet available, it will be scheduled for later update.
         """
 
-        manager = self.manager
+        manager = current.manager
         model = manager.model
         db = current.db
 
@@ -2437,7 +2443,7 @@ class S3ImportItem(object):
             Store this item in the DB
         """
 
-        manager = self.manager
+        manager = current.manager
         db = current.db
         xml = manager.xml
 
@@ -2512,7 +2518,7 @@ class S3ImportItem(object):
             @param row: the item table row
         """
 
-        manager = self.manager
+        manager = current.manager
         model = manager.model
         xml = manager.xml
         db = current.db
@@ -2596,7 +2602,6 @@ class S3ImportJob():
             @param onconflict: custom conflict resolver function
         """
 
-        self.manager = manager
         db = current.db
 
         xml = manager.xml
@@ -2686,7 +2691,7 @@ class S3ImportJob():
                       including error attributes.
         """
 
-        manager = self.manager
+        manager = current.manager
         model = manager.model
         xml = manager.xml
         db = current.db
@@ -2808,7 +2813,7 @@ class S3ImportJob():
                               (will be filled in by this function)
         """
 
-        manager = self.manager
+        manager = current.manager
         db = current.db
         xml = manager.xml
         model = manager.model
@@ -3003,7 +3008,7 @@ class S3ImportJob():
                                   (does still report the errors)
         """
 
-        manager = self.manager
+        manager = current.manager
         model = manager.model
         xml = manager.xml
 
@@ -3086,7 +3091,7 @@ class S3ImportJob():
             Store this job and all its items in the job table
         """
 
-        manager = self.manager
+        manager = current.manager
         db = current.db
 
         _debug("Storing Job ID=%s" % self.job_id)

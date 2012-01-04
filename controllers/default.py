@@ -162,15 +162,6 @@ def index():
             # This browser has logged-in before
             registered = True
 
-        # Provide a login box on front page
-        request.args = ["login"]
-        auth.messages.submit_button = T("Login")
-        login_form = auth()
-        login_div = DIV(H3(T("Login")),
-                        P(XML("%s <b>%s</b> %s" % (T("Registered users can"),
-                                                   T("login"),
-                                                   T("to access the system")))))
-
         if self_registration:
             # Provide a Registration box on front page
             request.args = ["register"]
@@ -180,8 +171,8 @@ def index():
                 auth.messages.submit_button = T("Register")
             register_form = auth()
             register_div = DIV(H3(T("Register")),
-                               P(XML("%s <b>%s</b>" % (T("If you would like to help, then please"),
-                                                       T("sign-up now")))))
+                               P(XML(T("If you need an account, then please %(sign_up_now)s") % \
+                                        dict(sign_up_now=B(T("sign-up now"))))))
 
              # Add client-side validation
             s3_register_validation()
@@ -218,6 +209,14 @@ def index():
         $('#login_form').removeClass('hide');
     });""" % post_script
             response.s3.jquery_ready.append(register_script)
+
+        # Provide a login box on front page
+        request.args = ["login"]
+        auth.messages.submit_button = T("Login")
+        login_form = auth()
+        login_div = DIV(H3(T("Login")),
+                        P(XML(T("Registered users can %(login)s to access the system" % \
+                                dict(login=B(T("login")))))))
 
     if deployment_settings.frontpage.rss:
         response.s3.external_stylesheets.append( "http://www.google.com/uds/solutions/dynamicfeed/gfdynamicfeedcontrol.css" )
@@ -271,8 +270,7 @@ def project():
         Function to handle pagination for the project list on the homepage
     """
 
-    s3mgr.load("project_project")
-    table = db.project_project
+    table = s3db.project_project
     table.id.label = T("Project")
     table.id.represent = lambda id: \
         response.s3.project_represent(id, show_link=False)
@@ -298,15 +296,16 @@ def site():
         site_id = request.args[0]
         site_r = db.org_site[site_id]
         tablename = site_r.instance_type
-        query = (db[tablename].site_id == site_id)
-        id = db(query).select(db[tablename].id,
-                              limitby = (0, 1)).first().id
-        cf = tablename.split("_", 1)
-        redirect(URL(c = cf[0],
-                     f = cf[1],
-                     args = [id]))
-    else:
-        raise HTTP(404)
+        table = s3db.table(tablename)
+        if table:
+            query = (table.site_id == site_id)
+            id = db(query).select(db[tablename].id,
+                                  limitby = (0, 1)).first().id
+            cf = tablename.split("_", 1)
+            redirect(URL(c = cf[0],
+                         f = cf[1],
+                         args = [id]))
+    raise HTTP(404)
 
 # -----------------------------------------------------------------------------
 def message():
@@ -336,8 +335,16 @@ def rapid():
     return dict(item=str(session.s3.rapid_data_entry))
 
 # -----------------------------------------------------------------------------
+def user_profile_onaccept(form):
+    """ Update the UI locale from user profile """
+
+    if form.vars.language:
+        session.s3.language = form.vars.language
+    return
+
+# -----------------------------------------------------------------------------
 def user():
-    "Auth functions based on arg. See gluon/tools.py"
+    """ Auth functions based on arg. See gluon/tools.py """
 
     auth.settings.on_failed_authorization = URL(f="error")
 
@@ -346,6 +353,8 @@ def user():
         #_table_user.organisation.writable = False
         _table_user.utc_offset.readable = True
         _table_user.utc_offset.writable = True
+
+    auth.settings.profile_onaccept = user_profile_onaccept
 
     login_form = register_form = None
     if request.args and request.args(0) == "login":

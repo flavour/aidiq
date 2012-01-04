@@ -7,7 +7,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @author: Dominic KÃ¶nig <dominic[at]aidiq.com>
+    @author: Dominic König <dominic[at]aidiq.com>
 
     @copyright: 2009-2011 (c) Sahana Software Foundation
     @license: MIT
@@ -34,7 +34,7 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["S3Model", "S3RecordLinker"]
+__all__ = ["S3Model", "S3ModelExtensions", "S3RecordLinker"]
 
 import sys
 
@@ -54,21 +54,314 @@ else:
     _debug = lambda m: None
 
 # =============================================================================
-
 class S3Model(object):
+    """ Base class for S3 models """
+
+    LOCK = "s3_model_lock"
+    LOAD = "s3_model_load"
+    DELETED = "deleted"
+
+    def __init__(self, module=None):
+        """ Constructor """
+
+        response = current.response
+        if "s3" not in response:
+            response.s3 = Storage()
+        self.prefix = module
+        self.settings = current.deployment_settings
+
+        mandatory_models = ("sync",
+                            "gis",
+                            "pr",
+                            "sit",
+                            #"doc",
+                            "org")
+
+        if module is not None:
+            if self.__loaded():
+                return
+            self.__lock()
+            mandatory = module in mandatory_models
+            if mandatory or self.settings.has_module(module):
+                env = self.model()
+            else:
+                env = self.defaults()
+            if isinstance(env, dict):
+                response.s3.update(env)
+            self.__loaded(True)
+            self.__unlock()
+        return
+
+    # -------------------------------------------------------------------------
+    def __loaded(self, loaded=None):
+
+        LOAD = self.LOAD
+        name = self.__class__.__name__
+        response = current.response
+        if LOAD not in response:
+            response[LOAD] = []
+        if name in response[LOAD]:
+            return True
+        elif loaded:
+            response[LOAD].append(name)
+        return loaded
+
+    # -------------------------------------------------------------------------
+    def __lock(self):
+
+        LOCK = self.LOCK
+        name = self.__class__.__name__
+        response = current.response
+        if LOCK not in response:
+            response[LOCK] = []
+        if name in response[LOCK]:
+            raise RuntimeError("circular model reference deadlock in %s" % name)
+        else:
+            response[LOCK].append(name)
+        return
+
+    # -------------------------------------------------------------------------
+    def __unlock(self):
+
+        LOCK = self.LOCK
+        name = self.__class__.__name__
+        response = current.response
+        if LOCK in response:
+            if name in response[LOCK]:
+                response[LOCK].remove(name)
+            if not response[LOCK]:
+                del response[LOCK]
+        return
+
+    # -------------------------------------------------------------------------
+    def __getattr__(self, name):
+
+        return self[name]
+
+    # -------------------------------------------------------------------------
+    def __getitem__(self, key):
+        """ Model auto-loader """
+
+        response = current.response
+        db = current.db
+        if str(key) in self.__dict__:
+            return dict.__getitem__(self, str(key))
+        elif key in db:
+            return db[key]
+        elif key in response.s3:
+            return response.s3[key]
+        else:
+            return self.table(key,
+                              AttributeError("undefined table: %s" % key))
+
+    # -------------------------------------------------------------------------
+    def model(self):
+        """
+            Defines all tables in this model, to be implemented by
+            subclasses
+        """
+        return None
+
+    # -------------------------------------------------------------------------
+    def defaults(self):
+        """
+            Definitions of model globals (response.s3.*) if the model
+            has been disabled in deployment settings, to be implemented
+            by subclasses
+        """
+        return None
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def table(tablename, default=None):
+        """
+            Helper function to load a table definition by its name
+        """
+        response = current.response
+        if "s3" not in response:
+            response.s3 = Storage()
+        db = current.db
+        settings = current.deployment_settings
+
+        if tablename in db:
+            return db[tablename]
+        else:
+            prefix, name = tablename.split("_", 1)
+            models = current.models
+            if hasattr(models, prefix):
+                module = models.__dict__[prefix]
+                loaded = False
+                generic = []
+                for n in module.__all__:
+                    model = module.__dict__[n]
+                    if type(model).__name__ == "type":
+                        if loaded:
+                            continue
+                        if hasattr(model, "names"):
+                            if tablename in model.names:
+                                model(prefix)
+                                loaded = True
+                                generic = []
+                            else:
+                                continue
+                        else:
+                            generic.append(n)
+                    elif n.startswith("%s_" % prefix):
+                        response.s3.update({n:model})
+                [module.__dict__[n](prefix) for n in generic]
+        if tablename not in db:
+            # Backward compatiblity
+            manager = current.manager
+            manager.model.load(tablename)
+        if tablename in db:
+            return db[tablename]
+        elif tablename in response.s3:
+            return response.s3[tablename]
+        elif isinstance(default, Exception):
+            raise default
+        else:
+            return default
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def load(name):
+        """
+            Helper function to load a model by its name (=prefix)
+        """
+
+        response = current.response
+        if "s3" not in response:
+            response.s3 = Storage()
+        models = current.models
+
+        if models is not None and hasattr(models, name):
+            module = models.__dict__[name]
+            for n in module.__all__:
+                model = module.__dict__[n]
+                if type(model).__name__ == "type":
+                    model(name)
+                elif n.startswith("%s_" % name):
+                    response.s3.update({n:model})
+        return
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def load_all_models():
+        """
+            Helper function to load all models
+        """
+
+        models = current.models
+
+        # Backward compatiblity: load conventional models first
+        manager = current.manager
+        manager.model.load_all_models()
+
+        if models is not None:
+            for name in models.__dict__:
+                if type(models.__dict__[name]).__name__ == "module":
+                    S3Model.load(name)
+        return
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def define_table(tablename, *fields, **args):
+        """
+            Same as db.define_table except that it does not repeat
+            a table definition if the table is already defined.
+        """
+
+        db = current.db
+        if tablename in db:
+            table = db[tablename]
+        else:
+            table = db.define_table(tablename, *fields, **args)
+        return table
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def super_entity(tablename, key, types, *fields, **args):
+        """
+            Shortcut for current.manager.model.super_entity
+        """
+
+        db = current.db
+        if tablename in db:
+            table = db[tablename]
+        else:
+            manager = current.manager
+            model = manager.model
+            table = model.super_entity(tablename, key, types, *fields, **args)
+        return table
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def super_link(name, tablename, **args):
+        """
+            Shortcut for current.manager.model.super_link
+        """
+
+        manager = current.manager
+        model = manager.model
+        return model.super_link(name, tablename, **args)
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def super_key(supertable, default=None):
+        """
+            Shortcut for current.manager.model.super_key
+        """
+
+        manager = current.manager
+        model = manager.model
+        return model.super_key(supertable, default=default)
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def configure(tablename, **args):
+        """
+            Shortcut for current.manager.model.configure
+        """
+
+        manager = current.manager
+        model = manager.model
+        return model.configure(tablename, **args)
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def add_component(tablename, **args):
+        """
+            Shortcut for current.manager.model.add_component
+        """
+
+        manager = current.manager
+        model = manager.model
+        return model.add_component(tablename, **args)
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def set_method(tablename, **args):
+        """
+            Shortcut for current.manager.model.set_method
+        """
+
+        module, resourcename = tablename.split("_", 1)
+
+        manager = current.manager
+        model = manager.model
+        return model.set_method(module, resourcename, **args)
+
+# =============================================================================
+
+class S3ModelExtensions(object):
     """
         S3 Model extensions
     """
 
     # -------------------------------------------------------------------------
-    def __init__(self, manager):
-        """
-            Constructor
+    def __init__(self):
+        """ Constructor """
 
-            @param db: the database
-        """
-
-        self.manager = manager
         self.components = {}
         self.config = Storage()
         self.globalvars = Storage()
@@ -250,6 +543,7 @@ class S3Model(object):
         """
 
         db = current.db
+        load = S3Model.table
 
         hooks = Storage()
         single = False
@@ -257,11 +551,10 @@ class S3Model(object):
             tablename = table._tablename
         else:
             tablename = table
-            self.load(tablename)
-            if tablename not in db:
+            table = load(tablename)
+            if table is None:
                 # Primary table not defined
                 return None
-            table = db[tablename]
         if isinstance(names, str):
             single = True
             names = [names]
@@ -274,6 +567,10 @@ class S3Model(object):
                 if not isinstance(supertables, (list, tuple)):
                     supertables = [supertables]
                 for s in supertables:
+                    if isinstance(s, str):
+                        s = S3Model.table(s)
+                    if s is None:
+                        continue
                     h = self.components.get(s._tablename, None)
                     if h:
                         self.__get_hooks(hooks, h, names=names, supertable=s)
@@ -281,11 +578,11 @@ class S3Model(object):
         components = Storage()
         for alias in hooks:
             hook = hooks[alias]
-            self.load(hook.tablename)
+            load(hook.tablename)
             if hook.tablename not in db:
                 continue
             if hook.linktable:
-                self.load(hook.linktable)
+                load(hook.linktable)
                 if hook.linktable not in db:
                     continue
             component = Storage(values=hook.values,
@@ -340,17 +637,17 @@ class S3Model(object):
         """
 
         db = current.db
+        load = S3Model.table
 
         hooks = Storage()
         if hasattr(table, "_tablename"):
             tablename = table._tablename
         else:
             tablename = table
-            self.load(tablename)
-            if tablename not in db:
+            table = load(tablename)
+            if table is None:
                 # Primary table not defined
                 return False
-            table = db[tablename]
         h = self.components.get(tablename, None)
         if h:
             self.__get_hooks(hooks, h)
@@ -361,6 +658,10 @@ class S3Model(object):
             if not isinstance(supertables, (list, tuple)):
                 supertables = [supertables]
             for s in supertables:
+                if isinstance(s, str):
+                    s = S3Model.table(s)
+                if s is None:
+                    continue
                 h = self.components.get(s._tablename, None)
                 if h:
                     self.__get_hooks(hooks, h, supertable=s)
@@ -544,21 +845,23 @@ class S3Model(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def super_key(supertable):
+    def super_key(supertable, default=None):
         """
             Get the name of the key for a super-entity
 
             @param supertable: the super-entity table
         """
 
+        if supertable is None and default:
+            return default
         try:
             return supertable._id.name
-        except AttributeError: pass
-
+        except AttributeError:
+            pass
         raise SyntaxError("No id-type key found in %s" % supertable._tablename)
 
     # -------------------------------------------------------------------------
-    def super_link(self, supertable,
+    def super_link(self, name, supertable,
                    label=None,
                    comment=None,
                    represent=None,
@@ -582,18 +885,30 @@ class S3Model(object):
             @param represent: set a representation function for the field
         """
 
-        key = self.super_key(supertable)
-
-        requires = IS_ONE_OF(current.db,
-                             "%s.%s" % (supertable._tablename, key),
-                             represent,
-                             orderby=orderby,
-                             sort=sort,
-                             groupby=groupby,
-                             filterby=filterby,
-                             filter_opts=filter_opts)
-        if empty:
-            requires = IS_EMPTY_OR(requires)
+        if isinstance(supertable, str):
+            supertable = S3Model.table(supertable)
+        if supertable is None:
+            if name is not None:
+                return Field(name, "integer",
+                             readable=False,
+                             writable=False)
+            else:
+                raise SyntaxError("Undefined super-entity")
+        else:
+            key = self.super_key(supertable)
+            if name is not None and name != key:
+                raise SyntaxError("Primary key %s not found in %s" % \
+                                 (name, supertable._tablename))
+            requires = IS_ONE_OF(current.db,
+                                 "%s.%s" % (supertable._tablename, key),
+                                 represent,
+                                 orderby=orderby,
+                                 sort=sort,
+                                 groupby=groupby,
+                                 filterby=filterby,
+                                 filter_opts=filter_opts)
+            if empty:
+                requires = IS_EMPTY_OR(requires)
 
         return Field(key, supertable,
                      default = default,
@@ -632,6 +947,10 @@ class S3Model(object):
 
         super_keys = Storage()
         for s in supertable:
+            if isinstance(s, str):
+                s = S3Model.table(s)
+            if s is None:
+                continue
             # Get the key
             key = self.super_key(s)
             skey = _record.get(key, None)
@@ -699,6 +1018,10 @@ class S3Model(object):
         uid = record.get("uuid", None)
         if uid:
             for s in supertable:
+                if isinstance(s, str):
+                    s = S3Model.table(s)
+                if s is None:
+                    continue
                 if "deleted" in s.fields:
                     current.db(s.uuid == uid).update(deleted=True)
 
@@ -718,7 +1041,9 @@ class S3Model(object):
         db = current.db
         if not hasattr(supertable, "_tablename"):
             # tablename passed instead of Table
-            supertable = db[supertable]
+            supertable = S3Model.table(supertable)
+        if supertable is None:
+            return (None, None, None)
         query = supertable._id == superid
         entry = db(query).select(supertable.instance_type,
                                  supertable.uuid,
@@ -744,13 +1069,10 @@ class S3RecordLinker(object):
     """
 
     # -------------------------------------------------------------------------
-    def __init__(self, manager):
-        """
-            Constructor
+    def __init__(self):
+        """ Constructor """
 
-            @param manager: the S3RequestManager
-        """
-
+        manager = current.manager
         self.tablename = manager.rlink_tablename
 
 
@@ -975,5 +1297,4 @@ class S3RecordLinker(object):
             mq = (to_table.id == None)
         return mq
 
-# =============================================================================
-
+# END =========================================================================

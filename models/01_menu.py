@@ -316,6 +316,13 @@ else:
         msg_list_empty = T("No Received Shipments")
     )
 
+if deployment_settings.get_project_community_activity():
+    list_activities_label = T("List All Communities")
+    import_activities_label = T("Import Project Communities")
+else:
+    list_activities_label = T("List All Activities")
+    import_activities_label = T("Import Project Activities")
+
 # =============================================================================
 # Default Menu Configurations for Controllers
 # =============================================================================
@@ -372,7 +379,7 @@ s3_menu_dict = {
                 [T("Search"), False, aURL(c="asset", f="asset",
                                           args="search")],
                 [T("Import"), False, aURL(p="create", c="asset", f="asset",
-                                          args="import.xml")],
+                                          args="import")],
             ]],
             [T("Items"), False, aURL(c="asset", f="item"),
             [
@@ -551,11 +558,9 @@ s3_menu_dict = {
                                        fact="pe_label",
                                        aggregate="count"))],
             ]],
-
             [T("Missing Persons"), False, aURL(f="person"), [
                 [T("List all"), False, aURL(f="person")],
             ]],
-
             [T("Morgues"), False, aURL(f="morgue"),[
                 [T("New"),
                  False, aURL(p="create", f="morgue",
@@ -563,7 +568,6 @@ s3_menu_dict = {
                 [T("List All"),
                  False, aURL(f="morgue")],
             ]],
-
             [T("Help"), False, URL(f="index")]
         ]
     },
@@ -615,6 +619,45 @@ s3_menu_dict = {
                         [T("View All"), False, aURL(c="event", f="event")]
                     ]]
                 ],
+    },
+
+    # FIRE
+    # -------------------------------------------------------------------------
+    "fire": {
+        "menu": [
+            [T("Fire Stations"), False, aURL(c="fire", f="station"),
+            [
+                [T("New"), False, aURL(p="create", c="fire", f="station",
+                                       args="create")],
+                [T("List All"), False, aURL(c="fire", f="station")],
+                [T("Search"), False, aURL(c="fire", f="station",
+                                          args="search")],
+                [T("Import Stations"), False, aURL(c="fire", f="station",
+                                          args="import.xml")],
+                [T("Import Vehicles"), False, aURL(c="fire", f="station_vehicle",
+                                          args="import.xml")],
+            ]],
+            [T("Water Sources"), False, aURL(c="fire", f="water_source"),
+            [
+                [T("New"), False, aURL(p="create", c="fire", f="water_source",
+                                       args="create")],
+                [T("List All"), False, aURL(c="fire", f="water_source")],
+                [T("Search"), False, aURL(c="fire", f="water_source",
+                                          args="search")],
+                [T("Import"), False, aURL(c="fire", f="water_source",
+                                          args="import.xml")],
+            ]],
+            [T("Hazard Points"), False, aURL(c="fire", f="hazard_point"),
+            [
+                [T("New"), False, aURL(p="create", c="fire", f="hazard_point",
+                                       args="create")],
+                [T("List All"), False, aURL(c="fire", f="hazard_point")],
+                [T("Search"), False, aURL(c="fire", f="hazard_point",
+                                          args="search")],
+                [T("Import"), False, aURL(c="fire", f="hazard_point",
+                                          args="import.xml")],
+            ]],
+        ]
     },
 
     # GIS / GIS Controllers
@@ -669,8 +712,8 @@ s3_menu_dict = {
         "condition1": lambda: session.s3.hrm.mode is not None,
         "conditional1": [
                 [ T("Profile"),
-                    True,aURL(f="person",
-                              vars=dict(mode="personal"))
+                  True, aURL(f="person",
+                             vars=dict(mode="personal"))
                 ]],
 
         "condition2": lambda: (session.s3.hrm.mode is not None) and (session.s3.hrm.orgs or ADMIN in session.s3.roles),
@@ -700,7 +743,7 @@ s3_menu_dict = {
                                       expiring=1))],
                [T("Import"),
                 False, aURL(p="create", f="person",
-                            args=["import.xml"],
+                            args=["import"],
                             vars=dict(group="staff"))],
                #[T("Dashboard"),
                # False, aURL(f="index")],
@@ -722,7 +765,7 @@ s3_menu_dict = {
                             vars=dict(group="volunteer"))],
                [T("Import"),
                 False, aURL(p="create", f="person",
-                            args=["import.xml"],
+                            args=["import"],
                             vars=dict(group="volunteer"))],
             ]],
             [T("Teams"), False, aURL(f="group"), [
@@ -784,7 +827,7 @@ s3_menu_dict = {
                     [T("Search"), False, aURL(c="inv", f="warehouse",
                                               args="search")],
                     [T("Import"), False, aURL(p="create", c="inv", f="warehouse",
-                                              args=["import.xml"])],
+                                              args=["import"])],
                 ]],
                 [T("Inventories"), False, aURL(c="inv", f="warehouse"), [
                     [T("Search Inventory Items"), False, aURL(c="inv", f="inv_item",
@@ -792,7 +835,7 @@ s3_menu_dict = {
                     [s3.crud_strings.inv_recv.title_search, False, aURL(c="inv", f="recv",
                                                                         args="search")],
                     [T("Import"), False, aURL(p="create", c="inv", f="warehouse",
-                                              args=["import.xml"],
+                                              args=["import"],
                                               vars={"extra_data":True})],
                 ]],
                 [s3.crud_strings.inv_recv.subtitle_list, False, aURL(c="inv", f="recv"), [
@@ -886,9 +929,9 @@ s3_menu_dict = {
                 #[T("New"), False, aURL(p="create", f="complete", args="create")],
                 #[T("List All"), False, aURL(f="complete")],
                 [T("Import Templates"), False, aURL(f="question_list",
-                                                    args="import.xml")],
+                                                    args="import")],
                 [T("Import Completed Responses"), False, aURL(f="complete",
-                                                              args="import.xml")]
+                                                              args="import")]
             ]],
             ]
     },
@@ -945,7 +988,7 @@ s3_menu_dict = {
                     [T("Search"), False, aURL(c="org", f="organisation",
                                               args="search")],
                     [T("Import"), False, aURL(c="org", f="organisation",
-                                              args="import.xml")]
+                                              args="import")]
                 ]],
                 [T("Offices"), False, aURL(c="org", f="office"), [
                     [T("New"), False,
@@ -955,7 +998,7 @@ s3_menu_dict = {
                     [T("Search"), False, aURL(c="org", f="office",
                                               args="search")],
                     [T("Import"), False, aURL(c="org", f="office",
-                                              args="import.xml")]
+                                              args="import")]
                 ]],
             ],
     },
@@ -1005,48 +1048,45 @@ s3_menu_dict = {
     # -------------------------------------------------------------------------
     "project": {
         "menu": [
-            [T("Home"), False, aURL(f="index")],
+            #[T("Home"), False, aURL(f="index")],
             [T("Projects"), False, aURL(f="project"),[
                 [T("Add New Project"), False, aURL(p="create", f="project", args="create")],
                 [T("List All Projects"), False, aURL(f="project")],
-                #[T("List All Activities"), False, aURL(f="activity")],
+                [list_activities_label, False, aURL(f="activity")],
                 [T("Search"), False, aURL(f="project", args="search")],
             ]],
             [T("Tasks"), False, aURL(f="task"),[
                 [T("Add New Task"), False, aURL(p="create", f="task", args="create")],
+                [T("List My Open Tasks"), False, aURL(f="task", vars={"mine":1})],
                 [T("List All Tasks"), False, aURL(f="task")],
                 #[T("Search"), False, aURL(f="task", args="search")],
             ]],
-            #[T("Project Sites"), False, aURL(f="site"),[
-                #[T("Add New Project Site"), False, aURL(p="create", f="site", args="create")],
-                #[T("List All Project Sites"), False, aURL(f="site")],
-                ##[T("Search"), False, aURL(f="site", args="search")]
-            #]],
-            # [T("Reports"), False, aURL(f="report"),[
-                # [T("Who is doing What Where"), False, aURL(f="activity", args="analyze")],
-                # [T("Beneficiaries"),
-                 # False, aURL(f="beneficiary",
-                             # args="analyze",
-                             # vars=Storage(rows="project_id",
-                                          # cols="type",
-                                          # fact="number",
-                                          # aggregate="sum"))],
-                # [T("Funding"), False, aURL(f="organisation", args="analyze")],
-            # ]],
-            # [T("Import"), False, aURL(f="index"),[
-                # [T("Import Projects"), False, aURL(p="create", f="project",
-                                                   # args="import.xml")],
-                # [T("Import Project Organisations"), False, aURL(p="create", f="organisation",
-                                                                # args="import.xml")],
-                # [T("Import Project Activities"), False, aURL(p="create", f="activity",
-                                                             # args="import.xml")],
-            # ]],
-            # [T("Activity Types"), False, aURL(f="activity_type"),[
-                # [T("Add New Activity Type"), False, aURL(p="create", f="activity_type", args="create")],
-                # [T("List All Activity Types"), False, aURL(f="activity_type")],
-                ##[T("Search"), False, aURL(f="activity_type", args="search")]
-            # ]],
+            [T("Reports"), False, aURL(f="report"),[
+                [T("Who is doing What Where"), False, aURL(f="activity", args="analyze")],
+                #[T("Beneficiaries"),
+                # False, aURL(f="beneficiary",
+                #             args="analyze",
+                #             vars=Storage(rows="project_id",
+                #                          cols="type",
+                #                          fact="number",
+                #                          aggregate="sum"))],
+                [T("Funding"), False, aURL(f="organisation", args="analyze")],
+            ]],
+            [T("Import"), False, aURL(f="index"),[
+                [T("Import Projects"), False, aURL(p="create", f="project",
+                                                   args="import")],
+                [T("Import Project Organisations"), False, aURL(p="create", f="organisation",
+                                                                args="import")],
+                [import_activities_label, False, aURL(p="create", f="activity",
+                                                             args="import")],
+            ]],
+            [T("Activity Types"), False, aURL(f="activity_type"),[
+                [T("Add New Activity Type"), False, aURL(p="create", f="activity_type", args="create")],
+                [T("List All Activity Types"), False, aURL(f="activity_type")],
+                #[T("Search"), False, aURL(f="activity_type", args="search")]
+            ]],
         ],
+
         "condition1": lambda: deployment_settings.get_project_drr(),
         "conditional1": [
             [T("Hazards"), False, aURL(f="hazard"),[

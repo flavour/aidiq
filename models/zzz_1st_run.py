@@ -11,7 +11,7 @@ if populate > 0:
     import sys
 
     # Load all Models to ensure all DB tables present
-    s3mgr.model.load_all_models()
+    s3db.load_all_models()
 
     # Add core data as long as at least one populate setting is on
 
@@ -1167,7 +1167,7 @@ if populate > 0:
     s3mgr.model.add_component("auth_membership", auth_user="user_id")
 
     # Create the bulk Importer object
-    bi = s3base.S3BulkImporter(s3mgr, s3base)
+    bi = s3base.S3BulkImporter()
 
     # Allow population via shell scripts
     if not request.env.request_method:

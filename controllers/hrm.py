@@ -57,9 +57,10 @@ def s3_menu_prep():
         org_filter()
 
     # Set mode
-    if session.s3.hrm.mode != "personal" and \
-       (ADMIN in roles or session.s3.hrm.orgs):
-        session.s3.hrm.mode = None
+    if session.s3.hrm.mode != "personal":
+        if (ADMIN in roles or session.s3.hrm.orgs) or \
+           deployment_settings.get_security_policy() in (1, 2):
+            session.s3.hrm.mode = None
     else:
         session.s3.hrm.mode = "personal"
 
@@ -69,8 +70,8 @@ s3_menu(module, prep=s3_menu_prep)
 def index():
     """ Dashboard """
 
-    if session.error:
-        return dict()
+    if response.error:
+        return dict(r=None)
 
     mode = session.s3.hrm.mode
     if mode is not None:
@@ -504,7 +505,7 @@ def person():
         _crud.title_create = T("Add Home Address")
         _crud.title_update = T("Edit Home Address")
         s3mgr.model.add_component("pr_address",
-                                  pr_pentity=dict(joinby=super_key(db.pr_pentity),
+                                  pr_pentity=dict(joinby=super_key(s3db.pr_pentity),
                                                   multiple=False))
         address_tab_name = T("Home Address")
         # Default type for HR
@@ -594,9 +595,6 @@ def person():
         if deployment_settings.has_module("asset"):
             tabs.append((T("Assets"), "asset"))
 
-    # Upload for configuration (add replace option)
-    response.s3.importerPrep = lambda: dict(ReplaceOption=T("Remove existing data before import"))
-
     # Import pre-process
     def import_prep(data, group=group):
         """
@@ -646,7 +644,7 @@ def person():
     def prep(r):
         if r.representation == "s3json":
             s3mgr.show_ids = True
-        elif r.interactive:
+        elif r.interactive and r.method != "import":
             resource = r.resource
 
             # Assume volunteers only between 12-81
@@ -832,9 +830,11 @@ def job_role():
     """ Job Roles Controller """
 
     mode = session.s3.hrm.mode
-    if mode is not None:
-        session.error = T("Access denied")
-        redirect(URL(f="index"))
+    def prep(r):
+        if mode is not None:
+            r.error(403, message=auth.permission.INSUFFICIENT_PRIVILEGES)
+        return True
+    response.s3.prep = prep
 
     output = s3_rest_controller(module, resourcename)
     return output
@@ -959,9 +959,11 @@ def certificate():
     """ Certificates Controller """
 
     mode = session.s3.hrm.mode
-    if mode is not None:
-        session.error = T("Access denied")
-        redirect(URL(f="index"))
+    def prep(r):
+        if mode is not None:
+            r.error(403, message=auth.permission.INSUFFICIENT_PRIVILEGES)
+        return True
+    response.s3.prep = prep
 
     # Load Models
     s3mgr.load("hrm_skill")

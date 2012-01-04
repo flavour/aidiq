@@ -5,11 +5,18 @@
 """
 
 # =============================================================================
+# Import models package
+#
+from s3.s3model import S3Model
+import eden as models
+
+current.models = models
+current.s3db = s3db = S3Model()
+
+# =============================================================================
 # Import S3 meta fields into global namespace
 #
-exec("from applications.%s.modules.s3.s3fields import *" % request.application)
-# Faster for Production (where app-name won't change):
-#from applications.eden.modules.s3.s3fields import *
+from s3.s3fields import *
 
 # =============================================================================
 # Representations for Auth Users & Groups
@@ -160,7 +167,8 @@ def s3_ownerstamp():
 
 # =============================================================================
 # Common meta-fields
-
+# @todo: can this be moved into s3fields.py?
+#
 def s3_meta_fields():
 
     fields = (s3_meta_uuid(),
@@ -177,6 +185,9 @@ def s3_meta_fields():
               s3_meta_owned_by_facility())
 
     return fields
+
+# Make available for S3Models
+s3.meta_fields = s3_meta_fields
 
 # =============================================================================
 response.s3.all_meta_field_names = [field.name for field in
@@ -252,6 +263,8 @@ s3_comments = S3ReusableField("comments", "text",
                                             _title="%s|%s" % (T("Comments"),
                                                               T("Please use this field to record any additional information, including a history of the record if it is updated."))))
 
+s3.comments = s3_comments
+
 # -----------------------------------------------------------------------------
 # Reusable currency field to include in other table definitions
 #
@@ -270,6 +283,8 @@ currency_type = S3ReusableField("currency_type", "string",
                                 #represent = lambda opt: \
                                 #    currency_type_opts.get(opt, UNKNOWN_OPT),
                                 writable = deployment_settings.get_fin_currency_writable())
+
+response.s3.currency_type = currency_type
 
 # =============================================================================
 # Addresses
@@ -327,7 +342,7 @@ def address_fields():
             address_L0(),
            )
     return fields
-
+s3.address_fields = address_fields
 
 # Hide Address fields in Create forms
 # inc list_create (list_fields over-rides)
@@ -384,6 +399,7 @@ def address_onvalidation(form):
                                          feature=location,
                                          ids=False,
                                          names=True)
+s3.address_onvalidation = address_onvalidation
 
 def address_update(table, record_id):
     """

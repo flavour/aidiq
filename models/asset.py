@@ -54,7 +54,8 @@ if deployment_settings.has_module("asset"):
         vehicle = deployment_settings.has_module("vehicle")
         tablename = "asset_asset"
         table = db.define_table(tablename,
-                                super_link(db.sit_trackable), # track_id
+                                super_link("track_id", "sit_trackable"),
+                                super_link("doc_id", "doc_entity"),
                                 Field("number",
                                       label = T("Asset Number")),
                                 item_id,
@@ -113,7 +114,7 @@ if deployment_settings.has_module("asset"):
             msg_record_deleted = T("Asset deleted"),
             msg_list_empty = T("No Assets currently registered"))
 
-        def asset_asset_represent(id):
+        def asset_represent(id):
             table = db.asset_asset
             itable = db.supply_item
             btable = db.supply_brand
@@ -140,14 +141,14 @@ if deployment_settings.has_module("asset"):
         asset_id = S3ReusableField("asset_id", db.asset_asset, sortby="number",
                                    requires = IS_NULL_OR(IS_ONE_OF(db,
                                                                    "asset_asset.id",
-                                                                   asset_asset_represent,
+                                                                   asset_represent,
                                                                    sort=True)),
-                                   represent = asset_asset_represent,
+                                   represent = asset_represent,
                                    label = T("Asset"),
                                    ondelete = "RESTRICT")
 
         s3mgr.configure(tablename,
-                        super_entity=(db.supply_item_entity, db.sit_trackable)
+                        super_entity=("supply_item_entity", "sit_trackable")
                        )
 
         #--------------------------------------------------------------------------
@@ -313,7 +314,7 @@ if deployment_settings.has_module("asset"):
         table.site_id.comment = (DIV(_class="tooltip",
                                      _title="%s|%s" % (T("Facility"),
                                                        T("Enter some characters to bring up a list of possible matches")),
-                                     
+
                                      ),
 SCRIPT("""
     $(document).ready(function() {
@@ -493,7 +494,7 @@ SCRIPT("""
             request.get_vars.pop("status", None)
             type = request.get_vars.pop("type", None)
             r.datetime = r.datetime.replace(tzinfo=None)
-            
+
             if r.datetime and \
                 (not current_log.datetime or \
                  current_log.datetime <= r.datetime):
@@ -642,7 +643,7 @@ SCRIPT("""
                         func = "vehicle"
                     else:
                         func = "asset"
-                    
+
                     # @ToDo: Check permissions before displaying buttons
 
                     asset_action_btns = [ A( T("Set Base Site"),
@@ -739,7 +740,8 @@ SCRIPT("""
         # Return to Global Scope
         return dict(
             asset_id = asset_id,
-            asset_rheader = asset_rheader
+            asset_rheader = asset_rheader,
+            asset_represent = asset_represent,
             )
 
     # Provide a handle to this load function
