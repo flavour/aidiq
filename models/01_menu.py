@@ -1067,7 +1067,7 @@ s3_menu_dict = {
                 # False, aURL(f="beneficiary",
                 #             args="analyze",
                 #             vars=Storage(rows="project_id",
-                #                          cols="type",
+                #                          cols="bnf_type$name",
                 #                          fact="number",
                 #                          aggregate="sum"))],
                 [T("Funding"), False, aURL(f="organisation", args="analyze")],
