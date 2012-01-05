@@ -16,7 +16,7 @@
          Date.................string..........Task created_on
          Author...............string..........Task created_by
          Source...............string..........Task source
-         Assigned.............string..........Person First Name
+         Assigned.............string..........Person Initials
          Priority.............string..........Task priority
          Status...............string..........Task status
 
@@ -34,7 +34,7 @@
     <xsl:template match="/">
         <s3xml>
             <!-- Customers -->
-            <xsl:for-each select="//row[generate-id(.)=generate-id(key('projects',
+            <xsl:for-each select="//row[generate-id(.)=generate-id(key('customers',
                                                                    col[@field='Customer'])[1])]">
                 <xsl:call-template name="Organisation"/>
             </xsl:for-each>
@@ -127,18 +127,20 @@
                     </xsl:choose>
                 </xsl:otherwise>
             </xsl:choose>
-            <!-- Link to Project -->
-            <reference field="project_id" resource="project_project">
-                <xsl:attribute name="tuid">
-                    <xsl:value-of select="$ProjectName"/>
-                </xsl:attribute>
-            </reference>
             <!-- Link to Assignee -->
             <reference field="pe_id" resource="pr_person">
                 <xsl:attribute name="tuid">
                     <xsl:value-of select="$Assignee"/>
                 </xsl:attribute>
             </reference>
+            <!-- Link to Project -->
+            <resource name="project_task_project">
+                <reference field="project_id" resource="project_project">
+                    <xsl:attribute name="tuid">
+                        <xsl:value-of select="$ProjectName"/>
+                    </xsl:attribute>
+                </reference>
+            </resource>
         </resource>
 
     </xsl:template>
@@ -184,7 +186,7 @@
             <xsl:attribute name="tuid">
                 <xsl:value-of select="$Assignee"/>
             </xsl:attribute>
-            <data field="first_name"><xsl:value-of select="$Assignee"/></data>
+            <data field="initials"><xsl:value-of select="$Assignee"/></data>
         </resource>
 
     </xsl:template>

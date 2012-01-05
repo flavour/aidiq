@@ -338,6 +338,8 @@ def organisation_represent(id, showlink=False, acronym=True):
 
     return represent
 
+response.s3.org_organisation_represent = organisation_represent
+
 organisation_popup_url = URL(c="org", f="organisation",
                              args="create",
                              vars=dict(format="popup"))
@@ -464,6 +466,31 @@ s3mgr.model.add_component("doc_document", org_organisation="organisation_id")
 
 # Images
 s3mgr.model.add_component("doc_image", org_organisation="organisation_id")
+
+# -----------------------------------------------------------------------------
+def org_organisation_deduplicate(item):
+    """
+        Import item deduplication, match by name
+
+        @param item: the S3ImportItem instance
+    """
+
+    if item.id:
+        return
+    if item.tablename == "org_organisation":
+        table = item.table
+        name = "name" in item.data and item.data.name
+        # Match organisation by name (all-lowercase)
+        query = (table.name.lower() == name.lower())
+        duplicate = db(query).select(table.id,
+                                     limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
+    return
+
+s3mgr.configure(tablename,
+                deduplicate=org_organisation_deduplicate)
 
 # -----------------------------------------------------------------------------
 def organisation_rheader(r, tabs=[]):

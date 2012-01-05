@@ -140,6 +140,7 @@ if populate > 0:
                 dict(c="project", uacl=acl.ALL, oacl=acl.ALL),
                 dict(c="project", f="project", uacl=acl.ALL, oacl=acl.ALL),
                 dict(c="project", f="task", uacl=acl.ALL, oacl=acl.ALL),
+                uid="STAFF"
                 )
 
     # @ToDo: Replace with OrgAuth roles

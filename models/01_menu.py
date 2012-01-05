@@ -1053,12 +1053,12 @@ s3_menu_dict = {
                 [T("Add New Project"), False, aURL(p="create", f="project", args="create")],
                 [T("List All Projects"), False, aURL(f="project")],
                 #[list_activities_label, False, aURL(f="activity")],
-                [T("Search"), False, aURL(f="project", args="search")],
+                #[T("Search"), False, aURL(f="project", args="search")],
             ]],
             [T("Tasks"), False, aURL(f="task"),[
-                [T("Add New Task"), False, aURL(p="create", f="task", args="create")],
+                #[T("Add New Task"), False, aURL(p="create", f="task", args="create")],
                 [T("List My Open Tasks"), False, aURL(f="task", vars={"mine":1})],
-                [T("List All Tasks"), False, aURL(f="task")],
+                #[T("List All Tasks"), False, aURL(f="task")],
                 #[T("Search"), False, aURL(f="task", args="search")],
             ]],
             [T("Customers"), False, aURL(f="organisation"),[
