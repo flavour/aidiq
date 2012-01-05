@@ -5,20 +5,20 @@
 """
 
 # =============================================================================
-# Import models package
+# Import models
 #
 from s3.s3model import S3Model
 import eden as models
 current.models = models
 current.s3db = s3db = S3Model()
 
-# Import Eden modules:
-from eden.pr import *
-from eden.sit import *
-from eden.doc import *
-from eden.project import *
-from eden.dvi import *
-from eden.irs import *
+# Explicit import statements to have them reload automatically in debug mode
+import eden.pr
+import eden.sit
+import eden.doc
+import eden.project
+import eden.dvi
+import eden.irs
 
 # =============================================================================
 # Import S3 meta fields into global namespace

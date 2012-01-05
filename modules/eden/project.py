@@ -54,6 +54,7 @@ class S3ProjectModel(S3Model):
              "project_beneficiary",
              "project_comment",
              "project_task",
+             "project_time",
              "project_task_ireport",
              "project_task_job_role",
              "project_task_human_resource",
@@ -66,6 +67,7 @@ class S3ProjectModel(S3Model):
              "project_organisation_roles",
              "project_organisation_lead_role",
              "project_hfa_opts",
+             "project_project_represent",
              ]
 
     def model(self):
@@ -79,6 +81,7 @@ class S3ProjectModel(S3Model):
         s3 = current.response.s3
 
         person_id = self.pr_person_id
+        organisation_id = s3.org_organisation_id
 
         s3_date_format = self.settings.get_L10n_date_format()
 
@@ -194,6 +197,10 @@ class S3ProjectModel(S3Model):
         tablename = "project_project"
         table = self.define_table(tablename,
                                   self.super_link("doc_id", "doc_entity"),
+                                  organisation_id(
+                                               #readable=False,
+                                               #writable=False
+                                              ),
                                   Field("name",
                                         label = T("Name"),
                                         # Require unique=True if using IS_NOT_ONE_OF like here (same table,
@@ -219,7 +226,10 @@ class S3ProjectModel(S3Model):
                                         writable=False,
                                         label = T("Duration")),
 
-                                  sector_id(widget=lambda f, v: \
+                                  sector_id(
+                                            readable=False,
+                                            writable=False,
+                                            widget=lambda f, v: \
                                             CheckboxesWidget.widget(f, v, cols=3)),
 
                                   countries_id(
@@ -242,6 +252,8 @@ class S3ProjectModel(S3Model):
                                         widget = CheckboxesWidgetS3.widget),
 
                                   Field("objectives", "text",
+                                        readable = False,
+                                        writable = False,
                                         label = T("Objectives")),
                                   format="%(name)s",
                                   *s3.meta_fields())
@@ -276,11 +288,12 @@ class S3ProjectModel(S3Model):
                        deduplicate=self.project_project_deduplicate,
                        onvalidation=self.project_project_onvalidation,
                        create_next=URL(c="project", f="project",
-                                       args=["[id]", "organisation"]),
+                                       args=["[id]", "activity"]),
                        list_fields=["id",
                                     "name",
+                                    "organisation_id",
                                     #"countries_id",
-                                    "start_date",
+                                    #"start_date",
                                     "end_date",
                                    ])
         # Reusable Field
@@ -829,7 +842,7 @@ class S3ProjectModel(S3Model):
                                   Field("name",
                                         label = T("Short Description"),
                                         requires=IS_NOT_EMPTY()),
-                                  Field("date", "datetime",
+                                  Field("date", "date",
                                         label = T("Date"),
                                         requires = IS_NULL_OR(IS_DATE(format = s3_date_format))),
                                   s3.comments(),
@@ -884,7 +897,7 @@ class S3ProjectModel(S3Model):
         # @ToDo: Recurring tasks
         #
         project_task_status_opts = {
-            1: T("Draft"),
+            #1: T("Draft"),
             2: T("New"),
             3: T("Assigned"),
             4: T("On Hold"),
@@ -892,8 +905,8 @@ class S3ProjectModel(S3Model):
             6: T("Cancelled"),
             7: T("Blocked"),
             8: T("Completed"),
-            9: T("Verified"),
-            99: T("unspecified")
+            #9: T("Verified"),
+            #99: T("unspecified")
         }
 
         project_task_active_statuses = [2, 3, 5, 7]
@@ -924,8 +937,13 @@ class S3ProjectModel(S3Model):
                                         length=80,
                                         notnull=True,
                                         requires = IS_NOT_EMPTY()),
+                                  Field("source",
+                                        label = T("Source")),
                                   Field("description", "text",
-                                        label = T("Detailed Description")),
+                                        label = T("Detailed Description/URL"),
+                                        comment = DIV(_class="tooltip",
+                                                      _title="%s|%s" % (T("Detailed Description/URL"),
+                                                                        T("Please provide as much detail as you can, including the URL(s) where the bug occurs or you'd like the new feature to go.")))),
                                   Field("priority", "integer",
                                         requires = IS_IN_SET(project_task_priority_opts,
                                                              zero=None),
@@ -1228,6 +1246,7 @@ class S3ProjectModel(S3Model):
             project_organisation_roles = project_organisation_roles,
             project_organisation_lead_role = project_organisation_lead_role,
             project_hfa_opts = project_hfa_opts,
+            project_project_represent = self.project_represent,
         )
 
     # -------------------------------------------------------------------------
@@ -1239,9 +1258,10 @@ class S3ProjectModel(S3Model):
                                 writable=False)
 
         return Storage(
-            project_project_id = lambda:dummy("project_id"),
-            project_activity_id = lambda:dummy("activity_id"),
-            project_task_id = lambda:dummy("task_id")
+            project_project_id = lambda: dummy("project_id"),
+            project_activity_id = lambda: dummy("activity_id"),
+            project_task_id = lambda: dummy("task_id"),
+            project_project_represent = lambda v, r: current.messages.NONE
         )
 
     # -------------------------------------------------------------------------
@@ -1690,8 +1710,10 @@ def project_rheader(r, tabs=[]):
                        record.name
                       ),
                     TR(
-                       TH("%s: " % table.countries_id.label),
-                       table.countries_id.represent(record.countries_id),
+                       #TH("%s: " % table.countries_id.label),
+                       #table.countries_id.represent(record.countries_id),
+                       TH("%s: " % table.end_date.label),
+                       record.end_date
                       ),
                     ), rheader_tabs)
 

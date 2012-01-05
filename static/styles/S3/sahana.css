@@ -401,10 +401,10 @@ table {
 }
 
 .S3menulogo {
-    background: url(../../img/S3menu_logo.png) left top no-repeat;
+    background: url(../../img/aidiq_logo.png) left top no-repeat;
     text-shadow: none;
     padding: none;
-    width: 35px;
+    width: 93px;
     height: 28px;
     display: inline-block;
     position: absolute;
@@ -412,7 +412,7 @@ table {
     left: 2px;
 }
 .S3menuHome {
-    padding-left: 20px;
+    padding-left: 80px;
 }
 
 /* Sidebar / response.menu_options */

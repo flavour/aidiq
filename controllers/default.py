@@ -273,7 +273,7 @@ def project():
     table = s3db.project_project
     table.id.label = T("Project")
     table.id.represent = lambda id: \
-        S3ProjectModel.project_represent(id, show_link=False)
+        s3db.project_project_represent(id, show_link=False)
 
     response.s3.dataTable_sPaginationType = "two_button"
     response.s3.dataTable_sDom = "rtip" #"frtip" - filter broken

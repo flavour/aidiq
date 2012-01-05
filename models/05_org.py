@@ -274,24 +274,24 @@ table = db.define_table(tablename,
 
 # Organisation table CRUD settings --------------------------------------------
 #
-ADD_ORGANIZATION = T("Add Organization")
-LIST_ORGANIZATIONS = T("List Organizations")
+ADD_ORGANIZATION = T("Add Customer")
+LIST_ORGANIZATIONS = T("List Customers")
 s3.crud_strings[tablename] = Storage(
     title_create = ADD_ORGANIZATION,
-    title_display = T("Organization Details"),
+    title_display = T("Customer Details"),
     title_list = LIST_ORGANIZATIONS,
-    title_update = T("Edit Organization"),
-    title_search = T("Search Organizations"),
-    title_upload = T("Import Organizations"),
-    subtitle_create = T("Add New Organization"),
-    subtitle_list = T("Organizations"),
+    title_update = T("Edit Customer"),
+    title_search = T("Search Customers"),
+    title_upload = T("Import Customers"),
+    subtitle_create = T("Add New Customer"),
+    subtitle_list = T("Customers"),
     label_list_button = LIST_ORGANIZATIONS,
-    label_create_button = T("Add New Organization"),
-    label_delete_button = T("Delete Organization"),
-    msg_record_created = T("Organization added"),
-    msg_record_modified = T("Organization updated"),
-    msg_record_deleted = T("Organization deleted"),
-    msg_list_empty = T("No Organizations currently registered"))
+    label_create_button = T("Add New Customer"),
+    label_delete_button = T("Delete Customer"),
+    msg_record_created = T("Customer added"),
+    msg_record_modified = T("Customer updated"),
+    msg_record_deleted = T("Customer deleted"),
+    msg_list_empty = T("No Customers currently registered"))
 
 s3mgr.configure(tablename,
                 super_entity = "pr_pentity",
@@ -305,13 +305,14 @@ s3mgr.configure(tablename,
                             ])
 
 s3mgr.model.add_component("project_project",
-                          org_organisation=Storage(
-                                link="project_organisation",
-                                joinby="organisation_id",
-                                key="project_id",
-                                actuate="embed",
-                                autocomplete="name",
-                                autodelete=False))
+                          org_organisation="organisation_id")
+                          #org_organisation=Storage(
+                          #      link="project_organisation",
+                          #      joinby="organisation_id",
+                          #      key="project_id",
+                          #      actuate="embed",
+                          #      autocomplete="name",
+                          #      autodelete=False))
 
 # -----------------------------------------------------------------------------
 def organisation_represent(id, showlink=False, acronym=True):
@@ -347,10 +348,10 @@ organisation_comment = DIV(A(ADD_ORGANIZATION,
                            _target="top",
                            _title=ADD_ORGANIZATION),
                          DIV(DIV(_class="tooltip",
-                                 _title="%s|%s" % (T("Organization"),
-                                                   T("Enter some characters to bring up a list of possible matches")))))
+                                 _title="%s|%s" % (T("Customer"),
+                                                   #T("Enter some characters to bring up a list of possible matches")))))
                                                    # Replace with this one if using dropdowns & not autocompletes
-                                                   #T("If you don't see the Organization in the list, you can add a new one by clicking link 'Add Organization'.")))))
+                                                   T("If you don't see the Customer in the list, you can add a new one by clicking link 'Add Customer'.")))))
 
 from_organisation_comment = copy.deepcopy(organisation_comment)
 from_organisation_comment[0]["_href"] = organisation_comment[0]["_href"].replace("popup", "popup&child=from_organisation_id")
@@ -362,11 +363,11 @@ organisation_id = S3ReusableField("organisation_id",
                                                                   orderby="org_organisation.name",
                                                                   sort=True)),
                                   represent = organisation_represent,
-                                  label = T("Organization"),
+                                  label = T("Customer"),
                                   comment = organisation_comment,
                                   ondelete = "RESTRICT",
                                   # Comment this to use a Dropdown & not an Autocomplete
-                                  widget = S3OrganisationAutocompleteWidget()
+                                  #widget = S3OrganisationAutocompleteWidget()
                                  )
 
 response.s3.org_organisation_id = organisation_id
@@ -409,7 +410,7 @@ organisations_id = S3ReusableField("organisations_id",
                                                                    orderby="org_organisation.name",
                                                                    sort=True)),
                                    represent = organisation_multi_represent,
-                                   label = T("Organizations"),
+                                   label = T("Customers"),
                                    ondelete = "RESTRICT")
 
 # -----------------------------------------------------------------------------
@@ -417,7 +418,7 @@ organisation_search = s3base.S3OrganisationSearch(
         # simple = (s3base.S3SearchSimpleWidget(
             # name="org_search_text_simple",
             # label = T("Search"),
-            # comment = T("Search for an Organization by name or acronym."),
+            # comment = T("Search for an Customer by name or acronym."),
             # field = [ "name",
                       # "acronym",
                     # ]
@@ -426,7 +427,7 @@ organisation_search = s3base.S3OrganisationSearch(
         advanced = (s3base.S3SearchSimpleWidget(
             name = "org_search_text_advanced",
             label = T("Search"),
-            comment = T("Search for an Organization by name or acronym"),
+            comment = T("Search for an Customer by name or acronym"),
             field = [ "name",
                       "acronym",
                     ]
@@ -477,36 +478,37 @@ def organisation_rheader(r, tabs=[]):
         rheader_tabs = s3_rheader_tabs(r, tabs)
 
         organisation = r.record
-        if organisation.sector_id:
-            _sectors = org_sector_represent(organisation.sector_id)
-        else:
-            _sectors = None
+        #if organisation.sector_id:
+        #    _sectors = org_sector_represent(organisation.sector_id)
+        #else:
+        #    _sectors = None
 
-        try:
-            _type = organisation_type_opts[organisation.type]
-        except KeyError:
-            _type = None
+        #try:
+        #    _type = organisation_type_opts[organisation.type]
+        #except KeyError:
+        #    _type = None
 
         table = r.table
 
-        if deployment_settings.get_ui_cluster():
-            sector_label = T("Cluster(s)")
-        else:
-            sector_label = T("Sector(s)")
+        #if deployment_settings.get_ui_cluster():
+        #    sector_label = T("Cluster(s)")
+        #else:
+        #    sector_label = T("Sector(s)")
 
         rheader = DIV(TABLE(
             TR(
                 TH("%s: " % table.name.label),
                 organisation.name,
-                TH("%s: " % sector_label),
-                _sectors),
+                #TH("%s: " % sector_label),
+                #_sectors
+                ),
             TR(
                 #TH(A(T("Edit Organization"),
                 #    _href=URL(r=request, c="org", f="organisation",
                               #args=[r.id, "update"],
                               #vars={"_next": _next})))
-                TH("%s: " % table.type.label),
-                _type,
+                #TH("%s: " % table.type.label),
+                #_type,
                 )
         ), rheader_tabs)
 

@@ -43,7 +43,7 @@ def project():
         activity_label = T("Activities")
 
     tabs = [(T("Basic Details"), None),
-            (T("Organizations"), "organisation"),
+            #(T("Organizations"), "organisation"),
             (activity_label, "activity"),
             (T("Milestones"), "milestone"),
             (T("Tasks"), "task"),
@@ -118,23 +118,36 @@ def hazard():
     return s3_rest_controller(module, resourcename)
 
 # =============================================================================
+# def organisation():
+    # """ RESTful CRUD controller """
+
+    # s3mgr.configure("project_organisation",
+                    # insertable=False,
+                    # editable=False,
+                    # deletable=False)
+
+    # list_btn = A(T("Funding Report"),
+                 # _href=URL(c="project", f="organisation",
+                           # args="analyze", vars=request.get_vars),
+                 # _class="action-btn")
+
+    # return s3_rest_controller(module, resourcename,
+                              # list_btn=list_btn,
+                              # interactive_report=True,
+                              # csv_template="organisation")
+
+# =============================================================================
 def organisation():
     """ RESTful CRUD controller """
 
-    s3mgr.configure("project_organisation",
-                    insertable=False,
-                    editable=False,
-                    deletable=False)
-
-    list_btn = A(T("Funding Report"),
-                 _href=URL(c="project", f="organisation",
-                           args="analyze", vars=request.get_vars),
-                 _class="action-btn")
-
-    return s3_rest_controller(module, resourcename,
-                              list_btn=list_btn,
-                              interactive_report=True,
-                              csv_template="organisation")
+    tabs = [
+            (T("Basic Details"), None),
+            (T("Projects"), "project"),
+            (T("Contacts"), "human_resource"),
+           ]
+    rheader = lambda r: organisation_rheader(r, tabs)
+    return s3_rest_controller("org", resourcename,
+                              rheader=rheader)
 
 # =============================================================================
 def beneficiary_type():

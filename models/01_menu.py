@@ -1052,7 +1052,7 @@ s3_menu_dict = {
             [T("Projects"), False, aURL(f="project"),[
                 [T("Add New Project"), False, aURL(p="create", f="project", args="create")],
                 [T("List All Projects"), False, aURL(f="project")],
-                [list_activities_label, False, aURL(f="activity")],
+                #[list_activities_label, False, aURL(f="activity")],
                 [T("Search"), False, aURL(f="project", args="search")],
             ]],
             [T("Tasks"), False, aURL(f="task"),[
@@ -1061,8 +1061,28 @@ s3_menu_dict = {
                 [T("List All Tasks"), False, aURL(f="task")],
                 #[T("Search"), False, aURL(f="task", args="search")],
             ]],
+            [T("Customers"), False, aURL(f="organisation"),[
+                [T("Add New Customer"), False, aURL(p="create", f="organisation", args="create")],
+                [T("List All Customers"), False, aURL(f="organisation")],
+                #[T("Search"), False, aURL(f="organisation", args="search")],
+            ]],
+            [T("Activity Types"), False, aURL(f="activity_type"),[
+                [T("Add New Activity Type"), False, aURL(p="create", f="activity_type", args="create")],
+                [T("List All Activity Types"), False, aURL(f="activity_type")],
+                #[T("Search"), False, aURL(f="activity_type", args="search")]
+            ]],
+            [T("Import"), False, aURL(f="index"),[
+                #[T("Import Projects"), False, aURL(p="create", f="project",
+                #                                   args="import")],
+                #[T("Import Project Organisations"), False, aURL(p="create", f="organisation",
+                #                                                args="import")],
+                #[import_activities_label, False, aURL(p="create", f="activity",
+                #                                      args="import")],
+                [T("Import Tasks"), False, aURL(p="create", f="task",
+                                                args="import")],
+            ]],
             [T("Reports"), False, aURL(f="report"),[
-                [T("Who is doing What Where"), False, aURL(f="activity", args="analyze")],
+                #[T("Who is doing What Where"), False, aURL(f="activity", args="analyze")],
                 #[T("Beneficiaries"),
                 # False, aURL(f="beneficiary",
                 #             args="analyze",
@@ -1070,20 +1090,7 @@ s3_menu_dict = {
                 #                          cols="bnf_type$name",
                 #                          fact="number",
                 #                          aggregate="sum"))],
-                [T("Funding"), False, aURL(f="organisation", args="analyze")],
-            ]],
-            [T("Import"), False, aURL(f="index"),[
-                [T("Import Projects"), False, aURL(p="create", f="project",
-                                                   args="import")],
-                [T("Import Project Organisations"), False, aURL(p="create", f="organisation",
-                                                                args="import")],
-                [import_activities_label, False, aURL(p="create", f="activity",
-                                                             args="import")],
-            ]],
-            [T("Activity Types"), False, aURL(f="activity_type"),[
-                [T("Add New Activity Type"), False, aURL(p="create", f="activity_type", args="create")],
-                [T("List All Activity Types"), False, aURL(f="activity_type")],
-                #[T("Search"), False, aURL(f="activity_type", args="search")]
+                #[T("Funding"), False, aURL(f="organisation", args="analyze")],
             ]],
         ],
 
