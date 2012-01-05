@@ -48,6 +48,7 @@ class S3ProjectModel(S3Model):
              "project_organisation",
              "project_activity_type",
              "project_activity",
+             "project_milestone",
              "project_site",
              "project_beneficiary_type",
              "project_beneficiary",
@@ -71,10 +72,13 @@ class S3ProjectModel(S3Model):
 
         import datetime
 
+        auth = current.auth
         db = current.db
         T = current.T
         request = current.request
         s3 = current.response.s3
+
+        person_id = self.pr_person_id
 
         s3_date_format = self.settings.get_L10n_date_format()
 
@@ -275,7 +279,7 @@ class S3ProjectModel(S3Model):
                                        args=["[id]", "organisation"]),
                        list_fields=["id",
                                     "name",
-                                    "countries_id",
+                                    #"countries_id",
                                     "start_date",
                                     "end_date",
                                    ])
@@ -307,6 +311,9 @@ class S3ProjectModel(S3Model):
 
         # Activities
         self.add_component("project_activity", project_project="project_id")
+
+        # Milestones
+        self.add_component("project_milestone", project_project="project_id")
 
         # Beneficiaries
         self.add_component("project_beneficiary", project_project="project_id")
@@ -469,11 +476,10 @@ class S3ProjectModel(S3Model):
                                         writable = False,
                                         widget = S3LocationSelectorWidget(hide_address=True)),
                                   multi_activity_type_id(),
-                                  Field("time_estimated", "time",
-                                        # Gets populated from constituent Tasks
+                                  Field("time_estimated", "double",
                                         label = "%s (%s)" % (T("Time Estimate"),
                                                              T("hours"))),
-                                  Field("time_actual", "time",
+                                  Field("time_actual", "double",
                                         # Gets populated from constituent Tasks
                                         writable=False,
                                         label = "%s (%s)" % (T("Time Taken"),
@@ -814,6 +820,62 @@ class S3ProjectModel(S3Model):
                                          ondelete = "SET NULL")
 
         # ---------------------------------------------------------------------
+        # Project Milestone
+        #
+        tablename = "project_milestone"
+        table = self.define_table(tablename,
+                                  self.super_link("doc_id", "doc_entity"),
+                                  project_id(),
+                                  Field("name",
+                                        label = T("Short Description"),
+                                        requires=IS_NOT_EMPTY()),
+                                  Field("date", "datetime",
+                                        label = T("Date"),
+                                        requires = IS_NULL_OR(IS_DATE(format = s3_date_format))),
+                                  s3.comments(),
+                                  format="%(name)s",
+                                  *s3.meta_fields())
+
+        # CRUD Strings
+        ADD_MILESTONE = T("Add Milestone")
+        s3.crud_strings[tablename] = Storage(
+            title_create = ADD_MILESTONE,
+            title_display = T("Milestone Details"),
+            title_list = T("List Milestones"),
+            title_update = T("Edit Milestone"),
+            title_search = T("Search Milestones"),
+            title_upload = T("Import Milestone Data"),
+            subtitle_create = T("Add New Milestone"),
+            subtitle_list = T("Milestones"),
+            subtitle_report = T("Milestones"),
+            label_list_button = T("List Milestones"),
+            label_create_button = ADD_MILESTONE,
+            msg_record_created = T("Milestone Added"),
+            msg_record_modified = T("Milestone Updated"),
+            msg_record_deleted = T("Milestone Deleted"),
+            msg_list_empty = T("No Milestones Found")
+        )
+
+        # Reusable Field
+        milestone_id = S3ReusableField("milestone_id", db.project_milestone,
+                                       sortby="name",
+                                       requires = IS_NULL_OR(IS_ONE_OF(db, "project_milestone.id",
+                                                                       "%(name)s")),
+                                       represent = self.milestone_represent,
+                                       comment = DIV(A(ADD_MILESTONE,
+                                                       _class="colorbox",
+                                                       _href=URL(c="project", f="milestone",
+                                                                 args="create",
+                                                                 vars=dict(format="popup")),
+                                                       _target="top",
+                                                       _title=ADD_MILESTONE),
+                                                     DIV(_class="tooltip",
+                                                         _title="%s|%s" % (ADD_MILESTONE,
+                                                                           T("A project milestone marks a significant date in the calendar which shows that progress towards the overall objective is being made.")))),
+                                       label = T("Milestone"),
+                                       ondelete = "RESTRICT")
+
+        # ---------------------------------------------------------------------
         # Tasks
         #
         # Tasks can be linked to Activities or directly to Projects
@@ -895,10 +957,13 @@ class S3ProjectModel(S3Model):
                                         widget = S3DateTimeWidget(past=0,
                                                                   future=8760),  # Hours, so 1 year
                                         represent = lambda v, row=None: S3DateTime.datetime_represent(v, utc=True)),
-                                  Field("time_estimated", "time",
+                                  milestone_id(),
+                                  Field("time_estimated", "double",
                                         label = "%s (%s)" % (T("Time Estimate"),
                                                              T("hours"))),
-                                  Field("time_actual", "time",
+                                  Field("time_actual", "double",
+                                        # This comes from the Time component
+                                        writable=False,
                                         label = "%s (%s)" % (T("Time Taken"),
                                                              T("hours"))),
                                   s3.org_site_id,
@@ -936,6 +1001,7 @@ class S3ProjectModel(S3Model):
         self.configure(tablename,
                        super_entity="doc_entity",
                        copyable=True,
+                       orderby="~project_task.priority",
                        onvalidation=self.task_onvalidation,
                        create_onaccept=self.task_create_onaccept,
                        list_fields=["id",
@@ -998,6 +1064,9 @@ class S3ProjectModel(S3Model):
                                 actuate="embed",
                                 autocomplete="request_number",
                                 autodelete=False))
+
+        # Time
+        self.add_component("project_time", project_task="task_id")
 
         # ---------------------------------------------------------------------
         # Link Tasks <-> Projects
@@ -1108,6 +1177,47 @@ class S3ProjectModel(S3Model):
         # Reusable Field?
 
         # ---------------------------------------------------------------------
+        # Project Time
+        # - used to Log hours spent on a Task
+        #
+        tablename = "project_time"
+        table = self.define_table(tablename,
+                                  task_id(),
+                                  person_id(default=auth.s3_logged_in_person()),
+                                  Field("hours", "double",
+                                        label = "%s (%s)" % (T("Time"),
+                                                             T("hours"))),
+                                  Field("date", "datetime",
+                                        label = T("Date"),
+                                        requires = IS_NULL_OR(IS_DATE(format = s3_date_format))),
+                                  s3.comments(),
+                                  format="%(comments)s",
+                                  *s3.meta_fields())
+
+        # CRUD Strings
+        ADD_TIME = T("Log Time Spent")
+        s3.crud_strings[tablename] = Storage(
+            title_create = ADD_TIME,
+            title_display = T("Logged Time Details"),
+            title_list = T("List Logged Time"),
+            title_update = T("Edit Logged Time"),
+            title_search = T("Search Logged Time"),
+            title_upload = T("Import Logged Time data"),
+            subtitle_create = T("Log New Time"),
+            subtitle_list = T("Logged Time"),
+            subtitle_report = T("Logged Time"),
+            label_list_button = T("List Logged Time"),
+            label_create_button = ADD_TIME,
+            msg_record_created = T("Time Logged"),
+            msg_record_modified = T("Time Log Updated"),
+            msg_record_deleted = T("Time Log Deleted"),
+            msg_list_empty = T("No Time Logged")
+        )
+
+        self.configure(tablename,
+                       onaccept=self.time_onaccept)
+
+        # ---------------------------------------------------------------------
         # Pass variables back to global scope (response.s3.*)
         #
         return dict(
@@ -1209,6 +1319,20 @@ class S3ProjectModel(S3Model):
             return A(val, _href = URL(c="project",
                                       f="project",
                                       args=[id]))
+        else:
+            return NONE
+
+    # ---------------------------------------------------------------------
+    @staticmethod
+    def milestone_represent(id, row=None):
+        """ FK representation """
+
+        db = current.db
+        NONE = current.messages.NONE
+
+        if id:
+            val = (id and [db.project_milestone[id].name] or [NONE])[0]
+            return val
         else:
             return NONE
 
@@ -1484,6 +1608,65 @@ class S3ProjectModel(S3Model):
                           task_id=form.vars.id)
         return
 
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def time_onaccept(form):
+        """ When Time is logged, update the Task & Activity """
+
+        db = current.db
+        titable = db.project_time
+        ttable = db.project_task
+        atable = db.project_activity
+        tatable = db.project_task_activity
+
+        # Find the Task
+        task_id = form.vars.task_id
+        if not task_id:
+            # Component Form
+            query = (titable.id == form.vars.id)
+            record = db(query).select(titable.task_id,
+                                      limitby=(0, 1)).first()
+            if record:
+                task_id = record.task_id
+
+        # Total the Hours Logged
+        query = (titable.deleted == False) & \
+                (titable.task_id == task_id)
+        rows = db(query).select(titable.hours)
+        hours = 0
+        for row in rows:
+            hours += row.hours
+        
+        # Update the Task
+        query = (ttable.id == task_id)
+        db(query).update(time_actual=hours)
+
+        # Find the Activity
+        query = (tatable.deleted == False) & \
+                (tatable.task_id == task_id)
+        activity = db(query).select(tatable.activity_id,
+                                    limitby=(0, 1)).first()
+        if activity:
+            activity_id = activity.activity_id
+
+            # Find all Tasks in this Activity
+            query = (ttable.deleted == False) & \
+                    (tatable.deleted == False) & \
+                    (tatable.task_id == ttable.id) & \
+                    (tatable.activity_id == activity_id)
+            tasks = db(query).select(ttable.time_actual)
+
+            # Total the Hours Logged
+            hours = 0
+            for task in tasks:
+                hours += task.time_actual
+            
+            # Update the Activity
+            query = (atable.id == activity_id)
+            db(query).update(time_actual=hours)
+
+        return
+
 # =============================================================================
 def project_rheader(r, tabs=[]):
     """ Project Resource Headers - used in Project & Budget modules """
@@ -1534,11 +1717,13 @@ def project_rheader(r, tabs=[]):
                 rheader = DIV(tbl, rheader_tabs)
             elif r.name == "task":
                 tabs = [(T("Details"), None),
-                        (T("Comments"), "discuss")]
-                tabs.append((T("Documents"), "document"))
-                #tabs.append((T("Roles"), "job_role"))
-                #tabs.append((T("Assignments"), "human_resource"))
-                #tabs.append((T("Requests"), "req"))
+                        (T("Time"), "time"),
+                        (T("Comments"), "discuss"),
+                        (T("Documents"), "document"),
+                        #(T("Roles"), "job_role"),
+                        #(T("Assignments"), "human_resource"),
+                        #(T("Requests"), "req")
+                       ]
 
                 rheader_tabs = s3_rheader_tabs(r, tabs)
 
@@ -1559,6 +1744,12 @@ def project_rheader(r, tabs=[]):
                     TR(
                         TH("%s: " % table.description.label),
                         record.description
+                        ),
+                    TR(
+                        TH("%s: " % table.time_estimated.label),
+                        record.time_estimated,
+                        TH("%s: " % table.time_actual.label),
+                        record.time_actual
                         ),
                     ), rheader_tabs)
 

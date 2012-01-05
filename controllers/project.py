@@ -45,6 +45,7 @@ def project():
     tabs = [(T("Basic Details"), None),
             (T("Organizations"), "organisation"),
             (activity_label, "activity"),
+            (T("Milestones"), "milestone"),
             (T("Tasks"), "task"),
             (T("Documents"), "document"),
            ]
@@ -248,6 +249,12 @@ def task():
 
     return s3_rest_controller(module, resourcename,
                               rheader=response.s3.project_rheader)
+
+# =============================================================================
+def milestone():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller(module, resourcename)
 
 # =============================================================================
 def person():

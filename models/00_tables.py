@@ -13,12 +13,12 @@ current.models = models
 current.s3db = s3db = S3Model()
 
 # Import Eden modules:
-import eden.pr
-import eden.sit
-import eden.doc
-import eden.project
-import eden.dvi
-import eden.irs
+from eden.pr import *
+from eden.sit import *
+from eden.doc import *
+from eden.project import *
+from eden.dvi import *
+from eden.irs import *
 
 # =============================================================================
 # Import S3 meta fields into global namespace
