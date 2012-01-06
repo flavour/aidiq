@@ -147,6 +147,7 @@ if populate > 0:
                 dict(t="project_milestone", uacl=acl.READ, oacl=acl.READ),
                 dict(c="default", f="project", uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
                 dict(c="project", f="project", uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
+                dict(c="project", f="time", uacl=acl.READ|acl.CREATE, oacl=acl.READ|acl.UPDATE|acl.DELETE),
                 #dict(c="project", f="task", uacl=acl.ALL, oacl=acl.ALL),
                 uid="STAFF"
                 )

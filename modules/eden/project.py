@@ -32,6 +32,8 @@
 __all__ = ["S3ProjectModel",
            "project_rheader"]
 
+import datetime
+
 from gluon import *
 from gluon.dal import Row
 from gluon.storage import Storage
@@ -80,10 +82,14 @@ class S3ProjectModel(S3Model):
         request = current.request
         s3 = current.response.s3
 
+        currency_type = s3.currency_type
         person_id = self.pr_person_id
         organisation_id = s3.org_organisation_id
 
         s3_date_format = self.settings.get_L10n_date_format()
+        s3_datetime_represent = S3DateTime.datetime_represent
+        s3_utc_represent = lambda dt: s3_datetime_represent(dt, utc=True)
+
 
         # Enable DRR extensions?
         drr = self.settings.get_project_drr()
@@ -226,6 +232,9 @@ class S3ProjectModel(S3Model):
                                         writable=False,
                                         label = T("Duration")),
 
+                                  currency_type(),
+                                  Field("budget", "double",
+                                        label = T("Budget")),
                                   sector_id(
                                             readable=False,
                                             writable=False,
@@ -352,9 +361,6 @@ class S3ProjectModel(S3Model):
             4: T("Customer"), # T("Beneficiary")?
         }
         project_organisation_lead_role = 1
-
-        organisation_id = s3.org_organisation_id
-        currency_type = s3.currency_type
 
         tablename = "project_organisation"
         table = self.define_table(tablename,
@@ -540,7 +546,7 @@ class S3ProjectModel(S3Model):
                 title_update = T("Edit Activity"),
                 title_search = T("Search Activities"),
                 title_upload = T("Import Activity Data"),
-                title_report = T("Activities Report"),
+                title_report = T("Budget Line Utilisation"),
                 subtitle_create = T("Add New Activity"),
                 subtitle_list = T("Activities"),
                 subtitle_report = T("Activities"),
@@ -843,6 +849,7 @@ class S3ProjectModel(S3Model):
         #
         tablename = "project_milestone"
         table = self.define_table(tablename,
+                                  # Stage Report
                                   self.super_link("doc_id", "doc_entity"),
                                   project_id(),
                                   Field("name",
@@ -1232,12 +1239,16 @@ class S3ProjectModel(S3Model):
         table = self.define_table(tablename,
                                   task_id(),
                                   person_id(default=auth.s3_logged_in_person()),
+                                  Field("date", "datetime",
+                                        label = T("Date"),
+                                        requires = IS_EMPTY_OR(IS_UTC_DATETIME()),
+                                        represent = s3_utc_represent,
+                                        widget = S3DateTimeWidget(past=8760, # Hours, so 1 year
+                                                                  future=0),
+                                        default = request.utcnow),
                                   Field("hours", "double",
                                         label = "%s (%s)" % (T("Time"),
                                                              T("hours"))),
-                                  Field("date", "datetime",
-                                        label = T("Date"),
-                                        requires = IS_NULL_OR(IS_DATE(format = s3_date_format))),
                                   s3.comments(),
                                   format="%(comments)s",
                                   *s3.meta_fields())
@@ -1251,6 +1262,7 @@ class S3ProjectModel(S3Model):
             title_update = T("Edit Logged Time"),
             title_search = T("Search Logged Time"),
             title_upload = T("Import Logged Time data"),
+            title_report = T("Last Week's Work"),
             subtitle_create = T("Log New Time"),
             subtitle_list = T("Logged Time"),
             subtitle_report = T("Logged Time"),
@@ -1261,9 +1273,22 @@ class S3ProjectModel(S3Model):
             msg_record_deleted = T("Time Log Deleted"),
             msg_list_empty = T("No Time Logged")
         )
+        if "rows" in request.get_vars and request.get_vars.rows == "project":
+            s3.crud_strings[tablename].title_report = T("Project Income Allocation")
+
+        # Virtual Fields
+        table.virtualfields.append(S3ProjectTimeVirtualfields())
 
         self.configure(tablename,
-                       onaccept=self.time_onaccept)
+                       onaccept=self.time_onaccept,
+                       list_fields=["id",
+                                    (T("Project"), "project"),
+                                    "task_id",
+                                    "person_id",
+                                    "date",
+                                    "hours",
+                                    "comments",
+                                    ])
 
         # ---------------------------------------------------------------------
         # Pass variables back to global scope (response.s3.*)
@@ -1859,7 +1884,7 @@ def project_rheader(r, tabs=[]):
 
 # =============================================================================
 class S3ProjectActivityVirtualfields:
-    """ Virtual fields for the project_project table """
+    """ Virtual fields for the project_activity table """
 
     extra_fields = ["project_id", "location_id"]
 
@@ -1926,5 +1951,52 @@ class S3ProjectActivityVirtualfields:
             return parents["L3"]
         else:
             return None
+
+# =============================================================================
+class S3ProjectTimeVirtualfields:
+    """ Virtual fields for the project_time table """
+
+    extra_fields = ["task_id", "person_id", "date"]
+
+    def project(self):
+        """
+            Project associated with this time entry
+            - used by the 'Project Income Allocation' report
+        """
+
+        db = current.db
+
+        ptable = S3Model.table("project_project")
+        ltable = S3Model.table("project_task_project")
+        query = (ltable.deleted != True) & \
+                (ltable.task_id == self.project_time.task_id) & \
+                (ltable.project_id == ptable.id)
+        project = db(query).select(ptable.name,
+                                   limitby=(0, 1)).first()
+        if project:
+            return project.name
+        else:
+            return None
+
+    def day(self):
+        """
+            Day of the last Week this time entry relates to
+            - used by the 'Last Week's Work' report
+        """
+
+        T = current.T
+        now = current.request.utcnow
+        thisdate = self.project_time.date
+
+        if not thisdate:
+            return "-"
+
+        week = datetime.timedelta(days=7)
+        if thisdate < (now - week):
+            # Ignore data older than the last week
+            # - should already be filtered in controller anyway
+            return "-"
+
+        return thisdate.date().strftime("%d %B")
 
 # END =========================================================================

@@ -119,6 +119,12 @@ def project():
                         countries = db(query).select(ltable.code)
                         deployment_settings.gis.countries = [c.code for c in countries]
                 elif r.component_name == "task":
+                    r.component.table.milestone_id.requires = IS_NULL_OR(IS_ONE_OF(db,
+                                                                "project_milestone.id",
+                                                                "%(name)s",
+                                                                filterby="project_id",
+                                                                filter_opts=(r.id,),
+                                                                ))
                     if "open" in request.get_vars:
                         # Show only the Open Tasks for this Project
                         statuses = response.s3.project_task_active_statuses
@@ -132,6 +138,15 @@ def project():
         return True
     response.s3.prep = prep
 
+    # Post-process
+    def postp(r, output):
+        if r.interactive:
+            update_url = URL(args=["[id]", "task"])
+            s3mgr.crud.action_buttons(r,
+                                      update_url=update_url)
+        return output
+    response.s3.postp = postp
+
     rheader = lambda r: response.s3.project_rheader(r, tabs)
     return s3_rest_controller(module, resourcename,
                               rheader=rheader,
@@ -142,13 +157,13 @@ def project():
 def theme():
     """ RESTful CRUD controller """
 
-    return s3_rest_controller(module, resourcename)
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def hazard():
     """ RESTful CRUD controller """
 
-    return s3_rest_controller(module, resourcename)
+    return s3_rest_controller()
 
 # =============================================================================
 # def organisation():
@@ -186,7 +201,7 @@ def organisation():
 def beneficiary_type():
     """ RESTful CRUD controller """
 
-    return s3_rest_controller(module, resourcename)
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def beneficiary():
@@ -211,7 +226,7 @@ def beneficiary():
 def activity_type():
     """ RESTful CRUD controller """
 
-    return s3_rest_controller(module, resourcename)
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def activity():
@@ -251,9 +266,7 @@ def report():
         @ToDo: Why is this needed? To have no rheader?
     """
 
-    resourcename = "activity"
-
-    return s3_rest_controller(module, resourcename)
+    return s3_rest_controller(module, "activity")
 
 # =============================================================================
 def task():
@@ -285,6 +298,10 @@ def task():
         # Show Open Tasks for this Project
         project = request.get_vars.project
         s3.crud_strings["project_task"].title_list = T("List Open Tasks for Project")
+        s3mgr.configure("project_task",
+                        deletable=False,
+                        copyable=False,
+                        listadd=False)
         ltable = db.project_task_project
         response.s3.filter = (ltable.project_id == project) & \
                              (ltable.task_id == table.id) & \
@@ -316,7 +333,41 @@ def task():
 def milestone():
     """ RESTful CRUD controller """
 
-    return s3_rest_controller(module, resourcename)
+    return s3_rest_controller()
+
+# =============================================================================
+def time():
+    """ RESTful CRUD controller """
+
+    tablename = "project_time"
+    table = s3db[tablename]
+    if "mine" in request.get_vars:
+        # Show the Logged Time for this User
+        s3mgr.load("project_time")
+        s3.crud_strings["project_time"].title_list = T("List My Logged Time")
+        s3mgr.configure("project_time",
+                        listadd=False)
+        ptable = db.pr_person
+        query = (ptable.uuid == auth.user.person_uuid)
+        row = db(query).select(ptable.id).first()
+        if row:
+            person_id = row.id
+            response.s3.filter = (table.person_id == person_id)
+        try:
+            list_fields = s3mgr.model.get_config(tablename,
+                                                 "list_fields")
+            list_fields.remove("person_id")
+            s3mgr.configure(tablename,
+                            list_fields=list_fields)
+        except:
+            pass
+
+    elif "week" in request.get_vars:
+        now = request.utcnow
+        week = datetime.timedelta(days=7)
+        response.s3.filter = (table.date > (now - week))
+    
+    return s3_rest_controller()
 
 # =============================================================================
 def person():
@@ -331,7 +382,7 @@ def person():
         return True
     response.s3.prep = prep
 
-    return s3_rest_controller("pr", "person")
+    return s3_rest_controller("pr", resourcename)
 
 # =============================================================================
 # Comments
@@ -575,13 +626,13 @@ def site():
 def need():
     """ RESTful CRUD controller """
 
-    return s3_rest_controller(module, resourcename)
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def need_type():
     """ RESTful CRUD controller """
 
-    return s3_rest_controller(module, resourcename)
+    return s3_rest_controller()
 
 # =============================================================================
 def gap_report():
