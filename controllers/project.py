@@ -44,11 +44,16 @@ def project():
 
     tabs = [(T("Basic Details"), None),
             #(T("Organizations"), "organisation"),
-            (activity_label, "activity"),
-            (T("Milestones"), "milestone"),
-            (T("Tasks"), "task"),
-            (T("Documents"), "document"),
            ]
+    admin = auth.s3_has_role(ADMIN)
+    staff = auth.s3_has_role("STAFF")
+    if admin:
+        tabs.append((activity_label, "activity"))
+    if staff:
+        tabs.append((T("Milestones"), "milestone"))
+    tabs.append((T("Tasks"), "task"))
+    if admin:
+        tabs.append((T("Documents"), "document"))
 
     doc_table = s3db.table("doc_document", None)
     if doc_table is not None:

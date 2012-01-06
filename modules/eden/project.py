@@ -920,6 +920,8 @@ class S3ProjectModel(S3Model):
             1:T("Low")
         }
 
+        staff = auth.s3_has_role("STAFF")
+
         tablename = "project_task"
         table = self.define_table(tablename,
                                   self.super_link("doc_id", "doc_entity"),
@@ -931,6 +933,8 @@ class S3ProjectModel(S3Model):
                                         requires = IS_IN_SET(project_task_status_opts,
                                                              zero=None),
                                         default = 2,
+                                        readable = staff,
+                                        writable = staff,
                                         label = T("Status"),
                                         represent = lambda opt, row=None: \
                                                     project_task_status_opts.get(opt,
@@ -957,8 +961,8 @@ class S3ProjectModel(S3Model):
                                                                                    UNKNOWN_OPT)),
                                   # Could be an Organisation, a Team or a Person
                                   self.super_link("pe_id", "pr_pentity",
-                                                  readable = True,
-                                                  writable = True,
+                                                  readable = staff,
+                                                  writable = staff,
                                                   label = T("Assigned to"),
                                                   represent = lambda id, row=None: \
                                                               s3.pr_pentity_represent(id, show_label=False),
@@ -970,6 +974,8 @@ class S3ProjectModel(S3Model):
                                                   ),
                                   Field("date_due", "datetime",
                                         label = T("Date Due"),
+                                        readable = staff,
+                                        writable = staff,
                                         requires = [IS_EMPTY_OR(
                                                     IS_UTC_DATETIME_IN_RANGE(
                                                         minimum=request.utcnow - datetime.timedelta(days=1),
@@ -978,18 +984,25 @@ class S3ProjectModel(S3Model):
                                         widget = S3DateTimeWidget(past=0,
                                                                   future=8760),  # Hours, so 1 year
                                         represent = lambda v, row=None: S3DateTime.datetime_represent(v, utc=True)),
-                                  milestone_id(),
+                                  milestone_id(
+                                        readable = staff,
+                                        writable = staff,
+                                        ),
                                   Field("time_estimated", "double",
+                                        readable = staff,
+                                        writable = staff,
                                         label = "%s (%s)" % (T("Time Estimate"),
                                                              T("hours"))),
                                   Field("time_actual", "double",
+                                        readable = staff,
                                         # This comes from the Time component
                                         writable=False,
                                         label = "%s (%s)" % (T("Time Taken"),
                                                              T("hours"))),
                                   s3.org_site_id,
                                   s3.location_id(label=T("Deployment Location"),
-                                              readable=False, writable=False
+                                              readable=False,
+                                              writable=False
                                               ),
                                   *s3.meta_fields())
 
@@ -1384,12 +1397,19 @@ class S3ProjectModel(S3Model):
         """ Set the project to be owned by the customer """
 
         db = current.db
+        s3db = current.s3db
 
         if "organisation_id" in form.vars:
-            # Set project to be owned by this Customer
-            table = db.project_project
-            query = (table.id == form.vars.id)
-            db(query).update(owned_by_organisation=form.vars.organisation_id)
+            # Set Project to be owned by this Customer
+            organisation_id = form.vars.organisation_id
+            otable = s3db.org_organisation
+            query = (otable.id == organisation_id)
+            role = db(query).select(otable.owned_by_organisation,
+                                    limitby=(0, 1)).first()
+            if role:
+                table = s3db.project_project
+                query = (table.id == form.vars.id)
+                db(query).update(owned_by_organisation=role.owned_by_organisation)
         return
 
     # ---------------------------------------------------------------------
@@ -1644,15 +1664,41 @@ class S3ProjectModel(S3Model):
     # -------------------------------------------------------------------------
     @staticmethod
     def task_create_onaccept(form):
-        """ When a Task is created, also create associated Link Tables """
+        """
+            When a Task is created:
+                create associated Link Tables
+                ensure that it is owned by the Project Customer
+        """
 
+        db = current.db
+        s3db = current.s3db
         session = current.session
 
         if session.s3.event:
             # Create a link between this Task & the active Event
-            etable = S3Model.table("event_task")
+            etable = s3db.event_task
             etable.insert(event_id=session.s3.event,
                           task_id=form.vars.id)
+
+        # Find the associated Project
+        ptable = db.project_project
+        ltable = db.project_task_project
+        query = (ltable.task_id == form.vars.id) & \
+                (ltable.project_id == ptable.id)
+        project = db(query).select(ptable.organisation_id,
+                                   limitby=(0, 1)).first()
+        if project:
+            # Set Task to be owned by this Customer
+            organisation_id = project.organisation_id
+            otable = s3db.org_organisation
+            query = (otable.id == organisation_id)
+            role = db(query).select(otable.owned_by_organisation,
+                                    limitby=(0, 1)).first()
+            if role:
+                table = s3db.project_task
+                query = (table.id == form.vars.id)
+                db(query).update(owned_by_organisation=role.owned_by_organisation)
+
         return
 
     # -------------------------------------------------------------------------

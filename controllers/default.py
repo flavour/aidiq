@@ -129,19 +129,23 @@ def index():
     datatable_ajax_source = ""
     # Check logged in AND permissions
     if AUTHENTICATED in session.s3.roles and \
-       auth.s3_has_permission("read", db.org_organisation):
+       auth.s3_has_permission("read", s3db.project_project):
         project_items = project()
         datatable_ajax_source = "/%s/default/project.aaData" % \
                                 request.application
         response.s3.actions = None
         response.view = "default/index.html"
+        if auth.s3_has_role(ADMIN):
+            add_btn = A(T("Add Project"),
+                        _href = URL(c="project", f="project",
+                                    args=["create"]),
+                        _id = "add-btn",
+                        _class = "action-btn",
+                        _style = "margin-right: 10px;")
+        else:
+            add_btn = ""
         project_box = DIV( H3(T("Projects")),
-                       A(T("Add Project"),
-                          _href = URL(c="project", f="project",
-                                      args=["create"]),
-                          _id = "add-btn",
-                          _class = "action-btn",
-                          _style = "margin-right: 10px;"),
+                       add_btn,
                         project_items["items"],
                         _id = "project_box",
                         _class = "menu_box fleft"
@@ -282,8 +286,8 @@ def project():
     s3mgr.configure("project_project",
                     listadd = False,
                     addbtn = True,
-                    linkto = "/%s/project/project/%s" % (request.application,
-                                                          "%s"),
+                    linkto = "/%s/project/project/%s/task" % (request.application,
+                                                              "%s"),
                     list_fields = ["id",])
 
     return s3_rest_controller("project", "project")

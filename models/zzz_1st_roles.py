@@ -46,7 +46,7 @@ if populate > 0:
                                 # But need to be able to add/edit addresses
                                 dict(c="pr", f="person", uacl=acl.CREATE, oacl=acl.READ|acl.UPDATE),
                                 # Authenticated  users can see the Supply Catalogue
-                                dict(c="supply", uacl=acl.READ|acl.CREATE, oacl=default_oacl),
+                                #dict(c="supply", uacl=acl.READ|acl.CREATE, oacl=default_oacl),
                                 uid=sysroles.AUTHENTICATED,
                                 protected=True)
     # Authenticated users:
@@ -71,7 +71,7 @@ if populate > 0:
                 # Allow authenticated users to view details of their tasks
                 #dict(c="vol", f="task", uacl=acl.READ),
                 # Allow authenticated users to view the Certificate Catalog
-                dict(t="hrm_certificate", uacl=acl.READ),
+                #dict(t="hrm_certificate", uacl=acl.READ),
                 # HRM access is controlled to just HR Staff, except for:
                 # Access to your own record & to be able to search for Skills
                 # requires security policy 4+
@@ -79,10 +79,13 @@ if populate > 0:
                 dict(c="hrm", f="staff", uacl=acl.NONE, oacl=acl.NONE),
                 dict(c="hrm", f="volunteer", uacl=acl.NONE, oacl=acl.NONE),
                 dict(c="hrm", f="person", uacl=acl.NONE, oacl=acl.READ|acl.UPDATE),
-                dict(c="hrm", f="skill", uacl=acl.READ, oacl=acl.READ),
-                # Allow authenticated users to see their Projects & Tasks
-                dict(c="project", f="project", uacl=acl.READ, oacl=default_oacl),
-                dict(c="project", f="task", uacl=acl.READ, oacl=default_oacl),
+                #dict(c="hrm", f="skill", uacl=acl.READ, oacl=acl.READ),
+                # Allow authenticated users to see their own Projects & Tasks
+                dict(c="project", uacl=acl.READ, oacl=acl.READ),
+                dict(t="project_project", uacl=acl.READ, oacl=acl.READ|acl.UPDATE),
+                dict(c="default", f="project", uacl=acl.READ|acl.CREATE, oacl=acl.READ|acl.UPDATE),
+                dict(c="project", f="project", uacl=acl.READ|acl.CREATE, oacl=acl.READ|acl.UPDATE),
+                #dict(c="project", f="task", uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
                 )
 
     create_role("Anonymous",
@@ -138,8 +141,13 @@ if populate > 0:
 
     create_role("STAFF", "Role for AidIQ staff",
                 dict(c="project", uacl=acl.ALL, oacl=acl.ALL),
-                dict(c="project", f="project", uacl=acl.ALL, oacl=acl.ALL),
-                dict(c="project", f="task", uacl=acl.ALL, oacl=acl.ALL),
+                # General Delegation
+                dict(t="project_project", uacl=acl.READ, oacl=acl.READ, organisation="all"),
+                dict(t="project_activity", uacl=acl.READ, oacl=acl.READ),
+                dict(t="project_milestone", uacl=acl.READ, oacl=acl.READ),
+                dict(c="default", f="project", uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
+                dict(c="project", f="project", uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
+                #dict(c="project", f="task", uacl=acl.ALL, oacl=acl.ALL),
                 uid="STAFF"
                 )
 
