@@ -540,7 +540,7 @@ class S3ProjectModel(S3Model):
                 title_update = T("Edit Activity"),
                 title_search = T("Search Activities"),
                 title_upload = T("Import Activity Data"),
-                title_report = T("Who is doing What Where"),
+                title_report = T("Activities Report"),
                 subtitle_create = T("Add New Activity"),
                 subtitle_list = T("Activities"),
                 subtitle_report = T("Activities"),
@@ -562,16 +562,19 @@ class S3ProjectModel(S3Model):
             project_activity_search = S3Search(field="name")
 
         # Resource Configuration
-        analyze_fields = [(T("Organization"), "organisation"),
-                          (T("Project"), "project_id$name"),
+        analyze_fields = [#(T("Organization"), "organisation"),
+                          (T("Project"), "project_id"),
                           (T("Activity Type"), "multi_activity_type_id"),
-                          (T("Theme"), "project_id$multi_theme_id"),
-                          (T("Hazard"), "project_id$multi_hazard_id"),
-                          (T("HFA"), "project_id$hfa")]
-        lh = self.settings.get_gis_default_location_hierarchy()
-        lh = [(lh[opt], opt) for opt in lh]
-        analyze_fields.extend(lh)
-        analyze_fields.append("location_id")
+                          (T("Time Estimated"), "time_estimated"),
+                          (T("Time Actual"), "time_actual"),
+                          #(T("Theme"), "project_id$multi_theme_id"),
+                          #(T("Hazard"), "project_id$multi_hazard_id"),
+                          #(T("HFA"), "project_id$hfa")
+                          ]
+        #lh = self.settings.get_gis_default_location_hierarchy()
+        #lh = [(lh[opt], opt) for opt in lh]
+        #analyze_fields.extend(lh)
+        #analyze_fields.append("location_id")
         if not pca:
             analyze_fields.insert(2, (T("Activity"), "name"))
 
@@ -619,7 +622,7 @@ class S3ProjectModel(S3Model):
                                 link="project_task_activity",
                                 joinby="activity_id",
                                 key="task_id",
-                                actuate="replace",
+                                actuate="embed",
                                 autocomplete="name",
                                 autodelete=False))
 

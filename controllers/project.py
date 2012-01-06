@@ -33,6 +33,26 @@ def project():
     """ RESTful CRUD controller """
 
     resourcename = "project"
+
+    if "tasks" in request.get_vars:
+        # Return simplified controller to pick a Project for which to list the Open Tasks
+        s3mgr.load("project_project")
+        s3.crud_strings["project_project"].title_list = T("List Open Tasks for Project")
+        s3.crud_strings["project_project"].subtitle_list = T("Select Project")
+        s3mgr.LABEL.UPDATE = "Select"
+        s3mgr.configure("project_project",
+                        deletable=False,
+                        listadd=False)
+        # Post-process
+        def postp(r, output):
+            if r.interactive:
+                update_url = URL(f="task", vars={"project":"[id]"})
+                s3mgr.crud.action_buttons(r, deletable=False,
+                                          update_url=update_url)
+            return output
+        response.s3.postp = postp
+        return s3_rest_controller(module, resourcename)
+
     db.hrm_human_resource.person_id.comment = DIV(_class="tooltip",
                                                   _title="%s|%s" % (T("Person"),
                                                                     T("Select the person assigned to this role for this project.")))
@@ -98,8 +118,16 @@ def project():
                         query = (ltable.id.belongs(countries))
                         countries = db(query).select(ltable.code)
                         deployment_settings.gis.countries = [c.code for c in countries]
+                elif r.component_name == "task":
+                    if "open" in request.get_vars:
+                        # Show only the Open Tasks for this Project
+                        statuses = response.s3.project_task_active_statuses
+                        filter = (r.component.table.status.belongs(statuses))
+                        r.resource.add_component_filter("task", filter)
+
             elif not r.id and r.function == "index":
-                r.method = "search"
+                # AidIQ have insufficient projects to need a Search
+                r.method = "list"
 
         return True
     response.s3.prep = prep
@@ -233,22 +261,38 @@ def task():
 
     tablename = "project_task"
     table = s3db[tablename]
-    # Discussion can also be done at the Solution component level
+    # Custom Method to add Comments
     s3mgr.model.set_method(module, resourcename,
                            method="discuss",
                            action=discuss)
 
-    if "mine" in request.vars:
+    statuses = response.s3.project_task_active_statuses
+    if "mine" in request.get_vars:
         # Show the Open Tasks for this User
+        s3mgr.load("project_task")
+        s3.crud_strings["project_task"].title_list = T("List My Open Tasks")
+        s3mgr.configure("project_task",
+                        copyable=False,
+                        listadd=False)
         ptable = db.pr_person
         query = (ptable.uuid == auth.user.person_uuid)
         row = db(query).select(ptable.pe_id).first()
         if row:
             pe_id = row.pe_id
-            statuses = response.s3.project_task_active_statuses
             response.s3.filter = (table.pe_id == pe_id) & \
                                  (table.status.belongs(statuses))
-    
+    elif "project" in request.get_vars:
+        # Show Open Tasks for this Project
+        project = request.get_vars.project
+        s3.crud_strings["project_task"].title_list = T("List Open Tasks for Project")
+        ltable = db.project_task_project
+        response.s3.filter = (ltable.project_id == project) & \
+                             (ltable.task_id == table.id) & \
+                             (table.status.belongs(statuses))
+    elif "open" in request.get_vars:
+        # Show All Open Tasks
+        response.s3.filter = (table.status.belongs(statuses))
+
     # Pre-process
     def prep(r):
         if r.interactive:

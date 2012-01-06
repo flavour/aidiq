@@ -286,8 +286,9 @@ def project():
     s3mgr.configure("project_project",
                     listadd = False,
                     addbtn = True,
-                    linkto = "/%s/project/project/%s/task" % (request.application,
-                                                              "%s"),
+                    # Link straight to Tasks view & filter to just those which are open
+                    linkto = "/%s/project/project/%s/task?open=1" % \
+                        (request.application, "%s"),
                     list_fields = ["id",])
 
     return s3_rest_controller("project", "project")

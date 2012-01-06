@@ -284,6 +284,7 @@ if s3_has_role("STAFF"):
             ]],
             [T("Tasks"), False, aURL(f="task"),[
                 #[T("Add New Task"), False, aURL(p="create", f="task", args="create")],
+                [T("List Open Tasks for Project"), False, aURL(f="project", vars={"tasks":1})],
                 [T("List My Open Tasks"), False, aURL(f="task", vars={"mine":1})],
                 #[T("List All Tasks"), False, aURL(f="task")],
                 #[T("Search"), False, aURL(f="task", args="search")],
@@ -311,6 +312,13 @@ if s3_has_role("STAFF"):
                                                 args="import")],
             ]],
             [T("Reports"), False, aURL(f="report"),[
+                [T("Budget Lines"),
+                 False, aURL(f="activity",
+                             args="analyze",
+                             vars=Storage(rows="project_id",
+                                          cols="name",
+                                          fact="time_actual",
+                                          aggregate="sum"))],
                 #[T("Who is doing What Where"), False, aURL(f="activity", args="analyze")],
                 #[T("Beneficiaries"),
                 # False, aURL(f="beneficiary",
