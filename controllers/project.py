@@ -37,7 +37,7 @@ def project():
     if "tasks" in request.get_vars:
         # Return simplified controller to pick a Project for which to list the Open Tasks
         s3mgr.load("project_project")
-        s3.crud_strings["project_project"].title_list = T("List Open Tasks for Project")
+        s3.crud_strings["project_project"].title_list = T("Open Tasks for Project")
         s3.crud_strings["project_project"].subtitle_list = T("Select Project")
         s3mgr.LABEL.UPDATE = "Select"
         s3mgr.configure("project_project",
@@ -283,7 +283,7 @@ def task():
     if "mine" in request.get_vars:
         # Show the Open Tasks for this User
         s3mgr.load("project_task")
-        s3.crud_strings["project_task"].title_list = T("List My Open Tasks")
+        s3.crud_strings["project_task"].title_list = T("My Open Tasks")
         s3mgr.configure("project_task",
                         copyable=False,
                         listadd=False)
@@ -297,7 +297,7 @@ def task():
     elif "project" in request.get_vars:
         # Show Open Tasks for this Project
         project = request.get_vars.project
-        s3.crud_strings["project_task"].title_list = T("List Open Tasks for Project")
+        s3.crud_strings["project_task"].title_list = T("Open Tasks for Project")
         s3mgr.configure("project_task",
                         deletable=False,
                         copyable=False,
@@ -344,7 +344,7 @@ def time():
     if "mine" in request.get_vars:
         # Show the Logged Time for this User
         s3mgr.load("project_time")
-        s3.crud_strings["project_time"].title_list = T("List My Logged Time")
+        s3.crud_strings["project_time"].title_list = T("My Logged Hours")
         s3mgr.configure("project_time",
                         listadd=False)
         ptable = db.pr_person

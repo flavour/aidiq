@@ -131,6 +131,7 @@ deployment_settings.frontpage.rss = [
      #url: "http://search.twitter.com/search.atom?q=%23eqnz"
     }
 ]
+deployment_settings.frontpage.rss = []
 
 # L10n settings
 #deployment_settings.L10n.default_country_code = 1

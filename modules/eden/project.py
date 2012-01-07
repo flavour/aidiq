@@ -1875,6 +1875,8 @@ def project_rheader(r, tabs=[]):
                     TR(
                         TH("%s: " % table.time_estimated.label),
                         record.time_estimated,
+                        ),
+                    TR(
                         TH("%s: " % table.time_actual.label),
                         record.time_actual
                         ),

@@ -277,20 +277,20 @@ if s3_has_role("STAFF"):
         "menu": [
             #[T("Home"), False, aURL(f="index")],
             [T("Projects"), False, aURL(f="project"),[
-                [T("Add New Project"), False, aURL(p="create", f="project", args="create")],
-                [T("List All Projects"), False, aURL(f="project")],
+                #[T("Add New Project"), False, aURL(p="create", f="project", args="create")],
+                [T("List Projects"), False, aURL(f="project")],
+                [T("Open Tasks for Project"), False, aURL(f="project", vars={"tasks":1})],
                 #[list_activities_label, False, aURL(f="activity")],
                 #[T("Search"), False, aURL(f="project", args="search")],
             ]],
-            [T("Tasks"), False, aURL(f="task"),[
+            #[T("Tasks"), False, aURL(f="task"),[
                 #[T("Add New Task"), False, aURL(p="create", f="task", args="create")],
-                [T("List Open Tasks for Project"), False, aURL(f="project", vars={"tasks":1})],
-                [T("List My Open Tasks"), False, aURL(f="task", vars={"mine":1})],
                 #[T("List All Tasks"), False, aURL(f="task")],
                 #[T("Search"), False, aURL(f="task", args="search")],
-            ]],
-            [T("Time"), False, aURL(f="time"),[
-                [T("List My Logged Hours"), False, aURL(f="time", vars={"mine":1})],
+            #]],
+            [T("Daily Work"), False, aURL(f="time"),[
+                [T("My Open Tasks"), False, aURL(f="task", vars={"mine":1})],
+                [T("My Logged Hours"), False, aURL(f="time", vars={"mine":1})],
                 [T("Last Week's Work"),
                  False, aURL(f="time",
                              args="analyze",
@@ -302,23 +302,9 @@ if s3_has_role("STAFF"):
             ]],
         ],
         "on_admin": [
-            [T("Customers"), False, aURL(f="organisation"),[
-                [T("Add New Customer"), False, aURL(p="create", f="organisation", args="create")],
-                [T("List All Customers"), False, aURL(f="organisation")],
-                #[T("Search"), False, aURL(f="organisation", args="search")],
-            ]],
-            [T("Activity Types"), False, aURL(f="activity_type"),[
-                [T("Add New Activity Type"), False, aURL(p="create", f="activity_type", args="create")],
-                [T("List All Activity Types"), False, aURL(f="activity_type")],
-                #[T("Search"), False, aURL(f="activity_type", args="search")]
-            ]],
-            [T("Import"), False, aURL(f="index"),[
-                #[T("Import Projects"), False, aURL(p="create", f="project",
-                #                                   args="import")],
-                #[T("Import Project Organisations"), False, aURL(p="create", f="organisation",
-                #                                                args="import")],
-                #[import_activities_label, False, aURL(p="create", f="activity",
-                #                                      args="import")],
+            [T("Admin"), False, None,[
+                [T("Activity Types"), False, aURL(f="activity_type")],
+                [T("Customers"), False, aURL(f="organisation")],
                 [T("Import Tasks"), False, aURL(p="create", f="task",
                                                 args="import")],
             ]],

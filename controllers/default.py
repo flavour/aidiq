@@ -122,6 +122,13 @@ _table_user.site_id.comment = DIV(_class="tooltip",
 def index():
     """ Main Home Page """
 
+    if AUTHENTICATED in session.s3.roles:
+        if auth.s3_has_role("STAFF"):
+            redirect(URL(c="project", f="task", vars={"mine":1}))
+        else:
+            # Customer
+            redirect(URL(c="project", f="project", vars={"tasks":1}))
+    
     title = deployment_settings.get_system_name()
     response.title = title
 
