@@ -285,12 +285,23 @@ def task():
     statuses = response.s3.project_task_active_statuses
     if "mine" in request.get_vars:
         # Show the Open Tasks for this User
-        s3mgr.load("project_task")
         s3.crud_strings["project_task"].title_list = T("My Open Tasks")
         s3mgr.configure("project_task",
                         copyable=False,
                         listadd=False)
-        ptable = db.pr_person
+        try:
+            list_fields = s3mgr.model.get_config(tablename,
+                                                 "list_fields")
+            # Hide the Assignee column (always us)
+            list_fields.remove("pe_id")
+            # Move the status column to the End
+            list_fields.remove("status")
+            list_fields.append("status")
+            s3mgr.configure(tablename,
+                            list_fields=list_fields)
+        except:
+            pass
+        ptable = s3db.pr_person
         query = (ptable.uuid == auth.user.person_uuid)
         row = db(query).select(ptable.pe_id).first()
         if row:
@@ -305,7 +316,7 @@ def task():
                         deletable=False,
                         copyable=False,
                         listadd=False)
-        ltable = db.project_task_project
+        ltable = s3db.project_task_project
         response.s3.filter = (ltable.project_id == project) & \
                              (ltable.task_id == table.id) & \
                              (table.status.belongs(statuses))
@@ -329,8 +340,7 @@ def task():
         return True
     response.s3.prep = prep
 
-    return s3_rest_controller(module, resourcename,
-                              rheader=response.s3.project_rheader)
+    return s3_rest_controller(rheader=response.s3.project_rheader)
 
 # =============================================================================
 def milestone():
