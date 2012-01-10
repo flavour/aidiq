@@ -47,8 +47,10 @@ def project():
         # Post-process
         def postp(r, output):
             if r.interactive:
+                read_url = URL(f="task", vars={"project":"[id]"})
                 update_url = URL(f="task", vars={"project":"[id]"})
                 s3mgr.crud.action_buttons(r, deletable=False,
+                                          read_url=read_url,
                                           update_url=update_url)
             return output
         response.s3.postp = postp
