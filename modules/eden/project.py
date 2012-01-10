@@ -950,7 +950,7 @@ class S3ProjectModel(S3Model):
                                                                                  UNKNOWN_OPT)),
                                   Field("name",
                                         label = T("Short Description"),
-                                        length=80,
+                                        length=100,
                                         notnull=True,
                                         requires = IS_NOT_EMPTY()),
                                   Field("source",

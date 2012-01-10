@@ -254,6 +254,7 @@
 
     <!-- ****************************************************************** -->
     <xsl:template name="Activity">
+        <xsl:variable name="ProjectName" select="col[@field='Project']/text()"/>
         <xsl:variable name="ActivityName" select="col[@field='Activity']/text()"/>
         <xsl:variable name="ActivityType" select="col[@field='Activity Type']/text()"/>
 
@@ -262,6 +263,12 @@
                 <xsl:value-of select="$ActivityName"/>
             </xsl:attribute>
             <data field="name"><xsl:value-of select="$ActivityName"/></data>
+            <!-- Link to Project -->
+            <reference field="project_id" resource="project_project">
+                <xsl:attribute name="tuid">
+                    <xsl:value-of select="$ProjectName"/>
+                </xsl:attribute>
+            </reference>
             <!-- Link to Type -->
             <reference field="activity_type_id" resource="project_activity_type">
                 <xsl:attribute name="tuid">
