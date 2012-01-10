@@ -80,6 +80,12 @@ if deployment_settings.has_module(module): # or deployment_settings.has_module("
 
         module = "req"
 
+        organisation_id = s3db.org_organisation_id
+        organisation_represent = s3db.org_organisation_represent
+        site_id = s3db.org_site_id
+        org_site_represent = s3db.org_site_represent
+        human_resource_id = s3db.hrm_human_resource_id
+
         if deployment_settings.has_module("inv"):
             s3mgr.load("supply_item")
             item_id = response.s3.item_id
@@ -88,8 +94,7 @@ if deployment_settings.has_module(module): # or deployment_settings.has_module("
             item_pack_virtualfields = response.s3.item_pack_virtualfields
 
         if deployment_settings.has_module("hrm"):
-            s3mgr.load("hrm_skill")
-            multi_skill_id = response.s3.multi_skill_id
+            multi_skill_id = s3db.hrm_multi_skill_id
 
         if deployment_settings.has_module("event"):
             s3mgr.load("event_event")
@@ -561,7 +566,7 @@ if deployment_settings.has_module(module): # or deployment_settings.has_module("
             output["rheader"] = req_rheader(r, check_page = True)
 
             stable = db.org_site
-            ltable = db.gis_location
+            ltable = s3db.gis_location
             query = (stable.id == site_id ) & \
                     (stable.location_id == ltable.id)
             location_r = db(query).select(ltable.lat,
@@ -1328,8 +1333,7 @@ script =
                 else:
                     return None
 
-            s3mgr.load("project_task")
-            task_id = response.s3.project_task_id
+            task_id = s3db.project_task_id
             tablename = "project_task_req"
             table = db.define_table(tablename,
                                     task_id(),

@@ -51,6 +51,13 @@ if deployment_settings.has_module(module):
 
         module = "assess"
 
+        person_id = s3db.pr_person_id
+        location_id = s3db.gis_location_id
+        organisation_id = s3db.org_organisation_id
+        organisation_represent = s3db.org_organisation_represent
+        sector_id = s3db.org_sector_id
+        human_resource_id = s3db.hrm_human_resource_id
+
         # =========================================================================
         # Flexible Impact Assessments
         # =========================================================================

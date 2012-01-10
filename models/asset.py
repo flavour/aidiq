@@ -37,6 +37,13 @@ if deployment_settings.has_module("asset"):
     def asset_tables():
         """ Load the Assets Tables when needed """
 
+        person_id = s3db.pr_person_id
+        location_id = s3db.gis_location_id
+        organisation_id = s3db.org_organisation_id
+        organisation_represent = s3db.org_organisation_represent
+        site_id = s3db.org_site_id
+        room_id = s3db.org_room_id
+
         asset_type_opts = { s3.asset.ASSET_TYPE_VEHICLE    : T("Vehicle"),
                             #s3.asset.ASSET_TYPE_RADIO      : T("Radio"),
                             #s3.asset.ASSET_TYPE_TELEPHONE  : T("Telephone"),
@@ -437,7 +444,7 @@ SCRIPT("""
                     s3.crud_strings.asset_log.subtitle_create = T("Assign to Person")
                     s3.crud_strings.asset_log.msg_record_created = T("Assigned to Person")
                     table["person_id"].requires = IS_ONE_OF(db, "pr_person.id",
-                                                            person_represent,
+                                                            s3db.pr_person_represent,
                                                             orderby="pr_person.first_name",
                                                             sort=True,
                                                             error_message="Person must be specified!")

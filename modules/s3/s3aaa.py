@@ -955,7 +955,8 @@ class AuthS3(Auth):
             return None
 
         db = current.db
-        table = db.org_organisation
+        s3db = current.s3db
+        table = s3db.org_organisation
         query = (table.id == organisation_id)
         org = db(query).select(table.owned_by_organisation).first()
         if org:
@@ -973,7 +974,8 @@ class AuthS3(Auth):
             return None
 
         db = current.db
-        table = db.org_site
+        s3db = current.s3db
+        table = s3db.org_site
         query = (table.id == site_id)
         site = db(query).select(table.instance_type).first()
         if site:
@@ -1131,14 +1133,14 @@ class AuthS3(Auth):
         """
 
         db = current.db
+        s3db = current.s3db
         utable = self.settings.table_user
-        ptable = db.pr_person
-        ctable = db.pr_contact
-        current.manager.load("pr_address")
-        atable = db.pr_address
-        etable = db.pr_pentity
-        ttable = db.sit_trackable
-        gtable = db.gis_config
+        ptable = s3db.pr_person
+        ctable = s3db.pr_contact
+        atable = s3db.pr_address
+        etable = s3db.pr_pentity
+        ttable = s3db.sit_trackable
+        gtable = s3db.gis_config
 
         if user is None:
             users = db(utable.person_uuid == None).select(utable.ALL)
@@ -1259,13 +1261,14 @@ class AuthS3(Auth):
         """
 
         db = current.db
+        s3db = current.s3db
         deployment_settings = self.deployment_settings
 
         # Default Approver
         approver = deployment_settings.get_mail_approver()
         organisation_id = None
         # Check for Domain: Whitelist or specific Approver
-        table = db.auth_organisation
+        table = s3db.auth_organisation
         address, domain = user.email.split("@", 1)
         query = (table.domain == domain)
         record = db(query).select(table.organisation_id,
@@ -1815,7 +1818,8 @@ class AuthS3(Auth):
         """
 
         db = current.db
-        ptable = db.pr_person
+        s3db = current.s3db
+        ptable = s3db.pr_person
         utable = self.settings.table_user
         query = (utable.id == user_id) & \
                 (utable.person_uuid == ptable.uuid)
@@ -1838,7 +1842,8 @@ class AuthS3(Auth):
         """
 
         db = current.db
-        ptable = db.pr_person
+        s3db = current.s3db
+        ptable = s3db.pr_person
         utable = self.settings.table_user
         query = (ptable.id == person_id) & \
                 (ptable.uuid == utable.person_uuid)
@@ -1856,7 +1861,8 @@ class AuthS3(Auth):
         """
 
         db = current.db
-        ptable = db.pr_person
+        s3db = current.s3db
+        ptable = s3db.pr_person
 
         if self.s3_logged_in():
             try:
@@ -1879,7 +1885,8 @@ class AuthS3(Auth):
         """
 
         db = current.db
-        ptable = db.pr_person
+        s3db = current.s3db
+        ptable = s3db.pr_person
         hrtable = db.hrm_human_resource
 
         if self.s3_logged_in():
@@ -1915,6 +1922,7 @@ class AuthS3(Auth):
         session = current.session
 
         if not hasattr(table, "_tablename"):
+            current.manager.load(table)
             table = db[table]
 
         if session.s3.security_policy == 1:
@@ -2722,7 +2730,10 @@ class S3Permission(object):
                 default = (self.READ, self.READ)
 
         # Already loaded?
-        tablename = table._tablename
+        if hasattr(table, "_tablename"):
+            tablename = table._tablename
+        else:
+            tablename = table
         table_acl = self.table_acls.get((tablename,
                                          require_org,
                                          require_fac), None)
@@ -2939,6 +2950,7 @@ class S3Permission(object):
                        c=None,
                        f=None,
                        p=None,
+                       t=None,
                        a=None,
                        args=[],
                        vars={},
@@ -2947,6 +2959,17 @@ class S3Permission(object):
                        env=None):
         """
             Return a URL only if accessible by the user, otherwise False
+
+            @param c: the controller
+            @param f: the function
+            @param p: the permission (defaults to READ)
+            @param t: the tablename (defaults to <c>_<f>)
+            @param a: the application name
+            @param args: the URL arguments
+            @param vars: the URL variables
+            @param anchor: the anchor (#) of the URL
+            @param extension: the request format extension
+            @param env: the environment
         """
 
         required = self.METHODS
@@ -2959,6 +2982,10 @@ class S3Permission(object):
             c = self.controller
         if not f:
             f = self.function
+        if t is None:
+            tablename = "%s_%s" % (c, f)
+        else:
+            tablename = t
 
         # Hide disabled modules
         if self.modules and c not in self.modules:
@@ -2966,9 +2993,8 @@ class S3Permission(object):
 
         permitted = True
         if self.use_cacls:
-            acl = self.page_acl(c=c, f=f)
-            acl = ((acl[0] & ~self.CREATE) | acl[1]) & permission
-            if acl != permission:
+            acl = self(c=c, f=f, table=tablename)
+            if acl & permission != permission:
                 permitted = False
         else:
             if permission != self.READ:
@@ -3492,9 +3518,9 @@ class S3Permission(object):
         else:
             # non-HTML request => raise proper HTTP error
             if self.auth.s3_logged_in():
-                raise HTTP(403)
+                raise HTTP(403, body=self.INSUFFICIENT_PRIVILEGES)
             else:
-                raise HTTP(401)
+                raise HTTP(401, body=self.AUTHENTICATION_REQUIRED)
 
 # =============================================================================
 
@@ -4165,12 +4191,14 @@ class S3RoleManager(S3Method):
 
                 # Row to enter a new table ACL
                 _class = i % 2 and "even" or "odd"
-                all_tables = [t._tablename for t in current.db]
+                # @todo: find a better way to provide a selection of tables
+                #all_tables = [t._tablename for t in current.db]
                 form_rows.append(TR(
-                    TD(INPUT(_type="text", _name="new_table",
-                            requires=IS_EMPTY_OR(IS_IN_SET(all_tables,
-                                                           zero=None,
-                                        error_message=T("Undefined Table"))))),
+                    TD(INPUT(_type="text", _name="new_table")),
+                            # @todo: doesn't work with conditional models
+                            #requires=IS_EMPTY_OR(IS_IN_SET(all_tables,
+                                                           #zero=None,
+                                        #error_message=T("Undefined Table"))))),
                     TD(acl_widget("uacl", "new_t_uacl", auth.permission.NONE)),
                     TD(acl_widget("oacl", "new_t_oacl", auth.permission.NONE)),
                     TD(new_acl), _class=_class))

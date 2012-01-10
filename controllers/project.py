@@ -12,6 +12,8 @@ if module not in deployment_settings.modules:
 
 s3_menu(module)
 
+drr = deployment_settings.get_project_drr()
+
 # =============================================================================
 def index():
     """ Module's Home Page """
@@ -56,26 +58,31 @@ def project():
         response.s3.postp = postp
         return s3_rest_controller()
 
-    db.hrm_human_resource.person_id.comment = DIV(_class="tooltip",
-                                                  _title="%s|%s" % (T("Person"),
-                                                                    T("Select the person assigned to this role for this project.")))
+    table = s3db.hrm_human_resource
+    table.person_id.comment = DIV(_class="tooltip",
+                                  _title="%s|%s" % (T("Person"),
+                                                    T("Select the person assigned to this role for this project.")))
 
     if deployment_settings.get_project_community_activity():
         activity_label = T("Communities")
     else:
         activity_label = T("Activities")
 
-    tabs = [(T("Basic Details"), None),
-            #(T("Organizations"), "organisation"),
-           ]
+    tabs = [(T("Basic Details"), None)]
+    if drr:
+        tabs.append((T("Organizations"), "organisation"))
     admin = auth.s3_has_role(ADMIN)
     staff = auth.s3_has_role("STAFF")
-    if admin:
+    #staff = True
+    if admin or drr:
         tabs.append((activity_label, "activity"))
     if staff:
         tabs.append((T("Milestones"), "milestone"))
-    tabs.append((T("Tasks"), "task"))
-    if admin:
+    if not drr:
+        tabs.append((T("Tasks"), "task"))
+    if drr:
+        tabs.append((T("Documents"), "document"))
+    elif admin:
         tabs.append((T("Attachments"), "document"))
 
     doc_table = s3db.table("doc_document", None)
@@ -88,8 +95,7 @@ def project():
         doc_table.location_id.writable = False
 
     def prep(r):
-        s3mgr.load("project_beneficiary")
-        btable = db.project_beneficiary
+        btable = s3db.project_beneficiary
         btable.activity_id.requires = IS_EMPTY_OR(IS_ONE_OF(db,
                                                     "project_activity.id",
                                                     "%(name)s",
@@ -117,7 +123,7 @@ def project():
                     # Default the Location Selector list of countries to those found in the project
                     countries = r.record.countries_id
                     if countries:
-                        ltable = db.gis_location
+                        ltable = s3db.gis_location
                         query = (ltable.id.belongs(countries))
                         countries = db(query).select(ltable.code)
                         deployment_settings.gis.countries = [c.code for c in countries]
@@ -135,7 +141,8 @@ def project():
                         r.resource.add_component_filter("task", filter)
 
             elif not r.id and r.function == "index":
-                # AidIQ have insufficient projects to need a Search
+                #r.method = "search"
+                # If just a few Projects, then a List is sufficient
                 r.method = "list"
 
         return True
@@ -143,7 +150,7 @@ def project():
 
     # Post-process
     def postp(r, output):
-        if r.interactive:
+        if r.interactive and not deployment_settings.get_project_drr():
             update_url = URL(args=["[id]", "task"])
             s3mgr.crud.action_buttons(r,
                                       update_url=update_url)
@@ -169,36 +176,32 @@ def hazard():
     return s3_rest_controller()
 
 # =============================================================================
-# def organisation():
-    # """ RESTful CRUD controller """
-
-    # s3mgr.configure("project_organisation",
-                    # insertable=False,
-                    # editable=False,
-                    # deletable=False)
-
-    # list_btn = A(T("Funding Report"),
-                 # _href=URL(c="project", f="organisation",
-                           # args="analyze", vars=request.get_vars),
-                 # _class="action-btn")
-
-    # return s3_rest_controller(module, resourcename,
-                              # list_btn=list_btn,
-                              # interactive_report=True,
-                              # csv_template="organisation")
-
-# =============================================================================
 def organisation():
     """ RESTful CRUD controller """
 
-    tabs = [
-            (T("Basic Details"), None),
-            (T("Projects"), "project"),
-            (T("Contacts"), "human_resource"),
-           ]
-    rheader = lambda r: organisation_rheader(r, tabs)
-    return s3_rest_controller("org", resourcename,
-                              rheader=rheader)
+    if drr:
+        s3mgr.configure("project_organisation",
+                        insertable=False,
+                        editable=False,
+                        deletable=False)
+
+        list_btn = A(T("Funding Report"),
+                     _href=URL(c="project", f="organisation",
+                               args="analyze", vars=request.get_vars),
+                     _class="action-btn")
+
+        return s3_rest_controller(list_btn=list_btn,
+                                  interactive_report=True,
+                                  csv_template="organisation")
+    else:
+        tabs = [
+                (T("Basic Details"), None),
+                (T("Projects"), "project"),
+                (T("Contacts"), "human_resource"),
+               ]
+        rheader = lambda r: eden.org.org_organisation_rheader(r, tabs)
+        return s3_rest_controller("org", resourcename,
+                                  rheader=rheader)
 
 # =============================================================================
 def beneficiary_type():
@@ -222,8 +225,7 @@ def beneficiary():
                            args="analyze", vars=request.get_vars),
                  _class="action-btn")
 
-    return s3_rest_controller(module, resourcename,
-                              interactive_report=True)
+    return s3_rest_controller(interactive_report=True)
 
 # =============================================================================
 def activity_type():
@@ -236,15 +238,15 @@ def activity():
     """ RESTful CRUD controller """
 
     tablename = "%s_%s" % (module, resourcename)
-    s3mgr.load(tablename)
-    table = db[tablename]
+    table = s3db[tablename]
 
-    tabs = [(T("Details"), None),
-            #(T("Beneficiaries"), "beneficiary"),
-            (T("Tasks"), "task"),
-            #(T("Attachments"), "document"),
-           ]
-
+    tabs = [(T("Details"), None)]
+    if drr:
+        tabs.append((T("Beneficiaries"), "beneficiary"))
+        tabs.append((T("Documents"), "document"))
+    else:
+        tabs.append((T("Tasks"), "task"))
+        #tabs.append((T("Attachments"), "document"))
 
     doc_table = s3db.table("doc_document", None)
     if doc_table is not None:
@@ -256,8 +258,7 @@ def activity():
         doc_table.location_id.writable = False
 
     rheader = lambda r: response.s3.project_rheader(r, tabs)
-    return s3_rest_controller(module, resourcename,
-                              interactive_report=True,
+    return s3_rest_controller(interactive_report=True,
                               rheader=rheader,
                               csv_template="activity")
 
@@ -458,12 +459,12 @@ def comment_parse(comment, comments, task_id=None):
     """
 
     if comment.created_by:
-        utable = db.auth_user
+        utable = s3db.auth_user
         query = (utable.id == comment.created_by)
         user = db(query).select(utable.email,
                                 utable.person_uuid,
                                 limitby=(0, 1)).first()
-        ptable = db.pr_person
+        ptable = s3db.pr_person
         query = (ptable.uuid == user.person_uuid)
         person = db(query).select(ptable.first_name,
                                   ptable.middle_name,
@@ -534,8 +535,7 @@ def comments():
     else:
         raise HTTP(400)
 
-    s3mgr.load("project_comment")
-    table = db.project_comment
+    table = s3db.project_comment
     if task_id:
         table.task_id.default = task_id
         table.task_id.writable = table.task_id.readable = False
@@ -566,7 +566,6 @@ def comments():
                                                              table.created_by,
                                                              table.created_on)
 
-    _user_table = db.auth_user
     output = UL(_id="comments")
     for comment in comments:
         if not comment.parent:
@@ -632,8 +631,7 @@ def site_rheader(r):
 def site():
     """ RESTful CRUD controller """
 
-    return s3_rest_controller(module, resourcename,
-                              rheader = site_rheader)
+    return s3_rest_controller(rheader = site_rheader)
 
 # =============================================================================
 def need():
@@ -783,6 +781,8 @@ def gap_report():
         else:
             gap_str = "0%"
 
+        organisation_represent = s3db.org_organisation_represent
+
         gap_table.append(TR( gis_location_represent(gap_row.location_id),
                              need_str,
                              assess_action_btn,
@@ -824,9 +824,9 @@ def gap_map():
                                   3:"#FF0000", # red
                                   }
 
-    atable = db.project_activity
-    ntable = db.project_need
-    ltable = db.gis_location
+    atable = s3db.project_activity
+    ntable = s3db.project_need
+    ltable = s3db.gis_location
     astable = db.assess_assess
     feature_queries = []
 

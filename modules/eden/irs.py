@@ -55,8 +55,8 @@ class S3IRSModel(S3Model):
         s3 = current.response.s3
         settings = current.deployment_settings
 
-        human_resource_id = s3.human_resource_id
-        location_id = s3.location_id
+        human_resource_id = self.hrm_human_resource_id
+        location_id = self.gis_location_id
         person_id = self.pr_person_id
 
         UNKNOWN_OPT = current.messages.UNKNOWN_OPT
@@ -401,8 +401,6 @@ class S3IRSModel(S3Model):
             # Populated from fire_station_vehicle
             #table.site_id.writable = True
 
-            
-
             self.configure("irs_ireport",
                            # Porto-specific currently
                            #create_onaccept=self.ireport_onaccept,
@@ -410,7 +408,7 @@ class S3IRSModel(S3Model):
                            update_next=URL(args=["[id]", "update"]))
 
             if settings.has_module("hrm"):
-                hr_represent = s3.hr_represent
+                hr_represent = self.hrm_hr_represent
                 tablename = "irs_ireport_vehicle_human_resource"
                 table = self.define_table(tablename,
                                           ireport_id(),
@@ -722,18 +720,18 @@ class S3IRSModel(S3Model):
 def irs_rheader(r, tabs=[]):
     """ Resource component page header """
 
-    T = current.T
-    db = current.db
-    settings = current.deployment_settings
-    table = db.irs_ireport
-
-    datetime_represent = S3DateTime.datetime_represent
-    gis_location_represent = current.response.s3.gis_location_represent
-
     if r.representation == "html":
         if r.record is None:
             # List or Create form: rheader makes no sense here
             return None
+
+        T = current.T
+        s3db = current.s3db
+        #s3 = current.response.s3
+        settings = current.deployment_settings
+
+        datetime_represent = S3DateTime.datetime_represent
+        gis_location_represent = s3db.gis_location_represent
 
         tabs = [(T("Report Details"), None),
                 (T("Photos"), "image")
@@ -754,7 +752,9 @@ def irs_rheader(r, tabs=[]):
 
         if r.name == "ireport":
             report = r.record
-            
+
+            table = r.table
+
             datetime = datetime_represent(report.datetime, utc=True)
             location = gis_location_represent(report.location_id)
 

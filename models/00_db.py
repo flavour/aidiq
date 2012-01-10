@@ -17,13 +17,13 @@ if s3.debug:
     # Doesn't catch s3cfg
     from gluon.custom_import import track_changes
     track_changes(True)
-import copy
+
 import datetime
 import md5
 import re
 import time
 
-from gluon.sql import Row
+from gluon.dal import Row
 from gluon.sqlhtml import RadioWidget
 
 import gluon.contrib.simplejson as json
@@ -134,6 +134,7 @@ from s3.s3validators import *
 # to access them without the s3base namespace prefix
 from s3.s3utils import *
 from s3.s3widgets import *
+from s3.s3navigation import s3_rheader_resource
 from s3.s3navigation import s3_rheader_tabs
 
 # GIS Module

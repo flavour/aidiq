@@ -353,7 +353,8 @@ deployment_settings.security.policy = 6 # Organisation-ACLs
 #deployment_settings.ui.label_mobile_phone = T("Cell Phone")
 # Enable this to change the label for 'Postcode'
 #deployment_settings.ui.label_postcode = T("ZIP Code")
-
+# Enable Social Media share buttons
+#deployment_settings.ui.social_buttons = True
 # Request
 #deployment_settings.req.type_inv_label = T("Donations")
 #deployment_settings.req.type_hrm_label = T("Volunteers")
@@ -415,7 +416,7 @@ deployment_settings.security.policy = 6 # Organisation-ACLs
 #deployment_settings.hrm.skill_types = True
 
 # Project Tracking
-# Uncomment this to show DRR-related categories
+# Uncomment this to use settings suitable for a global/regional organisation (e.g. DRR)
 #deployment_settings.project.drr = True
 
 # Save Search Widget

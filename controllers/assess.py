@@ -38,10 +38,8 @@ def population():
 
     """ RESTful controller """
 
-    output = s3_rest_controller(module, resourcename)
-
+    output = s3_rest_controller()
     return output
-
 
 # =============================================================================
 # Rapid Assessments
@@ -175,8 +173,7 @@ def rat():
     rheader = lambda r: rat_rheader(r,
                                     tabs)
 
-    output = s3_rest_controller(module, resourcename,
-                                rheader=rheader,
+    output = s3_rest_controller(rheader=rheader,
                                 s3ocr_config={"tabs": tabs})
 
     response.s3.stylesheets.append( "S3/rat.css" )
@@ -199,6 +196,7 @@ def rat_rheader(r, tabs=[]):
                     location = gis_location_represent(location)
                 staff = report.staff_id
                 if staff:
+                    organisation_represent = s3db.org_organisation_represent
                     query = (htable.id == staff)
                     organisation_id = db(query).select(htable.organisation_id,
                                                        limitby=(0, 1)).first().organisation_id
@@ -245,6 +243,7 @@ def assess_rheader(r, tabs=[]):
         rheader_tabs = s3_rheader_tabs(r, tabs)
 
         assess = r.record
+        person_represent = s3db.pr_person_represent
 
         if assess:
             rheader = DIV(TABLE(TR(
@@ -295,7 +294,7 @@ def assess():
 
     rheader = lambda r: assess_rheader(r, tabs)
 
-    return s3_rest_controller(module, resourcename, rheader=rheader)
+    return s3_rest_controller(rheader=rheader)
 
 # -----------------------------------------------------------------------------
 def impact_type():
@@ -307,9 +306,6 @@ def impact_type():
     module = "impact"
     resourcename = "type"
 
-    tablename = "%s_%s" % (module, resourcename)
-    table = db[tablename]
-
     return s3_rest_controller(module, resourcename)
 
 # -----------------------------------------------------------------------------
@@ -319,10 +315,7 @@ def baseline_type():
     # Load Models
     s3mgr.load("assess_assess")
 
-    tablename = "%s_%s" % (module, resourcename)
-    table = db[tablename]
-
-    return s3_rest_controller(module, resourcename)
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def baseline():
@@ -331,10 +324,7 @@ def baseline():
     # Load Models
     s3mgr.load("assess_assess")
 
-    tablename = "%s_%s" % (module, resourcename)
-    table = db[tablename]
-
-    return s3_rest_controller(module, resourcename)
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def summary():
@@ -343,10 +333,7 @@ def summary():
     # Load Models
     s3mgr.load("assess_assess")
 
-    tablename = "%s_%s" % (module, resourcename)
-    table = db[tablename]
-
-    return s3_rest_controller(module, resourcename)
+    return s3_rest_controller()
 
 # =============================================================================
 def basic_assess():
@@ -567,7 +554,7 @@ def custom_assess(custom_assess_fields, location_id=None):
             if "gis_location_lon" in request.vars:
                 location_dict["lon"] = request.vars["gis_location_lon"]
             location_dict["name"] = request.vars["custom_assess_location_id"]
-            record_dict["location_id"] = db.gis_location.insert(**location_dict)
+            record_dict["location_id"] = s3db.gis_location.insert(**location_dict)
 
         if "location_id" in request.vars:
             # Location Selector
@@ -650,4 +637,3 @@ def custom_assess(custom_assess_fields, location_id=None):
     return form, form_accepted, assess_id
 
 # END =========================================================================
-

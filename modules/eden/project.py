@@ -42,7 +42,11 @@ from ..s3 import *
 
 # =============================================================================
 class S3ProjectModel(S3Model):
-    """ Project Model """
+    """
+        Project Model
+
+        @ToDo: break into multiple Classes
+    """
 
     names = ["project_theme",
              "project_hazard",
@@ -79,10 +83,13 @@ class S3ProjectModel(S3Model):
         T = current.T
         request = current.request
         s3 = current.response.s3
+        settings = current.deployment_settings
 
         currency_type = s3.currency_type
         person_id = self.pr_person_id
-        organisation_id = s3.org_organisation_id
+        location_id = self.gis_location_id
+        organisation_id = self.org_organisation_id
+        site_id = self.org_site_id
 
         s3_date_format = self.settings.get_L10n_date_format()
         s3_datetime_represent = S3DateTime.datetime_represent
@@ -90,8 +97,8 @@ class S3ProjectModel(S3Model):
 
 
         # Enable DRR extensions?
-        drr = self.settings.get_project_drr()
-        pca = self.settings.get_project_community_activity()
+        drr = settings.get_project_drr()
+        pca = settings.get_project_community_activity()
 
         NONE = current.messages.NONE
         UNKNOWN_OPT = current.messages.UNKNOWN_OPT
@@ -201,9 +208,10 @@ class S3ProjectModel(S3Model):
         tablename = "project_project"
         table = self.define_table(tablename,
                                   self.super_link("doc_id", "doc_entity"),
+                                  # drr uses the separate project_organisation table
                                   organisation_id(
-                                               #readable=False,
-                                               #writable=False
+                                               readable=False if drr else True,
+                                               writable=False if drr else True
                                               ),
                                   Field("name",
                                         label = T("Name"),
@@ -240,14 +248,14 @@ class S3ProjectModel(S3Model):
                                             CheckboxesWidget.widget(f, v, cols=3)),
 
                                   countries_id(
-                                               readable=False,
-                                               writable=False
+                                               readable=drr,
+                                               writable=drr
                                               ),
                                   multi_hazard_id(readable=drr,
                                                   writable=drr),
                                   multi_theme_id(
-                                                 readable=False,
-                                                 writable=False
+                                                 readable=drr,
+                                                 writable=drr
                                                 ),
                                   Field("hfa", "list:integer",
                                         label = T("HFA Priorities"),
@@ -259,8 +267,8 @@ class S3ProjectModel(S3Model):
                                         widget = CheckboxesWidgetS3.widget),
 
                                   Field("objectives", "text",
-                                        readable = False,
-                                        writable = False,
+                                        readable = drr,
+                                        writable = drr,
                                         label = T("Objectives")),
                                   format="%(name)s",
                                   *s3.meta_fields())
@@ -290,18 +298,22 @@ class S3ProjectModel(S3Model):
         # Search Method?
 
         # Resource Configuration
+        if drr:
+            next = "organisation"
+        else:
+            next = "activity"
         self.configure(tablename,
                        super_entity="doc_entity",
                        deduplicate=self.project_project_deduplicate,
                        onvalidation=self.project_project_onvalidation,
                        onaccept=self.project_project_onaccept,
                        create_next=URL(c="project", f="project",
-                                       args=["[id]", "activity"]),
+                                       args=["[id]", next]),
                        list_fields=["id",
                                     "name",
                                     "organisation_id",
                                     #"countries_id",
-                                    #"start_date",
+                                    "start_date",
                                     "end_date",
                                    ])
         # Reusable Field
@@ -489,15 +501,18 @@ class S3ProjectModel(S3Model):
                                   Field("name",
                                         label = T("Short Description"),
                                         requires=IS_NOT_EMPTY()),
-                                  s3.location_id(
-                                        readable = False,
-                                        writable = False,
+                                  location_id(
+                                        readable = drr,
+                                        writable = drr,
                                         widget = S3LocationSelectorWidget(hide_address=True)),
                                   multi_activity_type_id(),
                                   Field("time_estimated", "double",
+                                        readable=False if drr else True,
+                                        writable=False if drr else True,
                                         label = "%s (%s)" % (T("Time Estimate"),
                                                              T("hours"))),
                                   Field("time_actual", "double",
+                                        readable=False if drr else True,
                                         # Gets populated from constituent Tasks
                                         writable=False,
                                         label = "%s (%s)" % (T("Time Taken"),
@@ -544,7 +559,7 @@ class S3ProjectModel(S3Model):
                 title_update = T("Edit Activity"),
                 title_search = T("Search Activities"),
                 title_upload = T("Import Activity Data"),
-                title_report = T("Budget Line Utilisation"),
+                title_report = T("Who is doing What Where") if drr else T("Activity Report"),
                 subtitle_create = T("Add New Activity"),
                 subtitle_list = T("Activities"),
                 subtitle_report = T("Activities"),
@@ -566,26 +581,33 @@ class S3ProjectModel(S3Model):
             project_activity_search = S3Search(field="name")
 
         # Resource Configuration
-        analyze_fields = [#(T("Organization"), "organisation"),
-                          (T("Project"), "project_id"),
-                          (T("Activity Type"), "multi_activity_type_id"),
-                          (T("Time Estimated"), "time_estimated"),
-                          (T("Time Actual"), "time_actual"),
-                          #(T("Theme"), "project_id$multi_theme_id"),
-                          #(T("Hazard"), "project_id$multi_hazard_id"),
-                          #(T("HFA"), "project_id$hfa")
-                          ]
-        #lh = self.settings.get_gis_default_location_hierarchy()
-        #lh = [(lh[opt], opt) for opt in lh]
-        #analyze_fields.extend(lh)
-        #analyze_fields.append("location_id")
+        analyze_fields = []
+        if drr:
+            analyze_fields.append((T("Organization"), "organisation"))
+        analyze_fields.append((T("Project"), "project_id"))
         if not pca:
-            analyze_fields.insert(2, (T("Activity"), "name"))
+            analyze_fields.append((T("Activity"), "name"))
+        analyze_fields.append((T("Activity Type"), "multi_activity_type_id"))
+        if drr:
+            analyze_fields.append((T("Theme"), "project_id$multi_theme_id"))
+            analyze_fields.append((T("Hazard"), "project_id$multi_hazard_id"))
+            analyze_fields.append((T("HFA"), "project_id$hfa"))
+            lh = settings.get_gis_default_location_hierarchy()
+            lh = [(lh[opt], opt) for opt in lh]
+            analyze_fields.extend(lh)
+            analyze_fields.append("location_id")
+        else:
+            analyze_fields.append((T("Time Estimated"), "time_estimated"))
+            analyze_fields.append((T("Time Actual"), "time_actual"))
 
+        if drr:
+            next = "beneficiary"
+        else:
+            next = "task"
         self.configure(tablename,
                        super_entity="doc_entity",
                        create_next=URL(c="project", f="activity",
-                                       args=["[id]", "task"]),
+                                       args=["[id]", next]),
                        search_method=project_activity_search,
                        onaccept=self.project_activity_onaccept,
                        deduplicate=self.project_activity_deduplicate,
@@ -641,7 +663,7 @@ class S3ProjectModel(S3Model):
                                   Field("name", notnull=True,
                                         length=64, # Mayon Compatibility
                                         label = T("Name")),
-                                  s3.location_id(),
+                                  location_id(),
                                   multi_activity_type_id(),
                                   *(s3.address_fields() + s3.meta_fields()))
 
@@ -930,6 +952,7 @@ class S3ProjectModel(S3Model):
         }
 
         staff = auth.s3_has_role("STAFF")
+        #staff = True
 
         tablename = "project_task"
         table = self.define_table(tablename,
@@ -1008,8 +1031,8 @@ class S3ProjectModel(S3Model):
                                         writable=False,
                                         label = "%s (%s)" % (T("Time Taken"),
                                                              T("hours"))),
-                                  s3.org_site_id,
-                                  s3.location_id(label=T("Deployment Location"),
+                                  site_id,
+                                  location_id(label=T("Deployment Location"),
                                               readable=False,
                                               writable=False
                                               ),
@@ -1160,8 +1183,8 @@ class S3ProjectModel(S3Model):
         htable = self.table("hrm_human_resource", None)
         if htable is not None:
 
-            human_resource_id = s3.human_resource_id
-            job_role_id = s3.hrm_job_role_id
+            human_resource_id = self.hrm_human_resource_id
+            job_role_id = self.hrm_job_role_id
 
             # Tasks <> Human Resources
             tablename = "project_task_human_resource"
@@ -1274,7 +1297,7 @@ class S3ProjectModel(S3Model):
             msg_list_empty = T("No Time Logged")
         )
         if "rows" in request.get_vars and request.get_vars.rows == "project":
-            s3.crud_strings[tablename].title_report = T("Project Income Allocation")
+            s3.crud_strings[tablename].title_report = T("Project Time Report")
 
         # Virtual Fields
         table.virtualfields.append(S3ProjectTimeVirtualfields())
@@ -1333,9 +1356,10 @@ class S3ProjectModel(S3Model):
         DEFAULT = ""
 
         db = current.db
+        s3db = current.s3db
         UNKNOWN_OPT = current.messages.UNKNOWN_OPT
 
-        table = S3Model.table(tablename, None)
+        table = s3db[tablename]
         if table is None:
             return DEFAULT
 
@@ -1485,9 +1509,10 @@ class S3ProjectModel(S3Model):
         """ Form validation """
 
         db = current.db
+        s3db = current.s3db
         s3 = current.response.s3
 
-        otable = S3Model.table("project_organisation")
+        otable = s3db.project_organisation
 
         if lead_role is None:
             lead_role = s3.project_organisation_lead_role
@@ -1556,13 +1581,14 @@ class S3ProjectModel(S3Model):
         """ Record creation post-processing """
 
         db = current.db
+        s3db = current.s3db
         settings = current.deployment_settings
         pca = settings.get_project_community_activity()
 
         if not pca:
            if "name" in form.vars and \
               form.vars.name and form.vars.location_id:
-                table = S3Model.table("gis_location")
+                table = s3db.gis_location
                 query = (table.id == form.vars.location_id)
                 row = db(query).select(table.id, table.level,
                                        limitby=(0, 1)).first()
@@ -1615,6 +1641,7 @@ class S3ProjectModel(S3Model):
         """ FK representation """
 
         db = current.db
+        s3db = current.s3db
         UNKNOWN_OPT = current.messages.UNKNOWN_OPT
 
         if isinstance(type_id, Row):
@@ -1625,7 +1652,7 @@ class S3ProjectModel(S3Model):
             else:
                 return UNKNOWN_OPT
 
-        bnf_type = S3Model.table("project_beneficiary_type")
+        bnf_type = s3db.project_beneficiary_type
         query = bnf_type.id == type_id
         row = db(query).select(bnf_type.name, limitby=(0, 1)).first()
         if row:
@@ -1639,9 +1666,10 @@ class S3ProjectModel(S3Model):
         """ Record creation post-processing """
 
         db = current.db
+        s3db = current.s3db
 
-        btable = S3Model.table("project_beneficiary")
-        atable = S3Model.table("project_activity")
+        btable = s3db.project_beneficiary
+        atable = s3db.project_activity
 
         record_id = form.vars.id
         query = (btable.id == record_id) & \
@@ -1791,13 +1819,6 @@ class S3ProjectModel(S3Model):
 def project_rheader(r, tabs=[]):
     """ Project Resource Headers - used in Project & Budget modules """
 
-    T = current.T
-    db = current.db
-    auth = current.auth
-    s3 = current.response.s3
-    settings = current.deployment_settings
-    pca = settings.get_project_community_activity()
-
     rheader = None
 
     if r.representation == "html":
@@ -1805,22 +1826,39 @@ def project_rheader(r, tabs=[]):
         table = r.table
         record = r.record
         if record:
+            T = current.T
+            db = current.db
+            s3db = current.s3db
+            auth = current.auth
+            s3 = current.response.s3
+            settings = current.deployment_settings
+            drr = settings.get_project_drr()
+            pca = settings.get_project_community_activity()
+
             if r.name == "project":
+                if drr:
+                    row2 = TR(
+                        TH("%s: " % table.countries_id.label),
+                        table.countries_id.represent(record.countries_id),
+                        )
+                    row3 = ""
+                else:
+                    row2 = TR(
+                        TH("%s: " % table.organisation_id.label),
+                        s3db.org_organisation_represent(record.organisation_id)
+                        )
+                    row3 = TR(
+                        TH("%s: " % table.end_date.label),
+                        record.end_date
+                        )
+            
                 rheader = DIV(TABLE(
                     TR(
                        TH("%s: " % table.name.label),
                        record.name
                       ),
-                    TR(
-                       TH("%s: " % table.organisation_id.label),
-                       s3.org_organisation_represent(record.organisation_id)
-                      ),
-                    TR(
-                       #TH("%s: " % table.countries_id.label),
-                       #table.countries_id.represent(record.countries_id),
-                       TH("%s: " % table.end_date.label),
-                       record.end_date
-                      ),
+                    row2,
+                    row3,
                     ), rheader_tabs)
 
             elif r.name == "activity":
@@ -1856,7 +1894,7 @@ def project_rheader(r, tabs=[]):
 
                 rheader_tabs = s3_rheader_tabs(r, tabs)
 
-                ctable = db.project_comment
+                ctable = s3db.project_comment
                 query = (ctable.deleted == False) & \
                         (ctable.task_id == r.id)
                 comments = db(query).count()
@@ -1881,7 +1919,7 @@ def project_rheader(r, tabs=[]):
                         s3.pr_pentity_represent(record.pe_id,
                                                 show_label=False),
                         #TH("%s: " % table.location_id.label),
-                        #s3.gis_location_represent(record.location_id),
+                        #s3db.gis_location_represent(record.location_id),
                         ),
                     TR(
                         TH("%s: " % table.description.label),
@@ -1910,10 +1948,11 @@ class S3ProjectActivityVirtualfields:
         """ Name of the lead organisation of the project """
 
         db = current.db
+        s3db = current.s3db
         s3 = current.response.s3
 
-        otable = S3Model.table("org_organisation")
-        ltable = S3Model.table("project_organisation")
+        otable = s3db.org_organisation
+        ltable = s3db.project_organisation
         LEAD_ROLE = s3.project_organisation_lead_role
         query = (ltable.deleted != True) & \
                 (ltable.project_id == self.project_activity.project_id) & \
@@ -1983,9 +2022,10 @@ class S3ProjectTimeVirtualfields:
         """
 
         db = current.db
+        s3db = current.s3db
 
-        ptable = S3Model.table("project_project")
-        ltable = S3Model.table("project_task_project")
+        ptable = s3db.project_project
+        ltable = s3db.project_task_project
         query = (ltable.deleted != True) & \
                 (ltable.task_id == self.project_time.task_id) & \
                 (ltable.project_id == ptable.id)

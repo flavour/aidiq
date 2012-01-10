@@ -94,6 +94,8 @@ if deployment_settings.has_module(module):
         if deployment_settings.has_module("scenario"):
             s3mgr.load("scenario_scenario")
         scenario_id = response.s3.scenario_id
+        config_id = s3db.gis_config_id
+        site_id = s3db.org_site_id
 
         # ---------------------------------------------------------------------
         # Events
@@ -137,7 +139,7 @@ if deployment_settings.has_module(module):
             event = form.vars.id
             # Set the Event in the session
             session.s3.event = event
-            ctable = db.gis_config
+            ctable = s3db.gis_config
             if form.vars.scenario_id:
                 # We have been instantiated from a Scenario, so
                 # copy all resources from the Scenario to the Event
@@ -221,7 +223,7 @@ if deployment_settings.has_module(module):
                 config = db(query).select(table.config_id,
                                           limitby=(0, 1)).first()
                 if config:
-                    table = db.gis_config
+                    table = s3db.gis_config
                     query = (table.id == config.config_id)
                     db(query).update(show_in_menu=False)
                 config = gis.get_config()
@@ -401,6 +403,7 @@ if deployment_settings.has_module(module):
         # @ToDo: Use Positions, not individual HRs
         # @ToDo: Search Widget
         if deployment_settings.has_module("hrm"):
+            human_resource_id = s3db.hrm_human_resource_id
             tablename = "event_human_resource"
             table = db.define_table(tablename,
                                     event_id(),

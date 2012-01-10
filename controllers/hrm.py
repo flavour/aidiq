@@ -25,11 +25,11 @@ def org_filter():
         i.e. they have the organisation access role or a site access role
     """
 
-    table = db.org_organisation
+    table = s3db.org_organisation
     orgs = db(table.owned_by_organisation.belongs(roles)).select(table.id)
     orgs = [org.id for org in orgs]
 
-    stable = db.org_site
+    stable = s3db.org_site
     siteorgs = db(stable.owned_by_facility.belongs(roles)).select(stable.organisation_id)
     for org in siteorgs:
         if org.organisation_id not in orgs:
@@ -77,11 +77,8 @@ def index():
     if mode is not None:
         redirect(URL(f="person"))
 
-    # Load Models
-    s3mgr.load("hrm_skill")
-
     tablename = "hrm_human_resource"
-    table = db.hrm_human_resource
+    table = s3db.hrm_human_resource
 
     if ADMIN not in roles:
         orgs = session.s3.hrm.orgs or [None]
@@ -107,7 +104,7 @@ def index():
     # distinct in the sql which cause a ticket to be raised
     if r.representation != "aadata":
         r.method = "search"
-    r.custom_action = human_resource_search
+    r.custom_action = s3db.hrm_human_resource_search
     # Execute the request
     output = r()
     if r.representation == "aadata":
@@ -143,13 +140,9 @@ def human_resource():
         HR Controller
     """
 
-    # Load Models
-    s3mgr.load("pr_address")
-    s3mgr.load("hrm_skill")
-
     tablename = "hrm_human_resource"
-    table = db[tablename]
-    ptable = db.pr_person
+    table = s3db[tablename]
+    ptable = s3db.pr_person
 
     # Configure CRUD strings
     s3.crud_strings[tablename] = Storage(
@@ -265,7 +258,7 @@ def human_resource():
     def prep(r):
         if r.interactive:
             # Assume volunteers only between 12-81
-            db.pr_person.date_of_birth.widget = S3DateWidget(past=972, future=-144)
+            s3db.pr_person.date_of_birth.widget = S3DateWidget(past=972, future=-144)
 
             r.table.site_id.comment = DIV(DIV(_class="tooltip",
                                               _title="%s|%s|%s" % (T("Facility"),
@@ -311,7 +304,7 @@ def human_resource():
         return output
     response.s3.postp = postp
 
-    output = s3_rest_controller(module, resourcename)
+    output = s3_rest_controller()
     return output
 
 # -----------------------------------------------------------------------------
@@ -320,10 +313,6 @@ def hrm_map_popup(r):
         Custom output to place inside a Map Popup
         - called from postp of human_resource controller
     """
-
-    # Load Model
-    s3mgr.load("pr_address")
-    #s3mgr.load("hrm_skill")
 
     output = TABLE()
     # Edit button
@@ -342,7 +331,7 @@ def hrm_map_popup(r):
                          TD(r.record.job_title)))
 
     # Organization (better with just name rather than Represent)
-    table = db.org_organisation
+    table = s3db.org_organisation
     query = (table.id == r.record.organisation_id)
     name = db(query).select(table.name,
                             limitby=(0, 1)).first().name
@@ -350,7 +339,7 @@ def hrm_map_popup(r):
                      TD(name)))
 
     if r.record.location_id:
-        table = db.gis_location
+        table = s3db.gis_location
         query = (table.id == r.record.location_id)
         location = db(query).select(table.path,
                                     table.addr_street,
@@ -361,14 +350,12 @@ def hrm_map_popup(r):
             output.append(TR(TD(B("%s:" % table.addr_street.label)),
                              TD(location.addr_street)))
     # Mobile phone number
-    table = db.pr_person
-    query = (table.id == r.record.person_id)
-    pe_id = db(query).select(table.pe_id,
-                             limitby=(0, 1)).first().pe_id
-    table = db.pr_contact
-    query = (table.pe_id == pe_id)
-    contacts = db(query).select(table.contact_method,
-                                table.value)
+    ptable = s3db.pr_person
+    ctable = s3db.pr_contact
+    query = (ptable.id == r.record.person_id) & \
+            (ctable.pe_id == ptable.pe_id)
+    contacts = db(query).select(ctable.contact_method,
+                                ctable.value)
     email = mobile_phone = ""
     for contact in contacts:
         if contact.contact_method == "EMAIL":
@@ -380,7 +367,7 @@ def hrm_map_popup(r):
                          TD(mobile_phone)))
     # Office number
     if r.record.site_id:
-        table = db.org_office
+        table = s3db.org_office
         query = (table.site_id == r.record.site_id)
         office = db(query).select(table.phone1,
                                   limitby=(0, 1)).first()
@@ -430,7 +417,7 @@ def person():
 
     # Configure human resource table
     tablename = "hrm_human_resource"
-    table = db[tablename]
+    table = s3db[tablename]
     if hr_id and str(hr_id).isdigit():
         hr = table[hr_id]
         if hr:
@@ -444,7 +431,7 @@ def person():
         table.organisation_id.writable = False
         table.site_id.requires = IS_EMPTY_OR(IS_ONE_OF(db,
                                     "org_site.%s" % super_key(db.org_site),
-                                    org_site_represent,
+                                    s3db.org_site_represent,
                                     filterby="organisation_id",
                                     filter_opts=[session.s3.hrm.org]))
     table.type.readable = True
@@ -479,7 +466,7 @@ def person():
     # Configure person table
     # - hide fields
     tablename = "pr_person"
-    table = db[tablename]
+    table = s3db[tablename]
     table.pe_label.readable = False
     table.pe_label.writable = False
     table.missing.readable = False
@@ -509,7 +496,7 @@ def person():
                                                   multiple=False))
         address_tab_name = T("Home Address")
         # Default type for HR
-        table = db.hrm_human_resource
+        table = s3db.hrm_human_resource
         table.type.default = 1
         request.get_vars.update(xsltmode="staff")
     else:
@@ -523,7 +510,7 @@ def person():
 
     if session.s3.hrm.mode is not None:
         # Configure for personal mode
-        db.hrm_human_resource.organisation_id.readable = True
+        s3db.hrm_human_resource.organisation_id.readable = True
         s3.crud_strings[tablename].update(
             title_display = T("Personal Profile"),
             title_update = T("Personal Profile"))
@@ -631,9 +618,11 @@ def person():
                         except:
                             pass
                     if org_name:
-                        query = (db.org_organisation.name == org_name) & \
-                                (db.hrm_human_resource.organisation_id == db.org_organisation.id) & \
-                                (db.hrm_human_resource.type == group)
+                        htable = db.hrm_human_resource
+                        otable = s3db.org_organisation
+                        query = (otable.name == org_name) & \
+                                (htable.organisation_id == otable.id) & \
+                                (htable.type == group)
                         resource = s3mgr.define_resource("hrm", "human_resource", filter=query)
                         ondelete = s3mgr.model.get_config("hrm_human_resource", "ondelete")
                         resource.delete(ondelete=ondelete, format="xml", cascade=True)
@@ -671,7 +660,7 @@ def person():
             s3mgr.configure("hrm_human_resource",
                             insertable = False)
             if not r.component_id or r.method in ("create", "update"):
-                address_hide(db.pr_address)
+                address_hide(s3db.pr_address)
         return True
     response.s3.prep = prep
 
@@ -735,13 +724,13 @@ def group():
     """
 
     tablename = "pr_group"
-    table = db[tablename]
+    table = s3db[tablename]
 
     table.group_type.label = T("Team Type")
     table.description.label = T("Team Description")
     table.name.label = T("Team Name")
-    db.pr_group_membership.group_id.label = T("Team ID")
-    db.pr_group_membership.group_head.label = T("Team Leader")
+    s3db.pr_group_membership.group_id.label = T("Team ID")
+    s3db.pr_group_membership.group_head.label = T("Team Leader")
 
     # Set Defaults
     table.group_type.default = 3  # 'Relief Team'
@@ -818,7 +807,7 @@ def group():
             (T("Members"), "group_membership")]
 
     output = s3_rest_controller("pr", resourcename,
-                                rheader=lambda r: pr_rheader(r, tabs = tabs))
+                                rheader=lambda r: s3db.pr_rheader(r, tabs = tabs))
 
     return output
 
@@ -836,7 +825,7 @@ def job_role():
         return True
     response.s3.prep = prep
 
-    output = s3_rest_controller(module, resourcename)
+    output = s3_rest_controller()
     return output
 
 # =============================================================================
@@ -850,10 +839,7 @@ def skill():
         session.error = T("Access denied")
         redirect(URL(f="index"))
 
-    # Load Models
-    s3mgr.load("hrm_skill")
-
-    output = s3_rest_controller(module, resourcename)
+    output = s3_rest_controller()
     return output
 
 
@@ -865,10 +851,7 @@ def skill_type():
         session.error = T("Access denied")
         redirect(URL(f="index"))
 
-    # Load Models
-    s3mgr.load("hrm_skill")
-
-    output = s3_rest_controller(module, resourcename)
+    output = s3_rest_controller()
     return output
 
 # -----------------------------------------------------------------------------
@@ -880,10 +863,7 @@ def competency_rating():
         session.error = T("Access denied")
         redirect(URL(f="index"))
 
-    # Load Models
-    s3mgr.load("hrm_skill")
-
-    output = s3_rest_controller(module, resourcename)
+    output = s3_rest_controller()
     return output
 
 # -----------------------------------------------------------------------------
@@ -893,12 +873,9 @@ def skill_competencies():
             particular Skill Type
     """
 
-    # Load Models
-    s3mgr.load("hrm_skill")
-
-    table = db.hrm_skill
-    ttable = db.hrm_skill_type
-    rtable = db.hrm_competency_rating
+    table = s3db.hrm_skill
+    ttable = s3db.hrm_skill_type
+    rtable = s3db.hrm_competency_rating
     query = (table.id == request.args[0]) & \
             (table.skill_type_id == ttable.id) & \
             (rtable.skill_type_id == table.skill_type_id)
@@ -918,10 +895,7 @@ def skill_provision():
         session.error = T("Access denied")
         redirect(URL(f="index"))
 
-    # Load Models
-    s3mgr.load("hrm_skill")
-
-    output = s3_rest_controller(module, resourcename)
+    output = s3_rest_controller()
     return output
 
 # -----------------------------------------------------------------------------
@@ -933,10 +907,7 @@ def course():
         session.error = T("Access denied")
         redirect(URL(f="index"))
 
-    # Load Models
-    s3mgr.load("hrm_skill")
-
-    output = s3_rest_controller(module, resourcename)
+    output = s3_rest_controller()
     return output
 
 # -----------------------------------------------------------------------------
@@ -948,10 +919,7 @@ def course_certificate():
         session.error = T("Access denied")
         redirect(URL(f="index"))
 
-    # Load Models
-    s3mgr.load("hrm_skill")
-
-    output = s3_rest_controller(module, resourcename)
+    output = s3_rest_controller()
     return output
 
 # -----------------------------------------------------------------------------
@@ -965,10 +933,7 @@ def certificate():
         return True
     response.s3.prep = prep
 
-    # Load Models
-    s3mgr.load("hrm_skill")
-
-    output = s3_rest_controller(module, resourcename)
+    output = s3_rest_controller()
     return output
 
 # -----------------------------------------------------------------------------
@@ -980,10 +945,7 @@ def certificate_skill():
         session.error = T("Access denied")
         redirect(URL(f="index"))
 
-    # Load Models
-    s3mgr.load("hrm_skill")
-
-    output = s3_rest_controller(module, resourcename)
+    output = s3_rest_controller()
     return output
 
 # -----------------------------------------------------------------------------
@@ -995,20 +957,17 @@ def training():
         session.error = T("Access denied")
         redirect(URL(f="index"))
 
-    # Load Models
-    s3mgr.load("hrm_skill")
-
     if ADMIN not in session.s3.roles and \
        EDITOR not in session.s3.roles:
-        ttable = db.hrm_training
-        hrtable = db.hrm_human_resource
-        orgtable = db.org_organisation
+        ttable = s3db.hrm_training
+        hrtable = s3db.hrm_human_resource
+        orgtable = s3db.org_organisation
         query = (ttable.person_id == hrtable.person_id) & \
                 (hrtable.organisation_id == orgtable.id) & \
                 (orgtable.owned_by_organisation.belongs(session.s3.roles))
         response.s3.filter = query
 
-    output = s3_rest_controller(module, resourcename)
+    output = s3_rest_controller()
     return output
 
 # =============================================================================
@@ -1017,8 +976,8 @@ def staff_org_site_json():
         Used by the Asset - Assign to Person page
     """
 
-    table = db.hrm_human_resource
-    otable = db.org_organisation
+    table = s3db.hrm_human_resource
+    otable = s3db.org_organisation
     #db.req_commit.date.represent = lambda dt: dt[:10]
     query = (table.person_id == request.args[0]) & \
             (table.organisation_id == otable.id)
@@ -1036,20 +995,20 @@ def compose():
 
     """ Send message to people/teams """
 
-    s3mgr.load("msg_outbox")
+    mtable = s3db.msg_outbox
 
     if "hrm_id" in request.vars:
         id = request.vars.hrm_id
         fieldname = "hrm_id"
-        table = db.pr_person
-        htable = db.hrm_human_resource
+        table = s3db.pr_person
+        htable = s3db.hrm_human_resource
         query = (htable.id == id) & \
                 (htable.person_id == table.id)
         title = T("Send a message to this person")
     elif "group_id" in request.vars:
         id = request.vars.group_id
         fieldname = "group_id"
-        table = db.pr_group
+        table = s3db.pr_group
         query = (table.id == id)
         title = T("Send a message to this team")
 
@@ -1064,12 +1023,12 @@ def compose():
 
     if "hrm_id" in request.vars:
         # Get the individual's communications options & preference
-        table = db.pr_contact
-        contact = db(table.pe_id == pe_id).select(table.contact_method,
-                                                  orderby="priority",
-                                                  limitby=(0, 1)).first()
+        ctable = s3db.pr_contact
+        contact = db(ctable.pe_id == pe_id).select(ctable.contact_method,
+                                                   orderby="priority",
+                                                   limitby=(0, 1)).first()
         if contact:
-            db.msg_outbox.pr_message_method.default = contact.contact_method
+            mtable.pr_message_method.default = contact.contact_method
         else:
             session.error = T("No contact method found")
             redirect(URL(f="index"))

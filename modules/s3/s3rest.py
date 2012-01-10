@@ -2419,6 +2419,7 @@ class S3Resource(object):
         # DB and manager
         manager = current.manager
         db = current.db
+        s3db = current.s3db
 
         self.ERROR = manager.ERROR
 
@@ -2443,7 +2444,7 @@ class S3Resource(object):
         self.tablename = "%s_%s" % (self.prefix, self.name)
         model.load(self.tablename)
         try:
-            self.table = db[self.tablename]
+            self.table = s3db[self.tablename]
         except:
             manager.error = "Undefined table: %s" % self.tablename
             raise KeyError(manager.error)
@@ -3361,6 +3362,9 @@ class S3Resource(object):
         """
 
         db = current.db
+        gis = current.gis
+        request = current.request
+
         manager = current.manager
         model = manager.model
         xml = manager.xml
@@ -3387,21 +3391,7 @@ class S3Resource(object):
         self.load(start=start, limit=limit)
 
         # See if we're being called as a GIS Feature Layer
-        popup_fields = None
-        popup_label = None
-        if "layer" in current.request.vars:
-            layer_id = current.request.vars.layer
-            ltable = db.gis_layer_feature
-            query = (ltable.id == layer_id)
-            layer = db(query).select(ltable.popup_label,
-                                     ltable.popup_fields,
-                                     limitby=(0, 1)).first()
-            if layer:
-                popup_label = layer.popup_label
-                popup_fields = layer.popup_fields
-            else:
-                popup_label = ""
-                popup_fields = "name"
+        (popup_label, popup_fields) = gis.get_popup()
 
         # Build the tree
         root = etree.Element(xml.TAG.root)
