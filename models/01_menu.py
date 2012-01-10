@@ -289,7 +289,6 @@ if s3_has_role("STAFF"):
                 #[T("Search"), False, aURL(f="task", args="search")],
             #]],
             [T("Daily Work"), False, aURL(f="time"),[
-                [T("My Open Tasks"), False, aURL(f="task", vars={"mine":1})],
                 [T("My Logged Hours"), False, aURL(f="time", vars={"mine":1})],
                 [T("Last Week's Work"),
                  False, aURL(f="time",
@@ -299,6 +298,7 @@ if s3_has_role("STAFF"):
                                    "fact":"hours",
                                    "aggregate":"sum",
                                    "week":1})],
+                [T("My Open Tasks"), False, aURL(f="task", vars={"mine":1})],
             ]],
         ],
         "on_admin": [
