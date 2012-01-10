@@ -1794,6 +1794,7 @@ def project_rheader(r, tabs=[]):
     """ Project Resource Headers - used in Project & Budget modules """
 
     T = current.T
+    auth = current.auth
     s3 = current.response.s3
     settings = current.deployment_settings
     pca = settings.get_project_community_activity()
@@ -1844,14 +1845,15 @@ def project_rheader(r, tabs=[]):
                                   table.project_id.represent(record.project_id)))
                 rheader = DIV(tbl, rheader_tabs)
             elif r.name == "task":
-                tabs = [(T("Details"), None),
+                tabs = [(T("Details"), None)]
+                staff = auth.s3_has_role("STAFF")
+                if staff:
                         (T("Time"), "time"),
-                        (T("Comments"), "discuss"),
-                        (T("Attachments"), "document"),
-                        #(T("Roles"), "job_role"),
-                        #(T("Assignments"), "human_resource"),
-                        #(T("Requests"), "req")
-                       ]
+                tabs.append((T("Comments"), "discuss"))
+                tabs.append((T("Attachments"), "document"))
+                #(T("Roles"), "job_role"),
+                #(T("Assignments"), "human_resource"),
+                #(T("Requests"), "req")
 
                 rheader_tabs = s3_rheader_tabs(r, tabs)
 
