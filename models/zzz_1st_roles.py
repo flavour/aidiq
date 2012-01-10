@@ -85,7 +85,7 @@ if populate > 0:
                 dict(t="project_project", uacl=acl.READ, oacl=acl.READ|acl.UPDATE),
                 dict(c="default", f="project", uacl=acl.READ|acl.CREATE, oacl=acl.READ|acl.UPDATE),
                 dict(c="project", f="project", uacl=acl.READ|acl.CREATE, oacl=acl.READ|acl.UPDATE),
-                #dict(c="project", f="task", uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
+                dict(c="project", f="task", uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
                 )
 
     create_role("Anonymous",

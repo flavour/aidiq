@@ -925,9 +925,10 @@ class S3ProjectModel(S3Model):
         project_task_active_statuses = [2, 3, 5, 7]
         
         project_task_priority_opts = {
-            3:T("High"),
-            2:T("Normal"),
-            1:T("Low")
+            1:T("urgent"),
+            2:T("High"),
+            3:T("Normal"),
+            4:T("Low")
         }
 
         staff = auth.s3_has_role("STAFF")
@@ -964,7 +965,7 @@ class S3ProjectModel(S3Model):
                                   Field("priority", "integer",
                                         requires = IS_IN_SET(project_task_priority_opts,
                                                              zero=None),
-                                        default = 2,
+                                        default = 3,
                                         label = T("Priority"),
                                         represent = lambda opt, row=None: \
                                                     project_task_priority_opts.get(opt,
@@ -1045,7 +1046,7 @@ class S3ProjectModel(S3Model):
         self.configure(tablename,
                        super_entity="doc_entity",
                        copyable=True,
-                       orderby="~project_task.priority",
+                       orderby="project_task.priority",
                        onvalidation=self.task_onvalidation,
                        create_onaccept=self.task_create_onaccept,
                        list_fields=["id",
@@ -1846,7 +1847,7 @@ def project_rheader(r, tabs=[]):
                 tabs = [(T("Details"), None),
                         (T("Time"), "time"),
                         (T("Comments"), "discuss"),
-                        (T("Documents"), "document"),
+                        (T("Attachments"), "document"),
                         #(T("Roles"), "job_role"),
                         #(T("Assignments"), "human_resource"),
                         #(T("Requests"), "req")

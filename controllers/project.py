@@ -39,6 +39,7 @@ def project():
         s3mgr.load("project_project")
         s3.crud_strings["project_project"].title_list = T("Open Tasks for Project")
         s3.crud_strings["project_project"].subtitle_list = T("Select Project")
+        s3mgr.LABEL.READ = "Select"
         s3mgr.LABEL.UPDATE = "Select"
         s3mgr.configure("project_project",
                         deletable=False,
@@ -51,7 +52,7 @@ def project():
                                           update_url=update_url)
             return output
         response.s3.postp = postp
-        return s3_rest_controller(module, resourcename)
+        return s3_rest_controller()
 
     db.hrm_human_resource.person_id.comment = DIV(_class="tooltip",
                                                   _title="%s|%s" % (T("Person"),
@@ -73,7 +74,7 @@ def project():
         tabs.append((T("Milestones"), "milestone"))
     tabs.append((T("Tasks"), "task"))
     if admin:
-        tabs.append((T("Documents"), "document"))
+        tabs.append((T("Attachments"), "document"))
 
     doc_table = s3db.table("doc_document", None)
     if doc_table is not None:
@@ -239,7 +240,7 @@ def activity():
     tabs = [(T("Details"), None),
             #(T("Beneficiaries"), "beneficiary"),
             (T("Tasks"), "task"),
-            #(T("Documents"), "document"),
+            #(T("Attachments"), "document"),
            ]
 
 
@@ -598,7 +599,7 @@ def site_rheader(r):
             tabs = [(T("Details"), None),
                     #(T("Activities"), "activity"),
                     (T("Beneficiaries"), "beneficiary"),
-                    #(T("Documents"), "document"),
+                    #(T("Attachments"), "document"),
                     #(T("Photos"), "image"),
                     #(T("Shipments To"), "rms_req"),
                    ]
