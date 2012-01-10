@@ -923,7 +923,7 @@ class S3ProjectModel(S3Model):
         project_task_active_statuses = [2, 3, 5, 7]
         
         project_task_priority_opts = {
-            1:T("urgent"),
+            1:T("Urgent"),
             2:T("High"),
             3:T("Normal"),
             4:T("Low")
