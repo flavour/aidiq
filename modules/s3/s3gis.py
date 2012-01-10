@@ -249,7 +249,7 @@ class GIS(object):
         self.public_url = settings.get_base_public_url()
         if not current.db is not None:
             raise RuntimeError, "Database must not be None"
-        self.cache = (current.cache.ram, 60)
+        self.cache = current.response.s3.cache
         if not current.auth is not None:
             raise RuntimeError, "Undefined authentication controller"
         self.auth = current.auth

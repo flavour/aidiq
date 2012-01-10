@@ -35,7 +35,7 @@ __all__ = ["S3ProjectModel",
 import datetime
 
 from gluon import *
-from gluon.dal import Row
+from gluon.dal import Row, Rows
 from gluon.storage import Storage
 from gluon.sqlhtml import CheckboxesWidget
 from ..s3 import *
@@ -73,8 +73,6 @@ class S3ProjectModel(S3Model):
              ]
 
     def model(self):
-
-        import datetime
 
         auth = current.auth
         db = current.db
@@ -1031,6 +1029,7 @@ class S3ProjectModel(S3Model):
             title_list = LIST_TASKS,
             title_update = T("Edit Task"),
             title_search = T("Search Tasks"),
+            title_upload = T("Import Tasks"),
             subtitle_create = T("Add New Task"),
             subtitle_list = T("Tasks"),
             label_list_button = LIST_TASKS,
@@ -1364,7 +1363,6 @@ class S3ProjectModel(S3Model):
 
         db = current.db
 
-        from gluon.dal import Rows
         if isinstance(locations, Rows):
             try:
                 locations = [r.name for r in locations]
@@ -1794,6 +1792,7 @@ def project_rheader(r, tabs=[]):
     """ Project Resource Headers - used in Project & Budget modules """
 
     T = current.T
+    db = current.db
     auth = current.auth
     s3 = current.response.s3
     settings = current.deployment_settings
@@ -1857,6 +1856,19 @@ def project_rheader(r, tabs=[]):
 
                 rheader_tabs = s3_rheader_tabs(r, tabs)
 
+                ctable = db.project_comment
+                query = (ctable.deleted == False) & \
+                        (ctable.task_id == r.id)
+                comments = db(query).count()
+                if comments:
+                    comments = TR(
+                                    TH("%s: " % T("Comments")),
+                                    A(comments,
+                                      _href=URL(args=[r.id, "discuss"]))
+                                )
+                else:
+                    comments = ""
+
                 rheader = DIV(TABLE(
                     TR(
                         TH("%s: " % table.name.label),
@@ -1883,6 +1895,7 @@ def project_rheader(r, tabs=[]):
                         TH("%s: " % table.time_actual.label),
                         record.time_actual
                         ),
+                    comments,
                     ), rheader_tabs)
 
     return rheader

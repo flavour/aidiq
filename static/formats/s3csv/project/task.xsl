@@ -11,6 +11,8 @@
 
          Customer.............string..........Project Customer
          Project..............string..........Project Name
+         Activity.............string..........Activity
+         Activity Type........string..........Activity Type
          Name.................string..........Task short description
          Description..........string..........Task detailed description
          Date.................string..........Task created_on
@@ -19,6 +21,7 @@
          Assigned.............string..........Person Initials
          Priority.............string..........Task priority
          Status...............string..........Task status
+         Comments.............string..........Task comment
 
     *********************************************************************** -->
 
@@ -28,6 +31,8 @@
 
     <xsl:key name="customers" match="row" use="col[@field='Customer']"/>
     <xsl:key name="projects" match="row" use="col[@field='Project']"/>
+    <xsl:key name="activity types" match="row" use="col[@field='Activity Type']"/>
+    <xsl:key name="activities" match="row" use="col[@field='Activity']"/>
     <xsl:key name="assignees" match="row" use="col[@field='Assigned']"/>
 
     <!-- ****************************************************************** -->
@@ -45,6 +50,18 @@
                 <xsl:call-template name="Project"/>
             </xsl:for-each>
 
+            <!-- Activity Types -->
+            <xsl:for-each select="//row[generate-id(.)=generate-id(key('activity types',
+                                                                   col[@field='Activity Type'])[1])]">
+                <xsl:call-template name="ActivityType"/>
+            </xsl:for-each>
+
+            <!-- Activities -->
+            <xsl:for-each select="//row[generate-id(.)=generate-id(key('activities',
+                                                                   col[@field='Activity'])[1])]">
+                <xsl:call-template name="Activity"/>
+            </xsl:for-each>
+
             <!-- Assignees -->
             <xsl:for-each select="//row[generate-id(.)=generate-id(key('assignees',
                                                                    col[@field='Assigned'])[1])]">
@@ -59,10 +76,12 @@
     <!-- ****************************************************************** -->
     <xsl:template match="row">
         <xsl:variable name="ProjectName" select="col[@field='Project']/text()"/>
-        <xsl:variable name="Task" select="col[@field='Name']/text()"/>
+        <xsl:variable name="ActivityName" select="col[@field='Activity']/text()"/>
+        <xsl:variable name="Task" select="col[@field='Short Description']/text()"/>
         <xsl:variable name="Date" select="col[@field='Date']/text()"/>
-        <xsl:variable name="Author" select="col[@field='Author']/text()"/>
+        <xsl:variable name="Author" select="col[@field='Raised By']/text()"/>
         <xsl:variable name="Assignee" select="col[@field='Assigned']/text()"/>
+        <xsl:variable name="Priority" select="col[@field='Priority']/text()"/>
 
         <resource name="project_task">
             <xsl:attribute name="created_on">
@@ -78,9 +97,37 @@
                 <xsl:value-of select="$Author"/>
             </xsl:attribute>
             <data field="name"><xsl:value-of select="$Task"/></data>
-            <data field="description"><xsl:value-of select="col[@field='Description']/text()"/></data>
+            <data field="description"><xsl:value-of select="col[@field='Detailed Description']/text()"/></data>
             <data field="source"><xsl:value-of select="col[@field='Source']/text()"/></data>
-            <data field="priority"><xsl:value-of select="col[@field='Priority']/text()"/></data>
+            <xsl:choose>
+                <xsl:when test="$Priority='Urgent'">
+                    <data field="priority">1</data>
+                </xsl:when>
+                <xsl:when test="$Priority='High'">
+                    <data field="priority">2</data>
+                </xsl:when>
+                <xsl:when test="$Priority='Medium'">
+                    <data field="priority">3</data>
+                </xsl:when>
+                <xsl:when test="$Priority='Normal'">
+                    <data field="priority">3</data>
+                </xsl:when>
+                <xsl:when test="$Priority='Low'">
+                    <data field="priority">4</data>
+                </xsl:when>
+                <xsl:otherwise>
+                    <xsl:choose>
+                        <xsl:when test="$Priority!=''">
+                            <!-- Assume an integer to just copy straight across -->
+                            <data field="priority"><xsl:value-of select="$Priority"/></data>
+                        </xsl:when>
+                        <xsl:otherwise>
+                            <!-- Assign a priority of 'Normal' -->
+                            <data field="priority">3</data>
+                        </xsl:otherwise>
+                    </xsl:choose>
+                </xsl:otherwise>
+            </xsl:choose>
             <xsl:choose>
                 <xsl:when test="col[@field='Status']='Draft'">
                     <data field="status">1</data>
@@ -141,6 +188,20 @@
                     </xsl:attribute>
                 </reference>
             </resource>
+            <!-- Link to Activity -->
+            <resource name="project_task_activity">
+                <reference field="activity_id" resource="project_activity">
+                    <xsl:attribute name="tuid">
+                        <xsl:value-of select="$ActivityName"/>
+                    </xsl:attribute>
+                </reference>
+            </resource>
+            <!-- Comment -->
+            <xsl:if test="col[@field='Comments']/text()!=''">
+                <resource name="project_comment">
+                    <data field="body"><xsl:value-of select="col[@field='Comments']/text()"/></data>
+                </resource>
+            </xsl:if>
         </resource>
 
     </xsl:template>
@@ -172,6 +233,39 @@
             <reference field="organisation_id" resource="org_organisation">
                 <xsl:attribute name="tuid">
                     <xsl:value-of select="$OrganisationName"/>
+                </xsl:attribute>
+            </reference>
+        </resource>
+
+    </xsl:template>
+
+    <!-- ****************************************************************** -->
+    <xsl:template name="ActivityType">
+        <xsl:variable name="ActivityType" select="col[@field='Activity Type']/text()"/>
+
+        <resource name="project_activity_type">
+            <xsl:attribute name="tuid">
+                <xsl:value-of select="$ActivityType"/>
+            </xsl:attribute>
+            <data field="name"><xsl:value-of select="$ActivityType"/></data>
+        </resource>
+
+    </xsl:template>
+
+    <!-- ****************************************************************** -->
+    <xsl:template name="Activity">
+        <xsl:variable name="ActivityName" select="col[@field='Activity']/text()"/>
+        <xsl:variable name="ActivityType" select="col[@field='Activity Type']/text()"/>
+
+        <resource name="project_activity">
+            <xsl:attribute name="tuid">
+                <xsl:value-of select="$ActivityName"/>
+            </xsl:attribute>
+            <data field="name"><xsl:value-of select="$ActivityName"/></data>
+            <!-- Link to Type -->
+            <reference field="activity_type_id" resource="project_activity_type">
+                <xsl:attribute name="tuid">
+                    <xsl:value-of select="$ActivityType"/>
                 </xsl:attribute>
             </reference>
         </resource>
