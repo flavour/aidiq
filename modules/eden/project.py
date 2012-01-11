@@ -104,7 +104,7 @@ class S3ProjectModel(S3Model):
         s3_date_format = self.settings.get_L10n_date_format()
         s3_datetime_represent = S3DateTime.datetime_represent
         s3_utc_represent = lambda dt: s3_datetime_represent(dt, utc=True)
-
+        s3_date_simple_represent = lambda dt: S3DateTime.date_represent(dt, short=True)
 
         # Enable DRR extensions?
         drr = settings.get_project_drr()
@@ -836,9 +836,9 @@ class S3ProjectModel(S3Model):
                         onaccept=self.project_beneficiary_onaccept,
                         deduplicate=self.project_beneficiary_deduplicate,
                         #analyze_filter=[
-                            #s3base.S3SearchOptionsWidget(field=["project_id"],
-                                                         #name="project",
-                                                         #label=T("Project"))
+                            #S3SearchOptionsWidget(field=["project_id"],
+                                                  #name="project",
+                                                  #label=T("Project"))
                         #],
                         analyze_rows=[
                                       "activity_id",
@@ -987,13 +987,13 @@ class S3ProjectModel(S3Model):
                                         length=100,
                                         notnull=True,
                                         requires = IS_NOT_EMPTY()),
-                                  Field("source",
-                                        label = T("Source")),
                                   Field("description", "text",
                                         label = T("Detailed Description/URL"),
                                         comment = DIV(_class="tooltip",
                                                       _title="%s|%s" % (T("Detailed Description/URL"),
                                                                         T("Please provide as much detail as you can, including the URL(s) where the bug occurs or you'd like the new feature to go.")))),
+                                  Field("source",
+                                        label = T("Source")),
                                   Field("priority", "integer",
                                         requires = IS_IN_SET(project_task_priority_opts,
                                                              zero=None),
@@ -1026,7 +1026,7 @@ class S3ProjectModel(S3Model):
                                                                       T("Enter a valid future date")))],
                                         widget = S3DateTimeWidget(past=0,
                                                                   future=8760),  # Hours, so 1 year
-                                        represent = lambda v, row=None: S3DateTime.datetime_represent(v, utc=True)),
+                                        represent = s3_date_simple_represent),
                                   milestone_id(
                                         readable = staff,
                                         writable = staff,
@@ -1034,6 +1034,7 @@ class S3ProjectModel(S3Model):
                                   Field("time_estimated", "double",
                                         readable = staff,
                                         writable = staff,
+                                        represent = lambda v: v or "",
                                         label = "%s (%s)" % (T("Time Estimate"),
                                                              T("hours"))),
                                   Field("time_actual", "double",
@@ -1053,6 +1054,7 @@ class S3ProjectModel(S3Model):
         # Comment these if you don't need a Site associated with Tasks
         #table.site_id.readable = table.site_id.writable = True
         #table.site_id.label = T("Check-in at Facility") # T("Managing Office")
+        table.created_on.represent = s3_date_simple_represent
 
         # CRUD Strings
         ADD_TASK = T("Add Task")
@@ -1079,40 +1081,51 @@ class S3ProjectModel(S3Model):
 
         # Search Method
         task_search = S3Search(
-                # simple = (S3SearchSimpleWidget(
-                    # name="task_search_text_simple",
-                    # label = T("Search"),
-                    # comment = T("Search for a Task by description."),
-                    # field = [ "name",
-                              # "description",
-                            # ]
-                    # )
-                # ),
-                advanced = (S3SearchSimpleWidget(
-                    name = "task_search_text_advanced",
-                    label = T("Search"),
-                    comment = T("Search for a Task by description."),
-                    field = [ "name",
-                              "description",
-                            ]
-                    ),
+                advanced = (
+                    # These require the Virtual Fields which are added only in Controller
                     # S3SearchOptionsWidget(
-                        # name = "org_search_project",
+                        # name = "task_search_project",
                         # label = T("Project"),
                         # field = ["project"],
-                        # cols = 2
+                        # cols = 3
                     # ),
                     # S3SearchOptionsWidget(
-                        # name = "org_search_activity",
+                        # name = "task_search_activity",
                         # label = T("Activity"),
                         # field = ["activity"],
-                        # cols = 2
+                        # cols = 3
                     # ),
                     S3SearchOptionsWidget(
-                        name = "org_search_assignee",
+                        name = "task_search_priority",
+                        label = T("Priority"),
+                        field = ["priority"],
+                        cols = 4
+                    ),
+                    S3SearchSimpleWidget(
+                        name = "task_search_text_advanced",
+                        label = T("Description"),
+                        comment = T("Search for a Task by description."),
+                        field = [ "name",
+                                  "description",
+                                ]
+                    ),
+                    S3SearchOptionsWidget(
+                        name = "task_search_assignee",
                         label = T("Assigned To"),
                         field = ["pe_id"],
-                        cols = 2
+                        cols = 4
+                    ),
+                    S3SearchMinMaxWidget(
+                        name="task_search_date_due",
+                        method="range",
+                        label=T("Date Due"),
+                        field=["date_due"]
+                    ),
+                    S3SearchOptionsWidget(
+                        name = "task_search_status",
+                        label = T("Status"),
+                        field = ["status"],
+                        cols = 4
                     ),
                 )
             )
@@ -1131,6 +1144,7 @@ class S3ProjectModel(S3Model):
                                     "pe_id",
                                     "created_on",
                                     "date_due",
+                                    "time_estimated",
                                     "status",
                                     #"site_id"
                                     ],
@@ -2019,11 +2033,11 @@ def project_rheader(r, tabs=[]):
                         ),
                     TR(
                         TH("%s: " % table.time_estimated.label),
-                        record.time_estimated,
+                        record.time_estimated or ""
                         ),
                     TR(
                         TH("%s: " % table.time_actual.label),
-                        record.time_actual
+                        record.time_actual or ""
                         ),
                     comments,
                     ), rheader_tabs)

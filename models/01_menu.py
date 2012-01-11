@@ -426,7 +426,16 @@ else:
     project_menu = {
         "menu": [
             [T("Projects"), False, aURL(f="project"),[
-                [T("List All Projects"), False, aURL(f="project")],
+                [T("Open Tasks for Project"), False, aURL(f="project", vars={"tasks":1})],
+            ]],
+            [T("Reports"), False, aURL(f="report"),[
+                [T("Activity Report"),
+                 False, aURL(f="activity",
+                             args="analyze",
+                             vars=Storage(rows="project_id",
+                                          cols="name",
+                                          fact="time_actual",
+                                          aggregate="sum"))],
             ]],
         ],
     }

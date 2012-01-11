@@ -46,7 +46,7 @@ if not s3_has_role(ADMIN):
     auth.permission.fail()
 
 # Load all models
-s3mgr.model.load_all_models()
+s3db.load_all_models()
 _tables = db.tables
 if deployment_settings.get_security_policy() not in (1, 2, 3, 4, 5, 6, 7):
     # Web2Py security
