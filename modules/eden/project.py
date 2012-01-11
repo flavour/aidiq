@@ -30,7 +30,8 @@
 """
 
 __all__ = ["S3ProjectModel",
-           "project_rheader"]
+           "project_rheader",
+           "S3ProjectTaskVirtualfields"]
 
 import datetime
 
@@ -45,7 +46,16 @@ class S3ProjectModel(S3Model):
     """
         Project Model
 
-        @ToDo: break into multiple Classes
+        Note: This module operates in 2 quite different modes:
+         - 'drr':   suitable for use by multinational organisations tracking
+                    projects at a a high level
+         - non-drr: suitable for use by a smaller organsiation tracking tasks
+                    at a detailed level
+
+        @ToDo: Break into multiple Classes:
+            Common
+            drr
+            non-drr
     """
 
     names = ["project_theme",
@@ -572,7 +582,8 @@ class S3ProjectModel(S3Model):
             )
 
         # Virtual Fields
-        table.virtualfields.append(S3ProjectActivityVirtualfields())
+        if drr:
+            table.virtualfields.append(S3ProjectActivityVirtualfields())
 
         # Search Method
         if pca:
@@ -997,7 +1008,7 @@ class S3ProjectModel(S3Model):
                                                   writable = staff,
                                                   label = T("Assigned to"),
                                                   represent = lambda id, row=None: \
-                                                              s3.pr_pentity_represent(id, show_label=False),
+                                                              project_assignee_represent(id),
                                                   # @ToDo: Widget
                                                   #widget = S3PentityWidget(),
                                                   #comment = DIV(_class="tooltip",
@@ -1062,7 +1073,49 @@ class S3ProjectModel(S3Model):
             msg_record_deleted = T("Task deleted"),
             msg_list_empty = T("No tasks currently registered"))
 
-        # Search Method?
+        # Virtual Fields
+        # Do just for the common report
+        #table.virtualfields.append(S3ProjectTaskVirtualfields())
+
+        # Search Method
+        task_search = S3Search(
+                # simple = (S3SearchSimpleWidget(
+                    # name="task_search_text_simple",
+                    # label = T("Search"),
+                    # comment = T("Search for a Task by description."),
+                    # field = [ "name",
+                              # "description",
+                            # ]
+                    # )
+                # ),
+                advanced = (S3SearchSimpleWidget(
+                    name = "task_search_text_advanced",
+                    label = T("Search"),
+                    comment = T("Search for a Task by description."),
+                    field = [ "name",
+                              "description",
+                            ]
+                    ),
+                    # S3SearchOptionsWidget(
+                        # name = "org_search_project",
+                        # label = T("Project"),
+                        # field = ["project"],
+                        # cols = 2
+                    # ),
+                    # S3SearchOptionsWidget(
+                        # name = "org_search_activity",
+                        # label = T("Activity"),
+                        # field = ["activity"],
+                        # cols = 2
+                    # ),
+                    S3SearchOptionsWidget(
+                        name = "org_search_assignee",
+                        label = T("Assigned To"),
+                        field = ["pe_id"],
+                        cols = 2
+                    ),
+                )
+            )
 
         # Resource Configuration
         self.configure(tablename,
@@ -1071,14 +1124,14 @@ class S3ProjectModel(S3Model):
                        orderby="project_task.priority",
                        onvalidation=self.task_onvalidation,
                        create_onaccept=self.task_create_onaccept,
+                       search_method=task_search,
                        list_fields=["id",
-                                    #"urgent",
                                     "priority",
-                                    "status",
                                     "name",
                                     "pe_id",
                                     "created_on",
                                     "date_due",
+                                    "status",
                                     #"site_id"
                                     ],
                        extra="description")
@@ -1815,6 +1868,45 @@ class S3ProjectModel(S3Model):
 
         return
 
+# -----------------------------------------------------------------------------
+def project_assignee_represent(id):
+    """ Represent the Person a Task is assigned-to or list views """
+
+    db = current.db
+    s3db = current.s3db
+    cache = current.response.s3.cache
+    output = current.messages.NONE
+
+    if not id:
+        return output
+
+    etable = s3db.pr_pentity
+    query = (etable.id == id)
+    record = db(query).select(etable.instance_type,
+                              cache=cache,
+                              limitby=(0, 1)).first()
+    if not record:
+        return output
+
+    table = s3db[record.instance_type]
+    query = (table.pe_id == id)
+    if record.instance_type == "pr_person":
+        record = db(query).select(table.first_name,
+                                  table.initials,
+                                  cache=cache,
+                                  limitby=(0, 1)).first()
+        if record:
+            output = record.initials or record.first_name
+    else:
+        # Team or Organisation
+        record = db(query).select(table.name,
+                                  cache=cache,
+                                  limitby=(0, 1)).first()
+        if record:
+            output = record.name
+
+    return output
+
 # =============================================================================
 def project_rheader(r, tabs=[]):
     """ Project Resource Headers - used in Project & Budget modules """
@@ -2010,6 +2102,52 @@ class S3ProjectActivityVirtualfields:
             return None
 
 # =============================================================================
+class S3ProjectTaskVirtualfields:
+    """ Virtual fields for the project_task table """
+
+    extra_fields = []
+
+    def project(self):
+        """
+            Project associated with this task
+        """
+
+        db = current.db
+        s3db = current.s3db
+
+        ptable = s3db.project_project
+        ltable = s3db.project_task_project
+        query = (ltable.deleted != True) & \
+                (ltable.task_id == self.project_task.id) & \
+                (ltable.project_id == ptable.id)
+        project = db(query).select(ptable.name,
+                                   limitby=(0, 1)).first()
+        if project:
+            return project.name
+        else:
+            return None
+
+    def activity(self):
+        """
+            Activity associated with this task
+        """
+
+        db = current.db
+        s3db = current.s3db
+
+        atable = s3db.project_project
+        ltable = s3db.project_task_activity
+        query = (ltable.deleted != True) & \
+                (ltable.task_id == self.project_task.id) & \
+                (ltable.activity_id == atable.id)
+        project = db(query).select(atable.name,
+                                   limitby=(0, 1)).first()
+        if project:
+            return project.name
+        else:
+            return None
+
+# =============================================================================
 class S3ProjectTimeVirtualfields:
     """ Virtual fields for the project_time table """
 
@@ -2018,7 +2156,7 @@ class S3ProjectTimeVirtualfields:
     def project(self):
         """
             Project associated with this time entry
-            - used by the 'Project Income Allocation' report
+            - used by the 'Project Time' report
         """
 
         db = current.db

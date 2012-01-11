@@ -19,7 +19,8 @@ def index():
     """ Module's Home Page """
 
     # Bypass home page & go direct to searching for Projects
-    return project()
+    redirect(URL(f="project", vars={"tasks":1}))
+    #return project()
 
     module_name = deployment_settings.modules[module].name_nice
     response.title = module_name
@@ -295,9 +296,6 @@ def task():
                                                  "list_fields")
             # Hide the Assignee column (always us)
             list_fields.remove("pe_id")
-            # Move the status column to the End
-            list_fields.remove("status")
-            list_fields.append("status")
             s3mgr.configure(tablename,
                             list_fields=list_fields)
         except:
@@ -321,9 +319,22 @@ def task():
         response.s3.filter = (ltable.project_id == project) & \
                              (ltable.task_id == table.id) & \
                              (table.status.belongs(statuses))
-    elif "open" in request.get_vars:
-        # Show All Open Tasks
-        response.s3.filter = (table.status.belongs(statuses))
+    else:
+        s3.crud_strings["project_task"].title_list = T("All Tasks")
+        # Add Virtual Fields
+        table.virtualfields.append(eden.project.S3ProjectTaskVirtualfields())
+        list_fields = s3mgr.model.get_config(tablename,
+                                             "list_fields")
+        list_fields.insert(2, (T("Project"), "project"))
+        list_fields.insert(3, (T("Activity"), "activity"))
+        s3mgr.configure(tablename,
+                        # Block Add until we get the injectable component lookups
+                        insertable=False,
+                        list_fields=list_fields)
+        if "open" in request.get_vars:
+            # Show Only Open Tasks
+            s3.crud_strings["project_task"].title_list = T("All Open Tasks")
+            response.s3.filter = (table.status.belongs(statuses))
 
     # Pre-process
     def prep(r):

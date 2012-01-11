@@ -370,7 +370,6 @@ if deployment_settings.get_project_drr():
         ],
 
     }
-    
 elif s3_has_role("STAFF"):
     project_menu = {
         "menu": [
@@ -385,6 +384,7 @@ elif s3_has_role("STAFF"):
                 #[T("Search"), False, aURL(f="task", args="search")],
             #]],
             [T("Daily Work"), False, aURL(f="time"),[
+                [T("All Tasks"), False, aURL(f="task", args="search")],
                 [T("My Logged Hours"), False, aURL(f="time", vars={"mine":1})],
                 [T("Last Week's Work"),
                  False, aURL(f="time",
