@@ -34,7 +34,7 @@ $(document).ready(function() {
     if (S3.dataTables.iDisplayLength) {
         iDisplayLength = S3.dataTables.iDisplayLength;
     } else {
-        iDisplayLength = 10;
+        iDisplayLength = 25;
     }
 
     if (S3.dataTables.no_pagination) {
