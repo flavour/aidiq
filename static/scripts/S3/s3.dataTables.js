@@ -305,7 +305,7 @@ $(document).ready(function() {
         'aaSorting': aaSorting,
         'aoColumns': ColumnSettings,
         'iDisplayLength': iDisplayLength,
-        'aLengthMenu': [[ 10, 25, 50, -1], [ 10, 25, 50, S3.i18n.all]],
+        'aLengthMenu': [[ 25, 50, -1], [ 25, 50, S3.i18n.all]],
         'bProcessing': bProcessing,
         'sAjaxSource': sAjaxSource,
 	    'fnServerData': fnDataTablesPipeline,
