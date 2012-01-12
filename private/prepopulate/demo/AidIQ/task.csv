@@ -1,3 +1,3 @@
-Customer,Project,Name,Description,Date,Author,Source,Assigned,Priority,Status
+Organisation,Project,Name,Description,Date,Author,Source,Assigned,Priority,Status
 "International Federation of the Red Cross and Red Crescent","RMS 2","Spatial DAL","Optimise Queries by making use of the Spatial Database, where available","2011-12-01","fran@aidiq.com","PID","MDP","3","Open"
 "ITSFEM","Delphi","Allow users to chat to each other in real-time","Use the Facebook Chat for how it should look to the Users. Aim is to make this site a social hub","2011-10-01","fran@aidiq.com","PID","FB","4","Open"

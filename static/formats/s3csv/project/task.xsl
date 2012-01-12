@@ -9,7 +9,7 @@
 
          CSV column...........Format..........Content
 
-         Customer.............string..........Project Customer
+         Organisation.........string..........Project Organisation
          Project..............string..........Project Name
          Activity.............string..........Activity
          Activity Type........string..........Activity Type
@@ -31,7 +31,7 @@
 
     <xsl:variable name="ActivityTypePrefix" select="'ActivityType: '"/>
 
-    <xsl:key name="customers" match="row" use="col[@field='Customer']"/>
+    <xsl:key name="organisations" match="row" use="col[@field='Organisation']"/>
     <xsl:key name="projects" match="row" use="col[@field='Project']"/>
     <xsl:key name="activity types" match="row" use="col[@field='Activity Type']"/>
     <xsl:key name="activities" match="row" use="col[@field='Activity']"/>
@@ -40,9 +40,9 @@
     <!-- ****************************************************************** -->
     <xsl:template match="/">
         <s3xml>
-            <!-- Customers -->
-            <xsl:for-each select="//row[generate-id(.)=generate-id(key('customers',
-                                                                   col[@field='Customer'])[1])]">
+            <!-- Organisations -->
+            <xsl:for-each select="//row[generate-id(.)=generate-id(key('organisations',
+                                                                   col[@field='Organisation'])[1])]">
                 <xsl:call-template name="Organisation"/>
             </xsl:for-each>
 
@@ -217,7 +217,7 @@
 
     <!-- ****************************************************************** -->
     <xsl:template name="Organisation">
-        <xsl:variable name="OrganisationName" select="col[@field='Customer']/text()"/>
+        <xsl:variable name="OrganisationName" select="col[@field='Organisation']/text()"/>
 
         <resource name="org_organisation">
             <xsl:attribute name="tuid">
@@ -231,14 +231,14 @@
     <!-- ****************************************************************** -->
     <xsl:template name="Project">
         <xsl:variable name="ProjectName" select="col[@field='Project']/text()"/>
-        <xsl:variable name="OrganisationName" select="col[@field='Customer']/text()"/>
+        <xsl:variable name="OrganisationName" select="col[@field='Organisation']/text()"/>
 
         <resource name="project_project">
             <xsl:attribute name="tuid">
                 <xsl:value-of select="$ProjectName"/>
             </xsl:attribute>
             <data field="name"><xsl:value-of select="$ProjectName"/></data>
-            <!-- Link to Customer -->
+            <!-- Link to Organisation -->
             <reference field="organisation_id" resource="org_organisation">
                 <xsl:attribute name="tuid">
                     <xsl:value-of select="$OrganisationName"/>
