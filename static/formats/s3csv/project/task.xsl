@@ -29,6 +29,8 @@
 
     <xsl:include href="../../xml/commons.xsl"/>
 
+    <xsl:variable name="ActivityTypePrefix" select="'ActivityType: '"/>
+
     <xsl:key name="customers" match="row" use="col[@field='Customer']"/>
     <xsl:key name="projects" match="row" use="col[@field='Project']"/>
     <xsl:key name="activity types" match="row" use="col[@field='Activity Type']"/>
@@ -50,11 +52,11 @@
                 <xsl:call-template name="Project"/>
             </xsl:for-each>
 
-            <!-- Activity Types -->
+            <!-- Activity Types
             <xsl:for-each select="//row[generate-id(.)=generate-id(key('activity types',
                                                                    col[@field='Activity Type'])[1])]">
                 <xsl:call-template name="ActivityType"/>
-            </xsl:for-each>
+            </xsl:for-each> -->
 
             <!-- Activities -->
             <xsl:for-each select="//row[generate-id(.)=generate-id(key('activities',
@@ -138,27 +140,30 @@
                 <xsl:when test="col[@field='Status']='Assigned'">
                     <data field="status">3</data>
                 </xsl:when>
-                <xsl:when test="col[@field='Status']='On Hold'">
+                <xsl:when test="col[@field='Status']='Feedback'">
                     <data field="status">4</data>
                 </xsl:when>
-                <xsl:when test="col[@field='Status']='Feedback'">
+                <xsl:when test="col[@field='Status']='Blocked'">
                     <data field="status">5</data>
                 </xsl:when>
-                <xsl:when test="col[@field='Status']='Cancelled'">
+                <xsl:when test="col[@field='Status']='On Hold'">
                     <data field="status">6</data>
                 </xsl:when>
-                <xsl:when test="col[@field='Status']='Blocked'">
+                <xsl:when test="col[@field='Status']='Cancelled'">
                     <data field="status">7</data>
                 </xsl:when>
-                <xsl:when test="col[@field='Status']='Completed'">
+                <xsl:when test="col[@field='Status']='Duplicate'">
                     <data field="status">8</data>
                 </xsl:when>
-                <xsl:when test="col[@field='Status']='Verified'">
+                <xsl:when test="col[@field='Status']='Completed'">
                     <data field="status">9</data>
+                </xsl:when>
+                <xsl:when test="col[@field='Status']='Verified'">
+                    <data field="status">10</data>
                 </xsl:when>
                 <xsl:when test="col[@field='Status']='Closed'">
                     <!-- Completed -->
-                    <data field="status">8</data>
+                    <data field="status">9</data>
                 </xsl:when>
                 <xsl:otherwise>
                     <!-- Open -->
@@ -175,11 +180,13 @@
                 </xsl:otherwise>
             </xsl:choose>
             <!-- Link to Assignee -->
-            <reference field="pe_id" resource="pr_person">
-                <xsl:attribute name="tuid">
-                    <xsl:value-of select="$Assignee"/>
-                </xsl:attribute>
-            </reference>
+            <xsl:if test="$Assignee!=''">
+                <reference field="pe_id" resource="pr_person">
+                    <xsl:attribute name="tuid">
+                        <xsl:value-of select="$Assignee"/>
+                    </xsl:attribute>
+                </reference>
+            </xsl:if>
             <!-- Link to Project -->
             <resource name="project_task_project">
                 <reference field="project_id" resource="project_project">
@@ -189,13 +196,15 @@
                 </reference>
             </resource>
             <!-- Link to Activity -->
-            <resource name="project_task_activity">
-                <reference field="activity_id" resource="project_activity">
-                    <xsl:attribute name="tuid">
-                        <xsl:value-of select="$ActivityName"/>
-                    </xsl:attribute>
-                </reference>
-            </resource>
+            <xsl:if test="$ActivityName!=''">
+                <resource name="project_task_activity">
+                    <reference field="activity_id" resource="project_activity">
+                        <xsl:attribute name="tuid">
+                            <xsl:value-of select="$ActivityName"/>
+                        </xsl:attribute>
+                    </reference>
+                </resource>
+            </xsl:if>
             <!-- Comment -->
             <xsl:if test="col[@field='Comments']/text()!=''">
                 <resource name="project_comment">
@@ -243,13 +252,27 @@
     <xsl:template name="ActivityType">
         <xsl:variable name="ActivityType" select="col[@field='Activity Type']/text()"/>
 
+        <xsl:if test="$ActivityType!=''">
+            <resource name="project_activity_type">
+                <xsl:attribute name="tuid">
+                    <xsl:value-of select="$ActivityType"/>
+                </xsl:attribute>
+                <data field="name"><xsl:value-of select="$ActivityType"/></data>
+            </resource>
+        </xsl:if>
+
+    </xsl:template>
+
+    <!-- ****************************************************************** -->
+    <xsl:template name="resource">
+        <xsl:param name="item"/>
+
         <resource name="project_activity_type">
             <xsl:attribute name="tuid">
-                <xsl:value-of select="$ActivityType"/>
+                <xsl:value-of select="concat($ActivityTypePrefix, $item)"/>
             </xsl:attribute>
-            <data field="name"><xsl:value-of select="$ActivityType"/></data>
+            <data field="name"><xsl:value-of select="$item"/></data>
         </resource>
-
     </xsl:template>
 
     <!-- ****************************************************************** -->
@@ -258,24 +281,44 @@
         <xsl:variable name="ActivityName" select="col[@field='Activity']/text()"/>
         <xsl:variable name="ActivityType" select="col[@field='Activity Type']/text()"/>
 
-        <resource name="project_activity">
-            <xsl:attribute name="tuid">
-                <xsl:value-of select="$ActivityName"/>
-            </xsl:attribute>
-            <data field="name"><xsl:value-of select="$ActivityName"/></data>
-            <!-- Link to Project -->
-            <reference field="project_id" resource="project_project">
+        <xsl:if test="$ActivityName!=''">
+            <resource name="project_activity">
                 <xsl:attribute name="tuid">
-                    <xsl:value-of select="$ProjectName"/>
+                    <xsl:value-of select="$ActivityName"/>
                 </xsl:attribute>
-            </reference>
-            <!-- Link to Type -->
-            <reference field="activity_type_id" resource="project_activity_type">
-                <xsl:attribute name="tuid">
-                    <xsl:value-of select="$ActivityType"/>
-                </xsl:attribute>
-            </reference>
-        </resource>
+                <data field="name"><xsl:value-of select="$ActivityName"/></data>
+                <!-- Link to Project -->
+                <reference field="project_id" resource="project_project">
+                    <xsl:attribute name="tuid">
+                        <xsl:value-of select="$ProjectName"/>
+                    </xsl:attribute>
+                </reference>
+                <!-- Link to Type -->
+                <xsl:variable name="ActivityTypeRef">
+                    <xsl:call-template name="quoteList">
+                        <xsl:with-param name="list">
+                            <xsl:value-of select="$ActivityType"/>
+                        </xsl:with-param>
+                        <xsl:with-param name="prefix">
+                            <xsl:value-of select="$ActivityTypePrefix"/>
+                        </xsl:with-param>
+                    </xsl:call-template>
+                </xsl:variable>
+                <xsl:if test="$ActivityTypeRef">
+                    <reference field="multi_activity_type_id" resource="project_activity_type">
+                        <xsl:attribute name="tuid">
+                            <xsl:value-of select="concat('[', $ActivityTypeRef, ']')"/>
+                        </xsl:attribute>
+                    </reference>
+                </xsl:if>
+            </resource>
+        </xsl:if>
+
+        <xsl:call-template name="splitList">
+            <xsl:with-param name="list">
+                <xsl:value-of select="col[@field='Activity Type']"/>
+            </xsl:with-param>
+        </xsl:call-template>
 
     </xsl:template>
 

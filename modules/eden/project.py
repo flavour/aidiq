@@ -44,6 +44,12 @@ from gluon.storage import Storage
 from gluon.sqlhtml import CheckboxesWidget
 from ..s3 import *
 
+try:
+    from lxml import etree
+except ImportError:
+    print >> sys.stderr, "ERROR: lxml module needed for XML handling"
+    raise
+
 # =============================================================================
 class S3ProjectModel(S3Model):
     """
@@ -226,8 +232,14 @@ class S3ProjectModel(S3Model):
                                         writable=False,
                                         label = T("Duration")),
 
-                                  currency_type(),
+                                  currency_type(
+                                            readable=False if drr else True,
+                                            writable=False if drr else True,
+                                            ),
                                   Field("budget", "double",
+                                        # DRR handles on the Organisations Tab
+                                        readable=False if drr else True,
+                                        writable=False if drr else True,
                                         label = T("Budget")),
                                   sector_id(
                                             readable=False,
@@ -623,7 +635,7 @@ class S3ProjectModel(S3Model):
         s3db = current.s3db
         UNKNOWN_OPT = current.messages.UNKNOWN_OPT
 
-        table = s3db[tablename]
+        table = s3db.table(tablename, None)
         if table is None:
             return DEFAULT
 
@@ -1292,15 +1304,14 @@ class S3ProjectTaskModel(S3Model):
     """
 
     names = ["project_milestone",
-             "project_comment",
              "project_task",
              "project_time",
+             "project_comment",
+             "project_task_project",
+             "project_task_activity",
              "project_task_ireport",
              "project_task_job_role",
              "project_task_human_resource",
-             "project_task_document",
-             "project_task_project",
-             "project_task_activity",
              "project_task_id",
              ]
 
@@ -1397,16 +1408,17 @@ class S3ProjectTaskModel(S3Model):
             #1: T("Draft"),
             2: T("New"),
             3: T("Assigned"),
-            4: T("On Hold"),
-            5: T("Feedback"),
-            6: T("Cancelled"),
-            7: T("Blocked"),
-            8: T("Completed"),
-            #9: T("Verified"),
+            4: T("Feedback"),
+            5: T("Blocked"),
+            6: T("On Hold"),
+            7: T("Cancelled"),
+            8: T("Duplicate"),
+            9: T("Completed"),
+            #10: T("Verified"),
             #99: T("unspecified")
         }
 
-        project_task_active_statuses = [2, 3, 5, 7]
+        project_task_active_statuses = [2, 3, 4, 5]
         project_task_priority_opts = {
             1:T("Urgent"),
             2:T("High"),
@@ -1424,16 +1436,6 @@ class S3ProjectTaskModel(S3Model):
                                         default=False,
                                         readable=False,
                                         writable=False),
-                                  Field("status", "integer",
-                                        requires = IS_IN_SET(project_task_status_opts,
-                                                             zero=None),
-                                        default = 2,
-                                        readable = staff,
-                                        writable = staff,
-                                        label = T("Status"),
-                                        represent = lambda opt, row=None: \
-                                                    project_task_status_opts.get(opt,
-                                                                                 UNKNOWN_OPT)),
                                   Field("name",
                                         label = T("Short Description"),
                                         length=100,
@@ -1444,6 +1446,11 @@ class S3ProjectTaskModel(S3Model):
                                         comment = DIV(_class="tooltip",
                                                       _title="%s|%s" % (T("Detailed Description/URL"),
                                                                         T("Please provide as much detail as you can, including the URL(s) where the bug occurs or you'd like the new feature to go.")))),
+                                  site_id,
+                                  location_id(label=T("Deployment Location"),
+                                              readable=False,
+                                              writable=False
+                                              ),
                                   Field("source",
                                         label = T("Source")),
                                   Field("priority", "integer",
@@ -1495,11 +1502,16 @@ class S3ProjectTaskModel(S3Model):
                                         writable=False,
                                         label = "%s (%s)" % (T("Time Taken"),
                                                              T("hours"))),
-                                  site_id,
-                                  location_id(label=T("Deployment Location"),
-                                              readable=False,
-                                              writable=False
-                                              ),
+                                  Field("status", "integer",
+                                        requires = IS_IN_SET(project_task_status_opts,
+                                                             zero=None),
+                                        default = 2,
+                                        readable = staff,
+                                        writable = staff,
+                                        label = T("Status"),
+                                        represent = lambda opt, row=None: \
+                                                    project_task_status_opts.get(opt,
+                                                                                 UNKNOWN_OPT)),
                                   *s3.meta_fields())
 
         # Field configurations
@@ -1594,6 +1606,7 @@ class S3ProjectTaskModel(S3Model):
                                     "priority",
                                     "name",
                                     "pe_id",
+                                    "milestone_id",
                                     "date_due",
                                     "time_estimated",
                                     "created_on",
@@ -1722,7 +1735,7 @@ class S3ProjectTaskModel(S3Model):
         # ---------------------------------------------------------------------
         # Link tasks <-> incident reports
         #
-        itable = self.table("irg_ireport", None)
+        itable = self.table("irs_ireport", None)
         if itable is not None:
 
             ireport_id = s3.ireport_id
@@ -2023,10 +2036,9 @@ def project_rheader(r, tabs=[]):
     rheader = None
 
     if r.representation == "html":
-        rheader_tabs = s3_rheader_tabs(r, tabs)
-        table = r.table
         record = r.record
         if record:
+            table = r.table
             T = current.T
             db = current.db
             s3db = current.s3db
@@ -2037,6 +2049,8 @@ def project_rheader(r, tabs=[]):
             pca = settings.get_project_community_activity()
 
             if r.name == "project":
+                # @ToDo: integrate tabs?
+                rheader_tabs = s3_rheader_tabs(r, tabs)
                 if drr:
                     row2 = TR(
                         TH("%s: " % table.countries_id.label),
@@ -2063,7 +2077,8 @@ def project_rheader(r, tabs=[]):
                     ), rheader_tabs)
 
             elif r.name == "activity":
-                # @todo: integrate tabs?
+                # @ToDo: integrate tabs?
+                rheader_tabs = s3_rheader_tabs(r, tabs)
                 if pca:
                     tbl = TABLE(
                                 TR(
@@ -2083,6 +2098,7 @@ def project_rheader(r, tabs=[]):
                                   table.project_id.represent(record.project_id)))
                 rheader = DIV(tbl, rheader_tabs)
             elif r.name == "task":
+                # Tabs
                 tabs = [(T("Details"), None)]
                 staff = auth.s3_has_role("STAFF")
                 if staff:
@@ -2095,45 +2111,125 @@ def project_rheader(r, tabs=[]):
 
                 rheader_tabs = s3_rheader_tabs(r, tabs)
 
-                ctable = s3db.project_comment
-                query = (ctable.deleted == False) & \
-                        (ctable.task_id == r.id)
-                comments = db(query).count()
-                if comments:
-                    comments = TR(
-                                    TH("%s: " % T("Comments")),
-                                    A(comments,
-                                      _href=URL(args=[r.id, "discuss"]))
+                # RHeader
+                ptable = s3db.project_project
+                ltable = s3db.project_task_project
+                query = (ltable.deleted == False) & \
+                        (ltable.task_id == r.id) & \
+                        (ltable.project_id == ptable.id)
+                project = db(query).select(ptable.name,
+                                           limitby=(0, 1)).first()
+                if project:
+                    project = TR(
+                                    TH("%s: " % T("Project")),
+                                    project.name
                                 )
                 else:
+                    project = ""
+
+                atable = s3db.project_activity
+                ltable = s3db.project_task_activity
+                query = (ltable.deleted == False) & \
+                        (ltable.task_id == r.id) & \
+                        (ltable.activity_id == atable.id)
+                activity = db(query).select(atable.name,
+                                            limitby=(0, 1)).first()
+                if activity:
+                    activity = TR(
+                                    TH("%s: " % T("Activity")),
+                                    activity.name
+                                )
+                else:
+                    activity = ""
+
+                if record.description:
+                    description = TR(
+                                    TH("%s: " % table.description.label),
+                                    record.description
+                                )
+                else:
+                    description = ""
+
+                if record.site_id:
+                    facility = TR(
+                                    TH("%s: " % table.site_id.label),
+                                    table.site_id.represent(record.site_id),
+                                )
+                else:
+                    facility = ""
+
+                if record.location_id:
+                    location = TR(
+                                    TH("%s: " % table.location_id.label),
+                                    table.location_id.represent(record.location_id),
+                                )
+                else:
+                    location = ""
+
+                if record.pe_id:
+                    assignee = TR(
+                                    TH("%s: " % table.pe_id.label),
+                                    s3.pr_pentity_represent(record.pe_id,
+                                                            show_label=False),
+                                )
+                else:
+                    assignee = ""
+
+                if record.time_estimated:
+                    time_estimated = TR(
+                                    TH("%s: " % table.time_estimated.label),
+                                    record.time_estimated
+                                )
+                else:
+                    time_estimated = ""
+
+                if record.time_actual:
+                    time_actual = TR(
+                                    TH("%s: " % table.time_actual.label),
+                                    record.time_actual
+                                )
+                else:
+                    time_actual = ""
+
+                # Comments
+                if r.method == "discuss":
                     comments = ""
+                else:
+                    ctable = s3db.project_comment
+                    query = (ctable.deleted == False) & \
+                            (ctable.task_id == r.id)
+                    comments = db(query).select(ctable.body).last()
+                    if comments:
+                        try:
+                            markup = etree.XML(comments.body)
+                            text = markup.xpath(".//text()")
+                            if text:
+                                text = " ".join(text)
+                            else:
+                                text = ""
+                        except etree.XMLSyntaxError:
+                            text = text.replace("<", "<!-- <").replace(">", "> -->")
+                        comments = TR(
+                                        TH("%s: " % T("Lastet Comment")),
+                                        A(text,
+                                          _href=URL(args=[r.id, "discuss"]))
+                                    )
+                    else:
+                        comments = ""
 
                 rheader = DIV(TABLE(
+                    project,
+                    activity,
                     TR(
                         TH("%s: " % table.name.label),
                         record.name,
-                        #TH("%s: " % table.site_id.label),
-                        #s3.org_site_represent(record.site_id),
                         ),
-                    TR(
-                        TH("%s: " % table.pe_id.label),
-                        s3.pr_pentity_represent(record.pe_id,
-                                                show_label=False),
-                        #TH("%s: " % table.location_id.label),
-                        #s3db.gis_location_represent(record.location_id),
-                        ),
-                    TR(
-                        TH("%s: " % table.description.label),
-                        record.description
-                        ),
-                    TR(
-                        TH("%s: " % table.time_estimated.label),
-                        record.time_estimated or ""
-                        ),
-                    TR(
-                        TH("%s: " % table.time_actual.label),
-                        record.time_actual or ""
-                        ),
+                    description,
+                    facility,
+                    location,
+                    assignee,
+                    time_estimated,
+                    time_actual,
                     comments,
                     ), rheader_tabs)
 
@@ -2244,7 +2340,7 @@ class S3ProjectTaskVirtualfields:
         db = current.db
         s3db = current.s3db
 
-        atable = s3db.project_project
+        atable = s3db.project_activity
         ltable = s3db.project_task_activity
         query = (ltable.deleted != True) & \
                 (ltable.task_id == self.project_task.id) & \

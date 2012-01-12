@@ -50,13 +50,14 @@ def project():
         # Post-process
         def postp(r, output):
             if r.interactive:
-                read_url = URL(f="task", args="search",
-                               vars={"project":"[id]"})
-                update_url = URL(f="task", args="search",
-                                 vars={"project":"[id]"})
-                s3mgr.crud.action_buttons(r, deletable=False,
-                                          read_url=read_url,
-                                          update_url=update_url)
+                if not r.component:
+                    read_url = URL(f="task", args="search",
+                                   vars={"project":"[id]"})
+                    update_url = URL(f="task", args="search",
+                                     vars={"project":"[id]"})
+                    s3mgr.crud.action_buttons(r, deletable=False,
+                                              read_url=read_url,
+                                              update_url=update_url)
             return output
         response.s3.postp = postp
         return s3_rest_controller()
@@ -153,10 +154,13 @@ def project():
 
     # Post-process
     def postp(r, output):
-        if r.interactive and not deployment_settings.get_project_drr():
-            update_url = URL(args=["[id]", "task"])
-            s3mgr.crud.action_buttons(r,
-                                      update_url=update_url)
+        if r.interactive:
+            if not r.component and not deployment_settings.get_project_drr():
+                read_url = URL(args=["[id]", "task"])
+                update_url = URL(args=["[id]", "task"])
+                s3mgr.crud.action_buttons(r,
+                                          read_url=read_url,
+                                          update_url=update_url)
         return output
     response.s3.postp = postp
 
