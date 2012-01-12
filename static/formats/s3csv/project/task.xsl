@@ -52,11 +52,11 @@
                 <xsl:call-template name="Project"/>
             </xsl:for-each>
 
-            <!-- Activity Types
+            <!-- Activity Types -->
             <xsl:for-each select="//row[generate-id(.)=generate-id(key('activity types',
                                                                    col[@field='Activity Type'])[1])]">
                 <xsl:call-template name="ActivityType"/>
-            </xsl:for-each> -->
+            </xsl:for-each>
 
             <!-- Activities -->
             <xsl:for-each select="//row[generate-id(.)=generate-id(key('activities',
@@ -179,6 +179,12 @@
                     </xsl:choose>
                 </xsl:otherwise>
             </xsl:choose>
+            <!-- Comment -->
+            <xsl:if test="col[@field='Comments']/text()!=''">
+                <resource name="project_comment">
+                    <data field="body"><xsl:value-of select="col[@field='Comments']/text()"/></data>
+                </resource>
+            </xsl:if>
             <!-- Link to Assignee -->
             <xsl:if test="$Assignee!=''">
                 <reference field="pe_id" resource="pr_person">
@@ -203,12 +209,6 @@
                             <xsl:value-of select="$ActivityName"/>
                         </xsl:attribute>
                     </reference>
-                </resource>
-            </xsl:if>
-            <!-- Comment -->
-            <xsl:if test="col[@field='Comments']/text()!=''">
-                <resource name="project_comment">
-                    <data field="body"><xsl:value-of select="col[@field='Comments']/text()"/></data>
                 </resource>
             </xsl:if>
         </resource>
@@ -250,17 +250,11 @@
 
     <!-- ****************************************************************** -->
     <xsl:template name="ActivityType">
-        <xsl:variable name="ActivityType" select="col[@field='Activity Type']/text()"/>
-
-        <xsl:if test="$ActivityType!=''">
-            <resource name="project_activity_type">
-                <xsl:attribute name="tuid">
-                    <xsl:value-of select="$ActivityType"/>
-                </xsl:attribute>
-                <data field="name"><xsl:value-of select="$ActivityType"/></data>
-            </resource>
-        </xsl:if>
-
+        <xsl:call-template name="splitList">
+            <xsl:with-param name="list">
+                <xsl:value-of select="col[@field='Activity Type']"/>
+            </xsl:with-param>
+        </xsl:call-template>
     </xsl:template>
 
     <!-- ****************************************************************** -->
@@ -273,6 +267,7 @@
             </xsl:attribute>
             <data field="name"><xsl:value-of select="$item"/></data>
         </resource>
+
     </xsl:template>
 
     <!-- ****************************************************************** -->
@@ -314,13 +309,7 @@
             </resource>
         </xsl:if>
 
-        <xsl:call-template name="splitList">
-            <xsl:with-param name="list">
-                <xsl:value-of select="col[@field='Activity Type']"/>
-            </xsl:with-param>
-        </xsl:call-template>
-
-    </xsl:template>
+        </xsl:template>
 
     <!-- ****************************************************************** -->
     <xsl:template name="Person">

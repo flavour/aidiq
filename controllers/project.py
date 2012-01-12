@@ -294,6 +294,7 @@ def task():
     if "mine" in request.get_vars:
         # Show the Open Tasks for this User
         s3.crud_strings[tablename].title_list = T("My Open Tasks")
+        s3.crud_strings[tablename].msg_list_empty = T("No Tasks Assigned")
         s3mgr.configure(tablename,
                         copyable=False,
                         listadd=False)
@@ -330,6 +331,7 @@ def task():
             redirect(URL(args=None, vars=None))
         s3.crud_strings[tablename].title_list = T("Open Tasks for %(project)s") % dict(project=name)
         s3.crud_strings[tablename].title_search = T("Search Open Tasks for %(project)s") % dict(project=name)
+        s3.crud_strings[tablename].msg_list_empty = T("No Open Tasks for %(project)s") % dict(project=name)
         # Add Virtual Fields
         table.virtualfields.append(eden.project.S3ProjectTaskVirtualfields())
         list_fields = s3mgr.model.get_config(tablename,
@@ -453,9 +455,10 @@ def task():
     # Post-process
     def postp(r, output):
         if r.interactive:
-            update_url = URL(args=["[id]"], vars=request.get_vars)
-            s3mgr.crud.action_buttons(r,
-                                      update_url=update_url)
+            if r.method != "import":
+                update_url = URL(args=["[id]"], vars=request.get_vars)
+                s3mgr.crud.action_buttons(r,
+                                          update_url=update_url)
         return output
     response.s3.postp = postp
 
