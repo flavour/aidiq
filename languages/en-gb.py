@@ -1064,6 +1064,7 @@
 'Date Required': 'Date Required',
 'Date Required Until': 'Date Required Until',
 'Date Sent': 'Date Sent',
+'Date Taken': 'Date Taken',
 'Date Until': 'Date Until',
 'Date and Time': 'Date and Time',
 'Date and time this report relates to.': 'Date and time this report relates to.',

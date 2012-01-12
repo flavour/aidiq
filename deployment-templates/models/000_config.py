@@ -642,23 +642,16 @@ deployment_settings.modules = OrderedDict([
     #       restricted = False,
     #       module_type = 10,
     #   )),
-    #("ocr", Storage(
-    #       name_nice = T("Optical Character Recognition"),
-    #       description = T("Optical Character Recognition for reading the scanned handwritten paper forms."),
-    #       restricted = False,
-    #       module_type = 10
-    #   )),
     #("patient", Storage(
     #        name_nice = T("Patient Tracking"),
     #        description = T("Tracking of Patients"),
     #        restricted = True,
     #        module_type = 10
     #    )),
-    # Vol depends on HRM
-    #("vol", Storage(
-    #        name_nice = T("Volunteers"),
-    #        description = T("A portal for volunteers allowing them to amend their own data & view assigned tasks."),
-    #        restricted = True,
-    #        module_type = 10,
-    #    )),
+    #("ocr", Storage(
+    #       name_nice = T("Optical Character Recognition"),
+    #       description = T("Optical Character Recognition for reading the scanned handwritten paper forms."),
+    #       restricted = False,
+    #       module_type = 10
+    #   )),
 ])
