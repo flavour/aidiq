@@ -67,31 +67,6 @@ def project():
                                   _title="%s|%s" % (T("Person"),
                                                     T("Select the person assigned to this role for this project.")))
 
-<<<<<<< HEAD
-    if deployment_settings.get_project_community_activity():
-        activity_label = T("Communities")
-    else:
-        activity_label = T("Activities")
-
-    tabs = [(T("Basic Details"), None)]
-    if drr:
-        tabs.append((T("Organizations"), "organisation"))
-    admin = auth.s3_has_role(ADMIN)
-    staff = auth.s3_has_role("STAFF")
-    #staff = True
-    if admin or drr:
-        tabs.append((activity_label, "activity"))
-    if staff:
-        tabs.append((T("Milestones"), "milestone"))
-    if not drr:
-        tabs.append((T("Tasks"), "task"))
-    if drr:
-        tabs.append((T("Documents"), "document"))
-    elif admin:
-        tabs.append((T("Attachments"), "document"))
-
-=======
->>>>>>> b9bdf85e727f306cb643e370e44cdb79f0009723
     doc_table = s3db.table("doc_document", None)
     if doc_table is not None:
         doc_table.organisation_id.readable = False
@@ -148,9 +123,9 @@ def project():
                         r.resource.add_component_filter("task", filter)
 
             elif not r.id and r.function == "index":
-                #r.method = "search"
+                r.method = "search"
                 # If just a few Projects, then a List is sufficient
-                r.method = "list"
+                #r.method = "list"
 
         return True
     response.s3.prep = prep
