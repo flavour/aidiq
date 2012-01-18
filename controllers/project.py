@@ -67,6 +67,7 @@ def project():
                                   _title="%s|%s" % (T("Person"),
                                                     T("Select the person assigned to this role for this project.")))
 
+<<<<<<< HEAD
     if deployment_settings.get_project_community_activity():
         activity_label = T("Communities")
     else:
@@ -89,6 +90,8 @@ def project():
     elif admin:
         tabs.append((T("Attachments"), "document"))
 
+=======
+>>>>>>> b9bdf85e727f306cb643e370e44cdb79f0009723
     doc_table = s3db.table("doc_document", None)
     if doc_table is not None:
         doc_table.organisation_id.readable = False
@@ -164,7 +167,7 @@ def project():
         return output
     response.s3.postp = postp
 
-    rheader = lambda r: response.s3.project_rheader(r, tabs)
+    rheader = eden.project.project_rheader
     return s3_rest_controller(module, resourcename,
                               rheader=rheader,
                               interactive_report=True,

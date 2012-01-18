@@ -231,11 +231,13 @@ class S3OrganisationModel(S3Model):
                                         requires = IS_NULL_OR(IS_IN_SET(organisation_type_opts)),
                                         represent = lambda opt: \
                                             organisation_type_opts.get(opt, UNKNOWN_OPT)),
+
                                   sector_id(
                                             readable = False,
                                             writable = False,
                                             ),
                                   #Field("registration", label=T("Registration")),    # Registration Number
+
                                   Field("region",
                                         readable = False,
                                         writable = False,
@@ -257,8 +259,8 @@ class S3OrganisationModel(S3Model):
                                                       _title="%s|%s" % (T("Twitter"),
                                                                         T("Twitter ID or #hashtag")))),
                                   Field("donation_phone", label = T("Donation Phone #"),
-                                        readable = False,
-                                        writable = False,
+                                        #readable = False,
+                                        #writable = False,
                                         requires = IS_NULL_OR(s3_phone_requires),
                                         comment = DIV(_class="tooltip",
                                                       _title="%s|%s" % (T("Donation Phone #"),
@@ -336,7 +338,7 @@ class S3OrganisationModel(S3Model):
                                                                            orderby="org_organisation.name",
                                                                            sort=True)),
                                            represent = self.organisation_multi_represent,
-                                           label = T("Customers"),
+                                           label = T(Customers"),
                                            ondelete = "RESTRICT")
 
         # -----------------------------------------------------------------------------
@@ -914,7 +916,10 @@ class S3OfficeModel(S3Model):
                                         requires = IS_NULL_OR(IS_IN_SET(org_office_type_opts)),
                                         represent = lambda opt: \
                                           org_office_type_opts.get(opt, UNKNOWN_OPT)),
+                                  # @ToDo: Deprecate
                                   Field("office_id", "reference org_office", # This form of hierarchy may not work on all Databases
+                                        readable=False,
+                                        writable=False,
                                         label = T("Parent Office"),
                                         represent = self.org_office_represent,
                                         comment = office_comment),
@@ -1209,7 +1214,6 @@ def org_organisation_rheader(r, tabs=[]):
         tabs = [(T("Basic Details"), None),
                 (T("Contacts"), "human_resource"),
                 #(T("Offices"), "office"),
-                #(T("Assessments"), "assess"),
                 (T("Projects"), "project"),
                 #(T("Tasks"), "task"),
                ]
@@ -1224,32 +1228,24 @@ def org_organisation_rheader(r, tabs=[]):
                 sector_label = T("Cluster(s)")
             else:
                 sector_label = T("Sector(s)")
-            _sectors = DIV(TH("%s: " % sector_label),
-                           s3.org_sector_represent(organisation.sector_id))
+            sectors = TR(TH("%s: " % sector_label),
+                         table.sector_id.represent(organisation.sector_id))
         else:
-            _sectors = ""
+            sectors = ""
 
-        _type = ""
-        if table.type.readable:
-            try:
-                _type = DIV(TH("%s: " % table.type.label),
-                               organisation_type_opts[organisation.type])
-            except KeyError:
-                pass
-
+        if organisation.website:
+            website = TR(TH("%s: " % table.website.label),
+                         A(organisation.website, _href=organisation.website))
+        else:
+            website = ""
+            
         rheader = DIV(TABLE(
             TR(
                 TH("%s: " % table.name.label),
                 organisation.name,
-                _sectors
                 ),
-            TR(
-                #TH(A(T("Edit Organization"),
-                #    _href=URL(r=request, c="org", f="organisation",
-                              #args=[r.id, "update"],
-                              #vars={"_next": _next})))
-                _type,
-                )
+            website,
+            sectors,
         ), rheader_tabs)
 
         return rheader
