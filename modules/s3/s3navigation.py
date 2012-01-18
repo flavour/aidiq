@@ -223,8 +223,7 @@ def s3_rheader_tabs(r, tabs=[]):
         Constructs a DIV of component links for a S3RESTRequest
 
         @param tabs: the tabs as list of tuples (title, component_name, vars),
-            where vars is optional
-        @param paging: add paging buttons previous/next to the tabs
+                     where vars is optional
     """
 
     rheader_tabs = S3ComponentTabs(tabs)
@@ -360,15 +359,31 @@ class S3ComponentTab:
         manager = current.manager
         model = manager.model
 
+        get_vars = r.get_vars
+        tablename = None
+        if "viewing" in get_vars:
+            try:
+                tablename, record_id = get_vars["viewing"].split(".", 1)
+            except:
+                pass
+
         resource = r.resource
         component = self.component
         if component:
             clist = model.get_components(resource.table, names=[component])
             if component in clist:
                 return True
+            elif tablename:
+                clist = model.get_components(tablename, names=[component])
+                if component in clist:
+                    return True
             handler = model.get_method(resource.prefix,
                                        resource.name,
                                        method=component)
+            if handler is None and tablename:
+                prefix, name = tablename.split("_", 1)
+                handler = model.get_method(prefix, name,
+                                           method=component)
             if handler is None:
                 handler = r.get_handler(component)
             if handler is None:
@@ -382,7 +397,8 @@ class S3ComponentTab:
         if self.vars is None:
             return True
         for k, v in self.vars.iteritems():
-            if k in get_vars and get_vars.get(k) != v:
+            if k not in get_vars or \
+               k in get_vars and get_vars.get(k) != v:
                 return False
         return True
 

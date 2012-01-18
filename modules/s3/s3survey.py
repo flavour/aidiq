@@ -62,6 +62,7 @@ class LayoutBlocks():
         """
         def __init__(self, block):
             self.blocks = [block]
+            self.startRow = block.startPosn[0]
             self.maxHeight = block.endPosn[0]
             self.maxWidth = block.endPosn[1]
             self.cnt = 1
@@ -97,10 +98,18 @@ class LayoutBlocks():
             self.growToHeight = self.endPosn[0] + height
 
     def setPosn(self, start, end):
-        self.startPosn = [start[0], start[1]]
-        self.endPosn = [end[0], end[1]]
-        self.growToWidth = end[1]
-        self.growToHeight = end[0]
+        if self.startPosn[0] == 0 \
+        or start[0] < self.startPosn[0]:
+            self.startPosn[0] = start[0]
+        if self.startPosn[1] == 0 \
+        or start[1] > self.startPosn[1]:
+            self.startPosn[1] = start[1]
+        if end[0] > self.endPosn[0]:
+            self.endPosn[0] = end[0]
+        if end[1] > self.endPosn[1]:
+            self.endPosn[1] = end[1]
+        self.growToWidth = self.endPosn[1]
+        self.growToHeight = self.endPosn[0]
 
     def slideHorizontally(self, colAdjust):
         self.startPosn[1] += colAdjust
@@ -201,10 +210,28 @@ class LayoutBlocks():
         # Put all of the blocks into rows 
         for block in self.contains:
             startRow = block.startPosn[0]
+            endRow = block.endPosn[0]
+            # Exact match
             if startRow in rowList:
                 rowList[startRow].add(block)
+                continue
+            # look for an overlap
             else:
-                rowList[startRow] = self.RowBlocks(block)
+                overlap = False
+                for storedBlock in rowList.values():
+                    if (startRow < storedBlock.startRow \
+                        and endRow >= storedBlock.startRow) \
+                    or (startRow < storedBlock.maxHeight \
+                        and endRow >= storedBlock.maxHeight) \
+                    or (startRow > storedBlock.startRow) \
+                        and (endRow <= storedBlock.maxHeight):
+                        storedBlock.add(block)
+                        overlap = True
+                        break
+                if overlap:
+                    continue
+            # no overlap
+            rowList[startRow] = self.RowBlocks(block)
         # Now set up the grow to sizes for each block
         for row in rowList.values():
             # if their is only one row then
@@ -250,52 +277,17 @@ class LayoutBlocks():
                 block.realign(self.growToWidth)
             else:
                 self.alignBlock(block, blkCnt)
- 
-#        blocks = []
-#        recursiveList = []
-#        recursiverowList = {}
-#        startCol = {}
-#        maxRow = 0
-#        maxCol = 0
-#        for block in self.contains:
-#            if block.widgetList == []:
-#                recursiveList.append(block)
-#                if block.startPosn[0] not in recursiverowList:
-#                    recursiverowList[block.startPosn[0]] = 1
-#                else:
-#                    recursiverowList[block.startPosn[0]] += 1
-#            else:
-#                blocks.append(block)
-#                startCol[block.startPosn[1]] = True
-#                if block.endPosn[0] > maxRow:
-#                    maxRow = block.endPosn[0]
-#                if block.endPosn[1] > maxCol:
-#                    maxCol = block.endPosn[1]
-#        if len(recursiveList) > 0:
-#            for block in recursiveList:
-#                maxWidth = formWidth
-#                startRow = block.startPosn[0]
-#                colCnt = recursiverowList[startRow]
-#                if colCnt > 1:
-#                    maxWidth = block.endPosn[1] + (formWidth - parentWidth)/colCnt
-#                block.realign(block.endPosn[1], maxWidth)                 
-#        if len(startCol) > 1:
-#            self.alignCol(blocks, maxRow, maxCol, formWidth)
-#        else:
-#            self.alignRow(blocks, formWidth)
 
     def alignBlock(self, block, blkCnt):
-        print >> sys.stdout, "%s %s" % (block, block.action)
         if block.action == "rows":
-            heightShortfall = block.heightShortfall()
             widthShortfall = block.widthShortfall()
-            self.alignRow(block, heightShortfall, widthShortfall)
+            self.alignRow(block, widthShortfall)
         else:
             heightShortfall = block.heightShortfall()
             widthShortfall = block.widthShortfall()
             self.alignCol(block, heightShortfall, widthShortfall)
 
-    def alignRow(self, block, heightShortfall, widthShortfall):
+    def alignRow(self, block, widthShortfall):
         """
             method to align the widgets laid out in a single row.
             
@@ -333,7 +325,9 @@ class LayoutBlocks():
                     break
         # Now sort out any vertical shortfall
         for widget in block.widgetList:
-            if heightShortfall != 0:
+            widgetHeight = block.startPosn[0] + widget.getMatrixSize()[0]
+            heightShortfall = block.growToHeight - widgetHeight
+            if heightShortfall > 0:
                 if widget.canGrowVertical():
                     widget.growVertical(heightShortfall)
                 else:
@@ -345,6 +339,8 @@ class LayoutBlocks():
         """
         # Stretch the columns to fill the maximum width
         for widget in block.widgetList:
+            widgetWidth = block.startPosn[1] + widget.getMatrixSize()[1]
+            widthShortfall = block.growToWidth - widgetWidth
             # Now grow the columns to align evenly
             if widthShortfall == 0:
                 continue
@@ -381,130 +377,6 @@ class LayoutBlocks():
                 if heightShortfall == 0:
                     break
 
-#    def alignCol(self, blocks, maxRow, maxCol, maxWidth):
-#        """
-#            method to align the widgets laid out in columns
-#            
-#            First the columns will be aligned vertically. With each widget
-#            growing to the vertical limit.
-#            
-#            Then the horizontal spacing will be fixed. Identify all widgets 
-#            that can grow horizontally and let them do so. If their are
-#            multiple widgets that can grow then they will all grow by the
-#            same amount.
-#            
-#            Any space that is left over will be added to a margin between
-#            the widgets
-#        """
-#        # Calculate the column shortfall
-#        shortfall = maxWidth - maxCol
-#        colCnt = len(blocks)
-#        colgrow = shortfall / colCnt
-#        colShortfall=[colgrow]*colCnt
-#        shortfall -= colgrow*colCnt
-#        if shortfall > 0:
-#            for col in range(colCnt):
-#                colShortfall[col] += 1
-#                shortfall -= 1
-#                if shortfall == 0:
-#                    break
-#        cnt = 0
-#        for block in blocks:
-#            # Stretch the columns to fill the maximum width
-#            self.alignColWidth([block], block.endPosn[1] - block.startPosn[1] + colShortfall[cnt])
-#            cnt += 1
-#            # Now grow the rows to align evenly
-#            shortfall = maxRow - block.endPosn[0]
-#            if shortfall == 0:
-#                continue
-#            # See if the widgets can grow
-#            canGrowCount = 0
-#            for widget in block.widgetList:
-#                if widget.canGrowVertical():
-#                    canGrowCount += 1
-#            if canGrowCount > 0:
-#                growBy = shortfall / canGrowCount
-#                if growBy > 0:
-#                    for widget in block.widgetList:
-#                        if widget.canGrowVertical():
-#                            widget.growVertical(growBy)
-#                            shortfall -= growBy
-#            # Add any unallocated space as margins between the widgets
-#            if shortfall > 0:
-#                marginGrow = shortfall / len(block.widgetList)
-#                if marginGrow > 0:
-#                    for widget in block.widgetList:
-#                        widget.addToVerticalMargin(marginGrow)
-#                        shortfall -= marginGrow
-#            if shortfall > 0:
-#                for widget in block.widgetList:
-#                    widget.addToVerticalMargin(1)
-#                    shortfall -= 1
-#                    if shortfall == 0:
-#                        break
-#
-#    def alignColWidth(self, blocks, maxWidth):
-#        """
-#            method to align the width of the widgets laid out in columns
-#        """
-#        for block in blocks:
-#            for widget in block.widgetList:
-#                # Now grow the columns to align evenly
-#                shortfall = maxWidth - widget.getMatrixSize()[1]
-#                if shortfall == 0:
-#                    continue
-#                if widget.canGrowHorizontal():
-#                    widget.growHorizontal(shortfall)
-#                else:
-#                    widget.addToHorizontalMargin(shortfall)
-#
-#    def alignRow(self, blocks, maxWidth):
-#        """
-#            method to align the widgets laid out in rows.
-#            
-#            All rows will be aligned to have the same vertical height.
-#            
-#            The widgets will grow to ensure that they use up the entire width
-#            available.
-#        """
-#        for block in blocks:
-#            # Find and fix the horizontal width
-#            shortfall = maxWidth - block.endPosn[1]
-#            if shortfall == 0:
-#                continue
-#            canGrowCount = 0
-#            for widget in block.widgetList:
-#                if widget.canGrowHorizontal():
-#                    canGrowCount += 1
-#            if canGrowCount > 0:
-#                growBy = shortfall / canGrowCount
-#                if growBy > 0:
-#                    for widget in block.widgetList:
-#                        if widget.canGrowHorizontal():
-#                            widget.growHorizontal(growBy)
-#                            shortfall -= growBy
-#            # Add any unallocated space as margins between the widgets
-#            if shortfall > 0:
-#                marginGrow = shortfall / len(block.widgetList)
-#                if marginGrow > 0:
-#                    for widget in block.widgetList:
-#                        widget.addToHorizontalMargin(marginGrow)
-#                        shortfall -= marginGrow
-#            if shortfall > 0:
-#                for widget in block.widgetList:
-#                    widget.addToHorizontalMargin(1)
-#                    shortfall -= 1
-#                    if shortfall == 0:
-#                        break
-#            # Now sort out any vertical shortfall
-#            blockHeight = block.endPosn[0] - block.startPosn[0]
-#            for widget in block.widgetList:
-#                shortfall = blockHeight - widget.getMatrixSize()[0]
-#                if shortfall != 0:
-#                    if widget.canGrowVertical():
-#                        widget.growVertical(shortfall)
-#                    else:
-#                        widget.addToVerticalMargin(shortfall)
 
 # -----------------------------------------------------------------------------
 class DataMatrix():
@@ -633,29 +505,25 @@ class DataMatrix():
         for r in range(startrow, endrow):
             posn = "%s,%s" % (r, startcol)
             if posn in self.matrix:
-                self.matrix[posn].styleList.append("boxL%s" % width)
+                self.matrix[posn].styleList.append("boxL%s"%width)
             else:
-                self.addElement(MatrixElement(r, startcol, "",
-                                              "boxL%s" % width))
+                self.addElement(MatrixElement(r, startcol, "", "boxL%s"%width))
             posn = "%s,%s" % (r, endcol)
             if posn in self.matrix:
-                self.matrix[posn].styleList.append("boxR%s" % width)
+                self.matrix[posn].styleList.append("boxR%s"%width)
             else:
-                self.addElement(MatrixElement(r, endcol, "",
-                                              "boxR%s" % width))
+                self.addElement(MatrixElement(r, endcol, "", "boxR%s"%width))
         for c in range(startcol, endcol + 1):
             posn = "%s,%s" % (startrow, c)
             if posn in self.matrix:
-                self.matrix[posn].styleList.append("boxT%s" % width)
+                self.matrix[posn].styleList.append("boxT%s"%width)
             else:
-                self.addElement(MatrixElement(startrow, c, "",
-                                              "boxT%s" % width))
+                self.addElement(MatrixElement(startrow, c, "", "boxT%s"%width))
             posn = "%s,%s" % (endrow - 1, c)
             if posn in self.matrix:
-                self.matrix[posn].styleList.append("boxB%s" % width)
+                self.matrix[posn].styleList.append("boxB%s"%width)
             else:
-                self.addElement(MatrixElement(endrow - 1, c, "",
-                                              "boxB%s" % width))
+                self.addElement(MatrixElement(endrow - 1, c, "", "boxB%s"%width))
 
 
 # -----------------------------------------------------------------------------
@@ -736,28 +604,29 @@ class DataMatrixBuilder():
             self.addMethod = addMethod
         self.labelLeft = None
         self.boxOpen = False
+        self.postponeLayoutUpdate = False
 
     def processRule(self, rules, row, col, matrix):
         startcol = col
         startrow = row
         endcol = col
         endrow = row
-        nextrow = row
-        nextcol = col
         action="rows"
         self.widgetsInList = []
         for element in rules:
             row = endrow
             col = startcol
+            self.nextrow = row
+            self.nextcol = col
             if isinstance(element,list):
                 (endrow, endcol) = self.processList(element, row, col, matrix, action)
             elif isinstance(element,dict):
-                (endrow, endcol) = self.processDict(element, row, col, nextrow, nextcol, matrix, action)
+                (endrow, endcol) = self.processDict(element, rules, row, col, matrix, action)
             if self.layout != None:
                 if self.widgetsInList == []:
                     self.layout.addBlock((row, col), (endrow, endcol))
                 else:
-                    self.layout.addTempBlock((startrow, startcol), (endrow, endcol), self.widgetsInList)
+                    self.layout.addTempBlock((row, col), (endrow, endcol), self.widgetsInList)
                     self.widgetsInList = []
         return (endrow, endcol)
 
@@ -766,8 +635,6 @@ class DataMatrixBuilder():
         startrow = row
         endcol = col
         endrow = row
-        nextrow = row
-        nextcol = col
         for element in rules:
             if action == "rows":
                 row = startrow
@@ -776,90 +643,110 @@ class DataMatrixBuilder():
                 row = endrow
                 col = startcol
             # If the rule is a list then step through each element
-            tempAction = action
-            if isinstance(element, list):
-                (endrow, endcol) = self.processList(element, row, col, matrix, tempAction)
-            elif isinstance(element, dict):
-                (endrow, endcol) = self.processDict(element, row, col, nextrow, nextcol, matrix, action)
+            if isinstance(element,list):
+                (endrow, endcol) = self.processList(element, row, col, matrix, action)
+            elif isinstance(element,dict):
+                (endrow, endcol) = self.processDict(element, rules, row, col, matrix, action)
             else:
-                (endrow, endcol) = self.addMethod(self,
-                                                  element,
-                                                  row,
-                                                  col,
-                                                 )
-            if endrow > nextrow:
-                nextrow = endrow
-            if endcol > nextcol:
-                nextcol = endcol
-        if self.layout != None and (startrow != nextrow or startcol != nextcol):
-            if self.widgetsInList != []:
-                self.layout.addTempBlock((startrow, startcol), (nextrow, nextcol), self.widgetsInList)
-                self.widgetsInList = []
-        return (nextrow, nextcol)
+                (endrow, endcol) = self.addMethod(self, element, row, col)
+            if endrow > self.nextrow:
+                self.nextrow = endrow
+            if endcol > self.nextcol:
+                self.nextcol = endcol
+        self.addToLayout(startrow, startcol)
+        return (self.nextrow, self.nextcol)
 
-    def processDict(self, rules, row, col, endrow, endcol, matrix, action="rows"):
+    def processDict(self, rules, parent, row, col, matrix, action="rows"):
         startcol = col
         startrow = row
         endcol = col
         endrow = row
-        nextrow = row
-        nextcol = col
         if "boxOpen" in rules:
             return self.processBox(rules, row, col, matrix, action)
         if "heading" in rules:
             text = rules["heading"]
-            cell = MatrixElement(row, col, text, style="styleSubHeader")
-            width = 11
-            height = len(text)/(2*width) + 1
-            cell.merge(horizontal=width-1, vertical=height-1)
+            if len(parent) == 1:
+                width = max(len(text),matrix.lastCol)+1
+                height = 1
+                styleName = "styleSectionHeading"
+            else:
+                width = 11
+                height = len(text)/(2*width) + 1
+                styleName = "styleSubHeader"
+            cell = MatrixElement(row, col, text, style = styleName)
+            cell.merge(horizontal = width-1, vertical = height-1)
             try:
                 matrix.addElement(cell)
             except Exception as msg:
-                print msg
+                print >> sys.stderr, msg
                 return (row,col)
             endrow = row + height
             endcol = col + width
             if "hint" in rules:
                 text = rules["hint"]
-                cell = MatrixElement(endrow, startcol, text, style="styleHint")
+                cell = MatrixElement(endrow,startcol,text, style="styleHint")
                 height = int(((len(text)/(2*width))*0.75)+0.5) + 1
                 cell.merge(horizontal=width-1, vertical=height-1)
                 try:
                     matrix.addElement(cell)
                 except Exception as msg:
-                    print msg
+                    print >> sys.stderr, msg
                     return (row,col)
                 endrow = endrow + height
         if "labelLeft" in rules:
             self.labelLeft = rules["labelLeft"]
         if "columns" in rules:
             value = rules["columns"]
+            maxrow = startrow
             for rules in value:
                 row = startrow
+                self.nextrow = startrow
                 col = endcol
-                if isinstance(rules, list):
+                if isinstance(rules,list):
                     (endrow, endcol) = self.processList(rules, row, col, matrix, "columns")
-                elif isinstance(rules, dict):
-                    (endrow, endcol) = self.processDict(rules, row, col, nextrow, nextcol, matrix, "columns")
-                if endrow > nextrow:
-                    nextrow = endrow
-                if endcol > nextcol:
-                    nextcol = endcol
-            endrow = nextrow
-            endcol = nextcol
+                elif isinstance(rules,dict):
+                    (endrow, endcol) = self.processDict(rules, value, row, col, matrix, "columns")
+                if endrow > maxrow:
+                    maxrow = endrow
+                if endcol > self.nextcol:
+                    self.nextcol = endcol
+            self.nextrow = maxrow
+            endrow = self.nextrow
+            endcol = self.nextcol
         return (endrow, endcol)
 
     def processBox(self, rules, row, col, matrix, action="rows"):
-        endrow = row
+        startcol = col
+        startrow = row
         endcol = col
+        endrow = row
+        headingrow = row
+        self.addToLayout(startrow, startcol, andThenPostpone = True)
         if "heading" in rules:
-            value = rules["heading"]
-            (endrow, endcol) = self.addLabel(value, row, col)
-            row = endrow
+            row += 1
         if "data" in rules:
+            self.boxOpen = True
             value = rules["data"]
             (endrow, endcol) = self.processList(value, row, col, matrix, action)
+            self.boxOpen = False
+        if "heading" in rules:
+            value = rules["heading"]
+            (row, endcol) = self.addLabel(value, headingrow, col, endcol - col, 1)
+        self.matrix.boxRange(startrow, startcol, endrow, endcol-1)
+        self.addToLayout(startrow, startcol, endPostpone = True)
         return (endrow, endcol)
+
+    def addToLayout(self, startrow, startcol, andThenPostpone = None, endPostpone = None):
+        if endPostpone != None:
+            self.postponeLayoutUpdate = not endPostpone
+        if not self.postponeLayoutUpdate \
+        and self.layout != None \
+        and (startrow != self.nextrow or startcol != self.nextcol):
+            if self.widgetsInList != []:
+                self.layout.addTempBlock((startrow, startcol), (self.nextrow, self.nextcol), self.widgetsInList)
+                self.widgetsInList = []
+        if andThenPostpone != None:
+            self.postponeLayoutUpdate = andThenPostpone
 
     def addArea(self, element, row, col):
         widgetObj = self.widgetList[element]
@@ -877,9 +764,10 @@ class DataMatrixBuilder():
                                    vertical=vert-1,
                                   )
 
-    def addLabel(self, label, row, col, width=11, style="styleSubHeader"):
-        cell = MatrixElement(row, col, label, style=style)
-        height = len(label)/(2*width) + 1
+    def addLabel(self, label, row, col, width=11, height=None, style="styleSubHeader"):
+        cell = MatrixElement(row,col,label, style=style)
+        if height == None:
+            height = len(label)/(2*width) + 1
         cell.merge(horizontal=width-1, vertical=height-1)
         try:
             self.matrix.addElement(cell)
@@ -938,11 +826,7 @@ def getMatrix(title,
                                 langDict = langDict,
                                 addMethod=addMethod
                                 )
-    row = 0
-    col = 0
-    if logo != None:
-        (nextRow,col) = matrix.addCell(row, col, "Logo", [])
-    (row,col) = matrix.addCell(row, col, title, ["styleTitle"], len(title), 1)
+    row = 2
     for (section, rules) in layout:
         col = 0
         if showSectionLabels:
@@ -954,13 +838,19 @@ def getMatrix(title,
                                            len(section)
                                           )
         (row, col) = builder.processRule(rules, row, col, matrix)
+    row = 0
+    col = 0
+    if logo != None:
+        (nextRow,col) = matrix.addCell(row,col,"Logo",[])
+    titleWidth = max(len(title), matrix.lastCol)
+    (row,col) = matrix.addCell(row,col,title,["styleTitle"],titleWidth,1)
     if layoutBlocks != None:
         maxCol = col
         for block in layoutBlocks.contains:
             if block.endPosn[1] > maxCol:
                 maxCol = block.endPosn[1]
-        layoutBlocks.setPosn((0, 0), (row, maxCol))
-    matrix.boxRange(0, 0, row, matrix.lastCol, 2)
+        layoutBlocks.setPosn((0,0), (row,maxCol))
+    matrix.boxRange(0, 0, matrix.lastRow+1, matrix.lastCol, 2)
     if secondaryMatrix:
         return (matrix, secondaryMatrix)
     else:
@@ -1101,9 +991,9 @@ class S3QuestionTypeAbstractWidget(FormWidget):
         self.attr = {}
         self.webwidget = StringWidget
         self.typeDescription = None
-        self.startPosn = (0, 0)
-        self.xlsWidgetSize = (6, 0)
-        self.xlsMargin = [0, 0]
+        self.startPosn = (0,0)
+        self.xlsWidgetSize = (6,0)
+        self.xlsMargin = [0,0]
         self.langDict = dict()
         self.label = True
         self.labelLeft = True
@@ -1284,15 +1174,18 @@ class S3QuestionTypeAbstractWidget(FormWidget):
         """
         return survey_T(self.question["name"], langDict)
 
-    def getLabelSize(self, style, maxWidth = 20):
+    def getLabelSize(self, maxWidth = 20):
         """
             function to return the size of the label, in terms of merged
             MatrixElements
         """
         labelSize = (0,0)
         if self.label:
+            labelWidth = maxWidth/2
+            if not self.labelLeft:
+                labelWidth = self.xlsWidgetSize[0] + 1
             _TQstn = self._Tquestion(self.langDict)
-            labelSize = (maxWidth/2, len(_TQstn)/(maxWidth - 2) + 1)
+            labelSize = (labelWidth, len(_TQstn)/(4 * labelWidth / 3) + 1)
         return labelSize
         
     def getWidgetSize(self, maxWidth = 20):
@@ -1306,14 +1199,14 @@ class S3QuestionTypeAbstractWidget(FormWidget):
         """
             function to return the size of the widget
         """
-        labelSize = self.getLabelSize(20)
-        widgetSize = self.getWidgetSize(20)
+        labelSize = self.getLabelSize()
+        widgetSize = self.getWidgetSize()
         if self.labelLeft:
-            return (max(labelSize[1], widgetSize[1]) + self.xlsMargin[1],
+            return (max(labelSize[1],widgetSize[1]) + self.xlsMargin[1],
                     labelSize[0] + widgetSize[0] + self.xlsMargin[0])
         else:
             return (labelSize[1] + widgetSize[1] + self.xlsMargin[1],
-                    max(labelSize[0], widgetSize[0]) + self.xlsMargin[0])
+                    max(labelSize[0],widgetSize[0]) + self.xlsMargin[0])
 
     def canGrowHorizontal(self):
         return False
@@ -1335,6 +1228,31 @@ class S3QuestionTypeAbstractWidget(FormWidget):
     def addToVerticalMargin(self, amount):
         self.xlsMargin[1] += amount
 
+    def addPaddingAroundWidget(self, matrix, startrow, startcol, lWidth, lHeight, wWidth, wHeight):
+        if self.labelLeft:
+            # Add padding below the input boxes
+            if lHeight > wHeight:
+                cellPadding = MatrixElement(startrow + wHeight,startcol + lWidth,"", style="styleText")
+                cellPadding.merge(wWidth-1,lHeight - wHeight - 1)
+                matrix.addElement(cellPadding)
+            # Add padding below the label
+            if lHeight < wHeight:
+                cellPadding = MatrixElement(startrow + lHeight,startcol,"", style="styleText")
+                cellPadding.merge(lWidth-1,wHeight - lHeight - 1)
+                matrix.addElement(cellPadding)
+                height = wHeight + 1
+        else:
+            # Add padding to make the widget the same width as the label
+            if lWidth > wWidth:
+                cellPadding = MatrixElement(startrow+lHeight,startcol+wWidth,"", style="styleText")
+                cellPadding.merge(lWidth - wWidth - 1, lHeight-1)
+                matrix.addElement(cellPadding)
+            # Add padding to make the label the same width as the widget
+            if lWidth < wWidth:
+                cellPadding = MatrixElement(startrow,startcol + lWidth,"", style="styleText")
+                cellPadding.merge(wWidth - lWidth - 1, wHeight-1)
+                matrix.addElement(cellPadding)
+
     def addPaddingToCell(self,
                          matrix,
                          startrow,
@@ -1344,27 +1262,29 @@ class S3QuestionTypeAbstractWidget(FormWidget):
                          ):
         # Add widget padding
         if self.xlsMargin[0] > 0:
-            cellPadding = MatrixElement(startrow, endcol, "", style="styleText")
-            cellPadding.merge(self.xlsMargin[0]-1, endrow - startrow -1)
+            cellPadding = MatrixElement(startrow,endcol,"", style="styleText")
+            cellPadding.merge(self.xlsMargin[0]-1,endrow - startrow -1)
             matrix.addElement(cellPadding)
         if self.xlsMargin[1] > 0:
             cellPadding = MatrixElement(endrow,startcol,"", style="styleText")
-            cellPadding.merge(endcol-startcol+self.xlsMargin[0]-1, self.xlsMargin[1]-1)
+            cellPadding.merge(endcol-startcol+self.xlsMargin[0]-1,self.xlsMargin[1]-1)
             matrix.addElement(cellPadding)
-        pass
 
     def writeToMatrix(self,
                       matrix,
                       row,
                       col,
                       langDict=dict(),
-                      answerMatrix=None):
+                      answerMatrix=None
+                      ):
         """
             Function to write out basic details to the matrix object
         """
         self._store_metadata()
         startrow = row
         startcol = col
+        mergeLH = 0
+        mergeLV = 0
         height = 0
         width = 0
         if self.label:
@@ -1373,16 +1293,16 @@ class S3QuestionTypeAbstractWidget(FormWidget):
                                  col,
                                  _TQstn,
                                  style="styleSubHeader")
-            maxWidth = 20
-            mergeLH = maxWidth/2 - 1
-            mergeLV = len(_TQstn) / (maxWidth - 2)
+            (width, height) = self.getLabelSize()
+            mergeLH = width - 1
+            mergeLV = height - 1
             cell.merge(mergeLH,mergeLV)
             matrix.addElement(cell)
             if self.labelLeft:
                 col += 1 + mergeLH
             else:
                 row += 1 + mergeLV
-        cell = MatrixElement(row, col, "", style="styleInput")
+        cell = MatrixElement(row,col,"", style="styleInput")
         mergeWH = self.xlsWidgetSize[0]
         mergeWV = self.xlsWidgetSize[1]
         cell.merge(mergeWH,mergeWV)
@@ -1393,20 +1313,7 @@ class S3QuestionTypeAbstractWidget(FormWidget):
         else:
             height += mergeWV + 1
             width = max(width, mergeWH + 1)
-
-        # Add padding below the input boxes
-        if mergeLV > mergeWV:
-            cellPadding = MatrixElement(row + 1 + mergeWV, col, "", style="styleText")
-            cellPadding.merge(mergeWH,mergeLV - mergeWV - 1)
-            matrix.addElement(cellPadding)
-        # Add padding below the label
-        if mergeLV < mergeWV:
-            cellPadding = MatrixElement(row + 1 + mergeLV, col-1-mergeLH, "", style="styleText")
-            cellPadding.merge(mergeLH,mergeWV - mergeLV - 1)
-            matrix.addElement(cellPadding)
-            height = mergeWV + 1
-        #endrow = row + height
-        #endcol = col + mergeWH
+        self.addPaddingAroundWidget(matrix, startrow, startcol, mergeLH+1, mergeLV+1, mergeWH+1, mergeWV+1)
         # Add widget padding
         self.addPaddingToCell(matrix, startrow, startcol, startrow + height, startcol + width)
         height += self.xlsMargin[1]
@@ -1421,13 +1328,29 @@ class S3QuestionTypeAbstractWidget(FormWidget):
                                  self.rowcol_to_cell(row, col),
                                  style="styleText")
             answerMatrix.addElement(cell)
-        return (startrow+height, startcol+width)
-        # if self.labelLeft:
-            # return (row+self.xlsMargin[1]+height, col+self.xlsMargin[0]+mergeWH)
-        # else:
-            # return (row+self.xlsMargin[1]+mergeLV+mergeWV, col+self.xlsMargin[0]+max(mergeLH,mergeWH))
+        endcol = startcol+width
+        endrow = startrow+height
+        # Only for debugging purposes
+        self.verifyCoords(endrow, endcol)
+        return (endrow, endcol)
+#        if self.labelLeft:
+#            return (row+self.xlsMargin[1]+height, col+self.xlsMargin[0]+mergeWH)
+#        else:
+#            return (row+self.xlsMargin[1]+mergeLV+mergeWV, col+self.xlsMargin[0]+max(mergeLH,mergeWH))
 
-
+    def verifyCoords(self, endrow, endcol):
+        (width, height) = self.getMatrixSize()
+        calcrow = self.startPosn[1] + width
+        calccol = self.startPosn[0] + height
+        error = False
+        if calcrow != endrow:
+            error = True
+        if calccol != endcol:
+            error = True
+        if error:
+            w_code = self.question["code"]
+            msg = "Coord Verification Error for widget %s, startPosn:(%s, %s), expected:(%s, %s), observed:(%s, %s)" % (w_code, self.startPosn[1], self.startPosn[0], endrow, endcol, calcrow, calccol)
+            print >> sys.stdout, msg
     ######################################################################
     # Functions not fully implemented or used
     ######################################################################
@@ -1489,7 +1412,7 @@ class S3QuestionTypeTextWidget(S3QuestionTypeAbstractWidget):
         S3QuestionTypeAbstractWidget.__init__(self, question_id)
         self.webwidget = TextWidget
         self.typeDescription = T("Long Text")
-        self.xlsWidgetSize = [12, 5]
+        self.xlsWidgetSize = [12,5]
 
     def canGrowHorizontal(self):
         return True
@@ -1520,7 +1443,7 @@ class S3QuestionTypeStringWidget(S3QuestionTypeAbstractWidget):
         T = current.T
         self.metalist.append("Length")
         self.typeDescription = T("Short Text")
-        self.xlsWidgetSize = [12, 0]
+        self.xlsWidgetSize = [12,0]
 
     def canGrowHorizontal(self):
         return True
@@ -1782,6 +1705,8 @@ class S3QuestionTypeOptionWidget(S3QuestionTypeAbstractWidget):
         self.typeDescription = T("Option")
         self.labelLeft = False
         self.singleRow = False
+        self.xlsWidgetSize = [10,0]
+
     def display(self, **attr):
         S3QuestionTypeAbstractWidget.initDisplay(self, **attr)
         self.field.requires = IS_IN_SET(self.getList())
@@ -1800,7 +1725,7 @@ class S3QuestionTypeOptionWidget(S3QuestionTypeAbstractWidget):
             list.append(self.get(str(i + 1)))
         return list
 
-    def getWidgetSize(self, maxWidth):
+    def getWidgetSize(self, maxWidth = 20):
         """
             function to return the size of the input control
         """
@@ -1817,16 +1742,20 @@ class S3QuestionTypeOptionWidget(S3QuestionTypeAbstractWidget):
                       row,
                       col,
                       langDict=dict(),
-                      answerMatrix=None):
+                      answerMatrix=None
+                     ):
         """
             Function to write out basic details to the matrix object
         """
         self._store_metadata()
         startrow = row
         startcol = col
+        mergeLH = 0
+        mergeLV = 0
         maxWidth = 20
-        mergeH = maxWidth/2 - 1
-        mergeV = 0
+        endrow = row
+        endcol = col
+
         if self.label:
             _TQstn = self._Tquestion(langDict)
             cell = MatrixElement(row,
@@ -1834,23 +1763,28 @@ class S3QuestionTypeOptionWidget(S3QuestionTypeAbstractWidget):
                                  _TQstn,
                                  style="styleSubHeader"
                                 )
-            mergeV = len(_TQstn) / (maxWidth - 2)
-            cell.merge(mergeH, mergeV)
+            (lwidth, lheight) = self.getLabelSize()
+            mergeLH = lwidth - 1
+            mergeLV = lheight - 1
+            cell.merge(mergeLH,mergeLV)
             matrix.addElement(cell)
             if self.labelLeft:
-                col += 1 + mergeH
+                col += lwidth
             else:
-                row += 1 + mergeV
+                row += lheight
+            endrow = startrow + lheight
+            endcol = startcol + lwidth
             if self.selectionInstructions != None:
                 cell = MatrixElement(row,
                                      col,
                                      survey_T(self.selectionInstructions,
                                               langDict),
                                      style="styleInstructions")
-                mergeV = len(self.selectionInstructions) / maxWidth
-                cell.merge(mergeH, mergeV)
+                iheight = len(self.selectionInstructions) / maxWidth + 1
+                mergeIV = iheight -1
+                cell.merge(mergeLH,mergeIV)
                 matrix.addElement(cell)
-                row += 1 + mergeV
+                row += iheight
         list = self.getList()
         if answerMatrix != None:
             answerRow = answerMatrix.lastRow+1
@@ -1866,39 +1800,51 @@ class S3QuestionTypeOptionWidget(S3QuestionTypeAbstractWidget):
                                  style="styleSubHeader")
             answerMatrix.addElement(cell)
             answerCol = 3
+        wwidth = lwidth
+        mergeWH = mergeLH
+        wheight = len(list)
         if self.singleRow:
-            mergeRH = (mergeH - len(list)) / len(list)
-        else:
-            mergeRH = mergeH
+            wwidthpart = (wwidth - len(list)) / len(list)
+            mergeWH = wwidthpart -1
+            wheight = 1
         for option in list:
             _TQstn = survey_T(option, langDict)
             cell = MatrixElement(row,
                                  col,
                                  _TQstn,
                                  style="styleText")
-            mergeV = len(_TQstn)/maxWidth
-            cell.merge(mergeRH-1, mergeV)
+            oheight = len(_TQstn)/maxWidth +1
+            cell.merge(mergeWH-1,oheight-1)
             matrix.addElement(cell)
-            cell = MatrixElement(row, col+mergeRH, "", style="styleInput")
+            cell = MatrixElement(row, col+mergeWH,"", style="styleInput")
             matrix.addElement(cell)
             if answerMatrix != None:
                 cell = MatrixElement(answerRow, answerCol,
-                                     self.rowcol_to_cell(row, col + mergeRH),
+                                     self.rowcol_to_cell(row, col + mergeWH),
                                      style="styleText")
                 answerMatrix.addElement(cell)
                 answerCol += 1
             if self.singleRow:
-                col += 2 + mergeRH
+                col += 1 + wwidthpart
             else:
-                row += 1 + mergeV
+                row += oheight
         if self.singleRow:
-            endrow = row + 1 + mergeV
-            endcol = col
+            if endrow < row + 1:
+                endrow = row + 1
+            if endcol < col:
+                endcol = col
         else:
-            endrow = row
-            endcol = col + 1 + mergeH
+            if endrow < row:
+                endrow = row
+            if endcol < col + 1 + mergeLH:
+                endcol = col + 1 + mergeLH
+        self.addPaddingAroundWidget(matrix, startrow, startcol, lwidth, lheight, wwidth, iheight+wheight)
         self.addPaddingToCell(matrix, startrow, startcol, endrow, endcol)
-        return (endrow + self.xlsMargin[1], endcol + self.xlsMargin[0])
+        endrow += self.xlsMargin[1]
+        endcol += self.xlsMargin[0]
+        # Only for debugging purposes
+        self.verifyCoords(endrow, endcol)
+        return (endrow, endcol)
 
 
     ######################################################################
@@ -2051,10 +1997,14 @@ class S3QuestionTypeMultiOptionWidget(S3QuestionTypeOptionWidget):
 ##########################################################################
 class S3QuestionTypeLocationWidget(S3QuestionTypeAbstractWidget):
     """
+        ***************************************
+        **** MULTIPLE CHANGES HAVE OCCURRED ***
+        **** REALLY NEEDS TO BE REWRITTEN  ****
+        ***************************************
         Location widget: Question Type widget
 
         provides a widget for the survey module that will link to the
-        gis_locaton table, and provide the record if a match exists.
+        gis_location table, and provide the record if a match exists.
 
         Available metadata for this class:
         Help message: A message to help with completing the question
@@ -2089,6 +2039,11 @@ class S3QuestionTypeLocationWidget(S3QuestionTypeAbstractWidget):
 #                                 "Longitude",
 #                                ]
 #        self.locationLabel = self.hierarchyAnswers[0:-2]
+        self.xlsWidgetSize = [12,0]
+
+    def canGrowHorizontal(self):
+        return True
+
 
     def getAnswer(self):
         """
@@ -2483,8 +2438,7 @@ class S3QuestionTypeGridWidget(S3QuestionTypeAbstractWidget):
                 if col > nextcol:
                     nextcol = col
                 firstRun = False
-        return (nextrow+1, nextcol)
-
+        return (nextrow + self.xlsMargin[1], nextcol + self.xlsMargin[0])
 
     def insertChildren(self, record, metadata):
         self.id = record.id

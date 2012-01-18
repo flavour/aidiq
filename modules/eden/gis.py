@@ -319,7 +319,6 @@ class S3LocationModel(S3Model):
         db = current.db
         gis = current.gis
         auth = current.auth
-        cache = current.cache
         request = current.request
         response = current.response
         s3 = response.s3
@@ -427,7 +426,7 @@ class S3LocationModel(S3Model):
                                        table.lon_max,
                                        #table.level,
                                        limitby=(0, 1),
-                                       cache=(cache.ram, 3600)).first()
+                                       cache=s3.cache).first()
 
         # Don't allow a group as parent
         # (Check not needed here -- enforced in requires validator.)
@@ -636,7 +635,8 @@ class S3GISConfigModel(S3Model):
              "gis_symbology",
              "gis_feature_class",
              "gis_marker_id",
-             "gis_projection_id"
+             "gis_projection_id",
+             "gis_config_form_setup"
             ]
 
     def model(self):
@@ -971,7 +971,7 @@ class S3GISConfigModel(S3Model):
                 gis_config_prep_helper = self.gis_config_prep_helper,
                 gis_config_id = config_id,
                 gis_marker_id = marker_id,
-                gis_projection_id = projection_id
+                gis_projection_id = projection_id,
                 )
 
     # -------------------------------------------------------------------------
@@ -981,10 +981,11 @@ class S3GISConfigModel(S3Model):
 
         T = current.T
         db = current.db
+        s3db = current.s3db
         gis = current.gis
         settings = current.deployment_settings
 
-        table = db.gis_config
+        table = s3db.gis_config
 
         # Defined here since Component (of Persons)
         # @ToDo: Need tooltips for projection, symbology, geocoder, zoom levels,
@@ -1193,6 +1194,7 @@ class S3GISConfigModel(S3Model):
         """
 
         db = current.db
+        s3db = current.s3db
         gis = current.gis
         s3 = current.response.s3
         session = current.session
@@ -1218,7 +1220,8 @@ class S3GISConfigModel(S3Model):
         # That makes Authenticated no longer an owner, so they only get whatever
         # is permitted by uacl (currently that is set to READ).
         if "region_location_id" in form.vars and form.vars.region_location_id:
-            query = (db.gis_location.id == form.vars.region_location_id)
+            table = s3db.gis_location
+            query = (table.id == form.vars.region_location_id)
             db(query).update(owned_by_role = MAP_ADMIN)
 
     # -------------------------------------------------------------------------
@@ -1230,6 +1233,7 @@ class S3GISConfigModel(S3Model):
         """
 
         db = current.db
+        s3db = current.s3db
         gis = current.gis
         auth = current.auth
         session = current.session
@@ -1237,7 +1241,7 @@ class S3GISConfigModel(S3Model):
         try:
             update = False
             if (form.request_vars.pe_id and form.vars.id):
-                table = db.pr_person
+                table = s3db.pr_person
                 query = (table.uuid == auth.user.person_uuid)
                 pentity = db(query).select(table.pe_id, limitby=(0, 1)).first()
                 if pentity and pentity.pe_id == form.request_vars.pe_id:
@@ -1282,10 +1286,11 @@ class S3GISConfigModel(S3Model):
         """
 
         db = current.db
+        s3db = current.s3db
         gis = current.gis
         s3 = current.response.s3
 
-        table = db.gis_config
+        table = s3db.gis_config
 
         if gis.gis_config_table_max_level_num > gis.max_allowed_level_num:
             for n in range(gis.max_allowed_level_num + 1,
@@ -1311,7 +1316,7 @@ class S3GISConfigModel(S3Model):
         # applies to any other use of country configs that relies on getting the
         # official set (e.g. looking up hierarchy labels).
         if id:
-            _location = db.gis_location
+            _location = s3db.gis_location
             query = (table.id == id) & (table.region_location_id == _location.id)
             location = db(query).select(_location.level, limitby=(0, 1)).first()
             if not location or location.level != "L0":
@@ -1326,7 +1331,7 @@ class S3MapModel(S3Model):
 
     names = ["gis_cache",
              "gis_cache2",
-             "gis_feature_query"
+             "gis_feature_query",
              "gis_layer_bing",
              "gis_layer_coordinate",
              "gis_layer_feature",
@@ -1363,6 +1368,7 @@ class S3MapModel(S3Model):
         role_required = s3.role_required
         #roles_permitted = s3.roles_permitted
 
+        gis_layer_folder = self.gis_layer_folder()
         gis_opacity = self.gis_opacity()
         gis_refresh = self.gis_refresh()
         cluster_distance = self.cluster_distance()
@@ -1385,6 +1391,7 @@ class S3MapModel(S3Model):
                               label=T("Available in Viewer?")),
                         Field("visible", "boolean", default=True,
                               label=T("On by default?")),
+                        gis_layer_folder(),
                         Field("module",
                               label = T("Module")),
                         Field("resource",
@@ -1515,6 +1522,7 @@ class S3MapModel(S3Model):
                                   Field("enabled", "boolean", default=True, label=T("Available in Viewer?")),
                                   Field("visible", "boolean", default=True,
                                         label=T("On by default? (only applicable to Overlays)")),
+                                  gis_layer_folder(),
                                   role_required(),       # Single Role
                                   #roles_permitted(),    # Multiple Roles (needs implementing in modules/s3gis.py)
                                   *s3.meta_fields())
@@ -1527,6 +1535,7 @@ class S3MapModel(S3Model):
                                   Field("enabled", "boolean", default=True, label=T("Available in Viewer?")),
                                   Field("visible", "boolean", default=True,
                                         label=T("On by default? (only applicable to Overlays)")),
+                                  gis_layer_folder(),
                                   Field("url", label=T("Location"), requires=IS_NOT_EMPTY()),
                                   projection_id(default=2,
                                                 requires = IS_ONE_OF(db, "gis_projection.id",
@@ -1548,6 +1557,7 @@ class S3MapModel(S3Model):
                                   Field("enabled", "boolean", default=True, label=T("Available in Viewer?")),
                                   Field("visible", "boolean", default=True,
                                         label=T("On by default? (only applicable to Overlays)")),
+                                  gis_layer_folder(),
                                   Field("url", label=T("Location"), requires = IS_NOT_EMPTY()),
                                   Field("data", label=T("Data"),
                                         comment=DIV(_class="tooltip",
@@ -1602,6 +1612,7 @@ class S3MapModel(S3Model):
                                   Field("enabled", "boolean", default=True, label=T("Available in Viewer?")),
                                   Field("visible", "boolean", default=True,
                                         label=T("On by default? (only applicable to Overlays)")),
+                                  gis_layer_folder(),
                                   Field("track", "upload", autodelete = True,
                                         label = T("GPS Track File"),
                                         requires = IS_UPLOAD_FILENAME(extension="gpx"),
@@ -1636,6 +1647,7 @@ class S3MapModel(S3Model):
                                   Field("enabled", "boolean", default=True, label=T("Available in Viewer?")),
                                   Field("visible", "boolean", default=True,
                                         label=T("On by default? (only applicable to Overlays)")),
+                                  gis_layer_folder(),
                                   Field("url", label=T("Location"),
                                         requires=IS_NOT_EMPTY(),
                                         comment=DIV(_class="tooltip",
@@ -1662,6 +1674,7 @@ class S3MapModel(S3Model):
                                   name_field(),
                                   Field("description", label=T("Description")),
                                   Field("enabled", "boolean", default=True, label=T("Available in Viewer?")),
+                                  gis_layer_folder(),
                                   Field("code", "text", label=T("Code"),
                                         default="var myNewLayer = new OpenLayers.Layer.XYZ();\nmap.addLayer(myNewLayer);"),
                                   role_required(),       # Single Role
@@ -1690,6 +1703,7 @@ class S3MapModel(S3Model):
                                   Field("enabled", "boolean", default=True, label=T("Available in Viewer?")),
                                   Field("visible", "boolean", default=True,
                                         label=T("On by default? (only applicable to Overlays)")),
+                                  gis_layer_folder(),
                                   Field("url1", label=T("Location"), requires=IS_NOT_EMPTY(),
                                         comment=DIV(_class="tooltip",
                                                     _title="%s|%s" % (T("Location"),
@@ -1713,6 +1727,7 @@ class S3MapModel(S3Model):
                                   name_field(),
                                   Field("description", label=T("Description")),
                                   Field("enabled", "boolean", default=True, label=T("Available in Viewer?")),
+                                  gis_layer_folder(),
                                   Field("url", label=T("Location"), requires=IS_NOT_EMPTY(),
                                         comment=DIV(_class="tooltip",
                                                     _title="%s|%s" % (T("Location"),
@@ -1740,6 +1755,7 @@ class S3MapModel(S3Model):
                                   Field("enabled", "boolean", default=True, label=T("Available in Viewer?")),
                                   Field("visible", "boolean", default=True,
                                         label=T("On by default? (only applicable to Overlays)")),
+                                  gis_layer_folder(),
                                   Field("url", label=T("Location"), requires = IS_NOT_EMPTY(),
                                         comment=DIV(_class="tooltip",
                                                     _title="%s|%s" % (T("Location"),
@@ -1795,6 +1811,7 @@ class S3MapModel(S3Model):
                                   Field("enabled", "boolean", default=True, label=T("Available in Viewer?")),
                                   Field("visible", "boolean", default=True,
                                         label=T("On by default? (only applicable to Overlays)")),
+                                  gis_layer_folder(),
                                   Field("url", label=T("Location"), requires = IS_NOT_EMPTY(),
                                         comment=DIV(_class="tooltip",
                                                     _title="%s|%s" % (T("Location"),
@@ -1849,6 +1866,7 @@ class S3MapModel(S3Model):
         #                          name_field(),
         #                          Field("description", label=T("Description")),
         #                          Field("enabled", "boolean", default=True, label=T("Available in Viewer?")),
+        #                          gis_layer_folder(),
         #                          Field("url", label=T("Location"), requires=IS_NOT_EMPTY(),
         #                                comment=DIV(_class="tooltip",
         #                                            _title="%s|%s" % (T("Location"),
@@ -1988,6 +2006,16 @@ class S3MapModel(S3Model):
                 gis_cluster_distance = self.cluster_distance,
                 gis_cluster_threshold = self.cluster_threshold
             )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def gis_layer_folder():
+        T = current.T
+        return S3ReusableField("dir",
+                               comment = DIV(_class="tooltip",
+                                             _title="%s|%s" % (T("Folder"),
+                                                               T("If you enter a foldername then the layer will appear in this folder in the Map's layer switcher."))),
+                               label = T("Folder"))
 
     # -------------------------------------------------------------------------
     @staticmethod

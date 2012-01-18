@@ -799,11 +799,11 @@ $(document).ready(function() {
                        - this would be adding a Sent Shipment with us as Destination, not Source
             """
             tablename, id = request.vars.viewing.split(".")
-            record = db[tablename][id]
+            record = s3db[tablename][id]
             to_site_id = record.site_id
             site_id = record.site_id
 
-            rheader_dict = dict(org_office = office_rheader)
+            rheader_dict = dict(org_office = s3db.org_office_rheader)
             if deployment_settings.has_module("cr"):
                 rheader_dict["cr_shelter"] = response.s3.shelter_rheader
             if deployment_settings.has_module("hms"):
@@ -838,6 +838,9 @@ $(document).ready(function() {
                                         method = "list",
                                         rheader = rheader_dict[tablename],
                                         title = s3.crud_strings[tablename]["title_display"])
+
+            if tablename == "org_office" and isinstance(output, dict):
+                output["title"] = T("Warehouse Details")
 
             return output
         # ---------------------------------------------------------------------

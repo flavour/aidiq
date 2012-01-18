@@ -423,6 +423,18 @@ $(document).ready(function() {
 
     // Delay in milliseconds to prevent too many AJAX calls
     $('.dataTable').dataTable().fnSetFilteringDelay(450);
+
+    /* Messaging */
+    /* Taken a different route for now, although this might come back to open form dynamically
+       - change views/_search.html if-so
+    $('#msg_datatables-btn').click( function(evt) {
+        // @ToDo: Display the Compose form
+
+        // @ToDo: Focus on form
+        //$('#msg_log_message').focus();
+
+        evt.preventDefault();
+    }); */
 });
 
 Ext.onReady(function(){

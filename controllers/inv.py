@@ -95,7 +95,6 @@ def warehouse():
                     cols = 3
                   ),
                   s3base.S3SearchLocationHierarchyWidget(
-                    gis,
                     name="warehouse_search_location",
                     comment=T("Search for warehouse by location."),
                     represent ="%(name)s",
@@ -163,7 +162,7 @@ def warehouse():
                                 # Extra fields for CSV uploads:
                                 csv_extra_fields = [
                                     dict(label="Organisation",
-                                         field=organisation_id(comment=None)),
+                                         field=s3db.org_organisation_id(comment=None)),
                                     dict(label="Test",
                                          value="MyTest")
                                 ])
@@ -180,7 +179,6 @@ def incoming():
 def req_match():
     """ Match Requests """
 
-    s3.crud_strings.org_office.title_display = T("Warehouse Details")
     return response.s3.req_match()
 
 # =============================================================================

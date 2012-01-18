@@ -53,7 +53,9 @@ class S3DocumentLibrary(S3Model):
         s3 = current.response.s3
 
         person_comment = self.pr_person_comment
+        person_id = self.pr_person_id
         location_id = self.gis_location_id
+        organisation_id = self.org_organisation_id
 
         messages = current.messages
         NONE = messages.NONE
@@ -92,10 +94,10 @@ class S3DocumentLibrary(S3Model):
                                                                              "%s.url" % tablename))],
                                         represent = lambda url: \
                                                     url and A(url,_href=url) or NONE),
-                                  s3.pr_person_id(label=T("Author"),
+                                  person_id(label=T("Author"),
                                                   comment=person_comment(T("Author"),
                                                                          T("The Author of this Document (optional)"))),
-                                  s3.org_organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile = True)),
+                                  organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile = True)),
                                   Field("date", "date", label = T("Date Published")),
                                   location_id(),
                                   s3.comments(),
@@ -192,8 +194,8 @@ class S3DocumentLibrary(S3Model):
                                         default = 1,
                                         label = T("Image Type"),
                                         represent = lambda opt: doc_image_type_opts.get(opt, UNKNOWN_OPT)),
-                                  s3.pr_person_id(label=T("Author")),
-                                  s3.org_organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile = True)),
+                                  person_id(label=T("Author")),
+                                  organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile = True)),
                                   location_id(),
                                   Field("date", "date", label = T("Date Taken")),
                                   s3.comments(),
@@ -320,13 +322,16 @@ class S3DocumentLibrary(S3Model):
             form.errors.file = msg
             form.errors.url = msg
 
+        # Do a checksum on the file to see if it's a duplicate
         if isinstance(doc, cgi.FieldStorage) and doc.filename:
             f = doc.file
             form.vars.checksum = doc_checksum(f.read())
             f.seek(0)
 
         if form.vars.checksum is not None:
-            query = (table.checksum == form.vars.checksum)
+            # Duplicate allowed if original version is deleted
+            query = ((table.checksum == form.vars.checksum) & \
+                     (table.deleted == False))
             result = db(query).select(table.name,
                                       limitby=(0, 1)).first()
             if result:

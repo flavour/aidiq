@@ -45,7 +45,7 @@ from gluon.sqlhtml import CheckboxesWidget
 from ..s3 import *
 
 try:
-    from lxml import etree
+    from lxml import etree, html
 except ImportError:
     print >> sys.stderr, "ERROR: lxml module needed for XML handling"
     raise
@@ -519,24 +519,24 @@ class S3ProjectModel(S3Model):
             project_activity_search = S3Search(field="name")
 
         # Resource Configuration
-        analyze_fields = []
+        report_fields = []
         if drr:
-            analyze_fields.append((T("Organization"), "organisation"))
-        analyze_fields.append((T("Project"), "project_id"))
+            report_fields.append((T("Organization"), "organisation"))
+        report_fields.append((T("Project"), "project_id"))
         if not pca:
-            analyze_fields.append((T("Activity"), "name"))
-        analyze_fields.append((T("Activity Type"), "multi_activity_type_id"))
+            report_fields.append((T("Activity"), "name"))
+        report_fields.append((T("Activity Type"), "multi_activity_type_id"))
         if drr:
-            analyze_fields.append((T("Theme"), "project_id$multi_theme_id"))
-            analyze_fields.append((T("Hazard"), "project_id$multi_hazard_id"))
-            analyze_fields.append((T("HFA"), "project_id$hfa"))
+            report_fields.append((T("Theme"), "project_id$multi_theme_id"))
+            report_fields.append((T("Hazard"), "project_id$multi_hazard_id"))
+            report_fields.append((T("HFA"), "project_id$hfa"))
             lh = settings.get_gis_default_location_hierarchy()
             lh = [(lh[opt], opt) for opt in lh]
-            analyze_fields.extend(lh)
-            analyze_fields.append("location_id")
+            report_fields.extend(lh)
+            report_fields.append("location_id")
         else:
-            analyze_fields.append((T("Time Estimated"), "time_estimated"))
-            analyze_fields.append((T("Time Actual"), "time_actual"))
+            report_fields.append((T("Time Estimated"), "time_estimated"))
+            report_fields.append((T("Time Actual"), "time_actual"))
 
         if drr:
             next = "beneficiary"
@@ -549,9 +549,9 @@ class S3ProjectModel(S3Model):
                        search_method=project_activity_search,
                        onaccept=self.project_activity_onaccept,
                        deduplicate=self.project_activity_deduplicate,
-                       analyze_rows=analyze_fields,
-                       analyze_cols=analyze_fields,
-                       analyze_fact=analyze_fields)
+                       report_rows=report_fields,
+                       report_cols=report_fields,
+                       report_fact=report_fields)
 
         # Reusable Field
         activity_id = S3ReusableField("activity_id", db.project_activity,
@@ -1034,6 +1034,7 @@ class S3ProjectDRRModel(S3Model):
                                   activity_id(comment=None),
                                   bnf_type(),
                                   Field("number", "integer",
+                                        label = T("Quantity"),
                                         requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 99999999))),
                                   s3.comments(),
                                   *s3.meta_fields())
@@ -1066,23 +1067,23 @@ class S3ProjectDRRModel(S3Model):
         self.configure(tablename,
                         onaccept=self.project_beneficiary_onaccept,
                         deduplicate=self.project_beneficiary_deduplicate,
-                        #analyze_filter=[
+                        #report_filter=[
                             #S3SearchOptionsWidget(field=["project_id"],
                                                   #name="project",
                                                   #label=T("Project"))
                         #],
-                        analyze_rows=[
+                        report_rows=[
                                       "activity_id",
                                       "project_id",
                                       "project_id$multi_hazard_id",
                                       "project_id$multi_theme_id",
                                       "activity_id$multi_activity_type_id"
                                      ],
-                        analyze_cols=[
+                        report_cols=[
                                       "bnf_type",
                                      ],
-                        analyze_fact=["number"],
-                        analyze_method=["sum"])
+                        report_fact=["number"],
+                        report_method=["sum"])
 
         # Reusable Field
         beneficiary_id = S3ReusableField("beneficiary_id", db.project_beneficiary,
@@ -1280,9 +1281,8 @@ class S3ProjectTaskModel(S3Model):
         activity_id = self.project_activity_id
 
         s3_date_format = settings.get_L10n_date_format()
-        s3_datetime_represent = S3DateTime.datetime_represent
-        s3_utc_represent = lambda dt: s3_datetime_represent(dt, utc=True)
-        s3_date_simple_represent = lambda dt: S3DateTime.date_represent(dt, short=True)
+        s3_utc_represent = lambda dt: S3DateTime.datetime_represent(dt, utc=True)
+        s3_date_represent = lambda dt: S3DateTime.date_represent(dt, utc=True)
 
         messages = current.messages
         NONE = messages.NONE
@@ -1301,6 +1301,7 @@ class S3ProjectTaskModel(S3Model):
                                         requires=IS_NOT_EMPTY()),
                                   Field("date", "date",
                                         label = T("Date"),
+                                        represent = s3_date_represent,
                                         requires = IS_NULL_OR(IS_DATE(format = s3_date_format))),
                                   s3.comments(),
                                   format="%(name)s",
@@ -1346,6 +1347,9 @@ class S3ProjectTaskModel(S3Model):
         # - they can also be used by the Event/Scenario modules
         #
         # @ToDo: Recurring tasks
+        #
+        # These Statuses can be customised, although doing so limits the ability to do synchronization
+        # - best bet is simply to comment statuses that you don't wish to use
         #
         project_task_status_opts = {
             #1: T("Draft"),
@@ -1409,6 +1413,8 @@ class S3ProjectTaskModel(S3Model):
                                                   readable = staff,
                                                   writable = staff,
                                                   label = T("Assigned to"),
+                                                  filterby = "instance_type",
+                                                  filter_opts = ["pr_person", "pr_group", "org_organisation"],
                                                   represent = lambda id, row=None: \
                                                               project_assignee_represent(id),
                                                   # @ToDo: Widget
@@ -1428,7 +1434,7 @@ class S3ProjectTaskModel(S3Model):
                                                                       T("Enter a valid future date")))],
                                         widget = S3DateTimeWidget(past=0,
                                                                   future=8760),  # Hours, so 1 year
-                                        represent = s3_date_simple_represent),
+                                        represent = s3_date_represent),
                                   milestone_id(
                                         readable = staff,
                                         writable = staff,
@@ -1461,7 +1467,7 @@ class S3ProjectTaskModel(S3Model):
         # Comment these if you don't need a Site associated with Tasks
         #table.site_id.readable = table.site_id.writable = True
         #table.site_id.label = T("Check-in at Facility") # T("Managing Office")
-        table.created_on.represent = s3_date_simple_represent
+        table.created_on.represent = s3_date_represent
 
         # CRUD Strings
         ADD_TASK = T("Add Task")
@@ -1959,23 +1965,29 @@ def project_assignee_represent(id):
                               limitby=(0, 1)).first()
     if not record:
         return output
+    instance_type = record.instance_type
 
-    table = s3db[record.instance_type]
+    table = s3db[instance_type]
     query = (table.pe_id == id)
-    if record.instance_type == "pr_person":
+    if instance_type == "pr_person":
         record = db(query).select(table.first_name,
+                                  table.middle_name,
+                                  table.last_name,
                                   table.initials,
                                   cache=cache,
                                   limitby=(0, 1)).first()
         if record:
-            output = record.initials or record.first_name
-    else:
+            output = record.initials or s3_fullname(record)
+    elif instance_type in ("pr_group", "org_organisation"):
         # Team or Organisation
         record = db(query).select(table.name,
                                   cache=cache,
                                   limitby=(0, 1)).first()
         if record:
             output = record.name
+    else:
+        # Should not happen of correctly filtered, return default
+        pass
 
     return output
 
@@ -2162,9 +2174,10 @@ def project_rheader(r, tabs=[]):
                             else:
                                 text = ""
                         except etree.XMLSyntaxError:
-                            text = comments.body.replace("<", "<!-- <").replace(">", "> -->")
+                            t = html.fromstring(comments.body)
+                            text = t.text_content()
                         comments = TR(
-                                        TH("%s: " % T("Lastet Comment")),
+                                        TH("%s: " % T("Latest Comment")),
                                         A(text,
                                           _href=URL(args=[r.id, "discuss"]))
                                     )

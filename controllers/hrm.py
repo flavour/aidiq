@@ -71,7 +71,9 @@ def index():
     """ Dashboard """
 
     if response.error:
-        return dict(r=None)
+        return dict(r=None,
+                    ns=None,
+                    nv=None)
 
     mode = session.s3.hrm.mode
     if mode is not None:
@@ -117,18 +119,21 @@ def index():
                                         vars={"human_resource.id": "[id]"}))]
 
     if r.interactive:
-        output.update(module_name=response.title)
+        output["module_name"] = response.title
         if session.s3.hrm.orgname:
-            output.update(orgname=session.s3.hrm.orgname)
+            output["orgname"] = session.s3.hrm.orgname
         response.view = "hrm/index.html"
         query = (table.deleted != True) & \
                 (table.status == 1) & org_filter
+        # Staff
         ns = db(query & (table.type == 1)).count()
+        # Volunteers
         nv = db(query & (table.type == 2)).count()
-        output.update(ns=ns, nv=nv)
+        output["ns"] = ns
+        output["nv"] = nv
 
         module_name = deployment_settings.modules[module].name_nice
-        output.update(title=module_name)
+        output["title"] = module_name
 
     return output
 
@@ -183,12 +188,17 @@ def human_resource():
         elif groupCode == "1":
             group = "staff"
     if group == "volunteer":
-        table.type.default = 2
-        response.s3.filter = (table.type == 2)
-        table.location_id.writable = True
-        table.location_id.readable = True
-        table.location_id.label = T("Home Address")
+        _type = table.type
+        _type.default = 2
+        response.s3.filter = (_type == 2)
+        _type.readable = False
+        _type.writable = False
+        _location = table.location_id
+        _location.writable = True
+        _location.readable = True
+        _location.label = T("Home Address")
         list_fields.pop(4)
+        table.job_title.label = T("Volunteer Role")
         s3.crud_strings[tablename].update(
             title_create = T("Add Volunteer"),
             title_display = T("Volunteer Information"),
@@ -220,8 +230,11 @@ def human_resource():
     elif group == "staff":
         #s3mgr.configure(table._tablename, insertable=False)
         # Default to Staff
-        table.type.default = 1
-        response.s3.filter = (table.type == 1)
+        _type = table.type
+        _type.default = 1
+        response.s3.filter = (_type == 1)
+        _type.readable = False
+        _type.writable = False
         table.site_id.writable = True
         table.site_id.readable = True
         list_fields.pop(5)
@@ -325,7 +338,7 @@ def hrm_map_popup(r):
     output.append(TR(TD(B("%s:" % T("Name"))),
                      TD(s3_fullname(r.record.person_id))))
 
-    # Occupation (Job Title?)
+    # Job Title
     if r.record.job_title:
         output.append(TR(TD(B("%s:" % r.table.job_title.label)),
                          TD(r.record.job_title)))
@@ -393,9 +406,6 @@ def person():
 
         @ToDo: Volunteers should be redirected to vol/person?
     """
-
-    s3mgr.model.add_component("hrm_human_resource",
-                              pr_person="person_id")
 
     if deployment_settings.has_module("asset"):
         # Assets as component of people
@@ -684,12 +694,12 @@ def hrm_rheader(r, tabs=[]):
     """ Resource headers for component views """
 
     rheader = None
-    rheader_tabs = s3_rheader_tabs(r, tabs)
 
     if r.representation == "html":
 
         if r.name == "person":
-            # Person Controller
+            # Tabs defined in controller
+            rheader_tabs = s3_rheader_tabs(r, tabs)
             person = r.record
             if person:
                 rheader = DIV(s3_avatar_represent(person.id,
@@ -699,14 +709,30 @@ def hrm_rheader(r, tabs=[]):
                     TR(TH(s3_fullname(person))),
                     ), rheader_tabs)
 
+        elif r.name == "training_event":
+            # Tabs
+            tabs = [(T("Training Event Details"), None),
+                    (T("Participants"), "participant")]
+            rheader_tabs = s3_rheader_tabs(r, tabs)
+            table = r.table
+            event = r.record
+            if event:
+                rheader = DIV(TABLE(
+                                    TR(TH("%s: " % table.course_id.label),
+                                       table.course_id.represent(event.course_id)),
+                                    TR(TH("%s: " % table.site_id.label),
+                                       table.site_id.represent(event.site_id)),
+                                    TR(TH("%s: " % table.start_date.label),
+                                       table.start_date.represent(event.start_date)),
+                                    ),
+                              rheader_tabs)
+
         elif r.name == "human_resource":
-            # Human Resource Controller
             hr = r.record
             if hr:
                 pass
 
         elif r.name == "organisation":
-            # Organisation Controller
             org = r.record
             if org:
                 pass
@@ -970,6 +996,18 @@ def training():
     output = s3_rest_controller()
     return output
 
+# -----------------------------------------------------------------------------
+def training_event():
+    """ Training Events Controller """
+
+    mode = session.s3.hrm.mode
+    if mode is not None:
+        session.error = T("Access denied")
+        redirect(URL(f="index"))
+
+    output = s3_rest_controller(rheader=hrm_rheader)
+    return output
+
 # =============================================================================
 def staff_org_site_json():
     """
@@ -992,13 +1030,12 @@ def staff_org_site_json():
 # Messaging
 # =============================================================================
 def compose():
-
     """ Send message to people/teams """
 
-    mtable = s3db.msg_outbox
+    vars = request.vars
 
-    if "hrm_id" in request.vars:
-        id = request.vars.hrm_id
+    if "hrm_id" in vars:
+        id = vars.hrm_id
         fieldname = "hrm_id"
         table = s3db.pr_person
         htable = s3db.hrm_human_resource
@@ -1011,6 +1048,9 @@ def compose():
         table = s3db.pr_group
         query = (table.id == id)
         title = T("Send a message to this team")
+    else:
+        session.error = T("Record not found")
+        redirect(URL(f="index"))
 
     pe = db(query).select(table.pe_id,
                           limitby=(0, 1)).first()
@@ -1019,23 +1059,30 @@ def compose():
         redirect(URL(f="index"))
 
     pe_id = pe.pe_id
-    request.vars.pe_id = pe_id
 
-    if "hrm_id" in request.vars:
+    if "hrm_id" in vars:
         # Get the individual's communications options & preference
         ctable = s3db.pr_contact
         contact = db(ctable.pe_id == pe_id).select(ctable.contact_method,
                                                    orderby="priority",
                                                    limitby=(0, 1)).first()
         if contact:
-            mtable.pr_message_method.default = contact.contact_method
+            s3db.msg_outbox.pr_message_method.default = contact.contact_method
         else:
             session.error = T("No contact method found")
             redirect(URL(f="index"))
 
-    return response.s3.msg_compose(redirect_module = module,
-                                   redirect_function = "compose",
-                                   redirect_vars = {fieldname: id},
-                                   title_name = title)
+    # URL to redirect to after message sent
+    url = URL(c=module,
+              f="compose",
+              vars={fieldname: id})
+
+    # Create the form
+    output = msg.compose(recipient = pe_id,
+                         url = url)
+
+    output["title"] = title
+    response.view = "msg/compose.html"
+    return output
 
 # END =========================================================================

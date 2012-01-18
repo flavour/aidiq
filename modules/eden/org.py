@@ -291,6 +291,15 @@ class S3OrganisationModel(S3Model):
                                      args="create",
                                      vars=dict(format="popup"))
 
+        # @ToDo: Deployment_setting
+        organisation_dropdown_not_ac = True
+        if organisation_dropdown_not_ac:
+            help = T("If you don't see the Customer in the list, you can add a new one by clicking link 'Add Customer'.")
+            widget = None
+        else:
+            help = T("Enter some characters to bring up a list of possible matches")
+            widget = S3OrganisationAutocompleteWidget()
+        
         organisation_comment = DIV(A(ADD_ORGANIZATION,
                                    _class="colorbox",
                                    _href=organisation_popup_url,
@@ -298,9 +307,7 @@ class S3OrganisationModel(S3Model):
                                    _title=ADD_ORGANIZATION),
                                  DIV(DIV(_class="tooltip",
                                          _title="%s|%s" % (T("Customer"),
-                                                           #T("Enter some characters to bring up a list of possible matches")))))
-                                                           # Replace with this one if using dropdowns & not autocompletes
-                                                           T("If you don't see the Customer in the list, you can add a new one by clicking link 'Add Customer'.")))))
+                                                           help))))
 
         from_organisation_comment = copy.deepcopy(organisation_comment)
         from_organisation_comment[0]["_href"] = organisation_comment[0]["_href"].replace("popup", "popup&child=from_organisation_id")
@@ -315,8 +322,7 @@ class S3OrganisationModel(S3Model):
                                           label = T("Customer"),
                                           comment = organisation_comment,
                                           ondelete = "RESTRICT",
-                                          # Comment this to use a Dropdown & not an Autocomplete
-                                          #widget = S3OrganisationAutocompleteWidget()
+                                          widget = widget
                                          )
 
         organisations_id = S3ReusableField("organisations_id",
@@ -382,14 +388,14 @@ class S3OrganisationModel(S3Model):
                        list_fields = ["id",
                                       "name",
                                       "acronym",
-                                      "type",
-                                      "sector_id",
-                                      "country",
+                                      #"type",
+                                      #"sector_id",
+                                      #"country",
                                       "website"
                                     ])
 
         # Components
-        
+
         # Staff
         self.add_component("hrm_human_resource",
                            org_organisation="organisation_id")
@@ -543,7 +549,7 @@ class S3OrganisationModel(S3Model):
         db = current.db
         table = db.org_sector
         NONE = current.messages.NONE
-        
+
         if record:
             query = (table.id == record.sector_id)
             sector_record = db(query).select(table.abrv,
@@ -642,7 +648,7 @@ class S3OrganisationModel(S3Model):
 # =============================================================================
 class S3SiteModel(S3Model):
 
-    
+
     names = ["org_site",
              "org_site_id",
             ]
@@ -708,7 +714,7 @@ class S3SiteModel(S3Model):
         # Human Resources
         self.add_component("hrm_human_resource",
                            org_site=self.super_key(table))
-        
+
         # Documents
         self.add_component("doc_document",
                            org_site=self.super_key(table))
@@ -746,7 +752,7 @@ class S3RoomModel(S3Model):
         Rooms are a location within a Site
         - used by Asset module
     """
-    
+
     names = ["org_room",
              "org_room_id"
             ]
@@ -759,7 +765,7 @@ class S3RoomModel(S3Model):
 
         site_id = self.org_site_id
 
-        
+
         # =============================================================================
         # Rooms (for Sites)
         # @ToDo: Validate to ensure that rooms are unique per facility
@@ -834,10 +840,10 @@ class S3RoomModel(S3Model):
 
         if not id:
             return NONE
-        
+
         db = current.db
         table = db.org_room
-        
+
         record = db(table.id == id).select(table.name,
                                            limitby=(0, 1)).first()
         if not record:
@@ -856,6 +862,7 @@ class S3OfficeModel(S3Model):
         settings = current.deployment_settings
 
         messages = current.messages
+        NONE = messages.NONE
         UNKNOWN_OPT = messages.UNKNOWN_OPT
 
         location_id = self.gis_location_id
@@ -1199,52 +1206,49 @@ def org_organisation_rheader(r, tabs=[]):
         settings = current.deployment_settings
 
         # Tabs
-        tabs = [(T("Basic Details"), None)]
-        if settings.has_module("hrm"):
-            tabs.append((T("Contacts"), "human_resource"))
-        #tabs.append((T("Offices"), "office"))
-        #tabs.append((T("Facilities"), "site")) # Ticket 195
-        if settings.has_module("assess"):
-            s3mgr.load("assess_assess")
-            tabs.append((T("Assessments"), "assess"))
-        tabs.append((T("Projects"), "project"))
-        # @ToDo
-        #tabs.append((T("Tasks"), "task"))
+        tabs = [(T("Basic Details"), None),
+                (T("Contacts"), "human_resource"),
+                #(T("Offices"), "office"),
+                #(T("Assessments"), "assess"),
+                (T("Projects"), "project"),
+                #(T("Tasks"), "task"),
+               ]
 
         rheader_tabs = s3_rheader_tabs(r, tabs)
 
-        organisation = r.record
-        # if organisation.sector_id:
-            # _sectors = s3.org_sector_represent(organisation.sector_id)
-        # else:
-            # _sectors = None
-
-        # try:
-            # _type = organisation_type_opts[organisation.type]
-        # except KeyError:
-            # _type = None
-
         table = r.table
+        organisation = r.record
 
-        # if settings.get_ui_cluster():
-            # sector_label = T("Cluster(s)")
-        # else:
-            # sector_label = T("Sector(s)")
+        if table.sector_id.readable and organisation.sector_id:
+            if settings.get_ui_cluster():
+                sector_label = T("Cluster(s)")
+            else:
+                sector_label = T("Sector(s)")
+            _sectors = DIV(TH("%s: " % sector_label),
+                           s3.org_sector_represent(organisation.sector_id))
+        else:
+            _sectors = ""
+
+        _type = ""
+        if table.type.readable:
+            try:
+                _type = DIV(TH("%s: " % table.type.label),
+                               organisation_type_opts[organisation.type])
+            except KeyError:
+                pass
 
         rheader = DIV(TABLE(
             TR(
                 TH("%s: " % table.name.label),
                 organisation.name,
-                #TH("%s: " % sector_label),
-                #_sectors
+                _sectors
                 ),
             TR(
                 #TH(A(T("Edit Organization"),
                 #    _href=URL(r=request, c="org", f="organisation",
                               #args=[r.id, "update"],
                               #vars={"_next": _next})))
-                #TH("%s: " % table.type.label),
-                #_type,
+                _type,
                 )
         ), rheader_tabs)
 
@@ -1265,14 +1269,16 @@ def org_office_rheader(r, tabs=[]):
 
             T = current.T
             db = current.db
+            s3db = current.s3db
             s3 = current.response.s3
             settings = current.deployment_settings
 
+            UNKNOWN_OPT = current.messages.UNKNOWN_OPT
+
             tabs = [(T("Basic Details"), None),
                     #(T("Contact Data"), "contact"),
-                    ]
-            if settings.has_module("hrm"):
-                tabs.append((T("Staff"), "human_resource"))
+                    (T("Staff"), "human_resource"),
+                   ]
             try:
                 tabs = tabs + s3.req_tabs(r)
             except:
@@ -1293,6 +1299,7 @@ def org_office_rheader(r, tabs=[]):
             else:
                 org_name = None
 
+            table = s3db.org_office
             rheader = DIV(TABLE(
                           TR(
                              TH("%s: " % table.name.label),
@@ -1324,8 +1331,8 @@ def org_office_rheader(r, tabs=[]):
             if r.component and r.component.name == "req":
                 # Inject the helptext script
                 rheader.append(s3.req_helptext_script)
-
             return rheader
+
     return None
 
 # END =========================================================================

@@ -394,8 +394,13 @@ class S3Importer(S3CRUD):
                     response.warning = self.warning
                 response.flash = ""
                 return self.upload(r, **attr)
-            else:
-                return self.display_job(upload_id)
+#            else:
+#                return self.display_job(upload_id)
+            # redirect rather than call display_job() so that the upload_id
+            # is attached to the URL which is needed for AJAX calls when
+            # populating the dataTable. 
+            redirect(URL(r=self.request, f=self.function,
+                         args=["import"], vars={"job":upload_id}))
         return output
 
     # -------------------------------------------------------------------------
@@ -1242,12 +1247,12 @@ class S3Importer(S3CRUD):
             sEcho = int(vars.sEcho or 0)
 
             # Get the list
-            items = self.sqltable(fields=list_fields,
-                                  start=start,
-                                  limit=limit,
-                                  orderby=orderby,
-                                  download_url=self.download_url,
-                                  as_page=True) or []
+            items = resource.sqltable(fields=list_fields,
+                                      start=start,
+                                      limit=limit,
+                                      orderby=orderby,
+                                      download_url=self.download_url,
+                                      as_page=True) or []
             # Ugly hack to change any occurrence of [id] with the true id
             # Needed because the represent doesn't know the id
             for i in range(len(items)):
@@ -1293,13 +1298,12 @@ class S3Importer(S3CRUD):
                 del vars["sSortDir_%s" % str(index)]
 
             # Get the first row for a quick up load
-            items = self.sqltable(fields=list_fields,
-                                  start=start,
-                                  limit=1,
-                                  orderby=orderby,
-                                  download_url=self.download_url,
-                                 )
-            totalrows = self.resource.count()
+            items = resource.sqltable(fields=list_fields,
+                                      start=start,
+                                      limit=1,
+                                      orderby=orderby,
+                                      download_url=self.download_url)
+            totalrows = resource.count()
             if items:
                 if totalrows:
                     if response.s3.dataTable_iDisplayLength:
@@ -1308,14 +1312,13 @@ class S3Importer(S3CRUD):
                         limit = 20
                 # Add a test on the first call here:
                 # Now get the limit rows for ajax style update of table
-                aadata = dict(aaData = self.sqltable(
-                                fields=list_fields,
-                                start=start,
-                                limit=limit,
-                                orderby=orderby,
-                                download_url=self.download_url,
-                                as_page=True,
-                               ) or [])
+                sqltable = resource.sqltable(fields=list_fields,
+                                             start=start,
+                                             limit=limit,
+                                             orderby=orderby,
+                                             download_url=self.download_url,
+                                             as_page=True)
+                aadata = dict(aaData = sqltable or [])
                 # Ugly hack to change any occurrence of [id] with the true id
                 # Needed because the represent doesn't know the id
                 for i in range(len(aadata["aaData"])):
@@ -1422,7 +1425,7 @@ class S3Importer(S3CRUD):
             except:
                 pass
             if value:
-                value = S3XML.xml_encode(str(value))
+                value = S3XML.xml_encode(unicode(value))
             else:
                 value = ""
             if f != None and value != None:

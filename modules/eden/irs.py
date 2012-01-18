@@ -542,13 +542,9 @@ class S3IRSModel(S3Model):
         T = current.T
         msg = current.msg
         response = current.response
-        s3 = response.s3
 
         if r.representation == "html" and \
            r.name == "ireport" and r.id and not r.component:
-
-            current.manager.load("msg_outbox")
-            msg_compose = s3.msg_compose
 
             record = r.record
             text = "%s %s:%s; %s" % (record.name,
@@ -556,28 +552,28 @@ class S3IRSModel(S3Model):
                                      record.contact,
                                      record.message)
 
+            # Encode the message as an OpenGeoSMS
             message = msg.prepare_opengeosms(record.location_id,
                                              code="ST",
                                              map="google",
                                              text=text)
 
-            output = msg_compose(type="SMS",
+            # URL to redirect to after message sent
+            url = URL(c="irs",
+                      f="ireport",
+                      args=r.id)
+
+            # Create the form
+            output = msg.compose(type="SMS",
                                  recipient_type = "pr_person",
                                  message = message,
-                                 redirect_module = "irs",
-                                 redirect_function = "ireport",
-                                 redirect_args = r.id)
+                                 url = url)
 
             # Maintain RHeader for consistency
-            rheader = irs_rheader(r)
+            if "rheader" in attr:
+                output["rheader"] = attr["rheader"](r)
 
-            title = T("Send Dispatch Update")
-
-            output.update(title=title,
-                          rheader=rheader)
-
-            #if form.accepts(request.vars, session):
-
+            output["title"] = T("Send Dispatch Update")
             response.view = "msg/compose.html"
             return output
 
@@ -611,13 +607,6 @@ class S3IRSModel(S3Model):
 
             itable = s3db.doc_image
             dtable = s3db.doc_document
-
-            output = dict()
-
-            if r.id:
-                # Maintain RHeader for consistency
-                rheader = irs_rheader(r)
-                output.update(rheader=rheader)
 
             # Create the DIV
             item = DIV(_id="s3timeline", _style="height: 400px; border: 1px solid #aaa; font-family: Trebuchet MS, sans-serif; font-size: 85%;")
@@ -702,7 +691,7 @@ S3.timeline.onLoad = function() {
     var bandInfos = [
         Timeline.createBandInfo({
             width:          '90%',
-            intervalUnit:   Timeline.DateTime.MONTH, 
+            intervalUnit:   Timeline.DateTime.MONTH,
             intervalPixels: 140,
             eventSource:    S3.timeline.eventSource,
             date:           now,
@@ -710,8 +699,8 @@ S3.timeline.onLoad = function() {
         }),
         Timeline.createBandInfo({
             overview:       true,
-            width:          '10%', 
-            intervalUnit:   Timeline.DateTime.YEAR, 
+            width:          '10%',
+            intervalUnit:   Timeline.DateTime.YEAR,
             intervalPixels: 200,
             eventSource:    S3.timeline.eventSource,
             date:           now
@@ -741,12 +730,16 @@ $(window).load(function() {
 });
 $(window).resize(function() {
     S3.timeline.onResize();
-});
-""")
+});""")
+
+            output = dict(item = item)
+
+            # Maintain RHeader for consistency
+            if "rheader" in attr:
+                output["rheader"] = attr["rheader"](r)
 
             title = T("Incident Timeline")
-
-            output.update(title=title, item=item)
+            output["title"] = title
             response.view = "timeline.html"
             return output
 
@@ -958,7 +951,7 @@ class S3IRSResponseModel(S3Model):
         #
         return Storage(
                 )
-                
+
     # -------------------------------------------------------------------------
     @staticmethod
     def irs_vehicle_requires():
@@ -970,7 +963,7 @@ class S3IRSResponseModel(S3Model):
         db = current.db
         s3db = current.s3db
         s3 = response = current.response.s3
-        
+
         # Vehicles are a type of Asset
         table = s3db.asset_asset
         ltable = s3db.irs_ireport_vehicle

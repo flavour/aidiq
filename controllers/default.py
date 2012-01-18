@@ -517,7 +517,7 @@ def contact():
         prefix = "support"
         resourcename = "req"
         tablename = "%s_%s" % (prefix, resourcename)
-        table = db[tablename]
+        table = s3db[tablename]
 
         # Pre-processor
         def prep(r):

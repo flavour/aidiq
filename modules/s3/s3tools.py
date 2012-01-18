@@ -468,13 +468,9 @@ class S3BulkImporter(object):
                                       name=name,
                                       args=["create.s3csv"],
                                       vars=vars)
-#            # New back-end
-#            r = manager.parse_request(prefix=prefix,
-#                                      name=name,
-#                                      args=["import"],
-#                                      vars=vars)
-#            from s3import import S3Importer
-#            r.set_handler("import", S3Importer(), transform=True)
+            # @todo: attach files for upload like:
+            #resource = r.resource
+            #resource.files = {filename:open(filename, "rb")}
             # Execute the request
             output = r()
             # If it doesn't import - use this to check the
@@ -533,22 +529,18 @@ class S3DateTime(object):
 
     # -----------------------------------------------------------------------------
     @staticmethod
-    def date_represent(date, utc=False, short=False):
+    def date_represent(date, utc=False):
         """
             Represent the date according to deployment settings &/or T()
 
             @param date: the date
             @param utc: the date is given in UTC
-            @param short: the date should be shown as simple Month/Day
         """
 
         session = current.session
         settings = current.deployment_settings
 
-        if short:
-            format = "%B %d"
-        else:
-            format = settings.get_L10n_date_format()
+        format = settings.get_L10n_date_format()
 
         if date and isinstance(date, datetime.datetime) and utc:
             offset = IS_UTC_OFFSET.get_offset_value(session.s3.utc_offset)
