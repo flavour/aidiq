@@ -338,7 +338,7 @@ class S3OrganisationModel(S3Model):
                                                                            orderby="org_organisation.name",
                                                                            sort=True)),
                                            represent = self.organisation_multi_represent,
-                                           label = T(Customers"),
+                                           label = T("Customers"),
                                            ondelete = "RESTRICT")
 
         # -----------------------------------------------------------------------------
