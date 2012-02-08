@@ -6,8 +6,6 @@
     <!-- **********************************************************************
          Office - CSV Import Stylesheet
 
-         2011-Jun-13 / Graeme Foster <graeme AT acm DOT org>
-
          - use for import to org/office resource
          - example raw URL usage:
            Let URLpath be the URL to Sahana Eden appliation
@@ -25,7 +23,7 @@
          Name....................org_office
          Organisation............org_organisation
          Type....................org_office
-         Country.................org_office.L0
+         Country.................org_office.L0 Name or ISO2
          Building................org_office.building_name
          Address.................org_office.address
          Postcode................org_office.postcode
@@ -42,6 +40,8 @@
 
     *********************************************************************** -->
     <xsl:output method="xml"/>
+
+    <xsl:include href="../commons.xsl"/>
     <xsl:include href="../../xml/countries.xsl"/>
 
     <!-- Office types, see models/05_org.py -->
@@ -159,9 +159,18 @@
 
         <!-- Country Code = UUID of the L0 Location -->
         <xsl:variable name="countrycode">
-            <xsl:call-template name="countryname2iso">
-                <xsl:with-param name="country" select="$l0"/>
-            </xsl:call-template>
+            <xsl:choose>
+                <xsl:when test="string-length($l0)!=2">
+                    <xsl:call-template name="countryname2iso">
+                        <xsl:with-param name="country">
+                            <xsl:value-of select="$l0"/>
+                        </xsl:with-param>
+                    </xsl:call-template>
+                </xsl:when>
+                <xsl:otherwise>
+                    <xsl:value-of select="$l0"/>
+                </xsl:otherwise>
+            </xsl:choose>
         </xsl:variable>
 
         <xsl:variable name="country" select="concat('urn:iso:std:iso:3166:-1:code:', $countrycode)"/>
@@ -170,7 +179,7 @@
         <xsl:if test="$l1!=''">
             <resource name="gis_location">
                 <xsl:attribute name="tuid">
-                    <xsl:value-of select="$l1"/>
+                    <xsl:value-of select="concat('L1',$l1)"/>
                 </xsl:attribute>
                 <reference field="parent" resource="gis_location">
                     <xsl:attribute name="uuid">
@@ -186,13 +195,13 @@
         <xsl:if test="$l2!=''">
             <resource name="gis_location">
                 <xsl:attribute name="tuid">
-                    <xsl:value-of select="$l2"/>
+                    <xsl:value-of select="concat('L2',$l2)"/>
                 </xsl:attribute>
                 <xsl:choose>
                     <xsl:when test="$l1!=''">
                         <reference field="parent" resource="gis_location">
                             <xsl:attribute name="tuid">
-                                <xsl:value-of select="$l1"/>
+                                <xsl:value-of select="concat('L1',$l1)"/>
                             </xsl:attribute>
                         </reference>
                     </xsl:when>
@@ -213,20 +222,20 @@
         <xsl:if test="$l3!=''">
             <resource name="gis_location">
                 <xsl:attribute name="tuid">
-                    <xsl:value-of select="$l3"/>
+                    <xsl:value-of select="concat('L3',$l3)"/>
                 </xsl:attribute>
                 <xsl:choose>
                     <xsl:when test="$l2!=''">
                         <reference field="parent" resource="gis_location">
                             <xsl:attribute name="tuid">
-                                <xsl:value-of select="$l2"/>
+                                <xsl:value-of select="concat('L2',$l2)"/>
                             </xsl:attribute>
                         </reference>
                     </xsl:when>
                     <xsl:when test="$l1!=''">
                         <reference field="parent" resource="gis_location">
                             <xsl:attribute name="tuid">
-                                <xsl:value-of select="$l1"/>
+                                <xsl:value-of select="concat('L1',$l1)"/>
                             </xsl:attribute>
                         </reference>
                     </xsl:when>
@@ -252,21 +261,21 @@
                 <xsl:when test="$l3!=''">
                     <reference field="parent" resource="gis_location">
                         <xsl:attribute name="tuid">
-                            <xsl:value-of select="$l3"/>
+                            <xsl:value-of select="concat('L3',$l3)"/>
                         </xsl:attribute>
                     </reference>
                 </xsl:when>
                 <xsl:when test="$l2!=''">
                     <reference field="parent" resource="gis_location">
                         <xsl:attribute name="tuid">
-                            <xsl:value-of select="$l2"/>
+                            <xsl:value-of select="concat('L2',$l2)"/>
                         </xsl:attribute>
                     </reference>
                 </xsl:when>
                 <xsl:when test="$l1!=''">
                     <reference field="parent" resource="gis_location">
                         <xsl:attribute name="tuid">
-                            <xsl:value-of select="$l1"/>
+                            <xsl:value-of select="concat('L1',$l1)"/>
                         </xsl:attribute>
                     </reference>
                 </xsl:when>

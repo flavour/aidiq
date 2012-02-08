@@ -184,7 +184,7 @@ def organisation():
                 (T("Projects"), "project"),
                 (T("Contacts"), "human_resource"),
                ]
-        rheader = lambda r: eden.org.org_organisation_rheader(r, tabs)
+        rheader = lambda r: s3db.org_rheader(r, tabs)
         return s3_rest_controller("org", resourcename,
                                   rheader=rheader)
 
@@ -225,7 +225,8 @@ def activity():
     tablename = "%s_%s" % (module, resourcename)
     table = s3db[tablename]
 
-    tabs = [(T("Details"), None)]
+    tabs = [(T("Details"), None),
+            (T("Contact Persons"), "contact")]
     if drr:
         tabs.append((T("Beneficiaries"), "beneficiary"))
         tabs.append((T("Documents"), "document"))
@@ -423,7 +424,7 @@ def task():
                         r.component.table.type.default = 3
                     if r.method != "update" and r.method != "read":
                         # Hide fields which don't make sense in a Create form
-                        response.s3.req_create_form_mods()
+                        s3db.req_create_form_mods()
                 elif r.component_name == "human_resource":
                     r.component.table.type.default = 2
 

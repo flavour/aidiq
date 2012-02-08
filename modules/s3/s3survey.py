@@ -3,7 +3,7 @@
 """
     Custom UI Widgets used by the survey application
 
-    @copyright: 2009-2011 (c) Sahana Software Foundation
+    @copyright: 2011-2012 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -29,8 +29,6 @@
 """
 
 import sys
-
-from xml.sax.saxutils import unescape
 
 try:
     from cStringIO import StringIO    # Faster, where available
@@ -840,9 +838,11 @@ def getMatrix(title,
         (row, col) = builder.processRule(rules, row, col, matrix)
     row = 0
     col = 0
+    logoWidth = 0
     if logo != None:
-        (nextRow,col) = matrix.addCell(row,col,"Logo",[])
-    titleWidth = max(len(title), matrix.lastCol)
+        logoWidth = 6
+        (nextRow,col) = matrix.addCell(row,col,"",[],logoWidth-1,1)
+    titleWidth = max(len(title), matrix.lastCol-logoWidth)
     (row,col) = matrix.addCell(row,col,title,["styleTitle"],titleWidth,1)
     if layoutBlocks != None:
         maxCol = col
@@ -973,6 +973,7 @@ class S3QuestionTypeAbstractWidget(FormWidget):
     def __init__(self,
                  question_id
                 ):
+
         self.ANSWER_VALID = 0
         self.ANSWER_MISSING = 1
         self.ANSWER_PARTLY_VALID = 2
@@ -1078,7 +1079,7 @@ class S3QuestionTypeAbstractWidget(FormWidget):
             function to format the answer, which can be passed in
         """
         if value == None:
-            value = getAnswer()
+            value = self.getAnswer()
         return value
 
     def loadAnswer(self, complete_id, question_id, forceDB=False):
@@ -1128,6 +1129,21 @@ class S3QuestionTypeAbstractWidget(FormWidget):
         value = self.getAnswer()
         input = self.webwidget.widget(self.field, value, **self.attr)
         return self.layout(self.question.name, input, **attr)
+
+    def fullName(self):
+        if "parentCode" in self.question:
+            db = current.db
+            query = db(self.qtable.code == self.question.parentCode)
+            record = query.select(self.qtable.id,
+                                  self.qtable.name,
+                                  limitby=(0, 1)).first()
+            if record != None:
+                parentWidget = survey_question_type["Grid"](record.id)
+                subHeading = parentWidget.getHeading(self.question.parentNumber)
+                return "%s - %s (%s)" % (record.name,
+                                         self.question.name,
+                                         subHeading)
+        return self.question.name
 
     def layout(self, label, widget, **attr):
         """
@@ -1330,13 +1346,33 @@ class S3QuestionTypeAbstractWidget(FormWidget):
             answerMatrix.addElement(cell)
         endcol = startcol+width
         endrow = startrow+height
-        # Only for debugging purposes
-        self.verifyCoords(endrow, endcol)
+        if DEBUG:
+            # Only for debugging purposes
+            self.verifyCoords(endrow, endcol)
         return (endrow, endcol)
 #        if self.labelLeft:
 #            return (row+self.xlsMargin[1]+height, col+self.xlsMargin[0]+mergeWH)
 #        else:
 #            return (row+self.xlsMargin[1]+mergeLV+mergeWV, col+self.xlsMargin[0]+max(mergeLH,mergeWH))
+
+    def writeToRTF(self, ss, langDict):
+        """
+            Function to write the basic question details to a rtf document.
+
+            The basic details will be written to Cell objects that can be
+            added to a row in a table object.
+        """
+        from PyRTF import Paragraph, \
+                          Cell, \
+                          B
+        line = []
+        p = Paragraph(ss.ParagraphStyles.Normal)
+        p.append(B(str(self.fullName())))
+        line.append(Cell(p))
+        p = Paragraph(ss.ParagraphStyles.NormalGrey)
+        p.append()
+        line.append(Cell(p))
+        return line
 
     def verifyCoords(self, endrow, endcol):
         (width, height) = self.getMatrixSize()
@@ -1420,6 +1456,27 @@ class S3QuestionTypeTextWidget(S3QuestionTypeAbstractWidget):
     def canGrowVertical(self):
         return True
 
+    def writeToRTF(self, ss, langDict):
+        """
+            Function to write the basic question details to a rtf document.
+
+            The basic details will be written to Cell objects that can be
+            added to a row in a table object.
+        """
+        from PyRTF import Paragraph, \
+                          Cell, \
+                          B
+        line = []
+        p = Paragraph(ss.ParagraphStyles.Normal)
+        p.append(B(str(self.fullName())))
+        # Add some spacing to increase the text size
+        p2 = Paragraph(ss.ParagraphStyles.Normal)
+        line.append(Cell(p,p2,p2,p2))
+        p = Paragraph(ss.ParagraphStyles.NormalGrey)
+        p.append("")
+        line.append(Cell(p))
+        return line
+
 ##########################################################################
 # Class S3QuestionTypeStringWidget
 ##########################################################################
@@ -1486,7 +1543,7 @@ class S3QuestionTypeNumericWidget(S3QuestionTypeAbstractWidget):
         self.typeDescription = T("Numeric")
 
     def display(self, **attr):
-        length = self.get("length", 10)
+        length = self.get("Length", 10)
         attr["_size"] = length
         attr["_maxlength"] = length
         return S3QuestionTypeAbstractWidget.display(self, **attr)
@@ -1534,8 +1591,8 @@ class S3QuestionTypeNumericWidget(S3QuestionTypeAbstractWidget):
         result = S3QuestionTypeAbstractWidget.validate(self, valueList)
         if result != ANSWER_VALID:
             return result
-        length = self.get("length", 10)
-        format = self.get("format")
+        length = self.get("Length", 10)
+        format = self.get("Format")
         data = value(valueList, 0)
         if format != None:
             try:
@@ -1755,7 +1812,10 @@ class S3QuestionTypeOptionWidget(S3QuestionTypeAbstractWidget):
         maxWidth = 20
         endrow = row
         endcol = col
-
+        lwidth = 10
+        lheight = 1
+        iwidth = 0
+        iheight = 0
         if self.label:
             _TQstn = self._Tquestion(langDict)
             cell = MatrixElement(row,
@@ -1801,7 +1861,7 @@ class S3QuestionTypeOptionWidget(S3QuestionTypeAbstractWidget):
             answerMatrix.addElement(cell)
             answerCol = 3
         wwidth = lwidth
-        mergeWH = mergeLH
+        mergeWH = lwidth - 1
         wheight = len(list)
         if self.singleRow:
             wwidthpart = (wwidth - len(list)) / len(list)
@@ -1836,15 +1896,39 @@ class S3QuestionTypeOptionWidget(S3QuestionTypeAbstractWidget):
         else:
             if endrow < row:
                 endrow = row
-            if endcol < col + 1 + mergeLH:
-                endcol = col + 1 + mergeLH
+            if endcol < col + 1 + mergeWH:
+                endcol = col + 1 + mergeWH
         self.addPaddingAroundWidget(matrix, startrow, startcol, lwidth, lheight, wwidth, iheight+wheight)
         self.addPaddingToCell(matrix, startrow, startcol, endrow, endcol)
         endrow += self.xlsMargin[1]
         endcol += self.xlsMargin[0]
-        # Only for debugging purposes
-        self.verifyCoords(endrow, endcol)
+        if DEBUG:
+            # Only for debugging purposes
+            self.verifyCoords(endrow, endcol)
         return (endrow, endcol)
+
+    def writeToRTF(self, ss, langDict):
+        """
+            Function to write the basic question details to a rtf document.
+
+            The basic details will be written to Cell objects that can be
+            added to a row in a table object.
+        """
+        from PyRTF import Paragraph, \
+                          Cell, \
+                          B
+        line = []
+        p = Paragraph(ss.ParagraphStyles.Normal)
+        p.append(B(str(self.fullName())))
+        line.append(Cell(p))
+        list = self.getList()
+        paras = []
+        for option in list:
+            p = Paragraph(ss.ParagraphStyles.Normal)
+            p.append(survey_T(option, langDict))
+            paras.append(p)
+        line.append(Cell(*paras))
+        return line
 
 
     ######################################################################
@@ -1982,11 +2066,8 @@ class S3QuestionTypeMultiOptionWidget(S3QuestionTypeOptionWidget):
         S3QuestionTypeAbstractWidget.initDisplay(self, **attr)
         self.field.requires = IS_IN_SET(self.getList())
         value = self.getAnswer()
-        try:
-            answer = unescape(value, {"'": '"'})
-            valueList = json.loads(answer)
-        except json.JSONDecodeError:
-            valueList = []
+        s3 = current.response.s3
+        valueList = s3.survey_json2list(value)
         self.field.name = self.question.code
         input = CheckboxesWidget.widget(self.field, valueList, **self.attr)
         self.field.name = "value"
@@ -2020,73 +2101,10 @@ class S3QuestionTypeLocationWidget(S3QuestionTypeAbstractWidget):
         T = current.T
         S3QuestionTypeAbstractWidget.__init__(self, question_id)
         self.typeDescription = T("Location")
-#        # @todo:  modify so that the metdata can define which bits are displayed
-#        settings = current.deployment_settings
-#        self.hierarchyElements = [str(settings.gis.location_hierarchy["L0"]),
-#                                 str(settings.gis.location_hierarchy["L1"]),
-#                                 str(settings.gis.location_hierarchy["L2"]),
-#                                 str(settings.gis.location_hierarchy["L3"]),
-#                                 str(settings.gis.location_hierarchy["L4"]),
-#                                 "Latitude",
-#                                 "Longitude",
-#                                ]
-#        self.hierarchyAnswers = ["L0",
-#                                 "L1",
-#                                 "L2",
-#                                 "L3",
-#                                 "L4",
-#                                 "Latitude",
-#                                 "Longitude",
-#                                ]
-#        self.locationLabel = self.hierarchyAnswers[0:-2]
         self.xlsWidgetSize = [12,0]
 
     def canGrowHorizontal(self):
         return True
-
-
-    def getAnswer(self):
-        """
-            Return the value of the answer for this question
-
-            Overloaded method.
-
-            The answer can either be stored as a plain text or as a JSON string
-
-            If it is plain text then this is the location as entered, and is
-            the value that needs to be returned.
-
-            If it is a JSON value then it should include the raw value and
-            any other of the following properties.
-            {'raw':'original value',
-             'id':numerical value referencing a record on gis_location table,
-             'parent':'name of the parent location'
-             'Latitude':numeric
-             'Longitude':numeric
-            }
-        """
-        if "answer" in self.question:
-            answer = self.question.answer
-            # if it is JSON then ensure all quotes are converted to double
-            try:
-                rowList = self.getAnswerListFromJSON(answer)
-                return rowList["raw"]
-            except:
-                return answer
-        else:
-            return ""
-
-    def repr(self, value=None):
-        """
-            function to format the answer, which can be passed in
-        """
-        if value == None:
-            return self.getAnswer()
-        try:
-            rowList = self.getAnswerListFromJSON(value)
-            return rowList["raw"]
-        except:
-            return value
 
     def display(self, **attr):
         """
@@ -2095,33 +2113,22 @@ class S3QuestionTypeLocationWidget(S3QuestionTypeAbstractWidget):
         """
         return S3QuestionTypeAbstractWidget.display(self, **attr)
 
-    def getLocationRecord(self, complete_id, answer):
+    def getLocationRecord(self, complete_id, location):
         """
             Return the location record from the database
         """
         record = Storage()
-        if answer != None:
-            gtable = current.db.gis_location
-            # if it is JSON then ensure all quotes are converted to double
-            try:
-                rowList = self.getAnswerListFromJSON(answer)
-            except:
-                query = (gtable.name == answer)
-                key = answer
-            else:
-                if "id" in rowList:
-                    query = (gtable.id == rowList["id"])
-                    key = rowList["id"]
-                else:
-                    (query, key) = self.buildQuery(rowList)
+        if location != None:
+            gtable = current.s3db.gis_location
+            query = (gtable.name == location)
             record = current.db(query).select(gtable.name,
                                               gtable.lat,
                                               gtable.lon,
                                              )
             record.complete_id = complete_id
-            record.key = key
+            record.key = location
             if len(record.records) == 0:
-                msg = "Unknown Location %s, %s, %s" %(answer, query, record.key)
+                msg = "Unknown Location %s, %s, %s" %(location, query, record.key)
                 _debug(msg)
             return record
         else:
@@ -2131,37 +2138,8 @@ class S3QuestionTypeLocationWidget(S3QuestionTypeAbstractWidget):
     def onaccept(self, value):
         """
             Method to format the value that has just been put on the database
-
-            If the value is a json then data might need to be extracted from it
-
         """
-        try:
-            answerList = self.getAnswerListFromJSON(value)
-        except:
-            return value
-        newValue = {}
-        jsonAnswer = json.dumps(newValue)
-        jsonValue = unescape(jsonAnswer, {'"': "'"})
-        return jsonValue
-
-    def buildQuery(self, rowList):
-        """
-            Function that will build a gis_location query
-
-            @todo: Extend this to test the L0-L4 values
-        """
-        gtable = current.db.gis_location
-        if "alternative" in rowList:
-            query = (gtable.name == rowList["alternative"])
-            key = rowList["alternative"]
-        else:
-            query = (gtable.name == rowList["raw"])
-            key = rowList["raw"]
-        if "Parent" in rowList:
-            parent_query = current.db(gtable.name == rowList["Parent"]).select(gtable.id)
-            query = query & (gtable.parent.belongs(parent_query))
-            key += rowList["Parent"]
-        return (query, key)
+        return value
 
     def getAnswerListFromJSON(self, answer):
         """
@@ -2170,10 +2148,9 @@ class S3QuestionTypeLocationWidget(S3QuestionTypeAbstractWidget):
             If it is not valid JSON then an exception will be raised,
             and must be handled by the calling function
         """
-        jsonAnswer = unescape(answer, {"u'": '"'})
-        jsonAnswer = unescape(jsonAnswer, {"'": '"'})
-        return json.loads(jsonAnswer)
-
+        s3 = current.response.s3
+        answerList = s3.survey_json2py(answer)
+        return answerList
 
     ######################################################################
     # Functions not fully implemented or used
@@ -2370,75 +2347,131 @@ class S3QuestionTypeGridWidget(S3QuestionTypeAbstractWidget):
                 posn += 1
         return table
 
+    def getMatrixSize(self, maxWidth = 20):
+        self._store_metadata()
+        self.getMetaData()
+        width = 0
+        height = 0
+        # Add space for the sub heading
+        height = 1
+        codeNum = self.qstnNo
+        labelWidth = maxWidth/2
+        for line in range(int(self.rowCnt)):
+            label = survey_T(self.rows[line],self.langDict)
+            (lwidth, lheight) = (labelWidth, len(label)/(4 * labelWidth / 3) + 1)
+            for cell in range(int(self.colCnt)):
+                code = "%s%s" % (self.question["code"], codeNum)
+                codeNum += 1
+                childWidget = self.getChildWidget(code)
+                type = childWidget.get("Type")
+                realWidget = survey_question_type[type](childWidget.id)
+                (cwidth, cheight) = realWidget.getWidgetSize(maxWidth)
+                lwidth += cwidth
+                if cheight > lheight:
+                    lheight = cheight
+            height += lheight
+            if lwidth > width:
+                width = lwidth
+        if DEBUG:
+            print >> sys.stdout, "%s (%s,%s)" % (self.question["code"], height, width)
+        self.xlsWidgetSize = (width,height)
+        return (height, width)
+
+        
     def writeToMatrix(self,
                       matrix,
                       row,
                       col,
                       langDict=dict(),
                       answerMatrix=None,
-                      style={"Label": True
-                            ,"LabelLeft" : True
-                            }
                       ):
         """
             Function to write out basic details to the matrix object
         """
         self._store_metadata()
         self.getMetaData()
+        startrow = row
         startcol = col
-        nextrow = row
-        nextcol = col
-        gridStyle = style
-        gridStyle["Label"] = False
-        if self.data != None:
-            cell = MatrixElement(row, col, survey_T(self.subtitle, langDict),
-                                 style="styleSubHeader")
+        endrow = row
+        endcol = col
+        maxWidth = 20
+        labelWidth = maxWidth / 2
+        codeNum = self.qstnNo
+        row += 1
+        needHeading = True
+        # Merge the top left cells
+        cell = MatrixElement(startrow,
+                             startcol,
+                             "",
+                             style="styleSubHeader"
+                            )
+        cell.merge(labelWidth - 1,0)
+        matrix.addElement(cell)
+        for line in range(int(self.rowCnt)):
+            # Add the label
+            label = survey_T(self.rows[line],self.langDict)
+            (lwidth, lheight) = (labelWidth, len(label)/(4 * labelWidth / 3) + 1)
+            cell = MatrixElement(row,
+                                 col,
+                                 label,
+                                 style="styleSubHeader"
+                                )
+            cell.merge(lwidth - 1,lheight - 1)
             matrix.addElement(cell)
-            # Add a *mostly* blank line for the heading.
-            # This will be added on the first run through the list
-            # To take into account the number of columns required
-            firstRun = True
-            colCnt = 0
-            nextrow += 1
-            posn = 0
-            codeNum = self.qstnNo
-            for line in self.data:
-                col = startcol
-                row = nextrow
-                cell = MatrixElement(row, col, survey_T(self.rows[posn],
-                                                        langDict),
-                                     style="styleText")
-                matrix.addElement(cell)
-                col += 1
-                for cell in line:
-                    if firstRun:
-                        cell = MatrixElement(row - 1, col,
-                                             survey_T(self.columns[colCnt],
-                                                      langDict),
-                                             style="styleSubHeader")
-                        matrix.addElement(cell)
-                        colCnt += 1
-                    if cell == "Blank":
-                        col += 1
-                    else:
-                        code = "%s%s" % (self.question["code"], codeNum)
-                        codeNum += 1
-                        childWidget = self.getChildWidget(code)
-                        type = childWidget.get("Type")
-                        realWidget = survey_question_type[type](childWidget.id)
-                        (endrow, col) = realWidget.writeToMatrix(matrix,
-                                                                 row,
-                                                                 col,
-                                                                 langDict,
-                                                                 answerMatrix,
-                                                                 style)
-                    if endrow > nextrow:
-                        nextrow = endrow
-                posn += 1
-                if col > nextcol:
-                    nextcol = col
-                firstRun = False
-        return (nextrow + self.xlsMargin[1], nextcol + self.xlsMargin[0])
+            maxrow = row + lheight
+            endcol = col + lwidth
+            for cell in range(int(self.colCnt)):
+                code = "%s%s" % (self.question["code"], codeNum)
+                codeNum += 1
+                childWidget = self.getChildWidget(code)
+                type = childWidget.get("Type")
+                realWidget = survey_question_type[type](childWidget.id)
+                realWidget.label = False
+#                realWidget.xlsMargin = (0,0)
+                col = endcol
+                realWidget.startPosn = (col, row)
+                (endrow, endcol) = realWidget.writeToMatrix(matrix,
+                                                             row,
+                                                             col,
+                                                             langDict,
+                                                             answerMatrix
+                                                            )
+                if endrow > maxrow:
+                    maxrow = endrow
+                if needHeading:
+                    # Now add the heading for this column
+                    label = survey_T(self.columns[cell],self.langDict)
+                    cell = MatrixElement(startrow,
+                                         col,
+                                         label,
+                                         style="styleSubHeader"
+                                        )
+                    cell.merge(endcol - col -1 ,0)
+                    matrix.addElement(cell)
+            row = maxrow
+            col = startcol
+            needHeading = False
+        # Add widget padding
+        self.addPaddingToCell(matrix, startrow, startcol, row, endcol)
+        row += self.xlsMargin[1]
+        endcol += self.xlsMargin[0]
+        return (row, endcol)
+
+    def writeToRTF(self, ss, langDict):
+        """
+            Function to write the basic question details to a rtf document.
+
+            This will just display the grid name, following this will be the
+            grid child objects.
+        """
+        from PyRTF import Paragraph, \
+                          Cell, \
+                          B
+        line = []
+        p = Paragraph(ss.ParagraphStyles.NormalCentre)
+        p.append(B(self.question.name))
+        line.append(Cell(p, span=2))
+        return line
 
     def insertChildren(self, record, metadata):
         self.id = record.id
@@ -2557,24 +2590,10 @@ class S3QuestionTypeGridChildWidget(S3QuestionTypeAbstractWidget):
             self.question.parentNumber = int(parentNumber)
         self.metalist.append("Type")
         self.typeDescription = T("Grid Child")
+        self.xlsWidgetSize = (0,0)
 
     def display(self, **attr):
         return None
-
-    def fullName(self):
-        if "parentCode" in self.question:
-            db = current.db
-            query = db(self.qtable.code == self.question.parentCode)
-            record = query.select(self.qtable.id,
-                                  self.qtable.name,
-                                  limitby=(0, 1)).first()
-            if record != None:
-                parentWidget = survey_question_type["Grid"](record.id)
-                subHeading = parentWidget.getHeading(self.question.parentNumber)
-                return "%s - %s (%s)" % (record.name,
-                                         self.question.name,
-                                         subHeading)
-        return self.question.name
 
     def realWidget(self):
         type = self.get("Type")
@@ -2611,6 +2630,15 @@ class S3QuestionTypeGridChildWidget(S3QuestionTypeAbstractWidget):
             because it is handled by the Grid question type
         """
         return (row, col)
+
+    def writeToRTF(self, ss, langDict):
+        """
+            Function to write the basic question details to a rtf document.
+
+            The basic details will be written to Cell objects that can be
+            added to a row in a table object.
+        """
+        return self.realWidget().writeToRTF(ss,langDict)
 
 
 ###############################################################################
@@ -2825,7 +2853,19 @@ class S3AbstractAnalysis():
                  _class="action-btn")
         return DIV(link, _class="surveyChart%sWidget" % self.type)
 
-    def drawChart(self, output=None, data=None, label=None,
+    def getChartName(self, series_id):
+        import hashlib
+        request = current.request
+        h = hashlib.sha256()
+        h.update(self.qstnWidget.question.code)
+        encoded_part = h.hexdigest()
+        chartName = "survey_series_%s_%s" % \
+                    (series_id,
+                     encoded_part
+                    )
+        return chartName
+
+    def drawChart(self, series_id, output=None, data=None, label=None,
                   xLabel=None, yLabel=None):
         """
             This function will draw the chart using the answer set.
@@ -3053,14 +3093,22 @@ class S3NumericAnalysis(S3AbstractAnalysis):
         return band
 
     def chartButton(self, series_id):
+        # At the moment only draw charts for integers
+        if self.qstnWidget.get("Format", "n") != "n":
+            return None
         if len(self.valueList) < self.histCutoff:
             return None
         return S3AbstractAnalysis.chartButton(self, series_id)
 
-    def drawChart(self, output="xml",
+    def drawChart(self, series_id, output="xml",
                   data=None, label=None, xLabel=None, yLabel=None):
-        chart = current.chart()
-        chart.displayAsIntegers()
+        chartFile = self.getChartName(series_id)
+        cached = current.chart.getCachedFile(chartFile)
+        if cached:
+            return cached
+
+        chart = current.chart(path=chartFile)
+        chart.asInt = True
         if data == None:
             chart.survey_hist(self.qstnWidget.question.name,
                               self.valueList,
@@ -3117,14 +3165,18 @@ class S3OptionAnalysis(S3AbstractAnalysis):
             for (key, value) in self.list.items():
                 self.listp[key] = "%3.1f%%" % round((100.0 * value) / self.cnt,1)
 
-    def drawChart(self, output="xml",
+    def drawChart(self, series_id, output="xml",
                   data=None, label=None, xLabel=None, yLabel=None):
+        chartFile = self.getChartName(series_id)
+        cached = current.chart.getCachedFile(chartFile)
+        if cached:
+            return cached
+        chart = current.chart(path=chartFile)
         data = []
         label = []
         for (key, value) in self.list.items():
             data.append(value)
             label.append(key)
-        chart = current.chart()
         chart.survey_pie(self.qstnWidget.question.name,
                          data,
                          label)
@@ -3204,31 +3256,13 @@ class S3OptionOtherAnalysis(S3OptionAnalysis):
 # -----------------------------------------------------------------------------
 class S3MultiOptionAnalysis(S3OptionAnalysis):
 
-#    def __init__(self,
-#                 type,
-#                 question_id,
-#                 answerList
-#                ):
-#        newList = []
-#        for answer in answerList:
-#            try:
-#                value = unescape(answer, {"'": '"'})
-#                valueList = json.loads(answer)
-#            except json.JSONDecodeError:
-#                valueList = []
-#            newList.append(valueList)
-#        S3AbstractAnalysis.__init__(self, type, question_id, newList)
-
     def castRawAnswer(self, complete_id, answer):
         """
             Used to modify the answer from its raw text format.
-            Where necessary, this will function be overridden.
+            Where necessary, this function will be overridden.
         """
-        try:
-            value = unescape(answer, {"'": '"'})
-            valueList = json.loads(value)
-        except json.JSONDecodeError:
-            valueList = []
+        s3 = current.response.s3
+        valueList = s3.survey_json2list(answer)
         return valueList
 
     def basicResults(self):
@@ -3250,14 +3284,18 @@ class S3MultiOptionAnalysis(S3OptionAnalysis):
             for (key, value) in self.list.items():
                 self.listp[key] = "%s%%" %((100 * value) / self.cnt)
 
-    def drawChart(self, output="xml",
+    def drawChart(self, series_id, output="xml",
                   data=None, label=None, xLabel=None, yLabel=None):
+        chartFile = self.getChartName(series_id)
+        cached = current.chart.getCachedFile(chartFile)
+        if cached:
+            return cached
+        chart = current.chart(path=chartFile)
         data = []
         label = []
         for (key, value) in self.list.items():
             data.append(value)
             label.append(key)
-        chart = current.chart()
         chart.survey_bar(self.qstnWidget.question.name,
                          data,
                          label,
@@ -3428,9 +3466,9 @@ class S3LinkAnalysis(S3AbstractAnalysis):
     def filter(self, filterType, groupedData):
         return self.widget.filter(filterType, groupedData)
 
-    def drawChart(self, output="xml",
+    def drawChart(self, series_id, output="xml",
                   data=None, label=None, xLabel=None, yLabel=None):
-        return self.widget.drawChart(data, label, xLabel, yLabel)
+        return self.widget.drawChart(data, series_id, label, xLabel, yLabel)
 
 
 # -----------------------------------------------------------------------------

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
-""" Messaging Module - Controllers """
+"""
+    Messaging Module - Controllers
+"""
 
 module = request.controller
 resourcename = request.function
@@ -750,19 +752,19 @@ def person_search(value, type=None):
 
         # First name
         query = (persons["first_name"].lower().like("%" + value + "%")) & deleted
-        rows = db(query).select(persons.pe_id, cache=(cache.ram, 60))
+        rows = db(query).select(persons.pe_id, cache=s3db.cache)
         for row in rows:
             items.append({"id":row.pe_id, "name":represent(row.pe_id, default_label = "")})
 
         # Middle name
         query = (persons["middle_name"].lower().like("%" + value + "%")) & deleted
-        rows = db(query).select(persons.pe_id, cache=(cache.ram, 60))
+        rows = db(query).select(persons.pe_id, cache=s3db.cache)
         for row in rows:
             items.append({"id":row.pe_id, "name":represent(row.pe_id, default_label = "")})
 
         # Last name
         query = (persons["last_name"].lower().like("%" + value + "%")) & deleted
-        rows = db(query).select(persons.pe_id, cache=(cache.ram, 60))
+        rows = db(query).select(persons.pe_id, cache=s3db.cache)
         for row in rows:
             items.append({"id":row.pe_id, "name":represent(row.pe_id, default_label = "")})
 

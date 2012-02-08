@@ -22,9 +22,22 @@ import eden.msg
 import eden.doc
 import eden.hrm
 import eden.project
-import eden.dvi
+import eden.supply
+import eden.inv
+import eden.proc
+import eden.asset
+import eden.scenario
+import eden.event
+import eden.req
+import eden.vehicle
 import eden.irs
+import eden.fire
+import eden.delphi
+import eden.dvi
 import eden.support
+import eden.survey
+import eden.hms
+#import eden.patient
 
 # =============================================================================
 # Import S3 meta fields into global namespace
@@ -33,21 +46,10 @@ from s3.s3fields import *
 
 # =============================================================================
 # Representations for Auth Users & Groups
-def s3_user_represent(id):
-    """ Represent a User as their email address """
-
-    table = db.auth_user
-    user = db(table.id == id).select(table.email,
-                                     limitby=(0, 1),
-                                     cache=(cache.ram, 10)).first()
-    if user:
-        return user.email
-    return None
-
 def s3_avatar_represent(id, tablename="auth_user", _class="avatar"):
     """ Represent a User as their profile picture or Gravatar """
 
-    table = db[tablename]
+    table = s3db[tablename]
 
     email = None
     image = None
@@ -56,7 +58,7 @@ def s3_avatar_represent(id, tablename="auth_user", _class="avatar"):
         user = db(table.id == id).select(table.email,
                                          table.image,
                                          limitby=(0, 1),
-                                         cache=(cache.ram, 10)).first()
+                                         cache=s3db.cache).first()
         if user:
             email = user.email.strip().lower()
             image = user.image
@@ -64,14 +66,14 @@ def s3_avatar_represent(id, tablename="auth_user", _class="avatar"):
         user = db(table.id == id).select(table.pe_id,
                                          table.picture,
                                          limitby=(0, 1),
-                                         cache=(cache.ram, 10)).first()
+                                         cache=s3db.cache).first()
         if user:
             image = user.picture
             ctable = db.pr_contact
             query = (ctable.pe_id == id) & (ctable.contact_method == "EMAIL")
             email = db(query).select(ctable.value,
                                      limitby=(0, 1),
-                                     cache=(cache.ram, 10)).first()
+                                     cache=s3db.cache).first()
             if email:
                 email = email.value
 
@@ -93,10 +95,10 @@ def s3_avatar_represent(id, tablename="auth_user", _class="avatar"):
 def s3_role_represent(id):
     """ Represent a Role by Name """
 
-    table = db.auth_group
+    table = s3db.auth_group
     role = db(table.id == id).select(table.role,
                                      limitby=(0, 1),
-                                     cache=(cache.ram, 10)).first()
+                                     cache=s3db.cache).first()
     if role:
         return role.role
     return None
@@ -225,7 +227,9 @@ response.s3.all_meta_field_names = [field.name for field in
      s3_meta_created_by(),
      s3_meta_modified_by(),
      s3_meta_owned_by_user(),
-     s3_meta_owned_by_role()
+     s3_meta_owned_by_role(),
+     s3_meta_owned_by_organisation(),
+     s3_meta_owned_by_facility()
     ]]
 
 # =============================================================================
@@ -280,14 +284,6 @@ s3.roles_permitted = roles_permitted
 # Other reusable fields
 
 # -----------------------------------------------------------------------------
-# Reusable name field to include in other table definitions
-name_field = S3ReusableField("name", length=64,
-                             label=T("Name"), required=IS_NOT_EMPTY())
-
-# Make available for S3Models
-s3.name_field = name_field
-
-# -----------------------------------------------------------------------------
 # Reusable comments field to include in other table definitions
 s3_comments = S3ReusableField("comments", "text",
                               label = T("Comments"),
@@ -323,8 +319,8 @@ response.s3.currency_type = currency_type
 #
 # These fields are populated onaccept from location_id
 #
-# Labels that need gis_config data are set by gis.set_config() calling
-# gis.update_gis_config_dependent_options()
+# Labels that vary by country are set by gis.update_table_hierarchy_labels()
+# @ToDo; Add Postcode to this
 #
 
 address_building_name = S3ReusableField("building_name",
@@ -356,7 +352,8 @@ address_L1 = S3ReusableField("L1",
                              readable=False,
                              writable=False)
 address_L0 = S3ReusableField("L0",
-                             label=T("Country"), # L0 Location Name never varies except with a Translation
+                             # L0 Location Name never varies except with a Translation
+                             label=T("Country"),
                              readable=False,
                              writable=False)
 
@@ -399,10 +396,11 @@ def address_onvalidation(form):
         If these fields are populated then create/update the location
     """
 
-    if "location_id" in form.vars:
+    vars = form.vars
+    if "location_id" in vars:
         table = s3db.gis_location
         # Read Postcode & Street Address
-        query = (table.id == form.vars.location_id)
+        query = (table.id == vars.location_id)
         location = db(query).select(table.addr_street,
                                     table.addr_postcode,
                                     table.name,
@@ -411,27 +409,28 @@ def address_onvalidation(form):
                                     table.path,
                                     limitby=(0, 1)).first()
         if location:
-            form.vars.address = location.addr_street
-            form.vars.postcode = location.addr_postcode
+            vars.address = location.addr_street
+            vars.postcode = location.addr_postcode
             if location.level == "L0":
-                form.vars.L0 = location.name
+                vars.L0 = location.name
             elif location.level == "L1":
-                form.vars.L1 = location.name
+                vars.L1 = location.name
                 if location.parent:
                     query = (table.id == location.parent)
                     country = db(query).select(table.name,
                                                limitby=(0, 1)).first()
                     if country:
-                        form.vars.L0 = country.name
+                        vars.L0 = country.name
             else:
                 if location.level is None:
-                    form.vars.building_name = location.name
+                    vars.building_name = location.name
                 # Get Names of ancestors at each level
-                gis.get_parent_per_level(form.vars,
-                                         form.vars.location_id,
-                                         feature=location,
-                                         ids=False,
-                                         names=True)
+                vars = gis.get_parent_per_level(vars,
+                                                vars.location_id,
+                                                feature=location,
+                                                ids=False,
+                                                names=True)
+
 s3.address_onvalidation = address_onvalidation
 
 def address_update(table, record_id):
@@ -474,13 +473,15 @@ def address_update(table, record_id):
                 if location.level is None:
                     vars.building_name = location.name
                 # Get Names of ancestors at each level
-                gis.get_parent_per_level(vars,
-                                         vars.location_id,
-                                         feature=location,
-                                         ids=False,
-                                         names=True)
+                vars = gis.get_parent_per_level(vars,
+                                                vars.location_id,
+                                                feature=location,
+                                                ids=False,
+                                                names=True)
             # Update record
             db(table.id == record_id).update(**vars)
+
+s3.address_update = address_update
 
 # =============================================================================
 # Default CRUD strings

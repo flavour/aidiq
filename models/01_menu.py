@@ -208,16 +208,77 @@ if auth.permission.format in ("html"):
     if deployment_settings.get_L10n_display_toolbar():
         response.menu.append(s3.menu_lang)
     if deployment_settings.get_gis_menu():
-        # Do not localize this string.
-        s3.gis_menu_placeholder = "GIS menu placeholder"
-        # Add a placeholder for the regions menu, which cannot be constructed
-        # until the gis_config table is available. Put it near the language menu.
-        response.menu.append(s3.gis_menu_placeholder)
+        # See if we need to switch config before we decide which config item to mark as active
+        if "_config" in request.get_vars:
+            # The user has just selected a config from the GIS menu
+            try:
+                config = int(request.get_vars._config)
+            except ValueError:
+                # Manually-crafted URL?
+                pass
+            else:
+                if config != session.s3.gis_config_id:
+                    config = gis.set_config(config)
+                    if deployment_settings.has_module("event"):
+                        # See if this config is associated with an Event
+                        table = s3db.event_config
+                        query = (table.config_id == config)
+                        event = db(query).select(table.event_id,
+                                                 limitby=(0, 1)).first()
+                        if event:
+                            session.s3.event = event.event_id
+                        else:
+                            session.s3.event = None
+            # Don't use the outdated cache for this call
+            cache = None
+        else:
+            cache = s3db.cache
+
+        # Check if there are multiple GIS Configs for the user to switch between
+        table = s3db.gis_menu
+        ctable = s3db.gis_config
+        query = (table.pe_id == None)
+        if auth.is_logged_in():
+            # @ToDo: Search for OUs too (API call)
+            ptable = s3db.pr_person
+            query = query | ((table.pe_id == ptable.pe_id) & \
+                             (ptable.uuid == auth.user.person_uuid))
+        query = query & (table.config_id == ctable.id)
+        configs = db(query).select(ctable.id,
+                                   ctable.name,
+                                   cache=cache)
+        if len(configs):
+            # Use short names for the site and personal configs else they'll wrap.
+            # Provide checkboxes to select between pages
+            gis_menu = [[{"name": T("Default Map"),
+                          "id": "gis_menu_id_0",
+                          # @ToDo: Show when default item is selected without having to do a DB query to read the value
+                          #"value": session.s3.gis_config_id == 0,
+                          "request_type": "load"
+                         },
+                         False,
+                         URL(args=request.args, vars={"_config": 0})
+                        ]]
+            for config in configs:
+                gis_menu.append(
+                    [{"name": T(config.name),
+                      "id": "gis_menu_id_%s" % config.id,
+                      # Currently not working on 1st request afterwards as being set after this (in zz_last.py)
+                      "value": session.s3.gis_config_id == config.id,
+                      "request_type": "load"},
+                     False,
+                     URL(args=request.args, vars={"_config": config.id})
+                    ])
+            gis_menu = [deployment_settings.get_gis_menu(),
+                        True, URL(c="gis", f="config"),
+                        gis_menu
+                        ]
+            response.menu.append(gis_menu)
     if s3.menu_admin:
         response.menu.append(s3.menu_admin)
 
 
-    # Menu helpers ================================================================
+    # Menu helpers ============================================================
     def s3_menu(controller, postp=None, prep=None):
         """
             appends controller specific options to global menu
@@ -238,11 +299,16 @@ if auth.permission.format in ("html"):
             menu = menu_config["menu"]
 
             # role hooks
-            if s3_has_role(ADMIN) and "on_admin" in menu_config:
+            if "on_admin" in menu_config and s3_has_role(ADMIN):
                 menu.extend(menu_config["on_admin"])
 
-            if s3_has_role(EDITOR) and "on_editor" in menu_config:
+            if "on_editor" in menu_config and s3_has_role(EDITOR):
                 menu.extend(menu_config["on_editor"])
+
+            if "on_mapadmin" in menu_config and \
+                (not deployment_settings.get_security_map() or \
+                 s3_has_role(MAP_ADMIN)):
+                menu.extend(menu_config["on_mapadmin"])
 
             # conditionals
             conditions = [x for x in menu_config if re.match(r"condition[0-9]+", x)]
@@ -255,27 +321,29 @@ if auth.permission.format in ("html"):
             if postp:
                 postp()
 
-    # =============================================================================
+    # =========================================================================
     # Role-dependent Menu options
-    # =============================================================================
+    # =========================================================================
     if s3_has_role(ADMIN):
         pr_menu = [
                 [T("Person"), False, aURL(f="person", args=None), [
-                    [T("New"), False, aURL(p="create", f="person", args="create")],
+                    [T("New"), False, aURL(p="create", f="person",
+                                           args="create")],
                     [T("Search"), False, aURL(f="index")],
                     [T("List All"), False, aURL(f="person")],
                 ]],
                 [T("Groups"), False, aURL(f="group"), [
-                    [T("New"), False, aURL(p="create", f="group", args="create")],
+                    [T("New"), False, aURL(p="create", f="group",
+                                           args="create")],
                     [T("List All"), False, aURL(f="group")],
                 ]],
             ]
     else:
         pr_menu = []
 
-    # =============================================================================
+    # =========================================================================
     # Settings-dependent Menu options
-    # =============================================================================
+    # =========================================================================
     # CRUD strings for inv_recv
     # (outside condtional model load since need to be visible to menus)
     if deployment_settings.get_inv_shipment_name() == "order":
@@ -538,10 +606,6 @@ if auth.permission.format in ("html"):
                                                       args="create")],
                 [T("List All"), False, aURL(c="hrm",
                                             f="training_event")],
-                [T("Import Participant List"), False, aURL(p="create",
-                                                           c="hrm",
-                                                           f="training",
-                                                           args=["import"])],
                 [T("Training Report"), False, aURL(c="hrm",
                                                    f="training",
                                                    args=["report"],
@@ -549,6 +613,10 @@ if auth.permission.format in ("html"):
                                                              cols="month",
                                                              fact="person_id",
                                                              aggregate="count"))],
+                [T("Import Participant List"), False, aURL(p="create",
+                                                           c="hrm",
+                                                           f="training",
+                                                           args=["import"])],
             ]],
             [T("Training Course Catalog"), False, URL(c="hrm",
                                                       f="course"), [
@@ -579,9 +647,9 @@ if auth.permission.format in ("html"):
         ],
     }
 
-    # =============================================================================
+    # =========================================================================
     # Default Menu Configurations for Controllers
-    # =============================================================================
+    # =========================================================================
     """
         Dict structure -
             Key - controller name
@@ -594,7 +662,7 @@ if auth.permission.format in ("html"):
     s3_menu_dict = {
 
         # ASSESS Controller
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "assess": {
             "menu": [
                 [T("Rapid Assessments"), False, aURL(f="rat"), [
@@ -623,7 +691,7 @@ if auth.permission.format in ("html"):
         },
 
         # ASSET Controller
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "asset": {
             "menu": [
                 #[T("Home"), False, aURL(c="asset", f="index")],
@@ -647,7 +715,7 @@ if auth.permission.format in ("html"):
         },
 
         # BUDGET Controller
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "budget": {
             "menu": [
                 [T("Parameters"), False, aURL(f="parameters")],
@@ -683,7 +751,7 @@ if auth.permission.format in ("html"):
         },
 
         # BUILDING Controller
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "building": {
             "menu": [
                 [T("NZSEE Level 1"), False, aURL(f="nzseel1"), [
@@ -712,7 +780,7 @@ if auth.permission.format in ("html"):
         },
 
         # CLIMATE Controller
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "climate": {
             "menu": [
                 [T("Home"), False, aURL(f="index")],
@@ -723,7 +791,7 @@ if auth.permission.format in ("html"):
         },
 
         # CR / Shelter Registry Controller
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "cr": {
             "menu": [
                 [ # @ToDo - Fix s3.crud_strings["cr_shelter"].subtitle_list
@@ -750,16 +818,18 @@ if auth.permission.format in ("html"):
         },
 
         # DELPHI / Delphi Decision Maker
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "delphi": {
             "menu": [
                 [T("Active Problems"), False, aURL(f="problem"), [
-                                            [T("New"), False, aURL(p="create", f="problem", args="create")],
-                                            [T("List All"), False, aURL(f="problem")],
+                    [T("New"), False, aURL(p="create", f="problem",
+                                           args="create")],
+                    [T("List All"), False, aURL(f="problem")],
                 ]],
                 [T("Groups"), False, aURL(f="group"), [
-                                            [T("New"), False, aURL(p="create", f="group", args="create")],
-                                            [T("List All"), False, aURL(f="group")],
+                    [T("New"), False, aURL(p="create", f="group",
+                                           args="create")],
+                    [T("List All"), False, aURL(f="group")],
                 ]],
                 #[T("Solutions"), False, aURL(f="solution")],
             ],
@@ -772,16 +842,18 @@ if auth.permission.format in ("html"):
         },
 
         # DOC / Document Library
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "doc": {
             "menu": [
                 [T("Documents"), False, aURL(f="document"),[
-                    [T("New"), False, aURL(p="create", f="document", args="create")],
+                    [T("New"), False, aURL(p="create", f="document",
+                                           args="create")],
                     [T("List All"), False, aURL(f="document")],
                     #[T("Search"), False, aURL(f="ireport", args="search")]
                 ]],
                 [T("Photos"), False, aURL(f="image"),[
-                    [T("New"), False, aURL(p="create", f="image", args="create")],
+                    [T("New"), False, aURL(p="create", f="image",
+                                           args="create")],
                     [T("List All"), False, aURL(f="image")],
                     #[T("Bulk Uploader"), False, aURL(f="bulk_upload")]
                     #[T("Search"), False, aURL(f="ireport", args="search")]
@@ -789,7 +861,7 @@ if auth.permission.format in ("html"):
         },
 
         # DVI / Disaster Victim Identification
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "dvi": {
             "menu": [
                 #[T("Home"), False, URL(f="index")],
@@ -837,98 +909,81 @@ if auth.permission.format in ("html"):
             ]
         },
 
-        # DVR / Disaster Victim Registry
-        # -------------------------------------------------------------------------
-        "dvr": {
-            "menu": [
-                [T("Add Disaster Victims"), False,  aURL(f="index"),[
-                    [T("Add new Group"), False, aURL(p="create", f="index")],
-                    [T("Add new Individual"), False, aURL(p="create", f="index")]
-                ]],
-                [T("Edit Disaster Victims"), False,  aURL(f="index"),[
-                    [T("Search and Edit Group"), False, aURL(f="index")],
-                    [T("Search and Edit Individual"), False, aURL(f="index")]
-                ]],
-                [T("List Groups"), False,  aURL(f="index"),[
-                    [T("List Groups/View Members"), False, aURL(f="index")]
-                ]],
-                [T("Reports"), False,  aURL(f="index"),[
-                    [T("Drill Down by Group"), False, aURL(f="index")],
-                    [T("Drill Down by Shelter"), False, aURL(f="index")],
-                    [T("Drill Down by Incident"), False, aURL(f="index")]
-                ]],
-            ]
-        },
-
         # EVENT / Event Module
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "event": {
             "menu": [
-                        [T("Scenarios"), False, aURL(c="scenario", f="scenario"), [
-                            [T("New Scenario"), False, aURL(p="create", c="scenario",
-                                                            f="scenario",
-                                                            args="create")],
-                            [T("View All"), False, aURL(c="scenario", f="scenario")]
-                        ]],
-                        [T("Events"), False, aURL(c="event", f="event"), [
-                            [T("New Event"), False, aURL(p="create", c="event", f="event",
-                                                         args="create")],
-                            [T("View All"), False, aURL(c="event", f="event")]
-                        ]],
-                    ]   \
-                    if deployment_settings.has_module("scenario") else \
-                    [
-                        [T("Events"), False, aURL(c="event", f="event"), [
-                            [T("New Event"), False, aURL(p="create", c="event", f="event",
-                                                         args="create")],
-                            [T("View All"), False, aURL(c="event", f="event")]
-                        ]]
-                    ],
+                    [T("Scenarios"), False, aURL(c="scenario", f="scenario"), [
+                        [T("New Scenario"), False, aURL(p="create", c="scenario",
+                                                        f="scenario",
+                                                        args="create")],
+                        [T("View All"), False, aURL(c="scenario", f="scenario")]
+                    ]],
+                    [T("Events"), False, aURL(c="event", f="event"), [
+                        [T("New Event"), False, aURL(p="create", c="event",
+                                                     f="event",
+                                                     args="create")],
+                        [T("View All"), False, aURL(c="event", f="event")]
+                    ]],
+                ]   \
+                if deployment_settings.has_module("scenario") else \
+                [
+                    [T("Events"), False, aURL(c="event", f="event"), [
+                        [T("New Event"), False, aURL(p="create", c="event",
+                                                     f="event",
+                                                     args="create")],
+                        [T("View All"), False, aURL(c="event", f="event")]
+                    ]]
+                ],
         },
 
         # FIRE
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "fire": {
             "menu": [
                 [T("Fire Stations"), False, aURL(c="fire", f="station"),
                 [
                     [T("New"), False, aURL(p="create", c="fire", f="station",
-                                        args="create")],
+                                           args="create")],
                     [T("List All"), False, aURL(c="fire", f="station")],
                     [T("Search"), False, aURL(c="fire", f="station",
-                                            args="search")],
+                                              args="search")],
                     [T("Import Stations"), False, aURL(c="fire", f="station",
-                                            args="import.xml")],
-                    [T("Import Vehicles"), False, aURL(c="fire", f="station_vehicle",
-                                            args="import.xml")],
+                                                       args="import")],
+                    [T("Import Vehicles"), False, aURL(c="fire",
+                                                       f="station_vehicle",
+                                                       args="import")],
                 ]],
                 [T("Water Sources"), False, aURL(c="fire", f="water_source"),
                 [
-                    [T("New"), False, aURL(p="create", c="fire", f="water_source",
-                                        args="create")],
+                    [T("New"), False, aURL(p="create", c="fire",
+                                           f="water_source",
+                                           args="create")],
                     [T("List All"), False, aURL(c="fire", f="water_source")],
                     [T("Search"), False, aURL(c="fire", f="water_source",
-                                            args="search")],
+                                              args="search")],
                     [T("Import"), False, aURL(c="fire", f="water_source",
-                                            args="import.xml")],
+                                              args="import")],
                 ]],
                 [T("Hazard Points"), False, aURL(c="fire", f="hazard_point"),
                 [
-                    [T("New"), False, aURL(p="create", c="fire", f="hazard_point",
-                                        args="create")],
+                    [T("New"), False, aURL(p="create", c="fire",
+                                           f="hazard_point",
+                                           args="create")],
                     [T("List All"), False, aURL(c="fire", f="hazard_point")],
                     [T("Search"), False, aURL(c="fire", f="hazard_point",
-                                            args="search")],
+                                              args="search")],
                     [T("Import"), False, aURL(c="fire", f="hazard_point",
-                                            args="import.xml")],
+                                              args="import")],
                 ]],
             ]
         },
 
         # GIS / GIS Controllers
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "gis": {
             "menu": [
+                [T("Fullscreen Map"), False, aURL(f="map_viewing_client")],
                 [T("Locations"), False, aURL(f="location"), [
                     [T("New Location"), False, aURL(p="create", f="location",
                                                     args="create")],
@@ -937,19 +992,26 @@ if auth.permission.format in ("html"):
                                                         vars={"group": 1})],
                     [T("List All"), False, aURL(f="location")],
                     [T("Search"), False, aURL(f="location", args="search")],
+                    [T("Import"), False, aURL(f="location", args="import")],
                     #[T("Geocode"), False, aURL(f="geocode_manual")],
                 ]],
-                [T("Fullscreen Map"), False, aURL(f="map_viewing_client")],
+                [T("Configuration"), False, aURL(f="config")],
                 # Currently not got geocoding support
                 #[T("Bulk Uploader"), False, aURL(c="doc", f="bulk_upload")]
             ],
 
-            "condition1": lambda: not deployment_settings.get_security_map() or s3_has_role(MAP_ADMIN),
-            "conditional1": [[T("Service Catalogue"), False, URL(f="map_service_catalogue")]]
+            "on_mapadmin": [
+                [T("Admin"), False, "#", [
+                    [T("Hierarchy"), False, aURL(f="hierarchy")],
+                    [T("Markers"), False, aURL(f="marker")],
+                    [T("Projections"), False, aURL(f="projection")],
+                    [T("Symbology"), False, aURL(f="symbology")],
+                ]],
+            ],
         },
 
         # HMS / Hospital Status Assessment and Request Management System
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "hms": {
             "menu": [
                 [T("Hospitals"), False, aURL(f="hospital", args="search"), [
@@ -968,11 +1030,11 @@ if auth.permission.format in ("html"):
         },
 
         # HRM
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "hrm": hrm_menu,
 
         # INV / Inventory
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "inv": {
             "menu": [
                     #[T("Home"), False, aURL(c="inv", f="index")],
@@ -983,19 +1045,20 @@ if auth.permission.format in ("html"):
                         [T("List All"), False, aURL(c="inv", f="warehouse")],
                         [T("Search"), False, aURL(c="inv", f="warehouse",
                                                   args="search")],
+                        [T("Report"), False, aURL(p="create", c="inv", f="inv_item",
+                                                  args=["report"])],
                         [T("Import"), False, aURL(p="create", c="inv",
                                                   f="warehouse",
                                                   args=["import"])],
                     ]],
-                    [T("Inventories"), False, aURL(c="inv", f="warehouse"), [
-                        [T("Search Inventory Items"), False, aURL(c="inv",
+                    [T("Warehouse Stock"), False, aURL(c="inv", f="warehouse"), [
+                        [T("Search Warehouse Stock"), False, aURL(c="inv",
                                                                   f="inv_item",
                                                                   args="search")],
-                        [s3.crud_strings.inv_recv.title_search, False, aURL(c="inv", f="recv",
-                                                                            args="search")],
-                        [T("Import"), False, aURL(p="create", c="inv", f="warehouse",
-                                                  args=["import"],
-                                                  vars={"extra_data":True})],
+                        [T("Report"), False, aURL(p="create", c="inv", f="inv_item",
+                                                  args=["report"])],
+                        [T("Import"), False, aURL(p="create", c="inv", f="inv_item",
+                                                  args=["import"])],
                     ]],
                     [s3.crud_strings.inv_recv.subtitle_list, False, aURL(c="inv", f="recv"), [
                         [T("New"), False, aURL(p="create", c="inv",
@@ -1040,17 +1103,19 @@ if auth.permission.format in ("html"):
                     ]]
                 ],
 
-            "on_admin": [[T("Item Categories"), False, aURL(c="supply", f="item_category"), [
+            "on_admin": [
+                [T("Item Categories"), False, aURL(c="supply", f="item_category"), [
                     [T("New Item Category"), False, aURL(p="create",
                                                          c="supply",
                                                          f="item_category",
                                                          args="create")],
                     [T("List All"), False, aURL(c="supply", f="item_category")]
-                ]]]
+                ]]
+            ]
         },
 
         # IRS / Incident Report System
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "irs": {
             "menu": [
                 [T("Incident Reports"), False, aURL(f="ireport"),[
@@ -1071,7 +1136,7 @@ if auth.permission.format in ("html"):
         },
 
         # SURVEY / Survey Controller
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "survey": {
             "menu": [
                 [T("Assessment Templates"), False, aURL(f="template"), [
@@ -1081,7 +1146,7 @@ if auth.permission.format in ("html"):
                 #[T("Section"), False, aURL(f="section"), [
                 #    [T("New"), False, aURL(p="create", f="section", args="create")],
                 #    [T("List All"), False, aURL(f="section")]]],
-                [T("Event Assessments"), False, aURL(f="series"), [
+                [T("Disaster Assessments"), False, aURL(f="series"), [
                     [T("New"), False, aURL(p="create", f="series", args="create")],
                     [T("List All"), False, aURL(f="series")],
                 ]],
@@ -1090,16 +1155,30 @@ if auth.permission.format in ("html"):
                 [T("Administration"), False, aURL(f="complete"), [
                     #[T("New"), False, aURL(p="create", f="complete", args="create")],
                     #[T("List All"), False, aURL(f="complete")],
-                    [T("Import Templates"), False, aURL(f="question_list",
-                                                        args="import")],
-                    [T("Import Completed Responses"), False, aURL(f="complete",
-                                                                  args="import")]
+                    [T("Import Templates"),
+                     False,
+                     aURL(f="question_list",
+                          args="import"
+                         )
+                    ],
+                    [T("Import Template Layout"),
+                     False,
+                     aURL(f="formatter",
+                          args="import"
+                         )
+                    ],
+                    [T("Import Completed Assessment Forms"),
+                     False,
+                     aURL(f="complete",
+                          args="import"
+                         )
+                    ]
                 ]],
                 ]
         },
 
         # MPR / Missing Person Registry
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "mpr": {
             "menu": [
                 [T("Missing Persons"),
@@ -1116,7 +1195,7 @@ if auth.permission.format in ("html"):
         },
 
         # MSG / Messaging Controller
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "msg": {
             "menu": [
                 [T("Compose"), False, URL(c="msg", f="compose")],
@@ -1139,7 +1218,7 @@ if auth.permission.format in ("html"):
         },
 
         # ORG / Organization Registry
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "org": {
             "menu": [
                     [T("Organizations"), False, aURL(c="org", f="organisation"), [
@@ -1166,7 +1245,7 @@ if auth.permission.format in ("html"):
         },
 
         # PATIENT / Patient Tracking Module
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "patient": {
             "menu": [
                     [T("Patients"), False, URL(f="patient"), [
@@ -1179,23 +1258,25 @@ if auth.permission.format in ("html"):
         },
 
         # PR / VITA Person Registry
-        # --------------------------------------------------------------------------
+        # ----------------------------------------------------------------------
         "pr": {
             "menu": pr_menu
         },
 
         # PROC / Procurement
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "proc": {
             "menu": [
                 [T("Home"), False, aURL(f="index")],
                 [T("Procurement Plans"), False, aURL(f="plan"),[
-                    [T("New"), False, aURL(p="create", f="plan", args="create")],
+                    [T("New"), False, aURL(p="create", f="plan",
+                                           args="create")],
                     [T("List All"), False, aURL(f="plan")],
                     #[T("Search"), False, aURL(f="plan", args="search")]
                 ]],
                 [T("Suppliers"), False, aURL(f="supplier"),[
-                    [T("New"), False, aURL(p="create", f="supplier", args="create")],
+                    [T("New"), False, aURL(p="create", f="supplier",
+                                           args="create")],
                     [T("List All"), False, aURL(f="supplier")],
                     #[T("Search"), False, aURL(f="supplier", args="search")]
                 ]],
@@ -1204,11 +1285,11 @@ if auth.permission.format in ("html"):
         },
 
         # PROJECT / Project Tracking & Management
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "project": project_menu,
 
         # REQ / Request Management
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "req": {
             "menu": [[T("Requests"), False, aURL(c="req", f="req"), [
                         [T("New"), False, aURL(p="create", c="req", f="req",
@@ -1227,13 +1308,13 @@ if auth.permission.format in ("html"):
         },
 
         # SYNC
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "sync": {
             "menu": admin_menu_options
         },
 
         # VEHICLE
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "vehicle": {
             "menu": [
                 #[T("Home"), False, aURL(c="vehicle", f="index")],
@@ -1249,7 +1330,7 @@ if auth.permission.format in ("html"):
         },
 
         # VOL / Volunteer
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "vol": {
             "menu": [],
             "condition1": lambda: (auth.user is not None) and deployment_settings.has_module("hrm"),
@@ -1264,7 +1345,7 @@ if auth.permission.format in ("html"):
         },
 
         # ADMIN
-        # -------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         "admin": {
             "menu": admin_menu_options
         },
@@ -1276,6 +1357,7 @@ if auth.permission.format in ("html"):
     s3_menu_dict["scenario"] = s3_menu_dict["event"]
 
 else:
+    # Non-interactive
     s3_menu = lambda *args, **vars: None
     s3.menu_lang = []
     s3.menu_help = []

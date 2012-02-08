@@ -87,7 +87,7 @@ deployment_settings.base.migrate = True
 # 20+ Demo (Data required for a default demo)
 #     Each subsequent Demos can take any unique number >= 20
 #     The actual demo will be defined by the file demo_folders.cfg
-deployment_settings.base.prepopulate = 26 # AidIQ
+deployment_settings.base.prepopulate = 28 # AidIQ
 
 
 # Set this to True to use Content Delivery Networks to speed up Internet-facing sites
@@ -198,6 +198,11 @@ deployment_settings.L10n.religions = {
 #deployment_settings.ui.pdf_logo = "static/img/mylogo.png"
 
 # GIS (Map) settings
+# Size of the Embedded Map
+# Change this if-required for your theme
+# NB API can override this in specific modules
+#deployment_settings.gis.map_height = 600
+#deployment_settings.gis.map_width = 1000
 # Restrict the Location Selector to just certain countries
 # NB This can also be over-ridden for specific contexts later
 # e.g. Activities filtered to those of parent Project
@@ -213,67 +218,14 @@ deployment_settings.L10n.religions = {
 deployment_settings.gis.display_L0 = False
 # Currently unused
 #deployment_settings.gis.display_L1 = True
-
-# Map settings that relate to locale, such as the number and names of the
-# location hierarchy levels, are now in gis_config.  The site-wide gis_config
-# will be populated from the settings here.
-# @ToDo: Move to 1st_run to avoid confusion
-deployment_settings.gis.location_hierarchy = OrderedDict([
-    ("L0", T("Country")),
-    ("L1", T("State")),
-     #("L2", "%s / %s / %s" % (T("County"), T("District")),
-    ("L3", "%s / %s / %s" % (T("City"), T("Town"), T("Village"))),
-    #("L2", T("City")),
-    #("L3", T("Town")),
-    #("L4", T("Neighborhood")),
-    #("L4", T("Village")),
-])
-# Maximum hierarchy level to allow for any map configuration.
-deployment_settings.gis.max_allowed_hierarchy_level = "L4"
-# @ToDo: Move to 1st_run to avoid confusion
-deployment_settings.gis.default_symbology = "US"
-# Default map configuration values for the site:
-# @ToDo: Move this to zzz_1st_run / prepopulate
-# @ToDo: Projections & Markers should use UUIDs not IDs
-deployment_settings.gis.default_config_values = Storage(
-    name = "Site Map Configuration",
-    # Where the map is centered:
-    lat = "22.593723263",
-    lon = "5.28516253",
-    # How close to zoom in initially -- larger is closer.
-    zoom = 2,
-    zoom_levels = 22,
-    projection_id = 1,
-    marker_id = 1,
-    map_height = 600,
-    map_width = 1000,
-    # Rough bounds for locations, used by onvalidation to filter out lon, lat
-    # which are obviously wrong (e.g. missing minus sign) or far outside the
-    # intended region.
-    min_lon = -180,
-    min_lat = -90,
-    max_lon = 180,
-    max_lat = 90,
-    # Optional source of map tiles.
-    #wmsbrowser_name = "Web Map Service",
-    #wmsbrowser_url = "http://geo.eden.sahanafoundation.org/geoserver/wms?service=WMS&request=GetCapabilities",
-    search_level = "L0",
-    # Should locations that link to a hierarchy location be required to link
-    # at the deepest level? (False means they can have a hierarchy location of
-    # any level as parent.)
-    strict_hierarchy = False,
-    # Should all specific locations (e.g. addresses, waypoints) be required to
-    # link to where they are in the location hierarchy?
-    location_parent_required = False
-)
 # Set this if there will be multiple areas in which work is being done,
 # and a menu to select among them is wanted. With this on, any map
 # configuration that is designated as being available in the menu will appear
 #deployment_settings.gis.menu = T("Maps")
 # Maximum Marker Size
 # (takes effect only on display)
-deployment_settings.gis.marker_max_height = 35
-deployment_settings.gis.marker_max_width = 30
+#deployment_settings.gis.marker_max_height = 35
+#deployment_settings.gis.marker_max_width = 30
 # Duplicate Features so that they show wrapped across the Date Line?
 # Points only for now
 # lon<0 have a duplicate at lon+360
@@ -285,11 +237,18 @@ deployment_settings.gis.mouse_position = "normal"
 #deployment_settings.gis.print_service = "/geoserver/pdf/"
 # Do we have a spatial DB available? (currently unused. Will support PostGIS & Spatialite.)
 deployment_settings.gis.spatialdb = False
+# Bing API Key (for Map layers)
+#deployment_settings.gis.api_bing = ""
+# Google API Key (for Earth & MapMaker Layers)
+# default works for localhost
+#deployment_settings.gis.api_google = ""
+# Yahoo API Key (for Geocoder)
+#deployment_settings.gis.api_yahoo = ""
 # GeoServer (Currently used by GeoExplorer. Will allow REST control of GeoServer.)
 # NB Needs to be publically-accessible URL for querying via client JS
 #deployment_settings.gis.geoserver_url = "http://localhost/geoserver"
 #deployment_settings.gis.geoserver_username = "admin"
-#deployment_settings.gis.geoserver_password = "password"
+#deployment_settings.gis.geoserver_password = ""
 
 # Twitter settings:
 # Register an app at http://twitter.com/apps
@@ -355,6 +314,7 @@ deployment_settings.security.policy = 6 # Organisation-ACLs
 #deployment_settings.ui.label_postcode = T("ZIP Code")
 # Enable Social Media share buttons
 #deployment_settings.ui.social_buttons = True
+
 # Request
 #deployment_settings.req.type_inv_label = T("Donations")
 #deployment_settings.req.type_hrm_label = T("Volunteers")
@@ -410,6 +370,10 @@ deployment_settings.security.policy = 6 # Organisation-ACLs
 # Use the term 'Order' instead of 'Shipment'
 #deployment_settings.inv.shipment_name = "order"
 
+# Supply
+# Do not edit after deployment
+#deployment_settings.supply.catalog_default = T("Other Items")
+
 # Human Resource Management
 #deployment_settings.hrm.email_required = False
 # Uncomment to allow hierarchical categories of Skills, which each need their own set of competency levels.
@@ -428,6 +392,7 @@ deployment_settings.save_search.widget = False
 #deployment_settings.options.support_requests = True
 
 # Comment/uncomment modules here to disable/enable them
+# @ToDo: have the system automatically enable migrate if a module is enabled
 # Modules menu is defined in 01_menu.py
 deployment_settings.modules = OrderedDict([
     # Core modules which shouldn't be disabled

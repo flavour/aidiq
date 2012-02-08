@@ -2,9 +2,6 @@
 
 """
     Human Resource Management
-
-    @author: Dominic König <dominic AT aidiq DOT com>
-    @author: Fran Boon <fran AT aidiq DOT com>
 """
 
 module = request.controller
@@ -112,7 +109,7 @@ def index():
     if r.representation == "aadata":
         return output
     # Post-process
-    response.s3.actions = [dict(label=str(T("Details")),
+    response.s3.actions = [dict(label=str(T(messages["UPDATE"])),
                                 _class="action-btn",
                                 url=URL(f="person",
                                         args=["human_resource"],
@@ -376,7 +373,7 @@ def hrm_map_popup(r):
         elif contact.contact_method == "SMS":
             mobile_phone = contact.value
     if mobile_phone:
-        output.append(TR(TD(B("%s:" % pr_contact_method_opts.get("SMS"))),
+        output.append(TR(TD(B("%s:" % msg.CONTACT_OPTS.get("SMS"))),
                          TD(mobile_phone)))
     # Office number
     if r.record.site_id:
@@ -392,7 +389,7 @@ def hrm_map_popup(r):
             pass
     # Email address (as hyperlink)
     if email:
-        output.append(TR(TD(B("%s:" % pr_contact_method_opts.get("EMAIL"))),
+        output.append(TR(TD(B("%s:" % msg.CONTACT_OPTS.get("EMAIL"))),
                          TD(A(email, _href="mailto:%s" % email))))
 
     return output
@@ -993,7 +990,7 @@ def training():
                 (orgtable.owned_by_organisation.belongs(session.s3.roles))
         response.s3.filter = query
 
-    output = s3_rest_controller()
+    output = s3_rest_controller(interactive_report = True)
     return output
 
 # -----------------------------------------------------------------------------
@@ -1004,6 +1001,30 @@ def training_event():
     if mode is not None:
         session.error = T("Access denied")
         redirect(URL(f="index"))
+
+    def prep(r):
+        if r.interactive and r.component:
+            # Use appropriate CRUD strings
+            s3.crud_strings["hrm_training"] = Storage(
+                title_create = T("Add Participant"),
+                title_display = T("Participant Details"),
+                title_list = T("Participants"),
+                title_update = T("Edit Participant"),
+                title_search = T("Search Participants"),
+                title_upload = T("Import Participant Participants"),
+                subtitle_create = T("Add Participant"),
+                subtitle_list = T("Participants"),
+                label_list_button = T("List Participants"),
+                label_create_button = T("Add New Participant"),
+                label_delete_button = T("Delete Participant"),
+                msg_record_created = T("Participant added"),
+                msg_record_modified = T("Participant updated"),
+                msg_record_deleted = T("Participant deleted"),
+                msg_no_match = T("No entries found"),
+                msg_list_empty = T("Currently no Participants registered"))
+
+        return True
+    response.s3.prep = prep
 
     output = s3_rest_controller(rheader=hrm_rheader)
     return output

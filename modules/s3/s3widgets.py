@@ -3,13 +3,9 @@
 """
     Custom UI Widgets
 
-    @author: Michael Howden <michael@aidiq.com>
-    @author: Fran Boon <fran@aidiq.com>
-    @author: Dominic König <dominic@aidiq.com>
-
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2009-2011 (c) Sahana Software Foundation
+    @copyright: 2009-2012 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -135,6 +131,8 @@ class S3DateWidget(FormWidget):
             value = (value != None and str(value)) or "",
             )
         attr = StringWidget._attributes(field, default, **attributes)
+        
+        attr["_class"] = "date"
 
         selector = str(field).replace(".", "_")
 
@@ -537,7 +535,6 @@ class S3LocationAutocompleteWidget(FormWidget):
                  delay = 450,     # milliseconds
                  min_length = 2): # Increase this for large deployments
 
-        self.deployment_settings = current.deployment_settings
         self.prefix = prefix
         self.resourcename = resourcename
         self.fieldname = fieldname
@@ -582,17 +579,12 @@ class S3LocationAutocompleteWidget(FormWidget):
                             "exclude_value":"XX"})
 
         # Which Levels do we have in our hierarchy & what are their Labels?
-        #location_hierarchy = gis.get_location_hierarchy()
-        location_hierarchy = self.deployment_settings.gis.location_hierarchy
-        try:
-            # Ignore the bad bulk-imported data
-            del location_hierarchy["XX"]
-        except KeyError:
-            pass
-        # What is the maximum level of hierarchy?
-        #max_hierarchy = gis.get_max_hierarchy_level()
-        # Is full hierarchy mandatory?
-        #strict = gis.get_strict_hierarchy()
+        #location_hierarchy = current.deployment_settings.gis.location_hierarchy
+        #try:
+        #    # Ignore the bad bulk-imported data
+        #    del location_hierarchy["XX"]
+        #except:
+        #    pass
 
         return S3GenericAutocompleteTemplate(
             self.post_process,
@@ -1290,11 +1282,11 @@ class S3LocationSelectorWidget(FormWidget):
             default_L0.id = gis.get_parent_country(value)
         elif config.default_location_id:
             # Populate defaults with IDs & Names of ancestors at each level
-            gis.get_parent_per_level(defaults,
-                                     config.default_location_id,
-                                     feature=None,
-                                     ids=True,
-                                     names=True)
+            defaults = gis.get_parent_per_level(defaults,
+                                                config.default_location_id,
+                                                feature=None,
+                                                ids=True,
+                                                names=True)
             query = (locations.id == config.default_location_id)
             default_location = db(query).select(locations.level,
                                                 locations.name).first()
@@ -1304,11 +1296,11 @@ class S3LocationSelectorWidget(FormWidget):
                                                            id = config.default_location_id)
             if "L0" in defaults:
                 default_L0 = defaults["L0"]
-                id = defaults["L0"].id
-                if id not in countries:
-                    # Add the default country to the list of possibles
-                    countries[id] = defaults["L0"].name
-            if default_L0:
+                if default_L0:
+                    id = default_L0.id
+                    if id not in countries:
+                        # Add the default country to the list of possibles
+                        countries[id] = defaults["L0"].name
                 country_snippet = "S3.gis.country = '%s';\n" % \
                     gis.get_default_country(key_type="code")
 
@@ -1339,19 +1331,12 @@ S3.gis.tab = '%s';""" % response.s3.gis.tab
         # Which Levels do we have in our hierarchy & what are their initial Labels?
         # If we have a default country or one from the value then we can lookup
         # the labels we should use for that location
-        config_L0 = None
+        country = None
         if default_L0:
-            query = (ctable.region_location_id == default_L0.id)
-            config_L0 = db(query).select(ctable.id,
-                                         limitby=(0, 1),
-                                         cache=cache).first()
-            if config_L0:
-                gis.set_temporary_config(config_L0.id)
-        location_hierarchy = gis.get_location_hierarchy()
+            country = default_L0.id
+        location_hierarchy = gis.get_location_hierarchy(location=country)
         # This is all levels to start, but L0 will be dropped later.
-        levels = gis.allowed_hierarchy_level_keys
-        if config_L0:
-            gis.restore_config()
+        levels = gis.hierarchy_level_keys
 
         map_popup = ""
         if value:
@@ -1391,11 +1376,11 @@ S3.gis.tab = '%s';""" % response.s3.gis.tab
                     path = this_location.path
 
                     # Populate defaults with IDs & Names of ancestors at each level
-                    gis.get_parent_per_level(defaults,
-                                             value,
-                                             feature=this_location,
-                                             ids=True,
-                                             names=True)
+                    defaults = gis.get_parent_per_level(defaults,
+                                                        value,
+                                                        feature=this_location,
+                                                        ids=True,
+                                                        names=True)
                     # If we have a non-specific location then not all keys will be populated.
                     # Populate these now:
                     for l in levels:
@@ -1610,11 +1595,6 @@ S3.gis.tab = '%s';""" % response.s3.gis.tab
         hidden = ""
         throbber = "/%s/static/img/ajax-loader.gif" % request.application
         Lx_rows = DIV()
-        # We added the L0 selector as a special case above.
-        try:
-            levels.remove("L0")
-        except:
-            pass
         if value:
             # Display Read-only Fields
             name_widget = INPUT(value=represent,
@@ -1638,7 +1618,10 @@ S3.gis.tab = '%s';""" % response.s3.gis.tab
                                _name="gis_location_lon",
                                _disabled="disabled")
             for level in levels:
-                if level not in location_hierarchy:
+                if level == "L0":
+                    # L0 has been handled as special case earlier
+                    continue
+                elif level not in location_hierarchy:
                     # Skip levels not in hierarchy
                     continue
                 if defaults[level]:
@@ -1686,7 +1669,10 @@ S3.gis.tab = '%s';""" % response.s3.gis.tab
                                _name="gis_location_lon")
             for level in levels:
                 hidden = ""
-                if level not in location_hierarchy:
+                if level == "L0":
+                    # L0 has been handled as special case earlier
+                    continue
+                elif level not in location_hierarchy:
                     # Hide unused levels
                     # (these can then be enabled for other regions)
                     hidden = "hidden"
@@ -2688,7 +2674,6 @@ class S3SearchAutocompleteWidget(FormWidget):
 
         r = current.manager.parse_request(modulename, resourcename, args=[])
         search_div = r.resource.search( r, **attributes)["form"]
-        #search_div = response.s3.catalog_item_search( r, **attributes)["form"]
 
         hidden_input = INPUT(value = value or "",
                              requires = field.requires,

@@ -4,8 +4,6 @@
     Event Module - Controllers
 
     http://eden.sahanafoundation.org/wiki/BluePrintScenario
-
-    @author: Fran Boon
 """
 
 module = request.controller
@@ -42,13 +40,6 @@ def event():
         An Event is an instantiation of a template
     """
 
-    tablename = "event_event"
-    s3mgr.load(tablename)
-    table = db[tablename]
-
-    if "req" in request.args:
-        s3mgr.load("req_req")
-
     # Pre-process
     def prep(r):
         if r.interactive:
@@ -57,7 +48,7 @@ def event():
                     if r.method != "update" and r.method != "read":
                         # Hide fields which don't make sense in a Create form
                         # inc list_create (list_fields over-rides)
-                        response.s3.req_create_form_mods()
+                        s3db.req_create_form_mods()
                 elif r.component.name == "config":
                     s3mgr.configure("gis_config",
                                     deletable=False)

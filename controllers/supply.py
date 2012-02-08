@@ -3,9 +3,6 @@
 """
     Supply
 
-    @author: Michael Howden (michael@sahanafoundation.org)
-    @date-created: 2010-08-16
-
     Generic Supply functionality such as catalogs and items that are used across multiple applications
 """
 
@@ -16,9 +13,6 @@ if not (deployment_settings.has_module("inv") or deployment_settings.has_module(
     raise HTTP(404, body="Module disabled: %s" % module)
 
 s3_menu(module)
-
-# Load Models
-s3mgr.load("supply_item")
 
 # =============================================================================
 def index():
@@ -34,7 +28,7 @@ def index():
 def catalog():
     """ RESTful CRUD controller """
 
-    return s3_rest_controller(module, resourcename, rheader=catalog_rheader)
+    return s3_rest_controller(rheader=catalog_rheader)
 
 # -----------------------------------------------------------------------------
 def catalog_rheader(r):
@@ -50,11 +44,14 @@ def catalog_rheader(r):
                     (T("Items"), "catalog_item"),
                    ]
             rheader_tabs = s3_rheader_tabs(r, tabs)
-            organisation_represent = s3db.org_organisation_represent
-            rheader = DIV(TABLE(TR( TH("%s: " % T("Name")), catalog.name,
+
+            table = r.table
+
+            rheader = DIV(TABLE(TR( TH("%s: " % table.name.label),
+                                    catalog.name,
                                   ),
-                                TR( TH("%s: " % T("Organization")),
-                                    organisation_represent(catalog.organisation_id),
+                                TR( TH("%s: " % table.organisation_id.label),
+                                    table.organisation_id.represent(catalog.organisation_id),
                                   ),
                                ),
                           rheader_tabs
@@ -77,6 +74,7 @@ def item_pack():
 
     s3mgr.configure(tablename,
                     listadd=False)
+
     return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
@@ -91,10 +89,10 @@ def item():
 
     # Sort Alphabetically for the AJAX-pulled dropdown
     s3mgr.configure("supply_item",
-                    orderby=db.supply_item.name)
+                    orderby=s3db.supply_item.name)
 
     # Defined in the Model for use from Multiple Controllers for unified menus
-    return response.s3.supply_item_controller()
+    return supply_item_controller()
 
 # =============================================================================
 def catalog_item():
@@ -107,6 +105,6 @@ def item_entity():
     """ RESTful CRUD controller """
 
     # Defined in the Model for use from Multiple Controllers for unified menus
-    return response.s3.item_entity_controller()
+    return item_entity_controller()
 
 # END =========================================================================

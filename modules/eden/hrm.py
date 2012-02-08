@@ -2,8 +2,6 @@
 
 """ Sahana Eden Human Resources Management
 
-    @author: Fran Boon <fran[at]aidiq.com>
-
     @copyright: 2011-2012 (c) Sahana Software Foundation
     @license: MIT
 
@@ -596,7 +594,7 @@ class S3HRJobModel(S3Model):
                                                                   ##gis_location_represent_row,
                                                                   ##filterby="level",
                                                                   ### @ToDo Should this change per config?
-                                                                  ##filter_opts=gis.allowed_region_level_keys,
+                                                                  ##filter_opts=gis.region_level_keys,
                                                                   ##orderby="gis_location.name"),
                                                ##widget=None),
                                    #*s3.meta_fields())
@@ -705,6 +703,7 @@ class S3HRSkillModel(S3Model):
         ADMIN = system_roles.ADMIN
 
         s3_date_represent = S3DateTime.date_represent
+        s3_date_format = settings.get_L10n_date_format()
 
         s3_has_role = auth.s3_has_role
 
@@ -1144,9 +1143,13 @@ class S3HRSkillModel(S3Model):
                                   course_id(),
                                   site_id,
                                   Field("start_date", "datetime",
+                                        widget = S3DateWidget(),
+                                        requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
                                         represent = s3_date_represent,
                                         label=T("Start Date")),
                                   Field("end_date", "datetime",
+                                        widget = S3DateWidget(),
+                                        requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
                                         represent = s3_date_represent,
                                         label=T("End Date")),
                                   Field("hours", "integer",
@@ -1194,11 +1197,13 @@ class S3HRSkillModel(S3Model):
                               T("Enter some characters to bring up a list of possible matches")))
 
         training_event_id = S3ReusableField("training_event_id", db.hrm_training_event,
-                                            sortby = "~start_date",
+                                            sortby = "start_date",
                                             label = T("Training Event"),
                                             requires = IS_NULL_OR(IS_ONE_OF(db,
                                                                             "hrm_training_event.id",
-                                                                            hrm_training_event_represent)),
+                                                                            hrm_training_event_represent,
+                                                                            orderby="~hrm_training_event.start_date",
+                                                                            )),
                                             represent = hrm_training_event_represent,
                                             comment = course_help,
                                             ondelete = "RESTRICT",
@@ -1242,6 +1247,8 @@ class S3HRSkillModel(S3Model):
                                   s3.comments(),
                                   *s3.meta_fields())
 
+        # Suitable for use when adding a Training to a Person
+        # The ones when adding a Participant to an Event are done in the Controller
         s3.crud_strings[tablename] = Storage(
             title_create = T("Add Training"),
             title_display = T("Training Details"),
@@ -1261,6 +1268,20 @@ class S3HRSkillModel(S3Model):
             msg_list_empty = T("Currently no Trainings registered"))
 
         table.virtualfields.append(HRMTrainingVirtualFields())
+
+        report_fields = [
+                         "training_event_id",
+                         "person_id",
+                         (T("Course"), "training_event_id$course_id"),
+                         # "month", Month Virtual Field Broken
+                        ]
+
+        # Resource Configuration
+        self.configure(tablename,
+                       report_rows = report_fields,
+                       report_cols = report_fields,
+                       report_fact = report_fields,
+                       report_method=["count","list"])
 
         # =====================================================================
         # Certificates
@@ -1449,8 +1470,14 @@ class S3HRSkillModel(S3Model):
                                   person_id(),
                                   organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile = True)),
                                   Field("start_date", "date",
+                                        requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
+                                        represent = s3_date_represent,
+                                        widget = S3DateWidget(),
                                         label=T("Start Date")),
                                   Field("end_date", "date",
+                                        requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
+                                        represent = s3_date_represent,
+                                        widget = S3DateWidget(),
                                         label=T("End Date")),
                                   Field("hours", "integer",
                                         label=T("Hours")),
@@ -1876,18 +1903,26 @@ def hrm_multi_skill_represent(opt):
     db = current.db
     s3db = current.s3db
 
+    NONE = current.messages.NONE
+
     table = s3db.hrm_skill
     set = db(table.id > 0).select(table.id,
                                   table.name).as_dict()
 
+    if not set:
+        return NONE
+
     if isinstance(opt, (list, tuple)):
         opts = opt
-        vals = [str(set.get(o)["name"]) for o in opts]
+        try:
+            vals = [str(set.get(o)["name"]) for o in opts]
+        except:
+            return None
     elif isinstance(opt, int):
         opts = [opt]
         vals = str(set.get(opt)["name"])
     else:
-        return current.messages.NONE
+        return NONE
 
     if len(opts) > 1:
         vals = ", ".join(vals)
@@ -1974,20 +2009,31 @@ def hrm_training_event_represent(id):
 # =============================================================================
 class HRMTrainingVirtualFields:
     """ Virtual fields as dimension classes for reports """
-    extra_fields = ["start_date"]
+
+    extra_fields = ["training_event_id$start_date"]
 
     def month(self):
-        start_date = self.hrm_training.start_date
+        # Year/Month of the start date of the training event
+        try:
+            start_date = self.hrm_training_event.start_date
+        except AttributeError:
+            # not available
+            start_date = None
         if start_date:
             return "%s/%02d" % (start_date.year, start_date.month)
         else:
-            return None
+            return current.messages.NONE
 
     def year(self):
-        start_date = self.hrm_training.start_date
+        # The year of the training event
+        try:
+            start_date = self.hrm_training_event.start_date
+        except AttributeError:
+            # not available
+            start_date = None
         if start_date:
             return start_date.year
         else:
-            return None
+            return current.messages.NONE
 
 # END =========================================================================

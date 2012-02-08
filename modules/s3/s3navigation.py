@@ -5,7 +5,7 @@
 
     @author: Dominic König <dominic[at]aidiq.com>
 
-    @copyright: 2011 (c) Sahana Software Foundation
+    @copyright: 2011-12 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -123,7 +123,8 @@ class S3Menu(DIV):
                         _request_type = "ajax"
                     if link:
                         if _request_type == "ajax":
-                            _onchange="var val=$('#%s:checked').length; $.getS3('%s'+'?val='+val, null, false, null, false, false);" % (_id, link)
+                            _onchange="var val=$('#%s:checked').length; $.getS3('%s'+'?val='+val, null, false, null, false, false);" % \
+                                (_id, link)
                         else:
                             # Just load the page. Use this if the changed menu
                             # item should alter the contents of the page, and
@@ -359,6 +360,8 @@ class S3ComponentTab:
         manager = current.manager
         model = manager.model
 
+        get_components = model.get_components
+        get_method = model.get_method
         get_vars = r.get_vars
         tablename = None
         if "viewing" in get_vars:
@@ -370,20 +373,20 @@ class S3ComponentTab:
         resource = r.resource
         component = self.component
         if component:
-            clist = model.get_components(resource.table, names=[component])
+            clist = get_components(resource.table, names=[component])
             if component in clist:
                 return True
             elif tablename:
-                clist = model.get_components(tablename, names=[component])
+                clist = get_components(tablename, names=[component])
                 if component in clist:
                     return True
-            handler = model.get_method(resource.prefix,
-                                       resource.name,
-                                       method=component)
+            handler = get_method(resource.prefix,
+                                 resource.name,
+                                 method=component)
             if handler is None and tablename:
                 prefix, name = tablename.split("_", 1)
-                handler = model.get_method(prefix, name,
-                                           method=component)
+                handler = get_method(prefix, name,
+                                     method=component)
             if handler is None:
                 handler = r.get_handler(component)
             if handler is None:
@@ -398,7 +401,7 @@ class S3ComponentTab:
             return True
         for k, v in self.vars.iteritems():
             if k not in get_vars or \
-               k in get_vars and get_vars.get(k) != v:
+               k in get_vars and get_vars[k] != v:
                 return False
         return True
 

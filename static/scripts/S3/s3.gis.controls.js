@@ -298,9 +298,7 @@ function addGoogleEarthControl(toolbar) {
                 S3.gis.mapPanelContainer.getLayout().setActiveItem(1);
                 // Since the LayerTree isn't useful, collapse it
                 S3.gis.mapWin.items.items[0].collapse();
-                // When updating to current GXP
-                //S3.gis.googleEarthPanel.on('pluginready', function() {
-                S3.gis.googleEarthPanel.on('earthready', function() {
+                S3.gis.googleEarthPanel.on('pluginready', function() {
                     addGoogleEarthKmlLayers();
                 });
             } else {
@@ -633,10 +631,6 @@ function addPotlatchButton(toolbar) {
 
 // Save button to save the Viewport settings
 function addSaveButton(toolbar) {
-    if (!S3.gis.region) {
-        // Default config
-        S3.gis.region = 1;
-    }
     // Toolbar Button
     var saveButton = new Ext.Toolbar.Button({
         iconCls: 'save',
@@ -727,4 +721,74 @@ function addPdfControl(toolbar) {
     });
     toolbar.addSeparator();
     toolbar.add(mgrsButton);
+}
+
+// WMS GetFeatureInfo control
+function addWMSGetFeatureInfoControl(toolbar) {
+    S3.gis.wmsGetFeatureInfo = new gxp.plugins.WMSGetFeatureInfo({
+        actionTarget: 'mappnlcntr.tbar',
+        outputTarget: 'map',
+        outputConfig: {
+            width: 400,
+            height: 200
+        },
+        toggleGroup: 'controls',
+        // html not permitted by Proxy
+        format: "grid",
+        infoActionTip: S3.i18n.gis_get_feature_info,
+        popupTitle: S3.i18n.gis_feature_info
+    });
+    // Set up shortcut to allow GXP Plugin to work
+    S3.gis.wmsGetFeatureInfo.target = S3.gis;
+    // @ToDo: Why do we need to toggle the Measure control before this works?
+    //S3.gis.wmsGetFeatureInfo.activate();
+    S3.gis.wmsGetFeatureInfo.addActions();
+}
+
+// Add/Remove Layers control
+function addRemoveLayersControl() {
+    S3.gis.addLayersControl = new gxp.plugins.AddLayers({
+        actionTarget: 'treepanel.tbar',
+        // @ToDo: i18n
+        addActionTip: 'Add layers',
+        addActionMenuText: 'Add layers',
+        addServerText: 'Add a New Server',
+        doneText: 'Done',
+        // @ToDo: CSW
+        //search: true,
+        upload: {
+            // @ToDo
+            url: null
+        },
+        uploadText: S3.i18n.gis_uploadlayer,
+        relativeUploadOnly: false
+    });
+    
+    // @ToDo: Populate this from disabled Catalogue Layers (to which the user has access)
+    // Use WMStore for the GeoServer which we can write to?
+    // Use current layerStore for Removelayer()?
+    //var store = S3.gis.mapPanel.layers;
+    var store = new GeoExt.data.LayerStore();
+    
+    // Set up shortcuts to allow GXP Plugin to work
+    S3.gis.addLayersControl.target = S3.gis.layerTree;
+    S3.gis.layerTree.proxy = OpenLayers.ProxyHost; // Required for 'Add a New Server'
+    S3.gis.layerTree.layerSources = {};
+    S3.gis.layerTree.layerSources['local'] = new gxp.plugins.LayerSource({
+        title: 'local',
+        store: store
+    });
+    var actions = S3.gis.addLayersControl.addActions();
+    actions[0].enable();
+
+    // @ToDo: Ensure that this picks up when a layer is highlighted
+    S3.gis.removeLayerControl = new gxp.plugins.RemoveLayer({
+        actionTarget: 'treepanel.tbar',
+        // @ToDo: i18n
+        removeActionTip: 'Remove layer'
+    });
+    // Set up shortcuts to allow GXP Plugin to work
+    S3.gis.removeLayerControl.target = S3.gis.layerTree;
+    S3.gis.layerTree.mapPanel = S3.gis.mapPanel;
+    S3.gis.removeLayerControl.addActions();
 }

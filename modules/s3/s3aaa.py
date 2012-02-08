@@ -7,7 +7,7 @@
     @author: Dominic König <dominic[at]aidiq[dot]com>
     @author: Fran Boon <fran[at]aidiq[dot]com>
 
-    @copyright: (c) 2010-2011 Sahana Software Foundation
+    @copyright: (c) 2010-2012 Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -114,9 +114,7 @@ class AuthS3(Auth):
 
         """ Initialise parent class & make any necessary modifications """
 
-        Auth.__init__(self,current.db)
-
-        self.deployment_settings = current.deployment_settings
+        Auth.__init__(self, current.db)
 
         self.settings.lock_keys = False
         self.settings.username_field = False
@@ -151,7 +149,7 @@ class AuthS3(Auth):
 
         # Site types (for OrgAuth)
         T = current.T
-        if self.deployment_settings.get_ui_camp():
+        if current.deployment_settings.get_ui_camp():
             shelter = T("Camp")
         else:
             shelter = T("Shelter")
@@ -159,7 +157,8 @@ class AuthS3(Auth):
                                       cr_shelter = shelter,
                                       org_office = T("Office"),
                                       hms_hospital = T("Hospital"),
-                                      project_site = T("Project Site")
+                                      #project_site = T("Project Site"),
+                                      #fire_station = T("Fire Station"),
                                       )
 
     # -------------------------------------------------------------------------
@@ -286,7 +285,7 @@ class AuthS3(Auth):
             table.first_name.notnull = True
             table.first_name.requires = \
                 IS_NOT_EMPTY(error_message=messages.is_empty)
-            if self.deployment_settings.get_L10n_mandatory_lastname():
+            if current.deployment_settings.get_L10n_mandatory_lastname():
                 table.last_name.notnull = True
                 table.last_name.requires = \
                     IS_NOT_EMPTY(error_message=messages.is_empty)
@@ -377,7 +376,7 @@ class AuthS3(Auth):
                     settings.table_group._tablename,
                     "%(id)s: %(role)s")
 
-        security_policy = self.deployment_settings.get_security_policy()
+        security_policy = current.deployment_settings.get_security_policy()
         # Define Eden permission table
         self.permission.define_table(migrate=migrate,
                                      fake_migrate=fake_migrate)
@@ -672,7 +671,7 @@ class AuthS3(Auth):
         request = current.request
         response = current.response
         session = current.session
-        deployment_settings = self.deployment_settings
+        deployment_settings = current.deployment_settings
 
         # S3: Don't allow registration if disabled
         self_registration = deployment_settings.get_security_self_registration()
@@ -1050,7 +1049,7 @@ class AuthS3(Auth):
         """
 
         db = current.db
-        deployment_settings = self.deployment_settings
+        deployment_settings = current.deployment_settings
 
         user_id = form.vars.id
         # Add to 'Authenticated' role
@@ -1070,7 +1069,7 @@ class AuthS3(Auth):
 
         if organisation_id and "hrm_human_resource" in db:
             # Create an HRM entry, if one doesn't already exist
-            table = db.hrm_human_resource
+            table = s3db.hrm_human_resource
             query = (table.person_id == person_id) & \
                     (table.organisation_id == organisation_id)
             if not db(query).select(table.id,
@@ -1081,7 +1080,7 @@ class AuthS3(Auth):
                                   owned_by_facility=owned_by_facility
                                 )
                 record = Storage(id=id)
-                current.manager.model.update_super(db.hrm_human_resource, record)
+                current.manager.model.update_super(s3db.hrm_human_resource, record)
             if owned_by_organisation:
                 # Add to the Org Access Role
                 table = self.settings.table_membership
@@ -1262,7 +1261,7 @@ class AuthS3(Auth):
 
         db = current.db
         s3db = current.s3db
-        deployment_settings = self.deployment_settings
+        deployment_settings = current.deployment_settings
 
         # Default Approver
         approver = deployment_settings.get_mail_approver()
@@ -1307,7 +1306,7 @@ class AuthS3(Auth):
 
         settings = self.settings
         messages = self.messages
-        deployment_settings = self.deployment_settings
+        deployment_settings = current.deployment_settings
 
         key = current.request.args[-1]
         table_user = settings.table_user
@@ -1346,16 +1345,16 @@ class AuthS3(Auth):
         """
 
         if form.registration_key == "": # User Approved
-            if not self.deployment_settings.get_auth_always_notify_approver():
+            if not current.deployment_settings.get_auth_always_notify_approver():
                 return
             subject = current.T("%(system_name)s - New User Registered") % \
-                      {"system_name": self.deployment_settings.get_system_name()}
+                      {"system_name": current.deployment_settings.get_system_name()}
             message = self.messages.new_user % dict(first_name = form.first_name,
                                                         last_name = form.last_name,
                                                         email = form.email)
         else:
             subject = current.T("%(system_name)s - New User Registration Approval Pending") % \
-                      {"system_name": self.deployment_settings.get_system_name()}
+                      {"system_name": current.deployment_settings.get_system_name()}
             message = self.messages.approve_user % \
                         dict(first_name=form.first_name,
                              last_name=form.last_name,
@@ -1887,7 +1886,7 @@ class AuthS3(Auth):
         db = current.db
         s3db = current.s3db
         ptable = s3db.pr_person
-        hrtable = db.hrm_human_resource
+        hrtable = s3db.hrm_human_resource
 
         if self.s3_logged_in():
             try:
@@ -1922,8 +1921,8 @@ class AuthS3(Auth):
         session = current.session
 
         if not hasattr(table, "_tablename"):
-            current.manager.load(table)
-            table = db[table]
+            s3db = current.s3db
+            table = s3db[table]
 
         if session.s3.security_policy == 1:
             # Simple policy
@@ -2181,6 +2180,7 @@ class AuthS3(Auth):
         """
 
         db = current.db
+        s3db = current.s3db
         manager = current.manager
 
         site_types = self.org_site_types
@@ -2195,14 +2195,13 @@ class AuthS3(Auth):
         FAC_TABLENAME = "org_site"
         NAME = "name"
 
-        org_table = db[ORG_TABLENAME]
-        fac_table = db[FAC_TABLENAME]
+        org_table = s3db[ORG_TABLENAME]
+        fac_table = s3db[FAC_TABLENAME]
         grp_table = self.settings.table_group
 
         # Get the table
-        if not hasattr(table, "_tablename"):
-            manager.load(table)
-            table = db[table]
+        if isinstance(table, str):
+            table = s3db[table]
         tablename = table._tablename
         _id = table._id.name
 
@@ -2213,7 +2212,7 @@ class AuthS3(Auth):
                   FAC_ID,
                   OWNED_BY_ORG,
                   OWNED_BY_FAC]
-        fields = [f for f in fields if f in table]
+        fields = [table[f] for f in fields if f in table.fields]
 
         # Get the record
         if not isinstance(record, Row):
@@ -2314,7 +2313,7 @@ class AuthS3(Auth):
                                         fac_table.uuid,
                                         limitby=(0, 1)).first()
                 if site:
-                    inst_table = db[site.instance_type]
+                    inst_table = s3db[site.instance_type]
                     query = inst_table.uuid == site.uuid
                     facility = db(query).select(inst_table[OWNED_BY_FAC],
                                                 limitby=(0, 1)).first()
@@ -2393,15 +2392,15 @@ class S3Permission(object):
         self.auth = auth
 
         # Deployment settings
-        deployment_settings = current.deployment_settings
-        self.policy = deployment_settings.get_security_policy()
+        settings = current.deployment_settings
+        self.policy = settings.get_security_policy()
 
         # Which level of granularity do we want?
         self.use_cacls = self.policy in (3, 4, 5, 6, 7) # Controller ACLs
         self.use_facls = self.policy in (4, 5, 6, 7)    # Function ACLs
         self.use_tacls = self.policy in (5, 6, 7)       # Table ACLs
         self.org_roles = self.policy in (6, 7)          # OrgAuth
-        self.modules = deployment_settings.modules
+        self.modules = settings.modules
 
         # If a large number of roles in the system turnes into a bottleneck
         # in policies 6 and 7, then we could reduce the number of roles in
@@ -2446,6 +2445,10 @@ class S3Permission(object):
             ext = [a for a in request.args if "." in a]
             if ext:
                 self.format = ext[-1].rsplit(".", 1)[1].lower()
+        if request.function == "ticket" and \
+           request.controller == "admin":
+            # Error tickets need an override
+            self.format = "html"
 
         # Page permission cache
         self.page_acls = Storage()
@@ -3409,7 +3412,7 @@ class S3Permission(object):
         """
 
         db = current.db
-        manager = current.manager
+        s3db = current.s3db
         T = current.T
         ERROR = T("You do not have permission for any facility to perform this action.")
         HINT = T("Create a new facility or ensure that you have permissions for an existing facility.")
@@ -3423,10 +3426,10 @@ class S3Permission(object):
         else:
             if facility_type not in self.auth.org_site_types:
                 return
-            site_types = [db[facility_type]]
+            site_types = [s3db[facility_type]]
         for site_type in site_types:
             try:
-                ftable = db[site_type]
+                ftable = s3db[site_type]
                 if not "site_id" in ftable.fields:
                     continue
                 query = self.auth.s3_accessible_query("update", ftable)
@@ -3441,19 +3444,19 @@ class S3Permission(object):
         if site_ids:
             return site_ids
 
-        request = current.request
-        if "update" in request.args or "create" in request.args:
+        args = current.request.args
+        if "update" in args or "create" in args:
             if redirect_on_error:
                 # Trying to create or update
                 # If they do no have permission to any facilities
-                current.session.error = error_msg + " " + HINT
+                current.session.error = "%s %s" % (error_msg, HINT)
                 redirect(URL(c="default", f="index"))
         elif table is not None:
             if hasattr(table, "_tablename"):
                 tablename = table._tablename
             else:
                 tablename = table
-            manager.configure(tablename, insertable = False)
+            current.manager.configure(tablename, insertable = False)
 
         return []
 
@@ -3473,6 +3476,7 @@ class S3Permission(object):
         """
 
         db = current.db
+        s3db = current.s3db
         manager = current.manager
         T = current.T
         ERROR = T("You do not have permission for any organization to perform this action.")
@@ -3481,7 +3485,7 @@ class S3Permission(object):
         if not error_msg:
             error_msg = ERROR
 
-        org_table = db.org_organisation
+        org_table = s3db.org_organisation
         query = self.auth.s3_accessible_query("update", org_table)
         query &= (org_table.deleted == False)
         rows = db(query).select(org_table.id)
@@ -4245,14 +4249,16 @@ class S3RoleManager(S3Method):
                 if r.record:
                     r.record.update_record(**role)
                     role_id = form.vars.role_id
-                    current.session.confirmation = '%s "%s" %s' % (T("Role"),
-                                                                role.role,
-                                                                T("updated"))
+                    session.confirmation = '%s "%s" %s' % (T("Role"),
+                                                           role.role,
+                                                           T("updated"))
                 else:
+                    import uuid
+                    role.uuid = uuid.uuid4()
                     role_id = self.table.insert(**role)
-                    current.session.confirmation = '%s "%s" %s' % (T("Role"),
-                                                                role.role,
-                                                                T("created"))
+                    session.confirmation = '%s "%s" %s' % (T("Role"),
+                                                           role.role,
+                                                           T("created"))
 
                 if role_id:
 

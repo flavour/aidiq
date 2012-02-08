@@ -5,11 +5,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @author: Fran Boon <francisboon[at]gmail.com>
-    @author: Dominic König <dominic[at]aidiq.com>
-    @author: sunneach
-
-    @copyright: (c) 2010-2011 Sahana Software Foundation
+    @copyright: (c) 2010-2012 Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -42,11 +38,13 @@ __all__ = ["SQLTABLES3",
 
 import sys
 import os
+import csv
 import datetime
 import re
 import urllib
 import warnings
 from cgi import escape
+from xml.sax.saxutils import unescape
 
 from gluon import *
 from gluon.html import xmlescape
@@ -54,6 +52,8 @@ from gluon.storage import Storage, Messages
 from gluon.sql import Field, Row, Query
 from gluon.sqlhtml import SQLFORM, SQLTABLE
 from gluon.tools import Crud
+
+import gluon.contrib.simplejson as json
 
 from s3validators import IS_UTC_OFFSET
 
@@ -270,9 +270,9 @@ class CrudS3(Crud):
         if not (isinstance(table, db.Table) or table in db.tables):
             raise HTTP(404)
         if not self.has_permission("select", table):
-            redirect(self.settings.auth.settings.on_failed_authorization)
+            redirect(current.auth.settings.on_failed_authorization)
         #if record_id and not self.has_permission("select", table):
-        #    redirect(self.settings.auth.settings.on_failed_authorization)
+        #    redirect(current.auth.settings.on_failed_authorization)
         if not isinstance(table, db.Table):
             table = db[table]
         if not query:
@@ -304,7 +304,6 @@ class S3BulkImporter(object):
 
     def __init__(self):
         """ Constructor """
-
         response = current.response
         self.importTasks = []
         self.specialTasks = []
@@ -330,18 +329,13 @@ class S3BulkImporter(object):
             application, resource name, csv filename, xsl filename.
         """
         source = open(os.path.join(path, "tasks.cfg"), "r")
-        values = source.readlines()
-        source.close()
-        for tasks in values:
-            # strip out the new line
-            task = tasks.strip()
-            if task == "":
+        values = csv.reader(source)
+        for details in values:
+            if details == []:
                 continue
-            if task[0] == "#": # comment
+            prefix = details[0][0].strip('" ')
+            if prefix == "#": # comment
                 continue
-            # split at the comma
-            details = task.split(",")
-            prefix = details[0].strip('" ')
             if prefix == "*": # specialist function
                 self.extractSpecialistLine(path, details)
             else: # standard importer
@@ -351,7 +345,8 @@ class S3BulkImporter(object):
         """
             Method that extract the details for an import Task
         """
-        if len(details) == 4:
+        argCnt = len(details)
+        if argCnt == 4 or argCnt == 5:
              # remove any spaces and enclosing double quote
             app = details[0].strip('" ')
             res = details[1].strip('" ')
@@ -385,8 +380,11 @@ class S3BulkImporter(object):
                         self.errorList.append(
                         "Failed to find a transform file %s, Giving up." % xslFileName)
                         return
-            self.tasks.append([1, app, res, csv, xsl])
-            self.importTasks.append([app, res, csv, xsl])
+            vars = None
+            if argCnt == 5:
+                vars = details[4]
+            self.tasks.append([1, app, res, csv, xsl, vars])
+            self.importTasks.append([app, res, csv, xsl, vars])
         else:
             self.errorList.append(
             "prepopulate error: job not of length 4. %s job ignored" % task)
@@ -413,7 +411,7 @@ class S3BulkImporter(object):
 
     def execute_import_task(self, task):
         """ Method that will execute each import job, in order """
-
+        start = datetime.datetime.now()
         if task[0] == 1:
             manager = current.manager
             db = current.db
@@ -422,9 +420,6 @@ class S3BulkImporter(object):
             errorString = "prepopulate error: file %s missing"
             # Store the view
             view = response.view
-
-            auth = current.auth
-            deployment_settings = auth.deployment_settings
 
             _debug ("Running job %s %s (filename=%s transform=%s)" % (task[1], task[2], task[3], task[4]))
             prefix = task[1]
@@ -443,65 +438,83 @@ class S3BulkImporter(object):
                     prefix = details["prefix"]
                 if "name" in details:
                     name = details["name"]
-            else:
-                manager.load(tablename)
-            # Skip the job if the target table doesn't exist
-            if tablename not in db:
+
+            try:
+                resource = manager.define_resource(prefix, name)
+            except KeyError:
+                # Table cannot be loaded
                 self.errorList.append("WARNING: Unable to find table %s import job skipped" % tablename)
                 return
+
             # Check if the source file is accessible
             try:
                 csv = open(task[3], "r")
             except IOError:
                 self.errorList.append(errorString % task[3])
                 return
+
             # Check if the stylesheet is accessible
             try:
                 open(task[4], "r")
             except IOError:
                 self.errorList.append(errorString % task[4])
                 return
-            # Create a request
-            vars = dict(filename=task[3], transform=task[4])
-            # Old back-end
-            r = manager.parse_request(prefix=prefix,
-                                      name=name,
-                                      args=["create.s3csv"],
-                                      vars=vars)
-            # @todo: attach files for upload like:
-            #resource = r.resource
-            #resource.files = {filename:open(filename, "rb")}
-            # Execute the request
-            output = r()
-            # If it doesn't import - use this to check the
-            # returned message and error tree for validation errors:
-            #print >> sys.stderr, "%s=%s" % (r.tablename, output)
-            db.commit()
-            _debug ("%s import job completed" % tablename)
 
+            extra_data = None
+            if task[5]:
+                try:
+                    extradata = unescape(task[5], {"'": '"'})
+                    extradata = json.loads(extradata)
+                    extra_data = extradata
+                except:
+                    pass
+            try:
+                # @todo: add extra_data and file attachments
+                result = resource.import_xml(csv,
+                                             format="csv",
+                                             stylesheet=task[4],
+                                             extra_data=extra_data)
+            except SyntaxError, e:
+                self.errorList.append("WARNING: import error - %s" % e)
+                return
+            # @todo: check result (=JSON message) for import errors
+            # and report them to stderr
+
+            db.commit()
             # Restore the view
             response.view = view
-            self.clear_import_tasks()
+            end = datetime.datetime.now()
+            duration = end - start
+            csvName = task[3][task[3].rfind("/")+1:]
+            msg = "   %s import job completed in %s" % (csvName, duration)
+            self.resultList.append(msg)
+
 
     def execute_special_task(self, task):
+        start = datetime.datetime.now()
         if task[0] == 2:
             fun = task[1]
-            #fun_g, fun_a = fun.split(".", 1)
             csv = task[2]
             extraArgs = task[3]
             if csv is None:
                 if extraArgs is None:
-                    current.response.s3[fun]()
+                    error = current.response.s3[fun]()
                 else:
-                    current.response.s3[fun](extraArgs)
+                    error = current.response.s3[fun](extraArgs)
             elif extraArgs is None:
-                current.response.s3[fun](csv)
+                error = current.response.s3[fun](csv)
             else:
-                current.response.s3[fun](csv, extraArgs)
+                error = current.response.s3[fun](csv, extraArgs)
+            if error:
+                self.errorList.append(error)
+            end = datetime.datetime.now()
+            duration = end - start
+            msg = "   %s import job completed in %s" % (fun, duration)
+            self.resultList.append(msg)
 
-    def clear_import_tasks(self):
+    def clear_tasks(self):
         """ Clear the importTask list """
-        self.importTasks = []
+        self.tasks = []
 
     def perform_tasks(self, path):
         """ convenience method that will load and then execute the import jobs
@@ -514,10 +527,6 @@ class S3BulkImporter(object):
             elif task[0] == 2:
                 self.execute_special_task(task)
 
-    def perform_task(self, controller, csv, xsl):
-        """ convenience method that will load and execute the import job """
-        self.load_import(controller, csv, xsl)
-        self.execute_import_tasks()
 
 
 # =============================================================================

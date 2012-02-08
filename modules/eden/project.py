@@ -2,8 +2,6 @@
 
 """ Sahana Eden Project Model
 
-    @author: Dominic König <dominic[at]aidiq.com>
-
     @copyright: 2011-2012 (c) Sahana Software Foundation
     @license: MIT
 
@@ -32,14 +30,13 @@
 __all__ = ["S3ProjectModel",
            "S3ProjectDRRModel",
            "S3ProjectTaskModel",
-           "S3ProjectModel",
            "project_rheader",
            "S3ProjectTaskVirtualfields"]
 
 import datetime
 
 from gluon import *
-from gluon.dal import Row, Rows
+from gluon.dal import Row
 from gluon.storage import Storage
 from gluon.sqlhtml import CheckboxesWidget
 from ..s3 import *
@@ -86,12 +83,15 @@ class S3ProjectModel(S3Model):
         settings = current.deployment_settings
 
         currency_type = s3.currency_type
+        person_id = self.pr_person_id
         location_id = self.gis_location_id
+        countries_id = self.gis_countries_id
         organisation_id = self.org_organisation_id
         sector_id = self.org_sector_id
         human_resource_id = self.hrm_human_resource_id
 
         s3_date_format = settings.get_L10n_date_format()
+        s3_date_represent = lambda dt: S3DateTime.date_represent(dt, utc=True)
 
         # Enable DRR extensions?
         drr = settings.get_project_drr()
@@ -187,25 +187,13 @@ class S3ProjectModel(S3Model):
             5: "HFA5: Strengthen disaster preparedness for effective response at all levels.",
         }
 
-        countries_id = S3ReusableField("countries_id", "list:reference gis_location",
-                                       label = T("Countries"),
-                                       requires = IS_NULL_OR(IS_ONE_OF(db,
-                                                                       "gis_location.id",
-                                                                       "%(name)s",
-                                                                       filterby = "level",
-                                                                       filter_opts = ["L0"],
-                                                                       sort=True,
-                                                                       multiple=True)),
-                                       represent = self.countries_represent,
-                                       ondelete = "RESTRICT")
-
         tablename = "project_project"
         table = self.define_table(tablename,
                                   self.super_link("doc_id", "doc_entity"),
                                   # drr uses the separate project_organisation table
                                   organisation_id(
                                                readable=False if drr else True,
-                                               writable=False if drr else True
+                                               writable=False if drr else True,
                                               ),
                                   Field("name",
                                         label = T("Name"),
@@ -218,15 +206,17 @@ class S3ProjectModel(S3Model):
                                   Field("code",
                                         label = T("Code"),
                                         readable=False,
-                                        writable=False
+                                        writable=False,
                                         ),
                                   Field("description", "text",
                                         label = T("Description")),
                                   Field("start_date", "date",
                                         label = T("Start date"),
+                                        represent = s3_date_represent,
                                         requires = IS_NULL_OR(IS_DATE(format = s3_date_format))),
                                   Field("end_date", "date",
                                         label = T("End date"),
+                                        represent = s3_date_represent,
                                         requires = IS_NULL_OR(IS_DATE(format = s3_date_format))),
                                   Field("duration",
                                         readable=False,
@@ -542,12 +532,14 @@ class S3ProjectModel(S3Model):
             report_fields.append((T("Activity"), "name"))
         report_fields.append((T("Activity Type"), "multi_activity_type_id"))
         if drr:
+            report_fields.append((T("Sector"), "project_id$sector_id"))
             report_fields.append((T("Theme"), "project_id$multi_theme_id"))
             report_fields.append((T("Hazard"), "project_id$multi_hazard_id"))
             report_fields.append((T("HFA"), "project_id$hfa"))
-            lh = settings.get_gis_default_location_hierarchy()
-            lh = [(lh[opt], opt) for opt in lh]
-            report_fields.extend(lh)
+            lh = current.gis.get_location_hierarchy()
+            if lh:
+                lh = [(lh[opt], opt) for opt in lh]
+                report_fields.extend(lh)
             report_fields.append("location_id")
         else:
             report_fields.append((T("Time Estimated"), "time_estimated"))
@@ -588,6 +580,16 @@ class S3ProjectModel(S3Model):
 
         # Components
 
+        # Contact Persons
+        self.add_component("pr_person",
+                           project_activity=Storage(
+                                name="contact",
+                                link="project_activity_contact",
+                                joinby="activity_id",
+                                key="person_id",
+                                actuate="hide",
+                                autodelete=False))
+
         # Beneficiaries
         self.add_component("project_beneficiary",
                            project_activity="activity_id")
@@ -602,6 +604,47 @@ class S3ProjectModel(S3Model):
                                 autocomplete="name",
                                 autodelete=False))
 
+
+        # ---------------------------------------------------------------------
+        # Project Activity Contact Person
+        #
+        tablename = "project_activity_contact"
+        table = self.define_table(tablename,
+                                  activity_id(),
+                                  person_id(widget=S3AddPersonWidget(),
+                                            requires=IS_ADD_PERSON_WIDGET(),
+                                            comment=None),
+                                  *s3.meta_fields())
+
+        table.virtualfields.append(S3ProjectActivityContactVirtualFields())
+
+        # CRUD Strings
+        ADD_CONTACT = T("Add Contact")
+        LIST_CONTACTS = T("List Contacts")
+        if pca:
+            LIST_OF_CONTACTS = T("Community Contacts")
+        else:
+            LIST_OF_CONTACTS = T("Contacts")
+        s3.crud_strings[tablename] = Storage(
+            title_create = ADD_CONTACT,
+            title_display = T("Contact Details"),
+            title_list = LIST_CONTACTS,
+            title_update = T("Edit Contact Details"),
+            title_search = T("Search Contacts"),
+            subtitle_create = T("Add New Contact"),
+            subtitle_list = LIST_OF_CONTACTS,
+            label_list_button = LIST_CONTACTS,
+            label_create_button = ADD_CONTACT,
+            msg_record_created = T("Contact Added"),
+            msg_record_modified = T("Contact Updated"),
+            msg_record_deleted = T("Contact Deleted"),
+            msg_list_empty = T("No Contacts Found"))
+
+        # Resource configuration
+        self.configure(tablename,
+                       list_fields=["person_id",
+                                    (T("Email"), "email"),
+                                    (T("Mobile Phone"), "sms")])
 
         # ---------------------------------------------------------------------
         # Pass variables back to global scope (response.s3.*)
@@ -664,26 +707,6 @@ class S3ProjectModel(S3Model):
             vals = len(vals) and vals[0] or DEFAULT
 
         return vals
-
-    # ---------------------------------------------------------------------
-    @staticmethod
-    def countries_represent(locations, row=None):
-        """ FK representation """
-
-        db = current.db
-
-        if isinstance(locations, Rows):
-            try:
-                locations = [r.name for r in locations]
-                return ", ".join(locations)
-            except:
-                locations = [r.id for r in locations]
-        if not isinstance(locations, list):
-            locations = [locations]
-        table = db.gis_location
-        query = table.id.belongs(locations)
-        rows = db(query).select(table.name)
-        return S3ProjectModel.countries_represent(rows)
 
     # ---------------------------------------------------------------------
     @staticmethod
@@ -776,15 +799,22 @@ class S3ProjectModel(S3Model):
             T = current.T
             request = current.request
             response = current.response
+            session = current.session
             s3 = response.s3
-        
+
             calendar = r.record.calendar
 
             # Add core Simile Code
             s3.scripts.append("/%s/static/scripts/simile/timeline/timeline-api.js" % request.application)
 
-            # Control our code in static/scripts/S3/s3.timeline.js
+            # Pass vars to our JS code
             s3.js_global.append("S3.timeline.calendar = '%s';" % calendar)
+
+            # Add our control script
+            if session.s3.debug:
+                s3.scripts.append("/%s/static/scripts/S3/s3.timeline.js" % request.application)
+            else:
+                s3.scripts.append("/%s/static/scripts/S3/s3.timeline.min.js" % request.application)
 
             # Create the DIV
             item = DIV(_id="s3timeline", _style="height: 400px; border: 1px solid #aaa; font-family: Trebuchet MS, sans-serif; font-size: 85%;")
@@ -914,6 +944,8 @@ class S3ProjectDRRModel(S3Model):
         activity_id = self.project_activity_id
         #multi_activity_type_id = self.project_multi_activity_type_id
 
+        pca = current.deployment_settings.get_project_community_activity()
+
         messages = current.messages
         NONE = messages.NONE
 
@@ -957,8 +989,10 @@ class S3ProjectDRRModel(S3Model):
             title_update = T("Edit Project Organization"),
             title_search = T("Search Project Organizations"),
             title_upload = T("Import Project Organizations"),
+            title_report = T("Funding Report"),
             subtitle_create = T("Add Organization to Project"),
             subtitle_list = T("Project Organizations"),
+            subtitle_report = T("Funding"),
             label_list_button = LIST_PROJECT_ORG,
             label_create_button = ADD_PROJECT_ORG,
             label_delete_button = T("Remove Organization from Project"),
@@ -1103,7 +1137,9 @@ class S3ProjectDRRModel(S3Model):
                                   s3.comments(),
                                   *s3.meta_fields())
 
-        # Field configuration?
+        # Field configuration
+        if pca:
+            table.activity_id.label = T("Community")
 
         # CRUD Strings
         ADD_BNF = T("Add Beneficiaries")
@@ -1131,11 +1167,14 @@ class S3ProjectDRRModel(S3Model):
         self.configure(tablename,
                         onaccept=self.project_beneficiary_onaccept,
                         deduplicate=self.project_beneficiary_deduplicate,
-                        #report_filter=[
-                            #S3SearchOptionsWidget(field=["project_id"],
-                                                  #name="project",
-                                                  #label=T("Project"))
-                        #],
+                        report_filter=[
+                            S3SearchOptionsWidget(field=["project_id"],
+                                                  name="project",
+                                                  label=T("Project")),
+                            S3SearchOptionsWidget(field=["bnf_type"],
+                                                  name="bnf_type",
+                                                  label=T("Beneficiary Type")),
+                        ],
                         report_rows=[
                                       "activity_id",
                                       "project_id",
@@ -1144,7 +1183,7 @@ class S3ProjectDRRModel(S3Model):
                                       "activity_id$multi_activity_type_id"
                                      ],
                         report_cols=[
-                                      "bnf_type",
+                                      (T("Beneficiary Type"), "bnf_type"),
                                      ],
                         report_fact=["number"],
                         report_method=["sum"])
@@ -2016,7 +2055,7 @@ def project_assignee_represent(id):
 
     db = current.db
     s3db = current.s3db
-    cache = current.response.s3.cache
+    cache = s3db.cache
     output = current.messages.NONE
 
     if not id:
@@ -2059,235 +2098,241 @@ def project_assignee_represent(id):
 def project_rheader(r, tabs=[]):
     """ Project Resource Headers - used in Project & Budget modules """
 
-    rheader = None
+    if r.representation != "html":
+        # RHeaders only used in interactive views
+        return None
+    record = r.record
+    if record is None:
+        # List or Create form: rheader makes no sense here
+        return None
 
-    if r.representation == "html":
-        record = r.record
-        if record:
-            table = r.table
-            T = current.T
-            db = current.db
-            s3db = current.s3db
-            auth = current.auth
-            s3 = current.response.s3
-            settings = current.deployment_settings
-            drr = settings.get_project_drr()
-            pca = settings.get_project_community_activity()
+    table = r.table
+    resourcename = r.name
+    T = current.T
+    auth = current.auth
+    settings = current.deployment_settings
+    drr = settings.get_project_drr()
+    pca = settings.get_project_community_activity()
 
-            system_roles = current.session.s3.system_roles
-            ADMIN = system_roles.ADMIN
+    if resourcename == "project":
+        # Tabs
+        tabs = [(T("Basic Details"), None)]
+        if drr:
+            tabs.append((T("Organizations"), "organisation"))
 
-            if r.name == "project":
-                # Tabs
-                tabs = [(T("Basic Details"), None)]
-                if drr:
-                    tabs.append((T("Organizations"), "organisation"))
+        ADMIN = current.session.s3.system_roles.ADMIN
+        admin = auth.s3_has_role(ADMIN)
+        #staff = auth.s3_has_role("STAFF")
+        staff = True
+        if admin or drr:
+            tabs.append((T("Communities") if pca else T("Activities"), "activity"))
+        if staff and not drr:
+            tabs.append((T("Milestones"), "milestone"))
+        if not drr:
+            tabs.append((T("Tasks"), "task"))
+        if drr:
+            tabs.append((T("Documents"), "document"))
+        elif admin:
+            tabs.append((T("Attachments"), "document"))
+        if record.calendar:
+            tabs.append((T("Calendar"), "timeline"))
 
-                admin = auth.s3_has_role(ADMIN)
-                #staff = auth.s3_has_role("STAFF")
-                staff = True
-                if admin or drr:
-                    tabs.append((T("Communities") if pca else T("Activities"), "activity"))
-                if staff and not drr:
-                    tabs.append((T("Milestones"), "milestone"))
-                if not drr:
-                    tabs.append((T("Tasks"), "task"))
-                if drr:
-                    tabs.append((T("Documents"), "document"))
-                elif admin:
-                    tabs.append((T("Attachments"), "document"))
-                if record.calendar:
-                    tabs.append((T("Calendar"), "timeline"))
+        rheader_tabs = s3_rheader_tabs(r, tabs)
 
-                rheader_tabs = s3_rheader_tabs(r, tabs)
+        row3 = ""
+        if drr:
+            row2 = TR(
+                TH("%s: " % table.countries_id.label),
+                table.countries_id.represent(record.countries_id),
+                )
+        else:
+            row2 = TR(
+                TH("%s: " % table.organisation_id.label),
+                table.organisation_id.represent(record.organisation_id)
+                )
+            if record.end_date:
+                row3 = TR(
+                    TH("%s: " % table.end_date.label),
+                    table.end_date.represent(record.end_date)
+                    )
 
-                row3 = ""
-                if drr:
-                    row2 = TR(
-                        TH("%s: " % table.countries_id.label),
-                        table.countries_id.represent(record.countries_id),
+        rheader = DIV(TABLE(
+            TR(
+               TH("%s: " % table.name.label),
+               record.name
+              ),
+            row2,
+            row3,
+            ), rheader_tabs)
+
+    elif resourcename == "activity":
+        # @ToDo: integrate tabs?
+        rheader_tabs = s3_rheader_tabs(r, tabs)
+        tbl = TABLE()
+        if record.project_id is not None:
+            tbl.append(
+                        TR(
+                            TH("%s: " % table.project_id.label),
+                            table.project_id.represent(record.project_id))
                         )
-                else:
-                    row2 = TR(
-                        TH("%s: " % table.organisation_id.label),
-                        table.organisation_id.represent(record.organisation_id)
+        if pca:
+            tbl.append(
+
+                        TR(
+                           TH("%s: " % table.location_id.label),
+                           table.location_id.represent(record.location_id)
+                          )
+                       )
+        else:
+            tbl.append(
+
+                        TR(
+                           TH("%s: " % table.name.label),
+                           record.name
+                          )
+                       )
+        rheader = DIV(tbl, rheader_tabs)
+
+
+    elif resourcename == "task":
+        db = current.db
+        s3db = current.s3db
+
+        # Tabs
+        tabs = [(T("Details"), None)]
+        staff = auth.s3_has_role("STAFF")
+        if staff:
+                (T("Time"), "time"),
+        tabs.append((T("Comments"), "discuss"))
+        tabs.append((T("Attachments"), "document"))
+        #(T("Roles"), "job_role"),
+        #(T("Assignments"), "human_resource"),
+        #(T("Requests"), "req")
+
+        rheader_tabs = s3_rheader_tabs(r, tabs)
+
+        # RHeader
+        ptable = s3db.project_project
+        ltable = s3db.project_task_project
+        query = (ltable.deleted == False) & \
+                (ltable.task_id == r.id) & \
+                (ltable.project_id == ptable.id)
+        project = db(query).select(ptable.name,
+                                   limitby=(0, 1)).first()
+        if project:
+            project = TR(
+                            TH("%s: " % T("Project")),
+                            project.name
                         )
-                    if record.end_date:
-                        row3 = TR(
-                            TH("%s: " % table.end_date.label),
-                            table.end_date.represent(record.end_date)
-                            )
+        else:
+            project = ""
 
-                rheader = DIV(TABLE(
-                    TR(
-                       TH("%s: " % table.name.label),
-                       record.name
-                      ),
-                    row2,
-                    row3,
-                    ), rheader_tabs)
+        atable = s3db.project_activity
+        ltable = s3db.project_task_activity
+        query = (ltable.deleted == False) & \
+                (ltable.task_id == r.id) & \
+                (ltable.activity_id == atable.id)
+        activity = db(query).select(atable.name,
+                                    limitby=(0, 1)).first()
+        if activity:
+            activity = TR(
+                            TH("%s: " % T("Activity")),
+                            activity.name
+                        )
+        else:
+            activity = ""
 
-            elif r.name == "activity":
-                # @ToDo: integrate tabs?
-                rheader_tabs = s3_rheader_tabs(r, tabs)
-                tbl = TABLE()
-                if record.project_id is not None:
-                    tbl.append(
-                                TR(
-                                    TH("%s: " % table.project_id.label),
-                                    table.project_id.represent(record.project_id))
-                                )
-                if pca:
-                    tbl.append(
-                                TR(
-                                   TH("%s: " % table.location_id.label),
-                                   table.location_id.represent(record.location_id)
-                                  )
-                               )
-                else:
-                    tbl.append(
-                                TR(
-                                   TH("%s: " % table.name.label),
-                                   record.name
-                                  )
-                               )
-                rheader = DIV(tbl, rheader_tabs)
-            elif r.name == "task":
-                # Tabs
-                tabs = [(T("Details"), None)]
-                staff = auth.s3_has_role("STAFF")
-                if staff:
-                        (T("Time"), "time"),
-                tabs.append((T("Comments"), "discuss"))
-                tabs.append((T("Attachments"), "document"))
-                #(T("Roles"), "job_role"),
-                #(T("Assignments"), "human_resource"),
-                #(T("Requests"), "req")
+        if record.description:
+            description = TR(
+                            TH("%s: " % table.description.label),
+                            record.description
+                        )
+        else:
+            description = ""
 
-                rheader_tabs = s3_rheader_tabs(r, tabs)
+        if record.site_id:
+            facility = TR(
+                            TH("%s: " % table.site_id.label),
+                            table.site_id.represent(record.site_id),
+                        )
+        else:
+            facility = ""
 
-                # RHeader
-                ptable = s3db.project_project
-                ltable = s3db.project_task_project
-                query = (ltable.deleted == False) & \
-                        (ltable.task_id == r.id) & \
-                        (ltable.project_id == ptable.id)
-                project = db(query).select(ptable.name,
-                                           limitby=(0, 1)).first()
-                if project:
-                    project = TR(
-                                    TH("%s: " % T("Project")),
-                                    project.name
-                                )
-                else:
-                    project = ""
+        if record.location_id:
+            location = TR(
+                            TH("%s: " % table.location_id.label),
+                            table.location_id.represent(record.location_id),
+                        )
+        else:
+            location = ""
 
-                atable = s3db.project_activity
-                ltable = s3db.project_task_activity
-                query = (ltable.deleted == False) & \
-                        (ltable.task_id == r.id) & \
-                        (ltable.activity_id == atable.id)
-                activity = db(query).select(atable.name,
-                                            limitby=(0, 1)).first()
-                if activity:
-                    activity = TR(
-                                    TH("%s: " % T("Activity")),
-                                    activity.name
-                                )
-                else:
-                    activity = ""
+        if record.pe_id:
+            assignee = TR(
+                            TH("%s: " % table.pe_id.label),
+                            s3db.pr_pentity_represent(record.pe_id,
+                                                      show_label=False),
+                        )
+        else:
+            assignee = ""
 
-                if record.description:
-                    description = TR(
-                                    TH("%s: " % table.description.label),
-                                    record.description
-                                )
-                else:
-                    description = ""
+        if record.time_estimated:
+            time_estimated = TR(
+                            TH("%s: " % table.time_estimated.label),
+                            record.time_estimated
+                        )
+        else:
+            time_estimated = ""
 
-                if record.site_id:
-                    facility = TR(
-                                    TH("%s: " % table.site_id.label),
-                                    table.site_id.represent(record.site_id),
-                                )
-                else:
-                    facility = ""
+        if record.time_actual:
+            time_actual = TR(
+                            TH("%s: " % table.time_actual.label),
+                            record.time_actual
+                        )
+        else:
+            time_actual = ""
 
-                if record.location_id:
-                    location = TR(
-                                    TH("%s: " % table.location_id.label),
-                                    table.location_id.represent(record.location_id),
-                                )
-                else:
-                    location = ""
-
-                if record.pe_id:
-                    assignee = TR(
-                                    TH("%s: " % table.pe_id.label),
-                                    s3.pr_pentity_represent(record.pe_id,
-                                                            show_label=False),
-                                )
-                else:
-                    assignee = ""
-
-                if record.time_estimated:
-                    time_estimated = TR(
-                                    TH("%s: " % table.time_estimated.label),
-                                    record.time_estimated
-                                )
-                else:
-                    time_estimated = ""
-
-                if record.time_actual:
-                    time_actual = TR(
-                                    TH("%s: " % table.time_actual.label),
-                                    record.time_actual
-                                )
-                else:
-                    time_actual = ""
-
-                # Comments
-                if r.method == "discuss":
-                    comments = ""
-                else:
-                    ctable = s3db.project_comment
-                    query = (ctable.deleted == False) & \
-                            (ctable.task_id == r.id)
-                    comments = db(query).select(ctable.body).last()
-                    if comments:
-                        try:
-                            markup = etree.XML(comments.body)
-                            text = markup.xpath(".//text()")
-                            if text:
-                                text = " ".join(text)
-                            else:
-                                text = ""
-                        except etree.XMLSyntaxError:
-                            t = html.fromstring(comments.body)
-                            text = t.text_content()
-                        comments = TR(
-                                        TH("%s: " % T("Latest Comment")),
-                                        A(text,
-                                          _href=URL(args=[r.id, "discuss"]))
-                                    )
+        # Comments
+        if r.method == "discuss":
+            comments = ""
+        else:
+            ctable = s3db.project_comment
+            query = (ctable.deleted == False) & \
+                    (ctable.task_id == r.id)
+            comments = db(query).select(ctable.body).last()
+            if comments:
+                try:
+                    markup = etree.XML(comments.body)
+                    text = markup.xpath(".//text()")
+                    if text:
+                        text = " ".join(text)
                     else:
-                        comments = ""
+                        text = ""
+                except etree.XMLSyntaxError:
+                    t = html.fromstring(comments.body)
+                    text = t.text_content()
+                comments = TR(
+                                TH("%s: " % T("Latest Comment")),
+                                A(text,
+                                  _href=URL(args=[r.id, "discuss"]))
+                            )
+            else:
+                comments = ""
 
-                rheader = DIV(TABLE(
-                    project,
-                    activity,
-                    TR(
-                        TH("%s: " % table.name.label),
-                        record.name,
-                        ),
-                    description,
-                    facility,
-                    location,
-                    assignee,
-                    time_estimated,
-                    time_actual,
-                    comments,
-                    ), rheader_tabs)
+        rheader = DIV(TABLE(
+            project,
+            activity,
+            TR(
+                TH("%s: " % table.name.label),
+                record.name,
+                ),
+            description,
+            facility,
+            location,
+            assignee,
+            time_estimated,
+            time_actual,
+            comments,
+            ), rheader_tabs)
 
     return rheader
 
@@ -2361,6 +2406,44 @@ class S3ProjectActivityVirtualfields:
             return parents["L3"]
         else:
             return None
+
+# =============================================================================
+class S3ProjectActivityContactVirtualFields:
+    """ Virtual fields for the project_activity_contact table """
+
+    extra_fields = ["person_id"]
+
+    def email(self):
+
+        db = current.db
+        s3db = current.s3db
+
+        ptable = s3db.pr_person
+        ctable = s3db.pr_contact
+
+        person_id = self.project_activity_contact.person_id
+        query = (ctable.deleted != True) & \
+                (ptable.id == person_id) & \
+                (ctable.pe_id == ptable.pe_id) & \
+                (ctable.contact_method == "EMAIL")
+        items = db(query).select(ctable.value)
+        return ", ".join([item.value for item in items])
+
+    def sms(self):
+
+        db = current.db
+        s3db = current.s3db
+
+        ptable = s3db.pr_person
+        ctable = s3db.pr_contact
+
+        person_id = self.project_activity_contact.person_id
+        query = (ctable.deleted != True) & \
+                (ptable.id == person_id) & \
+                (ctable.pe_id == ptable.pe_id) & \
+                (ctable.contact_method == "SMS")
+        items = db(query).select(ctable.value)
+        return ", ".join([item.value for item in items])
 
 # =============================================================================
 class S3ProjectTaskVirtualfields:

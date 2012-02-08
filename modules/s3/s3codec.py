@@ -5,7 +5,7 @@
 
     @author: Dominic König <dominic[at]aidiq[dot]com>
 
-    @copyright: 2011 (c) Sahana Software Foundation
+    @copyright: 2011-12 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -103,6 +103,7 @@ class S3Codec(object):
     # -------------------------------------------------------------------------
     # Utilities
     #--------------------------------------------------------------------------
+    PY2XML = {"'": "&apos;", '"': "&quot;"}
     @staticmethod
     def xml_encode(s):
         """
@@ -110,12 +111,12 @@ class S3Codec(object):
 
             @param s: the string
         """
-
         if s:
-            s = escape(s, {"'": "&apos;", '"': "&quot;"})
+            s = escape(s, S3Codec.PY2XML)
         return s
 
     #--------------------------------------------------------------------------
+    XML2PY = {"&apos;": "'", "&quot;": '"'}
     @staticmethod
     def xml_decode(s):
         """
@@ -123,9 +124,8 @@ class S3Codec(object):
 
             @param s: the string
         """
-
         if s:
-            s = unescape(s, {"&apos;": "'", "&quot;": '"'})
+            s = unescape(s, S3Codec.XML2PY)
         return s
 
     #--------------------------------------------------------------------------

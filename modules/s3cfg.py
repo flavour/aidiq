@@ -62,6 +62,7 @@ class S3Config(Storage):
         self.ui = Storage()
         self.req = Storage()
         self.inv = Storage()
+        self.supply = Storage()
         self.hrm = Storage()
         self.project = Storage()
         self.save_search = Storage()
@@ -163,7 +164,7 @@ class S3Config(Storage):
         return self.database.get("db_type", "sqlite")
     def get_database_string(self):
         db_type = self.database.get("db_type", "sqlite")
-        pool_size = self.database.get("pool_size", 0)
+        pool_size = self.database.get("pool_size", 30)
         if (db_type == "sqlite"):
             db_string = "sqlite://storage.db"
         elif (db_type == "mysql"):
@@ -183,10 +184,7 @@ class S3Config(Storage):
         else:
             from gluon import HTTP
             raise HTTP(501, body="Database type '%s' not recognised - please correct file models/000_config.py." % db_type)
-        if pool_size:
-            return (db_string, pool_size)
-        else:
-            return db_string
+        return (db_string, pool_size)
 
     # -------------------------------------------------------------------------
     # Finance settings
@@ -200,46 +198,21 @@ class S3Config(Storage):
 
     # -------------------------------------------------------------------------
     # GIS (Map) Settings
-    # No defaults are needed for gis_config deployment settings -- initial
-    # defaults come either from the table itself or are added to the site
-    # config when it is created. This does not include defaults for the
-    # hierarchy labels as that is defined separately in 000_config.
+    def get_gis_api_bing(self):
+        """ API key for Bing """
+        return self.gis.get("api_bing", None)
+    def get_gis_api_google(self):
+        """
+            API key for Google
+            - needed for Earth, MapMaker & GeoCoder
+            - defaults to localhost
+        """
+        return self.gis.get("api_google", "ABQIAAAAgB-1pyZu7pKAZrMGv3nksRTpH3CbXHjuCVmaTc5MkkU4wO1RRhQWqp1VGwrG8yPE2KhLCPYhD7itFw")
+    def get_gis_api_yahoo(self):
+        """ API key for Yahoo """
+        return self.gis.get("api_yahoo", None)
     def get_gis_countries(self):
         return self.gis.get("countries", [])
-    def get_gis_default_config_values(self):
-        return self.gis.get("default_config_values", Storage())
-    def get_gis_default_location_hierarchy(self):
-        location_hierarchy = self.gis.get("location_hierarchy", None)
-        if not location_hierarchy:
-            location_hierarchy = OrderedDict([
-                ("L0", current.T("Country")),
-                ("L1", current.T("Province")),
-                ("L2", current.T("District")),
-                ("L3", current.T("Town")),
-                ("L4", current.T("Village")),
-                #("L5", current.T("Neighbourhood")),
-                ])
-        return location_hierarchy
-    # These fields in gis_config are references to other tables. Rather than
-    # hard code an id, default via the name.
-    def get_gis_default_symbology(self):
-        return self.gis.get("default_symbology", "US")
-    def get_gis_default_projection(self):
-        return self.gis.get("default_projection", "Spherical Mercator")
-    def get_gis_default_marker(self):
-        return self.gis.get("default_marker", "marker_red")
-    def get_gis_max_allowed_hierarchy_level(self):
-        # If the site's default hierarchy is deeper than the specified maximum,
-        # adjust the limit so the entire default hierarchy will be shown in a
-        # config update form. (At this point, we cannot also limit this to the
-        # depth available in the gis_config table as the database is not
-        # available. See max_allowed_level_num in s3gis GIS.)
-        limit = current.response.s3.gis.adjusted_max_allowed_hierarchy_level
-        if not limit:
-            limit = max(self.gis.get("max_allowed_hierarchy_level", "L4"),
-                        self.get_gis_default_location_hierarchy().keys()[-1])
-            current.response.s3.gis.adjusted_max_allowed_hierarchy_level = limit
-        return limit
     def get_gis_building_name(self):
         " Display Building Name when selecting Locations "
         return self.gis.get("building_name", True)
@@ -263,12 +236,23 @@ class S3Config(Storage):
         return self.gis.get("display_L1", True)
     def get_gis_duplicate_features(self):
         return self.gis.get("duplicate_features", False)
-    def get_gis_edit_lx(self):
-        " Edit Hierarchy Locations "
-        return self.gis.get("edit_Lx", True)
     def get_gis_edit_group(self):
         " Edit Location Groups "
         return self.gis.get("edit_GR", False)
+    def get_gis_map_height(self):
+        """
+            Height of the Embedded Map
+            Change this if-required for your theme
+            NB API can override this in specific modules
+        """
+        return self.gis.get("map_height", 600)
+    def get_gis_map_width(self):
+        """
+            Width of the Embedded Map
+            Change this if-required for your theme
+            NB API can override this in specific modules
+        """
+        return self.gis.get("map_width", 1000)
     def get_gis_marker_max_height(self):
         return self.gis.get("marker_max_height", 35)
     def get_gis_marker_max_width(self):
@@ -282,7 +266,7 @@ class S3Config(Storage):
     def get_gis_geoserver_username(self):
         return self.gis.get("geoserver_username", "admin")
     def get_gis_geoserver_password(self):
-        return self.gis.get("geoserver_password", "password")
+        return self.gis.get("geoserver_password", "")
     def get_gis_spatialdb(self):
         return self.gis.get("spatialdb", False)
 
@@ -427,7 +411,7 @@ class S3Config(Storage):
     # -------------------------------------------------------------------------
     # Request Settings
     def get_req_type_inv_label(self):
-        return self.req.get("type_inv_label", current.T("Inventory Items"))
+        return self.req.get("type_inv_label", current.T("Warehouse Stock"))
     def get_req_type_hrm_label(self):
         return self.req.get("type_hrm_label", current.T("People"))
 
@@ -462,6 +446,11 @@ class S3Config(Storage):
             * order
         """
         return self.inv.get("shipment_name", "shipment")
+
+    # -------------------------------------------------------------------------
+    # Supply
+    def get_supply_catalog_default(self):
+        return self.inv.get("catalog_default", "Other Items")
 
     # -------------------------------------------------------------------------
     # Human Resource Management
