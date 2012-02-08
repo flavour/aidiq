@@ -282,7 +282,7 @@ def task():
             table.virtualfields.append(eden.project.S3ProjectTaskVirtualfields())
             list_fields = s3mgr.model.get_config(tablename,
                                                  "list_fields")
-            list_fields.insert(3, (T("Project"), "project"))
+            list_fields.insert(4, (T("Project"), "project"))
             # Hide the Assignee column (always us)
             list_fields.remove("pe_id")
             # Hide the Status column
