@@ -218,11 +218,6 @@ GPS_SYMBOLS = [
     "Zoo"
     ]
 
-# http://docs.python.org/library/tempfile.html
-import tempfile
-TEMP = tempfile.gettempdir()
-GADM = "GADMv1"
-
 # -----------------------------------------------------------------------------
 class GIS(object):
     """
@@ -516,13 +511,12 @@ class GIS(object):
 
         config = self.get_config()
 
+        # When a map is displayed that focuses on a collection of points, the map is zoomed to show just the region bounding the points.
         # Minimum Bounding Box
-        # When a map is displayed that focuses on a collection of points, the map is zoomed to show just the region bounding the points.
-        # This value gives a minimum width and height in degrees for the region shown. Without this, a map showing a single point would not show any extent around that point. After the map is displayed, it can be zoomed as desired.
-        bbox_min_size = 0.01
+        # - gives a minimum width and height in degrees for the region shown. Without this, a map showing a single point would not show any extent around that point. After the map is displayed, it can be zoomed as desired.
+        bbox_min_size = 0.03
         # Bounding Box Insets
-        # When a map is displayed that focuses on a collection of points, the map is zoomed to show just the region bounding the points.
-        # This value adds a small mount of distance outside the points. Without this, the outermost points would be on the bounding box, and might not be visible.
+        # - adds a small amount of distance outside the points. Without this, the outermost points would be on the bounding box, and might not be visible.
         bbox_inset = 0.007
 
         if len(features) > 0:
@@ -785,6 +779,28 @@ class GIS(object):
         return results
 
     # -------------------------------------------------------------------------
+    def get_parents_of_level(self, locations, level):
+        """
+            Given a list of gis_location.ids, return a list of the Parents of
+            the given Level (Lx)
+
+            - used by S3Report
+        """
+
+        output = []
+
+        if not locations or not level:
+            return output
+
+        while locations:
+            # Recursively pull out good records & try parents agaian
+            (newoutput, locations) = self._get_parents_of_level(locations, level)
+            for id in newoutput:
+                output.append(id)
+
+        return output
+
+    # -------------------------------------------------------------------------
     @staticmethod
     def _get_parents_of_level(locations, level):
         """
@@ -838,28 +854,6 @@ class GIS(object):
         return (output, tryagain)
 
     # -------------------------------------------------------------------------
-    def get_parents_of_level(self, locations, level):
-        """
-            Given a list of gis_location.ids, return a list of the Parents of
-            the given Level (Lx)
-
-            - used by S3Report
-        """
-
-        output = []
-
-        if not locations or not level:
-            return output
-
-        while locations:
-            # Recursively pull out good records & try parents agaian
-            (newoutput, locations) = self._get_parents_of_level(locations, level)
-            for id in newoutput:
-                output.append(id)
-
-        return output
-
-    # -------------------------------------------------------------------------
     def update_table_hierarchy_labels(self, tablename=None):
         """
             Re-set table options that depend on location_hierarchy
@@ -895,6 +889,7 @@ class GIS(object):
             # These tables store location hierarchy info for XSLT export.
             # Labels are used for PDF & XLS Reports
             tables = ["org_office",
+                      #"pr_person",
                       "pr_address",
                       "cr_shelter",
                       "asset_asset",
@@ -1090,6 +1085,7 @@ class GIS(object):
                       table[level]]
         else:
             fields = [table.uuid,
+                      table.L1,
                       table.L2,
                       table.L3,
                       table.L4,
@@ -1107,7 +1103,16 @@ class GIS(object):
             rows.exclude(filter)
         elif not rows:
             # prepop hasn't run yet
-            return None
+            levels = OrderedDict()
+            hierarchy_level_keys = self.hierarchy_level_keys
+            for key in hierarchy_level_keys:
+                if key == "L0":
+                    levels[key] = COUNTRY
+                else:
+                    # Only include rows with values
+                    levels[key] = key
+            return levels
+
         row = rows.first()
         if level:
             try:
@@ -1374,7 +1379,7 @@ class GIS(object):
         """
             Return a quick representation for a Field based on it's value
             - faster than field.represent(value)
-            Used by s3xml's gis_encode()
+            Used by get_popup_tooltip()
 
             @ToDo: Move out of S3GIS
         """
@@ -1391,7 +1396,12 @@ class GIS(object):
         represent = value
 
         # If the field is a FK, then check for specials
-        if (tablename, fieldname) in s3db.pr_person._referenced_by:
+        if fieldname == "type":
+            if tablename == "hrm_human_resource":
+                represent = s3db.hrm_type_opts.get(value, "")
+            elif tablename == "org_office":
+                represent = s3db.org_office_type_opts.get(value, "")
+        elif (tablename, fieldname) in s3db.pr_person._referenced_by:
             represent = s3_fullname(value)
         elif (tablename, fieldname) in hrtable._referenced_by:
             # e.g. assess_rat - convert to Organisation
@@ -1407,24 +1417,6 @@ class GIS(object):
                                               cache=cache).first()
                 if _represent:
                     represent = _represent.name
-        elif fieldname == "type":
-            if tablename == "hrm_human_resource":
-                # @ToDo: DRY by moving to a Module (s3cfg?)
-                hrm_type_opts = {
-                    1: T("staff"),
-                    2: T("volunteer")
-                }
-                represent = hrm_type_opts.get(value, "")
-            elif tablename == "org_office":
-                # @ToDo: DRY by moving to a Module (s3cfg?)
-                org_office_type_opts = {
-                    1:T("Headquarters"),
-                    2:T("Regional"),
-                    3:T("Country"),
-                    4:T("Satellite Office"),
-                    5:T("Warehouse"),       # Don't change this number, as it affects the Inv module
-                }
-                represent = org_office_type_opts.get(value, "")
         elif field.type[:9] == "reference":
             try:
                 tablename = field.type[10:]
@@ -1436,6 +1428,9 @@ class GIS(object):
             except: # @ToDo: provide specific exception
                 # Keep the default from earlier
                 pass
+        elif field.type.startswith("list"):
+            # Value isn't going to be useful here - do the normal represent
+            represent = field.represent(value)
 
         return represent
 
@@ -2087,14 +2082,16 @@ class GIS(object):
             "code2field" : "ISO"  # This field is used to uniquely identify the L0 for parenting the L1s
         }
 
-        #Copy the current working directory to revert back to later
+        # Copy the current working directory to revert back to later
         old_working_directory = os.getcwd()
 
         # Create the working directory
-        if os.path.exists(os.path.join(os.getcwd(), 'temp')): # use web2py/temp/GADMv1 as a cache
-                TEMP = os.path.join(os.getcwd(), 'temp')
-
-        tempPath = os.path.join(TEMP, GADM)
+        if os.path.exists(os.path.join(os.getcwd(), "temp")): # use web2py/temp/GADMv1 as a cache
+            TEMP = os.path.join(os.getcwd(), "temp")
+        else:
+            import tempfile
+            TEMP = tempfile.gettempdir()
+        tempPath = os.path.join(TEMP, "GADMv1")
         try:
             os.mkdir(tempPath)
         except OSError:
@@ -2251,15 +2248,16 @@ class GIS(object):
             for r in reader:
                 yield dict(zip(headers, r))
 
-        global TEMP
-
-        #Copy the current working directory to revert back to later
+        # Copy the current working directory to revert back to later
         old_working_directory = os.getcwd()
 
         # Create the working directory
-        if os.path.exists(os.path.join(os.getcwd(), 'temp')): # use web2py/temp/GADMv1 as a cache
-                TEMP = os.path.join(os.getcwd(), 'temp')
-        tempPath = os.path.join(TEMP, GADM)
+        if os.path.exists(os.path.join(os.getcwd(), "temp")): # use web2py/temp/GADMv1 as a cache
+            TEMP = os.path.join(os.getcwd(), "temp")
+        else:
+            import tempfile
+            TEMP = tempfile.gettempdir()
+        tempPath = os.path.join(TEMP, "GADMv1")
         try:
             os.mkdir(tempPath)
         except OSError:
@@ -3226,11 +3224,11 @@ class GIS(object):
         # Support bookmarks (such as from the control)
         # - these over-ride the arguments
         vars = request.vars
-        if "lat" in vars:
+        if "lat" in vars and vars.lat:
             lat = float(vars.lat)
         if lat is None or lat == "":
             lat = config.lat
-        if "lon" in vars:
+        if "lon" in vars and vars.lon:
             lon = float(vars.lon)
         if lon is None or lon == "":
             lon = config.lon
@@ -3956,7 +3954,7 @@ S3.i18n.gis_feature_info = '%s';
             toolbar,
             "S3.gis.map_height = %i;\n" % map_height,
             "S3.gis.map_width = %i;\n" % map_width,
-            "S3.gis.zoom = %i;\n" % zoom,
+            "S3.gis.zoom = %i;\n" % (zoom or 1),
             center,
             "S3.gis.projection = '%i';\n" % projection,
             "S3.gis.units = '%s';\n" % units,

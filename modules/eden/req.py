@@ -65,6 +65,7 @@ class S3RequestModel(S3Model):
              "req_req_id",
              "req_hide_quantities",
              "req_create_form_mods",
+             "req_prep",
             ]
 
     def model(self):
@@ -106,16 +107,18 @@ class S3RequestModel(S3Model):
             1:T("Low")
         }
 
-        req_type_opts = {
-            9:T("Other")
-        }
+        req_types_deployed = settings.get_req_req_type()
+        if "Other" in req_types_deployed:
+            req_type_opts = {9:T("Other")}
+        else:
+            req_type_opts = {}
 
-        if settings.has_module("inv"):
+        if settings.has_module("inv") and "Stock" in req_types_deployed:
             # Number hardcoded in controller
             req_type_opts[1] = settings.get_req_type_inv_label()
         #if settings.has_module("asset"):
         #    req_type_opts[2] = T("Assets")
-        if settings.has_module("hrm"):
+        if settings.has_module("hrm") and "People" in req_types_deployed:
             req_type_opts[3] = settings.get_req_type_hrm_label()
         #if settings.has_module("cr"):
         #    req_type_opts[4] = T("Shelter")
@@ -153,7 +156,10 @@ class S3RequestModel(S3Model):
                                         "integer",
                                         default = 2,
                                         label = T("Priority"),
-                                        represent = self.req_priority_represent,
+                                        #@ToDo: Colour code the priority text - red, orange, green
+                                        represent = lambda opt: \
+                                            req_priority_opts.get(opt, UNKNOWN_OPT),
+                                        #represent = self.req_priority_represent,
                                         requires = IS_NULL_OR(
                                                       IS_IN_SET(req_priority_opts))
                                         ),
@@ -194,9 +200,14 @@ class S3RequestModel(S3Model):
                                                     writable = False,
                                                     label = T("Assigned To")),
                                   human_resource_id("approved_by_id",
-                                                    label = T("Approved By")),
+                                                    label = T("Approved By"),
+                                                    readable = False,
+                                                    writable = False,
+                                                    ),
                                   human_resource_id("request_for_id",
                                                     label = T("Requested For"),
+                                                    readable = False,
+                                                    writable = False,
                                                     #default = auth.s3_logged_in_human_resource()
                                                     ),
                                   self.super_link("site_id", "org_site",
@@ -252,15 +263,13 @@ class S3RequestModel(S3Model):
                                   s3.comments(comment=""),
                                   *s3.meta_fields())
 
-        if settings.has_module("inv"):
-            table.type.default = 1
-        #elif settings.has_module("asset"):
-        #    table.type.default = 2
-        elif settings.has_module("hrm"):
-            table.type.default = 3
-        #elif settings.has_module("cr"):
-        #    table.type.default = 4
+        if len(req_type_opts) == 1:
+            k,v = req_type_opts.popitem()
+            table.type.default = k
 
+        if not settings.get_req_use_req_number():
+            table.request_number.readable = False
+            table.request_number.writable = False
 
         # CRUD strings
         ADD_REQUEST = T("Make Request")
@@ -293,23 +302,22 @@ class S3RequestModel(S3Model):
                                  represent = self.req_represent,
                                  label = T("Request"),
                                  ondelete = "CASCADE")
+        list_fields = ["id",
+                       "type",
+                       "event_id",]
 
+        if settings.get_req_use_req_number():
+            list_fields.append("request_number")
+        list_fields.append("priority")
+        list_fields.append("commit_status")
+        list_fields.append("transit_status")
+        list_fields.append("fulfil_status")
+        list_fields.append("date_required")
         self.configure(tablename,
                        onaccept = self.req_onaccept,
                        deduplicate = self.req_req_duplicate,
-                       list_fields = ["id",
-                                      "type",
-                                      "event_id",
-                                      "request_number",
-                                      "priority",
-                                      "commit_status",
-                                      "transit_status",
-                                      "fulfil_status",
-                                      #"date",
-                                      "date_required",
-                                      #"requester_id",
-                                      #"comments",
-                                    ])
+                       list_fields = list_fields
+                      )
 
         # Script to inject into Pages which include Request create forms
         req_help_msg = ""
@@ -329,6 +337,7 @@ class S3RequestModel(S3Model):
                 message = "%s or %s" % (message, type)
             req_help_msg = req_help_msg_template % message
 
+        #@TODO: Remove this script from code. Help text is added to submit button in req_prep
         req_helptext_script = SCRIPT("""
 $(function() {
     var req_help_msg = '%s\\n%s';
@@ -405,6 +414,7 @@ $(function() {
         return Storage(
                 req_req_id = req_id,
                 req_create_form_mods = self.req_create_form_mods,
+                req_prep = self.req_prep,
                 req_helptext_script = req_helptext_script,
                 req_tabs = self.req_tabs,
                 req_priority_represent = self.req_priority_represent,
@@ -427,6 +437,23 @@ $(function() {
         table.transit_status.readable = table.transit_status.writable = False
         table.fulfil_status.readable = table.fulfil_status.writable = False
         table.cancel.readable = table.cancel.writable = False
+
+        return
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def req_prep():
+        """
+            Function to be called from REST prep functions
+             - main module & components (sites)
+        """
+
+        s3db = current.s3db
+        table = s3db.req_req
+        default_type = table.type.default
+        if table.type.default:
+            req_submit_button = {1:T("Save and add Items"),
+                                 3:T("Save and add People")}
+            current.manager.s3.crud.submit_button = req_submit_button[default_type]
 
         return
 
@@ -769,7 +796,7 @@ class S3RequestItemModel(S3Model):
                                         requires = IS_FLOAT_IN_RANGE(minimum=0)),
                                   Field("pack_value",
                                         "double",
-                                        label = T("Est. Value per Pack")),
+                                        label = T("Estimated Value per Pack")),
                                   # @ToDo: Move this into a Currency Widget for the pack_value field
                                   currency_type("currency"),
                                   site_id,
@@ -812,22 +839,22 @@ class S3RequestItemModel(S3Model):
         table.virtualfields.append(item_pack_virtualfields(tablename=tablename))
 
         # CRUD strings
-        ADD_REQUEST_ITEM = T("Add Item to Request")
-        LIST_REQUEST_ITEM = T("List Request Items")
+        ADD_REQUEST_ITEM = T("Add New Item to Request")
+        LIST_REQUEST_ITEM = T("List of Items in Request")
         s3.crud_strings[tablename] = Storage(
             title_create = ADD_REQUEST_ITEM,
             title_display = T("Request Item Details"),
             title_list = LIST_REQUEST_ITEM,
-            title_update = T("Edit Request Item"),
-            title_search = T("Search Request Items"),
-            subtitle_create = T("Add New Request Item"),
-            subtitle_list = T("Requested Items"),
+            title_update = T("Edit Item in Request"),
+            title_search = T("Search Items in Request"),
+            subtitle_create = T("Add New Item to Request"),
+            subtitle_list = T("Items in Request"),
             label_list_button = LIST_REQUEST_ITEM,
             label_create_button = ADD_REQUEST_ITEM,
-            label_delete_button = T("Delete Request Item"),
-            msg_record_created = T("Request Item added"),
-            msg_record_modified = T("Request Item updated"),
-            msg_record_deleted = T("Request Item deleted"),
+            label_delete_button = T("Delete Item from Request"),
+            msg_record_created = T("Item(s) added to Request"),
+            msg_record_modified = T("Item(s) updated on Request"),
+            msg_record_deleted = T("Item(s) deleted from Request"),
             msg_list_empty = T("No Request Items currently registered"))
 
         # Reusable Field
@@ -1203,7 +1230,8 @@ class S3CommitModel(S3Model):
                                         represent = s3_date_represent),
                                   person_id("committer_id",
                                             default = auth.s3_logged_in_person(),
-                                            label = T("Committed By") ),
+                                            label = T("Committed By"),
+                                            comment = self.pr_person_comment(child="committer_id")),
                                   s3.comments(),
                                   *s3.meta_fields())
 

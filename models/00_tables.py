@@ -38,7 +38,7 @@ import eden.support
 import eden.survey
 import eden.hms
 import eden.sync
-#import eden.patient
+import eden.patient
 
 # =============================================================================
 # Import S3 meta fields into global namespace
@@ -317,26 +317,14 @@ currency_type = S3ReusableField("currency_type", "string",
 response.s3.currency_type = currency_type
 
 # =============================================================================
-# Addresses
+# Lx
 #
 # These fields are populated onaccept from location_id
+# - for many reads to fewer writes, this is faster than Virtual Fields
 #
 # Labels that vary by country are set by gis.update_table_hierarchy_labels()
-# @ToDo; Add Postcode to this
 #
 
-address_building_name = S3ReusableField("building_name",
-                                        label=T("Building Name"),
-                                        readable=False,
-                                        writable=False)
-address_address = S3ReusableField("address",
-                                  label=T("Address"),
-                                  readable=False,
-                                  writable=False)
-address_postcode = S3ReusableField("postcode",
-                                   label=deployment_settings.get_ui_label_postcode(),
-                                   readable=False,
-                                   writable=False)
 address_L4 = S3ReusableField("L4",
                              #label=gis.get_location_hierarchy("L4"),
                              readable=False,
@@ -359,7 +347,140 @@ address_L0 = S3ReusableField("L0",
                              readable=False,
                              writable=False)
 
+# -----------------------------------------------------------------------------
+def lx_fields():
+    # return multiple reusable fields
+    fields = (
+            address_L4(),
+            address_L3(),
+            address_L2(),
+            address_L1(),
+            address_L0(),
+           )
+    return fields
 
+s3.lx_fields = lx_fields
+
+# -----------------------------------------------------------------------------
+# Hide Lx fields in Create forms
+# inc list_create (list_fields over-rides)
+def lx_hide(table):
+    table.L4.readable = False
+    table.L3.readable = False
+    table.L2.readable = False
+    table.L1.readable = False
+    table.L0.readable = False
+    return
+
+s3.lx_hide = lx_hide
+
+# -----------------------------------------------------------------------------
+def lx_onvalidation(form):
+    """
+        Write the Lx fields from the Location
+        - used by pr_person, hrm_training, irs_ireport
+
+        @ToDo: Allow the reverse operation.
+        If these fields are populated then create/update the location
+    """
+
+    vars = form.vars
+    if "location_id" in vars and vars.location_id:
+        table = s3db.gis_location
+        query = (table.id == vars.location_id)
+        location = db(query).select(table.name,
+                                    table.level,
+                                    table.parent,
+                                    table.path,
+                                    limitby=(0, 1)).first()
+        if location:
+            if location.level == "L0":
+                vars.L0 = location.name
+            elif location.level == "L1":
+                vars.L1 = location.name
+                if location.parent:
+                    query = (table.id == location.parent)
+                    country = db(query).select(table.name,
+                                               limitby=(0, 1)).first()
+                    if country:
+                        vars.L0 = country.name
+            else:
+                # Get Names of ancestors at each level
+                vars = gis.get_parent_per_level(vars,
+                                                vars.location_id,
+                                                feature=location,
+                                                ids=False,
+                                                names=True)
+
+s3.lx_onvalidation = lx_onvalidation
+
+# -----------------------------------------------------------------------------
+def lx_update(table, record_id):
+    """
+        Write the Lx fields from the Location
+        - used by hrm_human_resource & pr_address
+
+        @ToDo: Allow the reverse operation.
+        If these fields are populated then create/update the location
+    """
+
+    if "location_id" in table:
+
+        ltable = s3db.gis_location
+        query = (table.id == record_id) & \
+                (ltable.id == table.location_id)
+        location = db(query).select(ltable.id,
+                                    ltable.name,
+                                    ltable.level,
+                                    ltable.parent,
+                                    ltable.path,
+                                    limitby=(0, 1)).first()
+        if location:
+            vars = Storage()
+            if location.level == "L0":
+                vars.L0 = location.name
+            elif location.level == "L1":
+                vars.L1 = location.name
+                if location.parent:
+                    query = (ltable.id == location.parent)
+                    country = db(query).select(ltable.name,
+                                               limitby=(0, 1)).first()
+                    if country:
+                        vars.L0 = country.name
+            else:
+                # Get Names of ancestors at each level
+                vars = gis.get_parent_per_level(vars,
+                                                location.id,
+                                                feature=location,
+                                                ids=False,
+                                                names=True)
+            # Update record
+            db(table.id == record_id).update(**vars)
+
+s3.lx_update = lx_update
+
+# =============================================================================
+# Addresses
+#
+# These fields are populated onaccept from location_id
+#
+# @ToDo: Add Postcode to gis.update_table_hierarchy_labels()
+#
+
+address_building_name = S3ReusableField("building_name",
+                                        label=T("Building Name"),
+                                        readable=False,
+                                        writable=False)
+address_address = S3ReusableField("address",
+                                  label=T("Address"),
+                                  readable=False,
+                                  writable=False)
+address_postcode = S3ReusableField("postcode",
+                                   label=deployment_settings.get_ui_label_postcode(),
+                                   readable=False,
+                                   writable=False)
+
+# -----------------------------------------------------------------------------
 def address_fields():
     # return multiple reusable fields
     fields = (
@@ -373,8 +494,10 @@ def address_fields():
             address_L0(),
            )
     return fields
+
 s3.address_fields = address_fields
 
+# -----------------------------------------------------------------------------
 # Hide Address fields in Create forms
 # inc list_create (list_fields over-rides)
 def address_hide(table):
@@ -387,11 +510,13 @@ def address_hide(table):
     table.L0.readable = False
     table.postcode.readable = False
     return
+
 s3.address_hide = address_hide
 
+# -----------------------------------------------------------------------------
 def address_onvalidation(form):
     """
-        Write the Postcode & Street Address fields from the Location
+        Write the Address fields from the Location
         - used by pr_address, org_office & cr_shelter
 
         @ToDo: Allow the reverse operation.
@@ -399,7 +524,7 @@ def address_onvalidation(form):
     """
 
     vars = form.vars
-    if "location_id" in vars:
+    if "location_id" in vars and vars.location_id:
         table = s3db.gis_location
         # Read Postcode & Street Address
         query = (table.id == vars.location_id)
@@ -435,9 +560,10 @@ def address_onvalidation(form):
 
 s3.address_onvalidation = address_onvalidation
 
+# -----------------------------------------------------------------------------
 def address_update(table, record_id):
     """
-        Write the Postcode & Street Address fields from the Location
+        Write the Address fields from the Location
         - used by asset_asset
 
         @ToDo: Allow the reverse operation.
@@ -446,16 +572,17 @@ def address_update(table, record_id):
 
     if "location_id" in table:
 
-        locations = s3db.gis_location
+        ltable = s3db.gis_location
         # Read Postcode & Street Address
         query = (table.id == record_id) & \
-                (locations.id == table.location_id)
-        location = db(query).select(locations.addr_street,
-                                    locations.addr_postcode,
-                                    locations.name,
-                                    locations.level,
-                                    locations.parent,
-                                    locations.path,
+                (ltable.id == table.location_id)
+        location = db(query).select(ltable.id,
+                                    ltable.addr_street,
+                                    ltable.addr_postcode,
+                                    ltable.name,
+                                    ltable.level,
+                                    ltable.parent,
+                                    ltable.path,
                                     limitby=(0, 1)).first()
         if location:
             vars = Storage()
@@ -466,8 +593,8 @@ def address_update(table, record_id):
             elif location.level == "L1":
                 vars.L1 = location.name
                 if location.parent:
-                    query = (locations.id == location.parent)
-                    country = db(query).select(locations.name,
+                    query = (ltable.id == location.parent)
+                    country = db(query).select(ltable.name,
                                                limitby=(0, 1)).first()
                     if country:
                         vars.L0 = country.name
@@ -476,7 +603,7 @@ def address_update(table, record_id):
                     vars.building_name = location.name
                 # Get Names of ancestors at each level
                 vars = gis.get_parent_per_level(vars,
-                                                vars.location_id,
+                                                location.id,
                                                 feature=location,
                                                 ids=False,
                                                 names=True)
@@ -487,6 +614,7 @@ s3.address_update = address_update
 
 # =============================================================================
 # Default CRUD strings
+#
 ADD_RECORD = T("Add Record")
 LIST_RECORDS = T("List Records")
 s3.crud_strings = Storage(
@@ -506,6 +634,48 @@ s3.crud_strings = Storage(
     msg_list_empty = T("No Records currently available"),
     msg_match = T("Matching Records"),
     msg_no_match = T("No Matching Records"))
+
+# =============================================================================
+# Deployment-dependend CRUD Strings
+#
+if deployment_settings.get_inv_shipment_name() == "order":
+    ADD_RECV = T("Add Order")
+    LIST_RECV = T("List Orders")
+    s3.crud_strings["inv_recv"] = Storage(
+        title_create = ADD_RECV,
+        title_display = T("Order Details"),
+        title_list = LIST_RECV,
+        title_update = T("Edit Order"),
+        title_search = T("Search Orders"),
+        subtitle_create = ADD_RECV,
+        subtitle_list = T("Orders"),
+        label_list_button = LIST_RECV,
+        label_create_button = ADD_RECV,
+        label_delete_button = T("Delete Order"),
+        msg_record_created = T("Order Created"),
+        msg_record_modified = T("Order updated"),
+        msg_record_deleted = T("Order canceled"),
+        msg_list_empty = T("No Orders registered")
+    )
+else:
+    ADD_RECV = T("Receive Shipment")
+    LIST_RECV = T("List Received Shipments")
+    s3.crud_strings["inv_recv"] = Storage(
+        title_create = ADD_RECV,
+        title_display = T("Received Shipment Details"),
+        title_list = LIST_RECV,
+        title_update = T("Edit Received Shipment"),
+        title_search = T("Search Received Shipments"),
+        subtitle_create = ADD_RECV,
+        subtitle_list = T("Received Shipments"),
+        label_list_button = LIST_RECV,
+        label_create_button = ADD_RECV,
+        label_delete_button = T("Delete Received Shipment"),
+        msg_record_created = T("Shipment Created"),
+        msg_record_modified = T("Received Shipment updated"),
+        msg_record_deleted = T("Received Shipment canceled"),
+        msg_list_empty = T("No Received Shipments")
+    )
 
 # =============================================================================
 # Common tables

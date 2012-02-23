@@ -160,11 +160,29 @@ if len(pop_list) > 0:
 
     _debug = deployment_settings.get_base_debug()
 
+    grandTotalStart = datetime.datetime.now()
     for pop_setting in pop_list:
         start = datetime.datetime.now()
         bi.clear_tasks()
         # Import data specific to the prepopulate setting
-        if pop_setting == 1:
+        if isinstance(pop_setting, str):
+            path = os.path.join(request.folder,
+                                "private",
+                                "prepopulate",
+                                pop_setting)
+            if os.path.exists(path):
+                bi.perform_tasks(path)
+            else:
+                path = os.path.join(request.folder,
+                                    "private",
+                                    "prepopulate",
+                                    "demo",
+                                    pop_setting)
+                if os.path.exists(path):
+                    bi.perform_tasks(path)
+                else:
+                    print >> sys.stderr, "Unable to install data %s no valid directory found" % pop_setting
+        elif pop_setting == 1:
             # Populate with the default data
             path = os.path.join(request.folder,
                                 "private",
@@ -256,13 +274,29 @@ if len(pop_list) > 0:
             else:
                 end = datetime.datetime.now()
                 duration = end - start
-                print >> sys.stdout, "Installed demo '%s' completed in %s" % \
-                                        (demo, duration)
-        if _debug:
-            for result in bi.resultList:
-                print >> sys.stdout, result
+                try:
+                    # Python-2.7
+                    duration = '{:.2f}'.format(duration.total_seconds()/60)
+                    print >> sys.stdout, "Installed demo '%s' completed in %s mins" % \
+                                            (demo, duration)
+                except AttributeError:
+                    # older Python
+                    print >> sys.stdout, "Installed demo '%s' completed in %s" % \
+                                            (demo, duration)
+        grandTotalEnd = datetime.datetime.now()
+        duration = grandTotalEnd - grandTotalStart
+        try:
+            # Python-2.7
+            duration = '{:.2f}'.format(duration.total_seconds()/60)
+            print >> sys.stdout, "Pre-populate completed in %s mins" % duration
+        except AttributeError:
+            # older Python
+            print >> sys.stdout, "Pre-populate completed in %s" % duration
         bi.resultList = []
 
+    grandTotalEnd = datetime.datetime.now()
+    duration = grandTotalEnd - grandTotalStart
+    print >> sys.stdout, "Pre-populate completed in %s" % (duration)
     for errorLine in bi.errorList:
         print >> sys.stderr, errorLine
     # Restore table protection

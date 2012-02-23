@@ -10,9 +10,6 @@ resourcename = request.function
 if not deployment_settings.has_module(module):
     raise HTTP(404, body="Module disabled: %s" % module)
 
-# Options Menu (available in all Functions' Views)
-s3_menu(module)
-
 # -----------------------------------------------------------------------------
 def index():
 
@@ -139,7 +136,8 @@ def ireport():
         return output
     response.s3.postp = user_postp
 
-    output = s3_rest_controller(rheader=response.s3.irs_rheader)
+    output = s3_rest_controller(rheader=response.s3.irs_rheader,
+                                interactive_report = True)
 
     # @ToDo: Add 'Dispatch' button to send OpenGeoSMS
     #try:

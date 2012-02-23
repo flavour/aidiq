@@ -40,6 +40,7 @@ def org_filter():
 # =============================================================================
 @auth.requires_login()
 def s3_menu_prep():
+    # @todo: rewrite this for new framework
     """ Application Menu """
 
     # Module Name
@@ -61,7 +62,7 @@ def s3_menu_prep():
     else:
         session.s3.hrm.mode = "personal"
 
-s3_menu(module, prep=s3_menu_prep)
+s3_menu_prep()
 
 # =============================================================================
 def index():
@@ -270,20 +271,23 @@ def human_resource():
             # Assume volunteers only between 12-81
             s3db.pr_person.date_of_birth.widget = S3DateWidget(past=972, future=-144)
 
-            r.table.site_id.comment = DIV(DIV(_class="tooltip",
-                                              _title="%s|%s|%s" % (T("Facility"),
-                                                                   T("The site where this position is based."),
-                                                                   T("Enter some characters to bring up a list of possible matches."))))
+            table = r.table
+            table.site_id.comment = DIV(DIV(_class="tooltip",
+                                            _title="%s|%s|%s" % (T("Facility"),
+                                                                 T("The site where this position is based."),
+                                                                 T("Enter some characters to bring up a list of possible matches."))))
             if r.method != "read":
                 # Don't want to see in Create forms
                 # inc list_create (list_fields over-rides)
-                r.table.status.writable = False
-                r.table.status.readable = False
+                field = table.status
+                field.writable = False
+                field.readable = False
 
             if r.method == "create" and r.component is None:
                 if group in (1, 2):
-                    table.type.readable = False
-                    table.type.writable = False
+                    field = table.type
+                    field.readable = False
+                    field.writable = False
             elif r.representation == "plain":
                 # Don't redirect Map popups
                 pass
@@ -307,14 +311,14 @@ def human_resource():
                         "url": URL(f="compose",
                                    vars = {"hrm_id": "[id]"}),
                         "_class": "action-btn",
-                        "label": str(T("Send Notification"))})
+                        "label": str(T("Send Message"))})
         elif r.representation == "plain":
             # Map Popups
             output = hrm_map_popup(r)
         return output
     response.s3.postp = postp
 
-    output = s3_rest_controller()
+    output = s3_rest_controller(interactive_report=True)
     return output
 
 # -----------------------------------------------------------------------------
@@ -589,6 +593,9 @@ def person():
         if deployment_settings.has_module("asset"):
             tabs.append((T("Assets"), "asset"))
 
+    # Upload for configuration (add replace option)
+    response.s3.importerPrep = lambda: dict(ReplaceOption=T("Remove existing data before import"))
+
     # Import pre-process
     def import_prep(data, group=group):
         """
@@ -699,9 +706,10 @@ def hrm_rheader(r, tabs=[]):
             rheader_tabs = s3_rheader_tabs(r, tabs)
             person = r.record
             if person:
-                rheader = DIV(s3_avatar_represent(person.id,
-                                                  "pr_person",
-                                                  _class="fleft"),
+                rheader = DIV(DIV(s3_avatar_represent(person.id,
+                                                      "pr_person",
+                                                      _class="fleft"),
+                                  _style="padding-bottom:10px;"),
                               TABLE(
                     TR(TH(s3_fullname(person))),
                     ), rheader_tabs)

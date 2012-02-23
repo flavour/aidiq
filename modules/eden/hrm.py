@@ -46,6 +46,7 @@ class S3HRModel(S3Model):
     names = ["hrm_human_resource",
              "hrm_human_resource_id",
              "hrm_human_resource_search",
+             "hrm_type_opts"
             ]
 
     def model(self):
@@ -115,24 +116,24 @@ class S3HRModel(S3Model):
                                             hrm_status_opts.get(opt,
                                                                 UNKNOWN_OPT)),
                                   # Contract
-                                  Field("start_date",
-                                        "date",
-                                        requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
-                                        widget = S3DateWidget(),
+                                  Field("start_date", "date",
                                         label = T("Start Date"),
-                                        represent = s3_date_represent),
-                                  Field("end_date",
-                                        "date",
                                         requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
-                                        widget = S3DateWidget(),
+                                        represent = s3_date_represent,
+                                        widget = S3DateWidget()
+                                        ),
+                                  Field("end_date", "date",
                                         label = T("End Date"),
-                                        represent = s3_date_represent),
+                                        requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
+                                        represent = s3_date_represent,
+                                        widget = S3DateWidget()
+                                        ),
                                   # Base location + Site
                                   location_id(label=T("Base Location"),
                                               readable=False,
                                               writable=False),
                                   site_id,
-                                  *s3.meta_fields())
+                                  *(s3.lx_fields() + s3.meta_fields()))
 
         hrm_human_resource_requires = IS_NULL_OR(IS_ONE_OF(db,
                                             "hrm_human_resource.id",
@@ -169,15 +170,30 @@ class S3HRModel(S3Model):
                         represent ="%(name)s",
                         cols = 3
                       ),
+                      S3SearchLocationHierarchyWidget(
+                        name="human_resource_search_L1",
+                        field="L1",
+                        cols = 3,
+                      ),
+                      S3SearchLocationHierarchyWidget(
+                        name="human_resource_search_L2",
+                        field="L2",
+                        cols = 3,
+                      ),
                       S3SearchLocationWidget(
                         name="human_resource_search_map",
                         label=T("Map"),
                       ),
-                      S3SearchSkillsWidget(
-                        name="human_resource_search_skills",
-                        label=T("Skills"),
-                        field=["skill_id"]
+                      S3SearchOptionsWidget(
+                        name="human_resource_search_site",
+                        label=T("Facility"),
+                        field=["site_id"]
                       ),
+                      # S3SearchSkillsWidget(
+                        # name="human_resource_search_skills",
+                        # label=T("Skills"),
+                        # field=["skill_id"]
+                      # ),
                       # This currently breaks Requests from being able to save since this form is embedded inside the S3SearchAutocompleteWidget
                       #S3SearchMinMaxWidget(
                       #  name="human_resource_search_date",
@@ -187,20 +203,55 @@ class S3HRModel(S3Model):
                       #),
             ))
 
+        table.virtualfields.append(HRMVirtualFields())
+
+        hierarchy = current.gis.get_location_hierarchy()
+        report_fields = [
+                         #"organisation_id",
+                         "person_id",
+                         "site_id",
+                         (T("Training"), "course"),
+                         (hierarchy["L1"], "L1"),
+                         (hierarchy["L2"], "L2"),
+                        ]
+
         self.configure(tablename,
                        super_entity = "sit_trackable",
                        deletable = False,
                        search_method = human_resource_search,
                        onaccept = self.hrm_human_resource_onaccept,
                        ondelete = self.hrm_human_resource_ondelete,
-                       deduplicate=self.hrm_human_resource_deduplicate)
+                       deduplicate=self.hrm_human_resource_deduplicate,
+                       report_filter=[
+                            S3SearchLocationHierarchyWidget(
+                                name="human_resource_search_L1",
+                                field="L1",
+                                cols = 3,
+                            ),
+                            S3SearchLocationHierarchyWidget(
+                                name="human_resource_search_L2",
+                                field="L2",
+                                cols = 3,
+                            ),
+                            S3SearchOptionsWidget(
+                                name="human_resource_search_site",
+                                label=T("Facility"),
+                                field=["site_id"]
+                            ),
+                        ],
+                       report_rows = report_fields,
+                       report_cols = report_fields,
+                       report_fact = report_fields,
+                       report_method=["count", "list"],
+                  )
 
         # ---------------------------------------------------------------------
         # Pass model-global names to response.s3
         #
         return Storage(
                     hrm_human_resource_id = human_resource_id,
-                    hrm_human_resource_search = human_resource_search
+                    hrm_human_resource_search = human_resource_search,
+                    hrm_type_opts = hrm_type_opts
                 )
 
     # -------------------------------------------------------------------------
@@ -212,7 +263,7 @@ class S3HRModel(S3Model):
         return S3SearchSimpleWidget(
                     name = "human_resource_search_simple_%s" % type,
                     label = T("Name"),
-                    comment = T("You can search by jon title or person name - enter any of the first, middle or last names, separated by spaces. You may use % as wildcard. Press 'Search' without input to list all persons."),
+                    comment = T("You can search by job title or person name - enter any of the first, middle or last names, separated by spaces. You may use % as wildcard. Press 'Search' without input to list all persons."),
                     field = ["person_id$first_name",
                              "person_id$middle_name",
                              "person_id$last_name",
@@ -346,7 +397,7 @@ class S3HRModel(S3Model):
     # -------------------------------------------------------------------------
     @staticmethod
     def hrm_human_resource_onaccept(form):
-        """ On-accept routine for HR records """
+        """ On-accept for HR records """
 
         db = current.db
         s3db = current.s3db
@@ -355,25 +406,48 @@ class S3HRModel(S3Model):
         utable = auth.settings.table_user
         ptable = s3db.pr_person
         ltable = s3db.pr_person_user
-        mtable = s3db.auth_membership
         htable = s3db.hrm_human_resource
-        stable = s3db.org_site
 
         # Get the full record
-        if form.vars.id:
-            record = htable[form.vars.id]
+        id = form.vars.id
+        if id:
+            query = (htable.id == id)
+            record = db(query).select(htable.id,
+                                      htable.type,
+                                      htable.person_id,
+                                      htable.site_id,
+                                      htable.organisation_id,
+                                      # Needed by hrm_update_staff_role()
+                                      htable.owned_by_organisation,
+                                      htable.owned_by_facility,
+                                      htable.status,
+                                      htable.deleted,
+                                      htable.deleted_fk,
+                                      limitby=(0, 1)).first()
         else:
             return
 
         data = Storage()
 
-        # For Staff, update the location ID from the selected site
         if record.type == 1 and record.site_id:
+            # Staff: update the location ID from the selected site
+            stable = s3db.org_site
             query = (stable._id == record.site_id)
             site = db(query).select(stable.location_id,
                                     limitby=(0, 1)).first()
             if site:
                 data.location_id = site.location_id
+        elif record.type == 2:
+            # Volunteer: update the location ID from the Home Address
+            atable = s3db.pr_address
+            query = (atable.pe_id == ptable.pe_id) & \
+                    (ptable.id == record.person_id) & \
+                    (atable.type == 1) & \
+                    (atable.deleted == False)
+            address = db(query).select(atable.location_id,
+                                       limitby=(0, 1)).first()
+            if address:
+                data.location_id = address.location_id
 
         # Add record owner (user)
         query = (ptable.id == record.person_id) & \
@@ -389,6 +463,10 @@ class S3HRModel(S3Model):
         if not data:
             return
         record.update_record(**data)
+
+        if data.location_id:
+            # Populate the Lx fields
+            current.response.s3.lx_update(htable, record.id)
 
         if record.organisation_id:
             if user and not user.organisation_id:
@@ -440,7 +518,7 @@ class S3HRJobModel(S3Model):
     names = ["hrm_job_role",
              "hrm_job_role_id",
              #"hrm_position",
-             #hrm_position_id,
+             #"hrm_position_id",
             ]
 
     def model(self):
@@ -709,7 +787,15 @@ class S3HRSkillModel(S3Model):
         s3_date_represent = S3DateTime.date_represent
         s3_date_format = settings.get_L10n_date_format()
 
+        # Shortcuts
+        add_component = self.add_component
+        comments = s3.comments
+        configure = self.configure
+        crud_strings = s3.crud_strings
+        define_table = self.define_table
+        meta_fields = s3.meta_fields
         s3_has_role = auth.s3_has_role
+        super_link = self.super_link
 
         # ---------------------------------------------------------------------
         # Skill Types
@@ -718,14 +804,14 @@ class S3HRSkillModel(S3Model):
         #   if enabled, then each needs their own list of competency levels
         #
         tablename = "hrm_skill_type"
-        table = self.define_table(tablename,
-                                  Field("name", notnull=True, unique=True,
-                                        length=64,
-                                        label=T("Name")),
-                                  s3.comments(),
-                                  *s3.meta_fields())
+        table = define_table(tablename,
+                             Field("name", notnull=True, unique=True,
+                                   length=64,
+                                   label=T("Name")),
+                             comments(),
+                             *meta_fields())
 
-        s3.crud_strings[tablename] = Storage(
+        crud_strings[tablename] = Storage(
             title_create = T("Add Skill Type"),
             title_display = T("Details"),
             title_list = T("Skill Type Catalog"),
@@ -772,15 +858,15 @@ class S3HRSkillModel(S3Model):
         # - these can be simple generic skills or can come from certifications
         #
         tablename = "hrm_skill"
-        table = self.define_table(tablename,
-                                  skill_type_id(empty=False),
-                                  Field("name", notnull=True, unique=True,
-                                        length=64,    # Mayon compatibility
-                                        label=T("Name")),
-                                  s3.comments(),
-                                  *s3.meta_fields())
+        table = define_table(tablename,
+                             skill_type_id(empty=False),
+                             Field("name", notnull=True, unique=True,
+                                   length=64,    # Mayon compatibility
+                                   label=T("Name")),
+                             comments(),
+                             *meta_fields())
 
-        s3.crud_strings[tablename] = Storage(
+        crud_strings[tablename] = Storage(
             title_create = T("Add Skill"),
             title_display = T("Skill Details"),
             title_list = T("Skill Catalog"),
@@ -796,8 +882,8 @@ class S3HRSkillModel(S3Model):
             msg_record_deleted = T("Skill deleted"),
             msg_list_empty = T("Currently no entries in the catalog"))
 
-        if auth.s3_has_role(ADMIN):
-            label_create = s3.crud_strings[tablename].label_create_button
+        if s3_has_role(ADMIN):
+            label_create = crud_strings[tablename].label_create_button
             skill_help = DIV(A(label_create,
                                _class="colorbox",
                                _href=URL(c="hrm",
@@ -810,6 +896,7 @@ class S3HRSkillModel(S3Model):
             skill_help = DIV(_class="tooltip",
                              _title="%s|%s" % (T("Skill"),
                              T("Enter some characters to bring up a list of possible matches")))
+
         skill_id = S3ReusableField("skill_id", db.hrm_skill,
                         sortby = "name",
                         label = T("Skill"),
@@ -842,8 +929,7 @@ class S3HRSkillModel(S3Model):
                         )
 
         # Components
-        self.add_component("req_req_skill",
-                           hrm_skill="skill_id")
+        add_component("req_req_skill", hrm_skill="skill_id")
 
         # =====================================================================
         # Competency Ratings
@@ -857,22 +943,22 @@ class S3HRSkillModel(S3Model):
         # http://docs.oasis-open.org/emergency/edxl-have/cs01/xPIL-types.xsd
         #
         tablename = "hrm_competency_rating"
-        table = self.define_table(tablename,
-                                  skill_type_id(empty=False),
-                                  Field("name",
-                                        label = T("Name"),
-                                        length=64),       # Mayon Compatibility
-                                  Field("priority", "integer",
-                                        label = T("Priority"),
-                                        requires = IS_INT_IN_RANGE(1, 9),
-                                        widget = S3SliderWidget(minval=1, maxval=9, steprange=1, value=1),
-                                        comment = DIV(_class="tooltip",
-                                                      _title="%s|%s" % (T("Priority"),
-                                                                        T("Priority from 1 to 9. 1 is most preferred.")))),
-                                  s3.comments(),
-                                  *s3.meta_fields())
+        table = define_table(tablename,
+                             skill_type_id(empty=False),
+                             Field("name",
+                                   label = T("Name"),
+                                   length=64),       # Mayon Compatibility
+                             Field("priority", "integer",
+                                   label = T("Priority"),
+                                   requires = IS_INT_IN_RANGE(1, 9),
+                                   widget = S3SliderWidget(minval=1, maxval=9, steprange=1, value=1),
+                                   comment = DIV(_class="tooltip",
+                                                 _title="%s|%s" % (T("Priority"),
+                                                                   T("Priority from 1 to 9. 1 is most preferred.")))),
+                             comments(),
+                             *meta_fields())
 
-        s3.crud_strings[tablename] = Storage(
+        crud_strings[tablename] = Storage(
             title_create = T("Add Competency Rating"),
             title_display = T("Competency Rating Details"),
             title_list = T("Competency Rating Catalog"),
@@ -912,20 +998,20 @@ class S3HRSkillModel(S3Model):
         # Component added in the hrm person() controller
         #
         tablename = "hrm_competency"
-        table = self.define_table(tablename,
-                                  person_id(),
-                                  skill_id(),
-                                  competency_id(),
-                                  # This field can only be filled-out by specific roles
-                                  # Once this has been filled-out then the other fields are locked
-                                  organisation_id(label = T("Confirming Organization"),
-                                                  widget = S3OrganisationAutocompleteWidget(default_from_profile = True),
-                                                  comment = None,
-                                                  writable = False),
-                                  s3.comments(),
-                                  *s3.meta_fields())
+        table = define_table(tablename,
+                             person_id(),
+                             skill_id(),
+                             competency_id(),
+                             # This field can only be filled-out by specific roles
+                             # Once this has been filled-out then the other fields are locked
+                             organisation_id(label = T("Confirming Organization"),
+                                             widget = S3OrganisationAutocompleteWidget(default_from_profile = True),
+                                             comment = None,
+                                             writable = False),
+                             comments(),
+                             *meta_fields())
 
-        s3.crud_strings[tablename] = Storage(
+        crud_strings[tablename] = Storage(
             title_create = T("Add Skill"),
             title_display = T("Skill Details"),
             title_list = T("Skills"),
@@ -948,7 +1034,7 @@ class S3HRSkillModel(S3Model):
         # for allocation to Mayon's shifts for the given Job Role
         #
         #tablename = "hrm_skill_provision"
-        #table = self.define_table(tablename,
+        #table = define_table(tablename,
         #                          Field("name", notnull=True, unique=True,
         #                                length=32,    # Mayon compatibility
         #                                label=T("Name")),
@@ -961,10 +1047,10 @@ class S3HRSkillModel(S3Model):
         #                                comment = DIV(_class="tooltip",
         #                                              _title="%s|%s" % (T("Priority"),
         #                                                                T("Priority from 1 to 9. 1 is most preferred.")))),
-        #                          s3.comments(),
-        #                          *s3.meta_fields())
+        #                          comments(),
+        #                          *meta_fields())
 
-        #s3.crud_strings[tablename] = Storage(
+        #crud_strings[tablename] = Storage(
         #    title_create = T("Add Skill Provision"),
         #    title_display = T("Skill Provision Details"),
         #    title_list = T("Skill Provision Catalog"),
@@ -980,7 +1066,7 @@ class S3HRSkillModel(S3Model):
         #    msg_record_deleted = T("Skill Provision deleted"),
         #    msg_list_empty = T("Currently no entries in the catalog"))
 
-        #label_create = s3.crud_strings[tablename].label_create_button
+        #label_create = crud_strings[tablename].label_create_button
         #skill_group_id = S3ReusableField("skill_provision_id", db.hrm_skill_provision,
         #                           sortby = "name",
         #                           label = T("Skill Provision"),
@@ -1043,28 +1129,34 @@ class S3HRSkillModel(S3Model):
         }
 
         tablename = "hrm_credential"
-        table = self.define_table(tablename,
-                                  person_id(),
-                                  job_role_id(),
-                                  organisation_id(empty=False,
-                                                  widget = S3OrganisationAutocompleteWidget(default_from_profile = True),
-                                                  label=T("Credentialling Organization")),
-                                  Field("performance_rating", "integer",
-                                        label = T("Performance Rating"),
-                                        requires = IS_IN_SET(hrm_pass_fail_opts,  # Default to pass/fail (can override to 5-levels in Controller)
-                                                             zero=None),
-                                        represent = lambda opt: \
-                                            hrm_performance_opts.get(opt,
-                                                                     UNKNOWN_OPT)),
-                                  Field("date_received", "date",
-                                        represent = s3_date_represent,
-                                        label = T("Date Received")),
-                                  Field("date_expires", "date",   # @ToDo: Widget to make this process easier (date received + 6/12 months)
-                                        represent = s3_date_represent,
-                                        label = T("Expiry Date")),
-                                  *s3.meta_fields())
+        table = define_table(tablename,
+                             person_id(),
+                             job_role_id(),
+                             organisation_id(empty=False,
+                                             widget = S3OrganisationAutocompleteWidget(default_from_profile = True),
+                                             label=T("Credentialling Organization")),
+                             Field("performance_rating", "integer",
+                                   label = T("Performance Rating"),
+                                   requires = IS_IN_SET(hrm_pass_fail_opts,  # Default to pass/fail (can override to 5-levels in Controller)
+                                                        zero=None),
+                                   represent = lambda opt: \
+                                       hrm_performance_opts.get(opt,
+                                                                UNKNOWN_OPT)),
+                             Field("date_received", "date",
+                                   label = T("Date Received"),
+                                   requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
+                                   represent = s3_date_represent,
+                                   widget = S3DateWidget(),
+                                   ),
+                             Field("date_expires", "date",   # @ToDo: Widget to make this process easier (date received + 6/12 months)
+                                   label = T("Expiry Date"),
+                                   requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
+                                   represent = s3_date_represent,
+                                   widget = S3DateWidget(),
+                                   ),
+                             *meta_fields())
 
-        s3.crud_strings[tablename] = Storage(
+        crud_strings[tablename] = Storage(
             title_create = T("Add Credential"),
             title_display = T("Credential Details"),
             title_list = T("Credentials"),
@@ -1085,14 +1177,14 @@ class S3HRSkillModel(S3Model):
         # Courses
         #
         tablename = "hrm_course"
-        table = self.define_table(tablename,
-                                  Field("name",
-                                        length=128,
-                                        notnull=True,
-                                        label=T("Name")),
-                                  *s3.meta_fields())
+        table = define_table(tablename,
+                             Field("name",
+                                   length=128,
+                                   notnull=True,
+                                   label=T("Name")),
+                             *meta_fields())
 
-        s3.crud_strings[tablename] = Storage(
+        crud_strings[tablename] = Storage(
             title_create = T("Add Course"),
             title_display = T("Course Details"),
             title_list = T("Course Catalog"),
@@ -1109,8 +1201,8 @@ class S3HRSkillModel(S3Model):
             msg_no_match = T("No entries found"),
             msg_list_empty = T("Currently no entries in the catalog"))
 
-        if auth.s3_has_role(ADMIN):
-            label_create = s3.crud_strings[tablename].label_create_button
+        if s3_has_role(ADMIN):
+            label_create = crud_strings[tablename].label_create_button
             course_help = DIV(A(label_create,
                                 _class="colorbox",
                                 _href=URL(c="hrm",
@@ -1135,39 +1227,40 @@ class S3HRSkillModel(S3Model):
                                     comment = course_help,
                                     ondelete = "RESTRICT",
                                     # Comment this to use a Dropdown & not an Autocomplete
-                                    widget = S3AutocompleteWidget("hrm",
-                                                                  "course")
+                                    #widget = S3AutocompleteWidget("hrm",
+                                    #                              "course")
                                 )
 
         # =========================================================================
         # Training Events
         #
         tablename = "hrm_training_event"
-        table = self.define_table(tablename,
-                                  course_id(),
-                                  site_id,
-                                  Field("start_date", "datetime",
-                                        widget = S3DateWidget(),
-                                        requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
-                                        represent = s3_date_represent,
-                                        label=T("Start Date")),
-                                  Field("end_date", "datetime",
-                                        widget = S3DateWidget(),
-                                        requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
-                                        represent = s3_date_represent,
-                                        label=T("End Date")),
-                                  Field("hours", "integer",
-                                        label=T("Hours")),
-                                  # human_resource_id?
-                                  #Field("instructor",
-                                  #      label=T("Instructor")),
-                                  *s3.meta_fields())
+        table = define_table(tablename,
+                             course_id(),
+                             site_id,
+                             Field("start_date", "datetime",
+                                   widget = S3DateWidget(),
+                                   requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
+                                   represent = s3_date_represent,
+                                   label=T("Start Date")),
+                             Field("end_date", "datetime",
+                                   widget = S3DateWidget(),
+                                   requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
+                                   represent = s3_date_represent,
+                                   label=T("End Date")),
+                             Field("hours", "integer",
+                                   label=T("Hours")),
+                             # human_resource_id?
+                             #Field("instructor",
+                             #      label=T("Instructor")),
+                             comments(),
+                             *meta_fields())
 
         # Field Options
         table.site_id.readable = True
         table.site_id.writable = True
 
-        s3.crud_strings[tablename] = Storage(
+        crud_strings[tablename] = Storage(
             title_create = T("Add Training Event"),
             title_display = T("Training Event Details"),
             title_list = T("Training Events"),
@@ -1185,8 +1278,8 @@ class S3HRSkillModel(S3Model):
             msg_no_match = T("No entries found"),
             msg_list_empty = T("Currently no training events registered"))
 
-        if auth.s3_has_role(ADMIN):
-            label_create = s3.crud_strings[tablename].label_create_button
+        if s3_has_role(ADMIN):
+            label_create = crud_strings[tablename].label_create_button
             course_help = DIV(A(label_create,
                                 _class="colorbox",
                                 _href=URL(c="hrm",
@@ -1216,9 +1309,54 @@ class S3HRSkillModel(S3Model):
                                                                           "training_event")
                                             )
 
+        training_event_search = S3Search(
+            advanced=(
+                      S3SearchSimpleWidget(
+                        name = "training_event_search_simple",
+                        label = T("Text"),
+                        comment = T("You can search by course name or event comments. You may use % as wildcard. Press 'Search' without input to list all events."),
+                        field = ["course_id$name",
+                                 "comments",
+                                ]
+                    ),
+                    # S3SearchLocationHierarchyWidget(
+                      # name="training_event_search_L1",
+                      # field="site_id$L1",
+                      # cols = 3,
+                    # ),
+                    # S3SearchLocationHierarchyWidget(
+                      # name="training_event_search_L2",
+                      # field="site_id$L2",
+                      # cols = 3,
+                    # ),
+                    S3SearchLocationWidget(
+                      name="training_event_search_map",
+                      label=T("Map"),
+                    ),
+                    S3SearchOptionsWidget(
+                      name="training_event_search_site",
+                      label=T("Facility"),
+                      field=["site_id"]
+                    ),
+                    S3SearchMinMaxWidget(
+                      name="training_event_search_date",
+                      method="range",
+                      label=T("Date"),
+                      field=["start_date"]
+                    ),
+            ))
+
+        # Resource Configuration
+        configure(tablename,
+                  create_next = URL(c="hrm",
+                                    f="training_event",
+                                    args=["[id]", "participant"]),
+                  search_method=training_event_search
+                )
+
         # Participants of events
-        self.add_component("pr_person",
-                           hrm_training_event=Storage(
+        add_component("pr_person",
+                      hrm_training_event=Storage(
                                 name="participant",
                                 link="hrm_training",
                                 joinby="training_event_id",
@@ -1235,30 +1373,39 @@ class S3HRSkillModel(S3Model):
         #
 
         tablename = "hrm_training"
-        table = self.define_table(tablename,
-                                  person_id(),
-                                  training_event_id(),
-                                  # This field can only be filled-out by specific roles
-                                  # Once this has been filled-out then the other fields are locked
-                                  Field("grade", "integer",
-                                        label = T("Grade"),
-                                        requires = IS_IN_SET(hrm_pass_fail_opts,  # Default to pass/fail (can override to 5-levels in Controller)
-                                                             zero=None),
-                                        represent = lambda opt: \
-                                            hrm_performance_opts.get(opt,
-                                                                     NONE),
-                                        writable=False),
-                                  s3.comments(),
-                                  *s3.meta_fields())
+        table = define_table(tablename,
+                             person_id( #@ToDo: Create a way to add new people to training as staff/volunteers
+                                        comment = DIV(_class="tooltip",
+                                                      _title="%s|%s" % (T("Participant"),
+                                                                        T("Start typing the Participant's name.")
+                                                                        )
+                                                      )
+                                            ),
+                             training_event_id(),
+                             # This field can only be filled-out by specific roles
+                             # Once this has been filled-out then the other fields are locked
+                             Field("grade", "integer",
+                                   label = T("Grade"),
+                                   requires = IS_IN_SET(hrm_pass_fail_opts,  # Default to pass/fail (can override to 5-levels in Controller)
+                                                        zero=None),
+                                   represent = lambda opt: \
+                                       hrm_performance_opts.get(opt,
+                                                                NONE),
+                                   readable=False,
+                                   writable=False
+                                   ),
+                             comments(),
+                             *meta_fields())
 
         # Suitable for use when adding a Training to a Person
         # The ones when adding a Participant to an Event are done in the Controller
-        s3.crud_strings[tablename] = Storage(
+        crud_strings[tablename] = Storage(
             title_create = T("Add Training"),
             title_display = T("Training Details"),
             title_list = T("Trainings"),
             title_update = T("Edit Training"),
             title_search = T("Search Trainings"),
+            title_report = T("Training Report"),
             title_upload = T("Import Training Participants"),
             subtitle_create = T("Add Training"),
             subtitle_list = T("Trainings"),
@@ -1273,19 +1420,47 @@ class S3HRSkillModel(S3Model):
 
         table.virtualfields.append(HRMTrainingVirtualFields())
 
+        hierarchy = current.gis.get_location_hierarchy()
         report_fields = [
                          "training_event_id",
                          "person_id",
                          (T("Course"), "training_event_id$course_id"),
-                         # "month", Month Virtual Field Broken
+                         (T("Facility"), "training_event_id$site_id"),
+                         (T("Month"), "month"),
+                         (hierarchy["L1"], "person_id$L1"),
+                         (hierarchy["L2"], "person_id$L2"),
                         ]
 
         # Resource Configuration
-        self.configure(tablename,
-                       report_rows = report_fields,
-                       report_cols = report_fields,
-                       report_fact = report_fields,
-                       report_method=["count","list"])
+        configure(tablename,
+                  report_filter=[
+                            S3SearchLocationHierarchyWidget(
+                                name="training_search_L1",
+                                field="person_id$L1",
+                                cols = 3,
+                            ),
+                            S3SearchLocationHierarchyWidget(
+                                name="training_search_L2",
+                                field="person_id$L2",
+                                cols = 3,
+                            ),
+                            S3SearchOptionsWidget(
+                                name="training_search_site",
+                                field=["training_event_id$site_id"],
+                                label = T("Facility"),
+                                cols = 3,
+                            ),
+                            S3SearchMinMaxWidget(
+                                name="training_search_date",
+                                method="range",
+                                label=T("Date"),
+                                field=["training_event_id$start_date"]
+                            ),
+                        ],
+                  report_rows = report_fields,
+                  report_cols = report_fields,
+                  report_fact = report_fields,
+                  report_method=["count", "list"])
 
         # =====================================================================
         # Certificates
@@ -1295,18 +1470,18 @@ class S3HRSkillModel(S3Model):
         #
 
         tablename = "hrm_certificate"
-        table = self.define_table(tablename,
-                                  Field("name",
-                                        length=128,   # Mayon Compatibility
-                                        notnull=True,
-                                        label=T("Name")),
-                                  organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile = True),
-                                                  label=T("Certifying Organization")),
-                                  Field("expiry", "integer",
-                                        label = T("Expiry (months)")),
-                                  *s3.meta_fields())
+        table = define_table(tablename,
+                             Field("name",
+                                   length=128,   # Mayon Compatibility
+                                   notnull=True,
+                                   label=T("Name")),
+                             organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile = True),
+                                             label=T("Certifying Organization")),
+                             Field("expiry", "integer",
+                                   label = T("Expiry (months)")),
+                             *meta_fields())
 
-        s3.crud_strings[tablename] = Storage(
+        crud_strings[tablename] = Storage(
             title_create = T("Add Certificate"),
             title_display = T("Certificate Details"),
             title_list = T("Certificate Catalog"),
@@ -1323,7 +1498,7 @@ class S3HRSkillModel(S3Model):
             msg_no_match = T("No entries found"),
             msg_list_empty = T("Currently no entries in the catalog"))
 
-        label_create = s3.crud_strings[tablename].label_create_button
+        label_create = crud_strings[tablename].label_create_button
         certificate_id = S3ReusableField("certificate_id", db.hrm_certificate,
                                          sortby = "name",
                                          label = T("Certificate"),
@@ -1353,30 +1528,35 @@ class S3HRSkillModel(S3Model):
         #
 
         tablename = "hrm_certification"
-        table = self.define_table(tablename,
-                                  person_id(),
-                                  certificate_id(),
-                                  Field("number", label=T("License Number")),
-                                  #Field("status", label=T("Status")),
-                                  Field("date", "date", label=T("Expiry Date")),
-                                  Field("image", "upload", label=T("Scanned Copy")),
-                                  # This field can only be filled-out by specific roles
-                                  # Once this has been filled-out then the other fields are locked
-                                  organisation_id(label = T("Confirming Organization"),
-                                                  widget = S3OrganisationAutocompleteWidget(default_from_profile = True),
-                                                  comment = None,
-                                                  writable = False),
-                                  s3.comments(),
-                                  *s3.meta_fields())
+        table = define_table(tablename,
+                             person_id(),
+                             certificate_id(),
+                             Field("number", label=T("License Number")),
+                             #Field("status", label=T("Status")),
+                             Field("date", "date",
+                                   label=T("Expiry Date"),
+                                   represent = s3_date_represent,
+                                   requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
+                                   widget = S3DateWidget()
+                                   ),
+                             Field("image", "upload", label=T("Scanned Copy")),
+                             # This field can only be filled-out by specific roles
+                             # Once this has been filled-out then the other fields are locked
+                             organisation_id(label = T("Confirming Organization"),
+                                             widget = S3OrganisationAutocompleteWidget(default_from_profile = True),
+                                             comment = None,
+                                             writable = False),
+                             comments(),
+                             *meta_fields())
 
-        self.configure(tablename,
-                       list_fields = ["id",
-                                      "certificate_id",
-                                      "date",
-                                      "comments",
-                                    ])
+        configure(tablename,
+                  list_fields = ["id",
+                                 "certificate_id",
+                                 "date",
+                                 "comments",
+                                ])
 
-        s3.crud_strings[tablename] = Storage(
+        crud_strings[tablename] = Storage(
             title_create = T("Add Certification"),
             title_display = T("Certification Details"),
             title_list = T("Certifications"),
@@ -1403,13 +1583,13 @@ class S3HRSkillModel(S3Model):
         #
 
         tablename = "hrm_certificate_skill"
-        table = self.define_table(tablename,
-                                  certificate_id(),
-                                  skill_id(),
-                                  competency_id(),
-                                  *s3.meta_fields())
+        table = define_table(tablename,
+                             certificate_id(),
+                             skill_id(),
+                             competency_id(),
+                             *meta_fields())
 
-        s3.crud_strings[tablename] = Storage(
+        crud_strings[tablename] = Storage(
             title_create = T("Add Skill Equivalence"),
             title_display = T("Skill Equivalence Details"),
             title_list = T("Skill Equivalences"),
@@ -1436,12 +1616,12 @@ class S3HRSkillModel(S3Model):
         #
 
         tablename = "hrm_course_certificate"
-        table = self.define_table(tablename,
-                                  course_id(),
-                                  certificate_id(),
-                                  *s3.meta_fields())
+        table = define_table(tablename,
+                             course_id(),
+                             certificate_id(),
+                             *meta_fields())
 
-        s3.crud_strings[tablename] = Storage(
+        crud_strings[tablename] = Storage(
             title_create = T("Add Course Certificate"),
             title_display = T("Course Certificate Details"),
             title_list = T("Course Certificates"),
@@ -1470,26 +1650,28 @@ class S3HRSkillModel(S3Model):
         #
 
         tablename = "hrm_experience"
-        table = self.define_table(tablename,
-                                  person_id(),
-                                  organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile = True)),
-                                  Field("start_date", "date",
-                                        requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
-                                        represent = s3_date_represent,
-                                        widget = S3DateWidget(),
-                                        label=T("Start Date")),
-                                  Field("end_date", "date",
-                                        requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
-                                        represent = s3_date_represent,
-                                        widget = S3DateWidget(),
-                                        label=T("End Date")),
-                                  Field("hours", "integer",
-                                        label=T("Hours")),
-                                  Field("place",              # We could make this an event_id?
-                                        label=T("Place")),
-                                  *s3.meta_fields())
+        table = define_table(tablename,
+                             person_id(),
+                             organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile = True)),
+                             Field("start_date", "date",
+                                   label=T("Start Date"),
+                                   requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
+                                   represent = s3_date_represent,
+                                   widget = S3DateWidget(),
+                                   ),
+                             Field("end_date", "date",
+                                   label=T("End Date"),
+                                   requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
+                                   represent = s3_date_represent,
+                                   widget = S3DateWidget(),
+                                   ),
+                             Field("hours", "integer",
+                                   label=T("Hours")),
+                             Field("place",              # We could make this an event_id?
+                                   label=T("Place")),
+                             *meta_fields())
 
-        s3.crud_strings[tablename] = Storage(
+        crud_strings[tablename] = Storage(
             title_create = T("Add Mission"),
             title_display = T("Mission Details"),
             title_list = T("Missions"),
@@ -1507,23 +1689,23 @@ class S3HRSkillModel(S3Model):
             msg_list_empty = T("Currently no Missions registered"))
 
         # De-duplication
-        self.configure("hrm_competency",
-                       deduplicate=self.hrm_competency_duplicate)
+        configure("hrm_competency",
+                  deduplicate=self.hrm_competency_duplicate)
 
-        self.configure("hrm_competency_rating",
-                       deduplicate=self.hrm_competency_rating_duplicate)
+        configure("hrm_competency_rating",
+                  deduplicate=self.hrm_competency_rating_duplicate)
 
-        self.configure("hrm_course",
-                       deduplicate=self.hrm_course_duplicate)
+        configure("hrm_course",
+                  deduplicate=self.hrm_course_duplicate)
 
-        self.configure("hrm_skill",
-                       deduplicate=self.hrm_skill_duplicate)
+        configure("hrm_skill",
+                  deduplicate=self.hrm_skill_duplicate)
 
-        self.configure("hrm_skill_type",
-                       deduplicate=self.hrm_skill_type_duplicate)
+        configure("hrm_skill_type",
+                  deduplicate=self.hrm_skill_type_duplicate)
 
-        self.configure("hrm_training_event",
-                       deduplicate=self.hrm_training_event_duplicate)
+        configure("hrm_training_event",
+                  deduplicate=self.hrm_training_event_duplicate)
 
         # ---------------------------------------------------------------------
         # Pass model-global names to response.s3
@@ -2011,13 +2193,41 @@ def hrm_training_event_represent(id):
 #    return represent
 
 # =============================================================================
+class HRMVirtualFields:
+    """ Virtual fields as dimension classes for reports """
+
+    def course(self):
+        """ Which Training Courses the person has attended """
+        try:
+            person_id = self.hrm_human_resource.person_id
+        except AttributeError:
+            # not available
+            person_id = None
+        if person_id:
+            s3db = current.s3db
+            table = s3db.hrm_training
+            etable = s3db.hrm_training_event
+            ctable = s3db.hrm_course
+            query = (table.person_id == person_id) & \
+                    (table.training_event_id == etable.id) & \
+                    (etable.course_id == ctable.id)
+            courses = current.db(query).select(ctable.name)
+            if courses:
+                output = []
+                for course in courses:
+                    output.append(course.name)
+                    return output
+        return current.messages.NONE
+
+# =============================================================================
 class HRMTrainingVirtualFields:
     """ Virtual fields as dimension classes for reports """
 
-    extra_fields = ["training_event_id$start_date"]
+    extra_fields = ["training_event_id$start_date",
+                    ]
 
     def month(self):
-        # Year/Month of the start date of the training event
+        """ Year/Month of the start date of the training event """
         try:
             start_date = self.hrm_training_event.start_date
         except AttributeError:

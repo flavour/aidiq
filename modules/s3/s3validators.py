@@ -313,7 +313,11 @@ class IS_ONE_OF_EMPTY(Validator):
             fields = ["%s.%s" % (ktable, k) for k in ks]
         else:
             ks = [kfield]
-            fields =[str(f) for f in self.dbset._db[ktable]]
+            try:
+                table = self.dbset._db[ktable]
+            except:
+                table = current.s3db[ktable]
+            fields =[str(f) for f in table]
         self.fields = fields
         self.label = label
         self.ktable = ktable
@@ -548,10 +552,9 @@ class IS_NOT_ONE_OF(IS_NOT_IN_DB):
         table = dbset.db[tablename]
         field = table[fieldname]
         query = (field == value)
-        rows = dbset(query,
-                     ignore_common_filters = self.ignore_common_filters).select(limitby=(0, 1))
         if "deleted" in table:
             query = (table["deleted"] == False) & query
+        rows = dbset(query).select(limitby=(0, 1))
         if len(rows) > 0:
             if isinstance(self.record_id, dict):
                 for f in self.record_id:

@@ -129,11 +129,12 @@ class S3InventoryModel(S3Model):
                                   #Field("pack_quantity",
                                   #      "double",
                                   #      compute = record_pack_quantity), # defined in 06_supply
-                                  Field("expiry_date",
-                                        "date",
+                                  Field("expiry_date", "date",
                                         label = T("Expiry Date"),
                                         requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
-                                        represent = s3_date_represent),
+                                        represent = s3_date_represent,
+                                        widget = S3DateWidget()
+                                        ),
                                   # @ToDo: Allow items to be marked as 'still on the shelf but allocated to an outgoing shipment'
                                   #Field("status"),
                                   s3.comments(),
@@ -353,18 +354,18 @@ class S3IncomingModel(S3Model):
 
         tablename = "inv_recv"
         table = self.define_table(tablename,
-                                  Field("eta",
-                                        "date",
+                                  Field("eta", "date",
                                         label = T("Date Expected"),
                                         requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
                                         represent = s3_date_represent,
+                                        widget = S3DateWidget()
                                         ),
-                                  Field("date",
-                                        "date",
+                                  Field("date", "date",
                                         label = T("Date Received"),
                                         writable = False,
                                         requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
                                         represent = s3_date_represent,
+                                        widget = S3DateWidget(),
                                         #readable = False # unless the record is locked
                                         ),
                                   Field("type",
@@ -376,7 +377,8 @@ class S3IncomingModel(S3Model):
                                         ),
                                   person_id(name = "recipient_id",
                                             label = T("Received By"),
-                                            default = auth.s3_logged_in_person()),
+                                            default = auth.s3_logged_in_person(),
+                                            comment = self.pr_person_comment(child="recipient_id")),
                                   self.super_link("site_id", "org_site",
                                                   label=T("By Facility"),
                                                   default = auth.user.site_id if auth.is_logged_in() else None,
@@ -407,6 +409,7 @@ class S3IncomingModel(S3Model):
                                   #Field("from_person"), # Text field, because lookup to pr_person record is unnecessarily complex workflow
                                   person_id(name = "sender_id",
                                             label = T("Sent By Person"),
+                                            comment = self.pr_person_comment(child="sender_id"),
                                             ),
                                   Field("status",
                                         "integer",
@@ -658,11 +661,13 @@ class S3IncomingModel(S3Model):
         table.site_id.label = T("By Warehouse")
         table.site_id.represent = s3db.org_site_represent
 
-        return S3PDF(r,
-                     componentname = "recv_item",
-                     formname = T("Goods Received Note"),
-                     filename = T("GRN"),
-                     **attr)
+        exporter = S3PDF()
+        return exporter(r,
+                        componentname = "recv_item",
+                        formname = T("Goods Received Note"),
+                        filename = T("GRN"),
+                        **attr
+                       )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -680,11 +685,13 @@ class S3IncomingModel(S3Model):
         table.site_id.label = T("By Warehouse")
         table.site_id.represent = s3dborg_site_represent
 
-        return S3PDF(r,
-                     componentname = "recv_item",
-                     formname = T("Donation Certificate"),
-                     filename = T("DC"),
-                     **attr)
+        exporter = S3PDF()
+        return exporter(r,
+                        componentname = "recv_item",
+                        formname = T("Donation Certificate"),
+                        filename = T("DC"),
+                        **attr
+                       )
 
 
 # =============================================================================
@@ -731,18 +738,19 @@ class S3DistributionModel(S3Model):
         #
         tablename = "inv_send"
         table = self.define_table(tablename,
-                                  Field("date",
-                                        "date",
+                                  Field("date", "date",
                                         label = T("Date Sent"),
                                         writable = False,
-                                        #requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
+                                        requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
                                         represent = s3_date_represent,
+                                        widget = S3DateWidget()
                                         ),
                                   person_id(name = "sender_id",
                                             label = T("Sent By"),
-                                            default = auth.s3_logged_in_person()),
+                                            default = auth.s3_logged_in_person(),
+                                            comment = self.pr_person_comment(child="sender_id")),
                                   self.super_link("site_id", "org_site",
-                                             label = T("From Warehouse"),
+                                             label = T("From Facility"),
                                              default = auth.user.site_id if auth.is_logged_in() else None,
                                              readable = True,
                                              writable = True,
@@ -752,11 +760,11 @@ class S3DistributionModel(S3Model):
                                              #              _title="%s|%s" % (T("From Warehouse"),
                                              #                                T("Enter some characters to bring up a list of possible matches"))),
                                             represent=org_site_represent),
-                                  Field("delivery_date",
-                                        "date",
+                                  Field("delivery_date", "date",
                                         label = T("Est. Delivery Date"),
                                         requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
                                         represent = s3_date_represent,
+                                        widget = S3DateWidget()
                                         ),
                                   Field("to_site_id",
                                         self.org_site,
@@ -779,7 +787,8 @@ class S3DistributionModel(S3Model):
                                         writable = False,
                                         ),
                                   person_id(name = "recipient_id",
-                                            label = T("To Person")),
+                                            label = T("To Person"),
+                                            comment = self.pr_person_comment(child="recipient_id")),
                                   s3.comments(),
                                   *s3.meta_fields())
 
@@ -911,11 +920,13 @@ class S3DistributionModel(S3Model):
         table = s3db.inv_recv
         table.date.readable = True
 
-        return S3PDF(r,
-                     componentname = "send_item",
-                     formname = T("Consignment Note"),
-                     filename = "CN",
-                     **attr)
+        exporter = S3PDF()
+        return exporter(r,
+                        componentname = "send_item",
+                        formname = T("Consignment Note"),
+                        filename = "CN",
+                        **attr
+                       )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1001,6 +1012,7 @@ def inv_recv_rheader(r):
 
             T = current.T
             s3 = current.response.s3
+            auth = current.auth
 
             tabs = [(T("Edit Details"), None),
                     (T("Items"), "recv_item"),
@@ -1042,7 +1054,7 @@ def inv_recv_rheader(r):
             rfooter = TAG[""]()
 
             if record.status == SHIP_STATUS_IN_PROCESS:
-                if current.auth.s3_has_permission("update",
+                if auth.s3_has_permission("update",
                                                   "inv_recv",
                                                   record_id=record.id):
                     recv_btn = A( T("Receive Shipment"),
@@ -1061,14 +1073,14 @@ def inv_recv_rheader(r):
             else:
                 grn_btn = A( T("Goods Received Note"),
                               _href = URL(f = "recv",
-                                          args = [record.id, "form.pdf"]
+                                          args = [record.id, "list.pdf"]
                                           ),
                               _class = "action-btn"
                               )
                 rfooter.append(grn_btn)
                 dc_btn = A( T("Donation Certificate"),
                               _href = URL(f = "recv",
-                                          args = [record.id, "cert.pdf"]
+                                          args = [record.id, "list.pdf"]
                                           ),
                               _class = "action-btn"
                               )
@@ -1156,9 +1168,9 @@ def inv_send_rheader(r):
                     rfooter.append(send_btn)
                     rfooter.append(send_btn_confirm)
             else:
-                cn_btn = A( T("Consignment Note"),
+                cn_btn = A( T("Waybill"),
                               _href = URL(f = "send",
-                                          args = [record.id, "form.pdf"]
+                                          args = [record.id, "list.pdf"]
                                           ),
                               _class = "action-btn"
                               )

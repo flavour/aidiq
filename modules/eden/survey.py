@@ -94,6 +94,8 @@ def json2py(jsonstr):
     import gluon.contrib.simplejson as json
     from xml.sax.saxutils import unescape
 
+    if not isinstance(jsonstr, str):
+        return jsonstr
     try:
         jsonstr = unescape(jsonstr, {"u'": '"'})
         jsonstr = unescape(jsonstr, {"'": '"'})
@@ -352,7 +354,7 @@ class S3TemplateModel(S3Model):
             for (descriptor, value) in metadata.items():
                 qstn_metadata_table.insert(question_id = qstn_id,
                                            descriptor = descriptor,
-                                           value = value 
+                                           value = value
                                           )
         # Add these questions to the section: "Background Information"
         sectable = s3db.survey_section
@@ -717,12 +719,14 @@ def buildQuestionsForm(questions, complete_id=None, readOnly=False):
     sectionTitle = ""
     for question in questions:
         if sectionTitle != question["section"]:
-            if table != None:
-                form.append(table)
+            if sectionTitle != "":
                 form.append(P())
                 form.append(HR(_width="90%"))
                 form.append(P())
+            div = DIV(_class="survey_scrollable")
             table = TABLE()
+            div.append(table)
+            form.append(div)
             table.append(TR(TH(question["section"],
                                _colspan="2"),
                             _class="survey_section"))
@@ -739,8 +743,10 @@ def buildQuestionsForm(questions, complete_id=None, readOnly=False):
                 widgetObj.loadAnswer(complete_id, question["qstn_id"])
             widget = widgetObj.display(question_id = question["qstn_id"])
             if widget != None:
-                table.append(widget)
-    form.append(table)
+                if isinstance(widget,TABLE):
+                    table.append(TR(TD(widget, _colspan=2)))
+                else:
+                    table.append(widget)
     if not readOnly:
         button = INPUT(_type="submit", _name="Save", _value=T("Save"))
         form.append(button)
@@ -1528,6 +1534,7 @@ class S3SeriesModel(S3Model):
         tablename = "survey_series"
         template_id = self.survey_template_id
         person_id = self.pr_person_id
+        pr_person_comment = self.pr_person_comment
         organisation_id = self.org_organisation_id
         s3_date_represent = S3DateTime.date_represent
         s3_date_format = settings.get_L10n_date_format()
@@ -1551,12 +1558,16 @@ class S3SeriesModel(S3Model):
                                  organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile = True)),
                                  Field("logo", "string", default="", length=512),
                                  Field("language", "string", default="en", length=8),
-                                 Field("start_date",
-                                       "date",
+                                 Field("start_date", "date",
                                        requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
                                        represent = s3_date_represent,
+                                       widget = S3DateWidget(),
                                        default=None),
-                                 Field("end_date", "date", default=None),
+                                 Field("end_date", "date",
+                                       requires = IS_EMPTY_OR(IS_DATE(format = s3_date_format)),
+                                       represent = s3_date_represent,
+                                       widget = S3DateWidget(),
+                                       default=None),
                                  *s3.meta_fields())
 
         # CRUD Strings
@@ -2272,7 +2283,7 @@ def survey_series_rheader(r, tabs=[]):
                                   )
             tranForm.append(export_xls_btn)
             try:
-                # only add the Export to Word button up if PyRTF is installed 
+                # only add the Export to Word button up if PyRTF is installed
                 from PyRTF import Document
                 export_rtf_btn = INPUT(_type="submit",
                                        _id="export_rtf_btn",

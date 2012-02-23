@@ -39,8 +39,9 @@ from gluon import *
 from gluon.serializers import json
 
 from s3crud import S3CRUD
-from s3validators import *
+from s3navigation import s3_search_tabs
 from s3utils import s3_debug
+from s3validators import *
 from s3widgets import CheckboxesWidgetS3
 
 __all__ = ["S3SearchWidget",
@@ -183,7 +184,7 @@ class S3SearchWidget(object):
                 # Do not add queries for empty tables
                 if not db(ktable.id > 0).select(ktable.id,
                                                 limitby=(0, 1)).first():
-                    continue
+                   continue
 
             # Master queries
             # @todo: update this for new QueryBuilder (S3ResourceFilter)
@@ -369,7 +370,8 @@ class S3SearchMinMaxWidget(S3SearchWidget):
 
         search_field = self.search_field.values()
         if not search_field:
-            raise SyntaxError("No valid search field specified")
+            return SPAN(T("no options available"),
+                        _style="color:#AAA; font-style:italic;")
 
         search_field = search_field[0][0]
 
@@ -444,7 +446,7 @@ class S3SearchMinMaxWidget(S3SearchWidget):
             @param value: the value returned from the widget
         """
 
-        db = resource.db
+        db = current.db
 
         tablename = self.search_field.keys()[0]
         search_field = self.search_field[tablename][0]
@@ -530,20 +532,28 @@ class S3SearchOptionsWidget(S3SearchWidget):
         else:
             value = None
 
-        field_type = str(resource.table[field].type)
+        try:
+            _field = resource.table[field]
+        except:
+            field_type = "virtual"
+            raise NotImplementedError
+        else:
+            field_type = str(_field.type)
+
         if field_type == "boolean":
             opt_keys = (True, False)
         else:
             # Find unique values of options for that field
-            rows = resource.select(resource.table[field], groupby = resource.table[field])
+            rows = resource.select(_field, groupby = _field)
             if field_type.startswith("list"):
                 opt_keys = []
                 for row in rows:
-                    if row[field] != None:
+                    rfield = row[field]
+                    if rfield != None:
                         try:
-                            _opt_keys = row[field].split("|")
+                            _opt_keys = rfield.split("|")
                         except:
-                            _opt_keys = row[field]
+                            _opt_keys = rfield
                         for opt_key in _opt_keys:
                             opt_keys.append(opt_key)
             else:
@@ -562,7 +572,7 @@ class S3SearchOptionsWidget(S3SearchWidget):
         represent = self.attr.represent
         # Fallback to the field's represent
         if not represent or field_type[:9] != "reference":
-            represent = resource.table[field].represent
+            represent = _field.represent
 
         # Execute, if callable
         if callable(represent):
@@ -717,11 +727,18 @@ class S3SearchOptionsWidget(S3SearchWidget):
         if value:
             if not isinstance(value, (list, tuple)):
                 value = [value]
-            field_type = str(resource.table[field].type)
-            if field_type.startswith("list"):
-                query = (resource.table[field].contains(value))
+            try:
+                _field = resource.table[field]
+            except:
+                field_type = "virtual"
+                raise NotImplementedError
             else:
-                query = (resource.table[field].belongs(value))
+                field_type = str(_field.type)
+
+            if field_type.startswith("list"):
+                query = (_field.contains(value))
+            else:
+                query = (_field.belongs(value))
             if kfield:
                 # This is searching a referenced resource
                 # Add join query
@@ -737,13 +754,16 @@ class S3SearchLocationHierarchyWidget(S3SearchOptionsWidget):
     """
         Displays a search widget which allows the user to search for records
         by selecting a location from a specified level in the hierarchy.
+        - works only for tables with s3.address_fields() in
+          i.e. Sites & pr_address
     """
 
-    def __init__(self, name=None, **attr):
+    def __init__(self, name=None, field=None, **attr):
         """
             Configures the search option
 
-            @param field: name(s) of the fields to search in
+            @param name: name of the search widget
+            @param field: field containing a hierarchy level to search
 
             @keyword comment: a comment for the search widget
         """
@@ -752,11 +772,19 @@ class S3SearchLocationHierarchyWidget(S3SearchOptionsWidget):
 
         self.other = None
 
-        config = gis.get_config()
-        field = config.search_level or "L0"
+        if field:
+            if field.find("$") != -1:
+                kfield, level = field.split("$")
+            else:
+                level = field
+        else:
+            # Default to the currently active gis_config
+            config = gis.get_config()
+            field = level = config.search_level or "L0"
+
         self.field = [field]
 
-        label = gis.get_location_hierarchy(level=field)
+        label = gis.get_location_hierarchy(level=level)
 
         self.attr = Storage(attr)
         self.attr["label"] = label
@@ -1090,7 +1118,7 @@ class S3Search(S3CRUD):
             value = None
         if hasattr(widget, "validate"):
             errors = widget.validate(resource, value)
-        else:
+        if not errors:
             q = widget.query(resource, value)
             if q is not None:
                 if query is None:
@@ -1224,7 +1252,7 @@ class S3Search(S3CRUD):
         manager = current.manager
         table = self.table
         tablename = self.tablename
- 
+
         vars = request.get_vars
 
         # Get representation
@@ -1422,18 +1450,23 @@ class S3Search(S3CRUD):
         output["sortby"] = sortby
 
         if isinstance(items, DIV):
+            filter = session.s3.filter
             list_formats = DIV(A(IMG(_src="/%s/static/img/pdficon_small.gif" % request.application),
                                  _title=T("Export in PDF format"),
-                                 _href=r.url(method="", representation="pdf", vars=session.s3.filter)),
+                                 _href=r.url(method="", representation="pdf", vars=filter)),
                                A(IMG(_src="/%s/static/img/icon-xls.png" % request.application),
                                  _title=T("Export in XLS format"),
-                                 _href=r.url(method="", representation="xls", vars=session.s3.filter)),
+                                 _href=r.url(method="", representation="xls", vars=filter)),
                                A(IMG(_src="/%s/static/img/RSS_16.png" % request.application),
                                  _title=T("Export in RSS format"),
-                                 _href=r.url(method="", representation="rss", vars=session.s3.filter)),
+                                 _href=r.url(method="", representation="rss", vars=filter)),
                                _id="list_formats")
+            tabs = [(T("List"), None),
+                    #(T("Export"), "export")
+                    ]
         else:
             list_formats = ""
+            tabs = []
 
         if _location or _site:
             # Add a map for search results
@@ -1441,12 +1474,10 @@ class S3Search(S3CRUD):
             if list_formats:
                 list_formats.append(A(IMG(_src="/%s/static/img/kml_icon.png" % request.application),
                                      _title=T("Export in KML format"),
-                                     _href=r.url(method="", representation="kml", vars=session.s3.filter)),
+                                     _href=r.url(method="", representation="kml", vars=filter)),
                                     )
-                list_formats.append(A(IMG(_src="/%s/static/img/silk/map.png" % request.application),
-                                     _title=T("Show on Map"),
-                                     _id="gis_datatables_map-btn"),
-                                    )
+            if tabs:
+                tabs.append((T("Map"), "map"))
             if bounds:
                 # We have some features returned
                 map_popup = gis.show_map(
@@ -1475,12 +1506,14 @@ class S3Search(S3CRUD):
 
         if "pe_id" in table or "person_id" in table:
             # Provide the ability to Message person entities in search results
-            if list_formats:
-                list_formats.append(A(IMG(_src="/%s/static/img/silk/email.png" % request.application),
-                                     _title=T("Send Message"),
-                                     _href=r.url(method="compose", vars=session.s3.filter)),
-                                    )
+            if tabs:
+                tabs.append((T("Message"), "compose"))
 
+        # Search Tabs
+        search_tabs = s3_search_tabs(r, tabs)
+        output["search_tabs"] = search_tabs
+
+        # List Formats
         output["list_formats"] = list_formats
 
         # Title and subtitle
@@ -2497,7 +2530,7 @@ class S3PentitySearch(S3Search):
 
         # AT: group
         if filter and value:
-            gtable = s3db.pr_group 
+            gtable = s3db.pr_group
             field = gtable.name
             query = field.lower().like("%" + value + "%")
             resource.clear_query()
