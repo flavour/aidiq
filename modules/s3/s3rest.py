@@ -8,8 +8,6 @@
     @requires: U{B{I{gluon}} <http://web2py.com>}
     @requires: U{B{I{lxml}} <http://codespeak.net/lxml>}
 
-    @author: Dominic König <dominic[at]aidiq.com>
-
     @copyright: 2009-2012 (c) Sahana Software Foundation
     @license: MIT
 
@@ -334,6 +332,20 @@ class S3RequestManager(object):
                 v = record.get(fieldname, None)
                 if v and v == value:
                     return (value, None)
+                self_id = record[table._id.name]
+                requires = field.requires
+                if field.unique and not requires:
+                    field.requires = IS_NOT_IN_DB(current.db, str(field))
+                    field.requires.set_self_id(self_id)
+                else:
+                    if not isinstance(requires, (list, tuple)):
+                        requires = [requires]
+                    for r in requires:
+                        if hasattr(r, "set_self_id"):
+                            r.set_self_id(self_id)
+                        if hasattr(r, "other") and \
+                            hasattr(r.other, "set_self_id"):
+                            r.other.set_self_id(self_id)
             try:
                 value, error = field.validate(value)
             except:
@@ -2113,14 +2125,19 @@ class S3Resource(object):
         prefix = self.prefix
         name = self.name
 
+        attr = Storage(attributes)
         rfilter = self.rfilter
+
         if rfilter is None:
             rfilter = self.build_query()
         query = rfilter.get_query()
         vfltr = rfilter.get_filter()
 
+        distinct = attr.pop("distinct", False) and True or False
+        distinct = rfilter.distinct or distinct
+        attr["distinct"] = distinct
+
         if vfltr is not None:
-            attr = Storage(attributes)
             if "limitby" in attr:
                 limitby = attr["limitby"]
                 start = limitby[0]
@@ -2131,13 +2148,12 @@ class S3Resource(object):
                 self._slice = True
             else:
                 start = limit = None
-            attributes = attr
             # @todo: override fields => needed for vfilter
-        elif "limitby" in attributes:
+        elif "limitby" in attr:
             self._slice = True
 
         # Get the rows
-        rows = db(query).select(*fields, **attributes)
+        rows = db(query).select(*fields, **attr)
         if vfltr is not None:
             rows = rfilter(rows, start=start, limit=limit)
 
@@ -4184,64 +4200,89 @@ class S3Resource(object):
                  linkto=None,
                  download_url=None,
                  no_ids=False,
+                 as_rows=False,
                  as_page=False,
                  as_list=False,
-                 as_rows=False,
                  format=None):
         """
-            DRY helper function for SQLTABLEs in CRUD
+            DRY helper function for SQLTABLEs in REST and CRUD
 
-            @param fields: list of fieldnames to display
-            @param start: index of the first record to display
-            @param limit: maximum number of records to display
+            @param fields: list of field selectors
+            @param start: index of the first record
+            @param limit: maximum number of records
             @param left: left outer joins
             @param orderby: orderby for the query
             @param distinct: distinct for the query
             @param linkto: hook to link record IDs
             @param download_url: the default download URL of the application
+            @param as_rows: return bare Rows, no representations
             @param as_page: return the list as JSON page
             @param as_list: return the list as Python list
             @param format: the representation format
         """
 
-        query = self.get_query()
-        vfltr = self.get_filter()
-        rfilter = self.rfilter
-        distinct = self.rfilter.distinct or distinct
-
         db = current.db
         manager = current.manager
         table = self.table
 
-        _left = left
-        if _left is None:
-            _left = []
-        elif not isinstance(left, list):
-            _left = [_left]
+        # Get the query and filters
+        query = self.get_query()
+        vfltr = self.get_filter()
+        rfilter = self.rfilter
 
-        if fields is None:
-            fields = [f.name for f in self.readable_fields()]
-        if table._id.name not in fields and not no_ids:
-            fields.insert(0, table._id.name)
-        lfields, joins, ljoins = self.get_lfields(fields)
-        for join in ljoins:
-            if str(join) not in [str(q) for q in _left]:
-                _left.append(join)
-
-        colnames = [f.colname for f in lfields]
-        headers = dict(map(lambda f: (f.colname, f.label), lfields))
-
+        # Handle distinct-attribute (must respect rfilter.distinct)
+        distinct = self.rfilter.distinct or distinct
         attributes = dict(distinct=distinct)
+
         # Orderby
         if orderby is not None:
             attributes.update(orderby=orderby)
-        # Slice
+
+        # Limitby
         if vfltr is None:
             limitby = self.limitby(start=start, limit=limit)
             if limitby is not None:
                 attributes.update(limitby=limitby)
         else:
+            # Retrieve all records when filtering for virtual fields
+            # => apply start/limit in vfltr instead
             limitby = None
+
+        # Resolve the fields
+        if fields is None:
+            fields = [f.name for f in self.readable_fields()]
+        if table._id.name not in fields and not no_ids:
+            fields.insert(0, table._id.name)
+        lfields, joins, ljoins = self.get_lfields(fields)
+
+        # Left joins
+        left_joins = left
+        if left_joins is None:
+            left_joins = []
+        elif not isinstance(left, list):
+            left_joins = [left_joins]
+
+        # Add the left joins from the field query, de-duplicate
+        for join in ljoins:
+            if str(join) not in [str(q) for q in left_joins]:
+                left_joins.append(join)
+
+        if left_joins:
+            # Try sorting the left joins according to their dependency
+            def __sortleft(x, y):
+                tx, qx = str(x.first), str(x.second)
+                ty, qy = str(y.first), str(y.second)
+                if "%s." % tx in qy:
+                    return -1
+                if "%s." % ty in qx:
+                    return 1
+                return 0
+            try:
+                left_joins.sort(__sortleft)
+            except:
+                pass
+            # Add to attributes
+            attributes.update(left=left_joins)
 
         # Joins
         qstr = str(query)
@@ -4250,9 +4291,9 @@ class S3Resource(object):
                 if str(j) not in qstr:
                     query &= j
 
-        # Left outer joins
-        if _left:
-            attributes.update(left=_left)
+        # Column names and headers
+        colnames = [f.colname for f in lfields]
+        headers = dict(map(lambda f: (f.colname, f.label), lfields))
 
         # Fields in the query
         qfields = [f.field for f in lfields if f.field is not None]
@@ -4260,6 +4301,7 @@ class S3Resource(object):
             qfields.insert(0, table._id)
 
         # Add orderby fields which are not in qfields
+        # @todo: this could need some cleanup/optimization
         if distinct and orderby is not None:
             qf = [str(f) for f in qfields]
             if isinstance(orderby, str):
@@ -4289,12 +4331,15 @@ class S3Resource(object):
         if not rows:
             return None
 
+        # Apply virtual filter
         if vfltr is not None:
             rows = rfilter(rows, start=start, limit=limit)
-        if not rows:
-            return None
 
+        if not rows:
+            # No records found
+            return None
         if as_rows:
+            # No rendering - return bare Rows
             return rows
 
         # Fields to show
@@ -4664,24 +4709,20 @@ class S3ResourceFilter:
         """
             Generate a Query from a URL boundary box query
 
+            Supports multiple bboxes, but optimised for the usual case of just 1
+
             @param resource: the resource
             @param vars: the URL get vars
         """
-
-        table = resource.table
-        tablename = resource.tablename
-        fields = table.fields
-
-        if tablename == "gis_feature_query" or \
-           tablename == "gis_cache":
-            gtable = table
-        else:
-            gtable = current.s3db.gis_location
 
         bbox_query = None
         if vars:
             for k in vars:
                 if k[:4] == "bbox":
+                    table = resource.table
+                    tablename = resource.tablename
+                    fields = table.fields
+
                     fname = None
                     if k.find(".") != -1:
                         fname = k.split(".")[1]
@@ -4700,6 +4741,12 @@ class S3ResourceFilter:
                         # Badly-formed bbox - ignore
                         continue
                     else:
+                        if tablename == "gis_feature_query" or \
+                           tablename == "gis_cache":
+                            gtable = table
+                        else:
+                            gtable = current.s3db.gis_location
+
                         bbox_filter = (gtable.lon > float(minLon)) & \
                                       (gtable.lon < float(maxLon)) & \
                                       (gtable.lat > float(minLat)) & \
@@ -4739,13 +4786,17 @@ class S3ResourceFilter:
             elif c == "," and not quote:
                 if w == "NONE":
                     w = None
-                vlist.append(w.strip('"'))
+                else:
+                    w = w.strip('"')
+                vlist.append(w)
                 w = ""
             else:
                 w += c
         if w == "NONE":
             w = None
-        vlist.append(w.strip('"'))
+        else:
+            w = w.strip('"')
+        vlist.append(w)
         if len(vlist) == 1:
             return vlist[0]
         return vlist

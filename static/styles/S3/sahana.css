@@ -197,6 +197,9 @@ fieldset {
 input, select, textarea {
     font-size: 100%;
 }
+textarea.comments {
+    height: 50px;
+}
 .hide {
     display: none;
 }
@@ -417,41 +420,41 @@ table {
 
 /* Sidebar / response.menu_options */
 #menu_options {
-    margin:10px 0px 0px 0px;
+    margin: 6px 0px 0px 0px;
     /*padding:5px;*/
-    background:#e7ebed;
+    background: #e7ebed;
     /*border: 1px solid #bbb;*/
-    border-radius:0px 5px 5px 0px;
-    overflow:auto;
+    border-radius: 0px 5px 5px 0px;
+    overflow: auto;
 }
 
 #subnav li, #subnav ul li {
-    list-style:none;
-    clear:both;
+    list-style: none;
+    clear: both;
 }
-#subnav div a{
-    display:block;
-    padding:5px;
-    background:#37404c;
-    font-weight:bold;
+#subnav div a {
+    display: block;
+    padding: 5px;
+    background :#37404c;
+    font-weight: bold;
 }
 #subnav ul li {
-    border-bottom:1px solid #b4c0c7;
+    border-bottom: 1px solid #b4c0c7;
 }
 
 #subnav ul li a{
-    display:block;
-    padding:2px 2px 3px 10px;
-    text-decoration:none;
+    display: block;
+    padding: 2px 2px 3px 10px;
+    text-decoration: none;
 }
 #subnav div a{
-    color:white;
-    font-size:1.05em;
-    text-decoration:none;
+    color: white;
+    font-size: 1.05em;
+    text-decoration: none;
 }
 #subnav div a:hover{
-    background:#112038;
-    color:white;
+    background: #112038;
+    color: white;
 }
 
 .menu_separator hr {
@@ -528,10 +531,10 @@ table {
 #content {
     background: #f0f3f4;
     border: 1px solid #bbb;
-    margin: 10px 5px;
+    margin: 6px 5px;
     padding: 0px;
     margin-bottom: 2px;
-    padding:10px 30px 10px 30px;
+    padding: 6px 10px 6px 10px;
    -moz-border-radius: 10px 10px 10px 10px;
    -webkit-border-radius: 10px 10px 10px 10px;
    overflow: auto;
@@ -558,13 +561,13 @@ table {
         rgb(188,204,217) 16%,
         rgb(212,225,235) 57%
     );
-    margin:-10px -30px 10px -30px;
-    background-color:#cfdde7;
+    margin: -6px -10px 6px -10px;
+    background-color: #cfdde7;
     text-shadow: 0px 1px 1px #e3edf4;
-    border:1px solid #aecbe0;
-    border-top:1px solid #e1eaf1;
-    border-bottom:1px solid #9cb2c1;
-    padding-left:10px;
+    border: 1px solid #aecbe0;
+    border-top: 1px solid #e1eaf1;
+    border-bottom: 1px solid #9cb2c1;
+    padding-left: 10px;
     -moz-border-radius: 10px 10px 0px 0px;
     -webkit-border-radius: 10px 10px 0px 0px;
 }
@@ -679,7 +682,6 @@ div.form-container form select {
     margin: 2px 0 2px 0;
 }
 div.form-container form input[type="checkbox"],
-
 div.form-container form input[type="radio"] {
     padding: 1px;
     margin: 2px 5px;
@@ -868,7 +870,7 @@ div.dataTables_filter {
     width: auto;
     float: left;
     /* margin-left: 50px; */
-    margin-bottom:4px;
+    margin-bottom: 4px;
 }
 
 div.dataTables_processing {
@@ -1212,9 +1214,9 @@ div#last_update {
 /* Action Buttons */
 .delete-btn,
 .action-btn {
-    cursor:pointer;
+    cursor: pointer;
     text-decoration: none;
-    font-weight:bold;
+    /* font-weight:bold; */
     color: #ffffff;
     background-color: #3286e2;
     border:1px solid #4c95e6;
@@ -1224,8 +1226,8 @@ div#last_update {
     margin: 2px;
     z-index: 500;
     white-space: nowrap;
-    -moz-border-radius:2px;
-    -webkit-border-radius:2px;
+    -moz-border-radius: 2px;
+    -webkit-border-radius: 2px;
 }
 .delete-btn:hover,
 .action-btn:hover {

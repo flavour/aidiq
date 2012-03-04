@@ -53,6 +53,7 @@ __all__ = ["S3HiddenWidget",
            "S3TimeIntervalWidget",
            "S3EmbedComponentWidget",
            "S3SliderWidget",
+           "comments_widget",
            ]
 
 import copy
@@ -1291,6 +1292,8 @@ class S3LocationSelectorWidget(FormWidget):
                         countries[id] = defaults["L0"].name
                 country_snippet = "S3.gis.country = '%s';\n" % \
                     gis.get_default_country(key_type="code")
+        elif len(countries) == 1:
+            default_L0.id = countries.keys()[0]
 
         # Should we use a Map-based selector?
         map_selector = settings.get_gis_map_selector()
@@ -1384,8 +1387,6 @@ S3.gis.tab = '%s';""" % response.s3.gis.tab
                         represent = this_location.name
 
                     if map_selector:
-                        # Load the Models
-                        manager.load("gis_layer_openstreetmap")
                         zoom = config.zoom
                         if lat is None or lon is None:
                             map_lat = config.lat
@@ -1416,7 +1417,8 @@ S3.gis.tab = '%s';""" % response.s3.gis.tab
                                                  collapsed = True,
                                                  search = True,
                                                  window = True,
-                                                 window_hide = True
+                                                 window_hide = True,
+                                                 location_selector = True
                                                 )
                 else:
                     # Bad location_id
@@ -1456,7 +1458,8 @@ S3.gis.tab = '%s';""" % response.s3.gis.tab
                                              collapsed = True,
                                              search = True,
                                              window = True,
-                                             window_hide = True
+                                             window_hide = True,
+                                             location_selector = True
                                             )
             else:
                 # No Permission to create a location, so don't render a row
@@ -1591,6 +1594,7 @@ S3.gis.tab = '%s';""" % response.s3.gis.tab
                                 _disabled="disabled")
             street_widget = TEXTAREA(value=addr_street,
                                      _id="gis_location_street",
+                                     _class="text",
                                      _name="gis_location_street",
                                      _disabled="disabled")
             postcode_widget = INPUT(value=postcode,
@@ -1626,7 +1630,7 @@ S3.gis.tab = '%s';""" % response.s3.gis.tab
                     label = LABEL("%s:" % level)
                 row = TR(TD(label), TD(),
                          _id="gis_location_%s_label__row" % level,
-                         _class="%s box_middle" % hidden)
+                         _class="%s locselect box_middle" % hidden)
                 Lx_rows.append(row)
                 widget = DIV(INPUT(value=id,
                                    _id="gis_location_%s" % level,
@@ -1648,6 +1652,7 @@ S3.gis.tab = '%s';""" % response.s3.gis.tab
             name_widget = INPUT(_id="gis_location_name",
                                 _name="gis_location_name")
             street_widget = TEXTAREA(_id="gis_location_street",
+                                     _class="text",
                                      _name="gis_location_street")
             postcode_widget = INPUT(_id="gis_location_postcode",
                                     _name="gis_location_postcode")
@@ -2214,7 +2219,12 @@ class S3AddPersonWidget(FormWidget):
         It relies on JS code in static/S3/s3.select_person.js
     """
 
-    def __init__(self, select_existing = True):
+    def __init__(self,
+                 controller = None,
+                 select_existing = True):
+
+        # Controller to retrieve the person record
+        self.controller = controller
         self.select_existing = select_existing
 
     def __call__(self, field, value, **attributes):
@@ -2240,6 +2250,11 @@ class S3AddPersonWidget(FormWidget):
             _class ="box_top"
         else:
             _class = "hidden"
+
+        if self.controller is None:
+            controller = request.controller
+        else:
+            controller = self.controller
 
         # Select from registry buttons
         select_row = TR(TD(A(T("Select from registry"),
@@ -2269,7 +2284,7 @@ class S3AddPersonWidget(FormWidget):
                         TD(),
                         _id="select_from_registry_row",
                         _class=_class,
-                        _controller=request.controller,
+                        _controller=controller,
                         _field=real_input,
                         _value=str(value))
 
@@ -2932,6 +2947,14 @@ class S3EmbedComponentWidget(FormWidget):
                        ac_row,
                        table,
                        divider)
+
+# -----------------------------------------------------------------------------
+def comments_widget(field, value):
+    return TEXTAREA(_name=field.name,
+                    _id="%s_%s" % (field._tablename, field.name),
+                    _class="comments %s" % (field.type),
+                    _value=value,
+                    requires=field.requires)
 
 # -----------------------------------------------------------------------------
 class S3SliderWidget(FormWidget):

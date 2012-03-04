@@ -55,6 +55,11 @@ def site_org_json():
                                otable.name)
     return records.json()
 
+def facility():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller()
+
 # =============================================================================
 def organisation():
     """ RESTful CRUD controller """
@@ -118,10 +123,10 @@ def incoming():
     return inv_incoming()
 
 # =============================================================================
-def match():
+def req_match():
     """ Match Requests """
 
-    return req_match()
+    return s3db.req_match()
 
 # =============================================================================
 def donor():

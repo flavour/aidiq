@@ -432,7 +432,8 @@ class S3CRUD(S3Method):
             # Last update
             last_update = self.last_update()
             if last_update:
-                output["last_update"] = last_update
+                output["modified_on"] = last_update["modified_on"]
+                output["modified_by"] = last_update["modified_by"]
 
         elif representation == "plain":
             # Hide empty fields from popups on map
@@ -448,15 +449,14 @@ class S3CRUD(S3Method):
                                 format=representation)
             output["item"] = item
 
-            # Edit Link
-            EDIT = T("Edit")
-            authorised = self._permitted(method="update")
-            if authorised and editable:
-                href_edit = r.url(method="update", representation="html")
-                if href_edit:
-                    edit_btn = A(EDIT, _href=href_edit,
-                                 _id="edit-btn", _target="_blank")
-                    output["edit_btn"] = edit_btn
+            # Details Link
+            authorised = self._permitted(method="read")
+            if authorised:
+                href = r.url(method="read", representation="html")
+                if href:
+                    details_btn = A(T("Show Details"), _href=href,
+                                    _id="details-btn", _target="_blank")
+                    output["details_btn"] = details_btn
 
             # Title and subtitle
             title = self.crud_string(r.tablename, "title_display")
@@ -482,7 +482,7 @@ class S3CRUD(S3Method):
             return exporter(resource, list_fields=list_fields)
 
         elif representation == "json":
-            exporter = S3Exporter(manager)
+            exporter = S3Exporter()
             return exporter.json(resource)
 
         else:
@@ -619,7 +619,8 @@ class S3CRUD(S3Method):
             # Last update
             last_update = self.last_update()
             if last_update:
-                output["last_update"] = last_update
+                output["modified_on"] = last_update["modified_on"]
+                output["modified_by"] = last_update["modified_by"]
 
             # Redirection
             update_next = _config("update_next")
@@ -1063,6 +1064,7 @@ class S3CRUD(S3Method):
         # Table and model
         prefix = self.prefix
         name = self.name
+        resource = self.resource
         tablename = self.tablename
         table = self.table
         model = manager.model
@@ -1122,6 +1124,27 @@ class S3CRUD(S3Method):
                         missing_fields[f] = table[f].default
                 record.update(missing_fields)
                 record.update(id=None)
+
+            # Switch to update method if this request attempts to
+            # create a duplicate entry in a link table:
+            if request.env.request_method == "POST" and \
+            resource.linked is not None:
+                pkey = table._id.name
+                if not request.post_vars[pkey]:
+                    linked = resource.linked
+                    lkey = linked.lkey
+                    rkey = linked.rkey
+                    _lkey = request.post_vars[lkey]
+                    _rkey = request.post_vars[rkey]
+                    query = (table[lkey] == _lkey) & (table[rkey] == _rkey)
+                    row = current.db(query).select(table._id, limitby=(0, 1)).first()
+                    if row is not None:
+                        record_id = row[pkey]
+                        formkey = session.get("_formkey[%s/None]" % tablename)
+                        formname = "%s/%s" % (tablename, record_id)
+                        session["_formkey[%s]" % formname] = formkey
+                        request.post_vars["_formname"] = formname
+                        request.post_vars[pkey] = record_id
 
             # Add asterisk to labels of required fields
             mark_required = self._config("mark_required")
@@ -1315,11 +1338,11 @@ class S3CRUD(S3Method):
                     modified_by = T("anonymous user")
                 else:
                     modified_by = represent(record.modified_by)
-                output.update(modified_by= T("by %(person)s") %
-                                           dict(person = modified_by))
+                output["modified_by"] = T("by %(person)s") % \
+                                           dict(person = modified_by)
             if "modified_on" in record:
-                output.update(modified_on=T("on %(date)s") %
-                              dict(date = record.modified_on))
+                output["modified_on"] = T("on %(date)s") % \
+                              dict(date = record.modified_on)
 
         return output
 
@@ -1969,11 +1992,13 @@ class S3CRUD(S3Method):
                 searchq = query
             elif query:
                 searchq = searchq | query
+
         for j in joins.values():
-            if searchq is None:
-                searchq = j
-            else:
-                searchq &= j
+            for q in j:
+                if searchq is None:
+                    searchq = q
+                elif str(q) not in str(searchq):
+                    searchq &= q
 
         return searchq
 

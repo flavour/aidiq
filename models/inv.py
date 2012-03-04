@@ -44,14 +44,6 @@ def inv_recv_controller():
 
     def prep(r):
         if r.interactive:
-
-            # Redirect to the Items tabs after creation
-            recv_item_url = URL(f="recv", args=["[id]",
-                                                "recv_item"])
-            s3mgr.configure(tablename,
-                            create_next = recv_item_url,
-                            update_next = recv_item_url)
-
             # If component view
             if r.record:
                 SHIP_STATUS_IN_PROCESS = s3db.inv_ship_status["IN_PROCESS"]
@@ -63,7 +55,8 @@ def inv_recv_controller():
     response.s3.prep = prep
 
     output = s3_rest_controller("inv", "recv",
-                                rheader=eden.inv.inv_recv_rheader)
+                                rheader=eden.inv.inv_recv_rheader,
+                                )
     return output
 
 # -----------------------------------------------------------------------------
@@ -71,6 +64,7 @@ def inv_send_controller():
     """ RESTful CRUD controller """
     tablename = "inv_send"
     table = s3db.inv_send
+
 
     # Limit site_id to sites the user has permissions for
     error_msg = T("You do not have permission for any facility to send a shipment.")
@@ -86,12 +80,6 @@ def inv_send_controller():
 
     def prep(r):
         if r.interactive:
-            # Redirect to the Items tabs after creation
-            send_item_url = URL(f="send", args=["[id]",
-                                                "send_item"])
-            s3mgr.configure(tablename,
-                            create_next = send_item_url,
-                            update_next = send_item_url)
 
             # Default to the Search tab in the location selector
             response.s3.gis.tab = "search"
@@ -123,7 +111,8 @@ def inv_send_controller():
     response.s3.prep = prep
 
     output = s3_rest_controller("inv", "send",
-                                rheader=eden.inv.inv_send_rheader)
+                                rheader=eden.inv.inv_send_rheader,
+                               )
     return output
 
 

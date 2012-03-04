@@ -752,15 +752,15 @@ class S3IRSModel(S3Model):
                 # URL
                 link = URL(args=[row.id])
                 events.append({'start': start,
-                                       'end': end,
-                                       'title': row.name,
-                                       'caption': row.message or "",
-                                       'description': row.message or "",
-                                       'image': image or "",
-                                       'link': link or ""
-                                       # @ToDo: Colour based on Category (More generically: Resource or Resource Type)
-                                       #'color' : 'blue'
-                                    })
+                               'end': end,
+                               'title': row.name,
+                               'caption': row.message or "",
+                               'description': row.message or "",
+                               'image': image or "",
+                               'link': link or ""
+                               # @ToDo: Colour based on Category (More generically: Resource or Resource Type)
+                               #'color' : 'blue'
+                            })
             data["events"] = events
             data = json.dumps(data)
 
@@ -1073,6 +1073,8 @@ def irs_rheader(r, tabs=[]):
                     contact = report.person
             elif report.contact:
                 contact = report.contact
+            if contact:
+                contact = DIV(TH("%s: " % T("Contact")), TD(contact))
 
             #create_request = A(T("Create Request"),
             #                   _class="action-btn colorbox",
@@ -1092,13 +1094,14 @@ def irs_rheader(r, tabs=[]):
                             TR(
                                 TH("%s: " % table.name.label), report.name,
                                 TH("%s: " % table.datetime.label), datetime,
+                                ),
                             TR(
                                 TH("%s: " % table.category.label), category,
                                 TH("%s: " % table.expiry.label), expiry,
                                 ),
                             TR(
                                 TH("%s: " % table.location_id.label), location,
-                                TH("%s: " % T("Contact")), contact),
+                                contact,
                                 ),
                             TR(
                                 TH("%s: " % table.message.label), TD(report.message or "",

@@ -123,6 +123,8 @@ def org_office_controller():
         elif r.representation == "plain":
             # Map popups want less clutter
             table.obsolete.readable = False
+            if r.record.type == 5:
+                s3.crud_strings[tablename].title_display = T("Warehouse Details")
 
         if r.record and deployment_settings.has_module("hrm"):
             # Cascade the organisation_id from the office to the staff
@@ -131,7 +133,7 @@ def org_office_controller():
             hrm_table.organisation_id.writable = False
 
         if r.interactive or r.representation == "aadata":
-            if deployment_settings.has_module("inv"):
+            if not r.component and deployment_settings.has_module("inv"):
                 # Filter out Warehouses, since they have a dedicated controller
                 response.s3.filter = (table.type != 5) | \
                                      (table.type == None)

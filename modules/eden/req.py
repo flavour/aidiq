@@ -35,6 +35,7 @@ __all__ = ["S3RequestModel",
            "S3CommitPersonModel",
            "req_item_onaccept",
            "req_rheader",
+           "req_match",
            ]
 
 import datetime
@@ -85,7 +86,7 @@ class S3RequestModel(S3Model):
         UNKNOWN_OPT = current.messages.UNKNOWN_OPT
 
         #s3_date_format = settings.get_L10n_date_format()
-        #s3_date_represent = lambda dt: S3DateTime.date_represent(dt, utc=True)
+        s3_date_represent = lambda dt: S3DateTime.date_represent(dt, utc=True)
         s3_datetime_represent = lambda dt: S3DateTime.datetime_represent(dt, utc=True)
 
         # Multiple Item/Skill Types per Request?
@@ -144,14 +145,21 @@ class S3RequestModel(S3Model):
                                         "datetime",
                                         label = T("Date Requested"),
                                         requires = [IS_EMPTY_OR(
-                                                    IS_UTC_DATETIME_IN_RANGE(
-                                                        maximum=request.utcnow,
+                                                    #IS_UTC_DATETIME_IN_RANGE(
+                                                    IS_DATE_IN_RANGE(
+                                                        #maximum=request.utcnow,
+                                                        maximum=request.utcnow.date(),
                                                         error_message="%s %%(max)s!" %
                                                             T("Enter a valid past date")))],
-                                        widget = S3DateTimeWidget(past=8760, # Hours, so 1 year
-                                                                  future=0),
+                                        # @ToDo: deployment_setting
+                                        #widget = S3DateTimeWidget(past=8760, # Hours, so 1 year
+                                        #                          future=0),
+                                        #represent = s3_datetime_represent
+                                        widget = S3DateWidget(past=12, # Months, so 1 year
+                                                              future=0),
+                                        represent = s3_date_represent,
                                         default = request.utcnow,
-                                        represent = s3_datetime_represent),
+                                        ),
                                   Field("priority",
                                         "integer",
                                         default = 2,
@@ -170,13 +178,20 @@ class S3RequestModel(S3Model):
                                         "datetime",
                                         label = T("Date Required"),
                                         requires = [IS_EMPTY_OR(
-                                                    IS_UTC_DATETIME_IN_RANGE(
-                                                      minimum=request.utcnow - datetime.timedelta(days=1),
+                                                    #IS_UTC_DATETIME_IN_RANGE(
+                                                    IS_DATE_IN_RANGE(
+                                                      #minimum=request.utcnow - datetime.timedelta(days=1),
+                                                      minimum=request.utcnow.date() - datetime.timedelta(days=1),
                                                       error_message="%s %%(min)s!" %
                                                           T("Enter a valid future date")))],
-                                        widget = S3DateTimeWidget(past=0,
-                                                                  future=8760),  # Hours, so 1 year
-                                        represent = s3_datetime_represent),
+                                        # @ToDo: deployment_setting
+                                        #widget = S3DateTimeWidget(past=0,
+                                        #                          future=8760), # Hours, so 1 year
+                                        #represent = s3_datetime_represent
+                                        widget = S3DateWidget(past=0,
+                                                              future=12), # Months, so 1 year
+                                        represent = s3_date_represent,
+                                        ),
                                   Field("date_required_until",
                                         "datetime",
                                         label = T("Date Required Until"),
@@ -309,8 +324,11 @@ class S3RequestModel(S3Model):
                                  label = T("Request"),
                                  ondelete = "CASCADE")
         list_fields = ["id",
-                       "type",
-                       "event_id",]
+                       "site_id"
+                       #"type",
+                       #"event_id",
+
+                       ]
 
         if settings.get_req_use_req_number():
             list_fields.append("request_number")
@@ -443,23 +461,24 @@ $(function() {
         table.transit_status.readable = table.transit_status.writable = False
         table.fulfil_status.readable = table.fulfil_status.writable = False
         table.cancel.readable = table.cancel.writable = False
+        table.recv_by_id.readable = table.recv_by_id.writable = False
 
         return
     # -------------------------------------------------------------------------
     @staticmethod
-    def req_prep():
+    def req_prep(r):
         """
             Function to be called from REST prep functions
              - main module & components (sites)
         """
-
-        s3db = current.s3db
-        table = s3db.req_req
-        default_type = table.type.default
-        if table.type.default:
-            req_submit_button = {1:T("Save and add Items"),
-                                 3:T("Save and add People")}
-            current.manager.s3.crud.submit_button = req_submit_button[default_type]
+        if not r.component:
+            s3db = current.s3db
+            table = s3db.req_req
+            default_type = table.type.default
+            if table.type.default:
+                req_submit_button = {1:T("Save and add Items"),
+                                     3:T("Save and add People")}
+                current.manager.s3.crud.submit_button = req_submit_button[default_type]
 
         return
 
@@ -535,7 +554,7 @@ $(function() {
             current.auth.s3_has_permission("read", "req_req"):
             return [
                     (T("Requests"), "req"),
-                    (T("Match Requests"), "match/"),
+                    (T("Match Requests"), "req_match/"),
                     (T("Commit"), "commit")
                     ]
         else:
@@ -1879,5 +1898,75 @@ def req_rheader(r, check_page = False):
                 # Removed because causes an error if validation fails twice
                 # return response.s3.req_helptext_script
     return None
+
+# =============================================================================
+def req_match():
+    """
+        Function to be called from controller functions to display all
+        requests as a tab for a site.
+        @ToDo: Filter out requests from this site
+    """
+
+    request = current.request
+    manager = current.manager
+
+    s3db = current.s3db
+    s3 = current.response.s3
+
+    settings = current.deployment_settings
+
+    output = dict()
+
+    if "viewing" not in request.vars:
+        return output
+    else:
+        viewing = request.vars.viewing
+    if "." in viewing:
+        tablename, id = viewing.split(".", 1)
+    else:
+        return output
+
+    site_id = s3db[tablename][id].site_id
+    s3.actions = [dict(url = URL(c = "req",
+                                 f = "req",
+                                 args = ["[id]","check"],
+                                 vars = {"site_id": site_id}
+                                 ),
+                       _class = "action-btn",
+                       label = str(T("Check")),
+                       ),
+                  dict(url = URL(c = "req",
+                                 f = "commit_req",
+                                 args = ["[id]"],
+                                 vars = {"site_id": site_id}
+                                 ),
+                       _class = "action-btn",
+                       label = str(T("Commit")),
+                       ),
+                  dict(url = URL(c = "req",
+                                 f = "send_req",
+                                 args = ["[id]"],
+                                 vars = {"site_id": site_id}
+                                 ),
+                       _class = "action-btn",
+                       label = str(T("Send")),
+                       )
+                  ]
+
+    if tablename == "org_office":
+        rheader = s3db.org_rheader
+    elif tablename == "cr_shelter":
+        rheader = s3.shelter_rheader
+    elif tablename == "hms_hospital":
+        rheader = s3db.hms_hospital_rheader
+    else:
+        rheader = None
+
+    manager.configure("req_req", insertable=False)
+    output = current.rest_controller("req", "req", rheader = rheader)
+
+    if tablename == "org_office" and isinstance(output, dict):
+        output["title"] = T("Warehouse Details")
+    return output
 
 # END =========================================================================

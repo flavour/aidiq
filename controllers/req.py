@@ -162,6 +162,11 @@ def req_item_inv_item():
     response.s3.filter = (itable.item_id == req_item.item_id)
     # Tweak CRUD String for this context
     s3.crud_strings["inv_inv_item"].msg_list_empty = T("No Inventories currently have this item in stock")
+    # Add Site to list_fields
+    list_fields = s3mgr.model.get_config("inv_inv_item", "list_fields")
+    list_fields.insert(1, "site_id")
+    s3mgr.configure("inv_inv_item", list_fields=list_fields)
+
     inv_items = s3_rest_controller("inv", "inv_item")
     output["items"] = inv_items["items"]
 
@@ -474,12 +479,10 @@ def send_req():
                      f = "req",
                      args = [req_id]))
 
-    to_location_id = s3db.org_site[r_req.site_id].location_id
-
     # Create a new send record
     send_id = s3db.inv_send.insert(date = request.utcnow,
                                    site_id = site_id,
-                                   to_site_id = to_location_id)
+                                   to_site_id = r_req.site_id)
 
     # Only select items which are in the warehouse
     ritable = s3db.req_req_item

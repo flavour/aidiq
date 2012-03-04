@@ -357,9 +357,13 @@ class S3PDF(S3Method):
             footer = getParam("footer")
             if footer == None:
                 footer = self.pageFooter
+            filename = getParam("filename")
+            if filename == None:
+                filename = title
             self.newDocument(title,
                              header=header,
-                             footer=footer)
+                             footer=footer,
+                             filename = filename)
             try:
                 id = r.component_id
                 if id == None:
@@ -392,13 +396,18 @@ class S3PDF(S3Method):
                 list_fields = getParam("list_fields")
                 report_groupby = getParam("report_groupby")
                 report_hide_comments = getParam("report_hide_comments")
+                filename = getParam("filename")
+                if filename == None:
+                    filename = title
+
 
                 # Create the document shell
                 if title == None:
                     title = self.defaultTitle(self.resource)
                 self.newDocument(title,
                                  header=self.pageHeader,
-                                 footer=self.pageFooter)
+                                 footer=self.pageFooter,
+                                 filename = filename)
 
                 # Add details to the document
                 if componentname == None:
@@ -411,11 +420,47 @@ class S3PDF(S3Method):
                     # Document that has a resource header and component list
                     self.addrHeader(self.resource,
                                     list_fields,
-                                    report_hide_comments)
-                    self.addTable(self.resource.components[componentname].resource,
-                                  list_fields=list_fields,
-                                  report_groupby=report_groupby,
-                                  report_hide_comments=report_hide_comments)
+                                    report_hide_comments=report_hide_comments)
+                    # Get the raw data for the component
+                    ptable = self.resource.table
+                    ctable = db[componentname]
+                    raw_data = []
+                    linkfield = None
+                    for link in ptable._referenced_by:
+                        if link[0] == componentname:
+                            linkfield = link[1]
+                            break
+                    if linkfield != None:
+                        query = ctable[linkfield] == self.record
+                        records = db(query).select()
+                        find_fields = []
+                        for component in self.resource.components.values():
+                            find_fields += component.readable_fields()
+                        fields = []
+                        for field in find_fields:
+                            if field.type == "id":
+                                continue
+                            if report_hide_comments and field.name == "comments":
+                                continue
+                            fields.append(field)
+                        if not fields:
+                            fields = [table.id]
+                        label_fields = [f.label for f in fields]
+
+                        for record in records:
+                            data = []
+                            for field in fields:
+                                value = record[field.name]
+                                text = manager.represent(field,
+                                             value=value,
+                                             strip_markup=True,
+                                             non_xml_output=True,
+                                             extended_comments=True
+                                            )
+                                data.append(text)
+                            raw_data.append(data)
+                        self.addTable(raw_data = raw_data,
+                                      list_fields=label_fields)
 
                 # Build the document
                 doc = self.buildDoc()
@@ -1875,6 +1920,7 @@ class S3PDF(S3Method):
                     title,
                     header,
                     footer,
+                    filename = None,
                     heading=None,
                    ):
         """
@@ -1890,7 +1936,10 @@ class S3PDF(S3Method):
         # Get the document variables
         now = self.request.now.isoformat()[:19].replace("T", " ")
         docTitle = "%s %s" % (title, now)
-        self.filename = "%s_%s.pdf" % (title, now)
+        if filename == None:
+            self.filename = "%s_%s.pdf" % (title, now)
+        else:
+            self.filename = "%s_%s.pdf" % (filename, now)
         self.output = StringIO()
         self.doc = EdenDocTemplate(self.output, title=docTitle)
         self.doc.setPageTemplates(header,footer)
@@ -3144,7 +3193,8 @@ class S3PDFTable(object):
             self.data = self.data + data
 
         if self.raw_data != None:
-            self.data = self.raw_data
+            self.labels = self.list_fields
+            self.data = [self.labels] + self.raw_data
 
         if len(self.data) == 0:
             return None
@@ -3458,6 +3508,7 @@ class S3PDFRHeader():
         self.raw_data = raw_data
         self.list_fields = list_fields
         self.hideComments = hide_comments
+        self.report_groupby = None
         self.data = []
         self.subheadingList = []
         self.labels = []
@@ -3487,9 +3538,13 @@ class S3PDFRHeader():
         if len(self.data) == 0:
             return None
         else:
-            for index in range(len(self.data[0])):
-                self.rheader.append([self.data[0][index],
-                                     self.data[1][index]]
+            for index in range(len(self.labels)):
+                try:
+                    value = data[0][index]
+                except:
+                    value = "-"
+                self.rheader.append([self.labels[index],
+                                     value]
                                    )
         content = []
         style = [("FONTSIZE", (0, 0), (-1, -1), self.fontsize),
@@ -3501,7 +3556,7 @@ class S3PDFRHeader():
         table = Table(self.rheader,
                       repeatRows=1,
                       style=style,
-                      hAlign="LEFT"
+                      hAlign="LEFT",
                      )
         content.append(table)
         return content

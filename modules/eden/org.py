@@ -29,6 +29,7 @@
 
 __all__ = ["S3OrganisationModel",
            "S3SiteModel",
+           "S3FacilityModel",
            "S3RoomModel",
            "S3OfficeModel",
            "org_organisation_represent",
@@ -676,6 +677,10 @@ class S3SiteModel(S3Model):
         location_id = self.gis_location_id
         organisation_id = self.org_organisation_id
 
+        # Shortcuts
+        add_component = self.add_component
+        super_key = self.super_key
+
         # =============================================================================
         # Site
         #
@@ -725,38 +730,110 @@ class S3SiteModel(S3Model):
         # Components
 
         # Human Resources
-        self.add_component("hrm_human_resource",
-                           org_site=self.super_key(table))
+        add_component("hrm_human_resource",
+                      org_site=super_key(table))
 
         # Documents
-        self.add_component("doc_document",
-                           org_site=self.super_key(table))
-        self.add_component("doc_image",
-                           org_site=self.super_key(table))
+        add_component("doc_document",
+                      org_site=super_key(table))
+        add_component("doc_image",
+                      org_site=super_key(table))
 
         # Inventory
-        self.add_component("inv_inv_item",
-                           org_site=self.super_key(table))
-        self.add_component("inv_recv",
-                           org_site=self.super_key(table))
-        self.add_component("inv_send",
-                           org_site=self.super_key(table))
+        add_component("inv_inv_item",
+                      org_site=super_key(table))
+        add_component("inv_recv",
+                      org_site=super_key(table))
+        add_component("inv_send",
+                      org_site=super_key(table))
 
         # Procurement Plans
-        self.add_component("proc_plan",
-                           org_site=self.super_key(table))
+        add_component("proc_plan",
+                      org_site=super_key(table))
 
         # Requests
-        self.add_component("req_req",
-                           org_site=self.super_key(table))
-        self.add_component("req_commit",
-                           org_site=self.super_key(table))
+        add_component("req_req",
+                      org_site=super_key(table))
+        add_component("req_commit",
+                      org_site=super_key(table))
 
         # ---------------------------------------------------------------------
         # Pass variables back to global scope (response.s3.*)
         #
         return Storage(
                     org_site_id = site_id
+                )
+
+# =============================================================================
+class S3FacilityModel(S3Model):
+    """
+        Generic Site
+    """
+
+    names = ["org_facility",
+             ]
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+        s3 = current.response.s3
+
+        location_id = self.gis_location_id
+        organisation_id = self.org_organisation_id
+
+        # =============================================================================
+        # Facilities (generic)
+        #
+        tablename = "org_facility"
+        table = self.define_table(tablename,
+                                  self.super_link("site_id", "org_site"),
+                                  Field("name", notnull=True,
+                                        length=64,           # Mayon Compatibility
+                                        label = T("Name")),
+                                  Field("code",
+                                        length=10,
+                                        # Deployments that don't wants office codes can hide them
+                                        #readable=False,
+                                        #writable=False,
+                                        # Mayon compatibility
+                                        # @ToDo: Deployment Setting to add validator to make these unique
+                                        #notnull=True,
+                                        #unique=True,
+                                        label=T("Code")),
+                                  organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile = True)),
+                                  location_id(),
+                                  s3.comments(),
+                                  *(s3.address_fields() + s3.meta_fields()))
+
+        # CRUD strings
+        ADD_FAC = T("Add Facility")
+        LIST_FACS = T("List Facilities")
+        s3.crud_strings[tablename] = Storage(
+            title_create = ADD_FAC,
+            title_display = T("Facility Details"),
+            title_list = LIST_FACS,
+            title_update = T("Edit Facility"),
+            title_search = T("Search Facilities"),
+            title_upload = T("Import Facilities"),
+            subtitle_create = T("Add New Facility"),
+            subtitle_list = T("Facilities"),
+            label_list_button = LIST_FACS,
+            label_create_button = T("Add New Facility"),
+            label_delete_button = T("Delete Facility"),
+            msg_record_created = T("Facility added"),
+            msg_record_modified = T("Facility updated"),
+            msg_record_deleted = T("Facility deleted"),
+            msg_list_empty = T("No Facilities currently registered"))
+
+        self.configure(tablename,
+                       super_entity="org_site"
+                       )
+
+        # ---------------------------------------------------------------------
+        # Pass variables back to global scope (response.s3.*)
+        #
+        return Storage(
                 )
 
 # =============================================================================
@@ -884,7 +961,8 @@ class S3OfficeModel(S3Model):
 
         location_id = self.gis_location_id
         organisation_id = self.org_organisation_id
-        address_fields = s3.address_fields
+
+        super_link = self.super_link
 
         # =============================================================================
         # Offices
@@ -911,8 +989,9 @@ class S3OfficeModel(S3Model):
 
         tablename = "org_office"
         table = self.define_table(tablename,
-                                  self.super_link("pe_id", "pr_pentity"),
-                                  self.super_link("site_id", "org_site"),
+                                  super_link("pe_id", "pr_pentity"),
+                                  super_link("site_id", "org_site"),
+                                  super_link("doc_id", "doc_entity"),
                                   Field("name", notnull=True,
                                         length=64,           # Mayon Compatibility
                                         label = T("Name")),
@@ -931,13 +1010,6 @@ class S3OfficeModel(S3Model):
                                         requires = IS_NULL_OR(IS_IN_SET(org_office_type_opts)),
                                         represent = lambda opt: \
                                           org_office_type_opts.get(opt, UNKNOWN_OPT)),
-                                  # @ToDo: Deprecate
-                                  Field("office_id", "reference org_office", # This form of hierarchy may not work on all Databases
-                                        readable=False,
-                                        writable=False,
-                                        label = T("Parent Office"),
-                                        represent = self.org_office_represent,
-                                        comment = office_comment),
                                   location_id(),
                                   Field("phone1", label = T("Phone 1"),
                                         requires = IS_NULL_OR(s3_phone_requires)),
@@ -967,14 +1039,8 @@ class S3OfficeModel(S3Model):
                                         default = False),
                                   #document_id(),  # Better to have multiple Documents on a Tab
                                   s3.comments(),
-                                  *(address_fields() + s3.meta_fields()))
+                                  *(s3.address_fields() + s3.meta_fields()))
 
-        # Field settings
-        table.office_id.requires = IS_NULL_OR(IS_ONE_OF(db, "org_office.id",
-                                                        "%(name)s",
-                                                        filterby = "type",
-                                                        filter_opts = [1, 2, 3, 4] # All bar '5' (Warehouse)
-                                                        ))
         if not settings.get_gis_building_name():
             table.building_name.readable = False
 
@@ -1195,7 +1261,8 @@ def org_site_represent(id, link=True):
                 type = record.type
 
         if type == 5:
-             instance_type_nice = T("Warehouse")
+            instance_type = "inv_warehouse"
+            instance_type_nice = T("Warehouse")
 
     if site:
         represent = "%s (%s)" % (site.name, instance_type_nice)
@@ -1280,15 +1347,17 @@ def org_rheader(r, tabs=[]):
         tabs = [(T("Basic Details"), None),
                 #(T("Contact Data"), "contact"),
                 (T("Staff"), "human_resource"),
+                (T("Attachments"), "document"),
                ]
-        try:
-            tabs = tabs + s3.req_tabs(r)
-        except:
-            pass
         try:
             tabs = tabs + current.s3db.inv_tabs(r)
         except:
             pass
+        try:
+            tabs = tabs + s3.req_tabs(r)
+        except:
+            pass
+
 
         rheader_tabs = s3_rheader_tabs(r, tabs)
 

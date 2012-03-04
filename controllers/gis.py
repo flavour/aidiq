@@ -88,11 +88,6 @@ def define_map(window=False, toolbar=False, config=None):
     if not config:
         config = gis.get_config()
 
-    if not deployment_settings.get_security_map() or s3_has_role(MAP_ADMIN):
-        catalogue_toolbar = True
-    else:
-        catalogue_toolbar = False
-
     # @ToDo: Make these configurable
     search = True
     legend = True
@@ -118,7 +113,6 @@ def define_map(window=False, toolbar=False, config=None):
 
     map = gis.show_map(
                        window=window,
-                       catalogue_toolbar=catalogue_toolbar,
                        wms_browser = wms_browser,
                        toolbar=toolbar,
                        legend=legend,
@@ -2936,10 +2930,16 @@ def proxy():
                 headers = {"Content-Type": request["wsgi"].environ["CONTENT_TYPE"]}
                 body = request.body.read(length)
                 r = urllib2.Request(url, body, headers)
-                y = urllib2.urlopen(r)
+                try:
+                    y = urllib2.urlopen(r)
+                except urllib2.URLError:
+                    raise(HTTP(400, "Unable to reach host %s" % r))
             else:
                 # GET
-                y = urllib2.urlopen(url)
+                try:
+                    y = urllib2.urlopen(url)
+                except urllib2.URLError:
+                    raise(HTTP(400, "Unable to reach host %s" % url))
 
             # Check for allowed content types
             i = y.info()

@@ -1036,12 +1036,14 @@ class S3QuestionTypeAbstractWidget(FormWidget):
             return
         if self.question == None or update:
             db = current.db
+            s3 = current.response.s3
             # Get the question from the database
             query = (self.qtable.id == self.id)
             self.question = db(query).select(limitby=(0, 1)).first()
             if self.question == None:
                 raise Exception("no question with id %s in database" % self.id)
             # Get the metadata from the database and store in qstn_metadata
+            self.question.name = s3.survey_qstn_name_represent(self.question.name)
             query = (self.mtable.question_id == self.id)
             self.rows = db(query).select()
             for row in self.rows:
@@ -1626,11 +1628,12 @@ class S3QuestionTypeDateWidget(S3QuestionTypeAbstractWidget):
         self.typeDescription = T("Date")
 
     def display(self, **attr):
-        from s3widgets import S3DateWidget
-        value = self.getAnswer()
-        widget = S3DateWidget()
-        input = widget(self.field, value, **self.attr)
-        return self.layout(self.question.name, input, **attr)
+        return S3QuestionTypeAbstractWidget.display(self, **attr)
+#        from s3widgets import S3DateWidget
+#        value = self.getAnswer()
+#        widget = S3DateWidget()
+#        input = widget(self.field, value, **self.attr)
+#        return self.layout(self.question.name, input, **attr)
 
     def formattedAnswer(self, data):
         """
@@ -2105,7 +2108,7 @@ class S3QuestionTypeLocationWidget(S3QuestionTypeAbstractWidget):
 
     def canGrowHorizontal(self):
         return True
-
+        
     def display(self, **attr):
         """
             This displays the widget on a web form. It uses the layout
