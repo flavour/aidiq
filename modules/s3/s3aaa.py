@@ -728,6 +728,7 @@ class AuthS3(Auth):
         else:
             user.organisation_id.readable = False
             user.organisation_id.writable = False
+        user.organisation_id.default = deployment_settings.get_auth_registration_organisation_default()
         # @ToDo: Option to request Facility during Registration
         user.site_id.readable = False
         labels, required = s3_mark_required(user)
@@ -806,10 +807,11 @@ class AuthS3(Auth):
                 # Ensure that we add to the correct Organization
                 approver, organisation_id = self.s3_approver(form.vars)
 
-                # @ToDo: Is it correct to override the organisation entered by the user?
-                #        Ideally (if the deployment_settings.auth.registration_requests_organisation = True
-                #        the org could be selected based on the email and the user could then override
-                form.vars.organisation = organisation_id
+                if organisation_id:
+                    # @ToDo: Is it correct to override the organisation entered by the user?
+                    #        Ideally (if the deployment_settings.auth.registration_requests_organisation = True
+                    #        the org could be selected based on the email and the user could then override
+                    form.vars.organisation = organisation_id
 
                 # Send the Verification email
                 if not settings.mailer or \
@@ -829,7 +831,8 @@ class AuthS3(Auth):
                 # Identify the Approver &
                 # ensure that we add to the correct Organization
                 approver, organisation_id = self.s3_approver(form.vars)
-                form.vars.organisation_id = organisation_id
+                if organisation_id:
+                    form.vars.organisation_id = organisation_id
 
                 if approver:
                     # Send the Authorisation email
@@ -849,6 +852,8 @@ class AuthS3(Auth):
                 # No verification or approval needed
                 approved = True
                 approver, organisation_id = self.s3_approver(form.vars)
+                if organisation_id:
+                    form.vars.organisation = organisation_id
                 form.vars.registration_key = ""
                 form.vars.approver = approver
                 settings.verify_email_onaccept(form.vars)
@@ -1070,7 +1075,6 @@ class AuthS3(Auth):
         db = current.db
         manager = current.manager
         s3db = current.s3db
-        deployment_settings = current.deployment_settings
 
         user_id = form.vars.id
         if not user_id:
@@ -1108,8 +1112,13 @@ class AuthS3(Auth):
             row = db(query).select(htable.id, limitby=(0, 1)).first()
 
             if not row:
+                if current.deployment_settings.get_hrm_show_staff():
+                    type = 1 # Staff
+                else:
+                    type = 2 # Volunteer
                 id = htable.insert(person_id=person_id,
                                    organisation_id=organisation_id,
+                                   type=type,
                                    owned_by_user=user_id,
                                    owned_by_organisation=owned_by_organisation,
                                    owned_by_facility=owned_by_facility)
@@ -1496,7 +1505,7 @@ class AuthS3(Auth):
         mtable = self.settings.table_membership
         utable = self.settings.table_user
 
-        # User own their own HRM records
+        # User owns their own HRM records
         query = (htable.person_id == person_id)
         db(query).update(owned_by_user=user_id)
 
@@ -3069,13 +3078,14 @@ class S3Permission(object):
             return False
 
         permitted = True
-        if self.use_cacls:
-            acl = self(c=c, f=f, table=tablename)
-            if acl & permission != permission:
-                permitted = False
-        else:
-            if permission != self.READ:
-                permitted = self.auth.s3_logged_in()
+        if not self.auth.override:
+            if self.use_cacls:
+                acl = self(c=c, f=f, table=tablename)
+                if acl & permission != permission:
+                    permitted = False
+            else:
+                if permission != self.READ:
+                    permitted = self.auth.s3_logged_in()
 
         if permitted:
             return URL(a=a,

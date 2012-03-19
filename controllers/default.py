@@ -134,6 +134,16 @@ def index():
     title = deployment_settings.get_system_name()
     response.title = title
 
+    item = ""
+    if deployment_settings.has_module("cms"):
+        table = s3db.cms_post
+        item = db(table.module == module).select(table.body,
+                                                 limitby=(0, 1)).first()
+        if item:
+            item = DIV(XML(item.body))
+        else:
+            item = ""
+
     # Menu Boxes
     datatable_ajax_source = ""
     # Check logged in AND permissions
@@ -266,6 +276,7 @@ google.setOnLoadCallback(LoadDynamicFeedControl);"""))
         response.s3.js_global.append( feed_control )
 
     return dict(title = title,
+                item = item,
                 project_box = project_box,
                 r = None, # Required for dataTable to work
                 datatable_ajax_source = datatable_ajax_source,

@@ -43,6 +43,8 @@ deployment_settings.auth.registration_requests_organisation = True
 deployment_settings.auth.registration_organisation_mandatory = True
 # Uncomment this to have the Organisation input hidden unless the user enters a non-whitelisted domain
 #deployment_settings.auth.registration_organisation_hidden = True
+# Uncomment this to default the Organisation during registration
+#deployment_settings.auth.registration_organisation_default = 1
 # Uncomment this to request an image when users register
 #deployment_settings.auth.registration_requests_image = True
 # Uncomment this to direct newly-registered users to their volunteer page to be able to add extra details
@@ -384,7 +386,12 @@ deployment_settings.security.policy = 6 # Organisation-ACLs
 #deployment_settings.supply.catalog_default = T("Other Items")
 
 # Human Resource Management
+# Uncomment to allow Staff & Volunteers to be registered without an email address
 #deployment_settings.hrm.email_required = False
+# Uncomment to hide the Staff resource
+#deployment_settings.hrm.show_staff = False
+# Uncomment to hide the Volunteer resource
+deployment_settings.hrm.show_vols = False
 # Uncomment to allow hierarchical categories of Skills, which each need their own set of competency levels.
 #deployment_settings.hrm.skill_types = True
 
@@ -463,6 +470,12 @@ deployment_settings.modules = OrderedDict([
             restricted = True,
             module_type = None,
         )),
+    #("cms", Storage(
+    #       name_nice = T("Content Management"),
+    #       description = T("Content Management System"),
+    #       restricted = True,
+    #       module_type = 10,
+    #   )),
     ("doc", Storage(
             name_nice = T("Documents"),
             description = T("A library of digital resources, such as photos, documents and reports"),

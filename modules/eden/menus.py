@@ -212,7 +212,6 @@ class S3MainMenu:
                             MM("Settings", f="settings"),
                             MM("Users", f="user"),
                             MM("Database", c="appadmin", f="index"),
-                            MM("Import", f="import_file"),
                             MM("Synchronization", c="sync", f="index"),
                             MM("Tickets", f="errors"),
                         )
@@ -298,6 +297,24 @@ class S3MainMenu:
                     )
                 )
         return gis_menu
+
+    @staticmethod
+    def menu_climate(**attr):
+        settings = current.deployment_settings
+        module = settings.modules["climate"]
+        session = current.session
+        ADMIN = session.s3.system_roles.ADMIN
+        menu_climate = MM(
+            module.name_nice,
+            c="climate",
+            **attr
+        )(
+            MM("Station Parameters", f="station_parameter"),
+            #MM("Saved Queries", f="save_query"),
+            MM("Purchase Data", f="purchase"),
+            MM("DataSet Prices", f="prices", restrict=[ADMIN]),
+        )
+        return menu_climate
 
 # =============================================================================
 class S3OptionsMenu:
@@ -517,6 +534,23 @@ class S3OptionsMenu:
                 )
 
     # -------------------------------------------------------------------------
+    def cms(self):
+        """ CMS / Content Management System """
+
+        return M(c="cms")(
+                    M("Series", f="series")(
+                        M("New", m="create"),
+                        M("List All"),
+                        M("View as Pages", f="blog"),
+                    ),
+                    M("Posts", f="post")(
+                        M("New", m="create"),
+                        M("List All"),
+                        M("View as Pages", f="page"),
+                    ),
+                )
+
+    # -------------------------------------------------------------------------
     def delphi(self):
         """ DELPHI / Delphi Decision Maker """
 
@@ -638,12 +672,54 @@ class S3OptionsMenu:
     def gis(self):
         """ GIS / GIS Controllers """
 
-        session = current.session
-        MAP_ADMIN = session.s3.system_roles.MAP_ADMIN
+        auth = current.auth
+        db = current.db
+        s3db = current.s3db
+        s3 = current.session.s3
+        MAP_ADMIN = s3.system_roles.MAP_ADMIN
+
+        def config_menu(i):
+            if not auth.is_logged_in():
+                # Anonymous users can never cofnigure the Map
+                return False
+            if auth.s3_has_permission("create",
+                                      s3db.gis_config):
+                # If users can create configs then they can see the menu item
+                return True
+            # Look for this user's config
+            table = s3db.gis_config
+            query = (table.pe_id == auth.user.pe_id)
+            config = db(query).select(table.id,
+                                      limitby=(0, 1),
+                                      cache=s3db.cache).first()
+            if config:
+                return True
+
+        def config_args():
+            if not auth.user:
+                # Won't show anyway due to check
+                return []
+
+            if auth.s3_has_role(MAP_ADMIN):
+                # Full List
+                return []
+
+            # Look for this user's config
+            table = s3db.gis_config
+            query = (table.pe_id == auth.user.pe_id)
+            config = db(query).select(table.id,
+                                      limitby=(0, 1),
+                                      cache=s3db.cache).first()
+            if config:
+                # Link direct to the User's config
+                return [config.id, "layer_entity"]
+            # Link to the Create form
+            return ["create"]
 
         return M(c="gis")(
                     M("Fullscreen Map", f="map_viewing_client"),
-                    M("Configuration", f="config"),
+                    M("Configuration", f="config", args=config_args(),
+                      check=config_menu),
                     # Currently not got geocoding support
                     #M("Bulk Uploader", c="doc", f="bulk_upload"),
                     M("Locations", f="location",
@@ -685,22 +761,26 @@ class S3OptionsMenu:
     def hrm(self):
         """ HRM / Human Resources Management """
 
-        session = current.session
-        ADMIN = session.s3.system_roles.ADMIN
+        settings = current.deployment_settings
+        s3 = current.session.s3
+        ADMIN = s3.system_roles.ADMIN
 
         # Custom conditions for the check-hook, as lambdas in order
         # to have them checked only immediately before rendering:
-        manager_mode = lambda i: session.s3.hrm.mode is None
-        personal_mode = lambda i: session.s3.hrm.mode is not None
-        is_org_admin = lambda i: session.s3.hrm.orgs and True or \
-                                 ADMIN in session.s3.roles
+        manager_mode = lambda i: s3.hrm.mode is None
+        personal_mode = lambda i: s3.hrm.mode is not None
+        is_org_admin = lambda i: s3.hrm.orgs and True or \
+                                 ADMIN in s3.roles
+
+        show_staff = lambda i: settings.get_hrm_show_staff()
+        show_vols = lambda i: settings.get_hrm_show_vols()
 
         staff = dict(group="staff")
         volunteers = dict(group="volunteer")
 
         return M(c="hrm")(
                     M("Staff", f="human_resource",
-                      check=manager_mode, vars=staff)(
+                      check=[manager_mode, show_staff], vars=staff)(
                         M("New Staff Member", m="create",
                           vars=staff),
                         M("List All",
@@ -720,7 +800,7 @@ class S3OptionsMenu:
                         #M("Dashboard", f="index"),
                     ),
                     M("Volunteers", f="human_resource",
-                      check=manager_mode, vars=volunteers)(
+                      check=[manager_mode, show_vols], vars=volunteers)(
                         M("New Volunteer", m="create",
                           vars=volunteers),
                         M("List All",
@@ -770,13 +850,13 @@ class S3OptionsMenu:
                       check=manager_mode)(
                         M("New Training Course", m="create"),
                         M("List All"),
-                        M("Course Certificates", f="course_certificate"),
+                        #M("Course Certificates", f="course_certificate"),
                     ),
                     M("Certificate Catalog", f="certificate",
                       check=manager_mode)(
                         M("New Certificate", m="create"),
                         M("List All"),
-                        M("Skill Equivalence", f="certificate_skill"),
+                        #M("Skill Equivalence", f="certificate_skill"),
                     ),
                     M("Profile", f="person",
                       check=personal_mode, vars=dict(mode="personal")),
@@ -795,6 +875,7 @@ class S3OptionsMenu:
         session = current.session
         ADMIN = session.s3.system_roles.ADMIN
 
+        current.s3db.inv_recv_crud_strings()
         crud_strings = current.response.s3.crud_strings
         inv_recv_list = crud_strings.inv_recv.subtitle_list
         inv_recv_search = crud_strings.inv_recv.title_search
@@ -1128,13 +1209,12 @@ class S3OptionsMenu:
                         M("List All Projects"),
                         M("Open Tasks for Project", vars={"tasks":1}),
                     ),
-                    #M("Tasks", f="task")(
-                        #M("Add New Task", m="create"),
-                        #M("List All Tasks"),
-                        #M("Search", m="search"),
-                    #),
+                    M("Tasks", f="task")(
+                        M("Add New Task", m="create"),
+                        M("List All Tasks"),
+                        M("Search", m="search"),
+                    ),
                     M("Daily Work", f="time")(
-                        M("All Tasks", f="task", m="search"),
                         M("My Logged Hours", vars={"mine":1}),
                         M("Last Week's Work", m="report",
                           vars=Storage(rows="person_id",
@@ -1167,7 +1247,14 @@ class S3OptionsMenu:
             project_menu(
                     M("Projects", f="project")(
                         M("List All Projects"),
-                    )
+                        M("Open Tasks for Project", vars={"tasks":1}),
+                    ),
+                    M("Tasks", f="task")(
+                        M("Add New Task", m="create"),
+                        M("List All Tasks"),
+                        M("Search", m="search"),
+                    ),
+                    
                 )
 
         return project_menu
