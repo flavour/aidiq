@@ -74,7 +74,7 @@ class S3XML(S3Codec):
     CUSER = "created_by"
     MTIME = "modified_on"
     MUSER = "modified_by"
-    OROLE = "owned_by_role"
+    OGROUP = "owned_by_group"
     OUSER = "owned_by_user"
 
     # GIS field names
@@ -86,14 +86,14 @@ class S3XML(S3Codec):
             "id",
             "deleted_fk",
             "owned_by_organisation",
-            "owned_by_facility"]
+            "owned_by_entity"]
 
     FIELDS_TO_ATTRIBUTES = [
             "id",
             "admin",
             CUSER,
             MUSER,
-            OROLE,
+            OGROUP,
             OUSER,
             CTIME,
             MTIME,
@@ -105,7 +105,7 @@ class S3XML(S3Codec):
             "admin",
             CUSER,
             MUSER,
-            OROLE,
+            OGROUP,
             OUSER,
             CTIME,
             MTIME,
@@ -420,7 +420,7 @@ class S3XML(S3Codec):
 
         if f in (self.CUSER, self.MUSER, self.OUSER):
             return self.represent_user(v)
-        elif f in (self.OROLE):
+        elif f in (self.OGROUP):
             return self.represent_role(v)
 
         manager = current.manager
@@ -715,7 +715,7 @@ class S3XML(S3Codec):
                     if current.deployment_settings.get_gis_spatialdb():
                         if current.auth.permission.format == "geojson":
                             # Do the Simplify & GeoJSON direct from the DB
-                            geojson = db(query).select(ktable.the_geom.st_simplify(0.001).st_asgeojson().with_alias('geojson'),
+                            geojson = db(query).select(ktable.the_geom.st_simplify(0.001).st_asgeojson(precision=4).with_alias('geojson'),
                                                        limitby=(0, 1)).first().geojson
                             if geojson:
                                 # Output the GeoJSON directly into the XML, so that XSLT can simply drop in
@@ -1081,7 +1081,7 @@ class S3XML(S3Codec):
                     if user:
                         record[f] = user.id
                 continue
-            elif f == self.OROLE:
+            elif f == self.OGROUP:
                 v = element.get(f, None)
                 if v and gtable and "role" in gtable:
                     query = gtable.role == v

@@ -175,7 +175,7 @@ deployment_settings.L10n.religions = {
     "none":T("none"),
     "christian":T("Christian"),
     "muslim":T("Muslim"),
-    "jew":T("Jew"),
+    "jewish":T("Jewish"),
     "buddhist":T("Buddhist"),
     "hindu":T("Hindu"),
     "bahai":T("Bahai"),
@@ -276,7 +276,6 @@ deployment_settings.security.archive_not_delete = True
 # 4: Apply both Controller & Function ACLs
 # 5: Apply Controller, Function & Table ACLs
 # 6: Apply Controller, Function, Table & Organisation ACLs
-# 7: Apply Controller, Function, Table, Organisation & Facility ACLs
 #
 deployment_settings.security.policy = 6 # Organisation-ACLs
 #acl = deployment_settings.aaa.acl
@@ -398,6 +397,8 @@ deployment_settings.hrm.show_vols = False
 # Project Tracking
 # Uncomment this to use settings suitable for a global/regional organisation (e.g. DRR)
 #deployment_settings.project.drr = True
+# Uncomment this to use Milestones in project/task.
+deployment_settings.project.milestones = True
 
 # Save Search Widget
 deployment_settings.save_search.widget = False
@@ -628,6 +629,18 @@ deployment_settings.modules = OrderedDict([
     #       description = T("Helps to report and search for missing persons"),
     #       restricted = False,
     #       module_type = 10,
+    #   )),
+    #("member", Storage(
+    #       name_nice = T("Members"),
+    #       description = T("Membership Management System"),
+    #       restricted = True,
+    #       module_type = 10,
+    #   )),
+    #("fire", Storage(
+    #       name_nice = T("Fire Stations"),
+    #       description = T("Fire Station Management"),
+    #       restricted = True,
+    #       module_type = 1,
     #   )),
     #("patient", Storage(
     #        name_nice = T("Patient Tracking"),

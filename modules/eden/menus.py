@@ -164,6 +164,7 @@ class S3MainMenu:
                 login_next = request.get_vars["_next"]
 
             menu_auth = MM("Login", c="default", f="user", m="login",
+                           _id="auth_menu_login",
                            vars=dict(_next=login_next), **attr)(
                             MM("Login", m="login",
                                vars=dict(_next=login_next),
@@ -175,8 +176,9 @@ class S3MainMenu:
                         )
         else:
             menu_auth = MM(auth.user.email, c="default", f="user",
-                           translate=False, link=False, **attr)(
-                            MM("Logout", m="logout"),
+                           translate=False, link=False, _id="auth_menu_email",
+                           **attr)(
+                            MM("Logout", m="logout", _id="auth_menu_logout"),
                             MM("User Profile", m="profile"),
                             MM("Personal Data", c="pr", f="person", m="update",
                                 vars={"person.pe_id" : auth.user.pe_id}),
@@ -890,6 +892,7 @@ class S3OptionsMenu:
                     ),
                     M("Warehouse Stock", c="inv", f="warehouse")(
                         M("Search Warehouse Stock", f="inv_item", m="search"),
+                        M("Adjust Stock Levels", f="adj"),
                         M("Report", f="inv_item", m="report"),
                         M("Import", f="inv_item", m="import", p="create"),
                     ),
@@ -1008,6 +1011,18 @@ class S3OptionsMenu:
                           m="import", p="create"),
                         M("Import Completed Assessment Forms", f="complete",
                           m="import", p="create"),
+                    ),
+                )
+
+    # -------------------------------------------------------------------------
+    def member(self):
+        """ Membership Management """
+
+        return M(c="member")(
+                    M("Members", f="membership")(
+                        M("New", m="create"),
+                        M("List All"),
+                        #M("Search", m="search"),
                     ),
                 )
 
@@ -1211,8 +1226,8 @@ class S3OptionsMenu:
                     ),
                     M("Tasks", f="task")(
                         M("Add New Task", m="create"),
-                        M("List All Tasks"),
-                        M("Search", m="search"),
+                        #M("List All Tasks"),
+                        M("Search All Tasks", m="search"),
                     ),
                     M("Daily Work", f="time")(
                         M("My Logged Hours", vars={"mine":1}),
@@ -1254,7 +1269,7 @@ class S3OptionsMenu:
                         M("List All Tasks"),
                         M("Search", m="search"),
                     ),
-                    
+
                 )
 
         return project_menu
