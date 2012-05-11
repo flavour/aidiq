@@ -44,22 +44,27 @@ from gluon import *
 from gluon.dal import Row
 from gluon.storage import Storage
 from ..s3 import *
+from eden.layouts import S3AddResourceLink
 
 T = current.T
 organisation_type_opts = {
-    1:T("Government"),
-    2:T("Embassy"),
-    3:T("International NGO"),
-    4:T("Donor"),               # Don't change this number without changing organisation_popup.html
-    6:T("National NGO"),
-    7:T("UN"),
-    8:T("International Organization"),
-    9:T("Military"),
-    10:T("Private"),
-    11:T("Intergovernmental Organization"),
-    12:T("Institution"),
-    13:T("Red Cross / Red Crescent")
-    #12:"MINUSTAH"   Haiti-specific
+    # http://hxl.humanitarianresponse.info/index.html#Organisation
+    1:T("Government"),          # HXL: Government organisation
+    2:T("Embassy"),             # Add to HXL?
+    3:T("International NGO"),   # HXL: NGO - split?
+    4:T("Donor"),               # HXL: Bilateral organisation. Don't change this number without changing organisation_popup.html
+    6:T("National NGO"),        # HXL: NGO - split?
+    7:T("UN"),                  # HXL: UN agency
+    8:T("International Organization"), # remove?
+    9:T("Military"),            # Add to HXL?
+    10:T("Private"),            # HXL: Private organisation / foundation
+    11:T("Intergovernmental Organization"), # HXL: Inter-governmental organisation
+    12:T("Institution"),        # remove?
+    13:T("Red Cross / Red Crescent") # HXL: Red cross / red crescent
+    # These are affiliation roles:
+    # http://eden.sahanafoundation.org/wiki/BluePrintPersonEntityModel#Roles
+    # HXL: Distributing partner
+    # HXL: Supplying agency
 }
 
 # =============================================================================
@@ -229,6 +234,7 @@ class S3OrganisationModel(S3Model):
                                    length=128,           # Mayon Compatibility
                                    label = T("Name")),
                              Field("acronym", length=8, label = T("Acronym"),
+                                   represent = lambda val: val or "",
                                    comment = DIV(_class="tooltip",
                                                  _title="%s|%s" % (T("Acronym"),
                                                                    T("Acronym of the organization's name, eg. IFRC.")))),
@@ -311,11 +317,6 @@ class S3OrganisationModel(S3Model):
             msg_record_modified = T("Customer updated"),
             msg_record_deleted = T("Customer deleted"),
             msg_list_empty = T("No Customers currently registered"))
-
-        organisation_popup_url = URL(c="org", f="organisation",
-                                     args="create",
-                                     vars=dict(format="popup"))
-
         # @ToDo: Deployment_setting
         organisation_dropdown_not_ac = True
         if organisation_dropdown_not_ac:
@@ -325,17 +326,19 @@ class S3OrganisationModel(S3Model):
             help = T("Enter some characters to bring up a list of possible matches")
             widget = S3OrganisationAutocompleteWidget()
 
-        organisation_comment = DIV(A(ADD_ORGANIZATION,
-                                   _class="colorbox",
-                                   _href=organisation_popup_url,
-                                   _target="top",
-                                   _title=ADD_ORGANIZATION),
-                                 DIV(DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Customer"),
-                                                           help))))
+        organisation_comment = S3AddResourceLink(c="org",
+                                                 f="organisation",
+                                                 label=ADD_ORGANIZATION,
+                                                 title=T("Organization"),
+                                                 tooltip=help)
+        
+        from_organisation_comment = S3AddResourceLink(c="org",
+                                                      f="organisation",
+                                                      vars=dict(child="from_organisation_id"),
+                                                      label=ADD_ORGANIZATION,
+                                                      title=T("Organization"),
+                                                      tooltip=help)
 
-        from_organisation_comment = copy.deepcopy(organisation_comment)
-        from_organisation_comment[0]["_href"] = organisation_comment[0]["_href"].replace("popup", "popup&child=from_organisation_id")
 
         organisation_id = S3ReusableField("organisation_id",
                                           db.org_organisation, sortby="name",
@@ -381,28 +384,30 @@ class S3OrganisationModel(S3Model):
                     comment = T("Search for an Organization by name or acronym"),
                     field = [ "name",
                               "acronym",
+                              "parent.name",
+                              "parent.acronym",
                             ]
                     ),
-                    S3SearchOptionsWidget(
-                        name = "org_search_type",
-                        label = T("Type"),
-                        field = ["type"],
-                        cols = 2
-                    ),
-                    S3SearchOptionsWidget(
-                        name = "org_search_sector",
-                        label = T("Sector"),
-                        field = ["sector_id"],
-                        represent = self.org_sector_represent,
-                        cols = 3
-                    ),
-                    # Doesn't work on all versions of gluon/sqlhtml.py
-                    S3SearchOptionsWidget(
-                        name = "org_search_home_country",
-                        label = T("Home Country"),
-                        field = ["country"],
-                        cols = 3
-                    ),
+                    # S3SearchOptionsWidget(
+                        # name = "org_search_type",
+                        # label = T("Type"),
+                        # field = "type",
+                        # cols = 2
+                    # ),
+                    # S3SearchOptionsWidget(
+                        # name = "org_search_sector",
+                        # label = T("Sector"),
+                        # field = "sector_id",
+                        # represent = self.org_sector_represent,
+                        # cols = 3
+                    # ),
+                    ## Doesn't work on all versions of gluon/sqlhtml.py
+                    # S3SearchOptionsWidget(
+                        # name = "org_search_home_country",
+                        # label = T("Home Country"),
+                        # field = "country",
+                        # cols = 3
+                    # ),
                 )
             )
 
@@ -453,6 +458,16 @@ class S3OrganisationModel(S3Model):
                                     actuate="embed",
                                     autocomplete="name",
                                     autodelete=False))
+        # For imports
+        add_component("org_organisation",
+                      org_organisation=Storage(
+                                    name="parent",
+                                    link="org_organisation_branch",
+                                    joinby="branch_id",
+                                    key="organisation_id",
+                                    actuate="embed",
+                                    autocomplete="name",
+                                    autodelete=False))
 
         # Assets
         # @ToDo
@@ -483,17 +498,11 @@ class S3OrganisationModel(S3Model):
                                                                    filter_opts=[4])),
                                    represent = self.donor_represent,
                                    label = T("Funding Organization"),
-                                   comment = DIV(A(ADD_DONOR,
-                                                   _class="colorbox",
-                                                   _href=URL(c="org", f="organisation",
-                                                             args="create",
-                                                             vars=dict(format="popup",
-                                                                       child="donor_id")),
-                                                   _target="top",
-                                                   _title=ADD_DONOR),
-                                                DIV( _class="tooltip",
-                                                     _title="%s|%s" % (ADD_DONOR,
-                                                                       ADD_DONOR_HELP))),
+                                   comment=S3AddResourceLink(c="org",
+                                                             f="organisation",
+                                                             vars=dict(child="donor_id"),
+                                                             label=ADD_DONOR,
+                                                             tooltip=ADD_DONOR_HELP),
                                    ondelete = "SET NULL")
 
         # ---------------------------------------------------------------------
@@ -502,7 +511,8 @@ class S3OrganisationModel(S3Model):
         tablename = "org_organisation_branch"
         table = define_table(tablename,
                              organisation_id(),
-                             organisation_id("branch_id"),
+                             organisation_id("branch_id",
+                                             label=T("Branch")),
                              *meta_fields())
 
         # CRUD strings
@@ -662,15 +672,16 @@ class S3OrganisationModel(S3Model):
             db = current.db
             table = item.table
             name = "name" in item.data and item.data.name
-            query = (table.name.lower() == name.lower())
-            duplicate = db(query).select(table.id,
-                                         table.name,
-                                         limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                # Retain the correct spelling of the name
-                item.data.name = duplicate.name
-                item.method = item.METHOD.UPDATE
+            if name:
+                query = (table.name.lower() == name.lower())
+                duplicate = db(query).select(table.id,
+                                             table.name,
+                                             limitby=(0, 1)).first()
+                if duplicate:
+                    item.id = duplicate.id
+                    # Retain the correct spelling of the name
+                    item.data.name = duplicate.name
+                    item.method = item.METHOD.UPDATE
 
     # -----------------------------------------------------------------------------
     @staticmethod
@@ -786,7 +797,7 @@ class S3SiteModel(S3Model):
         add_component = self.add_component
         super_key = self.super_key
 
-        # =============================================================================
+        # =====================================================================
         # Site
         #
         # @ToDo: Rename as Facilities (ICS terminology)
@@ -804,11 +815,10 @@ class S3SiteModel(S3Model):
         table = self.super_entity(tablename, "site_id", org_site_types,
                                   # @ToDo: Make Sites Trackable (Mobile Hospitals & Warehouses)
                                   #super_link("track_id", "sit_trackable"),
-                                  #Field("code",
-                                  #      length=10,           # Mayon compatibility
-                                  #      notnull=True,
-                                  #      unique=True,
-                                  #      label=T("Code")),
+                                  Field("code",
+                                        length=10,           # Mayon compatibility
+                                        writable = False,
+                                        label=T("Code")),
                                   Field("name",
                                         length=64,           # Mayon compatibility
                                         notnull=True,
@@ -818,7 +828,7 @@ class S3SiteModel(S3Model):
                                   organisation_id(),
                                   *s3.ownerstamp())
 
-        # -----------------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         site_id = self.super_link("site_id", "org_site",
                                   #writable = True,
                                   #readable = True,
@@ -862,12 +872,111 @@ class S3SiteModel(S3Model):
         add_component("req_commit",
                       org_site=super_key(table))
 
+        self.configure(tablename,
+                       onaccept = self.org_site_onaccept,
+                       )
+
         # ---------------------------------------------------------------------
         # Pass variables back to global scope (response.s3.*)
         #
         return Storage(
                     org_site_id = site_id
                 )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def org_site_onaccept(form):
+        """
+            Create the code from the name
+        """
+        s3db = current.s3db
+        db = current.db
+        site_table = s3db.org_site
+        settings = current.deployment_settings
+
+        name = form.vars.name
+        code_len = settings.get_org_site_code_len()
+        temp_code = name[:code_len].upper()
+        query = (site_table.code == temp_code)
+        row = db(query).select(site_table.id,
+                               limitby=(0, 1)).first()
+        if row:
+            code = temp_code
+            temp_code = None
+            wildcard_bit = 1
+            length = len(code)
+            max_wc_bit = pow(2, length)
+            while not temp_code and wildcard_bit < max_wc_bit:
+                wildcard_posn = []
+                for w in range(length):
+                    if wildcard_bit & pow(2, w):
+                        wildcard_posn.append(length - (1 + w))
+                wildcard_bit += 1
+                code_list = S3SiteModel.getCodeList(code, wildcard_posn)
+                temp_code = S3SiteModel.returnUniqueCode(code, wildcard_posn, code_list)
+        if temp_code:
+            db(site_table.site_id == form.vars.site_id).update(code = temp_code)
+
+    @staticmethod
+    def getCodeList(code, wildcard_posn=[]):
+        """
+        """
+        s3db = current.s3db
+        db = current.db
+        site_table = s3db.org_site
+        temp_code = ""
+        # Inject the wildcard charater in the right positions
+        for posn in range(len(code)):
+            if posn in wildcard_posn:
+                temp_code += "%"
+            else:
+                temp_code += code[posn]
+        # Now set up the db call
+        query = site_table.code.like(temp_code)
+        rows = db(query).select(site_table.id,
+                                site_table.code,
+                               )
+        # Extract the rows on the database to provide a list of used codes
+        codeList = []
+        for record in rows:
+            codeList.append(record.code)
+        return codeList
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def returnUniqueCode(code, wildcard_posn=[], code_list=[]):
+        """
+        """
+        # Select the replacement letters with numbers first and then
+        # followed by the letters in least commonly used order
+        replacement_char = "1234567890ZQJXKVBWPYGUMCFLDHSIRNOATE"
+        rep_posn = [0] * len(wildcard_posn)
+        finished = False
+        while (not finished):
+            # Find the next code to try
+            temp_code = ""
+            r = 0
+            for posn in range(len(code)):
+                if posn in wildcard_posn:
+                    temp_code += replacement_char[rep_posn[r]]
+                    r += 1
+                else:
+                    temp_code += code[posn]
+            if temp_code not in code_list:
+                return temp_code
+            # set up the next rep_posn
+            p = 0
+            while (p<len(wildcard_posn)):
+                if rep_posn[p] == 35: # the maximum number of replacement characters
+                    rep_posn[p] = 0
+                    p += 1
+                else:
+                    rep_posn[p] = rep_posn[p] + 1
+                    break
+            # if no new permutation of replacement characters has been found
+            if p == len(wildcard_posn):
+                return None
+
 
 # =============================================================================
 class S3FacilityModel(S3Model):
@@ -990,16 +1099,11 @@ class S3RoomModel(S3Model):
             msg_record_deleted = T("Room deleted"),
             msg_list_empty = T("No Rooms currently registered"))
 
-        room_comment = DIV(A(ADD_ROOM,
-                             _class="colorbox",
-                             _href=URL(c="org", f="room",
-                                       args="create",
-                                       vars=dict(format="popup")),
-                             _target="top",
-                             _title=ADD_ROOM),
-                           DIV(_class="tooltip",
-                               _title="%s|%s" % (ADD_ROOM,
-                                                 T("Select a Room from the list or click 'Add Room'"))),
+        room_comment = DIV(
+                           S3AddResourceLink(c="org",
+                                         f="room",
+                                         label=ADD_ROOM,
+                                         tooltip=T("Select a Room from the list or click 'Add Room'")),
                            # Filters Room based on site
                            SCRIPT("""S3FilterFieldChange({
                                          'FilterField':   'site_id',
@@ -1007,7 +1111,7 @@ class S3RoomModel(S3Model):
                                          'FieldPrefix':   'org',
                                          'FieldResource': 'room',
                                          });""")
-                            )
+                           )
 
         # Reusable field for other tables to reference
         room_id = S3ReusableField("room_id", db.org_room, sortby="name",
@@ -1081,16 +1185,10 @@ class S3OfficeModel(S3Model):
         }
 
         ADD_OFFICE = T("Add Office")
-        office_comment = DIV(A(ADD_OFFICE,
-                               _class="colorbox",
-                               _href=URL(c="org", f="office",
-                                         args="create",
-                                         vars=dict(format="popup")),
-                               _target="top",
-                               _title=ADD_OFFICE),
-                             DIV(_class="tooltip",
-                                 _title="%s|%s" % (ADD_OFFICE,
-                                                   T("If you don't see the Office in the list, you can add a new one by clicking link 'Add Office'."))))
+        office_comment = S3AddResourceLink(c="org",
+                                           f="office",
+                                           label=ADD_OFFICE,
+                                           tooltip=T("If you don't see the Office in the list, you can add a new one by clicking link 'Add Office'."))
 
         tablename = "org_office"
         table = self.define_table(tablename,
@@ -1280,32 +1378,62 @@ class S3OfficeModel(S3Model):
                 item.method = item.METHOD.UPDATE
 
 # =============================================================================
-def org_organisation_represent(id, showlink=False, acronym=True):
-    """ Represent an Organisation in option fields or list views """
+def org_organisation_represent(id, showlink=False, acronym=True, parent=True):
+    """
+        Represent an Organisation in option fields or list views
+
+        @param showlink: whether to make the output into a hyperlink
+        @param acronym: whether to show any acronym present
+        @param parent: whether to show the parent Org for branches
+    """
 
     db = current.db
     s3db = current.s3db
-    NONE = current.messages.NONE
 
-    if isinstance(id, Row):
+    if not parent and isinstance(id, Row):
         # Do not repeat the lookup if already done by IS_ONE_OF or RHeader
         org = id
-    else:
-        table = s3db.org_organisation
-        query = (table.id == id)
-        org = db(query).select(table.name,
-                               table.acronym,
+    elif parent:
+        otable = s3db.org_organisation
+        btable = s3db.org_organisation_branch
+        query = (otable.id == id)
+        left = btable.on(btable.branch_id == otable.id)
+        org = db(query).select(otable.name,
+                               otable.acronym,
+                               btable.organisation_id,
+                               left = left,
                                limitby = (0, 1)).first()
+    else:
+        otable = s3db.org_organisation
+        query = (otable.id == id)
+        org = db(query).select(otable.name,
+                               otable.acronym,
+                               limitby = (0, 1)).first()
+
     if org:
-        represent = org.name
-        if acronym and org.acronym:
-            represent = "%s (%s)" % (represent,
-                                     org.acronym)
+        if parent:
+            represent = org.org_organisation.name
+            if "org_organisation_branch" in org:
+                # We're a Branch
+                query = (otable.id == org.org_organisation_branch.organisation_id)
+                parent = db(query).select(otable.name,
+                                          limitby = (0, 1)).first()
+                if parent:
+                    represent = "%s, %s" % (parent.name,
+                                            represent)
+            elif acronym and org.org_organisation.acronym:
+                represent = "%s (%s)" % (represent,
+                                         org.org_organisation.acronym)
+        else:
+            represent = org.name
+            if acronym and org.acronym:
+                represent = "%s (%s)" % (represent,
+                                         org.acronym)
         if showlink:
             represent = A(represent,
                           _href = URL(c="org", f="organisation", args = [id]))
     else:
-        represent = NONE
+        represent = current.messages.NONE
 
     return represent
 
@@ -1342,11 +1470,11 @@ def org_organisation_logo(id, type="png"):
                        _height = "60px",
                       )
         return logo
-    return None
+    return DIV() # no logo so return an empty div
     
 
 # =============================================================================
-def org_site_represent(id, link=True):
+def org_site_represent(id, show_link=True):
     """ Represent a Facility in option fields or list views """
 
     db = current.db
@@ -1401,7 +1529,7 @@ def org_site_represent(id, link=True):
         # Since name is notnull for all types so far, this won't be reached.
         represent = "[site %d] (%s)" % (id, instance_type_nice)
 
-    if link and site:
+    if show_link and site:
         if not id:
             query = (table.site_id == site.site_id)
             id = db(query).select(table.id,
@@ -1498,7 +1626,6 @@ def org_rheader(r, tabs=[]):
         tabs.append((T("Attachments"), "document"))
 
 
-        rheader_tabs = s3_rheader_tabs(r, tabs)
         logo = org_organisation_logo(record.organisation_id)
 
         rData = TABLE(
@@ -1531,6 +1658,8 @@ def org_rheader(r, tabs=[]):
             rheader.append(TABLE(TR(TD(logo),TD(rData))))
         else:
             rheader.append(rData)
+
+        rheader_tabs = s3_rheader_tabs(r, tabs)
         rheader.append(rheader_tabs)
 
         #if r.component and r.component.name == "req":
@@ -1556,9 +1685,6 @@ def org_organisation_controller():
     s3 = current.response.s3
     manager = current.manager
 
-    tablename = "org_office"
-    table = s3db[tablename]
-
     # Pre-process
     def prep(r):
         if r.interactive:
@@ -1568,6 +1694,10 @@ def org_organisation_controller():
                 htable = s3db.hrm_human_resource
                 htable.person_id.widget = None
                 htable.person_id.writable = False
+
+            elif r.component_name == "branch":
+                s3db.org_organisation_branch.branch_id.represent = lambda val: \
+                    s3db.org_organisation_represent(val, parent=False)
 
             elif r.component_name == "office" and \
                  r.method and r.method != "read":
@@ -1641,7 +1771,7 @@ def org_office_controller():
                     name="office_search_org",
                     label=T("Organization"),
                     comment=T("Search for office by organization."),
-                    field=["organisation_id"],
+                    field="organisation_id",
                     represent ="%(name)s",
                     cols = 3
                   ),
@@ -1671,6 +1801,8 @@ def org_office_controller():
             table.obsolete.readable = False
             if r.record and r.record.type == 5:
                 s3.crud_strings["org_office"].title_display = T("Warehouse Details")
+                manager.configure(r.tablename,
+                                  popup_url=URL(args=[r.id, "inv_item"]))
 
         if r.record and settings.has_module("hrm"):
             # Cascade the organisation_id from the office to the staff
@@ -1725,8 +1857,17 @@ def org_office_controller():
 
         return True
     s3.prep = prep
-
-    rheader = s3db.org_rheader
+    # remove CRUD generated buttons in the tabs
+    manager.configure("inv_inv_item",
+                    create=False,
+                    listadd=False,
+                    editable=False,
+                    deletable=False,
+                   )
+    if "inv_item" in request.args:
+        rheader = s3db.inv_warehouse_rheader
+    else:
+        rheader = s3db.org_rheader
     return s3_rest_controller("org", "office", rheader=rheader)
 
 # END =========================================================================

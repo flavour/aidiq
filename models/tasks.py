@@ -45,6 +45,33 @@ if deployment_settings.has_module("msg"):
     tasks["process_outbox"] = process_outbox
 
 # -----------------------------------------------------------------------------
+if deployment_settings.has_module("msg"):
+    def process_inbound_email(username):
+        """
+            Poll an inbound email source.
+
+            @param username: email address of the email source to read from.
+            This uniquely identifies one inbound email task.
+        """
+        # Run the Task
+        result = msg.fetch_inbound_email(username)
+        return result
+
+    tasks["process_inbound_email"] = process_inbound_email
+
+# -----------------------------------------------------------------------------
+if deployment_settings.has_module("msg"):
+    def process_log():
+        """
+            Processes the msg_log for unparsed messages.
+        """
+        # Run the Task
+        result = msg.process_log()
+        return result
+    
+    tasks["process_log"] = process_log
+
+# -----------------------------------------------------------------------------
 def sync_synchronize(repository_id, user_id=None, manual=False):
     """
         Run all tasks for a repository, to be called from scheduler

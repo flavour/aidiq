@@ -126,7 +126,8 @@ class S3MainMenu:
         menu_lang = MM("Language", **attr)
         for language in s3.l10n_languages:
             menu_lang.append(MM(s3.l10n_languages[language], r=request,
-                             vars={"_language":language}))
+                                translate=False,
+                                vars={"_language":language}))
         return menu_lang
 
     # -------------------------------------------------------------------------
@@ -236,6 +237,7 @@ class S3MainMenu:
         s3db = current.s3db
         request = current.request
         session = current.session
+        s3 = current.response.s3
 
         # See if we need to switch config before we decide which
         # config item to mark as active:
@@ -247,7 +249,9 @@ class S3MainMenu:
                 # Manually-crafted URL?
                 pass
             else:
-                if config != session.s3.gis_config_id:
+                if s3.gis.config and s3.gis.config.id != config:
+                    # Set this as the current config
+                    # @ToDo: restore some awareness of this in session
                     config = gis.set_config(config)
                     if settings.has_module("event"):
                         # See if this config is associated with an Event
@@ -283,7 +287,7 @@ class S3MainMenu:
                         "id": "gis_menu_id_0",
                         # @ToDo: Show when default item is selected without having
                         # to do a DB query to read the value
-                        #"value": session.s3.gis_config_id == 0,
+                        #"value": s3.gis.config and s3.gis.config.id is 0,
                         "request_type": "load"
                        }, args=request.args, vars={"_config": 0}
                     )
@@ -292,8 +296,7 @@ class S3MainMenu:
                 gis_menu(
                     MM({"name": T(config.name),
                         "id": "gis_menu_id_%s" % config.id,
-                        # Currently not working on 1st request afterwards as being set after this (in zz_last.py)
-                        "value": session.s3.gis_config_id == config.id,
+                        "value": s3.gis.config and s3.gis.config.id == config.id,
                         "request_type": "load"
                        }, args=request.args, vars={"_config": config.id}
                     )
@@ -528,6 +531,7 @@ class S3OptionsMenu:
                         M("List All"),
                         # @ToDo Search by type, services, location, available space
                         #M("Search", m="search"),
+                        M("Import", m="import"),
                     ),
                     M(types, f="shelter_type", restrict=[ADMIN])(
                         M("List / Add Services", m="create"),
@@ -594,7 +598,6 @@ class S3OptionsMenu:
                     )
                 )
 
-
     # -------------------------------------------------------------------------
     def dvi(self):
         """ DVI / Disaster Victim Identification """
@@ -627,6 +630,18 @@ class S3OptionsMenu:
                         M("List All"),
                     ),
                     M("Dashboard", f="index"),
+                )
+
+    # -------------------------------------------------------------------------
+    def dvr(self):
+        """ DVR Menu """
+
+        return M(c="dvr")(
+                    M("Cases", f="case")(
+                        M("New", m="create"),
+                        M("List All"),
+                        #M("Search", m="search")
+                    ),
                 )
 
     # -------------------------------------------------------------------------
@@ -668,6 +683,19 @@ class S3OptionsMenu:
                         M("Search", m="search"),
                         M("Import", m="import"),
                     )
+                )
+
+    # -------------------------------------------------------------------------
+    def flood(self):
+        """ FLOOD """
+
+        return M(c="flood")(
+                    M("Gauges", f="gauge")(
+                        M("New", m="create"),
+                        M("List All"),
+                        #M("Search", m="search"),
+                        M("Import", m="import"),
+                    ),
                 )
 
     # -------------------------------------------------------------------------
@@ -720,8 +748,6 @@ class S3OptionsMenu:
 
         return M(c="gis")(
                     M("Fullscreen Map", f="map_viewing_client"),
-                    M("Configuration", f="config", args=config_args(),
-                      check=config_menu),
                     # Currently not got geocoding support
                     #M("Bulk Uploader", c="doc", f="bulk_upload"),
                     M("Locations", f="location",
@@ -733,8 +759,16 @@ class S3OptionsMenu:
                         M("Import", m="import"),
                         #M("Geocode", f="geocode_manual"),
                     ),
+                    M("Population Report", f="location", m="report",
+                      vars=dict(rows="name",
+                                fact="population",
+                                aggregate="sum")),
+                    M("Configuration", f="config", args=config_args(),
+                      _id="gis_menu_config",
+                      check=config_menu),
                     M("Admin", restrict=[MAP_ADMIN])(
                         M("Hierarchy", f="hierarchy"),
+                        M("Layers", f="catalog"),
                         M("Markers", f="marker"),
                         M("Projections", f="projection"),
                         M("Symbology", f="symbology"),
@@ -777,46 +811,34 @@ class S3OptionsMenu:
         show_staff = lambda i: settings.get_hrm_show_staff()
         show_vols = lambda i: settings.get_hrm_show_vols()
 
-        staff = dict(group="staff")
-        volunteers = dict(group="volunteer")
-
         return M(c="hrm")(
-                    M("Staff", f="human_resource",
-                      check=[manager_mode, show_staff], vars=staff)(
-                        M("New Staff Member", m="create",
-                          vars=staff),
-                        M("List All",
-                          vars=staff),
-                        M("Search", m="search",
-                          vars=staff),
+                    M("Staff", f="staff",
+                      check=[manager_mode, show_staff])(
+                        M("New Staff Member", m="create"),
+                        M("List All"),
+                        M("Search", m="search"),
                         M("Report", m="report",
-                          vars=Storage(group="staff",
-                                       rows="course",
+                          vars=Storage(rows="course",
                                        cols="L1",
                                        fact="person_id",
                                        aggregate="count")),
                         M("Report Expiring Contracts",
-                          vars=dict(group="staff", expiring=1)),
-                        M("Import", m="import",
-                          vars=staff, p="create"),
-                        #M("Dashboard", f="index"),
+                          vars=dict(expiring=1)),
+                        M("Import", f="person", m="import",
+                          vars={"group":"staff"}, p="create"),
                     ),
-                    M("Volunteers", f="human_resource",
-                      check=[manager_mode, show_vols], vars=volunteers)(
-                        M("New Volunteer", m="create",
-                          vars=volunteers),
-                        M("List All",
-                          vars=volunteers),
-                        M("Search", m="search",
-                          vars=volunteers),
+                    M("Volunteers", f="volunteer",
+                      check=[manager_mode, show_vols])(
+                        M("New Volunteer", m="create"),
+                        M("List All"),
+                        M("Search", m="search"),
                         M("Report", m="report",
-                          vars=Storage(group="volunteer",
-                                       rows="course",
+                          vars=Storage(rows="course",
                                        cols="L1",
                                        fact="person_id",
                                        aggregate="count")),
-                        M("Import", m="import",
-                          vars=volunteers, p="create"),
+                        M("Import", f="person", m="import",
+                          vars={"group":"volunteer"}, p="create"),
                     ),
                     M("Teams", f="group",
                       check=manager_mode)(
@@ -890,10 +912,14 @@ class S3OptionsMenu:
                         M("Search", m="search"),
                         M("Import", m="import", p="create"),
                     ),
-                    M("Warehouse Stock", c="inv", f="warehouse")(
+                    M("Warehouse Stock", c="inv", f="inv_item")(
                         M("Search Warehouse Stock", f="inv_item", m="search"),
                         M("Adjust Stock Levels", f="adj"),
-                        M("Report", f="inv_item", m="report"),
+                        M("Report", f="inv_item", m="report",
+                          vars=Storage(rows="item_id",
+                                       cols="site_id",
+                                       fact="quantity",
+                                       aggregate="sum")),
                         M("Import", f="inv_item", m="import", p="create"),
                     ),
                     M(inv_recv_list, c="inv", f="recv")(
@@ -953,6 +979,7 @@ class S3OptionsMenu:
                         M("List All"),
                         M("Open Incidents", vars={"open":1}),
                         M("Timeline", args="timeline"),
+                        M("Import", m="import"),
                         M("Search", m="search"),
                         M("Report", m="report",
                           vars=dict(rows="L1",
@@ -989,6 +1016,20 @@ class S3OptionsMenu:
         session = current.session
         ADMIN = session.s3.system_roles.ADMIN
 
+        # Do we have a series_id?
+        series_id = False
+        vars = Storage()
+        try:
+            series_id = int(current.request.args[0])
+        except:
+            try:
+                (dummy, series_id) = current.request.vars["viewing"].split(".")
+                series_id = int(series_id)
+            except:
+                pass
+        if series_id:
+            vars.viewing = "survey_complete.%s" % series_id
+
         return M(c="survey")(
                     M("Assessment Templates", f="template")(
                         #M("New", m="create"),
@@ -1010,7 +1051,7 @@ class S3OptionsMenu:
                         M("Import Template Layout", f="formatter",
                           m="import", p="create"),
                         M("Import Completed Assessment Forms", f="complete",
-                          m="import", p="create"),
+                          m="import", p="create", vars=vars, check=series_id),
                     ),
                 )
 
@@ -1023,6 +1064,7 @@ class S3OptionsMenu:
                         M("New", m="create"),
                         M("List All"),
                         #M("Search", m="search"),
+                        M("Import", f="person", m="import"),
                     ),
                 )
 
@@ -1063,6 +1105,7 @@ class S3OptionsMenu:
                         M("List/Add", f="group"),
                         M("Group Memberships", f="group_membership"),
                     ),
+                    M("Email InBox", f="email_inbox"),
                     M("Log", f="log"),
                     M("Outbox", f="outbox"),
                     M("Search Twitter Tags", f="twitter_search")(
@@ -1155,12 +1198,14 @@ class S3OptionsMenu:
         if settings.get_project_community_activity():
             activities_label = "Communities"
             list_activities_label = "List All Communities"
+            search_activities_label = "Search Communities"
             list_activity_contacts_label = "List All Community Contacts"
             search_activity_contacts_label = "Search Community Contacts"
             import_activities_label = "Import Project Communities"
         else:
             activities_label = "Activities"
             list_activities_label = "List All Activities"
+            search_activities_label = "Search Activities"
             # @ToDo: These should always be Community Contacts as that's what they are...however they shouldn't link to Activities...
             list_activity_contacts_label = "List All Activity Contacts"
             search_activity_contacts_label = "Search Activity Contacts"
@@ -1177,6 +1222,7 @@ class S3OptionsMenu:
                     ),
                     M(activities_label, f="activity")(
                         M(list_activities_label),
+                        M(search_activities_label, m="search"),
                         M(list_activity_contacts_label, f="activity_contact"),
                         M(search_activity_contacts_label, f="activity_contact",
                           m="search"),
@@ -1251,6 +1297,7 @@ class S3OptionsMenu:
                                        cols="name",
                                        fact="time_actual",
                                        aggregate="sum")),
+                        M("Community Report", f="community", m="report"),
                         M("Project Time Report", f="time", m="report",
                           vars=Storage(rows="project",
                                        cols="person_id",
@@ -1341,7 +1388,7 @@ class S3OptionsMenu:
         """
 
         return [
-            M("Email Settings", c="msg", f="email_settings",
+            M("Email Settings", c="msg", f="inbound_email_settings",
                 args=[1], m="update"),
             M("SMS Settings", c="msg", f="setting",
                 args=[1], m="update"),

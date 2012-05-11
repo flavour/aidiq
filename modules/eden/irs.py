@@ -272,6 +272,24 @@ class S3IRSModel(S3Model):
                                    requires = IS_NULL_OR(IS_UTC_DATETIME())
                                   ),
                              location_id(),
+                             # Very basic Impact Assessment
+                             Field("affected", "integer",
+                                   label=T("Number of People Affected"),
+                                   represent = lambda val: val or T("unknown"),
+                                   ),
+                             Field("dead", "integer",
+                                   label=T("Number of People Dead"),
+                                   represent = lambda val: val or T("unknown"),
+                                   ),
+                             Field("injured", "integer",
+                                   label=T("Number of People Injured"),
+                                   represent = lambda val: val or T("unknown"),
+                                   ),
+                             # Probably too much to try & capture
+                             #Field("missing", "integer",
+                             #      label=T("Number of People Missing")),
+                             #Field("displaced", "integer",
+                             #      label=T("Number of People Displaced")),
                              Field("verified", "boolean",    # Ushahidi-compatibility
                                    # We don't want these visible in Create forms
                                    # (we override in Update forms in controller)
@@ -311,6 +329,7 @@ class S3IRSModel(S3Model):
             title_display = T("Incident Report Details"),
             title_list = LIST_INC_REPORTS,
             title_update = T("Edit Incident Report"),
+            title_upload = T("Import Incident Reports"),
             title_search = T("Search Incident Reports"),
             subtitle_create = T("Add New Incident Report"),
             subtitle_list = T("Incident Reports"),
@@ -345,7 +364,7 @@ class S3IRSModel(S3Model):
                     ),
                     S3SearchOptionsWidget(
                         name="incident_search_category",
-                        field=["category"],
+                        field="category",
                         label = T("Category"),
                         cols = 3,
                     ),
@@ -353,7 +372,7 @@ class S3IRSModel(S3Model):
                         name="incident_search_date",
                         method="range",
                         label=T("Date"),
-                        field=["datetime"]
+                        field="datetime"
                     ),
             ))
 
@@ -368,11 +387,9 @@ class S3IRSModel(S3Model):
         # Resource Configuration
         configure(tablename,
                   super_entity = ("sit_situation", "doc_entity"),
-                  # Open tabs after creation
-                  create_next = URL(args=["[id]", "update"]),
-                  update_next = URL(args=["[id]", "update"]),
                   search_method = ireport_search,
-                  report_filter=[
+                  report_options=Storage(
+                      search=[
                             S3SearchLocationHierarchyWidget(
                                 name="incident_search_L1",
                                 field="L1",
@@ -385,7 +402,7 @@ class S3IRSModel(S3Model):
                             ),
                             S3SearchOptionsWidget(
                                 name="incident_search_category",
-                                field=["category"],
+                                field="category",
                                 label = T("Category"),
                                 cols = 3,
                             ),
@@ -393,19 +410,23 @@ class S3IRSModel(S3Model):
                                 name="incident_search_date",
                                 method="range",
                                 label=T("Date"),
-                                field=["datetime"]
+                                field="datetime"
                             ),
-                        ],
-                  report_rows = report_fields,
-                  report_cols = report_fields,
-                  report_fact = report_fields,
-                  report_method=["count", "list"],
+                      ],
+                      rows=report_fields,
+                      cols=report_fields,
+                      facts=report_fields,
+                      methods=["count", "list"]
+                  ),
                   list_fields = ["id",
                                  "name",
                                  "category",
                                  "datetime",
                                  "location_id",
                                  #"organisation_id",
+                                 "affected",
+                                 "dead",
+                                 "injured",
                                  "verified",
                                  "message",
                                 ])
@@ -474,7 +495,7 @@ class S3IRSModel(S3Model):
         if settings.has_module("fire"):
             create_next = URL(args=["[id]", "human_resource"])
         else:
-            create_next = URL(args=["[id]", "update"])
+            create_next = URL(args=["[id]", "image"])
 
         configure("irs_ireport",
                   create_onaccept=self.ireport_onaccept,
@@ -936,7 +957,7 @@ class S3IRSResponseModel(S3Model):
 
         if not current.deployment_settings.has_module("vehicle"):
             return None
-        
+
         # ---------------------------------------------------------------------
         # Vehicles assigned to an Incident
         #

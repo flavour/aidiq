@@ -63,6 +63,7 @@ ol, ul {
     list-style: disc inside none;
 }
 /* Except here */
+ul.x-tab-strip,
 ul.x-tree-node-ct,
 ul.x-tree-root-ct {
     list-style: none outside none;
@@ -183,6 +184,9 @@ body {
     font-size: 0.8em;
     color: #000;
     background: #fff;
+    /* To have a centered pane with a side colour
+ 		background: none repeat scroll 0 0 #63594D;
+ 	*/
     /*min-width: 1024px;*/
     /*overflow:auto;  /* annoying always visible scrollbar in chrome */
 }
@@ -242,8 +246,8 @@ a img {
 
 /* Popup text for represents of Long text fields */
 .popup {
-    display:none;
-    position:absolute;
+    display: none;
+    position: absolute;
     border-style: solid;
     background-color: #ffffcc;
     padding: 5px;
@@ -255,18 +259,26 @@ table {
 }
 
 /* Now to layout elements... */
-/* Unused in default Sahana THeme
-#header {
-    border-bottom: #069 1px solid;
-    padding: 0 1em;
-    height: 70px;
-    position: relative;
-    background: url(../../YOURLOGOHERE) #336699 no-repeat left top;
+/* Unused in default Sahana Theme
+#container {
+    background: none repeat scroll 0 0 #FFFFFF;
+    margin: 0 auto;
+    width: 1280px;
+}
+#banner {
+    background: url(../../img/BANNER.jpg) 0 0 no-repeat;
+    padding: none;
+    width: 1280px;
+    height: 255px;
+    display: block;
+    position: absolute;
+    top: 0px;
 }
 */
 /* response.menu_modules */
 #menu_modules {
-    position: fixed;
+    position: absolute;
+    /* top: 255px; */
     height: 36px;
     background: #CACACA  url(../../img/BFTBmenu_back.png) repeat-x;
     border-top: 1px solid #2a323f;
@@ -290,6 +302,7 @@ table {
     z-index: 25;
     min-width: 800px;
     width: 100%;
+    /* width: 1280px; */
 }
 #modulenav {
     position: relative;
@@ -378,6 +391,7 @@ table {
     display: none;
     position: absolute;
     top: 100%;
+    /* top: 255; */
     left: 0;
     font-weight: normal;
     text-align: left;
@@ -598,6 +612,9 @@ table {
     text-align: center;
     text-align: justify;
     line-height: 1.25;
+}
+#home li {
+    margin-left: 12px;
 }
 #footer {
     margin: 0 auto;
@@ -897,6 +914,10 @@ div.dataTables_paginate {
 div.paging_full_numbers {
 	width: auto;
 }
+a.paginate_button,
+a.paginate_active {
+    text-decoration: none;
+}
 
 span.dataTable-btn {
 	background-color: #ddd;
@@ -932,6 +953,10 @@ div.item-container {
 .default-text {
     color: #a1a1a1;
     font-style: italic;
+}
+
+ul.ui-autocomplete {
+    z-index: 9999 !important;
 }
 
 /* Map view */
@@ -1097,55 +1122,52 @@ tr.box_bottom {
 }
 
 div.tabs {
-    width: 100%;
-    padding: 10px 0 2px 0;
-    margin: 5px 0px 0px 0px;
-    /* margin-bottom: 5px; */
+	height: 1.5em;
+    padding: 0 0 8px;
+    margin: 10px 0 2px;
     text-align: left;
     border-bottom:1px solid #3286e2;
+    clear: left;
 }
 div.tabs span {
-    padding: 1px 3px 3px 3px;
+	display: block;
+	float: left;
    -moz-border-radius: 3px 3px 0 0;
-   -webkit-border-radius: 3px 3px 0px 0px;
+   -webkit-border-radius: 3px 3px 0 0;
+    border-width: 2px 1px 0 3px;
+    border-style: solid;
+    border-color: #3286e2;
+    margin-right: 3px;
+}
+div.tabs span a {
+	text-decoration: none;
+	line-height: 1.5em;
+	display: block;
+	padding: 1px 3px 2px;
+    color: #ffffff;
+   -moz-border-radius: 3px 3px 0 0;
+   -webkit-border-radius: 3px 3px 0 0;
 }
 span.tab_last,
 span.tab_other {
-    border-width: 2px 1px 0px 3px;
-    border-style: solid;
-    border-color: #3286e2;
-    padding-right: 3px;
-    margin-right: 3px;
+    margin-top: 4px;
     background:#3286e2;
-    /* border-bottom: 1px solid #bbb; */
 }
-/* span.tab_last {
-    border-right: 1px solid #bbb;
-} */
-
 /* To overlap component border */
 div.tabs span.tab_here {
-	display: inline;
-    position: relative;
-    bottom: 0px;
     background: #f0f3f4;
-    border-width: 2px 1px 0 3px;
-    border-style: solid;
     border-color: #6699cc;
-    padding: 3px 6px 2px 5px;
-    margin-right: 5px;
     font-weight: bold;
-    border-bottom:2px solid #f0f3f4;
+    margin-bottom: -1px;
 }
 form div.tabs span.tab_here{
-    border-bottom:2px solid #ffffff;
     background:#ffffff;
 }
-span.tab_last a,
-span.tab_other a {
-    color: #ffffff;
-    text-decoration: None;
+div.tabs span.tab_here a {
+    color: #006699;
+    padding: 4px 6px 3px 5px;
 }
+
 span.tab_other a:hover, span.tab_last a:hover {
     color: #ffffff;
     background:transparent;
@@ -1153,10 +1175,6 @@ span.tab_other a:hover, span.tab_last a:hover {
 span.tab_other:hover, span.tab_last:hover {
     background:#164b8b;
     border-color:#164b8b;
-}
-span.tab_here a {
-    color: #006699;
-    text-decoration: None;
 }
 span.tab_prev_active {
     border: 1px solid #6699cc;
@@ -1287,7 +1305,10 @@ div#last_update {
     background-image: url(../../img/jquery-ui/ui-icons_222222_256x240.png);
     background-position: -32px -16px;
 }
-
+/* Grow Input */
+li input + a {
+    text-decoration: none;
+}
 
 .rfilter {
     float: left;
@@ -1342,6 +1363,12 @@ div#last_update {
     height: 55px;
     padding: 4px;
     width: 55px;
+}
+/* HRM RHeader */
+.hrm_avatar {
+    float: left;
+    padding-bottom: 5px;
+    padding-right: 10px;
 }
 .comment-box {
     overflow: hidden;

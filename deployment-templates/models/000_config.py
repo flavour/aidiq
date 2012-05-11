@@ -5,7 +5,7 @@
     All settings which are typically edited for a deployment should be done here
     Deployers shouldn't typically need to edit any other files.
     NOTE FOR DEVELOPERS:
-    /models/000_config.py is NOT in the BZR repository, as this file will be changed
+    /models/000_config.py is NOT in the Git repository, as this file will be changed
     during deployments.
     To for changes to be committed to trunk, please also edit:
     deployment-templates/models/000_config.py
@@ -33,8 +33,12 @@ deployment_settings.security.self_registration = True
 deployment_settings.auth.registration_requires_verification = True
 deployment_settings.auth.registration_requires_approval = True
 
+# The name of the teams that users are added to when they opt-in to receive alerts
+#deployment_settings.auth.opt_in_team_list = ["Updates"]
+# Uncomment this to set the opt in default to True
+#deployment_settings.auth.opt_in_default = True
 # Uncomment this to request the Mobile Phone when a user registers
-deployment_settings.auth.registration_requests_mobile_phone = False
+#deployment_settings.auth.registration_requests_mobile_phone = True
 # Uncomment this to have the Mobile Phone selection during registration be mandatory
 #deployment_settings.auth.registration_mobile_phone_mandatory = True
 # Uncomment this to request the Organisation when a user registers
@@ -44,15 +48,27 @@ deployment_settings.auth.registration_organisation_mandatory = True
 # Uncomment this to have the Organisation input hidden unless the user enters a non-whitelisted domain
 #deployment_settings.auth.registration_organisation_hidden = True
 # Uncomment this to default the Organisation during registration
-#deployment_settings.auth.registration_organisation_default = 1
+#deployment_settings.auth.registration_organisation_default = "My Organisation"
+# Uncomment & populate these to set the default roles assigned to newly-registered users
+#deployment_settings.auth.registration_roles = ["STAFF", "PROJECT_EDIT"]
 # Uncomment this to request an image when users register
 #deployment_settings.auth.registration_requests_image = True
 # Uncomment this to direct newly-registered users to their volunteer page to be able to add extra details
 # NB This requires Verification/Approval to be Off
 # @ToDo: Extend to all optional Profile settings: Homepage, Twitter, Facebook, Mobile Phone, Image
 #deployment_settings.auth.registration_volunteer = True
+# Uncomment this to allow users to Login using Gmail's SMTP
+#deployment_settings.auth.gmail_domains = ["gmail.com"]
+# Fill these to allow users to Login using Facebook
+# https://developers.facebook.com/apps
+#deployment_settings.auth.facebook_id = ""
+#deployment_settings.auth.facebook_secret = ""
+# Fill these to allow users to Login using Google
+# https://code.google.com/apis/console/
+#deployment_settings.auth.google_id = ""
+#deployment_settings.auth.google_secret = ""
 # Uncomment this to allow users to Login using OpenID
-deployment_settings.auth.openid = False
+#deployment_settings.auth.openid = True
 
 # Always notify the approver of a new (verified) user, even if the user is automatically approved
 deployment_settings.auth.always_notify_approver = True
@@ -70,27 +86,19 @@ deployment_settings.base.migrate = True
 # To just create the .table files:
 #deployment_settings.base.fake_migrate = True
 
-# Enable/disable pre-population of the database.
-# Should be non-zero on 1st_run to pre-populate the database
-# - unless doing a manual DB migration
-# Then set to zero in Production (to save 1x DAL hit every page)
-# NOTE: the web UI will not be accessible while the DB is empty,
-# instead run:
-#   python web2py.py -N -S eden -M
-# to create the db structure, then exit and re-import the data.
-# This is a simple status flag with the following meanings
-# 0 - No pre-population
-# 1 - Base data entered in the database
-# 2 - Regression (data used by the regression tests)
-# 3 - Scalability testing
-# 4-9 Reserved
-# 10 - User (data required by the user typically for specialised test)
-# 11-19 Reserved
-# 20+ Demo (Data required for a default demo)
-#     Each subsequent Demos can take any unique number >= 20
-#     The actual demo will be defined by the file demo_folders.cfg
-deployment_settings.base.prepopulate = 28 # AidIQ
-
+# Pre-Populate
+# http://eden.sahanafoundation.org/wiki/DeveloperGuidelines/PrePopulate
+# Configure/disable pre-population of the database.
+# To pre-populate the database On 1st run should specify directory(s) in 
+# /private/prepopulate/
+# eg:
+# ["default"] (1 is a shortcut for this)
+# ["demo/Standard"]
+# ["demo/IFRC_Train"]
+# ["roles", "user"]
+# Unless doing a manual DB migration, where prepopulate = 0
+# In Production, prepopulate = 0 (to save 1x DAL hit every page)
+deployment_settings.base.prepopulate = ["AidIQ"]
 
 # Set this to True to use Content Delivery Networks to speed up Internet-facing sites
 deployment_settings.base.cdn = False
@@ -117,6 +125,9 @@ deployment_settings.mail.sender = "'Task' <tasks@aidiq.com>"
 deployment_settings.mail.approver = "admin@aidiq.com"
 # Daily Limit on Sending of emails
 #deployment_settings.mail.limit = 1000
+
+#Enable session store in Memcache
+#deployment_settings.base.session_memcache = '127.0.0.1:11211'
 
 # Frontpage settings
 # RSS feeds
@@ -184,8 +195,11 @@ deployment_settings.L10n.religions = {
 # Make last name in person/user records mandatory
 #deployment_settings.L10n.mandatory_lastname = True
 
-# Add thousands separator to numbers, eg. 1,000,000
-#deployment_settings.L10n.thousands_separator = True
+# Number formats (defaults to ISO 31-0)
+# Decimal separator for numbers (defaults to ,)
+deployment_settings.L10n.decimal_separator = "."
+# Thousands separator for numbers (defaults to space)
+#deployment_settings.L10n.thousands_separator = ","
 
 # Finance settings
 #deployment_settings.fin.currencies = {
@@ -235,13 +249,13 @@ deployment_settings.gis.display_L0 = False
 # Points only for now
 # lon<0 have a duplicate at lon+360
 # lon>0 have a duplicate at lon-360
-deployment_settings.gis.duplicate_features = False
+#deployment_settings.gis.duplicate_features = True
 # Mouse Position: 'normal', 'mgrs' or 'off'
-deployment_settings.gis.mouse_position = "normal"
+#deployment_settings.gis.mouse_position = "mgrs"
 # Print Service URL: http://eden.sahanafoundation.org/wiki/BluePrintGISPrinting
 #deployment_settings.gis.print_service = "/geoserver/pdf/"
-# Do we have a spatial DB available? (currently unused. Will support PostGIS & Spatialite.)
-deployment_settings.gis.spatialdb = False
+# Do we have a spatial DB available? (currently supports PostGIS. Spatialite to come.)
+#deployment_settings.gis.spatialdb = True
 # Bing API Key (for Map layers)
 #deployment_settings.gis.api_bing = ""
 # Google API Key (for Earth & MapMaker Layers)
@@ -259,12 +273,11 @@ deployment_settings.gis.spatialdb = False
 # Register an app at http://twitter.com/apps
 # (select Aplication Type: Client)
 # You'll get your consumer_key and consumer_secret from Twitter
-# You can keep these empty if you don't need Twitter integration
-deployment_settings.twitter.oauth_consumer_key = ""
-deployment_settings.twitter.oauth_consumer_secret = ""
+#deployment_settings.twitter.oauth_consumer_key = ""
+#deployment_settings.twitter.oauth_consumer_secret = ""
 
 # Use 'soft' deletes
-deployment_settings.security.archive_not_delete = True
+#deployment_settings.security.archive_not_delete = False
 
 # AAA Settings
 
@@ -275,7 +288,9 @@ deployment_settings.security.archive_not_delete = True
 # 3: Apply Controller ACLs
 # 4: Apply both Controller & Function ACLs
 # 5: Apply Controller, Function & Table ACLs
-# 6: Apply Controller, Function, Table & Organisation ACLs
+# 6: Apply Controller, Function, Table ACLs and Entity Realm
+# 7: Apply Controller, Function, Table ACLs and Entity Realm + Hierarchy
+# 8: Apply Controller, Function, Table ACLs, Entity Realm + Hierarchy and Delegations
 #
 deployment_settings.security.policy = 6 # Organisation-ACLs
 #acl = deployment_settings.aaa.acl
@@ -329,7 +344,8 @@ deployment_settings.security.policy = 6 # Organisation-ACLs
 #deployment_settings.req.show_quantity_transit = False
 #deployment_settings.req.multiple_req_items = False
 #deployment_settings.req.use_commit = False
-#deployment_settings.req.use_req_number = False
+#deployment_settings.req.use_req_number = True
+#deployment_settings.req.generate_req_number = True
 # Restrict the type of requests that can be made, valid values in the
 # list are ["Stock", "People", "Other"]. If this is commented out then
 # all types will be valid.
@@ -384,6 +400,10 @@ deployment_settings.security.policy = 6 # Organisation-ACLs
 # Do not edit after deployment
 #deployment_settings.supply.catalog_default = T("Other Items")
 
+# Organisation Management
+# Set the length of the auto-generated org/site code the default is 10
+#deployment_settings.org.site_code_len = 3
+
 # Human Resource Management
 # Uncomment to allow Staff & Volunteers to be registered without an email address
 #deployment_settings.hrm.email_required = False
@@ -399,14 +419,21 @@ deployment_settings.hrm.show_vols = False
 #deployment_settings.project.drr = True
 # Uncomment this to use Milestones in project/task.
 deployment_settings.project.milestones = True
+# Uncomment this to customise
+#deployment_settings.project.organisation_roles = {
+#    1: T("Lead Implementer"), # T("Host National Society")
+#    2: T("Partner"), # T("Partner National Society")
+#    3: T("Donor"),
+#    4: T("Customer"), # T("Beneficiary")?
+#    5: T("Super"), # T("Beneficiary")?
+#}
+#deployment_settings.project.organisation_lead_role = 1
 
 # Save Search Widget
-deployment_settings.save_search.widget = False
+#deployment_settings.save_search.widget = False
 
 # Terms of Service to be able to Register on the system
 #deployment_settings.options.terms_of_service = T("Terms of Service\n\nYou have to be eighteen or over to register as a volunteer.")
-# Should we use internal Support Requests?
-#deployment_settings.options.support_requests = True
 
 # Comment/uncomment modules here to disable/enable them
 # @ToDo: have the system automatically enable migrate if a module is enabled
@@ -421,146 +448,153 @@ deployment_settings.modules = OrderedDict([
         )),
     ("admin", Storage(
             name_nice = T("Administration"),
-            description = T("Site Administration"),
+            #description = "Site Administration",
             restricted = True,
             access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
             module_type = None  # This item is handled separately for the menu
         )),
     ("appadmin", Storage(
             name_nice = T("Administration"),
-            description = T("Site Administration"),
+            #description = "Site Administration",
             restricted = True,
             module_type = None  # No Menu
         )),
     ("errors", Storage(
             name_nice = T("Ticket Viewer"),
-            description = T("Needed for Breadcrumbs"),
+            #description = "Needed for Breadcrumbs",
             restricted = False,
             module_type = None  # No Menu
         )),
     ("sync", Storage(
             name_nice = T("Synchronization"),
-            description = T("Synchronization"),
+            #description = "Synchronization",
             restricted = True,
             access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
             module_type = None  # This item is handled separately for the menu
         )),
+    # Uncomment to enable internal support requests
+    #("support", Storage(
+    #        name_nice = T("Support"),
+    #        #description = "Support Requests",
+    #        restricted = True,
+    #        module_type = None  # This item is handled separately for the menu
+    #    )),
     ("gis", Storage(
             name_nice = T("Map"),
-            description = T("Situation Awareness & Geospatial Analysis"),
+            #description = "Situation Awareness & Geospatial Analysis",
             restricted = True,
             module_type = None,     # 6th item in the menu
         )),
     ("pr", Storage(
             name_nice = T("Person Registry"),
-            description = T("Central point to record details on People"),
+            #description = "Central point to record details on People",
             restricted = True,
             access = "|1|",     # Only Administrators can see this module in the default menu (access to controller is possible to all still)
             module_type = None
         )),
     ("org", Storage(
             name_nice = T("Organizations"),
-            description = T('Lists "who is doing what & where". Allows relief agencies to coordinate their activities'),
+            #description = 'Lists "who is doing what & where". Allows relief agencies to coordinate their activities',
             restricted = True,
             module_type = None
         )),
     # All modules below here should be possible to disable safely
     ("hrm", Storage(
             name_nice = T("Staff & Volunteers"),
-            description = T("Human Resource Management"),
+            #description = "Human Resource Management",
             restricted = True,
             module_type = None,
         )),
     #("cms", Storage(
     #       name_nice = T("Content Management"),
-    #       description = T("Content Management System"),
+    #       #description = "Content Management System",
     #       restricted = True,
     #       module_type = 10,
     #   )),
     ("doc", Storage(
             name_nice = T("Documents"),
-            description = T("A library of digital resources, such as photos, documents and reports"),
+            #description = "A library of digital resources, such as photos, documents and reports",
             restricted = True,
             module_type = None,
         )),
     ("msg", Storage(
             name_nice = T("Messaging"),
-            description = T("Sends & Receives Alerts via Email & SMS"),
+            #description = "Sends & Receives Alerts via Email & SMS",
             restricted = True,
             # The user-visible functionality of this module isn't normally required. Rather it's main purpose is to be accessed from other modules.
             module_type = None,
         )),
     #("supply", Storage(
     #        name_nice = T("Supply Chain Management"),
-    #        description = T("Used within Inventory Management, Request Management and Asset Management"),
+    #        #description = "Used within Inventory Management, Request Management and Asset Management",
     #        restricted = True,
     #        module_type = None, # Not displayed
     #    )),
     #("inv", Storage(
-    #        name_nice = T("Inventory"),
-    #        description = T("Receiving and Sending Items"),
+    #        name_nice = T("Warehouse"),
+    #        #description = "Receiving and Sending Items",
     #        restricted = True,
     #        module_type = 4
     #    )),
     #("proc", Storage(
     #        name_nice = T("Procurement"),
-    #        description = T("Ordering & Purchasing of Goods & Services"),
+    #        #description = "Ordering & Purchasing of Goods & Services",
     #        restricted = True,
     #        module_type = 10
     #    )),
     #("asset", Storage(
     #        name_nice = T("Assets"),
-    #        description = T("Recording and Assigning Assets"),
+    #        description = "Recording and Assigning Assets",
     #        restricted = True,
     #       module_type = 5,
     #   )),
     # Vehicle depends on Assets
     #("vehicle", Storage(
     #        name_nice = T("Vehicles"),
-    #        description = T("Manage Vehicles"),
+    #        description = "Manage Vehicles",
     #        restricted = True,
     #        module_type = 10,
     #    )),
     #("req", Storage(
     #        name_nice = T("Requests"),
-    #        description = T("Manage requests for supplies, assets, staff or other resources. Matches against Inventories where supplies are requested."),
+    #        description = "Manage requests for supplies, assets, staff or other resources. Matches against Inventories where supplies are requested.",
     #        restricted = True,
     #        module_type = 10,
     #    )),
     ("project", Storage(
             name_nice = T("Projects"),
-            description = T("Tracking of Projects, Activities and Tasks"),
+            #description = "Tracking of Projects, Activities and Tasks",
             restricted = True,
             module_type = 2
         )),
     # Maybe in future :)
     #("survey", Storage(
     #        name_nice = T("Surveys"),
-    #        description = T("Create, enter, and manage surveys."),
+    #        description = "Create, enter, and manage surveys.",
     #        restricted = True,
     #        module_type = 5,
     #    )),
     #("cr", Storage(
     #        name_nice = T("Shelters"),
-    #        description = T("Tracks the location, capacity and breakdown of victims in Shelters"),
+    #        #description = "Tracks the location, capacity and breakdown of victims in Shelters",
     #        restricted = True,
     #        module_type = 10
     #    )),
     #("hms", Storage(
     #        name_nice = T("Hospitals"),
-    #        description = T("Helps to monitor status of hospitals"),
+    #        #description = "Helps to monitor status of hospitals",
     #        restricted = True,
     #        module_type = 10
     #    )),
     #("irs", Storage(
     #        name_nice = T("Incidents"),
-    #        description = T("Incident Reporting System"),
+    #        description = "Incident Reporting System",
     #        restricted = False,
     #        module_type = 10
     #    )),
     #("impact", Storage(
     #        name_nice = T("Impacts"),
-    #        description = T("Used by Assess"),
+    #        #description = "Used by Assess",
     #        restricted = True,
     #        module_type = None,
     #    )),
@@ -568,21 +602,19 @@ deployment_settings.modules = OrderedDict([
     # Deprecated by Surveys module
     #("assess", Storage(
     #        name_nice = T("Assessments"),
-    #        description = T("Rapid Assessments & Flexible Impact Assessments"),
+    #        #description = "Rapid Assessments & Flexible Impact Assessments",
     #        restricted = True,
     #        module_type = 10,
     #    )),
-    # Scenario depends on HRM
     #("scenario", Storage(
     #        name_nice = T("Scenarios"),
-    #        description = T("Define Scenarios for allocation of appropriate Resources (Human, Assets & Facilities)."),
+    #        #description = "Define Scenarios for allocation of appropriate Resources (Human, Assets & Facilities).",
     #        restricted = True,
     #        module_type = 10,
     #    )),
-    # Event depends on HRM
     #("event", Storage(
     #        name_nice = T("Events"),
-    #        description = T("Activate Events (e.g. from Scenario templates) for allocation of appropriate Resources (Human, Assets & Facilities)."),
+    #        #description = "Activate Events (e.g. from Scenario templates) for allocation of appropriate Resources (Human, Assets & Facilities).",
     #        restricted = True,
     #        module_type = 10,
     #    )),
@@ -590,14 +622,14 @@ deployment_settings.modules = OrderedDict([
     # @ToDo: Rewrite in a modern style
     #("budget", Storage(
     #        name_nice = T("Budgeting Module"),
-    #        description = T("Allows a Budget to be drawn up"),
+    #        description = "Allows a Budget to be drawn up",
     #        restricted = True,
     #        module_type = 10
     #    )),
     # @ToDo: Port these Assessments to the Survey module
     #("building", Storage(
     #        name_nice = T("Building Assessments"),
-    #        description = T("Building Safety Assessments"),
+    #        description = "Building Safety Assessments",
     #        restricted = True,
     #        module_type = 10,
     #    )),
@@ -605,19 +637,19 @@ deployment_settings.modules = OrderedDict([
     # Requires RPy2
     #("climate", Storage(
     #    name_nice = T("Climate"),
-    #    description = T("Climate data portal"),
+    #    description = "Climate data portal",
     #    restricted = True,
     #    module_type = 10,
     #)),
     #("delphi", Storage(
     #        name_nice = T("Delphi Decision Maker"),
-    #        description = T("Supports the decision making of large groups of Crisis Management Experts by helping the groups create ranked list."),
+    #        description = "Supports the decision making of large groups of Crisis Management Experts by helping the groups create ranked list.",
     #        restricted = False,
     #        module_type = 10,
     #    )),
     #("dvi", Storage(
     #       name_nice = T("Disaster Victim Identification"),
-    #       description = T("Disaster Victim Identification"),
+    #       description = "Disaster Victim Identification",
     #       restricted = True,
     #       module_type = 10,
     #       #access = "|DVI|",      # Only users with the DVI role can see this module in the default menu & access the controller
@@ -626,31 +658,43 @@ deployment_settings.modules = OrderedDict([
     #   )),
     #("mpr", Storage(
     #       name_nice = T("Missing Person Registry"),
-    #       description = T("Helps to report and search for missing persons"),
+    #       description = "Helps to report and search for missing persons",
+    #       restricted = False,
+    #       module_type = 10,
+    #   )),
+    #("dvr", Storage(
+    #       name_nice = T("Disaster Victim Registry"),
+    #       #description = "Allow affected individuals & households to register to receive compensation and distributions",
     #       restricted = False,
     #       module_type = 10,
     #   )),
     #("member", Storage(
     #       name_nice = T("Members"),
-    #       description = T("Membership Management System"),
+    #       description = "Membership Management System",
     #       restricted = True,
     #       module_type = 10,
     #   )),
     #("fire", Storage(
     #       name_nice = T("Fire Stations"),
-    #       description = T("Fire Station Management"),
+    #       description = "Fire Station Management",
     #       restricted = True,
     #       module_type = 1,
     #   )),
+    #("flood", Storage(
+    #        name_nice = T("Flood Warnings"),
+    #        #description = "Flood Gauges show water levels in various parts of the country",
+    #        restricted = False,
+    #        module_type = 10
+    #    )),
     #("patient", Storage(
     #        name_nice = T("Patient Tracking"),
-    #        description = T("Tracking of Patients"),
+    #        description = "Tracking of Patients",
     #        restricted = True,
     #        module_type = 10
     #    )),
     #("ocr", Storage(
     #       name_nice = T("Optical Character Recognition"),
-    #       description = T("Optical Character Recognition for reading the scanned handwritten paper forms."),
+    #       description = "Optical Character Recognition for reading the scanned handwritten paper forms.",
     #       restricted = False,
     #       module_type = 10
     #   )),

@@ -60,7 +60,7 @@ def req():
         item_id = inv_item.item_id
         s3db.req_req_item[request.vars.req_item_id] = dict(site_id = site_id)
         response.confirmation = T("%(item)s requested from %(site)s" % {"item":s3db.supply_item_represent(item_id, show_link = False),
-                                                                        "site":s3db.org_site_represent(site_id, link=False)
+                                                                        "site":s3db.org_site_represent(site_id, show_link=False)
                                                                         })
 
     default_type = request.vars.default_type
@@ -135,7 +135,14 @@ def req():
                     # - includes one embedded in list_create
                     # - list_fields over-rides, so still visible within list itself
                     s3db.req_create_form_mods()
-
+                    s3mgr.configure(s3db.req_req,
+                                    create_next = URL(c="req",
+                                                      f="req",
+                                                      args=["[id]",
+                                                            "req_item"
+                                                           ]
+                                                     )
+                                   )
                     # Get the default Facility for this user
                     # @ToDo: Use site_id in User Profile (like current organisation_id)
                     if deployment_settings.has_module("hrm"):
@@ -178,8 +185,8 @@ def req():
             type = r.record.type
             if type == 1: # Items
                 # Limit site_id to facilities the user has permissions for
-                auth.permission.permitted_facilities(table=r.table,
-                                                     error_msg=T("You do not have permission for any facility to make a commitment."))
+                auth.permitted_facilities(table=r.table,
+                                          error_msg=T("You do not have permission for any facility to make a commitment."))
                 if r.interactive:
                     # Redirect to the Items tab after creation
                     s3mgr.configure(table,
@@ -192,8 +199,8 @@ def req():
                 # Check if user is affiliated to an Organisation
                 if is_affiliated():
                     # Limit organisation_id to organisations the user has permissions for
-                    auth.permission.permitted_organisations(table=r.table,
-                                                            redirect_on_error=False)
+                    auth.permitted_organisations(table=r.table,
+                                                 redirect_on_error=False)
                     table.organisation_id.readable = True
                     table.organisation_id.writable = True
                 else:
@@ -215,8 +222,8 @@ def req():
         else:
             # Limit site_id to facilities the user has permissions for
             # @ToDo: Non-Item requests shouldn't be bound to a Facility?
-            auth.permission.permitted_facilities(table=r.table,
-                                                 error_msg=T("You do not have permission for any facility to make a request."))
+            auth.permitted_facilities(table=r.table,
+                                      error_msg=T("You do not have permission for any facility to make a request."))
 
         return True
     response.s3.prep = prep
@@ -251,6 +258,13 @@ def req():
                         )
                     )
             elif r.component.name == "req_item":
+                req_item_inv_item_btn = dict(url = URL(c = "req",
+                                                       f = "req_item_inv_item",
+                                                       args = ["[id]"]
+                                                      ),
+                                             _class = "action-btn",
+                                             label = str(T("Request from Facility")),
+                                            )
                 response.s3.actions.append(req_item_inv_item_btn)
             elif r.component.name == "req_skill":
                 pass
@@ -286,6 +300,13 @@ def req_item():
 
     output = s3_rest_controller()
 
+    req_item_inv_item_btn = dict(url = URL(c = "req",
+                                           f = "req_item_inv_item",
+                                           args = ["[id]"]
+                                          ),
+                                _class = "action-btn",
+                                label = str(T("Request from Facility")),
+                               )
     if response.s3.actions:
         response.s3.actions += [req_item_inv_item_btn]
     else:
@@ -440,14 +461,13 @@ def commit():
             if r.record:
                 if r.record.type == 1: # Items
                     # Limit site_id to facilities the user has permissions for
-                    auth.permission.permitted_facilities(table=table,
-                                                         error_msg=T("You do not have permission for any facility to make a commitment.") )
+                    auth.permitted_facilities(table=table,
+                                              error_msg=T("You do not have permission for any facility to make a commitment.") )
 
                 else:
                     # Non-Item commits can have an Organisation
                     # Limit organisation_id to organisations the user has permissions for
-                    auth.permission.permitted_organisations(table=r.table,
-                                                            redirect_on_error=False)
+                    auth.permitted_organisations(table=r.table, redirect_on_error=False)
                     table.organisation_id.readable = True
                     table.organisation_id.writable = True
                     # Non-Item commits shouldn't have a From Inventory
@@ -681,6 +701,12 @@ def send_req():
         vars: site_id
     """
 
+    ritable = s3db.req_req_item
+    iitable = s3db.inv_inv_item
+    sendtable = s3db.inv_send
+    tracktable = s3db.inv_track_item
+    siptable = s3db.supply_item_pack
+
     req_id = request.args[0]
     r_req = s3db.req_req[req_id]
     site_id = request.vars.get("site_id")
@@ -698,52 +724,89 @@ def send_req():
                      args = [req_id]))
 
     # Create a new send record
-    send_id = s3db.inv_send.insert(date = request.utcnow,
-                                   site_id = site_id,
-                                   to_site_id = r_req.site_id)
+    code = s3db.inv_get_shipping_code("WB",
+                                      site_id,
+                                      s3db.inv_send.send_ref
+                                     )
+    send_id = sendtable.insert(send_ref = code,
+                               req_ref = r_req.req_ref,
+                               sender_id = auth.s3_logged_in_person(),
+                               site_id = site_id,
+                               date = request.utcnow,
+                               recipient_id = r_req.requester_id,
+                               to_site_id = r_req.site_id,
+                               status = s3db.inv_ship_status["IN_PROCESS"],
+                              )
 
-    # Only select items which are in the warehouse
-    ritable = s3db.req_req_item
-    iitable = s3db.inv_inv_item
+    # Get the items for this request that have not been fulfilled (in transit)
     query = (ritable.req_id == req_id) & \
-            (ritable.quantity_fulfil < ritable.quantity) & \
-            (iitable.site_id == site_id) & \
-            (ritable.item_id == iitable.item_id) & \
-            (ritable.deleted == False)  & \
-            (iitable.deleted == False)
+            (ritable.quantity_transit < ritable.quantity) & \
+            (ritable.deleted == False)
     req_items = db(query).select(ritable.id,
                                  ritable.quantity,
+                                 ritable.quantity_transit,
+                                 ritable.item_id,
                                  ritable.item_pack_id,
-                                 iitable.id,
-                                 iitable.item_id,
-                                 iitable.quantity,
-                                 iitable.item_pack_id)
+                                )
 
-    istable = s3db.inv_send_item
-    for req_item in req_items:
-        req_item_quantity = req_item.req_req_item.quantity * \
-                            req_item.req_req_item.pack_quantity
-
-        inv_item_quantity = req_item.inv_inv_item.quantity * \
-                            req_item.inv_inv_item.pack_quantity
-
-        if inv_item_quantity > req_item_quantity:
-            send_item_quantity = req_item_quantity
-        else:
-            send_item_quantity = inv_item_quantity
-        send_item_quantity = send_item_quantity / req_item.req_req_item.pack_quantity
-
-        if send_item_quantity:
-            send_item_id = istable.insert(send_id = send_id,
-                                          inv_item_id = req_item.inv_inv_item.id,
-                                          req_item_id = req_item.req_req_item.id,
-                                          item_pack_id = req_item.req_req_item.item_pack_id,
-                                          quantity = send_item_quantity)
-
+    # loop through each request item and find matched in the site inventory
+    for req_i in req_items:
+        query = (iitable.item_id == req_i.item_id) & \
+                (iitable.site_id == site_id) & \
+                (iitable.deleted == False)
+        inv_items = db(query).select(iitable.id,
+                                     iitable.item_id,
+                                     iitable.quantity,
+                                     iitable.item_pack_id,
+                                     iitable.pack_value,
+                                     iitable.currency,
+                                     iitable.expiry_date,
+                                     iitable.bin,
+                                     iitable.owner_org_id,
+                                     iitable.supply_org_id,
+                                    )
+        # if their is a single match then set up a tracktable record
+        # get the request pack_quantity
+        req_p_qnty = siptable[req_i.item_pack_id].quantity
+        req_qnty = req_i.quantity
+        req_qnty_in_t = req_i.quantity_transit
+        req_qnty_wanted = (req_qnty - req_qnty_in_t) * req_p_qnty
+        # insert the track item records
+        # if their is more than one item match then set the quantity to 0
+        # and add the quantity requested in the comments
+        for inv_i in inv_items:
+            # get inv_item.pack_quantity
+            if len(inv_items) == 1:
+                inv_p_qnty = siptable[inv_i.item_pack_id].quantity
+                inv_qnty = inv_i.quantity * inv_p_qnty
+                if inv_qnty > req_qnty_wanted:
+                    send_item_quantity = req_qnty_wanted
+                else:
+                    send_item_quantity = inv_qnty
+                send_item_quantity = send_item_quantity / inv_p_qnty
+                comment = None
+            else:
+                send_item_quantity = 0
+                comment = "%d items needed to match total request" % req_qnty_wanted
+            tracktable.insert(send_id = send_id,
+                              send_inv_item_id = inv_i.id,
+                              item_id = inv_i.item_id,
+                              req_item_id = req_i.id,
+                              item_pack_id = inv_i.item_pack_id,
+                              quantity = 0,
+                              status = s3db.inv_tracking_status["IN_PROCESS"],
+                              pack_value = inv_i.pack_value,
+                              currency = inv_i.currency,
+                              bin = inv_i.bin,
+                              expiry_date = inv_i.expiry_date,
+                              owner_org_id = inv_i.owner_org_id,
+                              supply_org_id = inv_i.supply_org_id,
+                              comments = comment,
+                             )
     # Redirect to commit
     redirect(URL(c = "inv",
                  f = "send",
-                 args = [send_id, "send_item"]))
+                 args = [send_id, "track_item"]))
 
 # =============================================================================
 def commit_item_json():

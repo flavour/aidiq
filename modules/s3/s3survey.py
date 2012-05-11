@@ -747,7 +747,11 @@ class DataMatrixBuilder():
             self.postponeLayoutUpdate = andThenPostpone
 
     def addArea(self, element, row, col):
-        widgetObj = self.widgetList[element]
+        try:
+            widgetObj = self.widgetList[element]
+        except:
+            _debug("Unable to find element %s in the template" % element)
+            return self.matrix.addCell(row, col, "", [])
         widgetObj.startPosn = (col, row)
         if self.labelLeft:
             widgetObj.labelLeft = (self.labelLeft == "True")
@@ -777,7 +781,11 @@ class DataMatrixBuilder():
         return (endrow, endcol)
 
     def addData(self, element, row, col):
-        widgetObj = self.widgetList[element]
+        try:
+            widgetObj = self.widgetList[element]
+        except:
+            _debug("Unable to find element %s in the template" % element)
+            return self.matrix.addCell(row, col, "", [])
         widgetObj.startPosn = (col, row)
         self.widgetsInList.append(widgetObj)
         if self.labelLeft:
@@ -2743,26 +2751,36 @@ class S3AnalysisPriority():
                           4:"#FF0000", # red
                           5:"#880088", # purple
                         },
+                 # Make Higher-priority show up more clearly
+                 opacity={-1:0.5,
+                           0:0.6,
+                           1:0.6,
+                           2:0.7,
+                           3:0.7,
+                           4:0.8,
+                           5:0.8,
+                        },
                  image={-1:"grey",
-                          0:"blue",
-                          1:"green",
-                          2:"yellow",
-                          3:"orange",
-                          4:"red",
-                          5:"purple",
+                         0:"blue",
+                         1:"green",
+                         2:"yellow",
+                         3:"orange",
+                         4:"red",
+                         5:"purple",
                         },
                  desc={-1:"No Data",
-                          0:"Very Low",
-                          1:"Low",
-                          2:"Medium Low",
-                          3:"Medium High",
-                          4:"High",
-                          5:"Very High",
+                        0:"Very Low",
+                        1:"Low",
+                        2:"Medium Low",
+                        3:"Medium High",
+                        4:"High",
+                        5:"Very High",
                         },
                  zero = True
                  ):
         self.range = range
         self.colour = colour
+        self.opacity = opacity
         self.image = image
         self.description = desc
 
@@ -3545,4 +3563,6 @@ class S3GridChildAnalysis(S3AbstractAnalysis):
                   yLabel=None):
         return self.widget.drawChart(series_id, output, data, label, xLabel, yLabel)
 
+    def filter(self, filterType, groupedData):
+        return self.widget.filter(filterType, groupedData)
 # END =========================================================================

@@ -35,22 +35,38 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["S3Cube"]
+__all__ = ["S3Cube", "S3Report", "S3ContingencyTable"]
 
 import sys
+import datetime
 import gluon.contrib.simplejson as json
 
 from gluon import current
 from gluon.storage import Storage
 from gluon.html import *
+from s3rest import S3TypeConverter
 from s3crud import S3CRUD
 from s3search import S3Search
 from s3utils import s3_truncate
+from s3validators import IS_INT_AMOUNT, IS_FLOAT_AMOUNT, IS_NUMBER
+
 
 # =============================================================================
 
 class S3Cube(S3CRUD):
     """ RESTful method for pivot table reports """
+
+    T = current.T
+    METHODS = {
+        "list": T("List"),
+        "count": T("Count"),
+        "min": T("Minimum"),
+        "max": T("Maximum"),
+        "sum": T("Sum"),
+        "avg": T("Average"),
+        "mean": T("Average"),
+        #"std": T("Standard Deviation")
+    }
 
     # -------------------------------------------------------------------------
     def apply_method(self, r, **attr):
@@ -81,54 +97,114 @@ class S3Cube(S3CRUD):
         manager = current.manager
         session = current.session
         response = current.response
-
         table = self.table
 
-        _vars = r.get_vars
+        tablename = self.tablename
 
-        # Generate form -------------------------------------------------------
-        # @todo: do this only in interactive formats
+        # Report options  -----------------------------------------------------
         #
-        show_form = attr.get("interactive_report", False)
+
+        # Get the session options
+        session_options = session.s3.report_options
+        if session_options and tablename in session_options:
+            session_options = session_options[tablename]
+        else:
+            session_options = Storage()
+
+        # Get the default options
+        report_options = self._config("report_options", Storage())
+        if report_options and "defaults" in report_options:
+            default_options = report_options["defaults"]
+        else:
+            default_options = Storage()
+
+        # Get the URL options
+        url_options = Storage([(k, v) for k, v in
+                               r.get_vars.iteritems() if v])
+
+        # Figure out which set of form values to use
+        # POST > GET > session > table defaults > list view
+        if r.http == "POST":
+            form_values = r.post_vars
+
+            # The totals option is used to turn OFF the totals cols/rows but
+            # post vars only contain checkboxes that are enabled and checked.
+            if "totals" not in r.post_vars:
+                form_values["totals"] = "off"
+        elif url_options:
+            form_values = url_options
+            # Without the _formname the form won't validate
+            # we put it in here so that URL query strings don't need to
+            if not form_values._formname:
+                form_values._formname = "report"
+        elif session_options:
+            form_values = session_options
+        elif default_options:
+            form_values = default_options
+            # Without the _formname the form won't validate
+            # we put it in here so that URL query strings don't need to
+            if not form_values._formname:
+                form_values._formname = "report"
+        else:
+            form_values = Storage()
+
+        # Generate the report and resource filter form
+        show_form = attr.get("interactive_report", True)
         if show_form:
-            form = self._create_form()
-            if form.accepts(r.post_vars, session,
-                            formname="report",
-                            keepvalues=True):
-                query, errors = self._process_filter_options(form)
-                if r.http == "POST" and not errors:
-                    self.resource.add_filter(query)
-                _vars = form.vars
+            # Build the form and prepopulate with values we've got
+            form = self._create_form(form_values)
+
+            # Validate the form. This populates form.vars (values) and
+            # form.errors (field errors).
+            # We only compare to the session if POSTing to prevent cross-site
+            # scripting.
+            if r.http == "POST" and \
+                form.accepts(form_values, session, formname="report", keepvalues=True) or \
+                form.accepts(form_values, formname="report", keepvalues=True):
+
+                # The form is valid so save the form values into the session
+                if 'report_options' not in session.s3:
+                    session.s3.report_options = Storage()
+
+                session.s3.report_options[tablename] = Storage([(k, v) for k, v in
+                                                        form_values.iteritems() if v])
+            
+            # Use the values to generate the query filter
+            query, errors = self._process_filter_options(form)
+
+            if not errors:
+                self.resource.add_filter(query)
         else:
             form = None
 
-        # Get rows, cols, fact and aggregate ----------------------------------
-        #
-        rows = _vars.get("rows", None)
-        cols = _vars.get("cols", None)
-        fact = _vars.get("fact", None)
-        aggregate = _vars.get("aggregate", None)
-        show_totals = _vars.get("totals", "on")
-
-        if not rows:
-            rows = None
-        if not cols:
-            cols = None
-        if not rows and not cols:
-            self.method = "list"
+        # Get rows, cols, facts and aggregate
+        rows = form_values.get("rows", None)
+        cols = form_values.get("cols", None)
+        fact = form_values.get("fact", None)
+        aggregate = form_values.get("aggregate", "list")
         if not aggregate:
             aggregate = "list"
-        if show_totals is None or \
-           str(show_totals).lower() in ("false", "off"):
+
+        # Fall back to list if no dimensions specified
+        if not rows and not cols:
+            self.method = "list"
+
+        # Show totals?
+        show_totals = form_values.get("totals", True)
+        if show_totals and str(show_totals).lower() in ("false", "off"):
             show_totals = False
         else:
             show_totals = True
+
+        # Get the layers
         layers = []
+
         if not fact:
             if "name" in table:
                 fact = "name"
             else:
                 fact = table._id.name
+
         if fact:
             if not isinstance(fact, list):
                 fact = [fact]
@@ -262,7 +338,7 @@ class S3Cube(S3CRUD):
         return output
 
     # -------------------------------------------------------------------------
-    def _create_form(self):
+    def _create_form(self, form_values=None):
         """ Creates the report filter and options form """
 
         T = current.T
@@ -275,39 +351,44 @@ class S3Cube(S3CRUD):
         if not list_fields:
             list_fields = [f.name for f in resource.readable_fields()]
 
-        report_rows = _config("report_rows", list_fields)
-        report_cols = _config("report_cols", list_fields)
-        report_fact = _config("report_fact", list_fields)
+        report_options = _config("report_options", Storage())
+        report_rows = report_options.get("rows", list_fields)
+        report_cols = report_options.get("cols", list_fields)
+        report_fact = report_options.get("facts", list_fields)
 
         _select_field = self._select_field
-        select_rows = _select_field(report_rows, _id="rows", _name="rows")
-        select_cols = _select_field(report_cols, _id="cols", _name="cols")
-        select_fact = _select_field(report_fact, _id="fact", _name="fact")
+        select_rows = _select_field(report_rows, _id="rows", _name="rows",
+                                    form_values=form_values)
+        select_cols = _select_field(report_cols, _id="cols", _name="cols",
+                                    form_values=form_values)
+        select_fact = _select_field(report_fact, _id="fact", _name="fact",
+                                    form_values=form_values)
 
+        # totals are "on" or True by default
         show_totals = True
-        if request.env.request_method == "GET" and \
-           "show_totals" in request.get_vars:
-            show_totals = request.get_vars["show_totals"]
-            if show_totals.lower() in ("false", "off"):
+        if "totals" in form_values:
+            show_totals = form_values["totals"]
+            if str(show_totals).lower() in ("false", "off"):
                 show_totals = False
 
         show_totals = INPUT(_type="checkbox", _id="totals", _name="totals",
                             value=show_totals)
 
-        methods = _config("report_method")
+        methods = report_options.get("methods")
         select_method = self._select_method(methods,
                                             _id="aggregate",
-                                            _name="aggregate")
+                                            _name="aggregate",
+                                            form_values=form_values)
 
         form = FORM()
 
         # Append filter widgets, if configured
-        filter_widgets = self._build_filter_widgets()
+        filter_widgets = self._build_filter_widgets(form_values)
         if filter_widgets:
             form.append(TABLE(filter_widgets, _id="filter_options"))
 
         # Append report options, always
-        report_options = TABLE(
+        form_report_options = TABLE(
                     TR(
                         TD(LABEL("Rows:"), _class="w2p_fl"),
                         TD(LABEL("Columns:"), _class="w2p_fl"),
@@ -335,23 +416,32 @@ class S3Cube(S3CRUD):
                         # @todo: Reset-link to restore pre-defined parameters,
                         #        show only if URL vars present
                         #A(T("Reset"), _class="action-lnk"),
-                        _colspan=3), _id="report_options")
-        form.append(report_options)
+                        _colspan=3
+                    ),
+                    _id="report_options"
+                )
+        form.append(form_report_options)
 
         return form
 
     # -------------------------------------------------------------------------
-    def _build_filter_widgets(self):
+    def _build_filter_widgets(self, form_values=None):
         """
             Builds the filter form widgets
         """
 
         request = self.request
         resource = self.resource
-        filter_widgets = self._config("report_filter", None)
+
+        report_options = self._config("report_options", None)
+        if not report_options:
+            return None
+
+        filter_widgets = report_options.get("search", None)
         if not filter_widgets:
             return None
-        vars = request.vars
+
+        vars = form_values if form_values else request.vars
         trows = []
         for widget in filter_widgets:
             name = widget.attr["_name"]
@@ -380,6 +470,9 @@ class S3Cube(S3CRUD):
             Processes the filter widgets into a filter query
 
             @param form: the filter form
+            
+            @rtype: tuple
+            @return: A tuple containing (query object, validation errors)
         """
 
         session = current.session
@@ -388,7 +481,11 @@ class S3Cube(S3CRUD):
         query = None
         errors = None
 
-        filter_widgets = self._config("report_filter", None)
+        report_options = self._config("report_options", None)
+        if not report_options:
+            return (None, None)
+
+        filter_widgets = report_options.get("search", None)
         if not filter_widgets:
             return (None, None)
 
@@ -405,7 +502,7 @@ class S3Cube(S3CRUD):
         return (query, errors)
 
     # -------------------------------------------------------------------------
-    def _select_field(self, list_fields, **attr):
+    def _select_field(self, list_fields, form_values=None, **attr):
         """
             Returns a SELECT of field names
 
@@ -413,23 +510,21 @@ class S3Cube(S3CRUD):
             @param attr: the HTML attributes for the SELECT
         """
 
-        request = current.request
-        resource = self.resource
+        resolve = self.resource.resolve_selectors
         value = None
-        disable = False
-        if request.env.request_method == "GET":
+        if current.request.env.request_method == "GET":
             if "_name" in attr:
                 name = attr["_name"]
-                if name in request.get_vars:
-                    value = request.get_vars[name]
+                if form_values and name in form_values:
+                    value = form_values[name]
         table = self.table
-        lfields, join, ljoins = resource.get_lfields(list_fields)
+        lfields, joins, left, distinct = resolve(list_fields)
         options = [OPTION(f.label,
                           _value=f.selector,
                           _selected= value == f.selector and "selected" or None)
                    for f in lfields
                     if (f.field is None or f.field.name != table._id.name) and f.show]
-        if len(options) < 2:
+        if len(options) and len(options) < 2:
             options[0].update(_selected="selected")
         else:
             options.insert(0, OPTION("", _value=None))
@@ -437,7 +532,7 @@ class S3Cube(S3CRUD):
         return select
 
     # -------------------------------------------------------------------------
-    def _select_method(self, methods, **attr):
+    def _select_method(self, methods, form_values=None, **attr):
         """
             Returns a SELECT of aggregation methods
 
@@ -445,20 +540,17 @@ class S3Cube(S3CRUD):
             @param attr: the HTML attributes for the SELECT
         """
 
-        T = current.T
-        supported_methods = {
-            "list": T("List"),
-            "count": T("Count"),
-            "sum": T("Sum"),
-            "avg": T("Average")
-        }
+        supported_methods = self.METHODS
         if methods:
             methods = [(m, supported_methods[m])
                        for m in methods
                        if m in supported_methods]
         else:
             methods = supported_methods.items()
-        selected = current.request.vars.aggregate
+        if form_values:
+            selected = form_values["aggregate"]
+        else:
+            selected = None
         options = [OPTION(m[1],
                           _value=m[0],
                           _selected= m[0] == selected and "selected" or None)
@@ -470,10 +562,32 @@ class S3Cube(S3CRUD):
         select = SELECT(options, **attr)
         return select
 
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def mname(code):
+        """
+            Get the method name for a method code, returns None for
+            unsupported methods
+
+            @param code: the method code
+        """
+
+        methods = S3Cube.METHODS
+        T = current.T
+
+        if code is None:
+            code = "list"
+        if code in methods:
+            return T(methods[code])
+        else:
+            return None
+
 # =============================================================================
 
 class S3Report:
     """ Class representing reports """
+
+    METHODS = ["list", "count", "min", "max", "sum", "avg", "mean"] #, "std"]
 
     def __init__(self, resource, rows, cols, layers):
         """
@@ -633,7 +747,7 @@ class S3Report:
         self.rfields = rfields
 
         # lfields: rfields resolved into list fields map
-        lfields, join, ljoins = resource.get_lfields(rfields)
+        lfields, joins, left, distinct = resource.resolve_selectors(rfields)
         lfields = Storage([(f.selector, f) for f in lfields])
         self.lfields = lfields
 
@@ -728,7 +842,7 @@ class S3Report:
             @param method: the aggregation method of the layer
         """
 
-        if self.mname(method) is None:
+        if method not in self.METHODS:
             raise SyntaxError("Unsupported aggregation method: %s" % method)
 
         items = self.records
@@ -911,31 +1025,6 @@ class S3Report:
         else:
             return len(self.records)
 
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def mname(code):
-        """
-            Get the method name for a method code, returns None for
-            unsupported methods
-
-            @param code: the method code
-        """
-
-        T = current.T
-        mnames = {
-            "list": T("List"),
-            "count": T("Count"),
-            "min": T("Minimum"),
-            "max": T("Maximum"),
-            "sum": T("Sum"),
-            "avg": T("Average"),
-            "mean": T("Average"),
-            #"std": T("Standard Deviation")
-        }
-        if code is None:
-            code = "list"
-        return mnames.get(code, None)
-
 # =============================================================================
 
 class S3ContingencyTable(TABLE):
@@ -990,9 +1079,9 @@ class S3ContingencyTable(TABLE):
 
         # Layer titles
         labels = []
-        get_mname = report.mname
+        get_mname = S3Cube.mname
         for field, method in layers:
-            label = get_label(lfields, field, tablename, "report_fact")
+            label = get_label(lfields, field, tablename, "fact")
             mname = get_mname(method)
             if not labels:
                 m = method == "list" and get_mname("count") or mname
@@ -1002,7 +1091,7 @@ class S3ContingencyTable(TABLE):
 
         # Columns field title
         if cols:
-            col_label = get_label(lfields, cols, tablename, "report_cols")
+            col_label = get_label(lfields, cols, tablename, "cols")
             _colspan = numcols + 1
         else:
             col_label = ""
@@ -1012,7 +1101,7 @@ class S3ContingencyTable(TABLE):
         titles = TR(layers_title, cols_title)
 
         # Rows field title
-        row_label = get_label(lfields, rows, tablename, "report_rows")
+        row_label = get_label(lfields, rows, tablename, "rows")
         rows_title = TH(row_label, _style=_style)
 
         headers = TR(rows_title)
@@ -1051,7 +1140,7 @@ class S3ContingencyTable(TABLE):
             row = rvals[i]
             v = represent(rows, row.value)
             add_row_title(s3_truncate(unicode(v)))
-            rowhdr = TD(DIV(v))
+            rowhdr = TD(v)
             add_cell(rowhdr)
 
             # Result cells
@@ -1068,17 +1157,27 @@ class S3ContingencyTable(TABLE):
                         elif value is None:
                             l = "-"
                         else:
-                            l = unicode(value)
+                            if type(value) is int:
+                                l = IS_INT_AMOUNT.represent(value)
+                            elif type(value) is float:
+                                l = IS_FLOAT_AMOUNT.represent(value, precision=2)
+                            else:
+                                l = unicode(value)
                         add_value(", ".join(l))
                     else:
-                        add_value(unicode(value))
+                        if type(value) is int:
+                            add_value(IS_INT_AMOUNT.represent(value))
+                        elif type(value) is float:
+                            add_value(IS_FLOAT_AMOUNT.represent(value, precision=2))
+                        else:
+                            add_value(unicode(value))
                 vals = " / ".join(vals)
-                add_cell(TD(DIV(vals)))
+                add_cell(TD(vals))
 
             # Row total
             totals = get_total(row, layers, append=add_row_total)
             if show_totals and cols is not None:
-                add_cell(TD(DIV(totals)))
+                add_cell(TD(totals))
 
             add_row(tr)
 
@@ -1096,12 +1195,12 @@ class S3ContingencyTable(TABLE):
         for j in xrange(numcols):
             col = report.col[j]
             totals = get_total(col, layers, append=add_col_total)
-            add_total(TD(DIV(totals)))
+            add_total(TD(totals))
 
         # Grand total
         if cols is not None:
             grand_totals = get_total(report.totals, layers)
-            add_total(TD(DIV(grand_totals)))
+            add_total(TD(grand_totals))
 
         tfoot = TFOOT(col_total)
 
@@ -1123,7 +1222,8 @@ class S3ContingencyTable(TABLE):
         if cols and col_titles and col_totals:
             dcols = top(zip(col_titles, col_totals))
         row_label = "%s %s" % (BY, str(row_label))
-        col_label = "%s %s" % (BY, str(col_label))
+        if col_label:
+            col_label = "%s %s" % (BY, str(col_label))
         layer_label=str(layer_label)
         json_data = json.dumps(dict(rows=drows,
                                     cols=dcols,
@@ -1179,11 +1279,12 @@ class S3ContingencyTable(TABLE):
         for layer in layers:
             f, m = layer
             value = values[layer]
+
             if m == "list":
                 value = value and len(value) or 0
             if not len(totals) and append is not None:
                 append(value)
-            totals.append(str(value))
+            totals.append(IS_NUMBER.represent(value))
         totals = " / ".join(totals)
         return totals
 
@@ -1203,6 +1304,29 @@ class S3ContingencyTable(TABLE):
         if field in lfields:
             lfield = lfields[field]
             if lfield.field:
+                f = lfield.field
+                ftype = str(f.type)
+                if ftype not in ("string", "text") and \
+                   isinstance(value, basestring):
+                    # pyvttbl converts col/row headers into unicode,
+                    # but represent may need the original data type,
+                    # hence try to convert it back here:
+                    convert = S3TypeConverter.convert
+                    try:
+                        if ftype == "boolean":
+                            value = convert(bool, value)
+                        elif ftype == "integer":
+                            value = convert(int, value)
+                        elif ftype == "float":
+                            value = convert(float, value)
+                        elif ftype == "date":
+                            value = convert(datetime.date, value)
+                        elif ftype == "time":
+                            value = convert(datetime.time, value)
+                        elif ftype == "datetime":
+                            value = convert(datetime.datetime, value)
+                    except TypeError, ValueError:
+                        pass
                 return manager.represent(lfield.field, value,
                                          strip_markup=True)
         if value is None:

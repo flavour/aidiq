@@ -97,7 +97,7 @@ function s3_gis_tooltipSelect(event) {
         var attributes = feature.attributes;
         var tooltip;
         if (undefined != attributes.popup) {
-            // GeoJSON Feature Layers
+            // GeoJSON Feature Layers or Theme Layers
             tooltip = attributes.popup;
         } else if (undefined != attributes.name) {
             // GeoJSON, GeoRSS or Legacy Features
@@ -256,7 +256,7 @@ function addGeolocateControl(toolbar) {
 
 // Supports GeoLocate control
 // Needs to be in global scope as activated by user
-var s3_gis_pulsate = function(feature) {
+function s3_gis_pulsate(feature) {
     var point = feature.geometry.getCentroid(),
         bounds = feature.geometry.getBounds(),
         radius = Math.abs((bounds.right - bounds.left) / 2),
@@ -314,7 +314,7 @@ function addGoogleEarthControl(toolbar) {
 // Supports GE Control
 function addGoogleEarthKmlLayers() {
     if (S3.gis.layers_features) {
-        for (i = 0; i < S3.gis.layers_features.length; i++) {
+        for (var i = 0; i < S3.gis.layers_features.length; i++) {
             var layer = S3.gis.layers_features[i];
             if (undefined != layer.visibility) {
                 var visibility = layer.visibility;
@@ -644,25 +644,99 @@ function addSaveButton(toolbar) {
         tooltip: S3.i18n.gis_save,
         handler: function() {
             // Read current settings from map
-            var lonlat = map.getCenter();
-            var zoom_current = map.getZoom();
-            // Convert back to LonLat for saving
-            lonlat.transform(map.getProjectionObject(), S3.gis.proj4326);
+            var state = getState();
+            var layersStr = Ext.util.JSON.encode(state.layers);
+            var pluginsStr = Ext.util.JSON.encode(state.plugins);
             // Use AJAX to send back
-            var url = S3.Ap.concat('/gis/config/' + S3.gis.region + '.url/update');
+            if (S3.gis.config_id) {
+                var url = S3.Ap.concat('/gis/config/' + S3.gis.config_id + '.url/update');
+            } else {
+                var url = S3.Ap.concat('/gis/config.url/create');
+            }
             Ext.Ajax.request({
                 url: url,
-                method: 'GET',
+                method: 'POST',
+                // @ToDo: Make the return value visible to the user
+                success: function(response, opts) {
+                    var obj = Ext.decode(response.responseText);
+                    var id = obj.message.split('=', 2)[1];
+                    if (id) {
+                        // Ensure that future saves are updates, not creates
+                        S3.gis.config_id = id;
+                        // Change the Menu link
+                        var url = S3.Ap.concat('/gis/config/', id, '/layer_entity')
+                        $('#gis_menu_config').attr('href', url);
+                    }
+                },
+                //failure: otherFn,
                 params: {
-                    lat: lonlat.lat,
-                    lon: lonlat.lon,
-                    zoom: zoom_current
+                    lat: state.lat,
+                    lon: state.lon,
+                    zoom: state.zoom,
+                    layers: layersStr,
+                    plugins: pluginsStr
                 }
             });
         }
     });
     toolbar.addSeparator();
     toolbar.addButton(saveButton);
+}
+
+// Get the State of the Map
+// so that it can be Saved & Reloaded later
+// @ToDo: so that it can be Saved for Printing
+// @ToDo: so that a Bookmark can be shared
+function getState() {
+
+    // State stored a a JSON array
+    var state = {};
+
+    // Viewport
+    var lonlat = map.getCenter();
+    // Convert back to LonLat for saving
+    lonlat.transform(map.getProjectionObject(), S3.gis.proj4326);
+    state.lon = lonlat.lon;
+    state.lat = lonlat.lat;
+    state.zoom = map.getZoom();
+
+    // Layers
+    // - Visible
+    // @ToDo: Popups
+    // @ToDo: Filters
+    // @ToDo: WMS Browser
+    var layers = [];
+    var layer_config;
+    var base_id = map.baseLayer.s3_layer_id;
+    Ext.iterate(map.layers, function(key, val, obj) {
+        var id = key.s3_layer_id;
+        layer_config = {
+            id: id
+        }
+        // Only return non-default options
+        if (key.visibility) {
+            layer_config['visible'] = key.visibility;
+        }
+        if (id == base_id) {
+            layer_config['base'] = true;
+        }
+        if (key.s3_style) {
+            layer_config['style'] = key.s3_style;
+        }
+        layers.push(layer_config);
+    });
+    state.layers = layers;
+
+    // Plugins
+    var plugins = [];
+    Ext.iterate(S3.gis.plugins, function(key, val, obj) {
+        if (key.getState) {
+            plugins.push(key.getState());
+        }
+    });
+    state.plugins = plugins;
+
+    return state;
 }
 
 // MGRS Grid PDF Control
@@ -733,7 +807,7 @@ function addPdfControl(toolbar) {
 // WMS GetFeatureInfo control
 function addWMSGetFeatureInfoControl(toolbar) {
     S3.gis.wmsGetFeatureInfo = new gxp.plugins.WMSGetFeatureInfo({
-        actionTarget: 'mappnlcntr.tbar',
+        actionTarget: 'gis_toolbar',
         outputTarget: 'map',
         outputConfig: {
             width: 400,
@@ -798,4 +872,151 @@ function addRemoveLayersControl() {
     S3.gis.removeLayerControl.target = S3.gis.layerTree;
     S3.gis.layerTree.mapPanel = S3.gis.mapPanel;
     S3.gis.removeLayerControl.addActions();
+}
+
+// Layer Properties control
+function addLayerPropertiesButton() {
+    var layerPropertiesButton = new Ext.Toolbar.Button({
+        iconCls: 'gxp-icon-layerproperties',
+        tooltip: S3.i18n.gis_properties,
+        handler: function() {
+            // Find the Selected Node
+            function isSelected(node) {
+                var selected = node.isSelected();
+                if (selected) {
+                    if (!node.leaf) {
+                        // Don't try & open Properties for a Folder
+                        return false;
+                    } else {
+                        return true;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            var node = S3.gis.layerTree.root.findChildBy(isSelected, null, true);
+            if (node) {
+                var layer_type = node.layer.s3_layer_type;
+                var url = S3.Ap.concat('/gis/layer_' + layer_type + '.plain?layer_' + layer_type + '.layer_id=' + node.layer.s3_layer_id + '&update=1');
+                Ext.Ajax.request({
+                    url: url,
+                    method: 'GET',
+                    success: function(response, opts) {
+                        // Close any existing window
+                        if (S3.gis.propertiesWindow) {
+                            S3.gis.propertiesWindow.close();
+                        }
+                        if (layer_type == 'feature') {
+                            var tabPanel = new Ext.TabPanel({
+                                activeTab: 0,
+                                items: [
+                                    {
+                                        // Tab to View/Edit Basic Details
+                                        // @ToDo: i18n
+                                        title: 'Layer Properties',
+                                        html: response.responseText
+                                    }, {
+                                        // Tab for Search Widget
+                                        // @ToDo: i18n
+                                        title: 'Filter',
+                                        id: 's3_gis_layer_filter_tab',
+                                        html: ''
+                                    }
+                                    // @ToDo: Tab for Styling (esp. Thematic Mapping)
+                                    ]
+                            });
+                            tabPanel.items.items[1].on('activate', function() {
+                                // Find which search form to load
+                                // @ToDo: Look for overrides (e.g. Warehouses/Staff/Volunteers)
+                                // @ToDo: Read current filter settings to default widgets to
+                                var search_url;
+                                Ext.iterate(S3.gis.layers_features, function(key, val, obj) {
+                                    if (key.id == node.layer.s3_layer_id) {
+                                        //search_url = S3.Ap.concat('/' + module + '/' + resource + '/search.plain');
+                                        search_url = key.url.replace(/.geojson.+/, '/search.plain');
+                                    }
+                                });
+                                Ext.get('s3_gis_layer_filter_tab').load({
+                                    url: search_url,
+                                    discardUrl: false,
+                                    callback: function() {
+                                        // Activate Help Tooltips
+                                        S3.addTooltips();
+                                        // Handle Options Widgets with collapsed options
+                                        S3.search.select_letter_label();
+                                    },
+                                    // @ToDo: i18n
+                                    text: 'Loading...',
+                                    timeout: 30,
+                                    scripts: false
+                                });
+                            });
+                        } else {
+                            var tabPanel = new Ext.Panel({
+                                // View/Edit Basic Details
+                                // @ToDo: i18n
+                                title: 'Layer Properties',
+                                html: response.responseText
+                            });
+                        }
+                        S3.gis.propertiesWindow = new Ext.Window({
+                            width: 400,
+                            layout: 'fit',
+                            items: [ tabPanel ]
+                        });
+                        S3.gis.propertiesWindow.show();
+                        // Set the form to use AJAX submission
+                        $('#plain form').submit(function() {
+                            var id = $('#plain input[name="id"]').val();
+                            var update_url = S3.Ap.concat('/gis/layer_' + layer_type + '/' + id + '.plain/update');
+                            var fields = $('#plain input');
+                            var ids = [];
+                            Ext.iterate(fields, function(key, val, obj) {
+                                if (val.id && (val.id.indexOf('gis_layer_') != -1)) {
+                                    ids.push(val.id);
+                                }
+                            });
+                            var pcs = [];
+                            for (i=0; i < ids.length; i++) {
+                                q = $('#' + ids[i]).serialize();
+                                if (q) { 
+                                    pcs.push(q);
+                                }
+                            }
+                            q = $('#plain input[name="id"]').serialize();
+                            if (q) {
+                                pcs.push(q);
+                            }
+                            q = $('#plain input[name="_formkey"]').serialize();
+                            if (q) {
+                                pcs.push(q);
+                            }
+                            q = $('#plain input[name="_formname"]').serialize();
+                            if (q) {
+                                pcs.push(q);
+                            }
+                            if (pcs.length > 0) {
+                                var query = pcs.join("&");
+                                $.ajax({
+                                    type: 'POST',
+                                    url: update_url,
+                                    data: query,
+                                    success: function(msg) {
+                                        $('#plain').html(msg);
+                                    }
+                                });
+                            }
+                            return false;
+                        })
+                        // Activate Help Tooltips
+                        S3.addTooltips();
+                        // Activate RoleRequired autocomplete
+                        S3.autocomplete('role', 'admin', 'group', 'gis_layer_' + layer_type + '_role_required');
+                    }
+                });
+            }
+        }
+    });
+    var toolbar = S3.gis.layerTree.getTopToolbar();
+    toolbar.add(layerPropertiesButton);
 }

@@ -52,7 +52,7 @@ from gluon.html import *
 from gluon.http import redirect
 
 from s3crud import S3CRUD
-from s3utils import s3_debug
+from s3utils import s3_debug,soundex
 from s3validators import IS_ONE_OF, IS_ONE_OF_EMPTY
 
 IDENTITYTRANS = ALLCHARS = string.maketrans("", "")
@@ -216,93 +216,129 @@ class S3Msg(object):
         contact_keywords = ["email", "mobile", "facility", "clinical",
                             "security", "phone", "status", "hospital",
                             "person", "organisation"]
-
+        
+        pkeywords = primary_keywords+contact_keywords
         keywords = string.split(message)
-        query = []
+        pquery = []
         name = ""
         reply = ""
         for word in keywords:
-            match = difflib.get_close_matches(word, primary_keywords + contact_keywords)
+            match = None
+            for key in pkeywords:
+                if soundex(key) == soundex(word):
+                    match = key
+                    break
             if match:
-                query.append(match[0])
+                pquery.append(match)
             else:
                 name = word
-
+            
         # ---------------------------------------------------------------------
         # Person Search [get name person phone email]
-        if "person" in query:
-            result = person_search(name)
-
+        if "person" in pquery:
+            
+            table = s3db.pr_person
+            rows = db(table.id > 0).select(table.pe_id,
+                                           table.first_name,
+                                           table.middle_name,
+                                           table.last_name)
+            for row in rows:
+                result = []
+                if (soundex(str(name)) == soundex(str(row.first_name))) or \
+                   (soundex(str(name)) == soundex(str(row.middle_name))) or \
+                   (soundex(str(name)) == soundex(str(row.last_name))):
+                    presult = dict(name = row.first_name, id = row.pe_id)
+                    result.append(presult)
+                    break    
+            
             if len(result) > 1:
                 return T("Multiple Matches")
             if len(result) == 1:
-                if "Person" in result[0]["name"]:
-                    reply = result[0]["name"]
-                    table = s3db.pr_contact
-                    if "email" in query:
-                        query = (table.pe_id == result[0]["id"]) & \
-                                (table.contact_method == "EMAIL")
-                        recipient = db(query).select(table.value,
-                                                     orderby = table.priority,
-                                                     limitby=(0, 1)).first()
-                        reply = "%s Email->%s" % (reply, recipient.value)
-                    if "mobile" in query:
-                        query = (table.pe_id == result[0]["id"]) & \
-                                (table.contact_method == "SMS")
-                        recipient = db(query).select(table.value,
-                                                     orderby = table.priority,
-                                                     limitby=(0, 1)).first()
-                        reply = "%s Mobile->%s" % (reply,
-                                                   recipient.value)
-
-            if len(reply) == 0:
+                reply = result[0]["name"]
+                table = s3db.pr_contact
+                if "email" in pquery:
+                    query = (table.pe_id == result[0]["id"]) & \
+                        (table.contact_method == "EMAIL")
+                    recipient = db(query).select(table.value,
+                                                 orderby = table.priority,
+                                                 limitby=(0, 1)).first()
+                    reply = "%s Email->%s" % (reply, recipient.value)
+                if "phone" in pquery:
+                    query = (table.pe_id == result[0]["id"]) & \
+                        (table.contact_method == "SMS")
+                    recipient = db(query).select(table.value,
+                                                 orderby = table.priority,
+                                                 limitby=(0, 1)).first()
+                    reply = "%s Mobile->%s" % (reply,
+                                               recipient.value)
+                    
+            if len(result) == 0:
                 return T("No Match")
 
             return reply
 
         # ---------------------------------------------------------------------
         #  Hospital Search [example: get name hospital facility status ]
-        if "hospital" in query:
+        if "hospital" in pquery:
             table = s3db.hms_hospital
-            resource = s3mgr.define_resource("hms", "hospital")
-            result = resource.search_simple(fields=["name"], label = str(name))
+            rows = db(table.id > 0).select(table.id,
+                                           table.name,
+                                           table.aka1,
+                                           table.aka2)
+            for row in rows:
+                result = []
+                if (soundex(str(name)) == soundex(str(row.name))) or \
+                   (soundex(name) == soundex(str(row.aka1))) or \
+                   (soundex(name) == soundex(str(row.aka2))):
+                    result.append(row)
+                    break    
+            
+
             if len(result) > 1:
                 return T("Multiple Matches")
 
             if len(result) == 1:
-                hospital = db(table.id == result[0]).select().first()
+                hospital = db(table.id == result[0].id).select().first()
                 reply = "%s %s (%s) " % (reply, hospital.name,
                                          T("Hospital"))
-                if "phone" in query:
+                if "phone" in pquery:
                     reply = reply + "Phone->" + str(hospital.phone_emergency)
-                if "facility" in query:
+                if "facility" in pquery:
                     reply = reply + "Facility status " + str(table.facility_status.represent(hospital.facility_status))
-                if "clinical" in query:
+                if "clinical" in pquery:
                     reply = reply + "Clinical status " + str(table.clinical_status.represent(hospital.clinical_status))
-                if "security" in query:
+                if "security" in pquery:
                     reply = reply + "Security status " + str(table.security_status.represent(hospital.security_status))
 
-            if len(reply) == 0:
+            if len(result) == 0:
                 return T("No Match")
 
             return reply
 
         # ---------------------------------------------------------------------
         # Organization search [example: get name organisation phone]
-        if "organisation" in query:
+        if "organisation" in pquery:
             table = s3db.org_organisation
-            resource = s3mgr.define_resource("org", "organisation")
-            result = resource.search_simple(fields=["name"], label = str(name))
+            rows = db(table.id > 0).select(table.id,
+                                           table.name,
+                                           table.acronym)
+            for row in rows:
+                result = []
+                if (soundex(str(name)) == soundex(str(row.name))) or \
+                   (soundex(str(name)) == soundex(str(row.acronym))):
+                    result.append(row)
+                    break    
+            
             if len(result) > 1:
                 return T("Multiple Matches")
 
             if len(result) == 1:
-                organisation = db(table.id == result[0]).select().first()
+                organisation = db(table.id == result[0].id).select().first()
                 reply = "%s %s (%s) " % (reply, organisation.name,
                                          T("Organization"))
-                if "phone" in query:
+                if "phone" in pquery:
                     reply = reply + "Phone->" + str(organisation.donation_phone)
-                if "office" in query:
+                if "office" in pquery:
                     reply = reply + "Address->" + s3_get_db_field_value(tablename = "org_office",
                                                                         fieldname = "address",
                                                                         look_up_value = organisation.id)
@@ -313,6 +349,31 @@ class S3Msg(object):
 
         return "Please provide one of the keywords - person, hospital, organisation"
 
+
+
+    # =========================================================================
+    # Processing of Unparsed Messages
+    # =========================================================================
+    def process_log(self):
+        """
+            Processes the unparsed messages in msg_log
+        """
+
+        db = current.db
+        ltable = current.s3db.msg_log
+        
+        query = (ltable.is_parsed == False) & \
+                (ltable.inbound == True)
+        rows = db(query).select()
+        
+        for row in rows:
+            message = row.message
+            reply = self.parse_message(message)
+            db(ltable.id == row.id).update(reply = reply,is_parsed = True)
+            
+        return
+    
+    
     # =========================================================================
     # Outbound Messages
     # =========================================================================
@@ -1209,6 +1270,193 @@ class S3Msg(object):
             db.commit()
 
         return True
+
+    #-------------------------------------------------------------------------
+    def fetch_inbound_email(self, username):
+        """
+            This is a simple mailbox polling script for the Messaging Module.
+            It is called from the scheduler.
+            @param username: email address of the email source to read from.
+            This uniquely identifies one inbound email task.
+        """
+        # This is the former cron/email_receive.py.
+        #
+        # @ToDo: If delete_from_server is false, we don't want to download the
+        # same messages repeatedly.  Perhaps record time of fetch runs (or use
+        # info from the scheduler_run table), compare w/ message timestamp, as
+        # a filter.  That may not be completely accurate, so could check
+        # msg_log for messages close to the last fetch time.  Or just advise
+        # people to have a dedicated account to which email is sent, that does
+        # not also need to be read by humans.  Or don't delete the fetched mail
+        # until the next run.  Or...
+        #
+        # ToDos from the original version:
+        # @ToDo: If there is a need to collect from non-compliant mailers then
+        # suggest using the robust Fetchmail to collect & store in a more 
+        # compliant mailer!
+        # @ToDo: This doesn't handle MIME attachments.
+
+        import socket, email
+
+        db = current.db
+        s3db = current.s3db
+
+        inbound_status_table = s3db.msg_inbound_email_status
+        inbox_table = s3db.msg_email_inbox
+
+        # Read-in configuration from Database
+        settings = db(s3db.msg_inbound_email_settings.username == username).select(limitby=(0, 1)).first()
+        if not settings:
+            return "Username %s not scheduled." % username
+        host = settings.server
+        protocol = settings.protocol
+        ssl = settings.use_ssl
+        port = settings.port
+        username = settings.username
+        password = settings.password
+        delete = settings.delete_from_server
+
+        if protocol == "pop3":
+            import poplib
+            # http://docs.python.org/library/poplib.html
+            try:
+                if ssl:
+                    p = poplib.POP3_SSL(host, port)
+                else:
+                    p = poplib.POP3(host, port)
+            except socket.error, e:
+                error = "Cannot connect: %s" % e
+                print error
+                # Store status in the DB
+                try:
+                    id = db().select(inbound_status_table.id, limitby=(0, 1)).first().id
+                    db(inbound_status_table.id == id).update(status=error)
+                except:
+                    inbound_status_table.insert(status=error)
+                # Explicitly commit DB operations when running from Cron
+                db.commit()
+                return True
+
+            try:
+                # Attempting APOP authentication...
+                p.apop(username, password)
+            except poplib.error_proto:
+                # Attempting standard authentication...
+                try:
+                    p.user(username)
+                    p.pass_(password)
+                except poplib.error_proto, e:
+                    print "Login failed:", e
+                    # Store status in the DB
+                    try:
+                        id = db().select(inbound_status_table.id, limitby=(0, 1)).first().id
+                        db(inbound_status_table.id == id).update(status="Login failed: %s" % e)
+                    except:
+                        inbound_status_table.insert(status="Login failed: %s" % e)
+                    # Explicitly commit DB operations when running from Cron
+                    db.commit()
+                    return True
+
+            dellist = []
+            mblist = p.list()[1]
+            for item in mblist:
+                number, octets = item.split(" ")
+                # Retrieve the message (storing it in a list of lines)
+                lines = p.retr(number)[1]
+                # Create an e-mail object representing the message
+                msg = email.message_from_string("\n".join(lines))
+                # Parse out the 'From' Header
+                sender = msg["from"]
+                # Parse out the 'Subject' Header
+                if "subject" in msg:
+                    subject = msg["subject"]
+                else:
+                    subject = ""
+                # Parse out the 'Body'
+                textParts = msg.get_payload()
+                body = textParts[0].get_payload()
+                # Store in DB
+                inbox_table.insert(sender=sender, subject=subject, body=body)
+                if delete:
+                    # Add it to the list of messages to delete later
+                    dellist.append(number)
+            # Explicitly commit DB operations when running from Cron.
+            # @ToDo:  Still needed when running under Scheduler?
+            db.commit()
+            # Iterate over the list of messages to delete
+            for number in dellist:
+                p.dele(number)
+            p.quit()
+
+        elif protocol == "imap":
+            import imaplib
+            # http://docs.python.org/library/imaplib.html
+            try:
+                if ssl:
+                    M = imaplib.IMAP4_SSL(host, port)
+                else:
+                    M = imaplib.IMAP4(host, port)
+            except socket.error, e:
+                error = "Cannot connect: %s" % e
+                print error
+                # Store status in the DB
+                try:
+                    id = db().select(inbound_status_table.id, limitby=(0, 1)).first().id
+                    db(inbound_status_table.id == id).update(status=error)
+                except:
+                    inbound_status_table.insert(status=error)
+                # Explicitly commit DB operations when running from Cron
+                # @ToDo:  Still needed when running under Scheduler?
+                db.commit()
+                return True
+
+            try:
+                M.login(username, password)
+            except M.error, e:
+                error = "Login failed: %s" % e
+                print error
+                # Store status in the DB
+                try:
+                    id = db().select(inbound_status_table.id, limitby=(0, 1)).first().id
+                    db(inbound_status_table.id == id).update(status=error)
+                except:
+                    inbound_status_table.insert(status=error)
+                # Explicitly commit DB operations when running from Cron
+                db.commit()
+                return True
+
+            dellist = []
+            # Select inbox
+            M.select()
+            # Search for Messages to Download
+            typ, data = M.search(None, "ALL")
+            for num in data[0].split():
+                typ, msg_data = M.fetch(num, "(RFC822)")
+                for response_part in msg_data:
+                    if isinstance(response_part, tuple):
+                        msg = email.message_from_string(response_part[1])
+                        # Parse out the 'From' Header
+                        sender = msg["from"]
+                        # Parse out the 'Subject' Header
+                        if "subject" in msg:
+                            subject = msg["subject"]
+                        else:
+                            subject = ""
+                        # Parse out the 'Body'
+                        textParts = msg.get_payload()
+                        body = textParts[0].get_payload()
+                        # Store in DB
+                        inbox_table.insert(sender=sender, subject=subject, body=body)
+                        if delete:
+                            # Add it to the list of messages to delete later
+                            dellist.append(num)
+            # Explicitly commit DB operations when running from Cron
+            db.commit()
+            # Iterate over the list of messages to delete
+            for number in dellist:
+                typ, response = M.store(number, "+FLAGS", r"(\Deleted)")
+            M.close()
+            M.logout()
 
 # =============================================================================
 class S3Compose(S3CRUD):

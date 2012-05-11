@@ -29,13 +29,13 @@
     @status: work in progress
     @todo: - complete layout implementations
            - render "selected" (flag in item)
-           - remove S3Menu
 """
 
 __all__ = ["S3MainMenuLayout", "MM",
            "S3OptionsMenuLayout", "M",
            "S3MenuSeparatorLayout", "SEP",
            "S3BreadcrumbsLayout",
+           "S3AddResourceLink",
            "homepage"]
 
 from gluon import *
@@ -43,7 +43,6 @@ from gluon.storage import Storage
 from ..s3 import *
 
 # =============================================================================
-
 class S3MainMenuLayout(S3NavigationItem):
     """ Application Main Menu Layout """
 
@@ -159,7 +158,6 @@ class S3MainMenuLayout(S3NavigationItem):
 MM = S3MainMenuLayout
 
 # =============================================================================
-
 class S3OptionsMenuLayout(S3NavigationItem):
     """ Controller Options Menu Layout """
 
@@ -182,7 +180,8 @@ class S3OptionsMenuLayout(S3NavigationItem):
                     # Submenu
                     _href = item.url()
                     return LI(DIV(A(item.label,
-                                    _href=_href),
+                                    _href=_href,
+                                    _id=item.attr._id),
                                   _class="hoverable"),
                               UL(items,
                                  _class="submenu"))
@@ -191,12 +190,14 @@ class S3OptionsMenuLayout(S3NavigationItem):
                     if item.parent.parent is None:
                         # Top level item
                         return LI(DIV(A(item.label,
-                                        _href=item.url()),
+                                        _href=item.url(),
+                                        _id=item.attr._id),
                                       _class="hoverable"))
                     else:
                         # Submenu item
                         return LI(A(item.label,
-                                    _href=item.url()))
+                                    _href=item.url(),
+                                    _id=item.attr._id))
             else:
                 # Main menu
                 return UL(items, _id="subnav")
@@ -209,7 +210,6 @@ class S3OptionsMenuLayout(S3NavigationItem):
 M = S3OptionsMenuLayout
 
 # =============================================================================
-
 class S3MenuSeparatorLayout(S3NavigationItem):
     """ Simple menu separator """
 
@@ -226,7 +226,6 @@ class S3MenuSeparatorLayout(S3NavigationItem):
 SEP = S3MenuSeparatorLayout
 
 # =============================================================================
-
 class S3BreadcrumbsLayout(S3NavigationItem):
     """ Breadcrumbs layout """
 
@@ -244,6 +243,77 @@ class S3BreadcrumbsLayout(S3NavigationItem):
             return LI(A(item.label, _href=item.url(), _class=_class))
 
 # =============================================================================
+class S3AddResourceLink(S3NavigationItem):
+    """
+        Links in form fields comments to show a form for adding
+        a new foreign key record.
+    """
+
+    def __init__(self,
+                 label=None,
+                 c=None,
+                 f=None,
+                 t=None,
+                 vars=None,
+                 info=None,
+                 title=None,
+                 tooltip=None):
+        """
+            Constructor
+
+            @param c: the target controller
+            @param f: the target function
+            @param t: the target table (defaults to c_f)
+            @param vars: the request vars (format="popup" will be added automatically)
+            @param label: the link label (falls back to label_create_button)
+            @param info: hover-title for the label
+            @param title: the tooltip title
+            @param tooltip: the tooltip text
+        """
+
+        if label is None:
+            label = title
+        if info is None:
+            info = title
+
+        # Fall back to label_create_button
+        if label is None:
+            if t is None:
+                t = "%s_%s" % (c, f)
+            label = S3CRUD.crud_string(t, "label_create_button")
+
+        return super(S3AddResourceLink, self).__init__(label, c=c, f=f, t=t,
+                                                m="create",
+                                                vars=vars,
+                                                info=info,
+                                                title=title,
+                                                tooltip=tooltip,
+                                                mandatory=True)
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def layout(item):
+        """ Layout for popup link """
+
+        if not item.authorized:
+            return None
+
+        popup_link = A(item.label,
+                       _href=item.url(format="popup"),
+                       _class="colorbox",
+                       _target="top",
+                       _title=item.opts.info)
+
+        tooltip = item.opts.tooltip
+        if tooltip is not None:
+            ttip = DIV(_class="tooltip",
+                       _title="%s|%s" % (item.opts.title, tooltip))
+        else:
+            ttip = ""
+
+        return DIV(popup_link, ttip)
+
+# =============================================================================
 def homepage(module=None, *match, **attr):
     """
         Shortcut for module homepage menu items using the MM layout,
@@ -258,121 +328,20 @@ def homepage(module=None, *match, **attr):
     all_modules = settings.modules
 
     layout = S3MainMenuLayout
+    c = [module] + list(match)
 
-    if module is None:
-        module = "default"
-    if module in all_modules:
-        m = all_modules[module]
-        c = [module] + list(match)
-        return layout(m.name_nice, c=c, f="index", **attr)
-    return None
-
-# =============================================================================
-class S3Menu(DIV):
-    """
-        MENUS3 reimplementation -
-            * Currently a copy of existing MENUS3
-            * breadcrumbs support
-            * greater control / flexibility
-            * future - side menu
-
-        @deprecated: kept here for reference
-    """
-    tag = "div"
-
-    def __init__(self, data, **args):
-        self.data = data
-        self.attributes = args
-
-    def serialize(self, data, level=0):
-        if level == 0:
-            # Top-level menu
-            div = UL(**self.attributes)
-            for i in range(len(data)):
-                (name, right, link) = data[i][:3]
-                if link == False:
-                    continue
-                if not link:
-                    link = "#null"
-                if right:
-                    class_ = "fright"
-                else:
-                    class_ = "fleft"
-                if len(data[i]) > 3 and data[i][3]:
-                    # Submenu
-                    ul_inner = self.serialize(data[i][3], level+1)
-                    in_ul = LI(DIV(A(name,
-                                     _href=link),
-                                   _class="hoverable"),
-                                ul_inner,
-                                _class=class_ if ("" or self.attributes["_id"]) != "subnav" else " ")
-                else:
-                    if (i == 0) and (self.attributes["_id"] == "modulenav"):
-                        # 1st item, so display logo
-                        in_ul = LI(DIV(SPAN(A(_href=link),
-                                            _class="S3menulogo"),
-                                       SPAN(A(name,
-                                              _href=link),
-                                              _class="S3menuHome"),
-                                       _class="hoverable"),
-                                   _class=class_)
-                    else:
-                        in_ul = LI(DIV(A(name, _href=link),
-                                       _class="hoverable"),
-                                   _class=class_ if ("" or self.attributes["_id"]) != "subnav" else " ")
-                div.append(in_ul)
+    if "name" in attr:
+        name = attr["name"]
+        attr.pop("name")
+    else:
+        if module is None:
+            module = "default"
+        if module in all_modules:
+            m = all_modules[module]
+            name = m.name_nice
         else:
-            # Submenu
-            div = UL(_class="submenu")
-            for item in data:
-                (name, right, link) = item[:3]
-                # Eval link if meant to be lazily evaluated. Needed by hrm menu definition
-                if type(link) == type(lambda:None):
-                    link = link()
+            name = module
 
-                if link == False:
-                    continue
-                elif not link:
-                    link = "#null"
-                if name == "----":
-                    # Horizontal line as separator
-                    li = LI(HR(), _class="menu_separator")
-                elif isinstance(name, dict) and "id" in name:
-                    if "name" in name:
-                        _name = name["name"]
-                    else:
-                        _name = ""
-                    _id = name["id"]
-                    if "value" in name:
-                        _value = name["value"]
-                    else:
-                        _value = False
-                    if "request_type" in name:
-                        _request_type = name["request_type"]
-                    else:
-                        _request_type = "ajax"
-                    if link:
-                        if _request_type == "ajax":
-                            _onchange="var val=$('#%s:checked').length; $.getS3('%s'+'?val='+val, null, false, null, false, false);" % \
-                                (_id, link)
-                        else:
-                            # Just load the page. Use this if the changed menu
-                            # item should alter the contents of the page, and
-                            # it's simpler just to load it.
-                            _onchange="location.href='%s'" % link
-                    else:
-                        _onchange=None
-                    li = LI(A(INPUT(_type="checkbox",
-                                    _id=_id,
-                                    value=_value,
-                                    _onchange=_onchange),
-                              " %s" % _name, _nowrap="nowrap"))
-                else:
-                        li = LI(A(name, _href=link))
-                div.append(li)
-        return div
-
-    def xml(self):
-        return self.serialize(self.data, 0).xml()
+    return layout(name, c=c, f="index", **attr)
 
 # END =========================================================================

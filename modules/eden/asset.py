@@ -178,7 +178,9 @@ class S3AssetModel(S3Model):
                                    requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
                                    represent = s3_date_represent,
                                    widget = S3DateWidget()),
-                             Field("purchase_price", "double", default=0.00),
+                             Field("purchase_price", "double",
+                                   default=0.00,
+                                   represent=lambda v, row=None: IS_FLOAT_AMOUNT.represent(v, precision=2)),
                              currency_type("purchase_currency"),
                              # Base Location, which should always be a Site & set via Log
                              location_id(readable=False,
@@ -220,7 +222,7 @@ class S3AssetModel(S3Model):
                                                                    sort=True)),
                                    represent = self.asset_represent,
                                    label = T("Asset"),
-                                   ondelete = "RESTRICT")
+                                   ondelete = "CASCADE")
 
         table.virtualfields.append(AssetVirtualFields())
 
@@ -255,10 +257,16 @@ class S3AssetModel(S3Model):
                     ),
                     S3SearchOptionsWidget(
                         name="asset_search_item_category",
-                        field=["item_id$item_category_id"],
+                        field="item_id$item_category_id",
                         label=T("Category"),
                         cols = 3
                     ),
+                    # S3SearchOptionsWidget(
+                    #     name="asset_search_weight",
+                    #     field="weight",
+                    #     label=T("Weight"),
+                    #     cols = 3
+                    # ),
             ))
 
         hierarchy = current.gis.get_location_hierarchy()
@@ -274,29 +282,37 @@ class S3AssetModel(S3Model):
         # Resource Configuration
         configure(tablename,
                   super_entity=("supply_item_entity", "sit_trackable"),
-                  search_method = asset_search,
-                  report_filter=[
-                            S3SearchLocationHierarchyWidget(
-                                name="asset_search_L1",
-                                field="L1",
-                                cols = 3
-                            ),
-                            S3SearchLocationHierarchyWidget(
-                                name="asset_search_L2",
-                                field="L2",
-                                cols = 3
-                            ),
-                            S3SearchOptionsWidget(
-                                name="asset_search_item_category",
-                                field=["item_id$item_category_id"],
-                                label=T("Category"),
-                                cols = 3
-                            ),
-                        ],
-                  report_rows = report_fields,
-                  report_cols = report_fields,
-                  report_fact = report_fields,
-                  report_method=["count", "list"],
+                  search_method=asset_search,
+                        report_options=Storage(
+                            search=[
+                                S3SearchLocationHierarchyWidget(
+                                    name="asset_search_L1",
+                                    field="L1",
+                                    cols = 3
+                                ),
+                                S3SearchLocationHierarchyWidget(
+                                    name="asset_search_L2",
+                                    field="L2",
+                                    cols = 3
+                                ),
+                                S3SearchOptionsWidget(
+                                    name="asset_search_item_category",
+                                    field="item_id$item_category_id",
+                                    label=T("Category"),
+                                    cols = 3
+                                ),
+                            ],
+                            rows=report_fields,
+                            cols=report_fields,
+                            facts=report_fields,
+                            methods=["count", "list"],
+                            defaults=Storage(
+                                aggregate="count",
+                                cols="L1",
+                                fact="number",
+                                rows="item_id$item_category_id"
+                            )
+                        ),
                   list_fields=["id",
                                "number",
                                "item_id$item_category_id",
@@ -309,7 +325,8 @@ class S3AssetModel(S3Model):
                                "L1",
                                #"L2",
                                #"L3",
-                               "comments"
+                               "comments",
+                               #"weight",
                                ])
 
         # Log as component of Assets
@@ -384,7 +401,8 @@ class S3AssetModel(S3Model):
                                                                    T("If selected, then this Asset's Location will be updated whenever the Person's Location is updated."))),
                                    readable = False,
                                    writable = False),
-                             organisation_id(),      # This is the Organisation to whom the loan is made
+                             organisation_id(readable = False,
+                                             writable = False),      # This is the Organisation to whom the loan is made
                              #Field("site_or_location",
                              #      "integer",
                              #      requires = IS_NULL_OR(IS_IN_SET(site_or_location_opts)),
@@ -659,18 +677,27 @@ $(document).ready(function() {
         elif current_log:
             table.status.default = current_log.status
 
+        if current_log.organisation_id:
+            table.organisation_id.default = current_log.organisation_id
+            table.site_id.requires = IS_ONE_OF(db, "org_site.site_id",
+                                               table.site_id.represent,
+                                               filterby = "organisation_id",
+                                               filter_opts = [current_log.organisation_id])
+
         crud_strings = s3.crud_strings.asset_log
         if status == ASSET_LOG_SET_BASE:
             crud_strings.subtitle_create = T("Set Base Facility/Site")
             crud_strings.msg_record_created = T("Base Facility/Site Set")
             table.by_person_id.label = T("Set By")
             table.site_id.writable = True
-            table.site_id.requires = IS_ONE_OF(db, "org_site.id",
-                                               table.site_id.represent)
             table.datetime_until.readable = False
             table.datetime_until.writable = False
             table.person_id.readable = False
             table.person_id.writable = False
+            table.organisation_id.readable = True
+            table.organisation_id.writable = True
+            table.site_id.requires = IS_ONE_OF(db, "org_site.site_id",
+                                               table.site_id.represent)
             #table.site_or_location.readable = False
             #table.site_or_location.writable = False
             #table.location_id.readable = False
@@ -704,8 +731,6 @@ $(document).ready(function() {
             elif type == "site":
                 crud_strings.subtitle_create = T("Assign to Facility/Site")
                 crud_strings.msg_record_created = T("Assigned to Facility/Site")
-                table["site_id"].requires = IS_ONE_OF(db, "org_site.site_id",
-                                                      table.site_id.represent)
                 #field = table.site_or_location
                 #field.readable = False
                 #field.writable = False
@@ -715,10 +740,14 @@ $(document).ready(function() {
             elif type == "organisation":
                 crud_strings.subtitle_create = T("Assign to Organization")
                 crud_strings.msg_record_created = T("Assigned to Organization")
-                table["organisation_id"].requires = IS_ONE_OF(db, "org_organisation.id",
+                table.organisation_id.readable = True
+                table.organisation_id.writable = True
+                table.organisation_id.requires = IS_ONE_OF(db, "org_organisation.id",
                                                               table.organisation_id.represent,
                                                               orderby="org_organisation.name",
                                                               sort=True)
+                table.site_id.requires = IS_ONE_OF(db, "org_site.site_id",
+                                                   table.site_id.represent)
                 #table.site_or_location.required = True
         elif "status" in request.get_vars:
             crud_strings.subtitle_create = T("Update Status")
@@ -753,6 +782,7 @@ def asset_get_current_log(asset_id):
                                  table.datetime,
                                  table.cond,
                                  table.person_id,
+                                 table.organisation_id,
                                  table.site_id,
                                  #table.location_id,
                                  orderby = ~table.datetime,
@@ -762,6 +792,7 @@ def asset_get_current_log(asset_id):
                        person_id = asset_log.person_id,
                        cond = int(asset_log.cond or 0),
                        status = int(asset_log.status or 0),
+                       organisation_id = asset_log.organisation_id,
                        site_id = asset_log.site_id,
                        #location_id = asset_log.location_id
                        )
@@ -804,7 +835,8 @@ def asset_rheader(r):
                 func = "asset"
 
             # @ToDo: Check permissions before displaying buttons
-
+            
+            
             asset_action_btns = [ A( T("Set Base Facility/Site"),
                                      _href = URL(f=func,
                                                  args = [record.id, "log", "create"],
@@ -819,15 +851,16 @@ def asset_rheader(r):
 
             if record.location_id:
                 # A Base Site has been set
-                if status == ASSET_LOG_ASSIGN:
-                    asset_action_btns += [ A( T("Return"),
-                                              _href = URL(f=func,
-                                                          args = [record.id, "log", "create"],
-                                                          vars = dict(status = ASSET_LOG_RETURN)
-                                                        ),
-                                              _class = "action-btn"
-                                            )
-                                           ]
+                # Return functionality removed  - as it doesn't set site_id & organisation_id in the logs
+                #if status == ASSET_LOG_ASSIGN:
+                #    asset_action_btns += [ A( T("Return"),
+                #                              _href = URL(f=func,
+                #                                          args = [record.id, "log", "create"],
+                #                                          vars = dict(status = ASSET_LOG_RETURN)
+                #                                        ),
+                #                              _class = "action-btn"
+                #                            )
+                #                           ]
                 if status < ASSET_LOG_DONATED:
                     # @ToDo: deployment setting to prevent assigning assets before returning them
                     # The Asset is available for assignment (not disposed)
@@ -897,6 +930,13 @@ def asset_rheader(r):
 class AssetVirtualFields:
     """ Virtual fields as dimension classes for reports """
 
+    def weight(self):
+        """
+        This is just a dummy field to help test S3Resource filters and S3Search
+        """
+        import random
+        return random.randint(1, 10)
+
     def site(self):
         # The site of the asset
         try:
@@ -913,7 +953,7 @@ class AssetVirtualFields:
                                             stable.instance_type,
                                             limitby=(0, 1)).first()
             if site:
-                return s3db.org_site_represent(site, link=False)
+                return s3db.org_site_represent(site, show_link=False)
         return current.messages.NONE
 
 # END =========================================================================

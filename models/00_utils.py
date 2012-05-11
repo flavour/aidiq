@@ -2,26 +2,18 @@
 
 """ Utilities """
 
-super_entity = s3mgr.model.super_entity
-super_link = s3mgr.model.super_link
-super_key = s3mgr.model.super_key
-s3_action_buttons = s3base.S3CRUD.action_buttons
-
-# -----------------------------------------------------------------------------
-# Compose the option menu and breadcrumbs
+# =============================================================================
+# AAA - set user roles and check controller access permission
 #
-def s3_compose_option_menu():
+auth.s3_set_roles()
 
-    controller = request.controller
-    if controller not in s3_menu_dict:
-        # Fall back to standard menu for this controller
-        current.menu.options = S3OptionsMenu(controller).menu
-    else:
-        # Use custom menu
-        current.menu.options = s3_menu_dict[controller]
+if not auth.permission.has_permission("read"):
+    auth.permission.fail()
 
-    # Add breadcrumbs
-    current.menu.breadcrumbs = S3OptionsMenu.breadcrumbs
+# =============================================================================
+# Global definitions
+#
+s3_action_buttons = s3base.S3CRUD.action_buttons
 
 # -----------------------------------------------------------------------------
 def s3_register_validation():
@@ -491,7 +483,7 @@ def s3_rest_controller(prefix=None, resourcename=None, **attr):
             model = s3mgr.model
             listadd = model.get_config(tablename, "listadd", True)
             editable = model.get_config(tablename, "editable", True) and \
-                       not auth.permission.ownership_required(table, "update")
+                       not auth.permission.ownership_required("update", table)
             deletable = model.get_config(tablename, "deletable", True)
             copyable = model.get_config(tablename, "copyable", False)
 

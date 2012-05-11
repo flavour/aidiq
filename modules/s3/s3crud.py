@@ -452,9 +452,11 @@ class S3CRUD(S3Method):
             # Details Link
             authorised = self._permitted(method="read")
             if authorised:
-                href = r.url(method="read", representation="html")
-                if href:
-                    details_btn = A(T("Show Details"), _href=href,
+                popup_url = _config("popup_url", None)
+                if not popup_url:
+                    popup_url = r.url(method="read", representation="html")
+                if popup_url:
+                    details_btn = A(T("Show Details"), _href=popup_url,
                                     _id="details-btn", _target="_blank")
                     output["details_btn"] = details_btn
 
@@ -473,7 +475,7 @@ class S3CRUD(S3Method):
         #    return exporter(r, **attr)
 
         elif representation == "pdf":
-            exporter = S3PDF()
+            exporter = resource.exporter.pdf
             return exporter(r, **attr)
 
         elif representation == "xls":
@@ -541,7 +543,7 @@ class S3CRUD(S3Method):
         if not authorised:
             r.unauthorised()
 
-        if r.interactive:
+        if r.interactive or representation == "plain":
 
             # Form configuration
             subheadings = _config("subheadings")
@@ -611,6 +613,9 @@ class S3CRUD(S3Method):
 
             # Put form into output
             output["form"] = form
+            if representation == "plain":
+                output["item"] = form
+                output["title"] = ""
 
             # Add delete and list buttons
             buttons = self.insert_buttons(r, "delete",
@@ -630,7 +635,7 @@ class S3CRUD(S3Method):
 
             # Redirection
             update_next = _config("update_next")
-            if representation in ("popup", "iframe"):
+            if representation in ("popup", "iframe", "plain"):
                 self.next = None
             elif not update_next:
                 self.next = r.url(method="")
@@ -773,8 +778,11 @@ class S3CRUD(S3Method):
         listadd = _config("listadd", True)
         addbtn = _config("addbtn", False)
         list_fields = _config("list_fields")
+
         report_groupby = _config("report_groupby")
         report_hide_comments = _config("report_hide_comments")
+        report_filename = _config("report_filename")
+        report_formname = _config("report_formname")
 
         # Check permission to read in this table
         authorised = self._permitted()
@@ -997,8 +1005,25 @@ class S3CRUD(S3Method):
             output = json(result)
 
         elif representation == "plain":
-            items = resource.sqltable(fields=list_fields,
-                                      as_list=True)
+            if resource.count() == 1:
+                # Provide the record
+                # (used by Map's Layer Properties window)
+                resource.load()
+                r.record = resource.records().first()
+                if r.record:
+                    r.id = r.record.id
+                    if "update" in request.get_vars and \
+                       self._permitted(method="update"):
+                         items = self.update(r, **attr).get("form", None)
+                    else:
+                        items = self.sqlform(record_id=r.id,
+                                             readonly=True,
+                                             format=representation)
+                else:
+                    raise HTTP(404, body="Record not Found")
+            else:
+                items = resource.sqltable(fields=list_fields,
+                                          as_list=True)
             response.view = "plain.html"
             return dict(item=items)
 
@@ -1011,8 +1036,13 @@ class S3CRUD(S3Method):
         #    return exporter(r, **attr)
 
         elif representation == "pdf":
-            exporter = S3PDF()
-            return exporter(r, **attr)
+            exporter = resource.exporter.pdf
+            return exporter(r,
+                            list_fields=list_fields,
+                            report_hide_comments = report_hide_comments,
+                            report_filename = report_filename,
+                            report_formname = report_formname,
+                            **attr)
 
         elif representation == "xls":
             exporter = S3Exporter()
@@ -1216,7 +1246,7 @@ class S3CRUD(S3Method):
                             hideerror=False):
 
                 # Message
-                response.flash = message
+                response.confirmation = message
 
                 # Audit
                 if record_id is None:
@@ -1239,18 +1269,27 @@ class S3CRUD(S3Method):
 
                 if vars.id:
                     if record_id is None:
+                        # Set record ownership
                         auth = current.auth
-                        # Set record ownership properly
-                        auth.s3_set_record_owner(table,
-                                                 vars.id)
-                        auth.s3_make_session_owner(table,
-                                                   vars.id)
+                        auth.s3_set_record_owner(table, vars.id)
+                        auth.s3_make_session_owner(table, vars.id)
                     # Store session vars
                     self.resource.lastid = str(vars.id)
                     manager.store_session(prefix, name, vars.id)
 
                 # Execute onaccept
                 callback(onaccept, form, tablename=tablename)
+
+            elif form.errors:
+                table = self.table
+                if not response.error:
+                    response.error = ""
+                for fieldname in form.errors:
+                    if fieldname in table and \
+                       isinstance(table[fieldname].requires, IS_LIST_OF):
+                        # IS_LIST_OF validation errors need special handling
+                        response.error = "%s\n%s: %s" % \
+                            (response.error, fieldname, form.errors[fieldname])
 
         if not logged and not form.errors:
             audit("read", prefix, name,
@@ -1487,7 +1526,7 @@ class S3CRUD(S3Method):
                 delete_btn = self.crud_button(DELETE, _href=href_delete,
                                               _id="delete-btn",
                                               _class="delete-btn")
-                output.update(delete_btn=delete_btn)
+                output["delete_btn"] = delete_btn
 
         return output
 
@@ -1564,7 +1603,7 @@ class S3CRUD(S3Method):
 
         # Open-action (Update or Read)
         if editable and has_permission("update", table) and \
-        not ownership_required(table, "update"):
+           not ownership_required("update", table):
             if not update_url:
                 update_url = URL(args = args + ["update"])
             s3crud.action_button(labels.UPDATE, update_url)
@@ -1577,7 +1616,7 @@ class S3CRUD(S3Method):
         if deletable and has_permission("delete", table):
             if not delete_url:
                 delete_url = URL(args = args + ["delete"])
-            if ownership_required(table, "delete"):
+            if ownership_required("delete", table):
                 # Check which records can be deleted
                 query = auth.s3_accessible_query("delete", table)
                 rows = db(query).select(table._id)
@@ -1690,7 +1729,7 @@ class S3CRUD(S3Method):
 
         # Build response
         if success and result.committed:
-            id = result.id
+            r.id = result.id
             method = result.method
             if method == result.METHOD.CREATE:
                 item = xml.json_message(True, 201, "Created as %s?%s.id=%s" %
@@ -1699,7 +1738,7 @@ class S3CRUD(S3Method):
                                    vars=dict(),
                                   )
                             ),
-                         result.name, result.id)
+                         r.name, result.id)
                         )
             else:
                 item = xml.json_message(True, 200, "Record updated")
@@ -1926,6 +1965,7 @@ class S3CRUD(S3Method):
             @param left: list of left joins
         """
 
+        db = current.db
         vars = self.request.get_vars
         resource = self.resource
 
@@ -1935,7 +1975,7 @@ class S3CRUD(S3Method):
         wildcard = "%%%s%%" % context
 
         # Retrieve the list of search fields
-        lfields, joins, ljoins = resource.get_lfields(fields)
+        lfields, joins, ljoins, distinct = resource.resolve_selectors(fields)
         flist = []
         for i in xrange(0, columns):
             field = lfields[i].field
@@ -1951,14 +1991,17 @@ class S3CRUD(S3Method):
                     # Old DAL version?
                     join = [j for j in left if j.table._tablename == tn]
                 if not join:
-                    left.append(current.db[tn].on(field == current.db[tn].id))
+                    left.append(db[tn].on(field == db[tn].id))
                 else:
-                    join[0].query = (join[0].query) | (field == current.db[tn].id)
+                    try:
+                        join[0].second = (join[0].second) | (field == db[tn].id)
+                    except:
+                        join[0].query = (join[0].query) | (field == db[tn].id)
                 if isinstance(field.sortby, (list, tuple)):
-                    flist.extend([current.db[tn][f] for f in field.sortby])
+                    flist.extend([db[tn][f] for f in field.sortby])
                 else:
-                    if field.sortby in current.db[tn]:
-                        flist.append(current.db[tn][field.sortby])
+                    if field.sortby in db[tn]:
+                        flist.append(db[tn][field.sortby])
             else:
                 flist.append(field)
 
@@ -2016,6 +2059,7 @@ class S3CRUD(S3Method):
             @param left: list of left joins
         """
 
+        db = current.db
         vars = self.request.get_vars
         table = resource.table
         tablename = table._tablename
@@ -2033,7 +2077,7 @@ class S3CRUD(S3Method):
 
         orderby = []
 
-        lfields, joins, ljoins = resource.get_lfields(fields)
+        lfields, joins, ljoins, distinct = resource.resolve_selectors(fields)
         columns = [lfields[int(vars["iSortCol_%s" % str(i)])].field
                    for i in xrange(iSortingCols)]
         for i in xrange(len(columns)):
@@ -2051,15 +2095,15 @@ class S3CRUD(S3Method):
                         # Old DAL version?
                         join = [j for j in left if j.table._tablename == tn]
                     if not join:
-                        left.append(current.db[tn].on(c == current.db[tn].id))
+                        left.append(db[tn].on(c == db[tn].id))
                     else:
                         try:
                             join[0].query = (join[0].second) | \
-                                            (c == current.db[tn].id)
+                                            (c == db[tn].id)
                         except:
                             # Old DAL version?
                             join[0].query = (join[0].query) | \
-                                            (c == current.db[tn].id)
+                                            (c == db[tn].id)
                 if not isinstance(c.sortby, (list, tuple)):
                     orderby.append("%s.%s%s" % (tn, c.sortby, direction(i)))
                 else:

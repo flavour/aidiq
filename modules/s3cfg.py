@@ -63,6 +63,7 @@ class S3Config(Storage):
         self.ui = Storage()
         self.req = Storage()
         self.inv = Storage()
+        self.org = Storage()
         self.supply = Storage()
         self.hrm = Storage()
         self.project = Storage()
@@ -87,10 +88,33 @@ class S3Config(Storage):
     # Auth settings
     def get_auth_hmac_key(self):
         return self.auth.get("hmac_key", "akeytochange")
+    def get_auth_facebook(self):
+        """
+            Read the FaceBook OAuth settings
+            - if configured, then it is assumed that FaceBook Authentication is enabled
+        """
+        id = self.auth.get("facebook_id", False)
+        secret = self.auth.get("facebook_secret", False)
+        if id and secret:
+            return dict(id=id, secret=secret)
+        else:
+            return False
+    def get_auth_gmail_domains(self):
+        """ List of domains which can use GMail SMTP for Authentication """
+        return self.auth.get("gmail_domains", [])
+    def get_auth_google(self):
+        """
+            Read the Google OAuth settings
+            - if configured, then it is assumed that Google Authentication is enabled
+        """
+        id = self.auth.get("google_id", False)
+        secret = self.auth.get("google_secret", False)
+        if id and secret:
+            return dict(id=id, secret=secret)
+        else:
+            return False
     def get_auth_openid(self):
         return self.auth.get("openid", False)
-    def get_auth_gmail_domains(self):
-        return self.auth.get("gmail_domains", [])
     def get_auth_registration_requires_verification(self):
         return self.auth.get("registration_requires_verification", False)
     def get_auth_registration_requires_approval(self):
@@ -142,7 +166,7 @@ class S3Config(Storage):
         return self.auth.get("registration_volunteer", False)
     def get_auth_always_notify_approver(self):
         return self.auth.get("always_notify_approver", False)
-        
+
     # @ToDo: Deprecate
     def get_aaa_default_uacl(self):
         return self.aaa.get("default_uacl", self.aaa.acl.READ)
@@ -185,6 +209,12 @@ class S3Config(Storage):
         return self.base.get("public_url", "http://127.0.0.1:8000")
     def get_base_cdn(self):
         return self.base.get("cdn", False)
+    def get_base_session_memcache(self):
+        """
+            Should we store sessions in a Memcache service to allow sharing
+            between multiple instances?
+        """
+        return self.base.get("session_memcache", False)
 
     # -------------------------------------------------------------------------
     # Database settings
@@ -328,6 +358,17 @@ class S3Config(Storage):
         return self.L10n.get("datetime_format", T("%Y-%m-%d %H:%M:%S"))
     def get_L10n_utc_offset(self):
         return self.L10n.get("utc_offset", "UTC +0000")
+    def get_L10n_lat_lon_format(self):
+        """
+            This is used to format latitude and longitude fields when they are
+            displayed by eden. The format string may include the following
+            placeholders:
+            - %d -- Degress (integer)
+            - %m -- Minutes (integer)
+            - %s -- Seconds (double)
+            - %f -- Degrees in decimal (double)
+        """
+        return self.L10n.get("lat_lon_display_format", "%f")
     def get_L10n_mandatory_lastname(self):
         return self.L10n.get("mandatory_lastname", False)
     def get_L10n_thousands_separator(self):
@@ -389,8 +430,6 @@ class S3Config(Storage):
     # Options
     def get_terms_of_service(self):
         return self.options.get("terms_of_service", False)
-    def get_options_support_requests(self):
-        return self.options.get("support_requests", False)
 
     # -------------------------------------------------------------------------
     # UI/Workflow Settings
@@ -470,6 +509,8 @@ class S3Config(Storage):
         return self.supply.get("use_alt_name", True)
     def get_req_use_req_number(self):
         return self.req.get("use_req_number", True)
+    def get_req_generate_req_number(self):
+        return self.req.get("generate_req_number", True)
     def get_req_req_type(self):
         return self.req.get("req_type", ["Stock", "People", "Other"])
 
@@ -490,6 +531,11 @@ class S3Config(Storage):
     # Supply
     def get_supply_catalog_default(self):
         return self.inv.get("catalog_default", "Other Items")
+
+    # -------------------------------------------------------------------------
+    # Organsiation
+    def get_org_site_code_len(self):
+        return self.org.get("site_code_len", 10)
 
     # -------------------------------------------------------------------------
     # Human Resource Management
@@ -531,6 +577,17 @@ class S3Config(Storage):
     # Save Search and Subscription
     def get_save_search_widget(self):
         return self.save_search.get("widget", True)
+    def get_project_organisation_roles(self):
+        T = current.T
+        return self.project.get("organisation_roles", {
+                1: T("Lead Implementer"), # T("Host National Society")
+                2: T("Partner"), # T("Partner National Society")
+                3: T("Donor"),
+                4: T("Customer"), # T("Beneficiary")?
+                5: T("Supplier"), # T("Beneficiary")?
+            })
+    def get_project_organisation_lead_role(self):
+        return self.project.get("organisation_lead_role", 1)
 
     # -------------------------------------------------------------------------
     # Active modules list
@@ -538,6 +595,7 @@ class S3Config(Storage):
         if not self.modules:
             # Provide a minimal list of core modules
             _modules = [
+                "default",      # Default
                 "admin",        # Admin
                 "gis",          # GIS
                 "pr",           # Person Registry

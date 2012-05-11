@@ -36,6 +36,7 @@ from gluon import *
 from gluon.storage import Storage
 from gluon.dal import Row
 from ..s3 import *
+from eden.layouts import S3AddResourceLink
 
 # =============================================================================
 class HospitalDataModel(S3Model):
@@ -283,7 +284,8 @@ class HospitalDataModel(S3Model):
                              Field("morgue_units", "integer",
                                    requires = IS_NULL_OR(
                                                 IS_INT_IN_RANGE(0, 9999)),
-                                   label = T("Morgue Units Available")),
+                                   label = T("Morgue Units Available"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("security_status", "integer",
                                    requires = IS_NULL_OR(IS_IN_SET(
                                                     hms_security_status_opts)),
@@ -294,15 +296,18 @@ class HospitalDataModel(S3Model):
                              Field("doctors", "integer",
                                    label = T("Number of doctors"),
                                    requires = IS_NULL_OR(
-                                                IS_INT_IN_RANGE(0, 9999))),
+                                                IS_INT_IN_RANGE(0, 9999)),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("nurses", "integer",
                                    label = T("Number of nurses"),
                                    requires = IS_NULL_OR(
-                                                IS_INT_IN_RANGE(0, 9999))),
+                                                IS_INT_IN_RANGE(0, 9999)),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("non_medical_staff", "integer",
                                    requires = IS_NULL_OR(
                                                 IS_INT_IN_RANGE(0, 9999)),
-                                   label = T("Number of non-medical staff")),
+                                   label = T("Number of non-medical staff"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              # Staffing status
                              Field("staffing", "integer",
                                    requires = IS_NULL_OR(IS_IN_SET(
@@ -369,7 +374,7 @@ class HospitalDataModel(S3Model):
                       S3SearchOptionsWidget(
                         name="hospital_facility_type",
                         label=T("Facility Type"),
-                        field=["facility_type"]
+                        field="facility_type"
                       ),
                       # for testing:
                       S3SearchMinMaxWidget(
@@ -377,7 +382,7 @@ class HospitalDataModel(S3Model):
                         method="range",
                         label=T("Total Beds"),
                         comment=T("Select a range for the number of total beds"),
-                        field=["total_beds"]
+                        field="total_beds"
                       ),
                     ))
 
@@ -400,18 +405,11 @@ class HospitalDataModel(S3Model):
                                "available_beds"])
 
         # Reusable field
-        hms_hospital_id_comment = DIV(A(ADD_HOSPITAL,
-                                        _class="colorbox",
-                                        _href=URL(c="hms", f="hospital",
-                                                  args="create",
-                                                  vars=dict(format="popup")),
-                                        _target="top",
-                                        _title=ADD_HOSPITAL),
-                                      DIV(DIV(_class="tooltip",
-                                              _title="%s|%s" % (T("Hospital"),
-                                                                T("If you don't see the Hospital in the list, you can add a new one by clicking link 'Add Hospital'.")))))
-                                                                # If using Autocomplete Widget
-                                                                #T("Enter some characters to bring up a list of possible matches")))))
+        hms_hospital_id_comment = S3AddResourceLink(c="hms",
+                                                    f="hospital",
+                                                    label=ADD_HOSPITAL,
+                                                    title=T("Hospital"),
+                                                    tooltip=T("If you don't see the Hospital in the list, you can add a new one by clicking link 'Add Hospital'."))
 
         hospital_id = S3ReusableField("hospital_id", db.hms_hospital,
                                       sortby="name",
@@ -502,19 +500,23 @@ class HospitalDataModel(S3Model):
                              Field("patients", "integer",            # Current Number of Patients
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 9999)),
                                    default = 0,
-                                   label = T("Number of Patients")),
+                                   label = T("Number of Patients"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("admissions24", "integer",        # Admissions in the past 24 hours
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 9999)),
                                    default = 0,
-                                   label = T("Admissions/24hrs")),
+                                   label = T("Admissions/24hrs"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("discharges24", "integer",        # Discharges in the past 24 hours
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 9999)),
                                    default = 0,
-                                   label = T("Discharges/24hrs")),
+                                   label = T("Discharges/24hrs"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("deaths24", "integer",            # Deaths in the past 24 hours
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 9999)),
                                    default = 0,
-                                   label = T("Deaths/24hrs")),
+                                   label = T("Deaths/24hrs"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("comment", length=128),
                              *s3.meta_fields())
 
@@ -592,15 +594,18 @@ class HospitalDataModel(S3Model):
                              Field("beds_baseline", "integer",
                                    default = 0,
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 9999)),
-                                   label = T("Baseline Number of Beds")),
+                                   label = T("Baseline Number of Beds"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("beds_available", "integer",
                                    default = 0,
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 9999)),
-                                   label = T("Available Beds")),
+                                   label = T("Available Beds"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("beds_add24", "integer",
                                    default = 0,
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 9999)),
-                                   label = T("Additional Beds / 24hrs")),
+                                   label = T("Additional Beds / 24hrs"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              s3.comments(),
                              *s3.meta_fields())
 
@@ -724,34 +729,43 @@ class HospitalDataModel(S3Model):
                                    label = T("Cholera-Treatment-Center")),
                              Field("number_of_patients", "integer", default=0,
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 999999)),
-                                   label = T("Current number of patients")),
+                                   label = T("Current number of patients"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("cases_24", "integer", default=0,
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 999999)),
-                                   label = T("New cases in the past 24h")),
+                                   label = T("New cases in the past 24h"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("deaths_24", "integer", default=0,
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 999999)),
-                                   label = T("Deaths in the past 24h")),
+                                   label = T("Deaths in the past 24h"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              #Field("staff_total", "integer", default=0),
                              Field("icaths_available", "integer", default=0,
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 99999999)),
-                                   label = T("Infusion catheters available")),
+                                   label = T("Infusion catheters available"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("icaths_needed_24", "integer", default=0,
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 99999999)),
-                                   label = T("Infusion catheters needed per 24h")),
+                                   label = T("Infusion catheters needed per 24h"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("infusions_available", "integer", default=0,
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 99999999)),
-                                   label = T("Infusions available")),
+                                   label = T("Infusions available"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("infusions_needed_24", "integer", default=0,
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 99999999)),
-                                   label = T("Infusions needed per 24h")),
+                                   label = T("Infusions needed per 24h"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              #Field("infset_available", "integer", default=0),
                              #Field("infset_needed_24", "integer", default=0),
                              Field("antibiotics_available", "integer", default=0,
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 99999999)),
-                                   label = T("Antibiotics available")),
+                                   label = T("Antibiotics available"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("antibiotics_needed_24", "integer", default=0,
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 99999999)),
-                                   label = T("Antibiotics needed per 24h")),
+                                   label = T("Antibiotics needed per 24h"),
+                                   represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("problem_types", "list:integer",
                                    requires = IS_EMPTY_OR(IS_IN_SET(hms_problem_types,
                                                                     zero=None,

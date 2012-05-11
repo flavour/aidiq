@@ -264,7 +264,7 @@ def setting():
 
 # -----------------------------------------------------------------------------
 @auth.s3_requires_membership(1)
-def email_settings():
+def inbound_email_settings():
 
     """
         RESTful CRUD controller for email settings
@@ -272,20 +272,20 @@ def email_settings():
         Only 1 of these ever in existence
     """
 
-    tablename = "%s_%s" % (module, resourcename)
+    tablename = "msg_inbound_email_settings"
     table = s3db[tablename]
 
-    table.inbound_mail_server.label = T("Server")
-    table.inbound_mail_type.label = T("Type")
-    table.inbound_mail_ssl.label = "SSL"
-    table.inbound_mail_port.label = T("Port")
-    table.inbound_mail_username.label = T("Username")
-    table.inbound_mail_password.label = T("Password")
-    table.inbound_mail_delete.label = T("Delete from Server?")
-    table.inbound_mail_port.comment = DIV(DIV(_class="tooltip",
+    table.server.label = T("Server")
+    table.protocol.label = T("Protocol")
+    table.use_ssl.label = "SSL"
+    table.port.label = T("Port")
+    table.username.label = T("Username")
+    table.password.label = T("Password")
+    table.delete_from_server.label = T("Delete from Server?")
+    table.port.comment = DIV(DIV(_class="tooltip",
         _title="%s|%s" % (T("Port"),
                           T("For POP-3 this is usually 110 (995 for SSL), for IMAP this is usually 143 (993 for IMAP)."))))
-    table.inbound_mail_delete.comment = DIV(DIV(_class="tooltip",
+    table.delete_from_server.comment = DIV(DIV(_class="tooltip",
             _title="%s|%s" % (T("Delete"),
                               T("If this is set to True then mails will be deleted from the server after downloading."))))
 
@@ -300,6 +300,25 @@ def email_settings():
 
     #response.menu_options = admin_menu_options
     s3mgr.configure(tablename, listadd=False, deletable=False)
+    return s3_rest_controller()
+
+
+# -----------------------------------------------------------------------------
+def email_inbox():
+
+    """
+        RESTful CRUD controller for the Email Inbox
+        - all Inbound Email Messages go here
+    """
+
+    if not auth.s3_logged_in():
+        session.error = T("Requires Login!")
+        redirect(URL(c="default", f="user", args="login"))
+
+    tablename = "msg_email_inbox"
+    table = s3db[tablename]
+
+    s3mgr.configure(tablename, listadd=False)
     return s3_rest_controller()
 
 
@@ -793,43 +812,6 @@ def load_search(id):
 
 
 # -----------------------------------------------------------------------------
-def get_criteria(id):
-    s = ""
-    try:
-        id = id.replace("&apos;","'")
-        search_vars = cPickle.loads(id)
-        s = "<p>"
-        pat = '_'
-        for var in search_vars.iterkeys():
-            if var == "criteria" :
-                c_dict = search_vars[var]
-                #s = s + crud_string("pr_save_search", "Search Criteria")
-                for j in c_dict.iterkeys():
-                    if not re.match(pat,j):
-                        st = str(j)
-                        st = st.replace("_search_"," ")
-                        st = st.replace("_advanced","")
-                        st = st.replace("_simple","")
-                        st = st.replace("text","text matching")
-                        """st = st.replace(search_vars["function"],"")
-                        st = st.replace(search_vars["prefix"],"")"""
-                        st = st.replace("_"," ")
-                        s = "%s <b> %s </b>: %s <br />" %(s, st.capitalize(), str(c_dict[j]))
-            elif var == "simple" or var == "advanced":
-                continue
-            else:
-                if var == "function":
-                    v1 = "Resource Name"
-                elif var == "prefix":
-                    v1 = "Module"
-                s = "%s<b>%s</b>: %s<br />" %(s, v1, str(search_vars[var]))
-        s = s + "</p>"
-        return s
-    except:
-        return s
-
-
-# -----------------------------------------------------------------------------
 def check_updates(user_id):
     #Check Updates for all the Saved Searches Subscribed by the User
     message = "<h2>Saved Searches' Update</h2>"
@@ -839,7 +821,7 @@ def check_updates(user_id):
     for row in rows :
         if row.subscribed:
             records = load_search(row.id)
-            #message = message + "<b>" + get_criteria(row.id) + "</b>"
+            message = message + "<b>" + search_vars_represent(row.search_vars) + "</b>"
             if str(records["items"]) != "No Matching Records":
                 message = message + str(records["items"]) + "<br />" #Include the Saved Search details
                 flag = 1

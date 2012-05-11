@@ -69,6 +69,36 @@ function openPopup(url) {
         popupWin = window.open(url, 'popupWin', 'width=640, height=480');
     } else popupWin.focus();
 }
+
+S3.addTooltips = function() {
+    // Help Tooltips
+    $.cluetip.defaults.cluezIndex = 9999; // Need to be able to show on top of Ext Windows
+    $('.tooltip').cluetip({activation: 'hover', sticky: false, splitTitle: '|'});
+    $('.tooltipbody').cluetip({activation: 'hover', sticky: false, splitTitle: '|', showTitle: false});
+    var tipCloseText = '<img src="' + S3.Ap.concat('/static/img/cross2.png') + '" alt="close" />';
+    $('.stickytip').cluetip( {
+    	activation: 'hover',
+    	sticky: true,
+    	closePosition: 'title',
+    	closeText: tipCloseText,
+    	splitTitle: '|'
+    } );
+    $('.errortip').cluetip( {
+        activation: 'click',
+        sticky: true,
+        closePosition: 'title',
+        closeText: tipCloseText,
+        splitTitle: '|'
+    } );
+    $('.ajaxtip').cluetip( {
+    	activation: 'click',
+    	sticky: true,
+    	closePosition: 'title',
+    	closeText: tipCloseText,
+    	width: 380
+    } );
+}
+
 $(document).ready(function() {
     // Web2Py Layer
     $('.error').hide().slideDown('slow')
@@ -90,7 +120,7 @@ $(document).ready(function() {
     try { $('.zoom').fancyZoom( {
         scaleImg: true,
         closeOnClick: true,
-        directory: S3.Ap.concat("/static/media")
+        directory: S3.Ap.concat('/static/media')
     }); } catch(e) {};
 
     // S3 Layer
@@ -188,42 +218,23 @@ $(document).ready(function() {
     });
 
     // Help Tooltips
-    $('.tooltip').cluetip({activation: 'hover', sticky: false, splitTitle: '|'});
-    $('.tooltipbody').cluetip({activation: 'hover', sticky: false, splitTitle: '|', showTitle: false});
-    var tipCloseText = '<img src="' + S3.Ap.concat('/static/img/cross2.png') + '" alt="close" />';
-    $('.stickytip').cluetip( {
-    	activation: 'hover',
-    	sticky: true,
-    	closePosition: 'title',
-    	closeText: tipCloseText,
-    	splitTitle: '|'
-    } );
-    $('.errortip').cluetip( {
-        activation: 'click',
-        sticky: true,
-        closePosition: 'title',
-        closeText: tipCloseText,
-        splitTitle: '|'
-    } );
-    $('.ajaxtip').cluetip( {
-    	activation: 'click',
-    	sticky: true,
-    	closePosition: 'title',
-    	closeText: tipCloseText,
-    	width: 380
-    } );
+    S3.addTooltips();
+
+    // UTC Offset
     now = new Date();
     $('form').append("<input type='hidden' value=" + now.getTimezoneOffset() + " name='_utc_offset'/>");
-	
+
 	// Social Media 'share' buttons
     if ($('#socialmedia_share').length > 0) {
         // DIV exists (deployment_setting on)
         var currenturl = document.location.href;
         var currenttitle = document.title;
-        // Facebook
-        $('#socialmedia_share').append("<div class='socialmedia_element'><div id='fb-root'></div><script>(function(d, s, id) { var js, fjs = d.getElementsByTagName(s)[0]; if (d.getElementById(id)) return; js = d.createElement(s); js.id = id; js.src = '//connect.facebook.net/en_US/all.js#xfbml=1'; fjs.parentNode.insertBefore(js, fjs); }(document, 'script', 'facebook-jssdk'));</script> <div class='fb-send' data-href='" + currenturl + "'></div></div>");
+        // Linked-In
+        $('#socialmedia_share').append("<div class='socialmedia_element'><script src='//platform.linkedin.com/in.js'></script><script type='IN/Share' data-counter='right'></script></div>");
         // Twitter
         $('#socialmedia_share').append("<div class='socialmedia_element'><a href='https://twitter.com/share' class='twitter-share-button' data-count='none' data-hashtags='sahana-eden'>Tweet</a><script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0];if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src='//platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js,fjs);}}(document,'script','twitter-wjs');</script></div>");
+        // Facebook
+        $('#socialmedia_share').append("<div class='socialmedia_element'><div id='fb-root'></div><script>(function(d, s, id) { var js, fjs = d.getElementsByTagName(s)[0]; if (d.getElementById(id)) return; js = d.createElement(s); js.id = id; js.src = '//connect.facebook.net/en_US/all.js#xfbml=1'; fjs.parentNode.insertBefore(js, fjs); }(document, 'script', 'facebook-jssdk'));</script> <div class='fb-like' data-send='false' data-layout='button_count' data-show-faces='true' data-href='" + currenturl + "'></div></div>");
     }
 });
 
@@ -507,6 +518,23 @@ function s3_viewMapMulti(module, resource, instance, jresource) {
     $('#map').html(iframe);
     $('#map').append($("<div style='margin-bottom: 10px' />").append(closelink));
 }
+function s3_showMap(feature_id) {
+    // Display a Feature on a BaseMap within an iframe
+    var url = S3.Ap.concat('/gis/display_feature/') + feature_id;
+	new Ext.Window({
+		autoWidth: true,
+		floating: true,
+		items: [{
+			xtype: 'component',
+			autoEl: {
+				tag: 'iframe',
+				width: 650,
+				height: 490,
+				src: url
+			}
+		}]
+	}).show();
+}
 
 // ============================================================================
 /**
@@ -649,7 +677,7 @@ function S3FilterFieldChange (setting) {
 	                for (var i = 0; i < data.length; i++) {
 	                	if (i == 0) {first_value = data[i][FieldID]};
 	                    options += '<option value="' +  data[i][FieldID] + '">';
-	                    options += this.fncRepresent( data[i], this.PrepResult);
+	                    options += this.fncRepresent( data[i], PrepResult);
 	                    options += '</option>';
 	                }
 	            }
@@ -678,4 +706,102 @@ function S3FilterFieldChange (setting) {
     // Initially hide or filter field
     selFilterField.change();
 };
+
+// ============================================================================
+/**
+ * Add an Autocomplete to a field - used by S3AutocompleteWidget
+ */
+
+S3.autocomplete = function(fieldname, module, resourcename, input, link, post_process, delay, min_length) {
+    var real_input = '#' + input;
+    var dummy = 'dummy_' + input;
+    var dummy_input = '#' + dummy;
+
+    if ($(dummy_input) == 'undefined') {
+        return true;
+    }
+
+    var url = S3.Ap.concat('/', module, '/', resourcename, '/search.json?filter=~&field=', fieldname);
+    if (link != 'undefined') {
+        url += '&link=' + link;
+    }
+    
+    // Optional args
+    if (postprocess == 'undefined') {
+        var postprocess = '';
+    }
+    if (delay == 'undefined') {
+        var delay = 450;
+    }
+    if (min_length == 'undefined') {
+        var min_length = 2;
+    }
+    var data = {
+        val: $(dummy_input).val(),
+        accept: false
+    };
+    $(dummy_input).autocomplete({
+        source: url,
+        delay: delay,
+        minLength: min_length,
+        search: function(event, ui) {
+            $( '#' + dummy + '_throbber' ).removeClass('hidden').show();
+            return true;
+        },
+        response: function(event, ui, content) {
+            $( '#' + dummy + '_throbber' ).hide();
+            return content;
+        },
+        focus: function( event, ui ) {
+            $( dummy_input ).val( ui.item[fieldname] );
+            return false;
+        },
+        select: function( event, ui ) {
+            $( dummy_input ).val( ui.item[fieldname] );
+            $( real_input ).val( ui.item.id );
+            $( real_input ).change();
+            if (postprocess) {
+                postprocess();
+            }
+            data.accept = true;
+            return false;
+        }
+    })
+    .data( 'autocomplete' )._renderItem = function( ul, item ) {
+        return $( '<li></li>' )
+            .data( 'item.autocomplete', item )
+            .append( '<a>' + item[fieldname] + '</a>' )
+            .appendTo( ul );
+    };
+    $(dummy_input).blur(function() {
+        if (!$(dummy_input).val()) {
+            $(real_input).val('');
+            data.accept = true;
+        }
+        if (!data.accept) {
+            $(dummy_input).val(data.val);
+        } else {
+            data.val = $(dummy_input).val();
+        }
+        data.accept = false;
+    });
+};
+
+// ============================================================================
+/**
+ * Add a Slider to a field - used by S3SliderWidget
+ */
+
+S3.slider = function(fieldname, minval, maxval, steprange, value) {
+    $( '#' + fieldname ).slider({
+        min: parseFloat(minval),
+        max: parseFloat(maxval),
+        step: parseFloat(steprange),
+        value: parseFloat(value),
+        slide: function (event, ui) {
+            $( '#' + fieldname + '_input' ).val( ui.value );
+        }
+    });
+}
+
 // ============================================================================

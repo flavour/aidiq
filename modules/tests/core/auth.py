@@ -4,11 +4,8 @@ __all__ = ["login", "logout", "register"]
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
 #from selenium.webdriver.common.keys import Keys
-
 from gluon import current
-
 from s3 import s3_debug
-
 from .utils import *
 
 # -----------------------------------------------------------------------------
@@ -18,32 +15,19 @@ def login(account="normal"):
     config = current.test_config
     browser = config.browser
 
-    # Load homepage
-    homepage()
+    url = "%s/default/user/login" % config.url
+    browser.get(url)
 
     if account == "normal":
         email = "test@example.com"
+        password = "eden"
     elif account == "admin":
         email = "admin@example.com"
+        password = "testing"
     else:
         raise NotImplementedError
-    password = "eden"
-
-    try:
-        elem = browser.find_element_by_id("auth_menu_email")
-    except NoSuchElementException:
-        pass
-    else:
-        if elem.text == email:
-            s3_debug("Logged-in already")
-            return True
-        else:
-            # Logout of any existing user
-            logout()
 
     # Login
-    elem = browser.find_element_by_id("auth_menu_login")
-    elem.click()
     elem = browser.find_element_by_id("auth_user_email")
     elem.send_keys(email)
     elem = browser.find_element_by_id("auth_user_password")
@@ -55,7 +39,7 @@ def login(account="normal"):
     try:
         elem = browser.find_element_by_xpath("//div[@class='confirmation']")
     except NoSuchElementException:
-        s3_debug("Login failed")
+        s3_debug("Login failed.. so registering account")
         # Try registering
         register(account)
     else:
@@ -69,8 +53,8 @@ def logout():
     config = current.test_config
     browser = config.browser
 
-    # Load homepage
-    homepage()
+    url = "%s/default/user/login" % config.url
+    browser.get(url)
 
     try:
         elem = browser.find_element_by_id("auth_menu_logout")
