@@ -47,7 +47,6 @@ import re
 import os
 import sys
 import math
-import json
 import subprocess
 import unicodedata
 from copy import deepcopy
@@ -61,6 +60,14 @@ from datetime import datetime, timedelta, date
 #from lxml.html.soupparser import unescape
 from htmlentitydefs import name2codepoint
 
+try:
+    import json # try stdlib (Python 2.6)
+except ImportError:
+    try:
+        import simplejson as json # try external module
+    except:
+        import gluon.contrib.simplejson as json # fallback to pure-Python module
+
 from gluon import *
 from gluon.storage import Storage
 from gluon.contenttype import contenttype
@@ -73,7 +80,7 @@ except ImportError:
     raise
 
 from s3method import S3Method
-from s3tools import S3DateTime
+from s3utils import S3DateTime
 
 try:
     from PIL import Image
@@ -2001,8 +2008,7 @@ class S3PDF(S3Method):
         self.output = StringIO()
         self.layoutEtree = etree.Element("s3ocrlayout")
         try:
-            pdfTitle = manager.s3.crud_strings[\
-                self.tablename].subtitle_list.decode("utf-8")
+            pdfTitle = manager.s3.crud_strings[self.tablename].title_list.decode("utf-8")
         except:
                 pdfTitle = self.resource.tablename
 

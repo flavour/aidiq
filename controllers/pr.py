@@ -137,7 +137,7 @@ def person():
                 response.s3.gis_config_form_setup()
                 # Name will be generated from person's name.
                 _config.name.readable = _config.name.writable = False
-                # Hide region fields
+                # Hide Location
                 _config.region_location_id.readable = _config.region_location_id.writable = False
 
             elif r.component_name == "competency":
@@ -220,6 +220,7 @@ def person():
             (T("Contact Details"), "contacts"),
             (T("Images"), "image"),
             (T("Identity"), "identity"),
+            (T("Education"), "education"),
             (T("Groups"), "group_membership"),
             (T("Journal"), "note"),
             (T("Skills"), "competency"),
@@ -251,11 +252,14 @@ def address():
     # CRUD pre-process
     def prep(r):
         person_id = request.get_vars.get("person", None)
-        if person_id:
+        controller = request.get_vars.get("controller", None)
+        if person_id and controller:
             s3mgr.configure("pr_address",
-                            create_next=URL(f="person",
+                            create_next=URL(c=controller,
+                                            f="person",
                                             args=[person_id, "contacts"]),
-                            update_next=URL(f="person",
+                            update_next=URL(c=controller,
+                                            f="person",
                                             args=[person_id, "contacts"])
                             )
             if r.method == "create":
@@ -373,6 +377,14 @@ def image():
     return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
+def education():
+    """ RESTful CRUD controller """
+
+    tablename = "pr_education"
+    table = s3db[tablename]
+    return s3_rest_controller("pr", "education")
+
+# -----------------------------------------------------------------------------
 #def contact():
 #    """ RESTful CRUD controller """
 #
@@ -413,8 +425,7 @@ def pentity():
         - limited to just search.json for use in Autocompletes
     """
 
-    response.s3.prep = lambda r: r.representation == "json" and \
-                                 r.method == "search"
+    response.s3.prep = lambda r: r.representation in ("s3json", "json", "xml")
     return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
@@ -439,7 +450,6 @@ def tooltip():
 
 # -----------------------------------------------------------------------------
 def person_duplicates():
-
     """ Handle De-duplication of People
 
         @todo: permissions, audit, update super entity, PEP8, optimization?
@@ -447,7 +457,6 @@ def person_duplicates():
         @todo: user accounts, subscriptions?
     """
 
-    # Shortcut
     persons = s3db.pr_person
 
     table_header = THEAD(TR(TH(T("Person 1")),
@@ -484,6 +493,8 @@ def person_duplicates():
                                                           persons.comments)
 
         # Calculate the match percentage using Jaro wrinkler Algorithm
+        jaro_winkler_distance_row = s3base.jaro_winkler_distance_row
+        soundex = s3base.soundex
         count = 1
         i = 0
         for onePerson in records: #[:len(records)/2]:

@@ -35,14 +35,18 @@ __all__ = ["S3PersonEntity",
            "S3PersonAddressModel",
            "S3PersonImageModel",
            "S3PersonIdentityModel",
+           "S3PersonEducationModel",
            "S3SavedSearch",
            "S3PersonPresence",
            "S3PersonDescription",
+           "S3ImageLibraryModel",
            # Representation Methods
            "pr_get_entities",
            "pr_pentity_represent",
            "pr_person_represent",
            "pr_person_comment",
+           "pr_image_represent",
+           "pr_url_represent",
            "pr_rheader",
            # Custom Resource Methods
            "pr_contacts",
@@ -70,16 +74,29 @@ __all__ = ["S3PersonEntity",
            "pr_descendants",
            # Internal Path Tools
            "pr_rebuild_path",
-           "pr_role_rebuild_path"]
+           "pr_role_rebuild_path",
+           # Helpers for ImageLibrary
+           "pr_image_modify",
+           "pr_image_resize",
+           "pr_image_format",
+           ]
 
+import os
 import re
 
-import gluon.contrib.simplejson as json
+try:
+    import json # try stdlib (Python 2.6)
+except ImportError:
+    try:
+        import simplejson as json # try external module
+    except:
+        import gluon.contrib.simplejson as json # fallback to pure-Python module
 
 from gluon import *
 from gluon.dal import Row
 from gluon.storage import Storage
 from gluon.sqlhtml import RadioWidget
+
 from ..s3 import *
 from layouts import *
 from eden.layouts import S3AddResourceLink
@@ -109,7 +126,7 @@ class S3PersonEntity(S3Model):
         configure = self.configure
         crud_strings = s3.crud_strings
         define_table = self.define_table
-        meta_fields= s3.meta_fields
+        meta_fields= s3_meta_fields
         super_entity = self.super_entity
         super_key = self.super_key
         super_link = self.super_link
@@ -133,7 +150,8 @@ class S3PersonEntity(S3Model):
                            # tables & configuring as a super-entity
                            #cr_shelter = shelter,
                            #fire_station = T("Fire Station"),
-                           #hms_hospital = T("Hospital"),
+                           dvi_morgue = T("Morgue"),
+                           hms_hospital = T("Hospital"),
                            dvi_body = T("Body"))
 
         tablename = "pr_pentity"
@@ -151,6 +169,7 @@ class S3PersonEntity(S3Model):
 
         # Resource configuration
         configure(tablename,
+                  list_fields = ["instance_type", "type", "pe_label"],
                   editable=False,
                   deletable=False,
                   listadd=False,
@@ -170,6 +189,7 @@ class S3PersonEntity(S3Model):
         add_component("pr_image", pr_pentity=pe_id)
         add_component("pr_contact", pr_pentity=pe_id)
         add_component("pr_note", pr_pentity=pe_id)
+        add_component("pr_role", pr_pentity=pe_id)
         add_component("pr_physical_description",
                       pr_pentity=dict(joinby=pe_id,
                                       multiple=False))
@@ -203,7 +223,7 @@ class S3PersonEntity(S3Model):
         # Role (Affiliates Group)
         #
         role_types = {
-            1:T("Organizational Units"),  # business hierarchy (reporting units)
+            1:T("Organization Units"),    # business hierarchy (reporting units)
             2:T("Membership"),            # membership role
             3:T("Association"),           # other non-reporting role
             9:T("Other")                  # other role type
@@ -249,7 +269,6 @@ class S3PersonEntity(S3Model):
             title_update = T("Edit Role"),
             title_search = T("Search Roles"),
             subtitle_create = T("Add New Role"),
-            subtitle_list = T("List of Roles"),
             label_list_button = T("List Roles"),
             label_create_button = T("Add Role"),
             label_delete_button = T("Delete Role"),
@@ -269,6 +288,8 @@ class S3PersonEntity(S3Model):
                                   represent = self.pr_role_represent,
                                   label = T("Role"),
                                   ondelete = "CASCADE")
+
+        add_component("pr_affiliation", pr_role="role_id")
 
         # ---------------------------------------------------------------------
         # Affiliation
@@ -294,7 +315,6 @@ class S3PersonEntity(S3Model):
             title_update = T("Edit Affiliation"),
             title_search = T("Search Affiliations"),
             subtitle_create = T("Add New Affiliation"),
-            subtitle_list = T("List of Affiliations"),
             label_list_button = T("List Affiliations"),
             label_create_button = T("Add Affiliation"),
             label_delete_button = T("Delete Affiliation"),
@@ -476,7 +496,7 @@ class S3OrgAuthModel(S3Model):
 
         define_table = self.define_table
         super_link = self.super_link
-        meta_fields = s3.meta_fields
+        meta_fields = s3_meta_fields
 
         # ---------------------------------------------------------------------
         # Delegation: Role <-> Auth Group Link
@@ -638,6 +658,12 @@ class S3PersonModel(S3Model):
                                     comment = DIV(DIV(_class="tooltip",
                                                         _title="%s|%s" % (T("Local Name"),
                                                                         T("Name of the person in local language and script (optional)."))))),
+                             Field("father_name",
+                                   label = T("Name of Father"),
+                                  ),
+                             Field("mother_name",
+                                   label = T("Name of Mother"),
+                                  ),
                              pr_gender(label = T("Gender")),
                              Field("date_of_birth", "date",
                                    label = T("Date of Birth"),
@@ -676,21 +702,19 @@ class S3PersonModel(S3Model):
                                                      _title="%s|%s" % (T("Mailing list"),
                                                                        T("By selecting this you agree that we may contact you.")))),
                                    ),
-                             s3.comments(),
-                             *(s3.lx_fields() + s3.meta_fields()))
+                             s3_comments(),
+                             *(s3_lx_fields() + s3_meta_fields()))
 
         # CRUD Strings
         ADD_PERSON = current.messages.ADD_PERSON
-        LIST_PERSONS = T("List Persons")
         s3.crud_strings[tablename] = Storage(
             title_create = T("Add a Person"),
             title_display = T("Person Details"),
-            title_list = LIST_PERSONS,
+            title_list = T("Persons"),
             title_update = T("Edit Person Details"),
             title_search = T("Search Persons"),
             subtitle_create = ADD_PERSON,
-            subtitle_list = T("Persons"),
-            label_list_button = LIST_PERSONS,
+            label_list_button = T("List Persons"),
             label_create_button = ADD_PERSON,
             label_delete_button = T("Delete Person"),
             msg_record_created = T("Person added"),
@@ -758,22 +782,29 @@ class S3PersonModel(S3Model):
         # Components
         add_component("pr_group_membership", pr_person="person_id")
         add_component("pr_identity", pr_person="person_id")
+        add_component("pr_education", pr_person="person_id")
         add_component("pr_save_search", pr_person="person_id")
         add_component("msg_subscription", pr_person="person_id")
 
-        # HR Record as component of Persons
-        add_component("hrm_human_resource", pr_person="person_id")
         add_component("member_membership", pr_person="person_id")
 
-        # Skills as components of Persons
+        # HR Record
+        add_component("hrm_human_resource", pr_person="person_id")
+
+        # Skills
         add_component("hrm_certification", pr_person="person_id")
         add_component("hrm_competency", pr_person="person_id")
         add_component("hrm_credential", pr_person="person_id")
-        add_component("hrm_experience", pr_person="person_id")
         # @ToDo: Double link table to show the Courses attended?
         add_component("hrm_training", pr_person="person_id")
 
-        # Assets as component of persons
+        # Experience
+        add_component("hrm_experience", pr_person="person_id")
+        add_component("hrm_programme_hours", pr_person=Storage(
+                                                name="hours",
+                                                joinby="person_id"))
+
+        # Assets
         add_component("asset_asset", pr_person="assigned_to_id")
 
         # ---------------------------------------------------------------------
@@ -799,7 +830,7 @@ class S3PersonModel(S3Model):
         dob = form.vars.get("date_of_birth", None)
 
         if age and age != 1 and dob:
-            now = request.utcnow
+            now = current.request.utcnow
             dy = int((now.date() - dob).days / 365.25)
             if dy < 0:
                 ag = 1
@@ -836,6 +867,7 @@ class S3PersonModel(S3Model):
             ctable = s3db.pr_contact
 
             # Match by first name and last name, and if given, by email address
+            # and/or mobile phone number
             fname = "first_name" in item.data and item.data.first_name
             lname = "last_name" in item.data and item.data.last_name
             if fname and lname:
@@ -854,15 +886,25 @@ class S3PersonModel(S3Model):
                 query = (ptable.first_name.lower() == fname.lower()) & \
                         (ptable.last_name.lower() == lname.lower())
                 email = False
+                sms = False
                 for citem in item.components:
                     if citem.tablename == "pr_contact":
                         if "contact_method" in citem.data and \
-                        citem.data.contact_method == "EMAIL":
+                           citem.data.contact_method == "EMAIL":
                             email = citem.data.value
+                        elif "contact_method" in citem.data and \
+                             citem.data.contact_method == "SMS":
+                            sms = citem.data.value
                 if email != False:
                     query = query & \
-                            (ptable.pe_id == ctable.pe_id) & \
                             (ctable.value.lower() == email.lower())
+                if sms != False:
+                    # @ToDo: Compare like current.msg.sanitise_phone(sms)
+                    query = query & \
+                            (ctable.value == sms)
+                if sms or email:
+                    query = query & \
+                            (ptable.pe_id == ctable.pe_id)
 
             else:
                 # Try Initials (this is a weak test but works well in small teams)
@@ -904,11 +946,11 @@ class S3GroupModel(S3Model):
         NONE = messages.NONE
         UNKNOWN_OPT = messages.UNKNOWN_OPT
 
-        comments = s3.comments
+        comments = s3_comments
         configure = self.configure
         crud_strings = s3.crud_strings
         define_table = self.define_table
-        meta_fields = s3.meta_fields
+        meta_fields = s3_meta_fields
 
         # ---------------------------------------------------------------------
         # Group
@@ -949,16 +991,14 @@ class S3GroupModel(S3Model):
 
         # CRUD Strings
         ADD_GROUP = T("Add Group")
-        LIST_GROUPS = T("List Groups")
         crud_strings[tablename] = Storage(
             title_create = ADD_GROUP,
             title_display = T("Group Details"),
-            title_list = LIST_GROUPS,
+            title_list = T("Groups"),
             title_update = T("Edit Group"),
             title_search = T("Search Groups"),
             subtitle_create = T("Add New Group"),
-            subtitle_list = T("Groups"),
-            label_list_button = LIST_GROUPS,
+            label_list_button = T("List Groups"),
             label_create_button = ADD_GROUP,
             label_delete_button = T("Delete Group"),
             msg_record_created = T("Group added"),
@@ -968,16 +1008,14 @@ class S3GroupModel(S3Model):
 
         # CRUD Strings
         ADD_GROUP = T("Add Mailing List")
-        LIST_GROUPS = T("Mailing List")
         mailing_list_crud_strings = Storage(
             title_create = ADD_GROUP,
             title_display = T("Mailing List Details"),
-            title_list = LIST_GROUPS,
+            title_list = T("Mailing Lists"),
             title_update = T("Edit Mailing List"),
             title_search = T("Search Mailing Lists"),
             subtitle_create = T("Add New Mailing List"),
-            subtitle_list = T("Mailing Lists"),
-            label_list_button = LIST_GROUPS,
+            label_list_button = T("List Mailing Lists"),
             label_create_button = ADD_GROUP,
             label_delete_button = T("Delete Mailing List"),
             msg_record_created = T("Mailing list added"),
@@ -1043,8 +1081,7 @@ class S3GroupModel(S3Model):
                 title_update = T("Edit Membership"),
                 title_search = T("Search Membership"),
                 subtitle_create = T("Add New Membership"),
-                subtitle_list = T("Current Memberships"),
-                label_list_button = T("List All Memberships"),
+                label_list_button = T("List Memberships"),
                 label_create_button = T("Add Membership"),
                 label_delete_button = T("Delete Membership"),
                 msg_record_created = T("Membership added"),
@@ -1060,7 +1097,6 @@ class S3GroupModel(S3Model):
                 title_update = T("Edit Membership"),
                 title_search = T("Search Member"),
                 subtitle_create = T("Add New Member"),
-                subtitle_list = T("Current Group Members"),
                 label_list_button = T("List Members"),
                 label_create_button = T("Add Group Member"),
                 label_delete_button = T("Delete Membership"),
@@ -1166,9 +1202,9 @@ class S3ContactModel(S3Model):
 
         UNKNOWN_OPT = current.messages.UNKNOWN_OPT
 
-        comments = s3.comments
+        comments = s3_comments
         define_table = self.define_table
-        meta_fields = s3.meta_fields
+        meta_fields = s3_meta_fields
         super_link = self.super_link
 
         # ---------------------------------------------------------------------
@@ -1219,7 +1255,6 @@ class S3ContactModel(S3Model):
             title_update = T("Edit Contact Information"),
             title_search = T("Search Contact Information"),
             subtitle_create = T("Add Contact Information"),
-            subtitle_list = T("Contact Information"),
             label_list_button = T("List Contact Information"),
             label_create_button = T("Add Contact Information"),
             label_delete_button = T("Delete Contact Information"),
@@ -1339,8 +1374,8 @@ class S3PersonAddressModel(S3Model):
                                         represent = lambda opt: \
                                                     pr_address_type_opts.get(opt, UNKNOWN_OPT)),
                                   location_id(),
-                                  s3.comments(),
-                                  *(s3.address_fields() + s3.meta_fields()))
+                                  s3_comments(),
+                                  *(s3_address_fields() + s3_meta_fields()))
 
         table.pe_id.requires = IS_ONE_OF(db, "pr_pentity.pe_id",
                                          pr_pentity_represent,
@@ -1354,16 +1389,14 @@ class S3PersonAddressModel(S3Model):
 
         # CRUD Strings
         ADD_ADDRESS = T("Add Address")
-        LIST_ADDRESS = T("List of addresses")
         s3.crud_strings[tablename] = Storage(
             title_create = ADD_ADDRESS,
             title_display = T("Address Details"),
-            title_list = LIST_ADDRESS,
+            title_list = T("Addresses"),
             title_update = T("Edit Address"),
             title_search = T("Search Addresses"),
             subtitle_create = T("Add New Address"),
-            subtitle_list = T("Addresses"),
-            label_list_button = LIST_ADDRESS,
+            label_list_button = T("List Addresses"),
             label_create_button = ADD_ADDRESS,
             msg_record_created = T("Address added"),
             msg_record_modified = T("Address updated"),
@@ -1373,7 +1406,7 @@ class S3PersonAddressModel(S3Model):
         # Resource configuration
         self.configure(tablename,
                        onaccept=self.address_onaccept,
-                       onvalidation=s3.address_onvalidation,
+                       onvalidation=s3_address_onvalidation,
                        deduplicate=self.address_deduplicate,
                        list_fields = ["id",
                                       "type",
@@ -1407,7 +1440,6 @@ class S3PersonAddressModel(S3Model):
         s3db = current.s3db
         request = current.request
         settings = current.deployment_settings
-        lx_update = current.response.s3.lx_update
 
         vars = form.vars
         location_id = vars.location_id
@@ -1424,7 +1456,7 @@ class S3PersonAddressModel(S3Model):
                                                          limitby=(0, 1)).first()
                 if person:
                     # Update the Lx fields
-                    lx_update(table, person.id)
+                    s3_lx_update(table, person.id)
             else:
                 # Check if a base location already exists
                 query = (table.pe_id == pe_id)
@@ -1434,7 +1466,7 @@ class S3PersonAddressModel(S3Model):
                     # Hasn't yet been set so use this
                     S3Tracker()(s3db.pr_pentity, pe_id).set_base_location(location_id)
                     # Update the Lx fields
-                    lx_update(table, person.id)
+                    s3_lx_update(table, person.id)
 
             if person and str(vars.type) == "1": # Home Address
                 if settings.has_module("hrm"):
@@ -1447,7 +1479,7 @@ class S3PersonAddressModel(S3Model):
                     for hr in hrs:
                         db(htable.id == hr.id).update(location_id=location_id)
                         # Update the Lx fields
-                        lx_update(htable, hr.id)
+                        s3_lx_update(htable, hr.id)
                 if settings.has_module("member"):
                     # Also check for any Member record(s)
                     mtable = s3db.member_membership
@@ -1457,7 +1489,7 @@ class S3PersonAddressModel(S3Model):
                     for member in members:
                         db(mtable.id == member.id).update(location_id=location_id)
                         # Update the Lx fields
-                        lx_update(mtable, member.id)
+                        s3_lx_update(mtable, member.id)
         return
 
     # -------------------------------------------------------------------------
@@ -1519,53 +1551,39 @@ class S3PersonImageModel(S3Model):
                                         default = False,
                                         label = T("Profile Picture?")
                                         ),
+                                  Field("image", "upload", autodelete=True,
+                                        represent = self.pr_image_represent,
+                                        comment =  DIV(_class="tooltip",
+                                                       _title="%s|%s" % (T("Image"),
+                                                                         T("Upload an image file here. If you don't upload an image file, then you must specify its location in the URL field.")))),
+                                  Field("url",
+                                        label = T("URL"),
+                                        represent = pr_url_represent,
+                                        comment = DIV(_class="tooltip",
+                                                      _title="%s|%s" % (T("URL"),
+                                                                       T("The URL of the image file. If you don't upload an image file, then you must specify its location here.")))),
                                   Field("type", "integer",
                                         requires = IS_IN_SET(pr_image_type_opts, zero=None),
                                         default = 1,
                                         label = T("Image Type"),
                                         represent = lambda opt: pr_image_type_opts.get(opt,
                                                                                         UNKNOWN_OPT)),
-                                  Field("title", label=T("Title"),
-                                        requires = IS_NOT_EMPTY(),
-                                        comment = DIV(_class="tooltip",
-                                                      _title="%s|%s" % (T("Title"),
-                                                                        T("Specify a descriptive title for the image.")))),
-                                  Field("image", "upload", autodelete=True,
-                                        represent = lambda image: image and \
-                                                   DIV(A(IMG(_src=URL(c="default", f="download",
-                                                                       args=image),
-                                                              _height=60, _alt=T("View Image")),
-                                                              _href=URL(c="default", f="download",
-                                                                        args=image))) or T("No Image"),
-                                        comment =  DIV(_class="tooltip",
-                                                       _title="%s|%s" % (T("Image"),
-                                                                         T("Upload an image file here. If you don't upload an image file, then you must specify its location in the URL field.")))),
-                                  Field("url",
-                                        label = T("URL"),
-                                        represent = lambda url: url and \
-                                                                DIV(A(IMG(_src=url, _height=60), _href=url)) or T("None"),
-                                        comment = DIV(_class="tooltip",
-                                                      _title="%s|%s" % (T("URL"),
-                                                                       T("The URL of the image file. If you don't upload an image file, then you must specify its location here.")))),
-                                   Field("description",
-                                        label=T("Description"),
-                                        comment = DIV(_class="tooltip",
-                                                      _title="%s|%s" % (T("Description"),
-                                                                        T("Give a brief description of the image, e.g. what can be seen where on the picture (optional).")))),
-                                  s3.comments(),
-                                  *s3.meta_fields())
+                                  s3_comments("description",
+                                              label=T("Description"),
+                                              comment = DIV(_class="tooltip",
+                                                            _title="%s|%s" % (T("Description"),
+                                                                              T("Give a brief description of the image, e.g. what can be seen where on the picture (optional).")))),
+                                  *s3_meta_fields())
 
         # CRUD Strings
-        LIST_IMAGES = T("List Images")
         s3.crud_strings[tablename] = Storage(
             title_create = T("Image"),
             title_display = T("Image Details"),
-            title_list = LIST_IMAGES,
+            title_list = T("Images"),
             title_update = T("Edit Image Details"),
             title_search = T("Search Images"),
             subtitle_create = T("Add New Image"),
-            subtitle_list = T("Images"),
-            label_list_button = LIST_IMAGES,
+            label_list_button = T("List Images"),
             label_create_button = T("Add Image"),
             label_delete_button = T("Delete Image"),
             msg_record_created = T("Image added"),
@@ -1577,6 +1595,7 @@ class S3PersonImageModel(S3Model):
         self.configure(tablename,
                        onaccept = self.pr_image_onaccept,
                        onvalidation = self.pr_image_onvalidation,
+                       ondelete = self.pr_image_ondelete,
                        mark_required = ["url", "image"],
                        list_fields=["id",
                                     "title",
@@ -1591,6 +1610,20 @@ class S3PersonImageModel(S3Model):
         # Return model-global names to response.s3
         #
         return Storage()
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def pr_image_represent(image):
+        """ Representation """
+
+        if not image:
+            return current.messages.NONE
+        url_full = URL(c="default", f="download", args=image)
+        size = (None, 60)
+        image = pr_image_represent(image, size=size)
+        url_small = URL(c="default", f="download", args=image)
+
+        return DIV(A(IMG(_src=url_small, _height=60), _href=url_full))
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1609,14 +1642,27 @@ class S3PersonImageModel(S3Model):
         profile = vars.profile
         url = vars.url
         newfilename = vars.image_newfilename
-        if profile == 'False':
+        if profile == "False":
             profile = False
 
-        if newfilename and not url:
-            # Provide the link to the file in the URL field
-            url = URL(c="default", f="download", args=newfilename)
-            query = (table.id == id)
-            db(query).update(url = url)
+        if newfilename:
+            _image = form.request_vars.image
+            pr_image_resize(_image.file,
+                            newfilename,
+                            _image.filename,
+                            (50, 50)
+                            )
+            pr_image_resize(_image.file,
+                            newfilename,
+                            _image.filename,
+                            (None, 60)
+                            )
+
+            pr_image_resize(_image.file,
+                            newfilename,
+                            _image.filename,
+                            (160, None)
+                            )
 
         if profile:
             # Find the pe_id
@@ -1656,6 +1702,112 @@ class S3PersonImageModel(S3Model):
             form.errors.image = \
             form.errors.url = T("Either file upload or image URL required.")
         return
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def pr_image_ondelete(row):
+        db = current.db
+        s3db = current.s3db
+
+        table = s3db.pr_image
+        query = (table.id == row.get("id"))
+        deleted_row = db(query).select(table.image,
+                                       limitby=(0, 1)).first()
+        s3db.pr_image_delete_all(deleted_row.image)
+
+# =============================================================================
+class S3ImageLibraryModel(S3Model):
+    """
+        Image Model
+
+        This is used to store modified copies of images held in other tables.
+        The modifications can be:
+         * different file type (bmp, jpeg, gif, png etc)
+         * different size (thumbnails)
+
+        This has been included in the pr module because:
+        pr uses it (but so do other modules), pr is a compulsory module
+        and this should also be compuslory but didn't want to create a
+        new compulsory module just for this.
+    """
+    names = ["pr_image_library",
+             "pr_image_size",
+             "pr_image_delete_all",
+            ]
+
+    def model(self):
+
+        db = current.db
+        T = current.T
+        s3 = current.response.s3
+
+        UNKNOWN_OPT = current.messages.UNKNOWN_OPT
+
+        tablename = "pr_image_library"
+        table = self.define_table(tablename,
+                                  # Original image file name
+                                  Field("original_name"),
+                                  # New image file name
+                                  Field("new_name",
+                                        "upload",
+                                        autodelete=True,
+                                        ),
+                                  # New file format name
+                                  Field("format"),
+                                  # New requested file dimensions
+                                  Field("width",
+                                        "integer",
+                                       ),
+                                  Field("height",
+                                        "integer",
+                                       ),
+                                  # New actual file dimensions
+                                  Field("actual_width",
+                                        "integer",
+                                       ),
+                                  Field("actual_height",
+                                        "integer",
+                                       )
+                                )
+
+        # ---------------------------------------------------------------------
+        # Return model-global names to response.s3
+        #
+        return Storage(
+            pr_image_size = self.pr_image_size,
+            pr_image_delete_all = self.pr_image_delete_all,
+        )
+
+    # -----------------------------------------------------------------------------
+    @staticmethod
+    def pr_image_size(image_name, size):
+        """
+            Used by s3_avatar_represent()
+        """
+
+        table = current.s3db.pr_image_library
+        query = (table.new_name == image_name)
+        image = current.db(query).select(limitby=(0, 1)).first()
+        if image:
+            return (image.actual_width, image.actual_height)
+        else:
+            return size
+
+    # -----------------------------------------------------------------------------
+    @staticmethod
+    def pr_image_delete_all(original_image_name):
+        """
+            Method to delete all the images that belong to
+            the original file.
+        """
+
+        if current.deployment_settings.get_security_archive_not_delete():
+           return
+        table = current.s3db.pr_image_library
+        query = (table.original_name == original_image_name)
+        set = current.db(query)
+        set.delete_uploaded_files()
+        set.delete()
 
 # =============================================================================
 class S3PersonIdentityModel(S3Model):
@@ -1708,29 +1860,26 @@ class S3PersonIdentityModel(S3Model):
                                         represent = lambda opt: \
                                                     pr_id_type_opts.get(opt,
                                                                         UNKNOWN_OPT)),
-                                  Field("value"),
+                                  Field("value", label = T("Number")),
+                                  Field("valid_from", "date"),
+                                  Field("valid_until", "date"),
                                   Field("description"),
                                   Field("country_code", length=4),
                                   Field("ia_name", label = T("Issuing Authority")),
                                   #Field("ia_subdivision"), # Name of issuing authority subdivision
                                   #Field("ia_code"), # Code of issuing authority (if any)
-                                  s3.comments(),
-                                  *s3.meta_fields())
-
-        # Field configuration
-        table.value.requires = [IS_NOT_EMPTY(),
-                                IS_NOT_ONE_OF(db, "%s.value" % tablename)]
+                                  s3_comments(),
+                                  *s3_meta_fields())
 
         # CRUD Strings
         ADD_IDENTITY = T("Add Identity")
         s3.crud_strings[tablename] = Storage(
             title_create = ADD_IDENTITY,
             title_display = T("Identity Details"),
-            title_list = T("Known Identities"),
+            title_list = T("Identities"),
             title_update = T("Edit Identity"),
             title_search = T("Search Identity"),
             subtitle_create = T("Add New Identity"),
-            subtitle_list = T("Current Identities"),
             label_list_button = T("List Identities"),
             label_create_button = ADD_IDENTITY,
             msg_record_created = T("Identity added"),
@@ -1740,8 +1889,8 @@ class S3PersonIdentityModel(S3Model):
 
         # Resource configuration
         self.configure(tablename,
+                       deduplicate=self.identity_deduplicate,
                        list_fields=["id",
-                                    "type",
                                     "type",
                                     "value",
                                     "country_code",
@@ -1753,6 +1902,90 @@ class S3PersonIdentityModel(S3Model):
         #
         return Storage()
 
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def identity_deduplicate(item):
+        """ Identity de-duplication """
+
+        if item.id:
+            return
+        if item.tablename == "pr_identity":
+            table = item.table
+            person_id = item.data.get("person_id", None)
+            id_type = item.data.get("type", None)
+            id_value = item.data.get("value", None)
+
+            if person_id is None:
+                return
+
+            query = (table.person_id == person_id) & \
+                    (table.type == id_type) & \
+                    (table.value == id_value) & \
+                    (table.deleted != True)
+            duplicate = current.db(query).select(table.id,
+                                                 limitby=(0, 1)).first()
+            if duplicate:
+                item.id = duplicate.id
+                item.method = item.METHOD.UPDATE
+        return
+
+# =============================================================================
+class S3PersonEducationModel(S3Model):
+    """ Education details for Persons """
+
+    names = ["pr_education"]
+
+    def model(self):
+
+        T = current.T
+        s3 = current.response.s3
+
+        tablename = "pr_education"
+        table = self.define_table("pr_education",
+                                  self.pr_person_id(label = T("Person"),
+                                                    ondelete="CASCADE"),
+                                  Field("level", label=T("Level of Award")),
+                                  Field("award", label=T("Name of Award")),
+                                  Field("institute", label=T("Name of Institute")),
+                                  Field("year", label=T("Year")),
+                                  Field("major", label=T("Major")),
+                                  Field("grade", label=T("Grade")),
+                                  s3_comments(),
+                                  *s3_meta_fields())
+
+        # CRUD Strings
+        ADD_IDENTITY = T("Add Educational Achievements")
+        s3.crud_strings[tablename] = Storage(
+            title_create = ADD_IDENTITY,
+            title_display = T("Education Details"),
+            title_list = T("Education Details"),
+            title_update = T("Edit Education Details"),
+            title_search = T("Search Education Details"),
+            subtitle_create = T("Add Education Detail"),
+            label_list_button = T("List Education Details"),
+            label_create_button = ADD_IDENTITY,
+            msg_record_created = T("Education details added"),
+            msg_record_modified = T("Education details updated"),
+            msg_record_deleted = T("Education details deleted"),
+            msg_list_empty = T("No education details currently registered"))
+
+        # Resource configuration
+        self.configure("pr_education",
+                       list_fields=["id",
+                                    "year",
+                                    "level",
+                                    "award",
+                                    "major",
+                                    "grade",
+                                    "institute",
+                                   ],
+                      orderby = ~table.year,
+                      sortby = [[1, "desc"]])
+
+        # ---------------------------------------------------------------------
+        # Return model-global names to response.s3
+        #
+        return Storage()
 
 # =============================================================================
 class S3SavedSearch(S3Model):
@@ -1788,7 +2021,7 @@ class S3SavedSearch(S3Model):
                                   person_id(label = T("Person"),
                                             ondelete="CASCADE",
                                             default = auth.s3_logged_in_person()),
-                                  *s3.meta_fields())
+                                  *s3_meta_fields())
 
 
         # CRUD Strings
@@ -1799,7 +2032,6 @@ class S3SavedSearch(S3Model):
             title_update = T("Edit Saved Search"),
             title_search = T("Search Saved Searches"),
             subtitle_create = T("Add Saved Search"),
-            subtitle_list = T("Saved Searches"),
             label_list_button = T("List Saved Searches"),
             label_create_button = T("Save Search"),
             label_delete_button = T("Delete Saved Search"),
@@ -1970,7 +2202,7 @@ class S3PersonPresence(S3Model):
                                          default=False,
                                          readable = False,
                                          writable = False),
-                                   *s3.meta_fields())
+                                   *s3_meta_fields())
 
         # CRUD Strings
         ADD_LOG_ENTRY = T("Add Log Entry")
@@ -1981,7 +2213,6 @@ class S3PersonPresence(S3Model):
             title_update = T("Edit Log Entry"),
             title_search = T("Search Log Entry"),
             subtitle_create = T("Add New Log Entry"),
-            subtitle_list = T("Current Log Entries"),
             label_list_button = T("List Log Entries"),
             label_create_button = ADD_LOG_ENTRY,
             msg_record_created = T("Log entry added"),
@@ -2241,7 +2472,7 @@ class S3PersonDescription(S3Model):
                                         readable=False,
                                         writable=False),
                                   location_id(label=T("Last known location")),
-                                  *s3.meta_fields())
+                                  *s3_meta_fields())
 
         # CRUD strings
         ADD_NOTE = T("New Entry")
@@ -2252,7 +2483,6 @@ class S3PersonDescription(S3Model):
             title_update = T("Edit Entry"),
             title_search = T("Search Entries"),
             subtitle_create = T("Add New Entry"),
-            subtitle_list = T("Current Entries"),
             label_list_button = T("See All Entries"),
             label_create_button = ADD_NOTE,
             msg_record_created = T("Journal entry added"),
@@ -2474,8 +2704,8 @@ class S3PersonDescription(S3Model):
                                   # Other details
                                   Field("other_details", "text"),
 
-                                  s3.comments(),
-                                  *s3.meta_fields())
+                                  s3_comments(),
+                                  *s3_meta_fields())
 
         # Field configuration
         table.height_cm.comment = DIV(DIV(_class="tooltip",
@@ -2493,6 +2723,13 @@ class S3PersonDescription(S3Model):
 
         # Resource Configuration
         # ?
+
+        # ---------------------------------------------------------------------
+        # Return model-global names to response.s3
+        #
+        return Storage(
+        )
+
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2554,7 +2791,6 @@ class S3PersonDescription(S3Model):
 # =============================================================================
 # Representation Methods
 # =============================================================================
-#
 def pr_get_entities(pe_ids=None,
                     types=None,
                     represent=True,
@@ -2711,9 +2947,13 @@ def pr_pentity_represent(id, show_label=True, default_label="[No ID Tag]"):
     pe_str = T("None (no such record)")
 
     pe_table = s3db.pr_pentity
-    pe = db(pe_table.pe_id == id).select(pe_table.instance_type,
-                                         pe_table.pe_label,
-                                         limitby=(0, 1)).first()
+    if isinstance(id, Row):
+        pe = id
+        id = pe.pe_id
+    else:
+        pe = db(pe_table.pe_id == id).select(pe_table.instance_type,
+                                             pe_table.pe_label,
+                                             limitby=(0, 1)).first()
     if not pe:
         return pe_str
 
@@ -2758,34 +2998,25 @@ def pr_pentity_represent(id, show_label=True, default_label="[No ID Tag]"):
     return pe_str
 
 # =============================================================================
-def pr_person_represent(id):
-    """ Representation """
+def pr_person_represent(person_id, showlink=False):
+    """
+        Represent a Person in option fields or list views
 
-    if not id:
+        @param showlink: whether to make the output into a hyperlink
+    """
+
+    if not person_id:
         return current.messages.NONE
-
-    db = current.db
-    s3db = current.s3db
-    cache = current.cache
-
-    table = s3db.pr_person
-
-    def _represent(id):
-        if isinstance(id, Row):
-            person = id
-            id = person.id
-        else:
-            person = db(table.id == id).select(table.first_name,
-                                               table.middle_name,
-                                               table.last_name,
-                                               limitby=(0, 1)).first()
-        if person:
-            return s3_fullname(person)
-        else:
-            return None
-
-    name = cache.ram("pr_person_%s" % id,
-                     lambda: _represent(id), time_expire=10)
+    if isinstance(person_id, dict):
+        name = s3_fullname(person_id.keys())
+    else:
+        name = current.cache.ram("pr_person_%s" % person_id,
+                                 lambda: s3_fullname(person_id),
+                                 time_expire=60)
+    if showlink:
+        # @ToDo: Use pr controller for other usecases
+        name = A(name,
+                 _href = URL(c="hrm", f="person", args=[person_id]))
     return name
 
 # =============================================================================
@@ -2892,8 +3123,6 @@ def pr_contacts(r, **attr):
             Addresses (pr_address)
             Contacts (pr_contact)
             Emergency Contacts
-
-        @ToDo: Fix Map in Address' LocationSelector
     """
 
     from itertools import groupby
@@ -2902,55 +3131,59 @@ def pr_contacts(r, **attr):
         r.error(405, current.manager.ERROR.BAD_METHOD)
 
     T = current.T
+    #auth = current.auth
     db = current.db
     s3db = current.s3db
+    crud = r.resource.crud
 
     person = r.record
 
     # Addresses
-    atable = s3db.pr_address
-    query = (atable.pe_id == person.pe_id)
-    addresses = db(query).select(atable.id,
-                                 atable.type,
-                                 atable.building_name,
-                                 atable.address,
-                                 atable.L3,
-                                 atable.postcode,
-                                 atable.L0,
-                                 orderby=atable.type)
+    # - removed since can't get Google Maps displaying in Location Selector when loaded async
+    # - even when loaded into page before async load of map
+    # atable = s3db.pr_address
+    # query = (atable.pe_id == person.pe_id)
+    # addresses = db(query).select(atable.id,
+                                 # atable.type,
+                                 # atable.building_name,
+                                 # atable.address,
+                                 # atable.L3,
+                                 # atable.postcode,
+                                 # atable.L0,
+                                 # orderby=atable.type)
 
-    address_groups = {}
-    for key, group in groupby(addresses, lambda a: a.type):
-        address_groups[key] = list(group)
+    # address_groups = {}
+    # for key, group in groupby(addresses, lambda a: a.type):
+        # address_groups[key] = list(group)
 
-    address_wrapper = DIV(H2(T("Addresses")),
-                          DIV(A(T("Add"), _class="addBtn", _id="address-add"),
-                              IMG(_src=URL(c="static", f="img", args="ajax-loader.gif"),
-                                  _height=32, _width=32,
-                                  _id="address-add_throbber",
-                                  _class="throbber hidden"),
-                              _class="margin"))
+    # address_wrapper = DIV(H2(T("Addresses")),
+                          # DIV(A(T("Add"), _class="action-btn", _id="address-add"),
+                              # IMG(_src=URL(c="static", f="img", args="ajax-loader.gif"),
+                                  # _height=32, _width=32,
+                                  # _id="address-add_throbber",
+                                  # _class="throbber hide"),
+                              # _class="margin"))
 
-    items = address_groups.items()
-    opts = s3db.pr_address_type_opts
-    for address_type, details in items:
-        address_wrapper.append(H3(opts[address_type]))
-        for detail in details:
-            text = ",".join((detail.building_name or "",
-                             detail.address or "",
-                             detail.L3 or "",
-                             detail.postcode or "",
-                             detail.L0 or "",
-                            ))
-            text = re.sub(",+", ",", text)
-            if text[0] == ",":
-                text = text[1:]
-            address_wrapper.append(P(
-                SPAN(text),
-                A(T("Edit"), _class="editBtn fright"),
-                _id="address-%s" % detail.id,
-                _class="address",
-                ))
+    # items = address_groups.items()
+    # opts = s3db.pr_address_type_opts
+    # for address_type, details in items:
+        # address_wrapper.append(H3(opts[address_type]))
+        # for detail in details:
+            # text = ",".join((detail.building_name or "",
+                             # detail.address or "",
+                             # detail.L3 or "",
+                             # detail.postcode or "",
+                             # detail.L0 or "",
+                            # ))
+            # text = re.sub(",+", ",", text)
+            # if text[0] == ",":
+                # text = text[1:]
+            # address_wrapper.append(P(
+                # SPAN(text),
+                # A(T("Edit"), _class="editBtn action-btn fright"),
+                # _id="address-%s" % detail.id,
+                # _class="address",
+                # ))
 
     # Contacts
     ctable = s3db.pr_contact
@@ -2964,14 +3197,19 @@ def pr_contacts(r, **attr):
     for key, group in groupby(contacts, lambda c: c.contact_method):
         contact_groups[key] = list(group)
 
-    contacts_wrapper = DIV(H2(T("Contacts")),
-                           DIV(A(T("Add"), _class="addBtn", _id="contact-add"),
-                              IMG(_src=URL(c="static", f="img", args="ajax-loader.gif"),
-                                  _height=32, _width=32,
-                                  _id="contact-add_throbber",
-                                  _class="throbber hidden"),
-                               _class="margin"))
+    contacts_wrapper = DIV(H2(T("Contacts")))
 
+    r.component = Storage()
+    r.component.table = ctable
+    r.component_id = None
+    if crud._permitted(method="create"):
+        add_btn = DIV(A(T("Add"), _class="action-btn", _id="contact-add"),
+                      IMG(_src=URL(c="static", f="img", args="ajax-loader.gif"),
+                          _height=32, _width=32,
+                          _id="contact-add_throbber",
+                          _class="throbber hide"),
+                      _class="margin")
+        contacts_wrapper.append(add_btn)
 
     items = contact_groups.items()
     def mysort(key):
@@ -2980,24 +3218,42 @@ def pr_contacts(r, **attr):
                 "SMS": 1,
                 "EMAIL": 2,
                 "WORK_PHONE": 3,
-                "SKYPE": 4,
-                "RADIO": 5,
-                "TWITTER": 6,
-                "FACEBOOK": 7,
-                "FAX": 8,
-                "OTHER": 9
+                "HOME_PHONE": 4,
+                "SKYPE": 5,
+                "RADIO": 6,
+                "TWITTER": 7,
+                "FACEBOOK": 8,
+                "FAX": 9,
+                "OTHER": 10
             }
         return keys[key[0]]
     items.sort(key=mysort)
     opts = current.msg.CONTACT_OPTS
+
+    def action_buttons(id):
+        r.component_id = id
+        if crud._permitted(method="update"):
+            edit_btn = A(T("Edit"), _class="editBtn action-btn fright")
+        else:
+            edit_btn = DIV()
+        if crud._permitted(method="delete"):
+            delete_btn = A(T("Delete"), _class="deleteBtn delete-btn fright")
+        else:
+            delete_btn = DIV()
+        return (edit_btn, delete_btn)
+
     for contact_type, details in items:
         contacts_wrapper.append(H3(opts[contact_type]))
         for detail in details:
-            contacts_wrapper.append(P(
-                SPAN(detail.value),
-                A(T("Edit"), _class="editBtn fright"),
-                _id="contact-%s" % detail.id,
-                _class="contact",
+            id = detail.id
+            (edit_btn, delete_btn) = action_buttons(id)
+            contacts_wrapper.append(
+                P(
+                  SPAN(detail.value),
+                  edit_btn,
+                  delete_btn,
+                  _id="contact-%s" % id,
+                  _class="contact",
                 ))
 
     # Emergency Contacts
@@ -3009,13 +3265,18 @@ def pr_contacts(r, **attr):
                                  etable.relationship,
                                  etable.phone)
 
-    emergency_wrapper = DIV(H2(T("Emergency Contacts")),
-                            DIV(A(T("Add"), _class="addBtn", _id="emergency-add"),
-                              IMG(_src=URL(c="static", f="img", args="ajax-loader.gif"),
-                                  _height=32, _width=32,
-                                  _id="emergency-add_throbber",
-                                  _class="throbber hidden"),
-                                _class="margin"))
+    emergency_wrapper = DIV(H2(T("Emergency Contacts")))
+
+    r.component.table = etable
+    r.component_id = None
+    if crud._permitted(method="create"):
+        add_btn = DIV(A(T("Add"), _class="action-btn", _id="emergency-add"),
+                      IMG(_src=URL(c="static", f="img", args="ajax-loader.gif"),
+                          _height=32, _width=32,
+                          _id="emergency-add_throbber",
+                          _class="throbber hide"),
+                      _class="margin")
+        emergency_wrapper.append(add_btn)
 
     for contact in emergency:
         name = contact.name or ""
@@ -3024,15 +3285,19 @@ def pr_contacts(r, **attr):
         relationship = contact.relationship or ""
         if relationship:
             relationship = "%s, "% relationship
-        emergency_wrapper.append(P(
-            SPAN("%s%s%s" % (name, relationship, contact.phone)),
-            A(T("Edit"), _class="editBtn fright"),
-            _id="emergency-%s" % contact.id,
-            _class="emergency",
+        id = contact.id
+        (edit_btn, delete_btn) = action_buttons(id)
+        emergency_wrapper.append(
+            P(
+              SPAN("%s%s%s" % (name, relationship, contact.phone)),
+              edit_btn,
+              delete_btn,
+              _id="emergency-%s" % id,
+              _class="emergency",
             ))
 
     # Overall content
-    content = DIV(address_wrapper,
+    content = DIV(#address_wrapper,
                   contacts_wrapper,
                   emergency_wrapper,
                   _class="contacts-wrapper")
@@ -3040,14 +3305,22 @@ def pr_contacts(r, **attr):
     # Add the javascript
     response = current.response
     s3 = response.s3
-    if current.session.s3.debug:
+    if s3.debug:
         s3.scripts.append(URL(c="static", f="scripts",
                               args=["S3", "s3.contacts.js"]))
     else:
         s3.scripts.append(URL(c="static", f="scripts",
                               args=["S3", "s3.contacts.min.js"]))
 
+    #s3.js_global.append("controller='%s';" % current.request.controller)
     s3.js_global.append("personId = %s;" % person.id);
+
+    # Load the Google JS now as can't load it async
+    # @ToDo: Is this worth making conditional on this being their default base layer?
+    #apikey = current.deployment_settings.get_gis_api_google()
+    #if apikey:
+    #    s3.scripts.append("http://www.google.com/jsapi?key=%s" % apikey)
+    #s3.scripts.append("http://maps.google.com/maps/api/js?v=3.6&sensor=false")
 
     # Custom View
     response.view = "pr/contacts.html"
@@ -3477,7 +3750,7 @@ def pr_add_affiliation(master, affiliate, role=None, role_type=OU):
     s3db = current.s3db
 
     if not role:
-        return
+        return None
 
     master_pe = pr_get_pe_id(master)
     affiliate_pe = pr_get_pe_id(affiliate)
@@ -4244,5 +4517,165 @@ def pr_role_rebuild_path(role_id, skip=[], clear=False):
         db(query).update(path=None)
 
     return path
+
+# =============================================================================
+def pr_image_represent(image_name,
+                       format = None,
+                       size = (),
+                      ):
+    """
+        Get the image that matches the required image type
+
+        @param image_name: the name of the original image
+        @param format:     the file format required
+        @param size:       the size of the image (width, height)
+    """
+
+    table = current.s3db.pr_image_library
+    query = (table.original_name == image_name)
+    if format:
+        query = query & (table.format == format)
+    if size:
+        query = query & (table.width == size[0]) & (table.height == size[1])
+    image = current.db(query).select(limitby=(0, 1)).first()
+    if image:
+        return image.new_name
+    else:
+        return image_name
+
+# ---------------------------------------------------------------------
+def pr_url_represent(url):
+    """ Representation """
+
+    if not url:
+        return current.messages.NONE
+    parts = url.split("/")
+    image = parts[-1]
+    size = (None, 60)
+    image = current.s3db.pr_image_represent(image, size=size)
+    url_small = URL(c="default", f="download", args=image)
+
+    return DIV(A(IMG(_src=url_small, _height=60), _href=url))
+
+# -----------------------------------------------------------------------------
+def pr_image_modify(image_file,
+                 image_name,
+                 original_name,
+                 size = (None, None),
+                 to_format = None,
+                ):
+    """
+        Resize the image passed in and store on the table
+
+        @param image_file:    the image stored in a file object
+        @param image_name:    the name of the original image
+        @param original_name: the original name of the file
+        @param size:          the required size of the image (width, height)
+        @param to_format:     the format of the image (jpeg, bmp, png, gif, etc.)
+    """
+
+    # Import the specialist libraries
+    try:
+        from PIL import Image
+        from PIL import ImageOps
+        from PIL import ImageStat
+        PILImported = True
+    except(ImportError):
+        try:
+            import Image
+            import ImageOps
+            import ImageStat
+            PILImported = True
+        except(ImportError):
+            PILImported = False
+    if PILImported:
+        from tempfile import TemporaryFile
+        s3db = current.s3db
+        table = s3db.pr_image_library
+
+        fileName, fileExtension = os.path.splitext(original_name)
+
+        image_file.seek(0)
+        im = Image.open(image_file)
+        thumb_size = []
+        if size[0] == None:
+            thumb_size.append(im.size[0])
+        else:
+            thumb_size.append(size[0])
+        if size[1] == None:
+            thumb_size.append(im.size[1])
+        else:
+            thumb_size.append(size[1])
+        im.thumbnail(thumb_size, Image.ANTIALIAS)
+
+        if not to_format:
+            to_format = fileExtension[1:]
+        if to_format.upper() == "JPG":
+            to_format = "JPEG"
+        elif to_format.upper() == "BMP":
+            im = im.convert("RGB")
+        save_im_name = "%s.%s" % (fileName, to_format)
+        tempFile = TemporaryFile()
+        im.save(tempFile,to_format)
+        tempFile.seek(0)
+        newfile = table.new_name.store(tempFile,
+                                       save_im_name,
+                                       table.new_name.uploadfolder
+                                      )
+        # rewind the original file so it can be read, if required
+        image_file.seek(0)
+        image_id = table.insert(original_name = image_name,
+                                new_name = newfile,
+                                format = to_format,
+                                width = size[0],
+                                height = size[1],
+                                actual_width = im.size[0],
+                                actual_height = im.size[1],
+                               )
+        return True
+    else:
+        return False
+
+# -----------------------------------------------------------------------------
+def pr_image_resize(image_file,
+                    image_name,
+                    original_name,
+                    size,
+                    ):
+    """
+        Resize the image passed in and store on the table
+
+        @param image_file:    the image stored in a file object
+        @param image_name:    the name of the original image
+        @param original_name: the original name of the file
+        @param size:          the required size of the image (width, height)
+    """
+
+    return pr_image_modify(image_file,
+                           image_name,
+                           original_name,
+                           size = size
+                          )
+
+# -----------------------------------------------------------------------------
+def pr_image_format(image_file,
+                    image_name,
+                    original_name,
+                    to_format,
+                    ):
+    """
+        Change the file format of the image passed in and store on the table
+
+        @param image_file:    the image stored in a file object
+        @param image_name:    the name of the original image
+        @param original_name: the original name of the file
+        @param to_format:     the format of the image (jpeg, bmp, png, gif, etc.)
+    """
+
+    return pr_image_modify(image_file,
+                           image_name,
+                           original_name,
+                           to_format = to_format
+                        )
 
 # END =========================================================================

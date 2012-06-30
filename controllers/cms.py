@@ -118,6 +118,8 @@ def post():
         table.module.readable = table.module.writable = False
         table.name.default = "%s Home Page" % _module
         table.name.readable = table.name.writable = False
+        s3.crud_strings[tablename].title_create = T("New Page")
+        s3.crud_strings[tablename].title_update = T("Edit Page")
         url = URL(c=_module, f="index")
         s3mgr.configure(tablename,
                         create_next = url,
@@ -260,7 +262,7 @@ def comment_parse(comment, comments, post_id=None):
         post_id = comment.post_id
     else:
         header = author
-    thread = LI(DIV(s3_avatar_represent(comment.created_by),
+    thread = LI(DIV(s3base.s3_avatar_represent(comment.created_by),
                     DIV(DIV(header,
                             _class="comment-header"),
                         DIV(XML(comment.body)),
@@ -399,7 +401,7 @@ def posts():
                 author = B(A(username, _href=url, _target="top"))
         header = H4(post.name)
         if post.avatar:
-            avatar = s3_avatar_represent(post.created_by)
+            avatar = s3base.s3_avatar_represent(post.created_by)
         else:
             avatar = ""
         row = LI(DIV(avatar,

@@ -3,8 +3,6 @@
 """
     S3 Reporting Framework
 
-    @author: Dominic König <dominic[at]aidiq[dot]com>
-
     @copyright: 2011-2012 (c) Sahana Software Foundation
     @license: MIT
 
@@ -39,11 +37,19 @@ __all__ = ["S3Cube", "S3Report", "S3ContingencyTable"]
 
 import sys
 import datetime
-import gluon.contrib.simplejson as json
+
+try:
+    import json # try stdlib (Python 2.6)
+except ImportError:
+    try:
+        import simplejson as json # try external module
+    except:
+        import gluon.contrib.simplejson as json # fallback to pure-Python module
 
 from gluon import current
-from gluon.storage import Storage
 from gluon.html import *
+from gluon.storage import Storage
+
 from s3rest import S3TypeConverter
 from s3crud import S3CRUD
 from s3search import S3Search
@@ -64,7 +70,6 @@ class S3Cube(S3CRUD):
         "max": T("Maximum"),
         "sum": T("Sum"),
         "avg": T("Average"),
-        "mean": T("Average"),
         #"std": T("Standard Deviation")
     }
 
@@ -85,6 +90,12 @@ class S3Cube(S3CRUD):
         return output
 
     # -------------------------------------------------------------------------
+    def _process_report_options(self, form):
+        dupe = form.vars.rows == form.vars.cols
+        if dupe:
+           form.errors.cols = "Duplicate label selected"
+
+    # -------------------------------------------------------------------------
     def report(self, r, **attr):
         """
             Generate a pivot table report
@@ -95,17 +106,18 @@ class S3Cube(S3CRUD):
 
         T = current.T
         manager = current.manager
-        session = current.session
         response = current.response
-        table = self.table
+        session = current.session
+        s3 = session.s3
 
+        table = self.table
         tablename = self.tablename
 
         # Report options  -----------------------------------------------------
         #
 
         # Get the session options
-        session_options = session.s3.report_options
+        session_options = s3.report_options
         if session_options and tablename in session_options:
             session_options = session_options[tablename]
         else:
@@ -159,16 +171,23 @@ class S3Cube(S3CRUD):
             # We only compare to the session if POSTing to prevent cross-site
             # scripting.
             if r.http == "POST" and \
-                form.accepts(form_values, session, formname="report", keepvalues=True) or \
-                form.accepts(form_values, formname="report", keepvalues=True):
+                form.accepts(form_values,
+                             session,
+                             formname="report",
+                             keepvalues=True,
+                             onvalidation=self._process_report_options) or \
+                form.accepts(form_values,
+                             formname="report",
+                             keepvalues=True,
+                             onvalidation=self._process_report_options):
 
                 # The form is valid so save the form values into the session
-                if 'report_options' not in session.s3:
-                    session.s3.report_options = Storage()
+                if "report_options" not in s3:
+                    s3.report_options = Storage()
 
-                session.s3.report_options[tablename] = Storage([(k, v) for k, v in
+                s3.report_options[tablename] = Storage([(k, v) for k, v in
                                                         form_values.iteritems() if v])
-            
+
             # Use the values to generate the query filter
             query, errors = self._process_filter_options(form)
 
@@ -226,7 +245,7 @@ class S3Cube(S3CRUD):
         resource = self.resource
         representation = r.representation
 
-        if self.method == "report":
+        if not form.errors and self.method == "report":
 
             # Generate the report ---------------------------------------------
             #
@@ -254,7 +273,7 @@ class S3Cube(S3CRUD):
 
             # Represent the report --------------------------------------------
             #
-            if representation == "html":
+            if representation in ("html", "iframe"):
                 report_data = None
                 if not report.empty:
                     items = S3ContingencyTable(report,
@@ -284,7 +303,7 @@ class S3Cube(S3CRUD):
                 # @todo: support other formats
                 r.error(501, manager.ERROR.BAD_FORMAT)
 
-        elif representation == "html":
+        elif representation in ("html", "iframe"):
 
                 # Fallback to list view ---------------------------------------
                 #
@@ -300,38 +319,23 @@ class S3Cube(S3CRUD):
 
         # Complete the page ---------------------------------------------------
         #
-        if representation == "html":
+        if representation in ("html", "iframe"):
             crud_string = self.crud_string
             title = crud_string(self.tablename, "title_report")
             if not title:
                 title = crud_string(self.tablename, "title_list")
 
-            subtitle = crud_string(self.tablename, "subtitle_report")
-            if not subtitle:
-                subtitle = crud_string(self.tablename, "subtitle_list")
-
-            # @todo: move JavaScript into s3.report.js
             if form is not None:
-                show_link = A(T("Show Report Options"),
-                            _href="#",
-                            _class=_show % "action-lnk",
-                            _id = "show-opts-btn",
-                            _onclick="""$('#reportform').removeClass('hide'); $('#show-opts-btn').addClass('hide'); $('#hide-opts-btn').removeClass('hide');""")
-                hide_link = A(T("Hide Report Options"),
-                            _href="#",
-                            _class=_hide % "action-lnk",
-                            _id = "hide-opts-btn",
-                            _onclick="""$('#reportform').addClass('hide'); $('#show-opts-btn').removeClass('hide'); $('#hide-opts-btn').addClass('hide');""")
-                form = DIV(DIV(show_link, hide_link),
-                           DIV(form,
-                               _class=_hide % "reportform",
-                               _id="reportform"),
-                               _style="margin-bottom: 5px;")
+                form = DIV(
+                    DIV(form,
+                        _id="reportform"
+                    ),
+                    _style="margin-bottom: 5px;"
+                )
             else:
                 form = ""
 
             output["title"] = title
-            output["subtitle"] = subtitle
             output["form"] = form
             response.view = self._view(r, "report.html")
 
@@ -357,11 +361,11 @@ class S3Cube(S3CRUD):
         report_fact = report_options.get("facts", list_fields)
 
         _select_field = self._select_field
-        select_rows = _select_field(report_rows, _id="rows", _name="rows",
+        select_rows = _select_field(report_rows, _id="report-rows", _name="rows",
                                     form_values=form_values)
-        select_cols = _select_field(report_cols, _id="cols", _name="cols",
+        select_cols = _select_field(report_cols, _id="report-cols", _name="cols",
                                     form_values=form_values)
-        select_fact = _select_field(report_fact, _id="fact", _name="fact",
+        select_fact = _select_field(report_fact, _id="report-fact", _name="fact",
                                     form_values=form_values)
 
         # totals are "on" or True by default
@@ -371,12 +375,12 @@ class S3Cube(S3CRUD):
             if str(show_totals).lower() in ("false", "off"):
                 show_totals = False
 
-        show_totals = INPUT(_type="checkbox", _id="totals", _name="totals",
+        show_totals = INPUT(_type="checkbox", _id="report-totals", _name="totals",
                             value=show_totals)
 
         methods = report_options.get("methods")
         select_method = self._select_method(methods,
-                                            _id="aggregate",
+                                            _id="report-aggregate",
                                             _name="aggregate",
                                             form_values=form_values)
 
@@ -385,42 +389,49 @@ class S3Cube(S3CRUD):
         # Append filter widgets, if configured
         filter_widgets = self._build_filter_widgets(form_values)
         if filter_widgets:
-            form.append(TABLE(filter_widgets, _id="filter_options"))
+            form.append(
+                FIELDSET(
+                    LEGEND("Filter Options ",
+                        BUTTON("Show", _type="button", _class="toggle-text", _style="display:none"),
+                        BUTTON("Hide", _type="button", _class="toggle-text")
+                    ),
+                    TABLE(filter_widgets),
+                    _id="filter_options"
+                )
+            )
 
         # Append report options, always
-        form_report_options = TABLE(
+        form_report_options = FIELDSET(
+                LEGEND("Report Options ",
+                    BUTTON("Show", _type="button", _class="toggle-text"),
+                    BUTTON("Hide", _type="button", _class="toggle-text", _style="display:none")
+                ),
+                TABLE(
                     TR(
-                        TD(LABEL("Rows:"), _class="w2p_fl"),
-                        TD(LABEL("Columns:"), _class="w2p_fl"),
+                        TD(LABEL("Rows:", _for="report-rows"), _class="w2p_fl"),
+                        TD(select_rows),
                     ),
                     TR(
-                        TD(select_rows),
+                        TD(LABEL("Columns:", _for="report-cols"), _class="w2p_fl"),
                         TD(select_cols),
                     ),
                     TR(
-                        TD(LABEL("Value:"), _class="w2p_fl"),
-                        TD(LABEL("Function for Value:"), _class="w2p_fl"),
+                        TD(LABEL("Value:", _for="report-fact"), _class="w2p_fl"),
+                        TD(select_fact),
                     ),
                     TR(
-                        TD(select_fact),
+                        TD(LABEL("Function for Value:", _for="report-aggregate"), _class="w2p_fl"),
                         TD(select_method),
                     ),
                     TR(
-                        TD(LABEL("Show totals:"), _class="w2p_fl")
-                    ),
-                    TR(
+                        TD(LABEL("Show totals:", _for="report-totals"), _class="w2p_fl"),
                         TD(show_totals)
                     ),
-                    TR(
-                        INPUT(_value=T("Submit"), _type="submit"),
-                        # @todo: Reset-link to restore pre-defined parameters,
-                        #        show only if URL vars present
-                        #A(T("Reset"), _class="action-lnk"),
-                        _colspan=3
-                    ),
-                    _id="report_options"
-                )
+                ),
+                _id="report_options"
+            )
         form.append(form_report_options)
+        form.append(INPUT(_value=T("Submit"), _type="submit"))
 
         return form
 
@@ -470,7 +481,7 @@ class S3Cube(S3CRUD):
             Processes the filter widgets into a filter query
 
             @param form: the filter form
-            
+
             @rtype: tuple
             @return: A tuple containing (query object, validation errors)
         """
@@ -587,7 +598,7 @@ class S3Cube(S3CRUD):
 class S3Report:
     """ Class representing reports """
 
-    METHODS = ["list", "count", "min", "max", "sum", "avg", "mean"] #, "std"]
+    METHODS = ["list", "count", "min", "max", "sum", "avg"] #, "std"]
 
     def __init__(self, resource, rows, cols, layers):
         """
@@ -994,7 +1005,7 @@ class S3Report:
             except TypeError, ValueError:
                 return None
 
-        elif method in ("avg", "mean"):
+        elif method in ("avg"):
             try:
                 if len(values):
                     return sum(values) / float(len(values))

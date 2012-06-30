@@ -59,7 +59,6 @@ class HospitalDataModel(S3Model):
         s3 = current.response.s3
         settings = current.deployment_settings
 
-        currency_type = s3.currency_type
         person_id = self.pr_person_id
         location_id = self.gis_location_id
         organisation_id = self.org_organisation_id
@@ -146,6 +145,7 @@ class HospitalDataModel(S3Model):
         tablename = "hms_hospital"
         table = define_table(tablename,
                              super_link("doc_id", "doc_entity"),
+                             super_link("pe_id", "pr_pentity"),
                              super_link("site_id", "org_site"),
                              Field("paho_uuid",
                                    unique=True,
@@ -335,21 +335,20 @@ class HospitalDataModel(S3Model):
                              Field("access_status",
                                    label = T("Road Conditions")),
 
-                             s3.comments(),
-                             *s3.meta_fields())
+                             s3_comments(),
+                             *s3_meta_fields())
 
         # CRUD Strings
-        LIST_HOSPITALS = T("List Hospitals")
         ADD_HOSPITAL = T("Add Hospital")
         s3.crud_strings[tablename] = Storage(
             title_create = ADD_HOSPITAL,
             title_display = T("Hospital Details"),
-            title_list = LIST_HOSPITALS,
+            title_list = T("Hospitals"),
             title_update = T("Edit Hospital"),
             title_search = T("Find Hospital"),
+            title_map = T("Map of Hospitals"),
             subtitle_create = T("Add New Hospital"),
-            subtitle_list = T("Hospitals"),
-            label_list_button = LIST_HOSPITALS,
+            label_list_button = T("List Hospitals"),
             label_create_button = ADD_HOSPITAL,
             label_delete_button = T("Delete Hospital"),
             msg_record_created = T("Hospital information added"),
@@ -388,7 +387,7 @@ class HospitalDataModel(S3Model):
 
         # Resource configuration
         configure(tablename,
-                  super_entity=("org_site", "doc_entity"),
+                  super_entity=("org_site", "doc_entity", "pr_pentity"),
                   search_method=hms_hospital_search,
                   list_fields=["id",
                                "gov_uuid",
@@ -454,7 +453,7 @@ class HospitalDataModel(S3Model):
                                     requires = IS_NULL_OR(s3_phone_requires)),
                               Field("skype", label = T("Skype ID")),
                               Field("website", label=T("Website")),
-                              *s3.meta_fields())
+                              *s3_meta_fields())
 
         # CRUD Strings
         s3.crud_strings[tablename] = Storage(
@@ -464,7 +463,6 @@ class HospitalDataModel(S3Model):
             title_update = T("Edit Contact"),
             title_search = T("Search Contacts"),
             subtitle_create = T("Add New Contact"),
-            subtitle_list = T("Contacts"),
             label_list_button = T("List Contacts"),
             label_create_button = T("Add Contact"),
             msg_record_created = T("Contact information added"),
@@ -518,7 +516,7 @@ class HospitalDataModel(S3Model):
                                    label = T("Deaths/24hrs"),
                                    represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
                              Field("comment", length=128),
-                             *s3.meta_fields())
+                             *s3_meta_fields())
 
         # CRUD Strings
         s3.crud_strings[tablename] = Storage(
@@ -528,8 +526,7 @@ class HospitalDataModel(S3Model):
             title_update = T("Update Activity Report"),
             title_search = T("Search Activity Report"),
             subtitle_create = T("Add Activity Report"),
-            subtitle_list = T("Activity Reports"),
-            label_list_button = T("List Reports"),
+            label_list_button = T("List Activity Reports"),
             label_create_button = T("Add Report"),
             label_delete_button = T("Delete Report"),
             msg_record_created = T("Report added"),
@@ -606,8 +603,8 @@ class HospitalDataModel(S3Model):
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 9999)),
                                    label = T("Additional Beds / 24hrs"),
                                    represent = lambda v, row=None: IS_INT_AMOUNT.represent(v)),
-                             s3.comments(),
-                             *s3.meta_fields())
+                             s3_comments(),
+                             *s3_meta_fields())
 
         # Field configuration
         # CRUD Strings
@@ -618,7 +615,6 @@ class HospitalDataModel(S3Model):
             title_update = T("Update Unit"),
             title_search = T("Search Units"),
             subtitle_create = T("Add Unit"),
-            subtitle_list = T("Bed Capacity per Unit"),
             label_list_button = T("List Units"),
             label_create_button = T("Add Unit"),
             label_delete_button = T("Delete Unit"),
@@ -680,7 +676,7 @@ class HospitalDataModel(S3Model):
                                    label = T("Psychiatrics/Pediatric")),
                              Field("obgy", "boolean", default=False,
                                    label = T("Obstetrics/Gynecology")),
-                             *s3.meta_fields())
+                             *s3_meta_fields())
 
         # CRUD Strings
         s3.crud_strings[tablename] = Storage(
@@ -690,7 +686,6 @@ class HospitalDataModel(S3Model):
             title_update = T("Update Service Profile"),
             title_search = T("Search Service Profiles"),
             subtitle_create = T("Add Service Profile"),
-            subtitle_list = T("Services Available"),
             label_list_button = T("List Service Profiles"),
             label_create_button = T("Add Service Profile"),
             label_delete_button = T("Delete Service Profile"),
@@ -775,8 +770,8 @@ class HospitalDataModel(S3Model):
                                    label = T("Current problems, categories")),
                              Field("problem_details", "text",
                                    label = T("Current problems, details")),
-                             s3.comments(),
-                             *s3.meta_fields())
+                             s3_comments(),
+                             *s3_meta_fields())
 
         # Field configuration
         table.modified_on.label = T("Last updated on")
@@ -792,8 +787,7 @@ class HospitalDataModel(S3Model):
             title_update = T("Update Cholera Treatment Capability Information"),
             title_search = T("Search Status"),
             subtitle_create = T("Add Status"),
-            subtitle_list = T("Current Status"),
-            label_list_button = T("List Status"),
+            label_list_button = T("List Statuses"),
             label_create_button = T("Add Status"),
             label_delete_button = T("Delete Status"),
             msg_record_created = T("Status added"),
@@ -820,8 +814,8 @@ class HospitalDataModel(S3Model):
                              Field("type"),
                              Field("description"),
                              Field("quantity"),
-                             s3.comments(),
-                             *s3.meta_fields())
+                             s3_comments(),
+                             *s3_meta_fields())
 
         # CRUD Strings
         s3.crud_strings[tablename] = Storage(
@@ -831,7 +825,6 @@ class HospitalDataModel(S3Model):
             title_update = T("Edit Resource"),
             title_search = T("Search Resources"),
             subtitle_create = T("Add New Resource"),
-            subtitle_list = T("Resources"),
             label_list_button = T("List Resources"),
             label_create_button = T("Add Resource"),
             label_delete_button = T("Delete Resource"),

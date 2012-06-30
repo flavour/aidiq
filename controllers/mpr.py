@@ -10,7 +10,7 @@ module = request.controller
 prefix = request.controller
 resourcename = request.function
 
-if prefix not in deployment_settings.modules:
+if not deployment_settings.has_module(module):
     raise HTTP(404, body="Module disabled: %s" % prefix)
 
 MISSING = str(T("Missing"))
@@ -102,8 +102,7 @@ def person():
 
     s3.crud_strings[tablename].update(
         title_display = T("Missing Person Details"),
-        title_list = T("Missing Persons Registry"),
-        subtitle_list = T("Missing Persons"),
+        title_list = T("Missing Persons"),
         label_list_button = T("List Missing Persons"),
         msg_list_empty = T("No Persons currently reported missing"))
 

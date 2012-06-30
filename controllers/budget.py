@@ -15,8 +15,8 @@
 module = request.controller
 resourcename = request.function
 
-# Requires 'project' module too
-if module not in deployment_settings.modules or not deployment_settings.has_module("project"):
+# NB Requires 'project' module too
+if not settings.has_module(module):
     raise HTTP(404, body="Module disabled: %s" % module)
 
 # -----------------------------------------------------------------------------
@@ -26,6 +26,10 @@ if module not in deployment_settings.modules or not deployment_settings.has_modu
 # -----------------------------------------------------------------------------
 # Load the models we depend on
 project_id = s3db.project_project_id
+
+s3_deletion_status = s3base.s3_deletion_status
+s3_timestamp = s3base.s3_timestamp
+s3_uid = s3base.s3_uid
 
 module = "budget"
 
@@ -309,7 +313,7 @@ table = db.define_table(tablename,
                         Field("name", length=128, notnull=True, unique=True),
                         Field("grade", notnull=True),
                         Field("salary", "integer", notnull=True),
-                        currency_type(),
+                        s3base.s3_currency(),
                         Field("travel", "integer", default=0),
                         # Shouldn't be grade-dependent, but purely location-dependent
                         #Field("subsistence", "double", default=0.00),
@@ -564,16 +568,14 @@ def item():
 
     # CRUD Strings
     ADD_ITEM = T("Add Item")
-    LIST_ITEMS = T("List Items")
     s3.crud_strings[tablename] = Storage(
         title_create = ADD_ITEM,
         title_display = T("Item Details"),
-        title_list = LIST_ITEMS,
+        title_list = T("Items"),
         title_update = T("Edit Item"),
         title_search = T("Search Items"),
         subtitle_create = T("Add New Item"),
-        subtitle_list = T("Items"),
-        label_list_button = LIST_ITEMS,
+        label_list_button = T("List Items"),
         label_create_button = ADD_ITEM,
         label_delete_button = T("Delete Item"),
         label_search_button = T("Search Items"),
@@ -701,16 +703,14 @@ def kit():
 
     # CRUD Strings
     ADD_KIT = T("Add Kit")
-    LIST_KITS = T("List Kits")
     s3.crud_strings[tablename] = Storage(
         title_create = ADD_KIT,
         title_display = T("Kit Details"),
-        title_list = LIST_KITS,
+        title_list = T("Kits"),
         title_update = T("Edit Kit"),
         title_search = T("Search Kits"),
         subtitle_create = T("Add New Kit"),
-        subtitle_list = T("Kits"),
-        label_list_button = LIST_KITS,
+        label_list_button = T("List Kits"),
         label_create_button = ADD_KIT,
         label_delete_button = T("Delete Kit"),
         msg_record_created = T("Kit added"),
@@ -1098,7 +1098,7 @@ def kit_export_csv():
         _table = module + "_" + resourcename
         table = db[_table]
         # Filter Search list to just those records which user can read
-        query = s3_accessible_query("read", table)
+        query = auth.s3_accessible_query("read", table)
         # Filter Search List to remove entries which have been deleted
         if "deleted" in table:
             query = ((table.deleted == False) | (table.deleted == None)) & query # includes None for backward compatability
@@ -1146,16 +1146,14 @@ def bundle():
 
     # CRUD Strings
     ADD_BUNDLE = T("Add Bundle")
-    LIST_BUNDLES = T("List Bundles")
     s3.crud_strings[tablename] = Storage(
         title_create = ADD_BUNDLE,
         title_display = T("Bundle Details"),
-        title_list = LIST_BUNDLES,
+        title_list = T("Bundles"),
         title_update = T("Edit Bundle"),
         title_search = T("Search Bundles"),
         subtitle_create = T("Add New Bundle"),
-        subtitle_list = T("Bundles"),
-        label_list_button = LIST_BUNDLES,
+        label_list_button = T("List Bundles"),
         label_create_button = ADD_BUNDLE,
         label_delete_button = T("Delete Bundle"),
         msg_record_created = T("Bundle added"),
@@ -1452,16 +1450,14 @@ def staff():
 
     # CRUD Strings
     ADD_STAFF_TYPE = T("Add Staff Type")
-    LIST_STAFF_TYPE = T("List Staff Types")
     s3.crud_strings[tablename] = Storage(
         title_create = ADD_STAFF_TYPE,
         title_display = T("Staff Type Details"),
-        title_list = LIST_STAFF_TYPE,
+        title_list = T("Staff Types"),
         title_update = T("Edit Staff Type"),
         title_search = T("Search Staff Types"),
         subtitle_create = T("Add New Staff Type"),
-        subtitle_list = T("Staff Types"),
-        label_list_button = LIST_STAFF_TYPE,
+        label_list_button = T("List Staff Types"),
         label_create_button = ADD_STAFF_TYPE,
         label_delete_button = T("Delete Staff Type"),
         msg_record_created = T("Staff Type added"),
@@ -1481,16 +1477,14 @@ def location():
 
     # CRUD Strings
     ADD_LOCATION = T("Add Location")
-    LIST_LOCATIONS = T("List Locations")
     s3.crud_strings[tablename] = Storage(
         title_create = ADD_LOCATION,
         title_display = T("Location Details"),
-        title_list = LIST_LOCATIONS,
+        title_list = T("Locations"),
         title_update = T("Edit Location"),
         title_search = T("Search Locations"),
         subtitle_create = T("Add New Location"),
-        subtitle_list = T("Locations"),
-        label_list_button = LIST_LOCATIONS,
+        label_list_button = T("List Locations"),
         label_create_button = ADD_LOCATION,
         label_delete_button = T("Delete Location"),
         msg_record_created = T("Location added"),
@@ -1529,16 +1523,14 @@ def budget():
 
     # CRUD Strings
     ADD_BUDGET = T("Add Budget")
-    LIST_BUDGETS = T("List Budgets")
     s3.crud_strings[tablename] = Storage(
         title_create = ADD_BUDGET,
         title_display = T("Budget Details"),
-        title_list = LIST_BUDGETS,
+        title_list = T("Budgets"),
         title_update = T("Edit Budget"),
         title_search = T("Search Budgets"),
         subtitle_create = T("Add New Budget"),
-        subtitle_list = T("Budgets"),
-        label_list_button = LIST_BUDGETS,
+        label_list_button = T("List Budgets"),
         label_create_button = ADD_BUDGET,
         label_delete_button = T("Delete Budget"),
         msg_record_created = T("Budget added"),

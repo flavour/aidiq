@@ -8,8 +8,6 @@
     @requires: U{B{I{gluon}} <http://web2py.com>}
     @requires: U{B{I{lxml}} <http://codespeak.net/lxml>}
 
-    @author: Dominic König <dominic[at]aidiq.com>
-
     @copyright: 2009-2012 (c) Sahana Software Foundation
     @license: MIT
 
@@ -38,16 +36,15 @@
 
 __all__ = ["S3CRUD"]
 
-from gluon.storage import Storage
-from gluon.dal import Row
 from gluon import *
+from gluon.dal import Row
 from gluon.serializers import json
+from gluon.storage import Storage
 from gluon.tools import callback
 
 from s3method import S3Method
 from s3export import S3Exporter
 #from s3gis import S3MAP
-from s3pdf import S3PDF
 from s3utils import s3_mark_required
 from s3widgets import S3EmbedComponentWidget
 
@@ -319,6 +316,7 @@ class S3CRUD(S3Method):
                 session.confirmation = T("Data uploaded")
 
         elif representation == "pdf":
+            from s3pdf import S3PDF
             exporter = S3PDF()
             return exporter(r, **attr)
 
@@ -411,7 +409,8 @@ class S3CRUD(S3Method):
                 if subheadings:
                     self.insert_subheadings(item, self.tablename, subheadings)
             else:
-                item = crud_string(tablename, "msg_list_empty")
+                item = DIV(crud_string(tablename, "msg_list_empty"),
+                           _class="empty")
 
             # View
             if representation == "html":
@@ -527,7 +526,7 @@ class S3CRUD(S3Method):
                    _config("onaccept")
 
         # Get the target record ID
-        record_id = self._record_id(r)
+        record_id = self.record
         if r.interactive and not record_id:
             r.error(404, self.resource.ERROR.BAD_RECORD)
 
@@ -685,7 +684,7 @@ class S3CRUD(S3Method):
         delete_next = self._config("delete_next", None)
 
         # Get the target record ID
-        record_id = self._record_id(r)
+        record_id = self.record
 
         # Check if deletable
         if not deletable:
@@ -924,29 +923,31 @@ class S3CRUD(S3Method):
                 title = crud_string(r.tablename, "title_display")
             else:
                 title = crud_string(self.tablename, "title_list")
-            subtitle = crud_string(self.tablename, "subtitle_list")
+            #subtitle = crud_string(self.tablename, "subtitle_list")
             output["title"] = title
-            output["subtitle"] = subtitle
+            #output["subtitle"] = subtitle
 
             # Empty table - or just no match?
             if not items:
                 if "deleted" in self.table:
                     available_records = current.db(self.table.deleted == False)
                 else:
-                    available_records = current.db(self.table.id > 0)
+                    available_records = current.db(self.table._id > 0)
                 #if available_records.count():
                 # This is faster:
-                if available_records.select(self.table.id,
+                if available_records.select(self.table._id,
                                             limitby=(0, 1)).first():
-                    items = crud_string(self.tablename, "msg_no_match")
+                    items = DIV(crud_string(self.tablename, "msg_no_match"),
+                                _class="empty")
                 else:
-                    items = crud_string(self.tablename, "msg_list_empty")
+                    items = DIV(crud_string(self.tablename, "msg_list_empty"),
+                                _class="empty")
+                s3.no_formats = True
                 if r.component and "showadd_btn" in output:
                     # Hide the list and show the form by default
                     del output["showadd_btn"]
-                    del output["subtitle"]
+                    #del output["subtitle"]
                     items = ""
-                    s3.no_formats = True
 
             # Update output
             output["items"] = items
@@ -1291,6 +1292,9 @@ class S3CRUD(S3Method):
                         response.error = "%s\n%s: %s" % \
                             (response.error, fieldname, form.errors[fieldname])
 
+            elif request.http == "POST":
+                response.error = current.T("Invalid form (re-opened in another window?)")
+
         if not logged and not form.errors:
             audit("read", prefix, name,
                   record=record_id, representation=format)
@@ -1330,11 +1334,10 @@ class S3CRUD(S3Method):
     @staticmethod
     def crud_string(tablename, name):
         """
-        Get a CRUD info string for interactive pages
+            Get a CRUD info string for interactive pages
 
-        @param tablename: the table name
-        @param name: the name of the CRUD string
-
+            @param tablename: the table name
+            @param name: the name of the CRUD string
         """
 
         crud_strings = current.manager.s3.crud_strings
@@ -1620,7 +1623,11 @@ class S3CRUD(S3Method):
                 # Check which records can be deleted
                 query = auth.s3_accessible_query("delete", table)
                 rows = db(query).select(table._id)
-                restrict = [str(row.id) for row in rows]
+                restrict = []
+                for row in rows:
+                    row_id = row.get("id", None)
+                    if row_id:
+                        restrict.append(str(row_id))
                 s3crud.action_button(labels.DELETE, delete_url,
                                      _class="delete-btn", restrict=restrict)
             else:
@@ -1969,6 +1976,13 @@ class S3CRUD(S3Method):
         vars = self.request.get_vars
         resource = self.resource
 
+        if resource.linked is not None:
+            skip = [resource.linked.tablename]
+        else:
+            skip = []
+        parent = resource.parent
+        fkey = resource.fkey
+
         context = str(vars.sSearch).lower()
         columns = int(vars.iColumns)
 
@@ -1985,23 +1999,25 @@ class S3CRUD(S3Method):
             if fieldtype.startswith("reference") and \
                hasattr(field, "sortby") and field.sortby:
                 tn = fieldtype[10:]
-                try:
+                if parent is not None and \
+                   parent.tablename == tn and field.name != fkey:
+                    alias = "%s_%s_%s" % (parent.prefix, "linked", parent.name)
+                    ktable = db[tn].with_alias(alias)
+                    ktable._id = ktable[ktable._id.name]
+                    tn = alias
+                else:
+                    ktable = db[tn]
+                if tn not in skip:
+                    q = (field == ktable._id)
                     join = [j for j in left if j.first._tablename == tn]
-                except:
-                    # Old DAL version?
-                    join = [j for j in left if j.table._tablename == tn]
-                if not join:
-                    left.append(db[tn].on(field == db[tn].id))
-                else:
-                    try:
-                        join[0].second = (join[0].second) | (field == db[tn].id)
-                    except:
-                        join[0].query = (join[0].query) | (field == db[tn].id)
+                    if not join:
+                        left.append(ktable.on(q))
                 if isinstance(field.sortby, (list, tuple)):
-                    flist.extend([db[tn][f] for f in field.sortby])
+                    flist.extend([ktable[f] for f in field.sortby
+                                            if f in ktable.fields])
                 else:
-                    if field.sortby in db[tn]:
-                        flist.append(db[tn][field.sortby])
+                    if field.sortby in ktable.fields:
+                        flist.append(ktable[field.sortby])
             else:
                 flist.append(field)
 
@@ -2068,6 +2084,8 @@ class S3CRUD(S3Method):
             skip = [resource.linked.tablename]
         else:
             skip = []
+        parent = resource.parent
+        fkey = resource.fkey
 
         iSortingCols = int(vars["iSortingCols"])
 
@@ -2081,37 +2099,34 @@ class S3CRUD(S3Method):
         columns = [lfields[int(vars["iSortCol_%s" % str(i)])].field
                    for i in xrange(iSortingCols)]
         for i in xrange(len(columns)):
-            c = columns[i]
-            if not c:
+            field = columns[i]
+            if not field:
                 continue
-            fieldtype = str(c.type)
+            fieldtype = str(field.type)
             if fieldtype.startswith("reference") and \
-               hasattr(c, "sortby") and c.sortby:
+               hasattr(field, "sortby") and field.sortby:
                 tn = fieldtype[10:]
+                if parent is not None and \
+                   parent.tablename ==tn and field.name != fkey:
+                    alias = "%s_%s_%s" % (parent.prefix, "linked", parent.name)
+                    ktable = db[tn].with_alias(alias)
+                    ktable._id = ktable[ktable._id.name]
+                    tn = alias
+                else:
+                    ktable = db[tn]
                 if tn not in skip:
-                    try:
-                        join = [j for j in left if j.first._tablename == tn]
-                    except:
-                        # Old DAL version?
-                        join = [j for j in left if j.table._tablename == tn]
+                    q = (field == ktable._id)
+                    join = [j for j in left if j.first._tablename == tn]
                     if not join:
-                        left.append(db[tn].on(c == db[tn].id))
-                    else:
-                        try:
-                            join[0].query = (join[0].second) | \
-                                            (c == db[tn].id)
-                        except:
-                            # Old DAL version?
-                            join[0].query = (join[0].query) | \
-                                            (c == db[tn].id)
-                if not isinstance(c.sortby, (list, tuple)):
-                    orderby.append("%s.%s%s" % (tn, c.sortby, direction(i)))
+                        left.append(ktable.on(q))
+                if not isinstance(field.sortby, (list, tuple)):
+                    orderby.append("%s.%s%s" % (tn, field.sortby, direction(i)))
                 else:
                     orderby.append(", ".join(["%s.%s%s" %
                                               (tn, fn, direction(i))
-                                              for fn in c.sortby]))
+                                              for fn in field.sortby]))
             else:
-                orderby.append("%s%s" % (c, direction(i)))
+                orderby.append("%s%s" % (field, direction(i)))
 
         return ", ".join(orderby)
 

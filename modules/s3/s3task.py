@@ -46,9 +46,16 @@ __all__ = ["S3Task"]
 
 import datetime
 
+try:
+    import json # try stdlib (Python 2.6)
+except ImportError:
+    try:
+        import simplejson as json # try external module
+    except:
+        import gluon.contrib.simplejson as json # fallback to pure-Python module
+
 from gluon import HTTP, current
 from gluon.storage import Storage
-import gluon.contrib.simplejson as json
 
 from s3widgets import S3TimeIntervalWidget
 from s3validators import IS_TIME_INTERVAL_WIDGET
@@ -169,15 +176,13 @@ class S3Task(object):
 
         response = current.response
         if response:
-            s3 = response.s3
-            s3.crud_strings[tablename] = Storage(
+            response.s3.crud_strings[tablename] = Storage(
                 title_create = T("Add Job"),
                 title_display = T("Scheduled Jobs"),
                 title_list = T("Job Schedule"),
                 title_update = T("Edit Job"),
                 title_search = T("Search for Job"),
                 subtitle_create = T("Add Job"),
-                subtitle_list = T("Currently Configured Jobs"),
                 label_list_button = T("List Jobs"),
                 label_create_button = T("Add Job"),
                 msg_record_created = T("Job added"),

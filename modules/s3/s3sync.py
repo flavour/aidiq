@@ -33,7 +33,6 @@
 __all__ = ["S3Sync", "S3SyncLog"]
 
 import sys
-import json
 import urllib2
 import datetime
 import time
@@ -44,9 +43,17 @@ except ImportError:
     print >> sys.stderr, "ERROR: lxml module needed for XML handling"
     raise
 
+try:
+    import json # try stdlib (Python 2.6)
+except ImportError:
+    try:
+        import simplejson as json # try external module
+    except:
+        import gluon.contrib.simplejson as json # fallback to pure-Python module
+
 from gluon import *
-from gluon import current
 from gluon.storage import Storage
+
 from s3method import S3Method
 from s3import import S3ImportItem
 
@@ -335,6 +342,7 @@ class S3Sync(S3Method):
         conflict_policy = task.conflict_policy
 
         # Try to import the response
+        count = 0
         if response:
             success = True
             message = ""
@@ -351,6 +359,7 @@ class S3Sync(S3Method):
                                      conflict_policy=conflict_policy,
                                      last_sync=last_sync,
                                      onconflict=onconflict)
+                count = resource.import_count
             except IOError, e:
                 result = self.log.FATAL
                 message = "%s" % e
@@ -380,7 +389,7 @@ class S3Sync(S3Method):
                 output = xml.json_message(False, 400, message)
 
             elif not message:
-                message = "data imported successfully"
+                message = "data imported successfully (%s records)" % count
 
         elif result == self.log.SUCCESS:
             result = self.log.ERROR
@@ -446,8 +455,9 @@ class S3Sync(S3Method):
         # Export the resource as S3XML
         prefix, name = task.resource_name.split("_", 1)
         resource = manager.define_resource(prefix, name,
-                                                   include_deleted=True)
+                                           include_deleted=True)
         data = resource.export_xml(msince=last_sync)
+        count = resource.count()
 
         remote = False
         output = None
@@ -515,7 +525,7 @@ class S3Sync(S3Method):
                 output = xml.json_message(False, code, message)
             else:
                 result = self.log.SUCCESS
-                message = "data sent successfully"
+                message = "data sent successfully (%s records)" % count
         else:
             # No data to send
             result = self.log.WARNING
@@ -752,6 +762,7 @@ class S3Sync(S3Method):
         output = resource.export_xml(start=start,
                                      limit=limit,
                                      msince=msince)
+        count = len(resource)
 
         # Set content type header
         headers = current.response.headers
@@ -763,7 +774,7 @@ class S3Sync(S3Method):
                        transmission=self.log.IN,
                        mode=self.log.PULL,
                        result=self.log.SUCCESS,
-                       message="data sent to peer")
+                       message="data sent to peer (%s records)" % count)
 
         return output
 

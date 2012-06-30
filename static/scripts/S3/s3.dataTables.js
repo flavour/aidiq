@@ -21,13 +21,16 @@ $(document).ready(function() {
     if (S3.dataTables.Actions) {
         var actionCallBacks = new Array();
         var currentID;
-        ColumnSettings[0] = { 'sTitle': ' ', 'bSortable': false  }
+        ColumnSettings[0] = {
+            'sTitle': ' ',
+            'bSortable': false
+        }
     } else {
         ColumnSettings[0] = null;
     }
 
     // Buffer the array so that the default settings are preserved for the rest of the columns
-    for (i=1; i < ColumnCount; i++) {
+    for (var i=1; i < ColumnCount; i++) {
         ColumnSettings[i] = null;
     }
 
@@ -43,15 +46,15 @@ $(document).ready(function() {
         var sAjaxSource = null;
         function fnDataTablesPipeline ( url, data, callback ) {
             $.ajax( {
-                "url": url,
-                "data": data,
-                "success": callback,
-                "dataType": "json",
-                "cache": false,
-                "error": function (xhr, error, thrown) {
-                    if ( error == "parsererror" ) {
-                        alert( "DataTables warning: JSON data from server could not be parsed. "+
-                            "This is caused by a JSON formatting error." );
+                'url': url,
+                'data': data,
+                'success': callback,
+                'dataType': "json",
+                'cache': false,
+                'error': function (xhr, error, thrown) {
+                    if (error == 'parsererror') {
+                        alert('DataTables warning: JSON data from server could not be parsed. '+
+                            'This is caused by a JSON formatting error.');
                     }
                 }
             } );
@@ -72,14 +75,14 @@ $(document).ready(function() {
                       {name: "sEcho", value: 1}]
 
         function fnSetKey( aoData, sKey, mValue ) {
-            for ( var i=0, iLen=aoData.length ; i < iLen ; i++ ) {
+            for (var i=0, iLen=aoData.length; i < iLen; i++) {
                 if ( aoData[i].name == sKey ) {
                     aoData[i].value = mValue;
                 }
             }
         }
         function fnGetKey( aoData, sKey ) {
-            for ( var i=0, iLen=aoData.length ; i < iLen ; i++ ) {
+            for (var i=0, iLen=aoData.length; i < iLen; i++) {
                 if ( aoData[i].name == sKey ) {
                     return aoData[i].value;
                 }
@@ -111,7 +114,7 @@ $(document).ready(function() {
 
             // sorting etc changed?
             if ( oCache.lastRequest && !bNeedServer ) {
-                for( var i=0, iLen=aoData.length ; i < iLen ; i++ ) {
+                for (var i=0, iLen=aoData.length; i < iLen; i++) {
                     if ( aoData[i].name != 'iDisplayStart' && aoData[i].name != 'iDisplayLength' && aoData[i].name != 'sEcho' ) {
                         if ( aoData[i].value != oCache.lastRequest[i].value ) {
                             bNeedServer = true;
@@ -123,7 +126,7 @@ $(document).ready(function() {
             // Store the request for checking next time around
             oCache.lastRequest = aoData.slice();
             if ( bNeedServer ) {
-                if ( iRequestStart < oCache.iCacheLower ) {
+                if (iRequestStart < oCache.iCacheLower) {
                     iRequestStart = iRequestStart - (iRequestLength * (iPipe - 1));
                     if ( iRequestStart < 0 ) {
                         iRequestStart = 0;
@@ -140,7 +143,7 @@ $(document).ready(function() {
                     fnSetKey( aoData, 'iDisplayStart', iRequestStart );
                     fnSetKey( aoData, 'iDisplayLength', iRequestLength * iPipe );
                 }
-                $.getJSON( sSource, aoData, function (json) {
+                $.getJSON(sSource, aoData, function (json) {
                     // Callback processing
                     oCache.lastJson = jQuery.extend(true, {}, json);
                     if ( oCache.iCacheLower != oCache.iDisplayStart ) {
@@ -175,6 +178,12 @@ $(document).ready(function() {
         var aaSorting = [ [1, 'asc'] ];
     }
 
+    if (S3.dataTables.group) {
+        var sortFixed = [[ S3.dataTables.group, 'asc' ]];
+    } else {
+        var sortFixed = null;
+    }
+
     if (S3.dataTables.sDom) {
         var sDom = S3.dataTables.sDom;
     } else {
@@ -202,7 +211,7 @@ $(document).ready(function() {
 	    var aReturn = new Array();
 	    var aTrs = oTableLocal.fnGetNodes();
 
-	    for ( var i=0 ; i<aTrs.length ; i++ ) {
+	    for (var i=0; i<aTrs.length; i++) {
 		    if ( $(aTrs[i]).hasClass('row_selected') ) {
 			    aReturn.push( aTrs[i] );
 		    }
@@ -211,7 +220,7 @@ $(document).ready(function() {
     }
 
     function posn_in_List(id, list) {
-        for (cnt=0, lLen=list.length; cnt < lLen; cnt++) {
+        for (var cnt=0, lLen=list.length; cnt < lLen; cnt++) {
             if (id == list[cnt]) {
                 return cnt;
             }
@@ -287,7 +296,7 @@ $(document).ready(function() {
 
     function bindActionButton() {
         if (S3.dataTables.Actions) {
-            for (i=0; i < actionCallBacks.length; i++){
+            for (var i=0; i < actionCallBacks.length; i++){
                 var currentID = '#'+actionCallBacks[i][0];
                 $(currentID).unbind('click');
                 $(currentID).bind('click', actionCallBacks[i][1]);
@@ -353,7 +362,7 @@ $(document).ready(function() {
                 var Actions = S3.dataTables.Actions;
                 var Buttons = '';
                 // Loop through each action to build the button
-                for (i=0; i < Actions.length; i++) {
+                for (var i=0; i < Actions.length; i++) {
                     $('th:eq(0)').css( { 'width': 'auto' } );
                     // Check if action is restricted to a subset of records
                     if ('restrict' in Actions[i]) {
@@ -396,7 +405,7 @@ $(document).ready(function() {
             if (S3.dataTables.Display) {
                 var Display = S3.dataTables.Display;
                 // Loop through each display to see which fields need to be checked
-                for (i=0; i < Display.length; i++) {
+                for (var i=0; i < Display.length; i++) {
                     col = Display[i].col;
                     key = Display[i].key;
                     value = Display[i].display;
@@ -407,14 +416,47 @@ $(document).ready(function() {
             }
             return nRow;
         }, // end of fnRowCallback
-        "fnDrawCallback": function() {
+        "fnDrawCallback": function(oSettings) {
             bindActionButton()
-        }
+            if ( oSettings.aiDisplay.length == 0 )
+            {
+                return;
+            }
+            if (S3.dataTables.group)
+            {
+	            var nTrs = $('.dataTable tbody tr');
+	            var iColspan = nTrs[0].getElementsByTagName('td').length;
+	            var sLastGroup = "";
+	            for (var i=0; i<nTrs.length; i++)
+	            {
+	                var sGroup = oSettings.aoData[ oSettings.aiDisplay[i] ]._aData[S3.dataTables.group];
+	                if ( sGroup != sLastGroup )
+	                {
+	                    var nGroup = document.createElement( 'tr' );
+	                    var nCell = document.createElement( 'td' );
+	                    nCell.colSpan = iColspan;
+	                    nCell.className = "group";
+	                    nCell.innerHTML = sGroup;
+	                    nGroup.appendChild( nCell );
+	                    nTrs[i].parentNode.insertBefore( nGroup, nTrs[i] );
+	                    sLastGroup = sGroup;
+	                }
+	            }
+            }
+            if (Math.ceil((this.fnSettings().fnRecordsDisplay()) / this.fnSettings()._iDisplayLength) > 1)  {
+                $('.dataTables_paginate').css("display", "block");
+            } else {
+                $('.dataTables_paginate').css("display", "none");
+            }
+        },
+        "aaSortingFixed": sortFixed,
+        "aoColumnDefs": [
+                         { "bVisible": false, "aTargets": [ S3.dataTables.group ] }
+                     ]
     });
 
-
 	if (S3.dataTables.hideList) {
-		for (i=0; i<S3.dataTables.hideList.length; i++){
+		for (var i=0; i<S3.dataTables.hideList.length; i++){
 			$('.dataTable').dataTable().fnSetColumnVis(S3.dataTables.hideList[i], false);
 		}
 	}
@@ -440,32 +482,63 @@ $(document).ready(function() {
     }); */
 });
 
+function s3_gis_search_layer_loadend(event) {
+    // Search results have Loaded
+    var layer = event.object;
+    // Zoom to Bounds
+    var bounds = layer.getDataExtent();
+    map.zoomToExtent(bounds);
+    // Re-enable Clustering
+    Ext.iterate(layer.strategies, function(key, val, obj) {
+        if (key.CLASS_NAME == 'OpenLayers.Strategy.AttributeCluster') {
+            layer.strategies[val].activate();
+        }
+    });
+    // Disable this event
+    layer.events.un({
+        'loadend': s3_gis_search_layer_loadend
+    });
+}
+
 Ext.onReady(function(){
     // Are there any map Buttons?
     var s3_dataTables_mapButton = Ext.get('gis_datatables_map-btn');
     if (s3_dataTables_mapButton) {
         s3_dataTables_mapButton.on('click', function() {
+            // Load the search results layer
+            Ext.iterate(map.layers, function(key, val, obj) {
+                if (key.s3_layer_id == 'search_results') {
+                    var layer = map.layers[val];
+                    // Set a new event when the layer is loaded
+                    layer.events.on({
+                        'loadend': s3_gis_search_layer_loadend
+                    });
+                    // Disable Clustering to get correct bounds
+                    Ext.iterate(layer.strategies, function(key, val, obj) {
+                        if (key.CLASS_NAME == 'OpenLayers.Strategy.AttributeCluster') {
+                            layer.strategies[val].deactivate();
+                        }
+                    });
+                    layer.setVisibility(true);
+                }
+            });
             if (S3.gis.polygonButton) {
                 // Disable the polygon control
                 S3.gis.polygonButton.disable();
             }
             S3.gis.mapWin.show();
-            // Zoom to Bounds set by the search results
-            if ( S3.gis.bounds ) {
-                map.zoomToExtent(S3.gis.bounds);
-            }
             // Disable the crosshair on the Map Selector
             $('.olMapViewport').removeClass('crosshair');
             // Set the Tab to show as active
-            $("#gis_datatables_map-btn").parent().addClass("tab_here");
+            $('#gis_datatables_map-btn').parent().addClass('tab_here');
             // Deactivate the list Tab
-            $("#gis_datatables_list_tab").parent().removeClass("tab_here").addClass("tab_other");
+            $('#gis_datatables_list_tab').parent().removeClass('tab_here').addClass('tab_other');
             // Set to revert if Map closed
-            $("div.x-tool-close").click( function(evt) {
+            $('div.x-tool-close').click( function(evt) {
                 // Set the Tab to show as inactive
-                $("#gis_datatables_map-btn").parent().removeClass("tab_here").addClass("tab_other");
+                $('#gis_datatables_map-btn').parent().removeClass('tab_here').addClass('tab_other');
                 // Activate the list Tab
-                $("#gis_datatables_list_tab").parent().removeClass("tab_other").addClass("tab_here");
+                $('#gis_datatables_list_tab').parent().removeClass('tab_other').addClass('tab_here');
             });
             // @ToDo: Close Map Window & revert if Tab clicked
         });

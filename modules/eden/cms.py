@@ -55,12 +55,12 @@ class S3ContentModel(S3Model):
         s3 = current.response.s3
 
         add_component = self.add_component
-        comments = s3.comments
+        comments = s3_comments
         configure = self.configure
         crud_strings = s3.crud_strings
         define_table = self.define_table
-        meta_fields = s3.meta_fields
-        roles_permitted = s3.roles_permitted
+        meta_fields = s3_meta_fields
+        roles_permitted = s3_roles_permitted
 
         # ---------------------------------------------------------------------
         # Series
@@ -88,17 +88,15 @@ class S3ContentModel(S3Model):
 
         # CRUD Strings
         ADD_SERIES = T("Add Series")
-        LIST_SERIES = T("List Series")
         crud_strings[tablename] = Storage(
             title_create = ADD_SERIES,
             title_display = T("Series Details"),
-            title_list = LIST_SERIES,
+            title_list = T("Series"),
             title_update = T("Edit Series"),
             title_search = T("Search Series"),
             title_upload = T("Import Series"),
             subtitle_create = T("Add New Series"),
-            subtitle_list = T("Series"),
-            label_list_button = LIST_SERIES,
+            label_list_button = T("List Series"),
             label_create_button = ADD_SERIES,
             msg_record_created = T("Series added"),
             msg_record_modified = T("Series updated"),
@@ -168,17 +166,15 @@ class S3ContentModel(S3Model):
 
         # CRUD Strings
         ADD_POST = T("Add Post")
-        LIST_POSTS = T("List Posts")
         crud_strings[tablename] = Storage(
             title_create = ADD_POST,
             title_display = T("Post Details"),
-            title_list = LIST_POSTS,
+            title_list = T("Posts"),
             title_update = T("Edit Post"),
             title_search = T("Search Posts"),
             title_upload = T("Import Posts"),
             subtitle_create = T("Add New Post"),
-            subtitle_list = T("Posts"),
-            label_list_button = LIST_POSTS,
+            label_list_button = T("List Posts"),
             label_create_button = ADD_POST,
             msg_record_created = T("Post added"),
             msg_record_modified = T("Post updated"),

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-""" Sahana Eden IRS Model
+""" Sahana Eden Incident Reporting Model
 
     @copyright: 2009-2012 (c) Sahana Software Foundation
     @license: MIT
@@ -31,8 +31,17 @@ __all__ = ["S3IRSModel",
            "S3IRSResponseModel",
            "irs_rheader"]
 
+try:
+    import json # try stdlib (Python 2.6)
+except ImportError:
+    try:
+        import simplejson as json # try external module
+    except:
+        import gluon.contrib.simplejson as json # fallback to pure-Python module
+
 from gluon import *
 from gluon.storage import Storage
+
 from ..s3 import *
 
 # =============================================================================
@@ -40,6 +49,7 @@ class S3IRSModel(S3Model):
 
     names = ["irs_icategory",
              "irs_ireport",
+             "irs_ireport_person",
              "irs_ireport_id"]
 
     def model(self):
@@ -58,7 +68,7 @@ class S3IRSModel(S3Model):
         add_component = self.add_component
         configure = self.configure
         define_table = self.define_table
-        meta_fields = s3.meta_fields
+        meta_fields = s3_meta_fields
         set_method = self.set_method
         super_link = self.super_link
 
@@ -246,12 +256,18 @@ class S3IRSModel(S3Model):
                                    #requires = IS_NULL_OR(IS_IN_SET(irs_incident_type_opts)),
                                    represent = lambda opt: \
                                        irs_incident_type_opts.get(opt, opt)),
-                             # Better to use a plain text field than to clutter the PR
+                             self.hrm_human_resource_id(
+                                   #readable=False,
+                                   #writable=False,
+                                   label = T("Reported By (Staff)")
+                                    ),
+                             # Plain text field in case non-staff & don't want to clutter the PR
                              Field("person",
-                                   readable = False,
-                                   writable = False,
-                                   label = T("Reporter Name"),
-                                   comment = (T("At/Visited Location (not virtual)"))),
+                                   #readable = False,
+                                   #writable = False,
+                                   label = T("Reported By (Not Staff)"),
+                                   #comment = (T("At/Visited Location (not virtual)"))
+                                   ),
                              Field("contact",
                                    readable = False,
                                    writable = False,
@@ -319,21 +335,20 @@ class S3IRSModel(S3Model):
                                    represent = lambda closed: \
                                          (T("No"),
                                           T("Yes"))[closed == True]),
-                             s3.comments(),
-                             *(s3.lx_fields() + meta_fields()))
+                             s3_comments(),
+                             *(s3_lx_fields() + meta_fields()))
         # CRUD strings
         ADD_INC_REPORT = T("Add Incident Report")
-        LIST_INC_REPORTS = T("List Incident Reports")
         s3.crud_strings[tablename] = Storage(
             title_create = ADD_INC_REPORT,
             title_display = T("Incident Report Details"),
-            title_list = LIST_INC_REPORTS,
+            title_list = T("Incident Reports"),
             title_update = T("Edit Incident Report"),
             title_upload = T("Import Incident Reports"),
             title_search = T("Search Incident Reports"),
+            title_map = T("Map of Incident Reports"),
             subtitle_create = T("Add New Incident Report"),
-            subtitle_list = T("Incident Reports"),
-            label_list_button = LIST_INC_REPORTS,
+            label_list_button = T("List Incident Reports"),
             label_create_button = ADD_INC_REPORT,
             label_delete_button = T("Delete Incident Report"),
             msg_record_created = T("Incident Report added"),
@@ -469,6 +484,19 @@ class S3IRSModel(S3Model):
                                 )
                             )
 
+        # Affected Persons
+        add_component("pr_person",
+                      irs_ireport=Storage(
+                                    link="irs_ireport_person",
+                                    joinby="ireport_id",
+                                    key="person_id",
+                                    actuate="link",
+                                    #actuate="embed",
+                                    #widget=S3AddPersonWidget(),
+                                    autodelete=False
+                                )
+                            )
+
         ireport_id = S3ReusableField("ireport_id", table,
                                      requires = IS_NULL_OR(IS_ONE_OF(db,
                                                                      "irs_ireport.id",
@@ -499,10 +527,19 @@ class S3IRSModel(S3Model):
 
         configure("irs_ireport",
                   create_onaccept=self.ireport_onaccept,
-                  onvalidation=s3.lx_onvalidation,
+                  onvalidation=s3_lx_onvalidation,
                   create_next=create_next,
                   update_next=URL(args=["[id]", "update"])
                   )
+
+        # -----------------------------------------------------------
+        # Affected Persons
+        tablename = "irs_ireport_person"
+        table = define_table(tablename,
+                             ireport_id(),
+                             self.pr_person_id(),
+                             s3_comments(),
+                             *s3_meta_fields())
 
         # ---------------------------------------------------------------------
         # Return model-global names to response.s3
@@ -705,14 +742,11 @@ class S3IRSModel(S3Model):
 
         if r.representation == "html" and r.name == "ireport":
 
-            import gluon.contrib.simplejson as json
-
             T = current.T
             db = current.db
             s3db = current.s3db
             request = current.request
             response = current.response
-            session = current.session
             s3 = response.s3
             now = request.utcnow
 
@@ -723,7 +757,7 @@ class S3IRSModel(S3Model):
             s3.scripts.append("/%s/static/scripts/simile/timeline/timeline-api.js" % request.application)
 
             # Add our control script
-            if session.s3.debug:
+            if s3.debug:
                 s3.scripts.append("/%s/static/scripts/S3/s3.timeline.js" % request.application)
             else:
                 s3.scripts.append("/%s/static/scripts/S3/s3.timeline.min.js" % request.application)
@@ -853,7 +887,7 @@ S3.timeline.now = '""", now.isoformat(), """';
                         TD(INPUT(_type="checkbox", _name="ignore_errors", _id="ignore_errors"))),
                         TR("", INPUT(_type="submit", _value=T("Import")))))
 
-            label_list_btn = S3CRUD.crud_string(r.tablename, "title_list")
+            label_list_btn = S3CRUD.crud_string(r.tablename, "label_list_button")
             list_btn = A(label_list_btn,
                          _href=r.url(method="", vars=None),
                          _class="action-btn")
@@ -939,6 +973,15 @@ class S3IRSResponseModel(S3Model):
         location_id = self.gis_location_id
         ireport_id = self.irs_ireport_id
 
+        hrm = settings.get_hrm_show_staff()
+        vol = settings.has_module("vol")
+        if hrm and not vol:
+            hrm_label = T("Staff")
+        elif vol and not hrm:
+            hrm_label = T("Volunteer")
+        else:
+            hrm_label = T("Staff/Volunteer")
+
         # ---------------------------------------------------------------------
         # Staff assigned to an Incident
         #
@@ -946,14 +989,15 @@ class S3IRSResponseModel(S3Model):
         table = self.define_table(tablename,
                                   ireport_id(),
                                   # Simple dropdown is faster for a small team
-                                  human_resource_id(widget=None),
+                                  human_resource_id(label = hrm_label,
+                                                    widget=None),
                                   Field("incident_commander", "boolean",
                                         default = False,
                                         label = T("Incident Commander"),
                                         represent = lambda incident_commander: \
                                                 (T("No"),
                                                  T("Yes"))[incident_commander == True]),
-                                 *s3.meta_fields())
+                                 *s3_meta_fields())
 
         if not current.deployment_settings.has_module("vehicle"):
             return None
@@ -980,8 +1024,8 @@ class S3IRSResponseModel(S3Model):
                                         # @ToDo: Close all assignments when Incident closed
                                         readable=False,
                                         writable=False),
-                                  s3.comments(),
-                                  *s3.meta_fields())
+                                  s3_comments(),
+                                  *s3_meta_fields())
 
         # Field options
         table.site_id.label = T("Fire Station")
@@ -999,7 +1043,8 @@ class S3IRSResponseModel(S3Model):
         table = self.define_table(tablename,
                                   ireport_id(),
                                   # Simple dropdown is faster for a small team
-                                  human_resource_id(represent=hr_represent,
+                                  human_resource_id(label = hrm_label,
+                                                    represent=hr_represent,
                                                     requires = IS_ONE_OF(db,
                                                                          "hrm_human_resource.id",
                                                                          hr_represent,
@@ -1011,7 +1056,7 @@ class S3IRSResponseModel(S3Model):
                                         # @ToDo: Close all assignments when Incident closed
                                         readable=False,
                                         writable=False),
-                                  *s3.meta_fields())
+                                  *s3_meta_fields())
 
         # ---------------------------------------------------------------------
         # Return model-global names to response.s3
@@ -1065,12 +1110,14 @@ def irs_rheader(r, tabs=[]):
         s3db = current.s3db
         #s3 = current.response.s3
         settings = current.deployment_settings
-
+        hrm_label = T("Responder(s)")
+            
         tabs = [(T("Report Details"), None),
                 (T("Photos"), "image"),
                 (T("Documents"), "document"),
                 (T("Vehicles"), "vehicle"),
-                (T("Staff"), "human_resource"),
+                (T("Affected Persons"), "person"),
+                (hrm_label, "human_resource"),
                 (T("Tasks"), "task"),
                ]
         if settings.has_module("msg"):

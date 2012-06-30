@@ -26,7 +26,9 @@ def download_kml(record_id, filename, user_id=None):
 tasks["download_kml"] = download_kml
 
 # -----------------------------------------------------------------------------
-if deployment_settings.has_module("msg"):
+if settings.has_module("msg"):
+
+    # -------------------------------------------------------------------------
     def process_outbox(contact_method, user_id=None):
         """
             Process Outbox
@@ -44,8 +46,7 @@ if deployment_settings.has_module("msg"):
 
     tasks["process_outbox"] = process_outbox
 
-# -----------------------------------------------------------------------------
-if deployment_settings.has_module("msg"):
+    # -------------------------------------------------------------------------
     def process_inbound_email(username):
         """
             Poll an inbound email source.
@@ -59,18 +60,17 @@ if deployment_settings.has_module("msg"):
 
     tasks["process_inbound_email"] = process_inbound_email
 
-# -----------------------------------------------------------------------------
-if deployment_settings.has_module("msg"):
-    def process_log():
+    # -----------------------------------------------------------------------------
+    def parse_workflow(workflow):
         """
-            Processes the msg_log for unparsed messages.
+        Processes the msg_log for unparsed messages.
         """
         # Run the Task
-        result = msg.process_log()
+        result = msg.parse_import(workflow)
         return result
+        
+    tasks["parse_workflow"] = parse_workflow
     
-    tasks["process_log"] = process_log
-
 # -----------------------------------------------------------------------------
 def sync_synchronize(repository_id, user_id=None, manual=False):
     """
@@ -79,8 +79,7 @@ def sync_synchronize(repository_id, user_id=None, manual=False):
 
     auth.s3_impersonate(user_id)
 
-    s3mgr.load("sync_repository")
-    rtable = db.sync_repository
+    rtable = s3db.sync_repository
     query = (rtable.deleted != True) & \
             (rtable.id == repository_id)
     repository = db(query).select(limitby=(0, 1)).first()
@@ -111,8 +110,15 @@ tasks["sync_synchronize"] = sync_synchronize
 
 # -----------------------------------------------------------------------------
 # Instantiate Scheduler instance with the list of tasks
-response.s3.tasks = tasks
+s3.tasks = tasks
 s3task = s3base.S3Task()
 current.s3task = s3task
+
+# -----------------------------------------------------------------------------
+# Reusable field for scheduler task links
+scheduler_task_id = S3ReusableField("scheduler_task_id",
+                                    "reference %s" % s3base.S3Task.TASK_TABLENAME,
+                                    ondelete="CASCADE")
+s3.scheduler_task_id = scheduler_task_id
 
 # END =========================================================================

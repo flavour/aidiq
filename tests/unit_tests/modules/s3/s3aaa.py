@@ -8,6 +8,7 @@
 import unittest
 
 from gluon import current
+from s3aaa import S3EntityRoleManager
 
 # =============================================================================
 class S3AuthTests(unittest.TestCase):
@@ -169,18 +170,16 @@ class S3AuthTests(unittest.TestCase):
 
             # Set org3 as non-OU (role_type=9) partner of org1
             org3 = s3db.pr_get_pe_id("org_organisation", 3)
-            partners = s3db.pr_add_affiliation(org1, org3, role="TestPartners", role_type=9)
-            self.assertNotEqual(partners, None)
 
             # Add the user as OU descendant of org3
-            user = auth.s3_user_pe_id(auth.s3_get_user_id("normaluser@example.com"))
-            self.assertNotEqual(user, None)
-            s3db.pr_add_affiliation(org3, user, role="TestStaff")
+            user_id = auth.s3_get_user_id("normaluser@example.com")
+            user_pe = auth.s3_user_pe_id(user_id)
+            self.assertNotEqual(user_pe, None)
+            s3db.pr_add_affiliation(org3, user_pe, role="TestStaff")
 
             # Create a Test auth_group and delegate it to the TestPartners
             role = auth.s3_create_role("Test Group", uid="TESTGROUP")
-            dtable = s3db.pr_delegation
-            record = dtable.insert(role_id=partners, group_id=role)
+            auth.s3_assign_role(user_id, role)
 
             # We use delegations (policy 8)
             deployment_settings.security.policy = 8
@@ -189,11 +188,14 @@ class S3AuthTests(unittest.TestCase):
             # Impersonate as normal user
             auth.s3_impersonate("normaluser@example.com")
 
+            auth.s3_delegate_role("TESTGROUP", org1, receiver=org3)
+
             # Check the realms
             realms = auth.user.realms.keys()
             self.assertTrue(2 in realms)
             self.assertTrue(3 in realms)
-            self.assertEqual(len(realms), 2)
+            self.assertTrue(role in realms)
+            self.assertEqual(len(realms), 3)
 
             for r in auth.user.realms:
                 if r == role:
@@ -211,6 +213,13 @@ class S3AuthTests(unittest.TestCase):
             self.assertEqual(len(realms), 1)
             self.assertTrue(org1 in realms[org3])
             self.assertTrue(org2 in realms[org3])
+
+            auth.s3_remove_delegation("TESTGROUP", org1, receiver=org3)
+
+            # Check the delegations
+            delegations = auth.user.delegations.keys()
+            self.assertFalse(role in delegations)
+            self.assertEqual(len(delegations), 0)
 
             # Logout
             auth.s3_impersonate(None)
@@ -853,9 +862,10 @@ class S3PermissionTests(unittest.TestCase):
             self.assertNotEqual(partners, None)
 
             # Add the user as OU descendant of org3
-            user = auth.s3_user_pe_id(auth.s3_get_user_id("normaluser@example.com"))
-            self.assertNotEqual(user, None)
-            s3db.pr_add_affiliation(org3, user, role="TestStaff")
+            user_id = auth.s3_get_user_id("normaluser@example.com")
+            user_pe = auth.s3_user_pe_id(user_id)
+            self.assertNotEqual(user_pe, None)
+            s3db.pr_add_affiliation(org3, user_pe, role="TestStaff")
 
             # Create a TESTGROUP and assign a table ACL
             acl = auth.permission
@@ -863,6 +873,8 @@ class S3PermissionTests(unittest.TestCase):
                                        dict(c="org", f="office", uacl=acl.ALL, oacl=acl.ALL),
                                        dict(t="org_office", uacl=acl.READ, oacl=acl.ALL),
                                        uid="TESTGROUP")
+
+            auth.s3_assign_role(user_id, role)
 
             # We use delegations (policy 8)
             deployment_settings.security.policy = 8
@@ -885,8 +897,7 @@ class S3PermissionTests(unittest.TestCase):
             self.assertEqual(acls, Storage())
 
             # Delegate TESTGROUP to the TestPartners
-            dtable = s3db.pr_delegation
-            record = dtable.insert(role_id=partners, group_id=role)
+            auth.s3_delegate_role(role, org1, role="TestPartners")
 
             # Update realms and delegations
             auth.s3_impersonate("normaluser@example.com")
@@ -904,7 +915,7 @@ class S3PermissionTests(unittest.TestCase):
 
             self.assertTrue(isinstance(acls, Storage))
             self.assertTrue(org2 in acls)
-            self.assertEqual(acls[org2], (acl.READ|acl.CREATE, acl.ALL))
+            self.assertEqual(acls[org2], (acl.READ, acl.ALL))
 
         finally:
             s3db.pr_remove_affiliation(org1, org2, role="TestOrgUnit")
@@ -919,6 +930,7 @@ class S3PermissionTests(unittest.TestCase):
     def create_test_record(self):
 
         # Create a record
+        auth.s3_impersonate(None)
         auth.override = True
         table = s3db.org_office
         record_id = table.insert(name="New Office")
@@ -1313,6 +1325,8 @@ class S3HasPermissionTests(unittest.TestCase):
         deployment_settings.security.policy = 8
         auth.permission = s3base.S3Permission(auth)
 
+        user = auth.s3_user_pe_id(auth.s3_get_user_id("normaluser@example.com"))
+
         try:
 
             has_permission = auth.s3_has_permission
@@ -1327,7 +1341,6 @@ class S3HasPermissionTests(unittest.TestCase):
             self.assertFalse(permitted)
 
             # Add the user as OU descendant of org3 and assign dvi_reader
-            user = auth.s3_user_pe_id(auth.s3_get_user_id("normaluser@example.com"))
             s3db.pr_add_affiliation(self.org3, user, role="TestStaff")
             auth.s3_assign_role(auth.user.id, self.dvi_editor, for_pe=self.org3)
 
@@ -1349,12 +1362,8 @@ class S3HasPermissionTests(unittest.TestCase):
             # Make org3 and OU of org2
             s3db.pr_add_affiliation(self.org2, self.org3, role="TestOrgUnit")
 
-            # Make org2 a partner of org1
-            partners = s3db.pr_add_affiliation(self.org1, self.org2, role="TestPartners", role_type=9)
-
             # Delegate dvi_reader from org1 to org2
-            dtable = s3db.pr_delegation
-            record = dtable.insert(role_id=partners, group_id=self.dvi_reader)
+            auth.s3_delegate_role(self.dvi_reader, self.org1, receiver=self.org2)
 
             # Update realms
             auth.s3_impersonate("normaluser@example.com")
@@ -1374,14 +1383,15 @@ class S3HasPermissionTests(unittest.TestCase):
             permitted = has_permission("update", c="dvi", f="body", table="dvi_body", record_id=self.record3)
             self.assertTrue(permitted)
 
+            auth.s3_remove_delegation(self.dvi_reader, self.org1, receiver=self.org2)
+
         finally:
 
             # Remove delegation, affiliation and role
-            db(dtable.id == record).delete()
             s3db.pr_remove_affiliation(self.org3, user, role="TestStaff")
             s3db.pr_remove_affiliation(self.org2, self.org3, role="TestOrgUnit")
-            s3db.pr_remove_affiliation(self.org1, self.org2, role="TestPartners")
-            auth.s3_retract_role(auth.user.id, self.dvi_reader, for_pe=self.org3)
+            auth.s3_retract_role(user, self.dvi_reader, for_pe=self.org3)
+            db.rollback()
 
             # Logout
             auth.s3_impersonate(None)
@@ -1654,7 +1664,8 @@ class S3AccessibleQueryTests(unittest.TestCase):
         # Test with TESTDVIREADER
         auth.s3_assign_role(auth.user.id, self.dvi_reader, for_pe=self.org1)
         query = accessible_query("read", "dvi_body", c="dvi", f="body")
-        self.assertEqual(str(query), "((dvi_body.owned_by_entity = %s) OR "
+        self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                     "(dvi_body.owned_by_entity IS NULL)) OR "
                                      "(((dvi_body.owned_by_user = %s) OR "
                                      "(((dvi_body.owned_by_user IS NULL) AND "
                                      "(dvi_body.owned_by_group IS NULL)) AND "
@@ -1676,14 +1687,16 @@ class S3AccessibleQueryTests(unittest.TestCase):
         # Test with TESTDVIEDITOR
         auth.s3_assign_role(auth.user.id, self.dvi_editor, for_pe=self.org1)
         query = accessible_query("read", table, c="dvi", f="body")
-        self.assertEqual(str(query), "((dvi_body.owned_by_entity = %s) OR "
+        self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                     "(dvi_body.owned_by_entity IS NULL)) OR "
                                      "(((dvi_body.owned_by_user = %s) OR "
                                      "(((dvi_body.owned_by_user IS NULL) AND "
                                      "(dvi_body.owned_by_group IS NULL)) AND "
                                      "(dvi_body.owned_by_entity IS NULL))) OR "
                                      "(dvi_body.owned_by_group IN (2,3))))" % (self.org1, auth.user.id))
         query = accessible_query("update", table, c="dvi", f="body")
-        self.assertEqual(str(query), "((dvi_body.owned_by_entity = %s) OR "
+        self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                     "(dvi_body.owned_by_entity IS NULL)) OR "
                                      "(((dvi_body.owned_by_user = %s) OR "
                                      "(((dvi_body.owned_by_user IS NULL) AND "
                                      "(dvi_body.owned_by_group IS NULL)) AND "
@@ -1716,7 +1729,8 @@ class S3AccessibleQueryTests(unittest.TestCase):
         # Test with TESTDVIREADER
         auth.s3_assign_role(auth.user.id, self.dvi_reader, for_pe=self.org1)
         query = accessible_query("read", "dvi_body", c="dvi", f="body")
-        self.assertEqual(str(query), "((dvi_body.owned_by_entity = %s) OR "
+        self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                     "(dvi_body.owned_by_entity IS NULL)) OR "
                                      "(((dvi_body.owned_by_user = %s) OR "
                                      "(((dvi_body.owned_by_user IS NULL) AND "
                                      "(dvi_body.owned_by_group IS NULL)) AND "
@@ -1741,7 +1755,8 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
         # Re-check queries
         query = accessible_query("read", "dvi_body", c="dvi", f="body")
-        qstr = ("((dvi_body.owned_by_entity IN (%s,%s)) OR "
+        qstr = ("(((dvi_body.owned_by_entity IN (%s,%s)) OR "
+                "(dvi_body.owned_by_entity IS NULL)) OR "
                 "(((dvi_body.owned_by_user = %s) OR "
                 "(((dvi_body.owned_by_user IS NULL) AND "
                 "(dvi_body.owned_by_group IS NULL)) AND "
@@ -1768,14 +1783,16 @@ class S3AccessibleQueryTests(unittest.TestCase):
         # Test with TESTDVIEDITOR
         auth.s3_assign_role(auth.user.id, self.dvi_editor, for_pe=self.org1)
         query = accessible_query("read", table, c="dvi", f="body")
-        self.assertEqual(str(query), "((dvi_body.owned_by_entity = %s) OR "
+        self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                     "(dvi_body.owned_by_entity IS NULL)) OR "
                                      "(((dvi_body.owned_by_user = %s) OR "
                                      "(((dvi_body.owned_by_user IS NULL) AND "
                                      "(dvi_body.owned_by_group IS NULL)) AND "
                                      "(dvi_body.owned_by_entity IS NULL))) OR "
                                      "(dvi_body.owned_by_group IN (2,3))))" % (self.org1, auth.user.id))
         query = accessible_query("update", table, c="dvi", f="body")
-        self.assertEqual(str(query), "((dvi_body.owned_by_entity = %s) OR "
+        self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                     "(dvi_body.owned_by_entity IS NULL)) OR "
                                      "(((dvi_body.owned_by_user = %s) OR "
                                      "(((dvi_body.owned_by_user IS NULL) AND "
                                      "(dvi_body.owned_by_group IS NULL)) AND "
@@ -1790,7 +1807,8 @@ class S3AccessibleQueryTests(unittest.TestCase):
         auth.s3_impersonate("normaluser@example.com")
 
         # Re-check queries
-        qstr = ("((dvi_body.owned_by_entity IN (%s,%s)) OR "
+        qstr = ("(((dvi_body.owned_by_entity IN (%s,%s)) OR "
+                "(dvi_body.owned_by_entity IS NULL)) OR "
                 "(((dvi_body.owned_by_user = %s) OR "
                 "(((dvi_body.owned_by_user IS NULL) AND "
                 "(dvi_body.owned_by_group IS NULL)) AND "
@@ -1818,7 +1836,6 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
         accessible_query = auth.s3_accessible_query
         table = s3db.dvi_body
-        dtable = s3db.pr_delegation
 
         # Check anonymous
         query = accessible_query("read", table, c="dvi", f="body")
@@ -1839,14 +1856,16 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
             # User should only be able to access records of org3
             query = accessible_query("read", table, c="dvi", f="body")
-            self.assertEqual(str(query), "((dvi_body.owned_by_entity = %s) OR "
+            self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                         "(dvi_body.owned_by_entity IS NULL)) OR "
                                          "(((dvi_body.owned_by_user = %s) OR "
                                          "(((dvi_body.owned_by_user IS NULL) AND "
                                          "(dvi_body.owned_by_group IS NULL)) AND "
                                          "(dvi_body.owned_by_entity IS NULL))) OR "
                                          "(dvi_body.owned_by_group IN (2,3))))" % (self.org3, auth.user.id))
             query = accessible_query("update", table, c="dvi", f="body")
-            self.assertEqual(str(query), "((dvi_body.owned_by_entity = %s) OR "
+            self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                         "(dvi_body.owned_by_entity IS NULL)) OR "
                                          "(((dvi_body.owned_by_user = %s) OR "
                                          "(((dvi_body.owned_by_user IS NULL) AND "
                                          "(dvi_body.owned_by_group IS NULL)) AND "
@@ -1856,18 +1875,15 @@ class S3AccessibleQueryTests(unittest.TestCase):
             # Make org3 and OU of org2
             s3db.pr_add_affiliation(self.org2, self.org3, role="TestOrgUnit")
 
-            # Make org2 a partner of org1
-            partners = s3db.pr_add_affiliation(self.org1, self.org2, role="TestPartners", role_type=9)
-
-            # Delegate dvi_reader from org1 to org2
-            record = dtable.insert(role_id=partners, group_id=self.dvi_reader)
+            auth.s3_delegate_role(self.dvi_reader, self.org1, receiver=self.org2)
 
             # Update realms
             auth.s3_impersonate("normaluser@example.com")
 
             # User should now be able to read records of org1 and org3, but update only org3
             query = accessible_query("read", table, c="dvi", f="body")
-            qstr = ("((dvi_body.owned_by_entity IN (%s,%s)) OR "
+            qstr = ("(((dvi_body.owned_by_entity IN (%s,%s)) OR "
+                    "(dvi_body.owned_by_entity IS NULL)) OR "
                     "(((dvi_body.owned_by_user = %s) OR "
                     "(((dvi_body.owned_by_user IS NULL) AND "
                     "(dvi_body.owned_by_group IS NULL)) AND "
@@ -1876,7 +1892,8 @@ class S3AccessibleQueryTests(unittest.TestCase):
             self.assertTrue(str(query) == qstr % (self.org1, self.org3, auth.user.id) or
                             str(query) == qstr % (self.org3, self.org1, auth.user.id))
             query = accessible_query("update", table, c="dvi", f="body")
-            qstr = ("((dvi_body.owned_by_entity = %s) OR "
+            qstr = ("(((dvi_body.owned_by_entity = %s) OR "
+                    "(dvi_body.owned_by_entity IS NULL)) OR "
                     "(((dvi_body.owned_by_user = %s) OR "
                     "(((dvi_body.owned_by_user IS NULL) AND "
                     "(dvi_body.owned_by_group IS NULL)) AND "
@@ -1892,14 +1909,16 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
             # Check queries again
             query = accessible_query("read", table, c="dvi", f="body")
-            self.assertEqual(str(query), "((dvi_body.owned_by_entity = %s) OR "
+            self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                         "(dvi_body.owned_by_entity IS NULL)) OR "
                                          "(((dvi_body.owned_by_user = %s) OR "
                                          "(((dvi_body.owned_by_user IS NULL) AND "
                                          "(dvi_body.owned_by_group IS NULL)) AND "
                                          "(dvi_body.owned_by_entity IS NULL))) OR "
                                          "(dvi_body.owned_by_group IN (2,3))))" % (self.org3, auth.user.id))
             query = accessible_query("update", table, c="dvi", f="body")
-            self.assertEqual(str(query), "((dvi_body.owned_by_entity = %s) OR "
+            self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                         "(dvi_body.owned_by_entity IS NULL)) OR "
                                          "(((dvi_body.owned_by_user = %s) OR "
                                          "(((dvi_body.owned_by_user IS NULL) AND "
                                          "(dvi_body.owned_by_group IS NULL)) AND "
@@ -1908,11 +1927,9 @@ class S3AccessibleQueryTests(unittest.TestCase):
         finally:
 
             # Remove delegation, affiliation and role
-            db(dtable.id == record).delete()
             s3db.pr_remove_affiliation(self.org3, user, role="TestStaff")
             s3db.pr_remove_affiliation(self.org2, self.org3, role="TestOrgUnit")
-            s3db.pr_remove_affiliation(self.org1, self.org2, role="TestPartners")
-            auth.s3_retract_role(auth.user.id, self.dvi_reader, for_pe=self.org3)
+            auth.s3_retract_role(user, self.dvi_reader, for_pe=self.org3)
 
     #def testPerformance(self):
 
@@ -1945,6 +1962,787 @@ class S3AccessibleQueryTests(unittest.TestCase):
         auth.s3_delete_role("TESTDVIADMIN")
 
 # =============================================================================
+class S3DelegationTests(unittest.TestCase):
+
+
+    @classmethod
+    def setUpClass(cls):
+
+        # Create test roles
+        acl = auth.permission
+
+        auth.s3_create_role("DVI Reader", None,
+                            dict(c="dvi",
+                                 uacl=acl.READ, oacl=acl.READ|acl.UPDATE),
+                            dict(c="dvi", f="body",
+                                 uacl=acl.READ|acl.CREATE, oacl=acl.READ|acl.UPDATE),
+                            dict(t="dvi_body",
+                                 uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
+                            uid="TESTDVIREADER")
+
+        auth.s3_create_role("DVI Editor", None,
+                            dict(c="dvi",
+                                 uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
+                            dict(c="dvi", f="body",
+                                 uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
+                            dict(t="dvi_body",
+                                 uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
+                            uid="TESTDVIEDITOR")
+
+        auth.s3_create_role("DVI Admin", None,
+                            dict(c="dvi",
+                                 uacl=acl.ALL, oacl=acl.ALL),
+                            dict(c="dvi", f="body",
+                                 uacl=acl.ALL, oacl=acl.ALL),
+                            dict(t="dvi_body",
+                                 uacl=acl.ALL, oacl=acl.ALL),
+                            uid="TESTDVIADMIN")
+        db.commit()
+
+    def setUp(self):
+
+        # Get the role IDs
+        gtable = auth.settings.table_group
+        row = db(gtable.uuid=="TESTDVIREADER").select(limitby=(0, 1)).first()
+        self.dvi_reader = row.id
+        row = db(gtable.uuid=="TESTDVIEDITOR").select(limitby=(0, 1)).first()
+        self.dvi_editor = row.id
+        row = db(gtable.uuid=="TESTDVIADMIN").select(limitby=(0, 1)).first()
+        self.dvi_admin = row.id
+
+        auth.s3_impersonate("admin@example.com")
+
+        # Create test organisations
+        table = s3db.org_organisation
+        record_id = table.insert(name="TestOrganisation1")
+        s3mgr.model.update_super(table, Storage(id=record_id))
+        self.org1 = s3db.pr_get_pe_id(table, record_id)
+
+        record_id = table.insert(name="TestOrganisation2")
+        s3mgr.model.update_super(table, Storage(id=record_id))
+        self.org2 = s3db.pr_get_pe_id(table, record_id)
+
+        record_id = table.insert(name="TestOrganisation3")
+        s3mgr.model.update_super(table, Storage(id=record_id))
+        self.org3 = s3db.pr_get_pe_id(table, record_id)
+
+        # Create test records
+        table = s3db.dvi_body
+        record_id = table.insert(pe_label="TestRecord1",
+                                 owned_by_user=auth.user.id,
+                                 owned_by_entity=self.org1)
+        s3mgr.model.update_super(table, Storage(id=record_id))
+        self.record1 = record_id
+
+        record_id = table.insert(pe_label="TestRecord2",
+                                 owned_by_user=auth.user.id,
+                                 owned_by_entity=self.org2)
+        s3mgr.model.update_super(table, Storage(id=record_id))
+        self.record2 = record_id
+
+        record_id = table.insert(pe_label="TestRecord3",
+                                 owned_by_user=auth.user.id,
+                                 owned_by_entity=self.org3)
+        s3mgr.model.update_super(table, Storage(id=record_id))
+        self.record3 = record_id
+
+        # Remove session ownership
+        auth.s3_clear_session_ownership()
+        auth.s3_impersonate(None)
+
+    def testPolicy7(self):
+
+        deployment_settings.security.policy = 7
+        auth.permission = s3base.S3Permission(auth)
+
+    def testPolicy8(self):
+
+        deployment_settings.security.policy = 8
+        auth.permission = s3base.S3Permission(auth)
+        auth.s3_impersonate("normaluser@example.com")
+        user = auth.user.id
+
+        try:
+
+            # Add the user as OU descendant of org3 and assign dvi_reader
+            s3db.pr_add_affiliation(self.org3, user, role="TestStaff")
+            auth.s3_assign_role(auth.user.id, self.dvi_editor, for_pe=self.org3)
+
+            # Make org3 an OU descendant of org2
+            s3db.pr_add_affiliation(self.org2, self.org3, role="TestOrgUnit")
+
+            # Delegate the dvi_reader role for org1 to org2
+            auth.s3_delegate_role(self.dvi_reader, self.org1, receiver=self.org2)
+
+            # Check the delegations
+            delegations = auth.user.delegations
+            self.assertTrue(self.dvi_reader in delegations)
+            self.assertTrue(self.org3 in delegations[self.dvi_reader])
+            self.assertTrue(self.org1 in delegations[self.dvi_reader][self.org3])
+
+            auth.s3_remove_delegation(self.dvi_reader, self.org1, receiver=self.org2)
+
+            # Check the delegations
+            delegations = auth.user.delegations
+            self.assertEqual(delegations.keys(), [])
+
+            # Delegate the dvi_reader role for org1 to org2
+            auth.s3_delegate_role([self.dvi_reader, self.dvi_editor], self.org1, receiver=self.org2)
+
+            delegations = auth.s3_get_delegations(self.org1)
+            self.assertNotEqual(delegations, None)
+            self.assertTrue(isinstance(delegations, Storage))
+            self.assertTrue(self.org2 in delegations)
+            self.assertTrue(isinstance(delegations[self.org2], list))
+            self.assertEqual(len(delegations[self.org2]), 2)
+            self.assertTrue(self.dvi_reader in delegations[self.org2])
+            self.assertTrue(self.dvi_editor in delegations[self.org2])
+
+            # Check the delegations
+            delegations = auth.user.delegations
+            self.assertTrue(self.dvi_reader in delegations)
+            self.assertTrue(self.dvi_editor in delegations)
+            self.assertTrue(self.org3 in delegations[self.dvi_reader])
+            self.assertTrue(self.org1 in delegations[self.dvi_reader][self.org3])
+            self.assertTrue(self.org3 in delegations[self.dvi_editor])
+            self.assertTrue(self.org1 in delegations[self.dvi_editor][self.org3])
+
+            auth.s3_remove_delegation(self.dvi_editor, self.org1, receiver=self.org2)
+
+            delegations = auth.s3_get_delegations(self.org1)
+            self.assertNotEqual(delegations, None)
+            self.assertTrue(isinstance(delegations, Storage))
+            self.assertTrue(self.org2 in delegations)
+            self.assertTrue(isinstance(delegations[self.org2], list))
+            self.assertEqual(len(delegations[self.org2]), 1)
+            self.assertTrue(self.dvi_reader in delegations[self.org2])
+
+            # Check the delegations
+            delegations = auth.user.delegations
+            self.assertTrue(self.dvi_reader in delegations)
+            self.assertFalse(self.dvi_editor in delegations)
+            self.assertTrue(self.org3 in delegations[self.dvi_reader])
+            self.assertTrue(self.org1 in delegations[self.dvi_reader][self.org3])
+
+            auth.s3_remove_delegation(self.dvi_reader, self.org1, receiver=self.org2)
+
+            delegations = auth.s3_get_delegations(self.org1)
+            self.assertNotEqual(delegations, None)
+            self.assertTrue(isinstance(delegations, Storage))
+            self.assertEqual(delegations.keys(), [])
+
+            # Check the delegations
+            delegations = auth.user.delegations
+            self.assertEqual(delegations.keys(), [])
+
+        finally:
+
+            # Remove delegation, affiliation and role
+            s3db.pr_remove_affiliation(self.org3, user, role="TestStaff")
+            s3db.pr_remove_affiliation(self.org2, self.org3, role="TestOrgUnit")
+            auth.s3_retract_role(user, self.dvi_reader, for_pe=self.org3)
+            db.rollback()
+
+            # Logout
+            auth.s3_impersonate(None)
+
+    def tearDown(self):
+        self.role = None
+        db.rollback()
+
+    @classmethod
+    def tearDownClass(cls):
+        auth.s3_delete_role("TESTDVIREADER")
+        auth.s3_delete_role("TESTDVIEDITOR")
+        auth.s3_delete_role("TESTDVIADMIN")
+
+# =============================================================================
+class S3AccessibleQueryTests(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+
+        # Create test roles
+        acl = auth.permission
+
+        auth.s3_create_role("DVI Reader", None,
+                            dict(c="dvi",
+                                 uacl=acl.READ, oacl=acl.READ),
+                            dict(c="dvi", f="body",
+                                 uacl=acl.READ|acl.CREATE, oacl=acl.READ|acl.UPDATE|acl.DELETE),
+                            dict(t="dvi_body",
+                                 uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
+                            uid="TESTDVIREADER")
+
+        auth.s3_create_role("DVI Editor", None,
+                            dict(c="dvi",
+                                 uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
+                            dict(c="dvi", f="body",
+                                 uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
+                            dict(t="dvi_body",
+                                 uacl=acl.READ|acl.CREATE|acl.UPDATE, oacl=acl.READ|acl.UPDATE),
+                            uid="TESTDVIEDITOR")
+
+        auth.s3_create_role("DVI Admin", None,
+                            dict(c="dvi",
+                                 uacl=acl.ALL, oacl=acl.ALL),
+                            dict(c="dvi", f="body",
+                                 uacl=acl.ALL, oacl=acl.ALL),
+                            dict(t="dvi_body",
+                                 uacl=acl.ALL, oacl=acl.ALL),
+                            uid="TESTDVIADMIN")
+        db.commit()
+
+    def setUp(self):
+
+        # Get the role IDs
+        gtable = auth.settings.table_group
+        row = db(gtable.uuid=="TESTDVIREADER").select(limitby=(0, 1)).first()
+        self.dvi_reader = row.id
+        row = db(gtable.uuid=="TESTDVIEDITOR").select(limitby=(0, 1)).first()
+        self.dvi_editor = row.id
+        row = db(gtable.uuid=="TESTDVIADMIN").select(limitby=(0, 1)).first()
+        self.dvi_admin = row.id
+
+        auth.s3_impersonate("admin@example.com")
+
+        # Create test organisations
+        table = s3db.org_organisation
+        record_id = table.insert(name="TestOrganisation1")
+        s3mgr.model.update_super(table, Storage(id=record_id))
+        self.org1 = s3db.pr_get_pe_id(table, record_id)
+
+        record_id = table.insert(name="TestOrganisation2")
+        s3mgr.model.update_super(table, Storage(id=record_id))
+        self.org2 = s3db.pr_get_pe_id(table, record_id)
+
+        record_id = table.insert(name="TestOrganisation3")
+        s3mgr.model.update_super(table, Storage(id=record_id))
+        self.org3 = s3db.pr_get_pe_id(table, record_id)
+
+        # Create test records
+        table = s3db.dvi_body
+        record_id = table.insert(pe_label="TestRecord1",
+                                 owned_by_user=auth.user.id,
+                                 owned_by_entity=self.org1)
+        s3mgr.model.update_super(table, Storage(id=record_id))
+        self.record1 = record_id
+
+        record_id = table.insert(pe_label="TestRecord2",
+                                 owned_by_user=auth.user.id,
+                                 owned_by_entity=self.org2)
+        s3mgr.model.update_super(table, Storage(id=record_id))
+        self.record2 = record_id
+
+        record_id = table.insert(pe_label="TestRecord3",
+                                 owned_by_user=auth.user.id,
+                                 owned_by_entity=self.org3)
+        s3mgr.model.update_super(table, Storage(id=record_id))
+        self.record3 = record_id
+
+        # Remove session ownership
+        auth.s3_clear_session_ownership()
+        auth.s3_impersonate(None)
+
+    def testPolicy3(self):
+
+        deployment_settings.security.policy = 3
+        auth.permission = s3base.S3Permission(auth)
+
+        accessible_query = auth.s3_accessible_query
+        table = s3db.dvi_body
+
+        # Check anonymous
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        # Check authenticated
+        auth.s3_impersonate("normaluser@example.com")
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        # Test with TESTDVIREADER
+        auth.s3_assign_role(auth.user.id, self.dvi_reader)
+        query = accessible_query("read", "dvi_body", c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id > 0)")
+        query = accessible_query("update",table,  c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+        query = accessible_query("delete", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+        auth.s3_retract_role(auth.user.id, self.dvi_reader)
+
+        # Test with TESTDVIEDITOR
+        auth.s3_assign_role(auth.user.id, self.dvi_editor)
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id > 0)")
+        query = accessible_query("update", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id > 0)")
+        query = accessible_query("delete", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+        auth.s3_retract_role(auth.user.id, self.dvi_editor)
+
+        # Logout
+        auth.s3_impersonate(None)
+
+    def testPolicy4(self):
+
+        deployment_settings.security.policy = 4
+        auth.permission = s3base.S3Permission(auth)
+
+        accessible_query = auth.s3_accessible_query
+        table = s3db.dvi_body
+
+        # Check anonymous
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        # Check authenticated
+        auth.s3_impersonate("normaluser@example.com")
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        # Test with TESTDVIREADER
+        auth.s3_assign_role(auth.user.id, self.dvi_reader)
+        query = accessible_query("read", "dvi_body", c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id > 0)")
+        query = accessible_query("update",table,  c="dvi", f="body")
+        keys = auth.user.realms.keys()
+        self.assertTrue(self.dvi_reader in keys)
+        self.assertEqual(str(query), "(((dvi_body.owned_by_user = %s) OR "
+                                     "((dvi_body.owned_by_user IS NULL) AND "
+                                     "(dvi_body.owned_by_group IS NULL))) OR "
+                                     "(dvi_body.owned_by_group IN (%s)))" %
+                                     (auth.user.id, ",".join(map(str,keys))))
+        query = accessible_query("delete", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(((dvi_body.owned_by_user = %s) OR "
+                                     "((dvi_body.owned_by_user IS NULL) AND "
+                                     "(dvi_body.owned_by_group IS NULL))) OR "
+                                     "(dvi_body.owned_by_group IN (%s)))" %
+                                     (auth.user.id, ",".join(map(str,keys))))
+        auth.s3_retract_role(auth.user.id, self.dvi_reader)
+
+        # Test with TESTDVIEDITOR
+        auth.s3_assign_role(auth.user.id, self.dvi_editor)
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id > 0)")
+        query = accessible_query("update", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id > 0)")
+        query = accessible_query("delete", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+        auth.s3_retract_role(auth.user.id, self.dvi_editor)
+
+        # Logout
+        auth.s3_impersonate(None)
+
+    def testPolicy5(self):
+
+        deployment_settings.security.policy = 5
+        auth.permission = s3base.S3Permission(auth)
+
+        accessible_query = auth.s3_accessible_query
+        table = s3db.dvi_body
+
+        # Check anonymous
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        # Check authenticated
+        auth.s3_impersonate("normaluser@example.com")
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        # Test with TESTDVIREADER
+        auth.s3_assign_role(auth.user.id, self.dvi_reader)
+        query = accessible_query("read", "dvi_body", c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id > 0)")
+        query = accessible_query("update",table,  c="dvi", f="body")
+        keys = auth.user.realms.keys()
+        self.assertTrue(self.dvi_reader in keys)
+        self.assertEqual(str(query), "(((dvi_body.owned_by_user = %s) OR "
+                                     "((dvi_body.owned_by_user IS NULL) AND "
+                                     "(dvi_body.owned_by_group IS NULL))) OR "
+                                     "(dvi_body.owned_by_group IN (%s)))" %
+                                     (auth.user.id, ",".join(map(str,keys))))
+        query = accessible_query("delete", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+        auth.s3_retract_role(auth.user.id, self.dvi_reader)
+
+        # Test with TESTDVIEDITOR
+        auth.s3_assign_role(auth.user.id, self.dvi_editor)
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id > 0)")
+        query = accessible_query("update", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id > 0)")
+        query = accessible_query("delete", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+        auth.s3_retract_role(auth.user.id, self.dvi_editor)
+
+        # Logout
+        auth.s3_impersonate(None)
+
+    def testPolicy6(self):
+
+        deployment_settings.security.policy = 6
+        auth.permission = s3base.S3Permission(auth)
+
+        accessible_query = auth.s3_accessible_query
+        table = s3db.dvi_body
+
+        # Check anonymous
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        # Check authenticated
+        auth.s3_impersonate("normaluser@example.com")
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        # Test with TESTDVIREADER
+        auth.s3_assign_role(auth.user.id, self.dvi_reader, for_pe=self.org1)
+        query = accessible_query("read", "dvi_body", c="dvi", f="body")
+        self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                     "(dvi_body.owned_by_entity IS NULL)) OR "
+                                     "(((dvi_body.owned_by_user = %s) OR "
+                                     "(((dvi_body.owned_by_user IS NULL) AND "
+                                     "(dvi_body.owned_by_group IS NULL)) AND "
+                                     "(dvi_body.owned_by_entity IS NULL))) OR "
+                                     "(dvi_body.owned_by_group IN (2,3))))" % (self.org1, auth.user.id))
+        query = accessible_query("update",table,  c="dvi", f="body")
+        self.assertEqual(str(query), "(((dvi_body.owned_by_user = %s) OR "
+                                     "(((dvi_body.owned_by_user IS NULL) AND "
+                                     "(dvi_body.owned_by_group IS NULL)) AND "
+                                     "(dvi_body.owned_by_entity IS NULL))) OR "
+                                     "(((dvi_body.owned_by_group = %s) AND "
+                                     "(dvi_body.owned_by_entity IN (%s))) OR "
+                                     "(dvi_body.owned_by_group IN (2,3))))" %
+                                     (auth.user.id, self.dvi_reader, self.org1))
+        query = accessible_query("delete", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+        auth.s3_retract_role(auth.user.id, self.dvi_reader)
+
+        # Test with TESTDVIEDITOR
+        auth.s3_assign_role(auth.user.id, self.dvi_editor, for_pe=self.org1)
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                     "(dvi_body.owned_by_entity IS NULL)) OR "
+                                     "(((dvi_body.owned_by_user = %s) OR "
+                                     "(((dvi_body.owned_by_user IS NULL) AND "
+                                     "(dvi_body.owned_by_group IS NULL)) AND "
+                                     "(dvi_body.owned_by_entity IS NULL))) OR "
+                                     "(dvi_body.owned_by_group IN (2,3))))" % (self.org1, auth.user.id))
+        query = accessible_query("update", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                     "(dvi_body.owned_by_entity IS NULL)) OR "
+                                     "(((dvi_body.owned_by_user = %s) OR "
+                                     "(((dvi_body.owned_by_user IS NULL) AND "
+                                     "(dvi_body.owned_by_group IS NULL)) AND "
+                                     "(dvi_body.owned_by_entity IS NULL))) OR "
+                                     "(dvi_body.owned_by_group IN (2,3))))" % (self.org1, auth.user.id))
+        query = accessible_query("delete", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+        auth.s3_retract_role(auth.user.id, self.dvi_editor)
+
+        # Logout
+        auth.s3_impersonate(None)
+
+    def testPolicy7(self):
+
+        deployment_settings.security.policy = 7
+        auth.permission = s3base.S3Permission(auth)
+
+        accessible_query = auth.s3_accessible_query
+        table = s3db.dvi_body
+
+        # Check anonymous
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        # Check authenticated
+        auth.s3_impersonate("normaluser@example.com")
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        # Test with TESTDVIREADER
+        auth.s3_assign_role(auth.user.id, self.dvi_reader, for_pe=self.org1)
+        query = accessible_query("read", "dvi_body", c="dvi", f="body")
+        self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                     "(dvi_body.owned_by_entity IS NULL)) OR "
+                                     "(((dvi_body.owned_by_user = %s) OR "
+                                     "(((dvi_body.owned_by_user IS NULL) AND "
+                                     "(dvi_body.owned_by_group IS NULL)) AND "
+                                     "(dvi_body.owned_by_entity IS NULL))) OR "
+                                     "(dvi_body.owned_by_group IN (2,3))))" % (self.org1, auth.user.id))
+        query = accessible_query("update",table,  c="dvi", f="body")
+        self.assertEqual(str(query), "(((dvi_body.owned_by_user = %s) OR "
+                                     "(((dvi_body.owned_by_user IS NULL) AND "
+                                     "(dvi_body.owned_by_group IS NULL)) AND "
+                                     "(dvi_body.owned_by_entity IS NULL))) OR "
+                                     "(((dvi_body.owned_by_group = %s) AND "
+                                     "(dvi_body.owned_by_entity IN (%s))) OR "
+                                     "(dvi_body.owned_by_group IN (2,3))))" %
+                                     (auth.user.id, self.dvi_reader, self.org1))
+        query = accessible_query("delete", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        # Make org2 a sub-entity of org1
+        s3db.pr_add_affiliation(self.org1, self.org2, role="TestOrgUnit")
+        # Reload realms and delegations
+        auth.s3_impersonate("normaluser@example.com")
+
+        # Re-check queries
+        query = accessible_query("read", "dvi_body", c="dvi", f="body")
+        qstr = ("(((dvi_body.owned_by_entity IN (%s,%s)) OR "
+                "(dvi_body.owned_by_entity IS NULL)) OR "
+                "(((dvi_body.owned_by_user = %s) OR "
+                "(((dvi_body.owned_by_user IS NULL) AND "
+                "(dvi_body.owned_by_group IS NULL)) AND "
+                "(dvi_body.owned_by_entity IS NULL))) OR "
+                "(dvi_body.owned_by_group IN (2,3))))")
+        self.assertTrue(str(query) == qstr % (self.org1, self.org2, auth.user.id) or
+                        str(query) == qstr % (self.org2, self.org1, auth.user.id))
+        query = accessible_query("update",table,  c="dvi", f="body")
+        qstr = ("(((dvi_body.owned_by_user = %s) OR "
+                "(((dvi_body.owned_by_user IS NULL) AND "
+                "(dvi_body.owned_by_group IS NULL)) AND "
+                "(dvi_body.owned_by_entity IS NULL))) OR "
+                "(((dvi_body.owned_by_group = %s) AND "
+                "(dvi_body.owned_by_entity IN (%s,%s))) OR "
+                "(dvi_body.owned_by_group IN (2,3))))")
+        self.assertTrue(str(query) == qstr % (auth.user.id, self.dvi_reader, self.org1, self.org2) or
+                        str(query) == qstr % (auth.user.id, self.dvi_reader, self.org2, self.org1))
+        query = accessible_query("delete", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        s3db.pr_remove_affiliation(self.org1, self.org2, role="TestOrgUnit")
+        auth.s3_retract_role(auth.user.id, self.dvi_reader)
+
+        # Test with TESTDVIEDITOR
+        auth.s3_assign_role(auth.user.id, self.dvi_editor, for_pe=self.org1)
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                     "(dvi_body.owned_by_entity IS NULL)) OR "
+                                     "(((dvi_body.owned_by_user = %s) OR "
+                                     "(((dvi_body.owned_by_user IS NULL) AND "
+                                     "(dvi_body.owned_by_group IS NULL)) AND "
+                                     "(dvi_body.owned_by_entity IS NULL))) OR "
+                                     "(dvi_body.owned_by_group IN (2,3))))" % (self.org1, auth.user.id))
+        query = accessible_query("update", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                     "(dvi_body.owned_by_entity IS NULL)) OR "
+                                     "(((dvi_body.owned_by_user = %s) OR "
+                                     "(((dvi_body.owned_by_user IS NULL) AND "
+                                     "(dvi_body.owned_by_group IS NULL)) AND "
+                                     "(dvi_body.owned_by_entity IS NULL))) OR "
+                                     "(dvi_body.owned_by_group IN (2,3))))" % (self.org1, auth.user.id))
+        query = accessible_query("delete", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        # Make org2 a sub-entity of org1
+        s3db.pr_add_affiliation(self.org1, self.org2, role="TestOrgUnit")
+        # Reload realms and delegations
+        auth.s3_impersonate("normaluser@example.com")
+
+        # Re-check queries
+        qstr = ("(((dvi_body.owned_by_entity IN (%s,%s)) OR "
+                "(dvi_body.owned_by_entity IS NULL)) OR "
+                "(((dvi_body.owned_by_user = %s) OR "
+                "(((dvi_body.owned_by_user IS NULL) AND "
+                "(dvi_body.owned_by_group IS NULL)) AND "
+                "(dvi_body.owned_by_entity IS NULL))) OR "
+                "(dvi_body.owned_by_group IN (2,3))))")
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertTrue(str(query) == qstr % (self.org1, self.org2, auth.user.id) or
+                        str(query) == qstr % (self.org2, self.org1, auth.user.id))
+        query = accessible_query("update", table, c="dvi", f="body")
+        self.assertTrue(str(query) == qstr % (self.org1, self.org2, auth.user.id) or
+                        str(query) == qstr % (self.org2, self.org1, auth.user.id))
+        query = accessible_query("delete", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        s3db.pr_remove_affiliation(self.org1, self.org2, role="TestOrgUnit")
+        auth.s3_retract_role(auth.user.id, self.dvi_editor)
+
+        # Logout
+        auth.s3_impersonate(None)
+
+    def testPolicy8(self):
+
+        deployment_settings.security.policy = 8
+        auth.permission = s3base.S3Permission(auth)
+
+        accessible_query = auth.s3_accessible_query
+        table = s3db.dvi_body
+
+        # Check anonymous
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        # Check authenticated
+        auth.s3_impersonate("normaluser@example.com")
+        user = auth.user.id
+        query = accessible_query("read", table, c="dvi", f="body")
+        self.assertEqual(str(query), "(dvi_body.id = 0)")
+
+        record = None
+        try:
+
+            # Add the user as OU descendant of org3 and assign dvi_editor
+            user = auth.s3_user_pe_id(auth.s3_get_user_id("normaluser@example.com"))
+            s3db.pr_add_affiliation(self.org3, user, role="TestStaff")
+            auth.s3_assign_role(auth.user.id, self.dvi_editor, for_pe=self.org3)
+
+            # User should only be able to access records of org3
+            query = accessible_query("read", table, c="dvi", f="body")
+            self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                         "(dvi_body.owned_by_entity IS NULL)) OR "
+                                         "(((dvi_body.owned_by_user = %s) OR "
+                                         "(((dvi_body.owned_by_user IS NULL) AND "
+                                         "(dvi_body.owned_by_group IS NULL)) AND "
+                                         "(dvi_body.owned_by_entity IS NULL))) OR "
+                                         "(dvi_body.owned_by_group IN (2,3))))" % (self.org3, auth.user.id))
+            query = accessible_query("update", table, c="dvi", f="body")
+            self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                         "(dvi_body.owned_by_entity IS NULL)) OR "
+                                         "(((dvi_body.owned_by_user = %s) OR "
+                                         "(((dvi_body.owned_by_user IS NULL) AND "
+                                         "(dvi_body.owned_by_group IS NULL)) AND "
+                                         "(dvi_body.owned_by_entity IS NULL))) OR "
+                                         "(dvi_body.owned_by_group IN (2,3))))" % (self.org3, auth.user.id))
+
+            # Make org3 and OU of org2
+            s3db.pr_add_affiliation(self.org2, self.org3, role="TestOrgUnit")
+
+            auth.s3_delegate_role(self.dvi_reader, self.org1, receiver=self.org2)
+
+            # Update realms
+            auth.s3_impersonate("normaluser@example.com")
+
+            # User should now be able to read records of org1 and org3, but update only org3
+            query = accessible_query("read", table, c="dvi", f="body")
+            qstr = ("(((dvi_body.owned_by_entity IN (%s,%s)) OR "
+                    "(dvi_body.owned_by_entity IS NULL)) OR "
+                    "(((dvi_body.owned_by_user = %s) OR "
+                    "(((dvi_body.owned_by_user IS NULL) AND "
+                    "(dvi_body.owned_by_group IS NULL)) AND "
+                    "(dvi_body.owned_by_entity IS NULL))) OR "
+                    "(dvi_body.owned_by_group IN (2,3))))")
+            self.assertTrue(str(query) == qstr % (self.org1, self.org3, auth.user.id) or
+                            str(query) == qstr % (self.org3, self.org1, auth.user.id))
+            query = accessible_query("update", table, c="dvi", f="body")
+            qstr = ("(((dvi_body.owned_by_entity = %s) OR "
+                    "(dvi_body.owned_by_entity IS NULL)) OR "
+                    "(((dvi_body.owned_by_user = %s) OR "
+                    "(((dvi_body.owned_by_user IS NULL) AND "
+                    "(dvi_body.owned_by_group IS NULL)) AND "
+                    "(dvi_body.owned_by_entity IS NULL))) OR "
+                    "(dvi_body.owned_by_group IN (2,3))))")
+            self.assertEqual(str(query), qstr % (self.org3, auth.user.id))
+
+            # Remove the affiliation with org2
+            s3db.pr_remove_affiliation(self.org2, self.org3, role="TestOrgUnit")
+
+            # Update realms
+            auth.s3_impersonate("normaluser@example.com")
+
+            # Check queries again
+            query = accessible_query("read", table, c="dvi", f="body")
+            self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                         "(dvi_body.owned_by_entity IS NULL)) OR "
+                                         "(((dvi_body.owned_by_user = %s) OR "
+                                         "(((dvi_body.owned_by_user IS NULL) AND "
+                                         "(dvi_body.owned_by_group IS NULL)) AND "
+                                         "(dvi_body.owned_by_entity IS NULL))) OR "
+                                         "(dvi_body.owned_by_group IN (2,3))))" % (self.org3, auth.user.id))
+            query = accessible_query("update", table, c="dvi", f="body")
+            self.assertEqual(str(query), "(((dvi_body.owned_by_entity = %s) OR "
+                                         "(dvi_body.owned_by_entity IS NULL)) OR "
+                                         "(((dvi_body.owned_by_user = %s) OR "
+                                         "(((dvi_body.owned_by_user IS NULL) AND "
+                                         "(dvi_body.owned_by_group IS NULL)) AND "
+                                         "(dvi_body.owned_by_entity IS NULL))) OR "
+                                         "(dvi_body.owned_by_group IN (2,3))))" % (self.org3, auth.user.id))
+        finally:
+
+            # Remove delegation, affiliation and role
+            s3db.pr_remove_affiliation(self.org3, user, role="TestStaff")
+            s3db.pr_remove_affiliation(self.org2, self.org3, role="TestOrgUnit")
+            auth.s3_retract_role(user, self.dvi_reader, for_pe=self.org3)
+
+    def tearDown(self):
+        self.role = None
+        db.rollback()
+
+    @classmethod
+    def tearDownClass(cls):
+        auth.s3_delete_role("TESTDVIREADER")
+        auth.s3_delete_role("TESTDVIEDITOR")
+        auth.s3_delete_role("TESTDVIADMIN")
+
+
+# =============================================================================
+class S3EntityRoleManagerTests(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        pass
+
+    def setUp(self):
+
+        # Test-login as system administrator
+        auth.s3_impersonate("admin@example.com")
+
+        self.rm = S3EntityRoleManager()
+
+        self.user_id = auth.s3_get_user_id("normaluser@example.com")
+        self.org_id = 1
+
+        auth.s3_assign_role(self.user_id, "staff_reader", for_pe=self.org_id)
+        auth.s3_assign_role(self.user_id, "project_editor", for_pe=self.org_id)
+
+    def testGetAssignedRoles(self):
+        self.assertEqual(self.rm.get_assigned_roles(entity_id=self.org_id),
+                         {self.user_id: ["staff_reader", "project_editor"]})
+
+        self.assertEqual(self.rm.get_assigned_roles(entity_id=self.org_id,
+                                                    user_id=self.user_id),
+                         {self.user_id: ["staff_reader", "project_editor"]})
+
+        self.assertEqual(self.rm.get_assigned_roles(user_id=self.user_id),
+                         {self.org_id: ["staff_reader", "project_editor"]})
+
+        self.assertRaises(RuntimeError, self.rm.get_assigned_roles)
+
+    def testUpdateRoles(self):
+        # test that the before/after works
+        before = ["staff_reader", "project_editor"]
+        after = ["survey_reader"]
+
+        # Give the user a new set of roles
+        self.rm.update_roles(self.user_id,
+                             self.org_id,
+                             before,
+                             after)
+        self.assertEqual(self.rm.get_assigned_roles(user_id=self.user_id),
+                         {self.org_id: after})
+
+        # Reverse the changes
+        self.rm.update_roles(self.user_id,
+                             self.org_id,
+                             after,
+                             before)
+        self.assertEqual(self.rm.get_assigned_roles(user_id=self.user_id),
+                         {self.org_id: before})
+
+    def tearDown(self):
+        auth.s3_retract_role(self.user_id, "staff_reader", for_pe=self.org_id)
+        auth.s3_retract_role(self.user_id, "project_editor", for_pe=self.org_id)
+
+    @classmethod
+    def tearDownClass(cls):
+        pass
+
+
+# =============================================================================
 def run_suite(*test_classes):
     """ Run the test suite """
 
@@ -1954,7 +2752,7 @@ def run_suite(*test_classes):
         tests = loader.loadTestsFromTestCase(test_class)
         suite.addTests(tests)
     if suite is not None:
-        unittest.TextTestRunner().run(suite)
+        unittest.TextTestRunner(verbosity=2).run(suite)
     return
 
 if __name__ == "__main__":
@@ -1963,7 +2761,9 @@ if __name__ == "__main__":
         S3AuthTests,
         S3PermissionTests,
         S3HasPermissionTests,
-        S3AccessibleQueryTests
+        S3AccessibleQueryTests,
+        S3DelegationTests,
+        S3EntityRoleManagerTests
     )
 
 # END ========================================================================

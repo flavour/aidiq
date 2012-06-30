@@ -1,4 +1,0 @@
-First Name,Last Name,Email,Password,Role,Organisation
-Admin,Survey,survey_admin@example.com,testing,SURVEY_ADMIN,Example.com
-Editor,Survey,survey_editor@example.com,testing,SURVEY_EDIT,Example.com
-Reader,Survey,survey_reader@example.com,testing,SURVEY_READ,Example.com

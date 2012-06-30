@@ -51,13 +51,20 @@ except ImportError:
     print >> sys.stderr, "ERROR: lxml module needed for XML handling"
     raise
 
+try:
+    import json # try stdlib (Python 2.6)
+except ImportError:
+    try:
+        import simplejson as json # try external module
+    except:
+        import gluon.contrib.simplejson as json # fallback to pure-Python module
+
 from gluon import *
+from gluon.serializers import json as jsons
 from gluon.storage import Storage, Messages
 from gluon.tools import callback
-import gluon.contrib.simplejson as simplejson
-from gluon.serializers import json
 
-from s3tools import SQLTABLES3
+from s3utils import SQLTABLES3
 from s3crud import S3CRUD
 from s3xml import S3XML
 from s3utils import s3_mark_required
@@ -833,7 +840,7 @@ class S3Importer(S3CRUD):
         s3.filter = (self.table.job_id == job_id) & \
                     (self.table.tablename == self.controller_tablename)
 
-        # get a list of the records that have an error of None
+        # Get a list of the records that have an error of None
         query =  (self.table.job_id == job_id) & \
                  (self.table.tablename == self.controller_tablename)
         rows = current.db(query).select(self.table.id, self.table.error)
@@ -855,7 +862,7 @@ class S3Importer(S3CRUD):
         if self.request.representation == "aadata":
             return output
 
-        # Highlight rows in erro in red
+        # Highlight rows in error in red
         s3.dataTableStyleWarning = error_list
 
         s3.dataTableSelectable = True
@@ -1299,7 +1306,7 @@ class S3Importer(S3CRUD):
                           iTotalDisplayRecords = totalrows,
                           aaData = items)
 
-            output = json(result)
+            output = jsons(result)
 
         # ********************************************************************
         # html 'initial' call
@@ -1362,7 +1369,7 @@ class S3Importer(S3CRUD):
 
                 aadata.update(iTotalRecords=totalrows,
                               iTotalDisplayRecords=totalrows)
-                response.aadata = json(aadata)
+                response.aadata = jsons(aadata)
                 s3.start = 0
                 s3.limit = limit
             else: # No items in database
@@ -1424,7 +1431,19 @@ class S3Importer(S3CRUD):
         if errors:
             details.append(TFOOT(TR(TH("%s:" % T("Errors")),
                                    TD(UL([LI(e) for e in errors])))))
-        output.append(details)
+        if rows == [] and components == []:
+            # At this stage we don't have anything to display to see if we can
+            # find something to show. This could be the case when a table being
+            # imported is a resolver for a many to many relationship
+            refdetail = TABLE(_class="importItem [id]")
+            references = element.findall("reference")
+            for reference in references:
+                tuid = reference.get("tuid")
+                resource = reference.get("resource")
+                refdetail.append(TR(TD(resource), TD(tuid)))
+            output.append(refdetail)
+        else:
+            output.append(details)
         return str(output)
 
     # -------------------------------------------------------------------------
@@ -2512,7 +2531,7 @@ class S3ImportItem(object):
                                        tablename=entry.tablename,
                                        uid=str(entry.uid))
                 if store_entry is not None:
-                    ritems.append(simplejson.dumps(store_entry))
+                    ritems.append(json.dumps(store_entry))
         if ritems:
             record.update(ritems=ritems)
         citems = [c.item_id for c in self.components]
@@ -2564,7 +2583,7 @@ class S3ImportItem(object):
         if row.citems:
             self.load_components = row.citems
         if row.ritems:
-            self.load_references = [simplejson.loads(ritem) for ritem in row.ritems]
+            self.load_references = [json.loads(ritem) for ritem in row.ritems]
         self.load_parent = row.parent
         try:
             table = s3db[tablename]
@@ -2639,6 +2658,8 @@ class S3ImportJob():
 
         self.job_table = None
         self.item_table = None
+
+        self.count = 0 # number of records imported
 
         # Import strategy
         self.strategy = strategy
@@ -2884,7 +2905,7 @@ class S3ImportJob():
                 uids = reference.get(xml.ATTRIBUTE.tuid, None)
                 attr = xml.ATTRIBUTE.tuid
             if uids and multiple:
-                uids = simplejson.loads(uids)
+                uids = json.loads(uids)
             elif uids:
                 uids = [uids]
 
@@ -3045,6 +3066,8 @@ class S3ImportJob():
                     self.error_tree.append(deepcopy(element))
                 if not ignore_errors:
                     return False
+            elif item.tablename == self.table._tablename:
+                self.count += 1
         return True
 
     # -------------------------------------------------------------------------

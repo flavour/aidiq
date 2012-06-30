@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 """ Deployment Settings
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @author: Dominic König <dominic[at]aidiq.com>
-
-    @copyright: 2009-2011 (c) Sahana Software Foundation
+    @copyright: 2009-2012 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -52,42 +51,68 @@ class S3Config(Storage):
         self.frontpage = Storage()
         self.frontpage.rss = []
         self.fin = Storage()
-        self.gis = Storage()
-        self.osm = Storage()    # Backwards-compatiblity, deprecate soon
-        self.mail = Storage()
-        self.twitter = Storage()
         self.L10n = Storage()
-        self.options = Storage()
-        self.security = Storage()
         self.aaa = Storage()
+        self.mail = Storage()
+        self.options = Storage()
+        self.parser = Storage()
+        self.save_search = Storage()
+        self.security = Storage()
+        self.twitter = Storage()
         self.ui = Storage()
-        self.req = Storage()
+        self.gis = Storage()
+        self.hrm = Storage()
         self.inv = Storage()
         self.org = Storage()
-        self.supply = Storage()
-        self.hrm = Storage()
+        self.proc = Storage()
         self.project = Storage()
-        self.save_search = Storage()
+        self.req = Storage()
+        self.supply = Storage()
+    # -------------------------------------------------------------------------
+    # Template
+    def get_template(self):
+        """
+            Which deployment template to use for config.py, parser.py, menus.py, etc
+            http://eden.sahanafoundation.org/wiki/BluePrint/Templates
+        """
+        return self.base.get("template", "default")
 
-        T = current.T
+    def exec_template(self, path):
+        """
+            Execute the template
+        """
+        #from gluon.compileapp import build_environment
+        from gluon.fileutils import read_file
+        from gluon.restricted import restricted
+        #environment = build_environment(request, response, session)
+        code = read_file(path)
+        #restricted(code, environment, layer=path)
+        restricted(code, layer=path)
+        return
 
-        # These are copied from modules/s3/s3aaa.py
-        self.aaa.acl =  Storage(CREATE = 0x0001,
-                                READ   = 0x0002,
-                                UPDATE = 0x0004,
-                                DELETE = 0x0008,
-                                ALL = 0x000F    # CREATE | READ | UPDATE | DELETE
-                                )
-        self.CURRENCIES = {
-            "USD" :T("United States Dollars"),
-            "EUR" :T("Euros"),
-            "GBP" :T("Great British Pounds")
-        }
+    # -------------------------------------------------------------------------
+    # Theme
+    def get_theme(self):
+        """
+            Which templates folder to use for views/layout.html
+        """
+        return self.base.get("theme", "default")
+
+    # -------------------------------------------------------------------------
+    def is_cd_version(self):
+        """
+            Whether we're running from a non-writable CD
+        """
+        return self.base.get("cd_version", False)
 
     # -------------------------------------------------------------------------
     # Auth settings
     def get_auth_hmac_key(self):
+        """
+            salt to encrypt passwords - normally randmosied during 1st run
+        """
         return self.auth.get("hmac_key", "akeytochange")
+
     def get_auth_facebook(self):
         """
             Read the FaceBook OAuth settings
@@ -99,9 +124,11 @@ class S3Config(Storage):
             return dict(id=id, secret=secret)
         else:
             return False
+
     def get_auth_gmail_domains(self):
         """ List of domains which can use GMail SMTP for Authentication """
         return self.auth.get("gmail_domains", [])
+
     def get_auth_google(self):
         """
             Read the Google OAuth settings
@@ -113,6 +140,7 @@ class S3Config(Storage):
             return dict(id=id, secret=secret)
         else:
             return False
+
     def get_auth_openid(self):
         return self.auth.get("openid", False)
     def get_auth_registration_requires_verification(self):
@@ -156,23 +184,50 @@ class S3Config(Storage):
             organisation_id = None
         return organisation_id
     def get_auth_registration_requests_image(self):
-        " Have the registration form request an Image "
+        """ Have the registration form request an Image """
         return self.auth.get("registration_requests_image", False)
     def get_auth_registration_roles(self):
-        " The list of role UUIDs to assign to newly-registered users "
+        """ The list of role UUIDs to assign to newly-registered users """
         return self.auth.get("registration_roles", [])
     def get_auth_registration_volunteer(self):
-        " Redirect the newly-registered user to their volunteer details page "
+        """ Redirect the newly-registered user to their volunteer details page """
         return self.auth.get("registration_volunteer", False)
     def get_auth_always_notify_approver(self):
-        return self.auth.get("always_notify_approver", False)
+        return self.auth.get("always_notify_approver", True)
+    def get_auth_record_approval(self):
+        """ Use record approval (False by default) """
+        return self.auth.get("record_approcal", False)
+    def get_auth_record_approver_role(self):
+        """ UID of the record approver role """
+        return self.auth.get("record_approver_role", "APPROVER")
 
-    # @ToDo: Deprecate
-    def get_aaa_default_uacl(self):
-        return self.aaa.get("default_uacl", self.aaa.acl.READ)
-    def get_aaa_default_oacl(self):
-        return self.aaa.get("default_oacl", self.aaa.acl.READ |
-                                            self.aaa.acl.UPDATE)
+    def get_aaa_role_modules(self):
+        """
+            Which modules are includes in the Role Manager
+            - to assign discrete permissions to via UI
+        """
+        T = current.T
+        return self.aaa.get("role_modules", OrderedDict([
+            ("staff", "Staff"),
+            ("vol", "Volunteers"),
+            ("member", "Members"),
+            ("inv", "Warehouses"),
+            ("asset", "Assets"),
+            ("project", "Projects"),
+            ("survey", "Assessments"),
+            ("irs", "Incidents")
+        ]))
+    def get_aaa_access_levels(self):
+        """
+            Access levels for the Role Manager UI
+        """
+        T = current.T
+        return self.aaa.get("access_levels", OrderedDict([
+            ("reader", "Reader"),
+            ("data_entry", "Data Entry"),
+            ("editor", "Editor"),
+            ("super", "Super Editor")
+        ]))
 
     def get_security_archive_not_delete(self):
         return self.security.get("archive_not_delete", True)
@@ -193,7 +248,7 @@ class S3Config(Storage):
     def get_system_name(self):
         return self.base.get("system_name", current.T("Sahana Eden Humanitarian Management Platform"))
     def get_system_name_short(self):
-        return self.base.get("system_name_short", self.get_system_name())
+        return self.base.get("system_name_short", "Sahana Eden")
     def get_base_debug(self):
         return self.base.get("debug", False)
     def get_base_migrate(self):
@@ -248,7 +303,13 @@ class S3Config(Storage):
     # Finance settings
     # @ToDo: Make these customisable per User/Facility
     def get_fin_currencies(self):
-        return self.fin.get("currencies", self.CURRENCIES)
+        T = current.T
+        currencies = {
+            "EUR" :T("Euros"),
+            "GBP" :T("Great British Pounds"),
+            "USD" :T("United States Dollars"),
+        }
+        return self.fin.get("currencies", currencies)
     def get_fin_currency_default(self):
         return self.fin.get("currency_default", "USD") # Dollars
     def get_fin_currency_writable(self):
@@ -342,11 +403,44 @@ class S3Config(Storage):
     def get_L10n_display_toolbar(self):
         return self.L10n.get("display_toolbar", True)
     def get_L10n_languages(self):
-        return self.L10n.get("languages", { "en":current.T("English") })
+        return self.L10n.get("languages",
+                             OrderedDict([
+                                ("ar", "العربية"),
+                                ("zh-cn", "中文 (简体)"),
+                                ("zh-tw", "中文 (繁體)"),
+                                ("en", "English"),
+                                ("fr", "Français"),
+                                ("de", "Deutsch"),
+                                ("el", "ελληνικά"),
+                                ("it", "Italiano"),
+                                ("ja", "日本語"),
+                                ("ko", "한국어"),
+                                ("pt", "Português"),
+                                ("pt-br", "Português (Brasil)"),
+                                ("ru", "русский"),
+                                ("es", "Español"),
+                                ("tl", "Tagalog"),
+                                ("ur", "اردو"),
+                                ("vi", "Tiếng Việt"),
+                            ]))
     def get_L10n_religions(self):
+        """
+            Religions used in Person Registry
+
+            @ToDo: find a better code
+            http://eden.sahanafoundation.org/ticket/594
+        """
         T = current.T
-        return self.L10n.get("religions", { "none":T("None"),
-                                            "other":T("Other") })
+        return self.L10n.get("religions", {
+                "none":T("none"),
+                "christian":T("Christian"),
+                "muslim":T("Muslim"),
+                "jewish":T("Jewish"),
+                "buddhist":T("Buddhist"),
+                "hindu":T("Hindu"),
+                "bahai":T("Bahai"),
+                "other":T("other")
+            })
     def get_L10n_date_format(self):
         T = current.T
         return self.L10n.get("date_format", T("%Y-%m-%d"))
@@ -445,7 +539,15 @@ class S3Config(Storage):
     def get_ui_autocomplete(self):
         """ Currently Unused """
         return self.ui.get("autocomplete", False)
+    def get_ui_read_label(self):
+        """
+            Label for buttons in list views which lead to a Read-opnly 'Display' view
+        """
+        return self.ui.get("read_label", "Open")
     def get_ui_update_label(self):
+        """
+            Label for buttons in list views which lead to a Read-opnly 'Display' view
+        """
         return self.ui.get("update_label", "Open")
     def get_ui_cluster(self):
         """ UN-style deployment? """
@@ -478,6 +580,7 @@ class S3Config(Storage):
     def get_ui_social_buttons(self):
         """ Display social media Buttons in the footer? """
         return self.ui.get("social_buttons", False)
+
     # -------------------------------------------------------------------------
     # Modules
     # -------------------------------------------------------------------------
@@ -513,11 +616,30 @@ class S3Config(Storage):
         return self.req.get("generate_req_number", True)
     def get_req_req_type(self):
         return self.req.get("req_type", ["Stock", "People", "Other"])
+    def get_req_form_name(self):
+        return self.req.get("req_form_name", "Requisition Form")
+    def get_req_shortname(self):
+        return self.req.get("req_shortname", "REQ")
 
     # -------------------------------------------------------------------------
-    # Inventory Management Setting
+    # Inventory Management Settings
+    #
+
     def get_inv_collapse_tabs(self):
         return self.inv.get("collapse_tabs", True)
+
+    def get_inv_item_status(self):
+        """
+            Item Statuses which can also be Sent Shipment Types
+        """
+        T = current.T
+        return self.inv.get("item_status", {
+                1: T("Dump"),
+                2: T("Sale"),
+                3: T("Reject"),
+                4: T("Surplus")
+           })
+
     def get_inv_shipment_name(self):
         """
             Get the name of Shipments
@@ -527,13 +649,61 @@ class S3Config(Storage):
         """
         return self.inv.get("shipment_name", "shipment")
 
+    def get_inv_shipment_types(self):
+        """
+            Shipment types which are common to both Send & Receive
+        """
+        return self.inv.get("shipment_type", {
+                0 : current.messages.NONE,
+                11: current.T("Internal"),
+            })
+
+    def get_inv_send_types(self):
+        """
+            Shipment types which are just for Send
+        """
+        return self.inv.get("send_type", {
+                21: current.T("Distribution"),
+            })
+
+    def get_inv_recv_types(self):
+        """
+            Shipment types which are just for Receive
+        """
+        T = current.T
+        return self.inv.get("recv_type", {
+                31: T("Other Warehouse"),
+                32: T("Local Donation"),
+                33: T("Foreign Donation"),
+                34: T("Local Purchases"),
+                35: T("Confiscated Goods from Bureau Of Customs")
+           })
+
+    def get_inv_send_form_name(self):
+        return self.inv.get("send_form_name", "Waybill")
+    def get_inv_send_ref_field_name(self):
+        return self.inv.get("send_ref_field_name", "Waybill Number")
+    def get_inv_send_shortname(self):
+        return self.inv.get("send_shortname", "WB")
+    def get_inv_recv_form_name(self):
+        return self.inv.get("recv_form_name", "Goods Received Note")
+    def get_inv_recv_shortname(self):
+        return self.inv.get("recv_shortname", "GRN")
+
+    # -------------------------------------------------------------------------
+    # Proc
+    def get_proc_form_name(self):
+        return self.proc.get("form_name", "Purchase Order")
+    def get_proc_shortname(self):
+        return self.proc.get("form_name", "PO")
+
     # -------------------------------------------------------------------------
     # Supply
     def get_supply_catalog_default(self):
         return self.inv.get("catalog_default", "Other Items")
 
     # -------------------------------------------------------------------------
-    # Organsiation
+    # Organisation
     def get_org_site_code_len(self):
         return self.org.get("site_code_len", 10)
 
@@ -545,17 +715,18 @@ class S3Config(Storage):
         """
         return self.hrm.get("email_required", True)
 
+    def get_hrm_deletable(self):
+        """
+            If set to True then HRM records are deletable rather than just being able to be marked as obsolete
+        """
+        return self.hrm.get("deletable", False)
+
     def get_hrm_show_staff(self):
         """
-            If set to True then HRM module exposes the Staff resource
+            If set to True then show 'Staff' options when HRM enabled
+            - needs a separate setting as vol requires hrm, but we may only wish to show Volunteers
         """
         return self.hrm.get("show_staff", True)
-
-    def get_hrm_show_vols(self):
-        """
-            If set to True then HRM module exposes the Volunteer resource
-        """
-        return self.hrm.get("show_vols", True)
 
     def get_hrm_skill_types(self):
         """
@@ -566,17 +737,83 @@ class S3Config(Storage):
         """
         return self.hrm.get("skill_types", False)
 
+    def get_hrm_experience(self):
+        """
+            Which table to use for showing the experience of HRs
+            - currently supported options are:
+                * experience (default)
+                * programme (used by IFRC)
+        """
+        return self.hrm.get("experience", "experience")
+
     # -------------------------------------------------------------------------
     # Project Tracking
-    def get_project_drr(self):
-        return self.project.get("drr", False)
-    def get_project_community_activity(self):
-        return self.project.get("community_activity", False)
+    def get_project_mode_3w(self):
+        """
+            Enable 3W mode in the projects module
+        """
+        return self.project.get("mode_3w", False)
+
+    def get_project_mode_task(self):
+        """
+            Enable Tasks mode in the projects module
+        """
+        return self.project.get("mode_task", False)
+
+    def get_project_mode_drr(self):
+        """
+            Enable DRR extensions in the projects module
+        """
+        return self.project.get("mode_drr", False)
+
+    def get_project_activities(self):
+        """
+            Use Activities in Projects
+        """
+        return self.project.get("activities", False)
+
+    def get_project_codes(self):
+        """
+            Use Codes in Projects
+        """
+        return self.project.get("codes", False)
+
+    def get_project_community(self):
+        """
+            Label project_location as 'Community'
+        """
+        return self.project.get("community", False)
+
     def get_project_milestones(self):
+        """
+            Use Milestones in Projects
+        """
         return self.project.get("milestones", False)
-    # Save Search and Subscription
-    def get_save_search_widget(self):
-        return self.save_search.get("widget", True)
+
+    def get_project_sectors(self):
+        """
+            Use Sectors in Projects
+        """
+        return self.project.get("sectors", True)
+
+    def get_project_theme_percentages(self):
+        """
+            Use Theme Percentages in Projects
+        """
+        return self.project.get("theme_percentages", False)
+
+    def get_project_multiple_budgets(self):
+        """
+            Use Multiple Budgets in Projects
+        """
+        return self.project.get("multiple_budgets", False)
+
+    def get_project_multiple_organisations(self):
+        """
+            Use Multiple Organisations in Projects
+        """
+        return self.project.get("multiple_organisations", False)
+
     def get_project_organisation_roles(self):
         T = current.T
         return self.project.get("organisation_roles", {
@@ -586,8 +823,22 @@ class S3Config(Storage):
                 4: T("Customer"), # T("Beneficiary")?
                 5: T("Supplier"), # T("Beneficiary")?
             })
+
     def get_project_organisation_lead_role(self):
         return self.project.get("organisation_lead_role", 1)
+
+    # -------------------------------------------------------------------------
+    # Save Search and Subscription
+    def get_save_search_widget(self):
+        """
+            Enable the Saved Search widget
+        """
+        return self.save_search.get("widget", True)
+    # -------------------------------------------------------------------------
+    # Message Parser Settings
+    def get_parser_enabled(self):
+            return self.parser.get("parser_enabled")
+
 
     # -------------------------------------------------------------------------
     # Active modules list

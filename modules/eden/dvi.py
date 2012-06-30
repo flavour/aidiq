@@ -54,6 +54,7 @@ class S3DVIModel(S3Model):
         s3 = current.response.s3
 
         location_id = self.gis_location_id
+        organisation_id = self.org_organisation_id
 
         pe_label = self.pr_pe_label
         person_id = self.pr_person_id
@@ -111,7 +112,7 @@ class S3DVIModel(S3Model):
                                         label = T("Task Status"),
                                         represent = lambda opt: \
                                                     task_status.get(opt, UNKNOWN_OPT)),
-                                  *s3.meta_fields())
+                                  *s3_meta_fields())
 
         # CRUD Strings
         s3.crud_strings[tablename] = Storage(
@@ -121,8 +122,7 @@ class S3DVIModel(S3Model):
             title_update = T("Update Request"),
             title_search = T("Search Request"),
             subtitle_create = T("Add New Request"),
-            subtitle_list = T("List of Requests"),
-            label_list_button = T("List of Requests"),
+            label_list_button = T("List Requests"),
             label_create_button = T("Add Request"),
             label_delete_button = T("Delete Request"),
             msg_record_created = T("Recovery Request added"),
@@ -155,12 +155,15 @@ class S3DVIModel(S3Model):
         #
         tablename = "dvi_morgue"
         table = db.define_table(tablename,
+                                self.super_link("pe_id", "pr_pentity"),
+                                self.super_link("site_id", "org_site"),
                                 Field("name",
                                       unique=True,
                                       notnull=True),
+                                organisation_id(),
                                 Field("description"),
                                 location_id(),
-                                *s3.meta_fields())
+                                *s3_meta_fields())
 
         # Reusable Field
         morgue_id = S3ReusableField("morgue_id", table,
@@ -169,11 +172,27 @@ class S3DVIModel(S3Model):
                                     represent = self.morgue_represent,
                                     ondelete = "RESTRICT")
 
-        # CRUD Strings?
+        # CRUD Strings
+        s3.crud_strings[tablename] = Storage(
+            title_create = T("Add Morgue"),
+            title_display = T("Morgue Details"),
+            title_list = T("Morgues"),
+            title_update = T("Update Morgue Details"),
+            title_search = T("Search Morgues"),
+            subtitle_create = T("Add New Morgue"),
+            label_list_button = T("List Morgues"),
+            label_create_button = T("Add Morgue"),
+            label_delete_button = T("Delete Morgue"),
+            msg_record_created = T("Morgue added"),
+            msg_record_modified = T("Morgue updated"),
+            msg_record_deleted = T("Morgue deleted"),
+            msg_list_empty = T("No morgues found"))
 
         # Search Method?
 
         # Resource Configuration?
+        self.configure(tablename,
+                       super_entity=("pr_pentity", "org_site"))
 
         # Components
         self.add_component("dvi_body", dvi_morgue="morgue_id")
@@ -210,7 +229,7 @@ class S3DVIModel(S3Model):
                                   pr_gender(label=T("Apparent Gender")),
                                   pr_age_group(label=T("Apparent Age")),
                                   location_id(label=T("Place of Recovery")),
-                                  *s3.meta_fields())
+                                  *s3_meta_fields())
 
         # CRUD Strings
         s3.crud_strings[tablename] = Storage(
@@ -220,7 +239,6 @@ class S3DVIModel(S3Model):
             title_update = T("Edit Dead Body Details"),
             title_search = T("Find Dead Body Report"),
             subtitle_create = T("Add New Report"),
-            subtitle_list = T("List of Reports"),
             label_list_button = T("List Reports"),
             label_create_button = T("Add Report"),
             label_delete_button = T("Delete Report"),
@@ -279,19 +297,18 @@ class S3DVIModel(S3Model):
                                                  label = T("DNA Profiling")),
                                   checklist_item("dental",
                                                  label = T("Dental Examination")),
-                                  *s3.meta_fields())
+                                  *s3_meta_fields())
 
         # CRUD Strings
         CREATE_CHECKLIST = T("Create Checklist")
         s3.crud_strings[tablename] = Storage(
             title_create = CREATE_CHECKLIST,
             title_display = T("Checklist of Operations"),
-            title_list = T("List Checklists"),
+            title_list = T("Checklists"),
             title_update = T("Update Task Status"),
             title_search = T("Search Checklists"),
             subtitle_create = T("New Checklist"),
-            subtitle_list = T("Checklist of Operations"),
-            label_list_button = T("Show Checklist"),
+            label_list_button = T("List Checklists"),
             label_create_button = CREATE_CHECKLIST,
             msg_record_created = T("Checklist created"),
             msg_record_modified = T("Checklist updated"),
@@ -312,19 +329,18 @@ class S3DVIModel(S3Model):
                                   Field("footwear", "text"),  # @todo: elaborate
                                   Field("watch", "text"),     # @todo: elaborate
                                   Field("other", "text"),
-                                  *s3.meta_fields())
+                                  *s3_meta_fields())
 
         # CRUD Strings
         ADD_PERSONAL_EFFECTS = T("Add Personal Effects")
         s3.crud_strings[tablename] = Storage(
             title_create = ADD_PERSONAL_EFFECTS,
             title_display = T("Personal Effects Details"),
-            title_list = T("List Personal Effects"),
+            title_list = T("Personal Effects"),
             title_update = T("Edit Personal Effects Details"),
             title_search = T("Search Personal Effects"),
             subtitle_create = T("Add New Entry"),
-            subtitle_list = T("Personal Effects"),
-            label_list_button = T("List Records"),
+            label_list_button = T("List Personal Effects"),
             label_create_button = ADD_PERSONAL_EFFECTS,
             msg_record_created = T("Record added"),
             msg_record_modified = T("Record updated"),
@@ -377,17 +393,16 @@ class S3DVIModel(S3Model):
                                         represent = lambda opt: \
                                                     dvi_id_methods.get(opt, UNKNOWN_OPT)),
                                   Field("comment", "text"),
-                                  *s3.meta_fields())
+                                  *s3_meta_fields())
 
         # CRUD Strings
         s3.crud_strings[tablename] = Storage(
             title_create = T("Add Identification Report"),
             title_display = T("Identification Report"),
-            title_list = T("List Reports"),
+            title_list = T("Identification Reports"),
             title_update = T("Edit Identification Report"),
             title_search = T("Search Report"),
             subtitle_create = T("Add New Report"),
-            subtitle_list = T("Identification Reports"),
             label_list_button = T("List Reports"),
             label_create_button = T("Add Identification Report"),
             msg_record_created = T("Report added"),

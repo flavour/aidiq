@@ -7,7 +7,7 @@
 module = request.controller
 resourcename = request.function
 
-if module not in deployment_settings.modules:
+if not deployment_settings.has_module(module):
     raise HTTP(404, body="Module disabled: %s" % module)
 
 # -----------------------------------------------------------------------------
@@ -71,7 +71,6 @@ def outbox():
     s3.crud_strings[tablename] = Storage(
         title_list = T("View Outbox"),
         title_update = T("Edit Message"),
-        subtitle_list = T("Available Messages"),
         label_list_button = T("View Outbox"),
         label_delete_button = T("Delete Message"),
         msg_record_modified = T("Message updated"),
@@ -90,7 +89,6 @@ def outbox():
 
 # =============================================================================
 def log():
-
     """
         RESTful CRUD controller for the Master Message Log
         - all Inbound & Outbound Messages go here
@@ -107,16 +105,14 @@ def log():
 
     # CRUD Strings
     ADD_MESSAGE = T("Add Message")
-    LIST_MESSAGES = T("List Messages")
     s3.crud_strings[tablename] = Storage(
         title_create = ADD_MESSAGE,
         title_display = T("Message Details"),
-        title_list = LIST_MESSAGES,
+        title_list = T("Messages"),
         title_update = T("Edit message"),
         title_search = T("Search messages"),
         subtitle_create = T("Send new message"),
-        subtitle_list = T("Messages"),
-        label_list_button = LIST_MESSAGES,
+        label_list_button = T("List Messages"),
         label_create_button = ADD_MESSAGE,
         msg_record_created = T("Message added"),
         msg_record_modified = T("Message updated"),
@@ -129,16 +125,15 @@ def log():
 
 # =============================================================================
 def tropo():
-
     """
         Receive a JSON POST from the Tropo WebAPI
 
         @see: https://www.tropo.com/docs/webapi/newhowitworks.htm
     """
 
-    exec("from applications.%s.modules.tropo import Tropo, Session" % request.application)
-    # Faster for Production (where app-name won't change):
-    #from applications.eden.modules.tropo import Tropo, Session
+    # Stored in modules/tropo.py
+    from tropo import Tropo, Session
+
     try:
         s = Session(request.body.read())
         t = Tropo()
@@ -213,7 +208,6 @@ def twitter_search_results():
 # =============================================================================
 @auth.s3_requires_membership(1)
 def setting():
-
     """ SMS settings for the messaging framework """
 
     tablename = "%s_%s" % (module, resourcename)
@@ -261,11 +255,9 @@ def setting():
     #response.menu_options = admin_menu_options
     return s3_rest_controller()
 
-
 # -----------------------------------------------------------------------------
 @auth.s3_requires_membership(1)
 def inbound_email_settings():
-
     """
         RESTful CRUD controller for email settings
             - appears in the administration menu
@@ -305,7 +297,6 @@ def inbound_email_settings():
 
 # -----------------------------------------------------------------------------
 def email_inbox():
-
     """
         RESTful CRUD controller for the Email Inbox
         - all Inbound Email Messages go here
@@ -325,7 +316,6 @@ def email_inbox():
 # -----------------------------------------------------------------------------
 @auth.s3_requires_membership(1)
 def modem_settings():
-
     """
         RESTful CRUD controller for modem settings
         - appears in the administration menu
@@ -356,15 +346,13 @@ def modem_settings():
 
     # CRUD Strings
     ADD_SETTING = T("Add Setting")
-    VIEW_SETTINGS = T("View Settings")
     s3.crud_strings[tablename] = Storage(
         title_create = ADD_SETTING,
         title_display = T("Setting Details"),
-        title_list = VIEW_SETTINGS,
+        title_list = T("Settings"),
         title_update = T("Edit Modem Settings"),
         title_search = T("Search Settings"),
-        subtitle_list = T("Settings"),
-        label_list_button = VIEW_SETTINGS,
+        label_list_button = T("View Settings"),
         label_create_button = ADD_SETTING,
         msg_record_created = T("Setting added"),
         msg_record_modified = T("Modem settings updated"),
@@ -384,7 +372,6 @@ def modem_settings():
 #------------------------------------------------------------------------------
 @auth.s3_requires_membership(1)
 def smtp_to_sms_settings():
-
     """
         RESTful CRUD controller for SMTP to SMS settings
         - appears in the administration menu
@@ -424,7 +411,6 @@ def smtp_to_sms_settings():
 #------------------------------------------------------------------------------
 @auth.s3_requires_membership(1)
 def api_settings():
-
     """
         RESTful CRUD controller for Web API settings
         - appears in the administration menu
@@ -471,7 +457,6 @@ def api_settings():
 # -----------------------------------------------------------------------------
 @auth.s3_requires_membership(1)
 def tropo_settings():
-
     """
         RESTful CRUD controller for Tropo settings
         - appears in the administration menu
@@ -504,7 +489,6 @@ def tropo_settings():
 # -----------------------------------------------------------------------------
 @auth.s3_requires_membership(1)
 def twitter_settings():
-
     """
         RESTful CRUD controller for Twitter settings
         - appears in the administration menu
@@ -571,7 +555,6 @@ def twitter_settings():
     s3mgr.configure(tablename, listadd=False, deletable=False)
     return s3_rest_controller()
 
-
 # =============================================================================
 # The following functions hook into the pr functions:
 #
@@ -600,7 +583,6 @@ def group():
 
 # -----------------------------------------------------------------------------
 def group_membership():
-
     """ RESTful CRUD controller """
 
     if auth.is_logged_in() or auth.basic():
@@ -669,7 +651,6 @@ def contact():
 
 # -----------------------------------------------------------------------------
 def search():
-
     """
         Do a search of groups which match a type
         - used for auto-completion
@@ -725,7 +706,6 @@ def recipient_represent(id, default_label=""):
 
 # -----------------------------------------------------------------------------
 def person_search(value, type=None):
-
     """ Search for People & Groups which match a search term """
 
     # Shortcuts
@@ -774,7 +754,6 @@ def person_search(value, type=None):
 
     return items
 
-
 # -----------------------------------------------------------------------------
 def subscription():
 
@@ -813,11 +792,15 @@ def load_search(id):
 
 # -----------------------------------------------------------------------------
 def check_updates(user_id):
-    #Check Updates for all the Saved Searches Subscribed by the User
+    """
+        Check Updates for all the Saved Searches Subscribed by the User
+    """
+
     message = "<h2>Saved Searches' Update</h2>"
     flag = 0
     table = s3db.pr_save_search
     rows = db(table.user_id == user_id).select()
+    search_vars_represent = s3base.search_vars_represent
     for row in rows :
         if row.subscribed:
             records = load_search(row.id)
@@ -830,7 +813,6 @@ def check_updates(user_id):
         return
     else:
         return XML(message)
-
 
 # -----------------------------------------------------------------------------
 def subscription_messages():
@@ -860,7 +842,6 @@ def subscription_messages():
                                   fromaddress="sahana@sahana.com")
     return
 
-
 # =============================================================================
 # Enabled only for testing:
 #
@@ -878,6 +859,5 @@ def tag():
 
     s3mgr.configure(tablename, listadd=False)
     return s3_rest_controller()
-
 
 # END ================================================================================

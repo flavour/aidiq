@@ -20,7 +20,7 @@ def index():
 
 # =============================================================================
 @auth.s3_requires_membership(1)
-def settings():
+def setting():
     """ Custom page to link to those Settings which can be edited through the web interface """
     return dict()
 
@@ -128,16 +128,14 @@ def user():
 
     # CRUD Strings
     ADD_USER = T("Add User")
-    LIST_USERS = T("List Users")
     s3.crud_strings[tablename] = Storage(
         title_create = ADD_USER,
         title_display = T("User Details"),
-        title_list = LIST_USERS,
+        title_list = T("Users"),
         title_update = T("Edit User"),
         title_search = T("Search Users"),
         subtitle_create = T("Add New User"),
-        subtitle_list = T("Users"),
-        label_list_button = LIST_USERS,
+        label_list_button = T("List Users"),
         label_create_button = ADD_USER,
         label_delete_button = T("Delete User"),
         msg_record_created = T("User added"),
@@ -260,7 +258,7 @@ def user():
         response.s3.dataTableDisplay = values
 
         # Add client-side validation
-        s3_register_validation()
+        s3base.s3_register_validation()
 
         return output
     response.s3.postp = postp
@@ -286,16 +284,14 @@ def group():
 
     # CRUD Strings
     ADD_ROLE = T("Add Role")
-    LIST_ROLES = T("List Roles")
     s3.crud_strings[tablename] = Storage(
         title_create = ADD_ROLE,
         title_display = T("Role Details"),
-        title_list = LIST_ROLES,
+        title_list = T("Roles"),
         title_update = T("Edit Role"),
         title_search = T("Search Roles"),
         subtitle_create = T("Add New Role"),
-        subtitle_list = T("Roles"),
-        label_list_button = LIST_ROLES,
+        label_list_button = T("List Roles"),
         label_create_button = ADD_ROLE,
         msg_record_created = T("Role added"),
         msg_record_modified = T("Role updated"),
@@ -321,11 +317,10 @@ def organisation():
     s3.crud_strings[tablename] = Storage(
         title_create = T("Add Organization Domain"),
         title_display = T("Organization Domain Details"),
-        title_list = T("List Organization Domains"),
+        title_list = T("Organization Domains"),
         title_update = T("Edit Organization Domain"),
         title_search = T("Search Organization Domains"),
         subtitle_create = T("Add New Organization Domain"),
-        subtitle_list = T("Organization Domains"),
         label_list_button = T("List Organization Domains"),
         label_create_button = T("Add Organization Domain"),
         label_delete_button = T("Delete Organization Domain"),
@@ -471,7 +466,7 @@ def ticket():
 
     return dict(app=app,
                 ticket=ticket,
-                traceback=Traceback(e.traceback),
+                traceback=s3base.Traceback(e.traceback),
                 code=e.code,
                 layer=e.layer)
 
@@ -484,18 +479,16 @@ def errors():
     from gluon.admin import apath
     from gluon.fileutils import listdir
 
-    app = request.application
-
     for item in request.vars:
         if item[:7] == "delete_":
-            os.unlink(apath("%s/errors/%s" % (app, item[7:]), r=request))
+            os.unlink(apath("%s/errors/%s" % (appname, item[7:]), r=request))
 
-    func = lambda p: os.stat(apath("%s/errors/%s" % (app, p), r=request)).st_mtime
-    tickets = sorted(listdir(apath("%s/errors/" % app, r=request), "^\w.*"),
+    func = lambda p: os.stat(apath("%s/errors/%s" % (appname, p), r=request)).st_mtime
+    tickets = sorted(listdir(apath("%s/errors/" % appname, r=request), "^\w.*"),
                      key=func,
                      reverse=True)
 
-    return dict(app=app, tickets=tickets)
+    return dict(app=appname, tickets=tickets)
 
 # =============================================================================
 # Create portable app
@@ -508,8 +501,7 @@ def portable():
     import os
     from operator import itemgetter, attrgetter
 
-    app = request.application
-    uploadfolder=os.path.join(apath("%s" % app, r=request), "cache")
+    uploadfolder=os.path.join(apath("%s" % appname, r=request), "cache")
     web2py_source = None
     web2py_source_exists = False
     last_build_exists = False
@@ -579,8 +571,13 @@ def portable():
 
     else:
         download_last_form = None
-    return dict(web2py_form=web2py_form, generator_form=generator_form, download_last_form=download_last_form)
+    return dict(
+            web2py_form=web2py_form,
+            generator_form=generator_form,
+            download_last_form=download_last_form
+        )
 
+# -----------------------------------------------------------------------------
 def create_portable_app(web2py_source, copy_database=False, copy_uploads=False):
     """Function to create the portable app based on the parameters"""
 
@@ -589,8 +586,7 @@ def create_portable_app(web2py_source, copy_database=False, copy_uploads=False):
     import zipfile
     import contenttype
 
-    app = request.application
-    cachedir = os.path.join(apath("%s" % app, r=request), "cache")
+    cachedir = os.path.join(apath("%s" % appname, r=request), "cache")
     tempdir = tempfile.mkdtemp("", "eden-", cachedir)
     workdir = os.path.join(tempdir, "web2py")
     if copy_uploads:
@@ -598,8 +594,8 @@ def create_portable_app(web2py_source, copy_database=False, copy_uploads=False):
     else:
         ignore = shutil.ignore_patterns("*.db", "*.log", "*.table", "errors", "sessions", "compiled" , "uploads", "cache", ".bzr", "*.pyc")
 
-    appdir = os.path.join(workdir, "applications", app)
-    shutil.copytree(apath("%s" % app, r=request),\
+    appdir = os.path.join(workdir, "applications", appname)
+    shutil.copytree(apath("%s" % appname, r=request),\
                     appdir, \
                     ignore = ignore)
     os.mkdir(os.path.join(appdir, "errors"))
@@ -654,7 +650,6 @@ def create_portable_app(web2py_source, copy_database=False, copy_uploads=False):
     response.headers["Content-Type"] = contenttype.contenttype(portable_app)
     response.headers["Content-Disposition"] = \
                             "attachment; filename=portable-sahana.zip"
-
 
     return response.stream(portable_app)
 

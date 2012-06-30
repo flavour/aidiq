@@ -15,13 +15,16 @@ from selenium.common.exceptions import NoSuchElementException
 from gluon import current
 from gluon.storage import Storage
 
+current.data = Storage()
+
 # S3 Tests
+from tests.web2unittest import *
 from tests import *
 
 # Read Settings
 settings = current.deployment_settings
 public_url = settings.get_base_public_url()
-base_url = "%s/%s" % (public_url, request.application)
+base_url = "%s/%s" % (public_url, current.request.application)
 system_name = settings.get_system_name()
 
 # Store these to be available to modules
@@ -30,60 +33,99 @@ config.system_name = system_name
 config.timeout = 5 # seconds
 config.url = base_url
 
-browser = config.browser = webdriver.Firefox()
-browser.implicitly_wait(config.timeout)
+base_dir = os.path.join(os.getcwd(), "applications", current.request.application)
+config.base_dir = base_dir
 
+test = None
+remote = None
 # Do we have any command-line arguments?
 args = sys.argv
 if args[1:]:
     # The 1st argument is taken to be the test name:
     test = args[1]
+    if args[2:]:
+        # The 2nd argument is taken to be a remote server:
+        # @ToDo:
+        #  Need to change this so can do remote for whole suite (normal case)
+        #  - convert to proper params
+        remote = args[2]
+
+if remote:
+    # @ToDo
+    browser = config.browser = webdriver.Remote()
 else:
-    test = None
+    fp = webdriver.FirefoxProfile()
+    fp.set_preference("network.proxy.type", 0)
+    browser = config.browser = webdriver.Firefox(firefox_profile=fp)
+
+browser.implicitly_wait(config.timeout)
+
+# Shortcut
+loadTests = unittest.TestLoader().loadTestsFromTestCase
 
 if test:
     # Run specified Test after logging in
     # @ToDo: Each test should check whether it needs to login independently as they may wish to login using different credentials
     # Maybe this could be bypassed for a test run within the suite by passing it an argument
-#    login(account="admin")
-    globals()[test]()
+
+    #login(account="admin")
+    print test
+    suite = loadTests(globals()[test])
 
 else:
     # Run all Tests
-    # Log into admin testing account
-#    login(account="admin")
+
+    # Create Organisation
+    suite = loadTests(CreateOrganisation)
     
-    suite = unittest.TestLoader().loadTestsFromTestCase(Logistics)
-    suite.addTests(unittest.TestLoader().loadTestsFromTestCase(Org001))
+    # Shortcut
+    addTests = suite.addTests
+    
+    # Create Office
+    addTests(loadTests(CreateOffice))
+    
+    # Setup Staff
+    addTests(loadTests(CreateStaff))
+    
+    # Setup New Volunteer
+    addTests(loadTests(CreateVolunteer))
+    
+    # Create Staff & Volunteer Training
+    addTests(loadTests(CreateStaffTraining))
+    addTests(loadTests(CreateVolunteerTraining))
+
+    # Inventory tests
+    addTests(loadTests(SendItem))
+    addTests(loadTests(ReceiveItem))
+    addTests(loadTests(SendReceiveItem))
+    
+    # Project Tests
+    addTests(loadTests(CreateProject))
+
+    # Asset Tests
+    addTests(loadTests(CreateAsset))
+
+    # Assign Staff to Organisation
+    addTests(loadTests(AddStaffToOrganisation))
+    
+    # Assign Staff to Office
+    addTests(loadTests(AddStaffToOffice))
+    
+    # Assign Staff to Warehouse
+    addTests(loadTests(AddStaffToWarehouse))
+
+try:
+    import HTMLTestRunner
+    fp = file("Sahana-Eden-Test-Result.html", "wb")
+    runner = HTMLTestRunner.HTMLTestRunner(
+                                           stream=fp,
+                                           title="Sahana Eden Test Result",
+                                          )
+    runner.run(suite)
+except:
     unittest.TextTestRunner(verbosity=2).run(suite)
-#    inventory()
-    # List of individual automated test scripts which Suite will run one by one:
-    # Organization Management (ORG) tests
-#    org001() # Setup Organizations
-    org002() # Setup Offices
-    
-    # Human Resources Management (HRM) tests
-    hrm001() # Setup Staff
-    hrm002() # Setup New Volunteer
-    hrm003() # Setup Training Course
-    hrm004() # Setup Training Event
-    hrm005() # Assign staff to Organization
-    hrm006() # Assign Staff to office
-    hrm007() # Assign staff to warehouse
-    
-    # Inventory management (INV) tests
-    inv001() # Setup Warehouses     // needs more refining
-    inv002() # Setup Items        // needs more refining
-    inv003() # Setup Catalogues // needs more refining
-    inv004() # Setup Categories // needs more refining
-    inv005() # Create Requests // needs more refining
-    inv006() # Match Requests // needs more refining
-    
-    # Assets management (ASSET) tests
-    asset001() # Set up Assets
-    
-    # Log out of testing account
-    logout() #
-    
-    # Cleanup 
-    browser.close()
+
+# Cleanup
+browser.close()
+
+# END =========================================================================

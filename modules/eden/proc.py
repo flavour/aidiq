@@ -29,7 +29,7 @@
 
 __all__ = ["S3SupplierModel",
            "S3ProcurementModel",
-           "proc_plan_rheader"]
+           "proc_rheader"]
 
 from gluon import *
 from gluon.storage import Storage
@@ -64,7 +64,6 @@ class S3ProcurementModel(S3Model):
         db = current.db
         s3 = current.response.s3
 
-        currency_type = s3.currency_type
         item_id = self.supply_item_entity_id
         supply_item_id = self.supply_item_id
         item_pack_id = self.supply_item_pack_id
@@ -126,18 +125,17 @@ class S3ProcurementModel(S3Model):
                                         default = 0,
                                         ),
                                   # @ToDo: Add estimated shipping costs
-                                  s3.comments(),
-                                  *s3.meta_fields())
+                                  s3_comments(),
+                                  *s3_meta_fields())
 
         # CRUD strings
         s3.crud_strings[tablename] = Storage(
             title_create = T("Add Procurement Plan"),
             title_display = T("Procurement Plan Details"),
-            title_list = T("List Procurement Plans"),
+            title_list = T("Procurement Plans"),
             title_update = T("Edit Procurement Plan"),
             title_search = T("Search Procurement Plans"),
             subtitle_create = T("Add Procurement Plan"),
-            subtitle_list = T("Procurement Plans"),
             label_list_button = T("List Procurement Plans"),
             label_create_button = T("Add Procurement Plan"),
             label_delete_button = T("Delete Procurement Plan"),
@@ -184,10 +182,10 @@ class S3ProcurementModel(S3Model):
                                         label = T("Quantity"),
                                         ),
                                   # @ToDo: Move this into a Currency Widget for the pack_value field
-                                  currency_type("currency",
-                                                readable=False,
-                                                writable=False
-                                            ),
+                                  s3_currency(
+                                              readable=False,
+                                              writable=False
+                                              ),
                                   Field("pack_value",
                                         "double",
                                         readable=False,
@@ -196,18 +194,17 @@ class S3ProcurementModel(S3Model):
                                   #Field("pack_quantity",
                                   #      "double",
                                   #      compute = record_pack_quantity), # defined in supply
-                                  s3.comments(),
-                                  *s3.meta_fields())
+                                  s3_comments(),
+                                  *s3_meta_fields())
 
         # CRUD strings
         s3.crud_strings[tablename] = Storage(
             title_create = T("Add Item to Procurement Plan"),
             title_display = T("Procurement Plan Item Details"),
-            title_list = T("List Items in Procurement Plan"),
+            title_list = T("Items in Procurement Plan"),
             title_update = T("Edit Procurement Plan Item"),
             title_search = T("Search Procurement Plan Items"),
             subtitle_create = T("Add Item to Procurement Plan"),
-            subtitle_list = T("Procurement Plan Items"),
             label_list_button = T("List Items in Procurement Plan"),
             label_create_button = T("Add Item to Procurement Plan"),
             label_delete_button = T("Remove Item from Procurement Plan"),
@@ -265,7 +262,6 @@ class S3ProcurementModel(S3Model):
         # Pass variables back to global scope (response.s3.*)
         #
         return Storage(
-                proc_plan_rheader = proc_plan_rheader,
             )
 
     # -------------------------------------------------------------------------
@@ -319,6 +315,8 @@ class S3SupplierModel(S3Model):
         # =====================================================================
         # Suppliers
         #
+        # @ToDo: Replace with org_organisation?
+        #
         tablename = "proc_supplier"
         table = self.define_table(tablename,
                                   Field("name", notnull=True, unique=True,
@@ -332,18 +330,17 @@ class S3SupplierModel(S3Model):
                                   Field("website", label = T("Website"),
                                         requires = IS_NULL_OR(IS_URL()),
                                         represent = s3_url_represent),
-                                  s3.comments(),
-                                  *(s3.address_fields() + s3.meta_fields()))
+                                  s3_comments(),
+                                  *(s3_address_fields() + s3_meta_fields()))
 
         # CRUD strings
         s3.crud_strings[tablename] = Storage(
             title_create = T("Add Supplier"),
             title_display = T("Supplier Details"),
-            title_list = T("List Suppliers"),
+            title_list = T("Suppliers"),
             title_update = T("Edit Supplier"),
             title_search = T("Search Suppliers"),
             subtitle_create = T("Add Supplier"),
-            subtitle_list = T("Suppliers"),
             label_list_button = T("List Suppliers"),
             label_create_button = T("Add Supplier"),
             label_delete_button = T("Delete Supplier"),
@@ -405,8 +402,8 @@ class S3SupplierModel(S3Model):
 
 
 # =============================================================================
-def proc_plan_rheader(r):
-    """ Resource Header for Planned Procurements """
+def proc_rheader(r):
+    """ Resource Header for Procurements """
 
     if r.representation == "html":
         plan = r.record

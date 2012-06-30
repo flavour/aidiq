@@ -7,7 +7,8 @@ __all__ = ["dt_filter",
            "dt_action",
           ]
 
-# @todo Their are performance issues need to profile and find out in which functions are the bottlenecks
+# @ToDo: There are performance issues
+#        - need to profile and find out in which functions are the bottlenecks
  
 # Selenium WebDriver
 from selenium import webdriver
@@ -16,20 +17,19 @@ from selenium.common.exceptions import NoSuchElementException
 
 from gluon import current
 
-from s3 import s3_debug
-
 import time
 
 # -----------------------------------------------------------------------------
 def convert_repr_number (number):
     """
-        helper function to convert a string representation back to a number.
+        Helper function to convert a string representation back to a number.
         Assumptions:
          * It may have a thousand separator
          * It may have a decimal point
          * If it has a thousand separator then it will have a decimal point
         It will return false is the number doesn't look valid
     """
+
     sep = ""
     dec = ""
     part_one = "0"
@@ -57,12 +57,17 @@ def convert_repr_number (number):
         return float("%s%s" % (part_one, part_two))
 
 # -----------------------------------------------------------------------------
-def dt_filter(search_string=" ",
+def dt_filter(reporter,
+              search_string=" ",
               forceClear = True,
               quiet = True):
-    """ filter the dataTable """
+    """
+        Filter the dataTable
+    """
+
     if forceClear:
-        if not dt_filter(forceClear = False,
+        if not dt_filter(reporter,
+                         forceClear = False,
                          quiet = quiet):
             return False
     config = current.test_config
@@ -81,22 +86,26 @@ def dt_filter(search_string=" ",
         sleep_time += 1
         if sleep_time > sleep_limit:
             if not quiet:
-                s3_debug("DataTable filter didn't respond within %d seconds" % sleep_limit)
+                reporter("DataTable filter didn't respond within %d seconds" % sleep_limit)
             return False
     return True
 
 # -----------------------------------------------------------------------------
-def dt_row_cnt(check = (),
-              quiet = True,
-              utObj = None):
-    """ return the rows that are being displayed and the total rows in the dataTable """
+def dt_row_cnt(reporter,
+               check = (),
+               quiet = True,
+               utObj = None):
+    """
+        return the rows that are being displayed and the total rows in the dataTable
+    """
+
     config = current.test_config
     browser = config.browser
 
     elem = browser.find_element_by_id("list_info")
     details = elem.text
     if not quiet:
-        s3_debug(details)
+        reporter(details)
     words = details.split()
     start = int(words[1])
     end = int(words[3])
@@ -133,6 +142,7 @@ def dt_row_cnt(check = (),
 def dt_data(row_list = None,
             add_header = False):
     """ return the data in the displayed dataTable """
+
     config = current.test_config
     browser = config.browser
 
@@ -162,6 +172,7 @@ def dt_data_item(row = 1,
                  tableID = "list",
                 ):
     """ Returns the data found in the cell of the dataTable """
+
     config = current.test_config
     browser = config.browser
 
@@ -209,6 +220,7 @@ def dt_find(search = "",
                 assert 0, "Unable to find any Plastic Sheets"
 
     """
+
     config = current.test_config
     browser = config.browser
 
@@ -284,14 +296,15 @@ def dt_find(search = "",
                     if first:
                         return result
     return result
-
         
 # -----------------------------------------------------------------------------
-def dt_links(row = 1,
+def dt_links(reporter,
+             row = 1,
              tableID = "list",
              quiet = True
             ):
     """ Returns a list of links in the given row of the dataTable """
+
     config = current.test_config
     browser = config.browser
 
@@ -314,25 +327,39 @@ def dt_links(row = 1,
                 break
             cnt += 1
             if not quiet:
-                s3_debug("%2d) %s" % (column, elem.text))
+                reporter("%2d) %s" % (column, elem.text))
             links.append([column,elem.text])
         column += 1
     return links
 
+# -----------------------------------------------------------------------------
 def dt_action(row = 1,
-              action = "Open",
+              action = None,
               column = 1,
               tableID = "list",
              ):
     """ click the action button in the dataTable """
+
     config = current.test_config
     browser = config.browser
 
     # What looks like a fairly fragile xpath, but it should work unless DataTable changes
-    button = ".//*[@id='%s']/tbody/tr[%s]/td[%s]/a[contains(text(),'%s')]" % (tableID, row, column, action)
-    try:
-        elem = browser.find_element_by_xpath(button)
-    except:
-        return False
-    elem.click()
-    return True
+    if action:
+        button = ".//*[@id='%s']/tbody/tr[%s]/td[%s]/a[contains(text(),'%s')]" % (tableID, row, column, action)
+    else:
+        button = ".//*[@id='%s']/tbody/tr[%s]/td[%s]/a" % (tableID, row, column)
+    giveup = 0.0
+    sleeptime = 0.2
+    while giveup < 10.0:
+        try:
+            element = browser.find_element_by_xpath(button)
+            url = element.get_attribute("href")
+            if url:
+                browser.get(url)
+                return True
+        except Exception as inst:
+            print "%s with %s" % (type(inst), button)
+        time.sleep(sleeptime)
+        giveup += sleeptime
+    return False
+# END =========================================================================

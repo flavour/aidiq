@@ -27,7 +27,6 @@
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
     OTHER DEALINGS IN THE SOFTWARE.
 
-    @status: work in progress - help welcome!
     @todo: - re-write tabs and popup links as S3NavigationItems
            - refine check_selected (e.g. must be False if link=False)
            - implement collapse-flag (render only components in a TAG[""])
@@ -48,7 +47,6 @@ from gluon import *
 from gluon.storage import Storage
 
 # =============================================================================
-
 class S3NavigationItem(object):
     """
         Base class and API for navigation items.
@@ -102,6 +100,7 @@ class S3NavigationItem(object):
                  m=None,
                  p=None,
                  t=None,
+                 url=None,
                  tags=None,
                  parent=None,
                  translate=True,
@@ -128,6 +127,9 @@ class S3NavigationItem(object):
             @param p: the method to check authorization for (will not be appended to args)
             @param t: the table concerned by this request (overrides c_f for auth)
 
+            @param url: a URL to use instead of building one manually
+                        - e.g. for external websites or mailto: links
+
             @param tags: list of tags for this item
             @param parent: the parent item
 
@@ -137,6 +139,7 @@ class S3NavigationItem(object):
                           enable/disable this item
             @param restrict: restrict to roles (role UID or list of role UIDs)
             @param link: item has its own URL
+            @param mandatory: item is always active
 
             @param attributes: attributes to use in layout
         """
@@ -194,14 +197,17 @@ class S3NavigationItem(object):
         elif isinstance(args, str):
             args = args.split("/")
         self.args = args
-        self.vars = vars
+        if vars:
+            self.vars = vars
+        else:
+            self.vars = Storage()
         self.extension = extension
 
         # Table and method
         self.tablename = t
         self.method = m
         if m is not None:
-            if args is None or not len(args):
+            if not len(args):
                 self.args = [m]
             elif args[-1] != m:
                 self.args.append(m)
@@ -209,6 +215,8 @@ class S3NavigationItem(object):
             self.p = p
         else:
             self.p = m
+
+        self.override_url = url
 
         # Layout attributes and options
         attr = attributes.items()
@@ -681,6 +689,9 @@ class S3NavigationItem(object):
         if not self.link:
             return None
 
+        if self.override_url:
+            return self.override_url
+
         args = self.args
         if self.vars:
             vars = Storage(self.vars)
@@ -711,8 +722,7 @@ class S3NavigationItem(object):
             @param kwargs: override URL query vars
         """
 
-        auth = current.auth
-        aURL = auth.permission.accessible_url
+        aURL = current.auth.permission.accessible_url
 
         if not self.link:
             return None
@@ -750,6 +760,7 @@ class S3NavigationItem(object):
 
             @returns: tuple (f, args)
         """
+
         if not ext or ext == "html":
             return f, args
         items = [f]
@@ -1272,6 +1283,7 @@ class S3ComponentTabs:
                 if "viewing" in _vars:
                     del _vars["viewing"]
                 _href = URL(function, args=args, vars=_vars)
+                _id = "rheader_tab_%s" % component
             else:
                 args = []
                 if function != r.name:
@@ -1285,8 +1297,10 @@ class S3ComponentTabs:
                     if "viewing" not in _vars and record_id:
                         args = [record_id]
                 _href = URL(function, args=args, vars=_vars)
+                _id = "rheader_tab_%s" % function
 
-            rheader_tabs.append(SPAN(A(tab.title, _href=_href), _class=_class))
+            rheader_tabs.append(SPAN(A(tab.title, _href=_href, _id=_id,), 
+                                     _class=_class,))
 
         if rheader_tabs:
             rheader_tabs = DIV(rheader_tabs, _class="tabs")
@@ -1569,8 +1583,14 @@ class S3ResourceHeader:
                             label = field.label
                         if field.represent is not None:
                             value = field.represent(value)
-                    tr.append(TH("%s: " % unicode(label)))
-                    tr.append(TD(unicode(value)))
+                    tr.append(TH("%s: " % label))
+                    v = value
+                    if not isinstance(v, basestring) and not isinstance(value, A):
+                        try:
+                            v = unicode(v)
+                        except UnicodeEncodeError, UnicodeDecodeError:
+                            pass
+                    tr.append(TD(v))
                 trs.append(tr)
             rheader = DIV(TABLE(trs), rheader_tabs)
             return rheader

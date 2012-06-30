@@ -7,7 +7,7 @@
 module = request.controller
 resourcename = request.function
 
-if module not in deployment_settings.modules:
+if not deployment_settings.has_module(module):
     raise HTTP(404, body="Module disabled: %s" % module)
 
 # =============================================================================
@@ -63,11 +63,10 @@ def membership():
 
     def prep(r):
         if r.interactive:
-            if r.id and r.component is None:
+            if r.id and r.component is None and r.method != "delete":
                 # Redirect to person controller
                 vars = {"membership.id": r.id}
-                redirect(URL(f="person",
-                             vars=vars))
+                redirect(URL(f="person", vars=vars))
         return True
     response.s3.prep = prep
 

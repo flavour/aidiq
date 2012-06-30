@@ -22,17 +22,11 @@ def index():
 def sector():
     """ RESTful CRUD controller """
 
-    #tablename = "%s_%s" % (module, resourcename)
-    #table = db[tablename]
-
     return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def subsector():
     """ RESTful CRUD controller """
-
-    #tablename = "%s_%s" % (module, resourcename)
-    #table = db[tablename]
 
     return s3_rest_controller()
 
@@ -55,6 +49,7 @@ def site_org_json():
                                otable.name)
     return records.json()
 
+# -----------------------------------------------------------------------------
 def facility():
     """ RESTful CRUD controller """
 
@@ -68,7 +63,19 @@ def facility():
                    )
     return s3_rest_controller()
 
+# -----------------------------------------------------------------------------
+def facility_type():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller()
+
 # =============================================================================
+def organisation_type():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
 def organisation():
     """ RESTful CRUD controller """
 
@@ -191,7 +198,6 @@ def donor():
         title_update = T("Edit Donor"),
         title_search = T("Search Donors"),
         subtitle_create = T("Add New Donor"),
-        subtitle_list = T("Donors"),
         label_list_button = T("List Donors"),
         label_create_button = ADD_DONOR,
         label_delete_button = T("Delete Donor"),

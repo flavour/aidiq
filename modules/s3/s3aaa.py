@@ -35,30 +35,40 @@ __all__ = ["AuthS3",
            "S3RoleManager",
            "FaceBookAccount",
            "GooglePlusAccount",
+           "S3OrgRoleManager",
+           "S3PersonRoleManager"
           ]
 
 import datetime
 import re
 import time
+import uuid
 import urllib
 from urllib import urlencode
 import urllib2
+import math
+
+try:
+    import json # try stdlib (Python 2.6)
+except ImportError:
+    try:
+        import simplejson as json # try external module
+    except:
+        import gluon.contrib.simplejson as json # fallback to pure-Python module
 
 from gluon import *
 from gluon.storage import Storage, Messages
 
 from gluon.dal import Field, Row, Query, Set, Table, Expression
-from gluon.sqlhtml import CheckboxesWidget, StringWidget
+from gluon.sqlhtml import CheckboxesWidget, OptionsWidget, StringWidget
 from gluon.tools import Auth, callback, addrow
 from gluon.utils import web2py_uuid
 from gluon.validators import IS_SLUG
-from gluon.contrib import simplejson as json
 from gluon.contrib.simplejson.ordered_dict import OrderedDict
 from gluon.contrib.login_methods.oauth20_account import OAuthAccount
 
 from s3method import S3Method
 from s3validators import IS_ACL
-from s3widgets import S3ACLWidget, CheckboxesWidgetS3
 
 from s3utils import s3_mark_required
 from s3fields import s3_uid, s3_timestamp, s3_deletion_status
@@ -208,6 +218,7 @@ class AuthS3(Auth):
                                       hms_hospital = T("Hospital"),
                                       #project_site = T("Project Site"),
                                       #fire_station = T("Fire Station"),
+                                      dvi_morgue = T("Morgue"),
                                       )
 
     # -------------------------------------------------------------------------
@@ -413,7 +424,7 @@ class AuthS3(Auth):
         self.permission.define_table(migrate=migrate,
                                      fake_migrate=fake_migrate)
 
-        if security_policy not in (1, 2, 3, 4, 5, 6) and \
+        if security_policy not in (1, 2, 3, 4, 5, 6, 7, 8) and \
            not settings.table_permission:
             # Permissions table (group<->permission)
             # NB This Web2Py table is deprecated / replaced in Eden by S3Permission
@@ -1604,6 +1615,7 @@ class AuthS3(Auth):
             else:
                 self.user = Storage(table_user._filter_fields(user, id=True))
 
+        session.auth = self
         self.s3_set_roles()
 
         if self.user:
@@ -1705,7 +1717,8 @@ class AuthS3(Auth):
             # Get all current auth_memberships of the user
             mtable = self.settings.table_membership
             query = (mtable.deleted != True) & \
-                    (mtable.user_id == user_id)
+                    (mtable.user_id == user_id) & \
+                    (mtable.group_id != None)
             rows = db(query).select(mtable.group_id, mtable.pe_id)
 
             # Add all group_ids to session.s3.roles
@@ -2061,11 +2074,11 @@ class AuthS3(Auth):
         query = None
         if isinstance(group_id, (list, tuple)):
             if isinstance(group_id[0], str):
-                query &= (gtable.uuid.belongs(group_id))
+                query = (gtable.uuid.belongs(group_id))
             else:
                 group_ids = group_id
         elif isinstance(group_id, str):
-            query &= (gtable.uuid == group_id)
+            query = (gtable.uuid == group_id)
         else:
             group_ids = [group_id]
         if query is not None:
@@ -2153,18 +2166,19 @@ class AuthS3(Auth):
             return True
 
         db = current.db
-        session = current.session
+        s3 = current.session.s3
 
         # Trigger HTTP basic auth
         self.s3_logged_in()
 
         # Get the realms
-        if not session.s3:
+        if not s3:
             return False
+        realms = None
         if self.user:
             realms = self.user.realms
-        else:
-            realms = Storage([(r, None) for r in session.s3.roles])
+        elif s3.roles:
+            realms = Storage([(r, None) for r in s3.roles])
         if not realms:
             return False
 
@@ -2214,6 +2228,290 @@ class AuthS3(Auth):
             query &= (mtable.pe_id == for_pe)
         members = current.db(query).select(mtable.user_id)
         return [m.user_id for m in members]
+
+    # -------------------------------------------------------------------------
+    def s3_delegate_role(self,
+                         group_id,
+                         entity,
+                         receiver=None,
+                         role=None,
+                         role_type=None):
+        """
+            Delegate a role (auth_group) from one entity to another
+
+            @param group_id: the role ID or UID (or a list of either)
+            @param entity: the delegating entity
+            @param receiver: the pe_id of the receiving entity (or a list of pe_ids)
+            @param role: the affiliation role
+            @param role_type: the role type for the affiliation role (default=9)
+
+            @note: if role is None, a new role of role_type 0 will be created
+                   for each entity in receiver and used for the delegation
+                   (1:1 delegation)
+            @note: if both receiver and role are specified, the delegation will
+                   add all receivers to this role and create a 1:N delegation to
+                   this role. If the role does not exist, it will be created (using
+                   the given role type)
+        """
+
+        db = current.db
+        s3db = current.s3db
+
+        if not self.permission.delegations:
+            return False
+        dtable = s3db.table("pr_delegation")
+        rtable = s3db.table("pr_role")
+        atable = s3db.table("pr_affiliation")
+        if dtable is None or \
+           rtable is None or \
+           atable is None:
+            return False
+        if not group_id or not entity or not receiver and not role:
+            return False
+
+        # Find the group IDs
+        gtable = self.settings.table_group
+        query = None
+        uuids = None
+        if isinstance(group_id, (list, tuple)):
+            if isinstance(group_id[0], str):
+                uuids = group_id
+                query = (gtable.uuid.belongs(group_id))
+            else:
+                group_ids = group_id
+        elif isinstance(group_id, str) and not group_id.isdigit():
+            uuids = [group_id]
+            query = (gtable.uuid == group_id)
+        else:
+            group_ids = [group_id]
+        if query is not None:
+            query = (gtable.deleted != True) & query
+            groups = db(query).select(gtable.id, gtable.uuid)
+            group_ids = [g.id for g in groups]
+            missing = [u for u in uuids if u not in [g.uuid for g in groups]]
+            for m in missing:
+                group_id = self.s3_create_role(m, uid=m)
+                if group_id:
+                    group_ids.append(group_id)
+        if not group_ids:
+            return False
+
+        if receiver is not None:
+            if not isinstance(receiver, (list, tuple)):
+                receiver = [receiver]
+            query = (dtable.deleted != True) & \
+                    (dtable.group_id.belongs(group_ids)) & \
+                    (dtable.role_id == rtable.id) & \
+                    (rtable.deleted != True) & \
+                    (atable.role_id == rtable.id) & \
+                    (atable.deleted != True) & \
+                    (atable.pe_id.belongs(receiver))
+            rows = db(query).select(atable.pe_id)
+            assigned = [row.pe_id for row in rows]
+            receivers = [r for r in receiver if r not in assigned]
+        else:
+            receivers = None
+
+        if role_type is None:
+            role_type = 9 # Other
+
+        roles = []
+        if role is None:
+            if receivers is None:
+                return False
+            for pe_id in receivers:
+                role_name = "__DELEGATION__%s__%s__" % (entity, pe_id)
+                query = (rtable.role == role_name)
+                role = db(query).select(limitby=(0, 1)).first()
+                if role is not None:
+                    if role.deleted:
+                        role.update_record(deleted=False,
+                                           role_type=0)
+                    role_id = role.id
+                else:
+                    role_id = s3db.pr_add_affiliation(entity, pe_id,
+                                                      role=role_name,
+                                                      role_type=0)
+                if role_id:
+                    roles.append(role_id)
+        else:
+            query = (rtable.deleted != True) & \
+                    (rtable.pe_id == entity) & \
+                    (rtable.role == role)
+            row = db(query).select(rtable.id, limitby=(0, 1)).first()
+            if row is None:
+                role_id = rtable.insert(pe_id = entity,
+                                        role = role,
+                                        role_type = role_type)
+            else:
+                role_id = row.id
+            if role_id:
+                if receivers is not None:
+                    for pe_id in receivers:
+                        atable.insert(role_id=role_id,
+                                      pe_id=pe_id)
+                        pr_rebuild_path(pe_id, clear=True)
+                roles.append(role_id)
+
+        for role_id in roles:
+            for group_id in group_ids:
+                dtable.insert(role_id=role_id, group_id=group_id)
+
+        # Update roles for current user if required
+        self.s3_set_roles()
+
+        return True
+
+    # -------------------------------------------------------------------------
+    def s3_remove_delegation(self,
+                             group_id,
+                             entity,
+                             receiver=None,
+                             role=None):
+        """
+            Remove a delegation.
+
+            @param group_id: the auth_group ID or UID (or a list of either)
+            @param entity: the delegating entity
+            @param receiver: the receiving entity
+            @param role: the affiliation role
+
+            @note: if receiver is specified, only 1:1 delegations (to role_type 0)
+                   will be removed, but not 1:N delegations => to remove for 1:N
+                   you must specify the role instead of the receiver
+            @note: if both receiver and role are None, all delegations with this
+                   group_id will be removed for the entity
+        """
+
+        db = current.db
+        s3db = current.s3db
+
+        if not self.permission.delegations:
+            return False
+        dtable = s3db.table("pr_delegation")
+        rtable = s3db.table("pr_role")
+        atable = s3db.table("pr_affiliation")
+        if dtable is None or \
+           rtable is None or \
+           atable is None:
+            return False
+        if not group_id or not entity or not receiver and not role:
+            return False
+
+        # Find the group IDs
+        gtable = self.settings.table_group
+        query = None
+        uuids = None
+        if isinstance(group_id, (list, tuple)):
+            if isinstance(group_id[0], str):
+                uuids = group_id
+                query = (gtable.uuid.belongs(group_id))
+            else:
+                group_ids = group_id
+        elif isinstance(group_id, str) and not group_id.isdigit():
+            uuids = [group_id]
+            query = (gtable.uuid == group_id)
+        else:
+            group_ids = [group_id]
+        if query is not None:
+            query = (gtable.deleted != True) & query
+            groups = db(query).select(gtable.id, gtable.uuid)
+            group_ids = [g.id for g in groups]
+        if not group_ids:
+            return False
+
+        # Get all delegations
+        query = (dtable.deleted != True) & \
+                (dtable.group_id.belongs(group_ids)) & \
+                (dtable.role_id == rtable.id) & \
+                (rtable.pe_id == entity) & \
+                (atable.role_id == rtable.id)
+        if receiver:
+            if not isinstance(receiver, (list, tuple)):
+                receiver = [receiver]
+            query &= (atable.pe_id.belongs(receiver))
+        elif role:
+            query &= (rtable.role == role)
+        rows = db(query).select(dtable.id,
+                                dtable.group_id,
+                                rtable.id,
+                                rtable.role_type)
+
+        # Remove properly
+        rmv = Storage()
+        for row in rows:
+            if not receiver or row[rtable.role_type] == 0:
+                deleted_fk = {"role_id": row[rtable.id],
+                              "group_id": row[dtable.group_id]}
+                rmv[row[dtable.id]] = json.dumps(deleted_fk)
+        for record_id in rmv:
+            query = (dtable.id == record_id)
+            data = {"role_id": None,
+                    "group_id": None,
+                    "deleted_fk": rmv[record_id]}
+            db(query).update(**data)
+
+        # Maybe update the current user's delegations?
+        if len(rmv):
+            self.s3_set_roles()
+        return True
+
+    # -------------------------------------------------------------------------
+    def s3_get_delegations(self, entity, role_type=0, by_role=False):
+        """
+            Lookup delegations for an entity, ordered either by
+            receiver (by_role=False) or by affiliation role (by_role=True)
+
+            @param entity: the delegating entity (pe_id)
+            @param role_type: limit the lookup to this affiliation role type,
+                              (can use 0 to lookup 1:1 delegations)
+            @param by_role: group by affiliation roles
+
+            @returns: a Storage {<receiver>: [group_ids]}, or
+                      a Storage {<rolename>: {entities:[pe_ids], groups:[group_ids]}}
+        """
+
+        db = current.db
+        s3db = current.s3db
+
+        if not entity or not self.permission.delegations:
+            return None
+        dtable = s3db.table("pr_delegation")
+        rtable = s3db.table("pr_role")
+        atable = s3db.table("pr_affiliation")
+        if None in (dtable, rtable, atable):
+            return None
+
+        query = (rtable.deleted != True) & \
+                (dtable.deleted != True) & \
+                (atable.deleted != True) & \
+                (rtable.pe_id == entity) & \
+                (dtable.role_id == rtable.id) & \
+                (atable.role_id == rtable.id)
+        if role_type is not None:
+            query &= (rtable.role_type == role_type)
+        rows = db(query).select(atable.pe_id,
+                                rtable.role,
+                                dtable.group_id)
+        delegations = Storage()
+        for row in rows:
+            receiver = row[atable.pe_id]
+            role = row[rtable.role]
+            group_id = row[dtable.group_id]
+            if by_role:
+                if role not in delegations:
+                    delegations[role] = Storage(entities=[], groups=[])
+                delegation = delegations[role]
+                if receiver not in delegation.entities:
+                    delegation.entities.append(receiver)
+                if group_id not in delegation.groups:
+                    delegation.groups.append(group_id)
+            else:
+                if receiver not in delegations:
+                    delegations[receiver] = [group_id]
+                else:
+                    delegations[receiver].append(group_id)
+        return delegations
 
     # -------------------------------------------------------------------------
     # ACL management
@@ -2343,7 +2641,6 @@ class AuthS3(Auth):
             return True
 
         db = current.db
-        session = current.session
 
         sr = self.get_system_roles()
 
@@ -2351,7 +2648,7 @@ class AuthS3(Auth):
             s3db = current.s3db
             table = s3db[table]
 
-        policy = session.s3.security_policy
+        policy = current.deployment_settings.get_security_policy()
 
         # Simple policy
         if policy == 1:
@@ -2436,7 +2733,7 @@ class AuthS3(Auth):
             s3db = current.s3db
             table = s3db[table]
 
-        policy = session.s3.security_policy
+        policy = current.deployment_settings.get_security_policy()
 
         if policy == 1:
             # "simple" security policy: show all records
@@ -2656,7 +2953,7 @@ class AuthS3(Auth):
             return None
 
     # -------------------------------------------------------------------------
-    def s3_set_record_owner(self, table, record, **fields):
+    def s3_set_record_owner(self, table, record, force_update=False, **fields):
         """
             Update the record owner, to be called from CRUD and Importer
 
@@ -2741,8 +3038,10 @@ class AuthS3(Auth):
                 pass
             else:
                 user_id = None
-                if PID in row:
-                    # Records which link to a person_id shall be owned by that person
+                # Records which link to a person_id shall be owned by that person
+                if tablename == "pr_person":
+                    user_id = self.s3_get_user_id(row[table._id])
+                elif PID in row:
                     user_id = self.s3_get_user_id(row[PID])
                 if not user_id and self.s3_logged_in() and self.user:
                     # Fallback to current user
@@ -2767,7 +3066,7 @@ class AuthS3(Auth):
         if OENT in fields_in_table:
             if OENT in fields:
                 data[OENT] = fields[OENT]
-            elif not row[OENT]:
+            elif not row[OENT] or force_update:
                 # Check for type-specific handler to find the owner entity
                 handler = model.get_config(tablename, "owner_entity")
                 if callable(handler):
@@ -2776,8 +3075,7 @@ class AuthS3(Auth):
                 # Otherwise, do a fallback cascade
                 else:
                     get_pe_id = s3db.pr_get_pe_id
-                    if EID in row:
-                        # Person Entities own their own records and
+                    if EID in row and tablename not in ("pr_person", "dvi_body"):
                         owner_entity = row[EID]
                     elif OID in row:
                         owner_entity = get_pe_id(otablename, row[OID])
@@ -2933,6 +3231,7 @@ class S3Permission(object):
         "create": CREATE,
         "import": CREATE,
         "read": READ,
+        "map": READ,
         "report": READ,
         "search": READ,
         "update": UPDATE,
@@ -3000,7 +3299,7 @@ class S3Permission(object):
         self.function = request.function
 
         # Request format
-        # @todo: move this into s3tools.py:
+        # @todo: move this into s3utils.py:
         self.format = request.extension
         if "format" in request.get_vars:
             ext = request.get_vars.format
@@ -3446,10 +3745,11 @@ class S3Permission(object):
         elif not entities:
             return None
         elif OENT in table.fields:
+            public = (table[OENT] == None)
             if len(entities) == 1:
-                return (table[OENT] == entities[0])
+                return (table[OENT] == entities[0]) | public
             else:
-                return (table[OENT].belongs(entities))
+                return (table[OENT].belongs(entities)) | public
         return None
 
     # -------------------------------------------------------------------------
@@ -3507,7 +3807,11 @@ class S3Permission(object):
                 _debug("*** GRANTED ***")
                 return True
             else:
-                permitted = racl == self.READ
+                if self.page_restricted(c=c, f=f):
+                    permitted = racl == self.READ
+                else:
+                    _debug("==> unrestricted page")
+                    permitted = True
                 if permitted:
                     _debug("*** GRANTED ***")
                 else:
@@ -3764,10 +4068,11 @@ class S3Permission(object):
             @param env: the environment
         """
 
-        # Hide disabled modules
-        settings = current.deployment_settings
-        if not settings.has_module(c):
-            return False
+        if c != "static":
+            # Hide disabled modules
+            settings = current.deployment_settings
+            if not settings.has_module(c):
+                return False
 
         if t is None:
             t = "%s_%s" % (c, f)
@@ -4052,11 +4357,10 @@ class S3Permission(object):
             acl = acls[e]
 
             # Get the page ACL
-            if "c" in acl:
-                if "f" in acl:
-                    page_acl = acl["f"]
-                else:
-                    page_acl = acl["c"]
+            if "f" in acl:
+                page_acl = acl["f"]
+            elif "c" in acl:
+                page_acl = acl["c"]
             elif page_restricted:
                 page_acl = NONE
             else:
@@ -4276,7 +4580,7 @@ class S3Audit(object):
             @param representation: the representation format
         """
 
-        settings = current.session.s3
+        settings = current.deployment_settings
 
         #print >>sys.stderr, "Audit %s: %s_%s record=%s representation=%s" % \
                             #(operation, prefix, name, record, representation)
@@ -4312,7 +4616,7 @@ class S3Audit(object):
             record = None
 
         if operation in ("list", "read"):
-            if settings.audit_read:
+            if settings.get_security_audit_read():
                 table.insert(timestmp = now,
                              person = self.user,
                              operation = operation,
@@ -4321,7 +4625,7 @@ class S3Audit(object):
                              representation = representation)
 
         elif operation in ("create", "update"):
-            if settings.audit_write:
+            if settings.get_security_audit_write():
                 if form:
                     record = form.vars.id
                     new_value = ["%s:%s" % (var, str(form.vars[var]))
@@ -4338,7 +4642,7 @@ class S3Audit(object):
                 self.diff = None
 
         elif operation == "delete":
-            if settings.audit_write:
+            if settings.get_security_audit_write():
                 query = db[tablename].id == record
                 row = db(query).select(limitby=(0, 1)).first()
                 old_value = []
@@ -4640,6 +4944,7 @@ class S3RoleManager(S3Method):
                                       SPAN("*", _class="req"))
             acl_table.oacl.requires = IS_ACL(auth.permission.PERMISSION_OPTS)
             acl_table.uacl.requires = IS_ACL(auth.permission.PERMISSION_OPTS)
+            from s3widgets import S3ACLWidget
             acl_widget = lambda f, n, v: \
                             S3ACLWidget.widget(acl_table[f], v, _id=n, _name=n,
                                                _class="acl-widget")
@@ -5929,5 +6234,621 @@ class GooglePlusAccount(OAuthAccount):
         else:
             self.session.token = None
             return None
+
+# =============================================================================
+class S3GroupedOptionsWidget(OptionsWidget):
+    """
+        A custom Field widget to create a SELECT element with grouped options.
+    """
+    @classmethod
+    def widget(cls, field, value, options, **attributes):
+        """
+            Generates a SELECT tag, with OPTIONs grouped by OPTGROUPs
+
+            @param field: the field needing the widget
+            @param value: value
+            @param options: list
+            @param options: a list of tuples, each either (label, value) or (label, {options})
+            @param attributes: any other attributes to be applied
+
+            @returns: SELECT object
+        """
+        default = dict(value=value)
+        attr = cls._attributes(field, default, **attributes)
+        select_items = []
+
+        for option in options:
+            if isinstance(option[1], dict):
+                items = [(v, k) for k, v in option[1].items()]
+                if not items:
+                    continue
+                items.sort()
+                opts = [OPTION(v, _value=k) for v, k in items]
+                select_items.append(OPTGROUP(*opts, _label=option[0]))
+            else:
+                select_items.append(OPTION(option[1], _label=option[0]))
+
+        return SELECT(select_items, **attr)
+
+# =============================================================================
+class S3EntityRoleManager(S3Method):
+
+    def __init__(self, *args, **kwargs):
+
+        super(S3EntityRoleManager, self).__init__(*args, **kwargs)
+
+        # Set the default view
+        current.response.view = "admin/manage_roles.html"
+
+        # Dictionary of pentities this admin can manage
+        self.realm = self.get_realm()
+
+        # The list of user accounts linked to pentities in this realm
+        self.realm_users = current.s3db.pr_realm_users(self.realm)
+
+        # Create the dictionary of roles
+        self.roles = {}
+
+        self.modules = self.get_modules()
+        self.acls = self.get_access_levels()
+
+        for module_uid, module_label in self.modules.items():
+            for acl_uid, acl_label in self.acls.items():
+                role_uid = "%s_%s" % (module_uid, acl_uid)
+
+                self.roles[role_uid] = {
+                    "module": {
+                        "uid": module_uid,
+                        "label": module_label
+                    },
+                    "acl": {
+                        "uid": acl_uid,
+                        "label": acl_label
+                    }
+                }
+
+    # -------------------------------------------------------------------------
+    def apply_method(self, r, **attr):
+        """
+            @todo: docstring?
+        """
+
+        if self.method == "roles" and \
+           r.name in ("organisation", "office", "person"):
+            context = self.get_context_data(r, **attr)
+        else:
+            r.error(405, current.manager.ERROR.BAD_METHOD)
+        return context
+
+    # -------------------------------------------------------------------------
+    def get_context_data(self, r, **attr):
+        """
+            @todo: description?
+
+            @return: dictionary for the view
+
+            {
+                # All the possible roles
+                "roles": {
+                    "staff_reader": {
+                        "module": {
+                            "uid": "staff",
+                            "label": "Staff"
+                        },
+                        ...
+                    },
+                    ...
+                },
+
+                # The roles currently assigned to users for entit(y/ies)
+                "assigned_roles": {
+                    "1": [
+                        "staff_reader",
+                        "project_editor",
+                        ...
+                    ],
+                    ...
+                },
+
+                "pagination_list": [
+                    (
+                        "User One",
+                        "1"
+                    ),
+                    ...
+                ],
+
+                # The object (user/entity) we are assigning roles for
+                "foreign_object": {
+                    "id": "1",
+                    "name": "User One"
+                }
+                or
+                "foreign_object": {
+                    "id": "70",
+                    "name": "Organisation Seventy"
+                }
+            }
+        """
+        T = current.T
+
+        # organisation or office entity
+        self.entity = self.get_entity()
+
+        # user account to assigned roles to
+        self.user = self.get_user()
+
+        # roles already assigned to a user or users
+        self.assigned_roles = self.get_assigned_roles()
+
+        # the foreign object is the one selected in the role form
+        # for a person this is the entity
+        # for an entity (organisation or office) this is a user
+        self.foreign_object = self.get_foreign_object()
+
+        form = self.get_form()
+
+        # if we are editing roles, set those assigned roles as initial values
+        # for the form
+        form.vars.update(self.get_form_vars())
+
+        if form.accepts(r.post_vars, current.session):
+            before = self.assigned_roles[self.foreign_object["id"]] if self.foreign_object else []
+            after = ["%s_%s" % (mod_uid, acl_uid) for mod_uid, acl_uid
+                                                  in form.vars.items()
+                                                  if mod_uid in self.modules.keys()
+                                                  and acl_uid in self.acls.keys()]
+
+            # either both values will have been specified or one will
+            # be supplied by the form (for roles on new objects)
+            user_id = self.user["id"] if self.user else form.vars.foreign_object
+            entity_id = self.entity["id"] if self.entity else form.vars.foreign_object
+
+            self.update_roles(user_id, entity_id, before, after)
+            current.session.confirmation = T("Roles updated")
+            redirect(r.url(vars={}))
+
+        context = {"roles": self.roles,
+                   "foreign_object": self.foreign_object,
+                   "form": form,
+                   "title": T("Roles")}
+
+        if not self.foreign_object:
+            # how many assigned roles to show per page
+            pagination_size = int(r.get_vars.get("page_size", 4))
+            # what page of assigned roles to view
+            pagination_offset = int(r.get_vars.get("page_offset", 0))
+            # the number of pages of assigned roles
+            pagination_pages = int(math.ceil(len(self.assigned_roles) / float(pagination_size)))
+            # the list of objects to show on this page sorted by name
+            pagination_list = [(self.objects[id], id) for id in self.assigned_roles]
+            pagination_list = sorted(pagination_list)[pagination_offset * pagination_size:pagination_offset * pagination_size + pagination_size]
+
+            context.update({"assigned_roles": self.assigned_roles,
+                            "pagination_size": pagination_size,
+                            "pagination_offset": pagination_offset,
+                            "pagination_list": pagination_list,
+                            "pagination_pages": pagination_pages})
+
+        return context
+
+    # -------------------------------------------------------------------------
+    def get_realm(self):
+        """
+            Returns the realm (list of pe_ids) that this user can manage
+            or raises a permission error if the user is not logged in
+
+            @todo: avoid multiple lookups in current.auth
+        """
+        auth = current.auth
+
+        system_roles = auth.get_system_roles()
+        ORG_ADMIN = system_roles.ORG_ADMIN
+        ADMIN = system_roles.ADMIN
+
+        if auth.user:
+            realms = auth.user.realms
+        else:
+            # User is not logged in
+            auth.permission.fail()
+
+        # Get the realm from the current realms
+        if ADMIN in realms:
+            return realms[ADMIN]
+        elif ORG_ADMIN in realms:
+            return realms[ORG_ADMIN]
+        else:
+            # raise an error here - user is not permitted
+            # to access the role matrix
+            auth.permission.fail()
+
+    # -------------------------------------------------------------------------
+    def get_modules(self):
+        """
+            This returns an OrderedDict of modules with their uid as the key,
+            e.g., {hrm: "Human Resources",}
+
+            @return: OrderedDict
+        """
+        return current.deployment_settings.get_aaa_role_modules()
+
+    # -------------------------------------------------------------------------
+    def get_access_levels(self):
+        """
+            This returns an OrderedDict of access levels and their uid as
+            the key, e.g., {reader: "Reader",}
+
+            @return: OrderedDict
+        """
+        return current.deployment_settings.get_aaa_access_levels()
+
+    # -------------------------------------------------------------------------
+    def get_assigned_roles(self, entity_id=None, user_id=None):
+        """
+            If an entity ID is provided, the dict will be the users
+            with roles assigned to that entity. The key will be the user IDs.
+
+            If a user ID is provided, the dict will be the entities the
+            user has roles for. The key will be the entity pe_ids.
+
+            If both an entity and user ID is provided, the dict will be
+            the roles assigned to that user for that entity. The key will be
+            the user ID.
+
+            @type entity_id: int
+            @param entity_id: the pe_id of the entity
+            @type user_id: int
+            @param user_id: id of the user account
+
+            @return: dict
+            {
+                1: [
+                    "staff_reader",
+                    "project_reader",
+                    ...
+                ]
+                2: [
+                    ...
+                ],
+                ...
+            }
+        """
+        if not entity_id and not user_id:
+            raise RuntimeError("Not enough arguments")
+
+        mtable = current.auth.settings.table_membership
+        gtable = current.auth.settings.table_group
+        utable = current.auth.settings.table_user
+
+        query = (mtable.deleted != True) & \
+                (gtable.deleted != True) & \
+                (gtable.id == mtable.group_id) & \
+                (utable.deleted != True) & \
+                (utable.id == mtable.user_id)
+
+        if user_id:
+            field = mtable.pe_id
+            query &= (mtable.user_id == user_id) & \
+                     (mtable.pe_id != None)
+
+        if entity_id:
+            field = utable.id
+            query &= (mtable.pe_id == entity_id)
+
+        rows = current.db(query).select(utable.id,
+                                        gtable.uuid,
+                                        mtable.pe_id)
+
+        assigned_roles = OrderedDict()
+        roles = self.roles
+        for row in rows:
+            object_id = row[field]
+            role_uid = row[gtable.uuid]
+
+            if role_uid in roles:
+                if object_id not in assigned_roles:
+                    assigned_roles[object_id] = []
+                assigned_roles[object_id].append(role_uid)
+
+        return assigned_roles
+
+    # -------------------------------------------------------------------------
+    def get_form(self):
+        """
+            Contructs the role form
+
+            @return: SQLFORM
+        """
+        fields = self.get_form_fields()
+        form = SQLFORM.factory(*fields,
+                               table_name="roles",
+                               _id="role-form",
+                               _action="",
+                               _method="POST")
+        return form
+
+    # -------------------------------------------------------------------------
+    def get_form_fields(self):
+        """
+            @todo: description?
+
+            @return: list of Fields
+        """
+        fields = []
+        requires = IS_NULL_OR(IS_IN_SET(self.acls.keys(),
+                                        labels=self.acls.values()))
+        for module_uid, module_label in self.modules.items():
+            field = Field(module_uid,
+                          label=module_label,
+                          requires=requires)
+            fields.append(field)
+        return fields
+
+    # -------------------------------------------------------------------------
+    def get_form_vars(self):
+        """
+            Get the roles currently assigned for a user/entity and put it
+            into a Storage object for the form
+
+            @return: Storage() to pre-populate the role form
+        """
+        form_vars = Storage()
+
+        fo = self.foreign_object
+        roles = self.roles
+        if fo and fo["id"] in self.assigned_roles:
+            for role in self.assigned_roles[fo["id"]]:
+                mod_uid = roles[role]["module"]["uid"]
+                acl_uid = roles[role]["acl"]["uid"]
+                form_vars[mod_uid] = acl_uid
+
+        return form_vars
+
+    # -------------------------------------------------------------------------
+    def update_roles(self, user_id, entity_id, before, after):
+        """
+            Update the users roles on entity based on the selected roles
+            in before and after
+
+            @param user_id: id (pk) of the user account to modify
+            @param entity_id: id of the pentity to modify roles for
+            @param before: list of role_uids (current values for the user)
+            @param after: list of role_uids (new values from the admin)
+        """
+        auth = current.auth
+        assign_role = auth.s3_assign_role
+        retract_role = auth.s3_retract_role
+
+        for role_uid in before:
+            # If role_uid is not in after,
+            # the access level has changed.
+            if role_uid not in after:
+                retract_role(user_id, role_uid, entity_id)
+
+        for role_uid in after:
+            # If the role_uid is not in before,
+            # the access level has changed
+            if role_uid != "None" and role_uid not in before:
+                assign_role(user_id, role_uid, entity_id)
+
+# =============================================================================
+class S3OrgRoleManager(S3EntityRoleManager):
+
+    def __init__(self, *args, **kwargs):
+        """
+            @todo: docstring?
+        """
+
+        super(S3OrgRoleManager, self).__init__(*args, **kwargs)
+
+        # dictionary {id: name, ...} of user accounts
+        self.objects = current.s3db.pr_realm_users(None)
+
+    # -------------------------------------------------------------------------
+    def get_context_data(self, r, **attr):
+        """
+            Override to set the context from the perspective of an entity
+
+            @return: dictionary for view
+        """
+        context = super(S3OrgRoleManager, self).get_context_data(r, **attr)
+        context["foreign_object_label"] = current.T("Users")
+        return context
+
+    # -------------------------------------------------------------------------
+    def get_entity(self):
+        """
+            We are on an entity (org/office) so we can fetch the entity
+            details from the request record.
+
+            @return: dictionary containing the ID and name of the entity
+        """
+        entity = dict(id=int(self.request.record.pe_id))
+        entity["name"] = current.s3db.pr_get_entities(pe_ids=[entity["id"]],
+                                                      types=["org_organisation", "org_office"])[entity["id"]]
+        return entity
+
+    # -------------------------------------------------------------------------
+    def get_user(self):
+        """
+            The edit parameter
+
+            @return: dictionary containing the ID and username/email of
+                     the user account.
+        """
+        user = self.request.get_vars.get("edit", None)
+        if user:
+            user = dict(id=int(user), name=self.objects.get(int(user), None))
+        return user
+
+    # -------------------------------------------------------------------------
+    def get_foreign_object(self):
+        """
+            We are on an entity so our target is a user account.
+
+            @return: dictionary with ID and username/email of user account
+        """
+        return self.user
+
+    # -------------------------------------------------------------------------
+    def get_assigned_roles(self):
+        """
+            Override to get assigned roles for this entity
+
+            @return: dictionary with user IDs as the keys.
+        """
+        assigned_roles = super(S3OrgRoleManager, self).get_assigned_roles
+        return assigned_roles(entity_id=self.entity["id"])
+
+    # -------------------------------------------------------------------------
+    def get_form_fields(self):
+        """
+            Override the standard method so we can add the user-selection
+            field to the list.
+
+            @return: list of Fields
+        """
+        T = current.T
+
+        fields = super(S3OrgRoleManager, self).get_form_fields()
+
+        if not self.user:
+            assigned_roles = self.assigned_roles
+            realm_users = Storage([(k, v)
+                                    for k, v in self.realm_users.items()
+                                    if k not in assigned_roles])
+
+            nonrealm_users = Storage([(k, v)
+                                       for k, v in self.objects.items()
+                                       if k not in assigned_roles and \
+                                          k not in self.realm_users])
+
+            options = [("", ""),
+                       (T("Users in my Organisations"), realm_users),
+                       (T("Other Users"), nonrealm_users)]
+
+            object_field = Field("foreign_object",
+                                 T("User"),
+                                 requires=IS_IN_SET(self.objects),
+                                 widget=lambda field, value:
+                                     S3GroupedOptionsWidget.widget(field,
+                                                                 value,
+                                                                 options=options))
+            fields.insert(0, object_field)
+        return fields
+
+# =============================================================================
+class S3PersonRoleManager(S3EntityRoleManager):
+
+    def __init__(self, *args, **kwargs):
+        super(S3PersonRoleManager, self).__init__(*args, **kwargs)
+
+        # dictionary {id: name, ...} of pentities
+        self.objects = current.s3db.pr_get_entities(types=["org_organisation",
+                                                           "org_office"])
+
+    # -------------------------------------------------------------------------
+    def get_context_data(self, r, **attr):
+        """
+            Override to set the context from the perspective of a person
+
+            @return: dictionary for view
+        """
+        context = super(S3PersonRoleManager, self).get_context_data(r, **attr)
+        context["foreign_object_label"] = current.T("Organisations and Offices")
+        return context
+
+    # -------------------------------------------------------------------------
+    def get_entity(self):
+        """
+            An entity needs to be specified with the "edit" query string
+            parameter.
+
+            @return: dictionary with pe_id and name of the org/office.
+        """
+        entity = self.request.get_vars.get("edit", None)
+        if entity:
+            entity = dict(id=int(entity), name=self.objects.get(int(entity), None))
+        return entity
+
+    # -------------------------------------------------------------------------
+    def get_user(self):
+        """
+            We are on a person account so we need to find the associated user
+            account.
+
+            @return: dictionary with ID and username/email of the user account
+        """
+        utable = current.auth.settings.table_user
+        ptable = current.s3db.pr_person_user
+
+        pe_id = int(self.request.record.pe_id)
+
+        if current.auth.settings.username:
+            username = utable.username
+        else:
+            username = utable.email
+
+        query = (ptable.pe_id == pe_id) & (ptable.user_id == utable.id)
+        record = current.db(query).select(utable.id, username).first()
+
+        return dict(id=record.id, name=record[username]) if record else None
+
+    # -------------------------------------------------------------------------
+    def get_foreign_object(self):
+        """
+            We are on a user/person so we want to target an entity (org/office)
+        """
+        return self.entity
+
+    # -------------------------------------------------------------------------
+    def get_assigned_roles(self):
+        """
+            @todo: description?
+
+            @return: dictionary of assigned roles with entity pe_id as the keys
+        """
+        user_id = current.auth.user.id
+        return super(S3PersonRoleManager, self).get_assigned_roles(user_id=user_id)
+
+    # -------------------------------------------------------------------------
+    def get_form_fields(self):
+        """
+            Return a list of fields, including a field for selecting
+            an organisation or office.
+
+            @return: list of Fields
+        """
+        s3db = current.s3db
+        fields = super(S3PersonRoleManager, self).get_form_fields()
+
+        if not self.entity:
+            options = s3db.pr_get_entities(pe_ids=self.realm,
+                                           types=["org_organisation",
+                                                  "org_office"],
+                                           group=True)
+
+            nice_name = s3db.table("pr_pentity").instance_type.represent
+
+            # filter out options that already have roles assigned
+            filtered_options = []
+            for entity_type, entities in options.items():
+                entities = Storage([(entity_id, entity_name)
+                                    for entity_id, entity_name
+                                        in entities.items()
+                                    if entity_id not in self.assigned_roles])
+                filtered_options.append((nice_name(entity_type), entities))
+
+            object_field = Field("foreign_object",
+                                 current.T("Entity"),
+                                 requires=IS_IN_SET(self.objects),
+                                 widget=lambda field, value:
+                                     S3GroupedOptionsWidget.widget(field,
+                                                                   value,
+                                                                   options=filtered_options))
+            fields.insert(0, object_field)
+
+        return fields
+
 
 # END =========================================================================

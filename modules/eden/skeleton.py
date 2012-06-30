@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-
-""" Skeleton:
-
+""" 
     This is just a commented template to copy/paste from when implementing
     new models. Be sure you replace this docstring by something more
     appropriate, e.g. a short module description and a license statement.
@@ -40,6 +38,7 @@ __all__ = ["SkeletonDataModel",
 from gluon import *
 from gluon.storage import Storage
 from ..s3 import *
+from eden.layouts import S3AddResourceLink
 
 # =============================================================================
 # Define a new class as subclass of S3Model
@@ -49,7 +48,7 @@ from ..s3 import *
 # => remember to list all model classes in __all__, otherwise they won't ever
 #    be loaded.
 #
-class SkeletonDataModel(S3Model):
+class S3SkeletonDataModel(S3Model):
 
     # Declare all the names this model can auto-load, i.e. all tablenames
     # and all response.s3 names which are defined here. If you omit the "names"
@@ -68,16 +67,19 @@ class SkeletonDataModel(S3Model):
 
         # This one should also be there:
         s3 = current.response.s3
+        s3db = current.s3db
+        settings = current.deployment_settings
+
 
         # Now define your table(s),
         # -> always use self.define_table instead of db.define_table, this
         #    makes sure the table won't be re-defined if it's already in db
-        # -> use s3.meta_fields to include meta fields (not s3_meta_fields!),
+        # -> use s3_meta_fields to include meta fields (not s3_meta_fields!),
         #    of course this needs the s3 assignment above
         tablename = "skeleton_example"
         table = self.define_table(tablename,
                                   Field("name"),
-                                  *s3.meta_fields())
+                                  *s3_meta_fields())
 
         # Use self.configure to configure your model (not s3mgr.configure!)
         self.configure(tablename,
