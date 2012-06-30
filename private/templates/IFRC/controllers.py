@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 
-from gluon import *
+from os import path
+
+from gluon import current
+from gluon.html import *
 from gluon.storage import Storage
-#from s3 import *
 
 # =============================================================================
 class index():
@@ -12,19 +14,25 @@ class index():
 
         T = current.T
         response = current.response
-        s3 = response.s3
 
         response.title = current.deployment_settings.get_system_name()
-        response.view = "../private/templates/%s/views/index.html"  % s3.theme
+        view = path.join(current.request.folder, "private", "templates",
+                         "IFRC", "views", "index.html")
+        try:
+            # Pass view as file not str to work in compiled mode
+            response.view = open(view, "rb")
+        except IOError:
+            from gluon.http import HTTP
+            raise HTTP("404", "Unable to open Custom View: %s" % view)
 
-        script = """
-$('.marker').mouseover(function() {
-    $(this).children('.marker-window').show();
+        script = '''
+$('.marker').mouseover(function(){
+ $(this).children('.marker-window').show();
 })
-$('.marker').mouseout(function() {
-    $(this).children('.marker-window').hide();
-})"""
-        s3.jquery_ready.append(script)
+$('.marker').mouseout(function(){
+ $(this).children('.marker-window').hide();
+})'''
+        response.s3.jquery_ready.append(script)
 
         markers = [
             Storage(name = "Afghan Red Crescent Society",

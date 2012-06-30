@@ -189,38 +189,45 @@ class S3Msg(object):
         db.commit()
         return True
     
-    # -----------------------------------------------------------------------------
-    # Parser for inbound messages
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     @staticmethod
-    def parse_import(workflow):
+    def parse_import(workflow, source):
         """
-           Parsing Workflow Importer.
+           Parse Inbound Messages
         """
-        
-        from parser import S3Parsing
+
+        from s3parser import S3Parsing
+
         db = current.db
-        ltable = current.s3db.msg_log
-        wtable = current.s3db.msg_workflow
+        s3db = current.s3db
+        ltable = s3db.msg_log
+        wtable = s3db.msg_workflow
+        otable = s3db.msg_outbox
         
-        query = (wtable.workflow_task_id == workflow)
+        query = (wtable.workflow_task_id == workflow) & \
+                (wtable.source_task_id == source)
         records = db(query).select(wtable.source_task_id)
         reply = ""
         for record in records:
             query = (ltable.is_parsed == False) & \
-                (ltable.inbound == True) &\
-                (ltable.source_task_id == record.source_task_id)
+                    (ltable.inbound == True) & \
+                    (ltable.source_task_id == record.source_task_id)
             rows = db(query).select()
             
             for row in rows:
-                message = row .message 
+                message = row.message
                 reply = S3Parsing.parser(workflow, message)
-                db(ltable.id == row.id).update(reply = reply,is_parsed = True)
+                db(ltable.id == row.id).update(reply = reply,
+                                               is_parsed = True)
+                reply = ltable.insert(recipient = row.sender,
+                                      subject ="Parsed Reply",
+                                      message = reply)
+                otable.insert(message_id = reply.id,
+                              address = row.sender)
                 db.commit()
-                
-        return        
-                
-            
+
+        return    
+
     # =========================================================================
     # Outbound Messages
     # =========================================================================
@@ -228,6 +235,8 @@ class S3Msg(object):
                 type = "SMS",
                 recipient_type = None,
                 recipient = None,
+                #hide = True,
+                subject = "",
                 message = "",
                 url = None,
                ):
@@ -240,24 +249,21 @@ class S3Msg(object):
                               - this can also be set by setting one of
                                 (in priority order, if multiple found):
                                 request.vars.pe_id
-                                request.vars.person_id
-                                request.vars.group_id
-                                request.vars.hrm_id
+                                request.vars.person_id @ToDo
+                                request.vars.group_id  @ToDo
+                                request.vars.hrm_id    @ToDo
+            @param subject: The default subject text (for Emails)
             @param message: The default message text
             @param url: Redirect to the specified URL() after message sent
         """
 
         T = current.T
-        db = current.db
-        s3db = current.s3db
         auth = current.auth
         crud = current.crud
-        request = current.request
-        session = current.session
-        response = current.response
-        s3 = response.s3
-        vars = request.vars
+        s3 = current.response.s3
+        vars = current.request.vars
 
+        s3db = current.s3db
         ltable = s3db.msg_log
         otable = s3db.msg_outbox
 
@@ -271,6 +277,7 @@ class S3Msg(object):
             redirect(URL(c="default", f="user", args="login",
                          vars={"_next" : url}))
 
+        ltable.subject.default = subject
         ltable.message.default = message
 
         otable.pr_message_method.default = type
@@ -304,11 +311,14 @@ class S3Msg(object):
         if recipient:
             ltable.pe_id.default = recipient
             otable.pe_id.default = recipient
-            ltable.pe_id.requires = IS_ONE_OF_EMPTY(db, "pr_pentity.pe_id", multiple=True)
+            ltable.pe_id.requires = IS_ONE_OF_EMPTY(current.db,
+                                                    "pr_pentity.pe_id",
+                                                    multiple=True)
         else:
             if recipient_type:
                 # Filter by Recipient Type
-                otable.pe_id.requires = IS_ONE_OF(db, "pr_pentity.pe_id",
+                otable.pe_id.requires = IS_ONE_OF(current.db,
+                                                  "pr_pentity.pe_id",
                                                   orderby="instance_type",
                                                   filterby="instance_type",
                                                   filter_opts=(recipient_type,))
@@ -325,6 +335,7 @@ class S3Msg(object):
                 Route the message
             """
 
+            session = current.session
             if not vars.pe_id:
                 session.error = T("Please enter the recipient(s)")
                 redirect(url)
@@ -405,11 +416,11 @@ class S3Msg(object):
         # Control the Javascript in static/scripts/S3/s3.msg.js
         if not recipient:
             if recipient_type:
-                s3.js_global.append("S3.msg_search_url = '%s';" % \
+                s3.js_global.append("S3.msg_search_url='%s';" % \
                                     URL(c="msg", f="search",
                                         vars={"type":recipient_type}))
             else:
-                s3.js_global.append("S3.msg_search_url = '%s';" % \
+                s3.js_global.append("S3.msg_search_url='%s';" % \
                                     URL(c="msg", f="search"))
 
             s3.jquery_ready.append("s3_msg_ac_pe_input();")
@@ -1151,6 +1162,7 @@ class S3Msg(object):
         inbound_status_table = s3db.msg_inbound_email_status
         inbox_table = s3db.msg_email_inbox
         log_table = s3db.msg_log
+        source_task_id = username
 
         # Read-in configuration from Database
         settings = db(s3db.msg_inbound_email_settings.username == username).select(limitby=(0, 1)).first()

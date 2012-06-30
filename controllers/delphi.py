@@ -853,7 +853,8 @@ def results(r, **attr):
     n = len(solutions)
 
     # Canvas of 900x600
-    chart = s3chart(9, 6)
+    from s3chart import S3Chart
+    chart = S3Chart(9, 6)
     fig = chart.fig
     # Add Axes with padding of 10px for the labels (fractional left, bottom, width, height)
     ax = fig.add_axes([0.35, 0.1, 0.6, 0.8])
@@ -1011,8 +1012,8 @@ def comment_parse(comment, comments, solution_id=None):
             user = row[utable._tablename]
             username = s3_fullname(person)
             email = user.email.strip().lower()
-            import md5
-            hash = md5.new(email).hexdigest()
+            import hashlib
+            hash = hashlib.md5(email).hexdigest()
             url = "http://www.gravatar.com/%s" % hash
             author = B(A(username, _href=url, _target="top"))
     if not solution_id and comment.solution_id:

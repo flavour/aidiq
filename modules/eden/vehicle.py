@@ -31,6 +31,7 @@ __all__ = ["S3VehicleModel"]
 
 from gluon import *
 from gluon.storage import Storage
+
 from ..s3 import *
 
 # =============================================================================
@@ -177,7 +178,7 @@ class S3VehicleModel(S3Model):
             msg_list_empty = T("No GPS data currently registered"))
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (response.s3.*)
+        # Pass variables back to global scope (s3db.*)
         #
         return Storage(
                     vehicle_vehicle_id = vehicle_id,

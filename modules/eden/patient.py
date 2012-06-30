@@ -85,13 +85,13 @@ class S3PatientModel(S3Model):
                                   Field("treatment_date", "date",
                                         label=T("Date of Treatment"),
                                         represent = s3_date_represent,
-                                        requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
+                                        requires = IS_NULL_OR(IS_DATE(format=s3_date_format)),
                                         widget = S3DateWidget()
                                         ),
                                   Field("return_date", "date",
                                         label=T("Expected Return Home"),
                                         represent = s3_date_represent,
-                                        requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
+                                        requires = IS_NULL_OR(IS_DATE(format=s3_date_format)),
                                         widget = S3DateWidget()
                                        ),
                                   s3_comments(),
@@ -205,7 +205,7 @@ class S3PatientModel(S3Model):
             msg_list_empty = T("No Homes currently registered"))
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (response.s3.*)
+        # Pass variables back to global scope (s3db.*)
         #
         return Storage()
 

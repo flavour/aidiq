@@ -74,8 +74,6 @@ class S3OrganisationModel(S3Model):
 
     def model(self):
 
-        import copy
-
         T = current.T
         db = current.db
         gis = current.gis
@@ -267,10 +265,10 @@ class S3OrganisationModel(S3Model):
                                             tooltip=help),
                                 ondelete = "SET NULL")
 
-        # Tags as component of Locations
-        add_component("gis_location_tag",
-                      gis_location=dict(joinby="location_id",
-                                        name="tag"))
+        # Tags as component of Organisation Types
+        add_component("org_organisation_type_tag",
+                      org_organisation_type=dict(joinby="organisation_type_id",
+                                                 name="tag"))
 
         # ---------------------------------------------------------------------
         # Organisations
@@ -467,16 +465,18 @@ class S3OrganisationModel(S3Model):
                 )
             )
 
+        utablename = current.auth.settings.table_user_name
         configure(tablename,
                   onaccept = self.org_organisation_onaccept,
                   ondelete = self.org_organisation_ondelete,
                   super_entity = "pr_pentity",
+                  referenced_by = [(utablename, "organisation_id")],
                   search_method=organisation_search,
                   deduplicate=self.organisation_deduplicate,
                   list_fields = ["id",
                                  "name",
                                  "acronym",
-                                 "type",
+                                 "organisation_type_id",
                                  "sector_id",
                                  "country",
                                  "website"
@@ -611,7 +611,7 @@ class S3OrganisationModel(S3Model):
                              *meta_fields())
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (response.s3.*)
+        # Pass variables back to global scope (s3db.*)
         #
         return Storage(
                     org_sector_id = sector_id,
@@ -927,7 +927,7 @@ class S3OrganisationTypeTagModel(S3Model):
                                   *s3_meta_fields())
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (response.s3.*)
+        # Pass variables back to global scope (s3db.*)
         #
         return Storage(
                 )
@@ -993,7 +993,7 @@ class S3SiteModel(S3Model):
                                   #readable = True,
                                   label = T("Facility"),
                                   default = auth.user.site_id if auth.is_logged_in() else None,
-                                  represent = org_site_represent,
+                                  represent = lambda id: org_site_represent(id, show_link=True),
                                   orderby = "org_site.name",
                                   sort = True,
                                   # Comment these to use a Dropdown & not an Autocomplete
@@ -1038,7 +1038,7 @@ class S3SiteModel(S3Model):
                        )
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (response.s3.*)
+        # Pass variables back to global scope (s3db.*)
         #
         return Storage(
                     org_site_id = site_id
@@ -1056,6 +1056,8 @@ class S3SiteModel(S3Model):
         settings = current.deployment_settings
 
         name = form.vars.name
+        if not name:
+            return
         code_len = settings.get_org_site_code_len()
         temp_code = name[:code_len].upper()
         query = (site_table.code == temp_code)
@@ -1217,7 +1219,7 @@ class S3FacilityModel(S3Model):
                                                                label=ADD_FAC,
                                                                tooltip=T("Select a Facility Type from the list or click 'Add Facility Type'")),
                                    label=T("Type")),
-                             organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile = True)),
+                             organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile=True)),
                              location_id(),
                              s3_comments(),
                              *(s3_address_fields() + s3_meta_fields()))
@@ -1245,7 +1247,7 @@ class S3FacilityModel(S3Model):
                        )
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (response.s3.*)
+        # Pass variables back to global scope (s3db.*)
         #
         return Storage(
                 )
@@ -1357,7 +1359,7 @@ class S3RoomModel(S3Model):
                                   ondelete = "SET NULL")
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (response.s3.*)
+        # Pass variables back to global scope (s3db.*)
         #
         return Storage(
                     org_room_id = room_id,
@@ -1441,7 +1443,7 @@ class S3OfficeModel(S3Model):
                                         #notnull=True,
                                         #unique=True,
                                         label=T("Code")),
-                                  organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile = True)),
+                                  organisation_id(widget = S3OrganisationAutocompleteWidget(default_from_profile=True)),
                                   #organisation_id(widget = S3OrganisationHierarchyWidget()),
                                   Field("type", "integer", label = T("Type"),
                                         requires = IS_NULL_OR(IS_IN_SET(org_office_type_opts)),
@@ -1541,7 +1543,7 @@ class S3OfficeModel(S3Model):
                                     ])
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (response.s3.*)
+        # Pass variables back to global scope (s3db.*)
         #
         return Storage(
                     org_office_type_opts = org_office_type_opts,
@@ -1767,32 +1769,35 @@ def org_organisation_represent(id, showlink=False, acronym=True, parent=True):
     return represent
 
 # =============================================================================
-def org_site_represent(id, show_link=True):
-    """ Represent a Facility in option fields or list views """
+def org_site_represent(site_id, show_link=True):
+    """
+        Represent a Facility in option fields or list views
 
+        @param site_id: the org_site record ID or the org_site record
+        @param show_link: whether to render the representation as link
+    """
 
     db = current.db
     s3db = current.s3db
-    represent = current.messages.NONE
     T = current.T
 
     stable = s3db.org_site
 
-    if not id:
-        return represent
+    represent = current.messages.NONE
 
-    if isinstance(id, Row) and "instance_type" in id:
+    if not site_id:
+        return represent
+    if isinstance(site_id, Row) and "instance_type" in site_id:
         # Do not repeat the lookup if already done by IS_ONE_OF
-        site = id
+        site = site_id
+        site_id = site.site_id
     else:
-        site = db(stable._id == id).select(stable.id,
-                                           stable.name,
-                                           stable.site_id,
-                                           stable.instance_type,
-                                           limitby=(0, 1)).first()
+        site = db(stable._id == site_id).select(stable.site_id,
+                                                stable.name,
+                                                stable.instance_type,
+                                                limitby=(0, 1)).first()
         if not site:
             return represent
-    id = None
 
     instance_type = site.instance_type
     try:
@@ -1802,46 +1807,35 @@ def org_site_represent(id, show_link=True):
 
     instance_type_nice = stable.instance_type.represent(instance_type)
     tab = None
-    if instance_type == "org_office":
-        type = None
-        try:
-            type = site.type
-        except:
-            query = (table.site_id == site.site_id)
-            record = db(query).select(table.id,
-                                      table.type,
-                                      limitby=(0, 1)).first()
-            if record:
-                id = record.id
-                type = record.type
 
-        if type == 5:
+    if instance_type == "org_office":
+        # Need lookup the instance record for the "type" field
+        query = (table.site_id == site.site_id)
+        office = db(query).select(table.type, limitby=(0, 1)).first()
+        if not office:
+            return represent
+        if office.type == 5:
+            # Override instance type for warehouses
             instance_type = "inv_warehouse"
             instance_type_nice = current.T("Warehouse")
-            # add the url to the stock tab for the warehouse
+            # Add the url to the stock tab for the warehouse
             tab = "inv_item"
 
-    if site:
+    if site.name:
         represent = "%s (%s)" % (site.name, instance_type_nice)
     else:
-        # Since name is notnull for all types so far, this won't be reached.
         represent = "[site %d] (%s)" % (id, instance_type_nice)
 
-    if show_link and site:
-        if not id:
-            query = (table.site_id == site.site_id)
-            id = db(query).select(table.id,
-                                  limitby=(0, 1)).first().id
+    if show_link:
+        record_id = current.manager.model.get_instance(stable, site_id)[2]
         c, f = instance_type.split("_", 1)
-        args = [id]
-        if tab:
-            args.append(tab)
-        represent = A(represent,
-                      _href = URL(c=c, f=f,
-                                  args = args,
-                                  extension = "" # removes the .aaData extension in paginated views!
-                                ))
-
+        if record_id:
+            args = [record_id]
+            if tab:
+                args.append(tab)
+            # extension="" removes the .aaData extension in paginated views
+            represent = A(represent,
+                          _href = URL(c=c, f=f, args=args, extension=""))
     return represent
 
 # =============================================================================

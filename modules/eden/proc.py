@@ -105,13 +105,13 @@ class S3ProcurementModel(S3Model):
                                   #project_id(),
                                   Field("order_date", "date",
                                         label = T("Order Date"),
-                                        requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
+                                        requires = IS_NULL_OR(IS_DATE(format=s3_date_format)),
                                         represent = s3_date_represent,
                                         widget = S3DateWidget()
                                         ),
                                   Field("eta", "date",
                                         label = T("Date Expected"),
-                                        requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
+                                        requires = IS_NULL_OR(IS_DATE(format=s3_date_format)),
                                         represent = s3_date_represent,
                                         widget = S3DateWidget()
                                         ),
@@ -259,7 +259,7 @@ class S3ProcurementModel(S3Model):
                        report_hide_comments = True)
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (response.s3.*)
+        # Pass variables back to global scope (s3db.*)
         #
         return Storage(
             )
@@ -370,7 +370,7 @@ class S3SupplierModel(S3Model):
                            proc_supplier="supplier_id")
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (response.s3.*)
+        # Pass variables back to global scope (s3db.*)
         #
         return Storage(
                 proc_supplier_id = supplier_id

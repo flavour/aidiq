@@ -314,13 +314,13 @@ class S3ClimateModel(S3Model):
                                 ),
                              station_id(),
                              Field("date_from", "date",
-                                   requires = IS_DATE(format = s3_date_format),
+                                   requires = IS_DATE(format=s3_date_format),
                                    widget = S3DateWidget(),
                                    default = utcnow,
                                    required = True
                                 ),
                              Field("date_to", "date",
-                                   requires = IS_DATE(format = s3_date_format),
+                                   requires = IS_DATE(format=s3_date_format),
                                    widget = S3DateWidget(),
                                    default = utcnow,
                                    required = True
@@ -408,7 +408,7 @@ class S3ClimateModel(S3Model):
                   listadd = False)
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (response.s3.*)
+        # Pass variables back to global scope (s3db.*)
         #
         return Storage()
 

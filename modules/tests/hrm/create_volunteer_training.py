@@ -65,13 +65,13 @@ class CreateVolunteerTraining(SeleniumUnitTest):
                        "Emergency First Aid",
                        "option"),
                      ( "site_id",
-                       "Bucharest RFAAT Centre",
+                       "AP Zone",
                        "autocomplete"),
                      ( "start_date",
                        "2012-04-11"),
                      ( "end_date",
                        "2012-04-12"),
-                     ( "comment",
+                     ( "comments",
                        "Testing comments"),
                      ]
                      )

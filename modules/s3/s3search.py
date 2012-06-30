@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""
-    RESTful Search Methods
+""" RESTful Search Methods
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
@@ -31,7 +30,6 @@
 """
 
 import re
-import cPickle
 
 try:
     import json # try stdlib (Python 2.6)
@@ -47,7 +45,7 @@ from gluon.storage import Storage
 
 from s3crud import S3CRUD
 from s3navigation import s3_search_tabs
-from s3utils import s3_debug, S3DateTime
+from s3utils import s3_debug, S3DateTime, s3_get_foreign_key
 from s3validators import *
 from s3widgets import CheckboxesWidgetS3, S3OrganisationHierarchyWidget
 
@@ -172,23 +170,17 @@ class S3SearchWidget(object):
                 rkey, f = f.split("$", 1)
                 if not rkey in ktable.fields:
                     continue
-                ftype = str(ktable[rkey].type)
-                if ftype[:9] == "reference":
-                    reference = ftype[10:]
-                elif ftype[:14] == "list:reference":
-                    reference = ftype[15:]
-                    multiple = True
-                else:
-                    continue
                 rtable = ktable
                 rtablename = ktablename
-                ktable = db[reference]
-                ktablename = reference
+                ktablename, key, multiple = s3_get_foreign_key(ktable[rkey])
+                if not ktablename:
+                    continue
+                else:
+                    ktable = db[ktablename]
                 # Do not add queries for empty tables
                 if not db(ktable.id > 0).select(ktable.id,
                                                 limitby=(0, 1)).first():
                     continue
-
 
             # Master queries
             # @todo: update this for new QueryBuilder (S3ResourceFilter)
@@ -404,6 +396,7 @@ class S3SearchMinMaxWidget(S3SearchWidget):
 
         return w
 
+    # -------------------------------------------------------------------------
     @staticmethod
     def widget_label(widget):
         """
@@ -413,6 +406,7 @@ class S3SearchMinMaxWidget(S3SearchWidget):
         """
         return LABEL(widget["label"], _for="id-%s" % widget["name"])
 
+    # -------------------------------------------------------------------------
     @staticmethod
     def widget_input(widget):
         """
@@ -496,6 +490,7 @@ class S3SearchOptionsWidget(S3SearchWidget):
         @param cols: The number of columns which the options will be
                      displayed in
     """
+
     def __init__(self, field=None, name=None, options=None, **attr):
         """
             Configures the search option
@@ -511,6 +506,7 @@ class S3SearchOptionsWidget(S3SearchWidget):
         super(S3SearchOptionsWidget, self).__init__(field, name, **attr)
         self.options = options
 
+    # -------------------------------------------------------------------------
     def _get_reference_resource(self, resource):
         """
             If the field is entered as kfield$field, will search field in the
@@ -528,6 +524,7 @@ class S3SearchOptionsWidget(S3SearchWidget):
                                                        resource_name)
         return resource, field, kfield
 
+    # -------------------------------------------------------------------------
     def widget(self, resource, vars):
         """
             Returns the widget
@@ -986,6 +983,7 @@ class S3SearchSkillsWidget(S3SearchOptionsWidget):
                - meanwhile at least sort by level of competency
     """
 
+    # -------------------------------------------------------------------------
     def widget(self, resource, vars):
         manager = current.manager
         c = manager.define_resource("hrm", "competency")
@@ -1172,11 +1170,9 @@ class S3Search(S3CRUD):
             user's profile, to which they can subscribe
         """
 
-        request = self.request
-
         T = current.T
         db = current.db
-        s3db = current.s3db
+        request = self.request
 
         user_id = current.session.auth.user.id
         now = request.utcnow.microsecond
@@ -1197,10 +1193,11 @@ class S3Search(S3CRUD):
         search_vars["prefix"] = r.controller
         search_vars["function"] = r.function
 
-        table = s3db.pr_save_search
+        table = current.s3db.pr_save_search
         if len(db(table.user_id == user_id).select(table.id,
                                                    limitby=(0, 1))):
             rows = db(table.user_id == user_id).select(table.ALL)
+            import cPickle
             for row in rows:
                 pat = "_"
                 s_v = cPickle.loads(row.search_vars)
@@ -1240,33 +1237,34 @@ class S3Search(S3CRUD):
         s_var["save"] = True
         jurl = URL(r=request, c=r.controller, f=r.function,
                    args=["search"], vars=s_var)
-        save_search_script = SCRIPT("""
-$('#%s').live('click', function() {
-    $('#%s').show();
-    $('#%s').hide();
-    $.ajax({
-        url: '%s',
-        data: '%s',
-        success: function(data) {
-            $('#%s').show();
-            $('#%s').hide();
-        },
-        type: 'POST'
-        });
-    return false;
-    });
-""" % (save_search_btn_id,
+        save_search_script = '''
+$('#%s').live('click',function(){
+ $('#%s').show()
+ $('#%s').hide()
+ $.ajax({
+  url:'%s',
+  data:'%s',
+  success:function(data){
+   $('#%s').show()
+   $('#%s').hide()
+  },
+  type:'POST'
+ })
+ return false
+})
+''' % (save_search_btn_id,
        save_search_processing_id,
        save_search_btn_id,
        jurl,
        json.dumps(search_vars),
        save_search_a_id,
-       save_search_processing_id))
+       save_search_processing_id)
+
+        current.response.s3.jquery_ready.append(save_search_script)
 
         widget = DIV(save_search_processing,
                     save_search_a,
                     save_search_btn,
-                    save_search_script,
                     _style="font-size:12px; padding:5px 0px 5px 90px;",
                     _id="save_search"
                     )
@@ -1292,7 +1290,6 @@ $('#%s').live('click', function() {
         db = current.db
         s3db = current.s3db
         gis = current.gis
-        manager = current.manager
         table = self.table
         tablename = self.tablename
 
@@ -1339,13 +1336,15 @@ $('#%s').live('click', function() {
         if "load" in r.get_vars:
             search_id = r.get_vars.get("load", None)
             if not search_id:
-                r.error(400, manager.ERROR.BAD_RECORD)
+                r.error(400, current.manager.ERROR.BAD_RECORD)
             r.post_vars = r.vars
             search_table = s3db.pr_save_search
             _query = (search_table.id == search_id)
-            record = db(_query).select(limitby=(0, 1)).first()
+            record = db(_query).select(record.search_vars,
+                                       limitby=(0, 1)).first()
             if not record:
-                r.error(400, manager.ERROR.BAD_RECORD)
+                r.error(400, current.manager.ERROR.BAD_RECORD)
+            import cPickle
             s_vars = cPickle.loads(record.search_vars)
             r.post_vars = Storage(s_vars["criteria"])
             r.http = "POST"
@@ -1572,7 +1571,6 @@ $('#%s').live('click', function() {
         """
 
         s3 = current.session.s3
-        response = current.response
 
         query = None
         errors = None
@@ -1627,7 +1625,7 @@ $('#%s').live('click', function() {
             elif advanced_form.errors:
                 simple = False
 
-        response.s3.simple_search = simple
+        current.response.s3.simple_search = simple
 
         return (query, errors)
 
@@ -1738,23 +1736,9 @@ $('#%s').live('click', function() {
             @param attr: request attributes
         """
 
-        db = current.db
-        s3db = current.s3db
-        manager = current.manager
-        xml = manager.xml
-
-        request = self.request
-        response = current.response
-
-        resource = self.resource
-        table = self.table
-        tablename = self.tablename
-
-        _vars = request.vars
-
-        limit = int(_vars.limit or 0)
-
         output = None
+
+        _vars = self.request.vars
 
         # JQueryUI Autocomplete uses "term" instead of "value"
         # (old JQuery Autocomplete uses "q" instead of "value")
@@ -1765,12 +1749,18 @@ $('#%s').live('click', function() {
         value = value.lower().strip()
 
         if _vars.field and _vars.filter and value:
+            s3db = current.s3db
+            resource = self.resource
+            table = self.table
+
+            limit = int(_vars.limit or 0)
+
             fieldname = str.lower(_vars.field)
             field = table[fieldname]
 
             # Default fields to return
             fields = [table.id, field]
-            if tablename == "org_site":
+            if self.tablename == "org_site":
                 # Simpler to provide an exception case than write a whole new class
                 table = s3db.org_site
                 fields.append(table.instance_type)
@@ -1796,9 +1786,10 @@ $('#%s').live('click', function() {
                 query = (field > value)
 
             else:
-                output = xml.json_message(False,
-                                          400,
-                                          "Unsupported filter! Supported filters: ~, =, <, >")
+                output = current.manager.xml.json_message(
+                            False,
+                            400,
+                            "Unsupported filter! Supported filters: ~, =, <, >")
                 raise HTTP(400, body=output)
 
             # Exclude records which are already linked:
@@ -1810,7 +1801,7 @@ $('#%s').live('click', function() {
                     linktable = s3db[link]
                     fq = (linktable[rkey] == table[fkey]) & \
                          (linktable[lkey] == _id)
-                    linked = db(fq).select(table._id)
+                    linked = current.db(fq).select(table._id)
                     exclude = (~(table._id.belongs([r[table._id.name]
                                                     for r in linked])))
                 except Exception, e:
@@ -1851,7 +1842,8 @@ $('#%s').live('click', function() {
             resource.add_filter(query)
 
             if filter == "~":
-                if (not limit or limit > MAX_SEARCH_RESULTS) and resource.count() > MAX_SEARCH_RESULTS:
+                if (not limit or limit > MAX_SEARCH_RESULTS) and \
+                   resource.count() > MAX_SEARCH_RESULTS:
                     output = jsons([dict(id="",
                                          name="Search results are over %d. Please input more characters." \
                                          % MAX_SEARCH_RESULTS)])
@@ -1862,12 +1854,13 @@ $('#%s').live('click', function() {
                                                 limit=limit,
                                                 fields=fields,
                                                 orderby=field)
-            response.headers["Content-Type"] = "application/json"
+            current.response.headers["Content-Type"] = "application/json"
 
         else:
-            output = xml.json_message(False,
-                                      400,
-                                      "Missing options! Require: field, filter & value")
+            output = current.manager.xml.json_message(
+                        False,
+                        400,
+                        "Missing options! Require: field, filter & value")
             raise HTTP(400, body=output)
 
         return output
@@ -1891,11 +1884,9 @@ $('#%s').live('click', function() {
         """
 
         # Get environment
-        request = self.request
-        resource = self.resource
         T = current.T
-
-        vars = request.get_vars
+        resource = self.resource
+        vars = self.request.get_vars
 
         resource.clear_query()
 
@@ -2026,7 +2017,7 @@ $('#%s').live('click', function() {
         if self.simple and request.vars.simple_form:
             for name, widget in self.simple:
                 # Pass request instead of form - it contains the vars
-                query, errors = self._build_widget_query(self.resource,
+                query, errors = self._build_widget_query(resource,
                                                          name,
                                                          widget,
                                                          request,
@@ -2037,7 +2028,7 @@ $('#%s').live('click', function() {
         elif self.advanced:
             for name, widget in self.advanced:
                 # Pass request instead of form - it contains the vars
-                query, errors = self._build_widget_query(self.resource,
+                query, errors = self._build_widget_query(resource,
                                                          name,
                                                          widget,
                                                          request,
@@ -2065,13 +2056,6 @@ $('#%s').live('click', function() {
         else:
             represent = field.represent
 
-        #output = resource.exporter.json(resource,
-        #                                start=0,
-        #                                limit=10,
-        #                                fields = [field],
-        #                                orderby = field)
-
-
         attributes = dict(orderby=field,
                           limitby=resource.limitby(start=0, limit=11),
                           distinct=True)
@@ -2092,19 +2076,10 @@ $('#%s').live('click', function() {
     @staticmethod
     def save_search(r, **attr):
         """
-            @todo: docstring
+            Save a Search Filter in the user's profile
+            - db.pr_save_search
         """
 
-        # r contains the resource name:
-        tablename = r.tablename
-        component = r.component_name
-        s3mgr = current.manager
-        db = current.db
-        s3db = current.s3db
-        session = current.session
-        auth = current.auth
-
-        user_id = auth.user.id
         search_vars = json.load(r.body)
         s_vars = {}
 
@@ -2119,11 +2094,13 @@ $('#%s').live('click', function() {
             else:
                 key = str(i)
                 s_vars[key] = str(search_vars[i])
+
+        import cPickle
         search_str = cPickle.dumps(s_vars)
-        table = s3db.pr_save_search
-        query = (table.user_id == user_id) & \
+        table = current.s3db.pr_save_search
+        query = (table.user_id == current.auth.user_id) & \
                 (table.search_vars == search_str)
-        if len (db(query).select(table.id)) == 0:
+        if len(current.db(query).select(table.id)) == 0:
             new_search = {}
             new_search["search_vars"] = search_str
             _id = table.insert(**new_search)
@@ -2144,11 +2121,7 @@ class S3LocationSearch(S3Search):
             @param attr: request attributes
         """
 
-        xml = current.manager.xml
-        gis = current.manager.gis
-
         output = None
-        request = self.request
         response = current.response
         resource = self.resource
         table = self.table
@@ -2157,13 +2130,14 @@ class S3LocationSearch(S3Search):
         # Respect response.s3.filter
         resource.add_filter(response.s3.filter)
 
-        _vars = request.vars
+        _vars = self.request.vars
 
         limit = int(_vars.limit or 0)
 
-        # JQueryUI Autocomplete uses "term" instead of "value"
-        # (old JQuery Autocomplete uses "q" instead of "value")
-        value = _vars.value or _vars.term or _vars.q or None
+        # JQueryUI Autocomplete uses "term"
+        # old JQuery Autocomplete uses "q"
+        # what uses "value"?
+        value = _vars.term or _vars.value or _vars.q or None
 
         # We want to do case-insensitive searches
         # (default anyway on MySQL/SQLite, but not PostgreSQL)
@@ -2237,7 +2211,7 @@ class S3LocationSearch(S3Search):
             if filter == "~":
                 if children:
                     # New LocationSelector
-                    children = gis.get_children(children, level=level)
+                    children = current.gis.get_children(children, level=level)
                     children = children.find(lambda row: \
                                              row.name and value in str.lower(row.name))
                     output = children.json()
@@ -2304,15 +2278,18 @@ class S3LocationSearch(S3Search):
                           table.addr_street,
                           table.addr_postcode]
             else:
-                output = xml.json_message(False,
-                                          400,
-                                          "Unsupported filter! Supported filters: ~, =")
+                output = current.manager.xml.json_message(
+                                False,
+                                400,
+                                "Unsupported filter! Supported filters: ~, ="
+                            )
                 raise HTTP(400, body=output)
 
 
         if not fields:
+            append = fields.append
             for field in table.fields:
-                fields.append(table[field])
+                append(table[field])
 
         resource.add_filter(query)
 
@@ -2351,10 +2328,6 @@ class S3OrganisationSearch(S3Search):
             @param attr: request attributes
         """
 
-        xml = current.manager.xml
-
-        output = None
-        request = self.request
         response = current.response
         resource = self.resource
         table = self.table
@@ -2363,28 +2336,20 @@ class S3OrganisationSearch(S3Search):
         # Respect response.s3.filter
         resource.add_filter(response.s3.filter)
 
-        _vars = request.vars # should be request.get_vars?
+        _vars = self.request.vars # should be request.get_vars?
 
-        # JQueryUI Autocomplete uses "term" instead of "value"
-        # (old JQuery Autocomplete uses "q" instead of "value")
-        value = _vars.value or _vars.term or _vars.q or None
+        # JQueryUI Autocomplete uses "term"
+        # old JQuery Autocomplete uses "q"
+        # what uses "value"?
+        value = _vars.term or _vars.value or _vars.q or None
 
         # We want to do case-insensitive searches
         # (default anyway on MySQL/SQLite, but not PostgreSQL)
         value = value.lower().strip()
 
         filter = _vars.filter
-        limit = int(_vars.limit or 0)
 
         if filter and value:
-
-            btable = current.s3db.org_organisation_branch
-            field = table.name
-            field2 = table.acronym
-            field3 = btable.organisation_id
-
-            # Fields to return
-            fields = [table.id, field, field2, field3]
 
             if filter == "~":
                 query = (S3FieldSelector("parent.name").lower().like(value + "%")) | \
@@ -2393,20 +2358,29 @@ class S3OrganisationSearch(S3Search):
                         (S3FieldSelector("organisation.acronym").lower().like(value + "%"))
 
             else:
-                output = xml.json_message(False,
-                                          400,
-                                          "Unsupported filter! Supported filters: ~")
+                output = current.manager.xml.json_message(
+                                False,
+                                400,
+                                "Unsupported filter! Supported filters: ~"
+                            )
                 raise HTTP(400, body=output)
 
         resource.add_filter(query)
 
-        if filter == "~":
-            if (not limit or limit > MAX_SEARCH_RESULTS) and resource.count() > MAX_SEARCH_RESULTS:
-                output = jsons([dict(id="",
-                                     name="Search results are over %d. Please input more characters." \
-                                     % MAX_SEARCH_RESULTS)])
+        limit = int(_vars.limit or 0)
+        if (not limit or limit > MAX_SEARCH_RESULTS) and resource.count() > MAX_SEARCH_RESULTS:
+            output = jsons([dict(id="",
+                                 name="Search results are over %d. Please input more characters." \
+                                 % MAX_SEARCH_RESULTS)])
+        else:
+            btable = current.s3db.org_organisation_branch
+            field = table.name
+            field2 = table.acronym
+            field3 = btable.organisation_id
 
-        if output is None:
+            # Fields to return
+            fields = [table.id, field, field2, field3]
+
             attributes = dict(orderby=field)
             limitby = resource.limitby(start=0, limit=limit)
             if limitby is not None:
@@ -2443,85 +2417,83 @@ class S3OrganisationSearch(S3Search):
 # =============================================================================
 class S3PersonSearch(S3Search):
     """
-        Search method with specifics for Person records (full name search)
+        Search method for Persons
     """
 
     def search_json(self, r, **attr):
         """
             JSON search method for S3PersonAutocompleteWidget
-
-            @param r: the S3Request
-            @param attr: request attributes
+            - full name search
         """
 
-        xml = current.manager.xml
-
-        output = None
-        request = self.request
         response = current.response
         resource = self.resource
-        table = self.table
 
         # Query comes in pre-filtered to accessible & deletion_status
         # Respect response.s3.filter
         resource.add_filter(response.s3.filter)
 
-        _vars = request.vars # should be request.get_vars?
+        _vars = self.request.vars # should be request.get_vars?
 
-        # JQueryUI Autocomplete uses "term" instead of "value"
-        # (old JQuery Autocomplete uses "q" instead of "value")
-        value = _vars.value or _vars.term or _vars.q or None
+        # JQueryUI Autocomplete uses "term"
+        # old JQuery Autocomplete uses "q"
+        # what uses "value"?
+        value = _vars.term or _vars.value or _vars.q or None
+
+        if not value:
+            output = current.manager.xml.json_message(
+                            False,
+                            400,
+                            "No value provided!"
+                        )
+            raise HTTP(400, body=output)
 
         # We want to do case-insensitive searches
         # (default anyway on MySQL/SQLite, but not PostgreSQL)
         value = value.lower()
 
-        filter = _vars.filter
-        limit = int(_vars.limit or 0)
-
-        if filter and value:
-
-            field = table.first_name
-            field2 = table.middle_name
-            field3 = table.last_name
-
-            # Fields to return
-            fields = [table.id, field, field2, field3]
-
-            if filter == "~":
-                # pr_person Autocomplete
-                if " " in value:
-                    value1, value2 = value.split(" ", 1)
-                    value2 = value2.strip()
-                    query = (field.lower().like(value1 + "%")) & \
-                            ((field2.lower().like(value2 + "%")) | \
-                             (field3.lower().like(value2 + "%")))
-                else:
-                    value = value.strip()
-                    query = ((field.lower().like(value + "%")) | \
-                            (field2.lower().like(value + "%")) | \
-                            (field3.lower().like(value + "%")))
-
-            else:
-                output = xml.json_message(False,
-                                          400,
-                                          "Unsupported filter! Supported filters: ~")
-                raise HTTP(400, body=output)
+        if " " in value:
+            value1, value2 = value.split(" ", 1)
+            value2 = value2.strip()
+            query = (S3FieldSelector("first_name").lower().like(value1 + "%")) & \
+                    ((S3FieldSelector("middle_name").lower().like(value2 + "%")) | \
+                     (S3FieldSelector("last_name").lower().like(value2 + "%")))
+        else:
+            value = value.strip()
+            query = ((S3FieldSelector("first_name").lower().like(value + "%")) | \
+                    (S3FieldSelector("middle_name").lower().like(value + "%")) | \
+                    (S3FieldSelector("last_name").lower().like(value + "%")))
 
         resource.add_filter(query)
 
-        if filter == "~":
-            if (not limit or limit > MAX_SEARCH_RESULTS) and resource.count() > MAX_SEARCH_RESULTS:
-                output = jsons([dict(id="",
-                                     name="Search results are over %d. Please input more characters." \
+        limit = int(_vars.limit or 0)
+        if (not limit or limit > MAX_SEARCH_RESULTS) and resource.count() > MAX_SEARCH_RESULTS:
+            output = jsons([dict(id="",
+                                 name="Search results are over %d. Please input more characters." \
                                      % MAX_SEARCH_RESULTS)])
+        else:
+            fields = ["id",
+                      "first_name",
+                      "middle_name",
+                      "last_name",
+                      ]
 
-        if output is None:
-            output = resource.exporter.json(resource,
-                                            start=0,
-                                            limit=limit,
-                                            fields=fields,
-                                            orderby=field)
+            rows = resource.sqltable(fields=fields,
+                                     start=0,
+                                     limit=limit,
+                                     orderby="pr_person.first_name",
+                                     as_rows=True)
+
+            if rows:
+                items = [{
+                            "id"     : row.id,
+                            "first"  : row.first_name,
+                            "middle" : row.middle_name or "",
+                            "last"   : row.last_name or "",
+                        } for row in rows ]
+            else:
+                items = []
+            output = json.dumps(items)
 
         response.headers["Content-Type"] = "application/json"
         return output
@@ -2529,89 +2501,94 @@ class S3PersonSearch(S3Search):
 # =============================================================================
 class S3HRSearch(S3Search):
     """
-        Search method with specifics for HRM records (full name search)
+        Search method for Human Resources
     """
 
     def search_json(self, r, **attr):
         """
             JSON search method for S3HumanResourceAutocompleteWidget
-
-            @param r: the S3Request
-            @param attr: request attributes
+            - full name search
+            - include Organisation & Job Role in the output
         """
 
-        xml = current.manager.xml
-        s3db = current.s3db
-
-        output = None
-        request = self.request
-        response = current.response
         resource = self.resource
-        pr_table = s3db.pr_person
-        table = self.table
+        response = current.response
 
         # Query comes in pre-filtered to accessible & deletion_status
         # Respect response.s3.filter
         resource.add_filter(response.s3.filter)
 
-        _vars = request.vars # should be request.get_vars?
+        _vars = self.request.vars # should be request.get_vars?
 
-        # JQueryUI Autocomplete uses "term" instead of "value"
-        # (old JQuery Autocomplete uses "q" instead of "value")
-        value = _vars.value or _vars.term or _vars.q or None
+        # JQueryUI Autocomplete uses "term"
+        # old JQuery Autocomplete uses "q"
+        # what uses "value"?
+        value = _vars.term or _vars.value or _vars.q or None
+
+        if not value:
+            output = current.manager.xml.json_message(
+                            False,
+                            400,
+                            "No value provided!"
+                        )
+            raise HTTP(400, body=output)
 
         # We want to do case-insensitive searches
         # (default anyway on MySQL/SQLite, but not PostgreSQL)
         value = value.lower()
 
-        filter = _vars.filter
-        limit = int(_vars.limit or 0)
-
-        if filter and value:
-
-            field = pr_table.first_name
-            field2 = pr_table.middle_name
-            field3 = pr_table.last_name
-
-            # Fields to return
-            fields = [table.id, field, field2, field3]
-
-            if filter == "~":
-                # pr_person Autocomplete
-                if " " in value:
-                    value1, value2 = value.split(" ", 1)
-                    value2 = value2.strip()
-                    query = (pr_table.id == table.person_id) & \
-                            ((field.lower().like(value1 + "%")) & \
-                            ((field2.lower().like(value2 + "%")) | \
-                             (field3.lower().like(value2 + "%"))))
-                else:
-                    value = value.strip()
-                    query = (pr_table.id == table.person_id) & \
-                            ((field.lower().like(value + "%")) | \
-                            (field2.lower().like(value + "%")) | \
-                            (field3.lower().like(value + "%")))
-
-            else:
-                output = xml.json_message(False,
-                                          400,
-                                          "Unsupported filter! Supported filters: ~")
-                raise HTTP(400, body=output)
+        if " " in value:
+            # Multiple words
+            # - check for match of first word against first_name
+            # - & second word against either middle_name or last_name
+            value1, value2 = value.split(" ", 1)
+            value2 = value2.strip()
+            query = ((S3FieldSelector("person_id$first_name").lower().like(value1 + "%")) & \
+                    ((S3FieldSelector("person_id$middle_name").lower().like(value2 + "%")) | \
+                     (S3FieldSelector("person_id$last_name").lower().like(value2 + "%"))))
+        else:
+            # Single word - check for match against any of the 3 names
+            value = value.strip()
+            query = ((S3FieldSelector("person_id$first_name").lower().like(value + "%")) | \
+                     (S3FieldSelector("person_id$middle_name").lower().like(value + "%")) | \
+                     (S3FieldSelector("person_id$last_name").lower().like(value + "%")))
 
         resource.add_filter(query)
 
-        if filter == "~":
-            if (not limit or limit > MAX_SEARCH_RESULTS) and resource.count() > MAX_SEARCH_RESULTS:
-                output = jsons([dict(id="",
-                                     name="Search results are over %d. Please input more characters." \
-                                     % MAX_SEARCH_RESULTS)])
+        limit = int(_vars.limit or 0)
+        if (not limit or limit > MAX_SEARCH_RESULTS) and resource.count() > MAX_SEARCH_RESULTS:
+            output = jsons([dict(id="",
+                                 name="Search results are over %d. Please input more characters." \
+                                 % MAX_SEARCH_RESULTS)])
+        else:
+            fields = ["id",
+                      "person_id$first_name",
+                      "person_id$middle_name",
+                      "person_id$last_name",
+                      "job_role_id$name",
+                      ]
+            show_orgs = current.deployment_settings.get_hrm_show_organisation()
+            if show_orgs:
+                fields.append("organisation_id$name")
 
-        if output is None:
-            output = resource.exporter.json(resource,
-                                            start=0,
-                                            limit=limit,
-                                            fields=fields,
-                                            orderby=field)
+            rows = resource.sqltable(fields=fields,
+                                     start=0,
+                                     limit=limit,
+                                     orderby="pr_person.first_name",
+                                     as_rows=True)
+
+            if rows:
+                items = [{
+                            "id"     : row["hrm_human_resource"].id,
+                            "first"  : row["pr_person"].first_name,
+                            "middle" : row["pr_person"].middle_name or "",
+                            "last"   : row["pr_person"].last_name or "",
+                            "org"    : row["org_organisation"].name if show_orgs else "",
+                            "job"    : row["hrm_job_role"].name or "",
+                        } for row in rows ]
+            else:
+                items = []
+            output = json.dumps(items)
 
         response.headers["Content-Type"] = "application/json"
         return output
@@ -2630,24 +2607,21 @@ class S3PentitySearch(S3Search):
             @param attr: request attributes
         """
 
-        s3db = current.s3db
-        xml = current.manager.xml
-
-        output = None
-        request = self.request
         response = current.response
         resource = self.resource
         table = self.table
+        s3db = current.s3db
 
         # Query comes in pre-filtered to accessible & deletion_status
         # Respect response.s3.filter
         resource.add_filter(response.s3.filter)
 
-        _vars = request.vars # should be request.get_vars?
+        _vars = self.request.vars # should be request.get_vars?
 
-        # JQueryUI Autocomplete uses "term" instead of "value"
-        # (old JQuery Autocomplete uses "q" instead of "value")
-        value = _vars.value or _vars.term or _vars.q or None
+        # JQueryUI Autocomplete uses "term"
+        # old JQuery Autocomplete uses "q"
+        # what uses "value"?
+        value = _vars.term or _vars.value or _vars.q or None
 
         # We want to do case-insensitive searches
         # (default anyway on MySQL/SQLite, but not PostgreSQL)
@@ -2678,9 +2652,11 @@ class S3PentitySearch(S3Search):
                             (field3.lower().like(value + "%")))
                 resource.add_filter(query)
             else:
-                output = xml.json_message(False,
-                                          400,
-                                          "Unsupported filter! Supported filters: ~")
+                output = current.manager.xml.json_message(
+                                False,
+                                400,
+                                "Unsupported filter! Supported filters: ~"
+                            )
                 raise HTTP(400, body=output)
 
         resource.add_filter(ptable.pe_id == table.pe_id)
@@ -2730,8 +2706,8 @@ class S3PentitySearch(S3Search):
 # =============================================================================
 class S3TrainingSearch(S3Search):
     """
-        Search method with specifics for Trainign Event records
-        - search coursed_id & site_id & return represents to the calling JS
+        Search method with specifics for Training Event records
+        - search course_id & site_id & return represents to the calling JS
 
         @ToDo: Allow searching by Date
     """
@@ -2739,81 +2715,70 @@ class S3TrainingSearch(S3Search):
     def search_json(self, r, **attr):
         """
             JSON search method for S3TrainingAutocompleteWidget
-
-            @param r: the S3Request
-            @param attr: request attributes
         """
 
-        xml = current.manager.xml
-
-        output = None
-        request = self.request
         response = current.response
         resource = self.resource
-        table = self.table
 
         # Query comes in pre-filtered to accessible & deletion_status
         # Respect response.s3.filter
         resource.add_filter(response.s3.filter)
 
-        _vars = request.vars # should be request.get_vars?
+        _vars = self.request.vars # should be request.get_vars?
 
-        # JQueryUI Autocomplete uses "term" instead of "value"
-        # (old JQuery Autocomplete uses "q" instead of "value")
-        value = _vars.value or _vars.term or _vars.q or None
+        # JQueryUI Autocomplete uses "term"
+        # old JQuery Autocomplete uses "q"
+        # what uses "value"?
+        value = _vars.term or _vars.value or _vars.q or None
+
+        if not value:
+            output = current.manager.xml.json_message(
+                            False,
+                            400,
+                            "No value provided!"
+                        )
+            raise HTTP(400, body=output)
 
         # We want to do case-insensitive searches
         # (default anyway on MySQL/SQLite, but not PostgreSQL)
         value = value.lower()
 
-        filter = _vars.filter
-        limit = int(_vars.limit or 0)
+        table = self.table
+        s3db = current.s3db
+        ctable = s3db.hrm_course
+        field = ctable.name
+        stable = s3db.org_site
+        field2 = stable.name
+        field3 = table.start_date
 
-        if filter and value:
+        # Fields to return
+        fields = [table.id, field, field2, field3]
 
-            s3db = current.s3db
-            ctable = s3db.hrm_course
-            field = ctable.name
-            stable = s3db.org_site
-            field2 = stable.name
-            field3 = table.start_date
+        if " " in value:
+            value1, value2 = value.split(" ", 1)
+            value2 = value2.strip()
+            query = ((field.lower().like("%" + value1 + "%")) & \
+                     (field2.lower().like(value2 + "%"))) | \
+                    ((field.lower().like("%" + value2 + "%")) & \
+                     (field2.lower().like(value1 + "%")))
+        else:
+            value = value.strip()
+            query = ((field.lower().like("%" + value + "%")) | \
+                     (field2.lower().like(value + "%")))
 
-            # Fields to return
-            fields = [table.id, field, field2, field3]
-
-            if filter == "~":
-                # hrm_training_event Autocomplete
-                if " " in value:
-                    value1, value2 = value.split(" ", 1)
-                    value2 = value2.strip()
-                    query = ((field.lower().like("%" + value1 + "%")) & \
-                             (field2.lower().like(value2 + "%"))) | \
-                            ((field.lower().like("%" + value2 + "%")) & \
-                             (field2.lower().like(value1 + "%")))
-                else:
-                    value = value.strip()
-                    query = ((field.lower().like("%" + value + "%")) | \
-                             (field2.lower().like(value + "%")))
-
-                #left = table.on(table.site_id == stable.id)
-                query = query & (table.course_id == ctable.id) & \
-                                (table.site_id == stable.id)
-
-            else:
-                output = xml.json_message(False,
-                                          400,
-                                          "Unsupported filter! Supported filters: ~")
-                raise HTTP(400, body=output)
+        #left = table.on(table.site_id == stable.id)
+        query = query & (table.course_id == ctable.id) & \
+                        (table.site_id == stable.id)
 
         resource.add_filter(query)
 
-        if filter == "~":
-            if (not limit or limit > MAX_SEARCH_RESULTS) and resource.count() > MAX_SEARCH_RESULTS:
-                output = jsons([dict(id="",
-                                     name="Search results are over %d. Please input more characters." \
-                                     % MAX_SEARCH_RESULTS)])
+        limit = int(_vars.limit or 0)
+        if (not limit or limit > MAX_SEARCH_RESULTS) and resource.count() > MAX_SEARCH_RESULTS:
+            output = jsons([dict(id="",
+                                 name="Search results are over %d. Please input more characters." \
+                                 % MAX_SEARCH_RESULTS)])
 
-        if output is None:
+        else:
             attributes = dict(orderby=field)
             limitby = resource.limitby(start=0, limit=limit)
             if limitby is not None:
@@ -2831,13 +2796,12 @@ class S3TrainingSearch(S3Search):
                 append(record)
             output = jsons(output)
 
-
         response.headers["Content-Type"] = "application/json"
         return output
 
-
 # =============================================================================
 class S3SearchOrgHierarchyWidget(S3SearchOptionsWidget):
+
     def widget(self, resource, vars):
         field_name = self.field
 

@@ -153,7 +153,6 @@ def index():
                             (appname, settings.get_template())
         try:
             exec("import %s as custom" % controller)
-            pass
         except ImportError:
             # No Custom Page available, continue with the default
             page = "private/templates/%s/controllers.py" % \
@@ -171,11 +170,10 @@ def index():
                             (appname, settings.get_template())
         try:
             exec("import %s as custom" % controller)
-            pass
-        except ImportError:
+        except ImportError, e:
             # No Custom Page available, continue with the default
             # @ToDo: cache this result - at least in session, ideally in class startup
-            pass
+            s3base.s3_debug("Custom homepage cannot be loaded: %s" % e.message)
         else:
             if "index" in custom.__dict__:
                 output = custom.index()()
@@ -245,7 +243,7 @@ def index():
                                  )
 
     div_arrow = DIV(IMG(_src = "/%s/static/img/arrow_blue_right.png" % \
-                                appname),
+                                 appname),
                     _class = "div_arrow")
     sit_dec_res_box = DIV(menu_divs["sit"],
                           div_arrow,
@@ -258,15 +256,17 @@ def index():
                     )
     facility_box  = menu_divs["facility"]
     facility_box.append(A(IMG(_src = "/%s/static/img/map_icon_128.png" % \
-                                    appname),
+                                       appname),
                           _href = URL(c="gis", f="index"),
                           _title = T("Map")
                           )
                         )
 
     datatable_ajax_source = ""
+
     # Check logged in AND permissions
-    if AUTHENTICATED in session.s3.roles and \
+    roles = session.s3.roles
+    if AUTHENTICATED in roles and \
        auth.s3_has_permission("read", db.org_organisation):
         org_items = organisation()
         datatable_ajax_source = "/%s/default/organisation.aaData" % \
@@ -280,6 +280,7 @@ def index():
         if permitted_facilities:
             facility_list = s3base.s3_represent_facilities(db, permitted_facilities,
                                                            link=False)
+            facility_list = sorted(facility_list, key=lambda fac: fac[1])
             facility_opts = [OPTION(opt[1], _value = opt[0])
                              for opt in facility_list]
             if facility_list:
@@ -297,10 +298,10 @@ def index():
                                         ),
                                     _id = "manage_facility_box",
                                     _class = "menu_box fleft")
-                s3.jquery_ready.append( """
-$('#manage_facility_select').change(function() {
-    $('#manage_facility_btn').attr('href', S3.Ap.concat('/default/site/',  $('#manage_facility_select').val()));
-})""" )
+                s3.jquery_ready.append('''
+$('#manage_facility_select').change(function(){
+ $('#manage_facility_btn').attr('href',S3.Ap.concat('/default/site/',$('#manage_facility_select').val()));
+})''')
             else:
                 manage_facility_box = DIV()
 
@@ -319,18 +320,6 @@ $('#manage_facility_select').change(function() {
         manage_facility_box = ""
         org_box = ""
 
-    # @ToDo: Replace this with an easily-customisable section on the homepage
-    #settings = db(db.s3_setting.id == 1).select(limitby=(0, 1)).first()
-    #if settings:
-    #    admin_name = settings.admin_name
-    #    admin_email = settings.admin_email
-    #    admin_tel = settings.admin_tel
-    #else:
-    #    # db empty and prepopulate is false
-    #    admin_name = T("Sahana Administrator").xml(),
-    #    admin_email = "support@Not Set",
-    #    admin_tel = T("Not Set").xml(),
-
     # Login/Registration forms
     self_registration = settings.get_security_self_registration()
     registered = False
@@ -338,7 +327,7 @@ $('#manage_facility_select').change(function() {
     login_div = None
     register_form = None
     register_div = None
-    if AUTHENTICATED not in session.s3.roles:
+    if AUTHENTICATED not in roles:
         # This user isn't yet logged-in
         if request.cookies.has_key("registered"):
             # This browser has logged-in before
@@ -364,32 +353,23 @@ $('#manage_facility_select').change(function() {
             else:
                 s3.scripts.append("/%s/static/scripts/jquery.validate.min.js" % appname)
             if request.env.request_method == "POST":
-                post_script = """// Unhide register form
-    $('#register_form').removeClass('hide');
-    // Hide login form
-    $('#login_form').addClass('hide');"""
+                post_script = '''
+$('#register_form').removeClass('hide');
+$('#login_form').addClass('hide');'''
             else:
                 post_script = ""
-            register_script = """
-    // Change register/login links to avoid page reload, make back button work.
-    $('#register-btn').attr('href', '#register');
-    $('#login-btn').attr('href', '#login');
-    %s
-    // Redirect Register Button to unhide
-    $('#register-btn').click(function() {
-        // Unhide register form
-        $('#register_form').removeClass('hide');
-        // Hide login form
-        $('#login_form').addClass('hide');
-    });
-
-    // Redirect Login Button to unhide
-    $('#login-btn').click(function() {
-        // Hide register form
-        $('#register_form').addClass('hide');
-        // Unhide login form
-        $('#login_form').removeClass('hide');
-    });""" % post_script
+            register_script = '''
+$('#register-btn').attr('href','#register');
+$('#login-btn').attr('href','#login');
+%s
+$('#register-btn').click(function() {
+ $('#register_form').removeClass('hide');
+ $('#login_form').addClass('hide');
+});
+$('#login-btn').click(function() {
+ $('#register_form').addClass('hide');
+ $('#login_form').removeClass('hide');
+});''' % post_script
             s3.jquery_ready.append(register_script)
 
         # Provide a login box on front page
@@ -436,17 +416,12 @@ google.setOnLoadCallback(LoadDynamicFeedControl);"""))
 
     return dict(title = title,
                 item = item,
-
                 sit_dec_res_box = sit_dec_res_box,
                 facility_box = facility_box,
                 manage_facility_box = manage_facility_box,
                 org_box = org_box,
-
                 r = None, # Required for dataTable to work
                 datatable_ajax_source = datatable_ajax_source,
-                #admin_name=admin_name,
-                #admin_email=admin_email,
-                #admin_tel=admin_tel,
                 self_registration=self_registration,
                 registered=registered,
                 login_form=login_form,
@@ -665,7 +640,8 @@ def facebook():
     if not auth.settings.facebook:
         redirect(URL(f="user", args=request.args, vars=request.vars))
 
-    auth.settings.login_form = s3base.FaceBookAccount()
+    from s3oauth import FaceBookAccount
+    auth.settings.login_form = FaceBookAccount()
     form = auth()
 
     return dict(form=form)
@@ -677,7 +653,8 @@ def google():
     if not auth.settings.google:
         redirect(URL(f="user", args=request.args, vars=request.vars))
 
-    auth.settings.login_form = s3base.GooglePlusAccount()
+    from s3oauth import GooglePlusAccount
+    auth.settings.login_form = GooglePlusAccount()
     form = auth()
 
     return dict(form=form)

@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""
-    S3 RESTful API
+""" S3 RESTful API
 
     @see: U{B{I{S3XRC}} <http://eden.sahanafoundation.org/wiki/S3XRC>}
 
@@ -65,13 +64,19 @@ except ImportError:
         import gluon.contrib.simplejson as json # fallback to pure-Python module
 
 from gluon import *
+# Here are dependencies listed for reference:
+#from gluon.dal import Field
+#from gluon.globals import current
+#from gluon.html import A, DIV, URL
+#from gluon.http import HTTP, redirect
+#from gluon.validators import IS_EMPTY_OR, IS_NOT_IN_DB, IS_DATE, IS_TIME
+from gluon.dal import Row, Rows
 from gluon.languages import lazyT
-from gluon.sql import Row, Rows
 from gluon.storage import Storage
 from gluon.tools import callback
 
-from s3utils import SQLTABLES3
-from s3validators import IS_ONE_OF, IS_INT_AMOUNT, IS_FLOAT_AMOUNT
+from s3utils import SQLTABLES3, s3_has_foreign_key, s3_get_foreign_key
+from s3validators import IS_ONE_OF
 from s3xml import S3XML
 from s3model import S3Model, S3ModelExtensions
 from s3export import S3Exporter
@@ -88,7 +93,6 @@ else:
     _debug = lambda m: None
 
 # =============================================================================
-
 class S3RequestManager(object):
     """
         Request Manager
@@ -109,7 +113,6 @@ class S3RequestManager(object):
     def __init__(self):
         """
             Constructor
-
         """
 
         self.deployment_settings = current.deployment_settings
@@ -158,7 +161,6 @@ class S3RequestManager(object):
         # Toolkits
         self.audit = current.s3_audit
         self.auth = auth = current.auth
-        self.gis = current.gis
 
         # Register
         current.manager = self
@@ -191,11 +193,11 @@ class S3RequestManager(object):
         self.csv_formats = []
         self.content_type = Storage()
 
-
     # -------------------------------------------------------------------------
     # REST interface wrappers
     # -------------------------------------------------------------------------
-    def define_resource(self, prefix, name,
+    @staticmethod
+    def define_resource(prefix, name,
                         id=None,
                         uid=None,
                         filter=None,
@@ -216,7 +218,7 @@ class S3RequestManager(object):
             @param components: list of component (names)
         """
 
-        resource = S3Resource(self, prefix, name,
+        resource = S3Resource(prefix, name,
                               id=id,
                               uid=uid,
                               filter=filter,
@@ -236,7 +238,7 @@ class S3RequestManager(object):
         """
 
         self.error = None
-        headers={"Content-Type":"application/json"}
+        headers = {"Content-Type":"application/json"}
         try:
             r = S3Request(self, *args, **vars)
         except SyntaxError:
@@ -385,8 +387,7 @@ class S3RequestManager(object):
             @param extended_comments: Typically the comments are abbreviated
         """
 
-        xml = self.xml
-        xml_encode = xml.xml_encode
+        xml_encode = self.xml.xml_encode
 
         NONE = str(current.T("None")).decode("utf-8")
         cache = current.cache
@@ -490,7 +491,6 @@ class S3RequestManager(object):
         """
 
         db = current.db
-
         xml = self.xml
         xml_decode = xml.xml_decode
 
@@ -585,12 +585,12 @@ class S3RequestManager(object):
         return
 
 # =============================================================================
-
 class S3Request(object):
     """
         Class to handle RESTful requests
     """
 
+    # -------------------------------------------------------------------------
     def __init__(self,
                  manager,
                  prefix=None,
@@ -860,6 +860,7 @@ class S3Request(object):
                     else:
                         _m = m
                     method_hooks[_m] = handler
+        return
 
     # -------------------------------------------------------------------------
     def get_handler(self, method, transform=False):
@@ -907,9 +908,6 @@ class S3Request(object):
     def __parse(self):
         """ Parses the web2py request object """
 
-        request = current.request
-        manager = current.manager
-
         self.id = None
         self.component_name = None
         self.component_id = None
@@ -918,9 +916,8 @@ class S3Request(object):
         representation = self.extension
 
         # Get the names of all components
-        model = manager.model
         tablename = "%s_%s" % (self.prefix, self.name)
-        components = model.get_components(tablename)
+        components = current.manager.model.get_components(tablename)
         if components:
             components = components.keys()
         else:
@@ -976,6 +973,7 @@ class S3Request(object):
             self.representation = self.DEFAULT_REPRESENTATION
         else:
             self.representation = representation.lower()
+        return
 
     # -------------------------------------------------------------------------
     # REST Interface
@@ -988,11 +986,10 @@ class S3Request(object):
         """
 
         manager = current.manager
-        request = current.request
         response = current.response
         session = current.session
 
-        hooks = current.response.get(self.HOOKS, None)
+        hooks = response.get(self.HOOKS, None)
         self.next = None
 
         bypass = False
@@ -1043,16 +1040,14 @@ class S3Request(object):
             response.view = "xml.html"
 
         # Content type
-        content_type = manager.content_type
         response.headers["Content-Type"] = \
-            content_type.get(self.representation, "text/html")
+            manager.content_type.get(self.representation, "text/html")
 
         # Custom action?
         if not self.custom_action:
-            model = manager.model
-            self.custom_action = model.get_method(self.prefix, self.name,
-                                                  component_name=self.component_name,
-                                                  method=self.method)
+            self.custom_action = manager.model.get_method(self.prefix, self.name,
+                                                          component_name=self.component_name,
+                                                          method=self.method)
         # Method handling
         http = self.http
         handler = None
@@ -1115,7 +1110,6 @@ class S3Request(object):
 
         method = self.method
         manager = current.manager
-        model = manager.model
 
         tablename = self.component and self.component.tablename or self.tablename
 
@@ -1238,15 +1232,7 @@ class S3Request(object):
         """
 
         manager = current.manager
-        resource = r.resource
         _vars = r.get_vars
-
-        xml = manager.xml
-        json_formats = manager.json_formats
-        content_type = manager.content_type
-
-        # Find XSLT stylesheet
-        stylesheet = r.stylesheet()
 
         # Slicing
         start = _vars.get("start", None)
@@ -1265,7 +1251,7 @@ class S3Request(object):
         # msince
         msince = _vars.get("msince", None)
         if msince is not None:
-            tfmt = xml.ISOFORMAT
+            tfmt = manager.xml.ISOFORMAT
             try:
                 (y, m, d, hh, mm, ss, t0, t1, t2) = \
                     time.strptime(msince, tfmt)
@@ -1331,6 +1317,9 @@ class S3Request(object):
         else:
             fields = None # all
 
+        # Find XSLT stylesheet
+        stylesheet = r.stylesheet()
+
         # Add stylesheet parameters
         args = Storage()
         if stylesheet is not None:
@@ -1343,29 +1332,29 @@ class S3Request(object):
         # Set response headers
         headers = current.response.headers
         representation = r.representation
-        if representation in json_formats:
+        if representation in manager.json_formats:
             as_json = True
             default = "application/json"
         else:
             as_json = False
             default = "text/xml"
-        headers["Content-Type"] = content_type.get(representation, default)
+        headers["Content-Type"] = manager.content_type.get(representation, default)
 
         # Export the resource
-        output = resource.export_xml(start=start,
-                                     limit=limit,
-                                     msince=msince,
-                                     fields=fields,
-                                     dereference=True,
-                                     references=references,
-                                     mcomponents=mcomponents,
-                                     rcomponents=rcomponents,
-                                     stylesheet=stylesheet,
-                                     as_json=as_json,
-                                     **args)
+        output = r.resource.export_xml(start=start,
+                                       limit=limit,
+                                       msince=msince,
+                                       fields=fields,
+                                       dereference=True,
+                                       references=references,
+                                       mcomponents=mcomponents,
+                                       rcomponents=rcomponents,
+                                       stylesheet=stylesheet,
+                                       as_json=as_json,
+                                       **args)
         # Transformation error?
         if not output:
-            r.error(400, "XSLT Transformation Error: %s " % xml.error)
+            r.error(400, "XSLT Transformation Error: %s " % manager.xml.error)
 
         return output
 
@@ -1379,11 +1368,6 @@ class S3Request(object):
             @param attr: controller attributes
         """
 
-        manager = current.manager
-        auth = manager.auth
-        xml = manager.xml
-
-        resource = r.resource
         _vars = r.get_vars
 
         # Skip invalid records?
@@ -1411,6 +1395,7 @@ class S3Request(object):
         source_url = None
 
         # Get the source(s)
+        manager = current.manager
         json_formats = manager.json_formats
         csv_formats = manager.csv_formats
         source = []
@@ -1482,14 +1467,14 @@ class S3Request(object):
             format = "xml"
 
         try:
-            output = resource.import_xml(source,
-                                         id=id,
-                                         format=format,
-                                         stylesheet=stylesheet,
-                                         ignore_errors=ignore_errors,
-                                         **args)
+            output = r.resource.import_xml(source,
+                                           id=id,
+                                           format=format,
+                                           stylesheet=stylesheet,
+                                           ignore_errors=ignore_errors,
+                                           **args)
         except IOError:
-            auth.permission.fail()
+            current.auth.permission.fail()
         except SyntaxError:
             e = sys.exc_info()[1]
             if hasattr(e, "message"):
@@ -1508,10 +1493,7 @@ class S3Request(object):
             @param attr: controller attributes
         """
 
-        manager = current.manager
-        resource = r.resource
-        stylesheet = r.stylesheet()
-        json_formats = manager.json_formats
+        json_formats = current.manager.json_formats
         if format in json_formats:
             as_json = True
             content_type = "application/json"
@@ -1522,15 +1504,15 @@ class S3Request(object):
         meta = str(_vars.get("meta", False)).lower() == "true"
         opts = str(_vars.get("options", False)).lower() == "true"
         refs = str(_vars.get("references", False)).lower() == "true"
-        output = resource.export_struct(meta=meta,
-                                        options=opts,
-                                        references=refs,
-                                        stylesheet=stylesheet,
-                                        as_json=as_json)
+        stylesheet = r.stylesheet()
+        output = r.resource.export_struct(meta=meta,
+                                          options=opts,
+                                          references=refs,
+                                          stylesheet=stylesheet,
+                                          as_json=as_json)
         if output is None:
             # Transformation error
-            xml = manager.xml
-            r.error(400, xml.error)
+            r.error(400, current.manager.xml.error)
         response = current.response
         response.headers["Content-Type"] = content_type
         return output
@@ -1570,7 +1552,6 @@ class S3Request(object):
             @param attr: controller attributes
         """
 
-        resource = r.resource
         _vars = r.get_vars
         if "field" in _vars:
             items = _vars["field"]
@@ -1597,15 +1578,15 @@ class S3Request(object):
         component = r.component_name
         representation = r.representation
         if representation == "xml":
-            output = resource.export_options(component=component,
-                                             fields=fields,
-                                             show_uids=show_uids)
+            output = r.resource.export_options(component=component,
+                                               fields=fields,
+                                               show_uids=show_uids)
             content_type = "text/xml"
         elif representation == "s3json":
-            output = resource.export_options(component=component,
-                                             fields=fields,
-                                             only_last=only_last,
-                                             as_json=True)
+            output = r.resource.export_options(component=component,
+                                               fields=fields,
+                                               only_last=only_last,
+                                               as_json=True)
             content_type = "application/json"
         else:
             r.error(501, r.ERROR.BAD_FORMAT)
@@ -1698,8 +1679,7 @@ class S3Request(object):
             Action upon unauthorised request
         """
 
-        auth = current.manager.auth
-        auth.permission.fail()
+        current.auth.permission.fail()
 
     # -------------------------------------------------------------------------
     def error(self, status, message, tree=None, next=None):
@@ -1711,8 +1691,6 @@ class S3Request(object):
             @param tree: the tree causing the error
         """
 
-        xml = current.manager.xml
-
         if self.representation == "html":
             current.session.error = message
             if next is not None:
@@ -1723,10 +1701,10 @@ class S3Request(object):
             headers = {"Content-Type":"application/json"}
             print >> sys.stderr, "ERROR: %s" % message
             raise HTTP(status,
-                       body=xml.json_message(success=False,
-                                             status_code=status,
-                                             message=message,
-                                             tree=tree),
+                       body=current.manager.xml.json_message(success=False,
+                                                             status_code=status,
+                                                             message=message,
+                                                             tree=tree),
                        web2py_header=message,
                        **headers)
 
@@ -1892,13 +1870,12 @@ class S3Request(object):
             Read data from request body
         """
 
-        import cgi
-
         self.files = Storage()
         content_type = self.env.get("content_type", None)
 
         source = []
         if content_type and content_type.startswith("multipart/"):
+            import cgi
             ext = ".%s" % self.representation
             vars = self.post_vars
             for v in vars:
@@ -1920,14 +1897,11 @@ class S3Request(object):
         return source
 
 # =============================================================================
-
 class S3Resource(object):
     """ API for resources """
 
     # -------------------------------------------------------------------------
-    # Constructor
-    # -------------------------------------------------------------------------
-    def __init__(self, manager, prefix, name,
+    def __init__(self, prefix, name,
                  id=None,
                  uid=None,
                  filter=None,
@@ -1941,7 +1915,6 @@ class S3Resource(object):
         """
             Constructor
 
-            @param manager: the S3RequestManager
             @param prefix: prefix of the resource name (=module name)
             @param name: name of the resource (without prefix)
             @param id: record ID (or list of record IDs)
@@ -1954,10 +1927,7 @@ class S3Resource(object):
             @param components: component name (or list of component names)
         """
 
-        # DB and manager
         manager = current.manager
-        db = current.db
-        s3db = current.s3db
 
         self.ERROR = manager.ERROR
 
@@ -1980,7 +1950,7 @@ class S3Resource(object):
         # Table properties
         tablename = "%s_%s" % (prefix, name)
         try:
-            table = s3db[tablename]
+            table = current.s3db[tablename]
         except:
             manager.error = "Undefined table: %s" % tablename
             raise # KeyError(manager.error)
@@ -2049,7 +2019,7 @@ class S3Resource(object):
             # Create as resource
             tn = linktable._tablename
             prefix, name = tn.split("_", 1)
-            self.link = S3Resource(manager, prefix, name,
+            self.link = S3Resource(prefix, name,
                                    parent=self.parent,
                                    linked=self,
                                    include_deleted=self.include_deleted)
@@ -2064,6 +2034,9 @@ class S3Resource(object):
         self.error = None
         self.error_tree = None
         self.import_count = 0
+        self.import_created = []
+        self.import_updated = []
+        self.import_deleted = []
 
         # Search
         self.search = model.get_config(self.tablename, "search_method", None)
@@ -2087,10 +2060,8 @@ class S3Resource(object):
             @param hook: the hook
         """
 
-        manager = current.manager
-
         # Create as resource
-        component = S3Resource(manager, hook.prefix, hook.name,
+        component = S3Resource(hook.prefix, hook.name,
                                parent=self,
                                alias=alias,
                                linktable=hook.linktable,
@@ -2215,12 +2186,6 @@ class S3Resource(object):
             @param attributes: select attributes
         """
 
-        db = current.db
-        manager = current.manager
-        audit = manager.audit
-        prefix = self.prefix
-        name = self.name
-
         attr = Storage(attributes)
         rfilter = self.rfilter
 
@@ -2263,12 +2228,12 @@ class S3Resource(object):
             # @todo: override fields => needed for vfilter
 
         # Get the rows
-        rows = db(query).select(*fields, **attr)
+        rows = current.db(query).select(*fields, **attr)
         if vfltr is not None:
             rows = rfilter(rows, start=start, limit=limit)
 
         # Audit
-        audit("list", prefix, name)
+        current.manager.audit("list", self.prefix, self.name)
 
         # Keep the rows for later access
         self._rows = rows
@@ -2283,8 +2248,6 @@ class S3Resource(object):
             @param limit: the maximum number of records to load
         """
 
-        manager = current.manager
-        xml = manager.xml
         table = self.table
 
         if DEBUG:
@@ -2331,7 +2294,7 @@ class S3Resource(object):
             self._length = len(rows)
         id = table._id.name
         self._ids = [row[id] for row in rows]
-        uid = manager.xml.UID
+        uid = current.manager.xml.UID
         if uid in table.fields:
             self._uids = [row[uid] for row in rows]
         self._rows = rows
@@ -2373,7 +2336,8 @@ class S3Resource(object):
     def delete(self,
                ondelete=None,
                format=None,
-               cascade=False):
+               cascade=False,
+               replaced_by=None):
         """
             Delete all (deletable) records in this resource
 
@@ -2388,7 +2352,6 @@ class S3Resource(object):
         """
 
         db = current.db
-
         manager = current.manager
         define_resource = manager.define_resource
         get_session = manager.get_session
@@ -2408,8 +2371,8 @@ class S3Resource(object):
         table = self.table
         pkey = table._id.name
 
-        settings = manager.s3.crud
-        archive_not_delete = settings.archive_not_delete
+        # use current.deployment_settings.get_security_archive_not_delete()?
+        archive_not_delete = manager.s3.crud.archive_not_delete
 
         # Reset error
         manager.error = None
@@ -2547,16 +2510,20 @@ class S3Resource(object):
                         record = table[row[pkey]]
                         fk = {}
                         for f in table.fields:
-                            ftype = str(table[f].type)
                             if record[f] is not None and \
-                                (ftype[:9] == "reference" or \
-                                 ftype[:14] == "list:reference"):
+                               s3_has_foreign_key(table[f]):
                                 fk[f] = record[f]
                                 fields[f] = None
                             else:
                                 continue
                         if fk:
                             fields.update(deleted_fk=json.dumps(fk))
+
+                    # Annotate the replacement record
+                    record_id = str(row[pkey])
+                    if replaced_by and record_id in replaced_by and \
+                       "deleted_rb" in table.fields:
+                        fields.update(deleted_rb=replaced_by[record_id])
 
                     # Update the row, finally
                     db(table._id == row[pkey]).update(**fields)
@@ -2615,6 +2582,21 @@ class S3Resource(object):
         return numrows
 
     # -------------------------------------------------------------------------
+    def merge(self,
+              original_id,
+              duplicate_id,
+              replace=None,
+              update=None,
+              main=None):
+        """ Merge two records, see also S3RecordMerger.merge """
+
+        return S3RecordMerger(self).merge(original_id,
+                                          duplicate_id,
+                                          replace=replace,
+                                          update=update,
+                                          main=main)
+
+    # -------------------------------------------------------------------------
     def count(self, left=None, distinct=False):
         """
             Get the total number of available records in this resource
@@ -2623,7 +2605,6 @@ class S3Resource(object):
             @param distinct: only count distinct rows
         """
 
-        db = current.db
         if self.rfilter is None:
             self.build_query()
         if self._length is None:
@@ -2752,8 +2733,7 @@ class S3Resource(object):
     def get_uid(self):
         """ Get all record UIDs of the current set """
 
-        UID = current.manager.xml.UID
-        if UID not in self.table.fields:
+        if current.manager.xml.UID not in self.table.fields:
             return None
         if not self._uids:
             self.__load_ids()
@@ -2892,8 +2872,6 @@ class S3Resource(object):
             @param args: dict of arguments to pass to the XSLT stylesheet
         """
 
-        import uuid
-
         manager = current.manager
         xml = manager.xml
 
@@ -2924,6 +2902,7 @@ class S3Resource(object):
         if tree and stylesheet is not None:
             if DEBUG:
                 _start = datetime.datetime.now()
+            import uuid
             tfmt = xml.ISOFORMAT
             args.update(domain=manager.domain,
                         base_url=manager.s3.base_url,
@@ -2988,13 +2967,8 @@ class S3Resource(object):
 
         """
 
-        db = current.db
-        gis = current.gis
-
         manager = current.manager
-        model = manager.model
         xml = manager.xml
-        audit = manager.audit
 
         if manager.show_urls:
             base_url = manager.s3.base_url
@@ -3028,21 +3002,22 @@ class S3Resource(object):
             layer_id = _vars.get("layer", None)
             if layer_id:
                 # GIS Feature Layer
-                locations = gis.get_locations_and_popups(self, layer_id)
+                locations = current.gis.get_locations_and_popups(self, layer_id)
             elif self.tablename == "gis_theme_data":
                 # GIS Theme Layer
-                locations = gis.get_theme_geojson(self)
+                locations = current.gis.get_theme_geojson(self)
             else:
                 # e.g. Search results
-                locations = gis.get_locations_and_popups(self)
+                locations = current.gis.get_locations_and_popups(self)
         elif format == "georss" or \
              format == "kml":
+            gis = current.gis
             marker = gis.get_marker(request.controller,
                                     request.function)
             locations = gis.get_locations_and_popups(self)
         else:
-            marker = gis.get_marker(request.controller,
-                                    request.function)
+            marker = current.gis.get_marker(request.controller,
+                                            request.function)
             locations = None
 
         # Build the tree
@@ -3192,8 +3167,7 @@ class S3Resource(object):
             @param locations: the locations for GIS encoding
         """
 
-        manager = current.manager
-        xml = manager.xml
+        xml = current.manager.xml
 
         pkey = self.table._id
         action = "read"
@@ -3531,11 +3505,23 @@ class S3Resource(object):
             tree = xml.tree2json(self.error_tree)
         else:
             tree = None
+
+        import_info = {"records":self.import_count}
+        created=self.import_created
+        if created:
+            import_info["created"] = created
+        updated=self.import_updated
+        if updated:
+            import_info["updated"] = updated
+        deleted=self.import_deleted
+        if deleted:
+            import_info["deleted"] = deleted
+
         if success is True:
-            return xml.json_message(message=self.error, tree=tree)
+            return xml.json_message(message=self.error, tree=tree, **import_info)
         elif success and hasattr(success, "job_id"):
             self.job = success
-            return xml.json_message(message=self.error, tree=tree)
+            return xml.json_message(message=self.error, tree=tree, **import_info)
         else:
             return xml.json_message(False, 400,
                                     message=self.error, tree=tree)
@@ -3712,6 +3698,9 @@ class S3Resource(object):
         import_job.commit(ignore_errors=ignore_errors)
         self.error = import_job.error
         self.import_count += import_job.count
+        self.import_created += import_job.created
+        self.import_updated += import_job.updated
+        self.import_deleted += import_job.deleted
         if self.error:
             if ignore_errors:
                 self.error = "%s - invalid items ignored" % self.error
@@ -3748,8 +3737,6 @@ class S3Resource(object):
                 timeout at s3_tb_refresh for non-dropdown form fields)
         """
 
-        db = current.db
-
         if component is not None:
             c = self.components.get(component, None)
             if c:
@@ -3762,6 +3749,7 @@ class S3Resource(object):
                 raise AttributeError
         else:
             if as_json and only_last and len(fields) == 1:
+                db = current.db
                 component_tablename = "%s_%s" % (self.prefix, self.name)
                 field = db[component_tablename][fields[0]]
                 req = field.requires
@@ -3782,16 +3770,17 @@ class S3Resource(object):
                     res.append({"@value": val, "$": represent})
                 return json.dumps({'option': res})
 
-            tree = self.xml.get_options(self.prefix,
-                                        self.name,
-                                        show_uids=show_uids,
-                                        fields=fields)
+            xml = self.xml
+            tree = xml.get_options(self.prefix,
+                                   self.name,
+                                   show_uids=show_uids,
+                                   fields=fields)
 
             if as_json:
-                return self.xml.tree2json(tree, pretty_print=False,
-                                          native=True)
+                return xml.tree2json(tree, pretty_print=False,
+                                     native=True)
             else:
-                return self.xml.tostring(tree, pretty_print=False)
+                return xml.tostring(tree, pretty_print=False)
 
     # -------------------------------------------------------------------------
     def export_fields(self, component=None, as_json=False):
@@ -3811,12 +3800,12 @@ class S3Resource(object):
             else:
                 raise AttributeError
         else:
-            tree = self.xml.get_fields(self.prefix, self.name)
-
+            xml = self.xml
+            tree = xml.get_fields(self.prefix, self.name)
             if as_json:
-                return self.xml.tree2json(tree, pretty_print=True)
+                return xml.tree2json(tree, pretty_print=True)
             else:
-                return self.xml.tostring(tree, pretty_print=True)
+                return xml.tostring(tree, pretty_print=True)
 
     # -------------------------------------------------------------------------
     def export_struct(self,
@@ -3921,7 +3910,6 @@ class S3Resource(object):
             @returns: tuple of (fields, joins, left, distinct)
         """
 
-        name = self.name
         table = self.table
 
         # Collect extra fields
@@ -4010,10 +3998,7 @@ class S3Resource(object):
         """
 
         s3db = current.s3db
-
         manager = current.manager
-        xml = manager.xml
-        DELETED = manager.DELETED
 
         distinct = False
         original = selector
@@ -4066,7 +4051,7 @@ class S3Resource(object):
         else:
             # Resolve the field name
             if fn == "uid":
-                fn = xml.UID
+                fn = manager.xml.UID
             if fn == "id":
                 f = table._id
             elif fn in table.fields:
@@ -4110,14 +4095,10 @@ class S3Resource(object):
                     if lkey not in ltable.fields:
                         raise KeyError("No field %s in %s" % (lkey, lname))
                     lkey_field = ltable[lkey]
-                    ftype = str(lkey_field.type)
-                    if ftype[:9] == "reference":
-                        _tn = ftype[10:]
-                        if "." in _tn:
-                            _tn, pkey = _tn.split(".", 1)
-                        if _tn != tn:
-                            raise SyntaxError("Invalid link: %s.%s is not a foreign key for %s" % (lname, lkey, tn))
-                    else:
+                    _tn, pkey, multiple = s3_get_foreign_key(lkey_field, m2m=False)
+                    if _tn and _tn != tn:
+                        raise SyntaxError("Invalid link: %s.%s is not a foreign key for %s" % (lname, lkey, tn))
+                    elif not _tn:
                         raise SyntaxError("%s.%s is not a foreign key" % (lname, lkey))
                     search_lkey = False
 
@@ -4128,25 +4109,17 @@ class S3Resource(object):
                     if rkey not in ltable.fields:
                         raise KeyError("No field %s in %s" % (rkey, lname))
                     rkey_field = ltable[rkey]
-                    ftype = str(rkey_field.type)
-                    if ftype[:9] == "reference":
-                        ktablename = ftype[10:]
-                        if "." in ktablename:
-                            ktablename, fkey = ktablename.split(".", 1)
-                    else:
+                    ktablename, fkey, multiple = s3_get_foreign_key(rkey_field, m2m=False)
+                    if not ktablename:
                         raise SyntaxError("%s.%s is not a foreign key" % (lname, lkey))
                     search_rkey = False
 
                 # Key search
                 if search_lkey or search_rkey:
                     for fname in ltable.fields:
-                        ftype = str(ltable[fname].type)
-                        if ftype[:9] != "reference":
+                        ktn, key, multiple = s3_get_foreign_key(ltable[fname], m2m=False)
+                        if not ktn:
                             continue
-                        ktn = ftype[10:]
-                        key = None
-                        if "." in ktn:
-                            ktn, key = ktn.split(".", 1)
                         if search_lkey and ktn == tn:
                             if lkey is not None:
                                 raise SyntaxError("Ambiguous link: please specify left key in %s" % tn)
@@ -4181,6 +4154,7 @@ class S3Resource(object):
 
                 # Construct the joins
                 lq = (table[pkey] == ltable[lkey])
+                DELETED = manager.DELETED
                 if DELETED in ltable.fields:
                     lq &= ltable[DELETED] != True
                 rq = (ltable[rkey] == ktable[fkey])
@@ -4193,21 +4167,10 @@ class S3Resource(object):
                 # table -- f -- pkey --> ktable
 
                 # Find the referenced table
-                ftype = str(f.type)
-                if ftype[:9] == "reference":
-                    ktablename = ftype[10:]
-                    multiple = False
-                elif ftype[:14] == "list:reference":
-                    ktablename = ftype[15:]
-                    multiple = True
-                else:
+                ktablename, pkey, multiple = s3_get_foreign_key(f)
+                if not ktablename:
                     raise SyntaxError("%s.%s is not a foreign key" % (tn, f))
 
-                # Find the primary key
-                if "." in ktablename:
-                    ktablename, pkey = ktablename.split(".", 1)
-                else:
-                    pkey = None
                 ktable = s3db.table(ktablename)
                 if ktable is None:
                     raise KeyError("Undefined table %s" % ktablename)
@@ -4283,10 +4246,7 @@ class S3Resource(object):
                    f in IGNORE_FIELDS:
                     if f != pkey or not manager.show_ids:
                         continue
-
-                ftype = str(table[f].type)
-                if (ftype[:9] == "reference" or \
-                    ftype[:14] == "list:reference") and \
+                if s3_has_foreign_key(table[f]) and \
                     f not in FIELDS_TO_ATTRIBUTES and \
                     (references is None or f in references):
                     rfields.append(f)
@@ -4334,8 +4294,6 @@ class S3Resource(object):
     def get_join(self):
         """ Get join for this component """
 
-        DELETED = current.manager.DELETED
-
         if self.parent is None:
             # This isn't a component
             return None
@@ -4345,6 +4303,8 @@ class S3Resource(object):
         rtable = self.table
         pkey = self.pkey
         fkey = self.fkey
+
+        DELETED = current.manager.DELETED
 
         if self.linked:
             return self.linked.get_join()
@@ -4370,8 +4330,6 @@ class S3Resource(object):
     def get_left_join(self):
         """ Get a left join for this component """
 
-        DELETED = current.manager.DELETED
-
         if self.parent is None:
             # This isn't a component
             return None
@@ -4381,6 +4339,8 @@ class S3Resource(object):
         rtable = self.table
         pkey = self.pkey
         fkey = self.fkey
+
+        DELETED = current.manager.DELETED
 
         if self.linked:
             return self.linked.get_join()
@@ -4416,8 +4376,6 @@ class S3Resource(object):
         if self.parent is None or self.linked is None:
             return None
 
-        db = current.db
-
         join = self.get_join()
         ltable = self.table
         mtable = self.parent.table
@@ -4425,7 +4383,7 @@ class S3Resource(object):
         query = join & \
                 (mtable._id == master_id) & \
                 (ctable._id == component_id)
-        row = db(query).select(ltable._id, limitby=(0, 1)).first()
+        row = current.db(query).select(ltable._id, limitby=(0, 1)).first()
         if row:
             return row[ltable._id.name]
         else:
@@ -4445,8 +4403,6 @@ class S3Resource(object):
         if self.parent is None or self.linked is None:
             return None
 
-        db = current.db
-
         join = self.get_join()
         ltable = self.table
         mtable = self.parent.table
@@ -4454,7 +4410,7 @@ class S3Resource(object):
         query = join & \
                 (mtable._id == master_id) & \
                 (ltable._id == link_id)
-        row = db(query).select(ctable._id, limitby=(0, 1)).first()
+        row = current.db(query).select(ctable._id, limitby=(0, 1)).first()
         if row:
             return row[ctable._id.name]
         else:
@@ -4471,10 +4427,6 @@ class S3Resource(object):
             @param master: the master record
             @param record: the new component record to be linked
         """
-
-        db = current.db
-        manager = current.manager
-        model = manager.model
 
         if self.parent is None or self.linked is None:
             return None
@@ -4496,13 +4448,14 @@ class S3Resource(object):
 
         ltable = self.table
         ltn = ltable._tablename
+        model = current.manager.model
         onaccept = model.get_config(ltn, "create_onaccept",
                    model.get_config(ltn, "onaccept", None))
 
         # Create the link if it does not already exist
         query = ((ltable[lkey] == _lkey) &
                  (ltable[rkey] == _rkey))
-        row = db(query).select(ltable._id, limitby=(0, 1)).first()
+        row = current.db(query).select(ltable._id, limitby=(0, 1)).first()
         if not row:
             form = Storage(vars=Storage({lkey:_lkey, rkey:_rkey}))
             link_id = ltable.insert(**form.vars)
@@ -4527,6 +4480,7 @@ class S3Resource(object):
                  as_rows=False,
                  as_page=False,
                  as_list=False,
+                 as_json=False,
                  format=None):
         """
             DRY helper function for SQLTABLEs in REST and CRUD
@@ -4546,7 +4500,6 @@ class S3Resource(object):
         """
 
         db = current.db
-        manager = current.manager
         table = self.table
 
         # Get the query and filters
@@ -4695,7 +4648,7 @@ class S3Resource(object):
         rows.colnames = colnames
 
         # Representation
-        repr_row = manager.represent
+        repr_row = current.manager.represent
         def __represent(f, row, columns=columns):
             field = f.field
             if field is not None:
@@ -4720,6 +4673,9 @@ class S3Resource(object):
         elif as_list:
             # ...Python list
             items = rows.as_list()
+        elif as_json:
+            # ...simple flat JSON (with prefixed field names)
+            items = self.convert_json(rows, lfields)
         else:
             # ...SQLTABLE
             items = SQLTABLES3(rows,
@@ -4729,6 +4685,28 @@ class S3Resource(object):
                                _id="list",
                                _class="dataTable display")
         return items
+
+    # -------------------------------------------------------------------------
+    def convert_json(self, rows, lfields):
+        """
+            Convert rows into JSON, used in sqltable
+
+            @param rows: the rows
+            @param lfields: the (resolved) list fields
+        """
+
+        fields = [lf.selector for lf in lfields]
+
+        if rows is None:
+            return "[]"
+        records = []
+        for row in rows:
+            record = Storage()
+            for lfield in lfields:
+                record[lfield.colname] = S3FieldSelector.extract(self,
+                                                    row, lfield.selector)
+            records.append(record)
+        return json.dumps(records)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -4782,9 +4760,6 @@ class S3ResourceFilter:
         andf = self._andf
 
         manager = current.manager
-        xml = manager.xml
-        model = manager.model
-        DELETED = manager.DELETED
 
         parent = resource.parent
         name = resource.name
@@ -4800,6 +4775,7 @@ class S3ResourceFilter:
             mquery = (table._id > 0)
 
         # Deletion status
+        DELETED = manager.DELETED
         if DELETED in table.fields and not resource.include_deleted:
             remaining = (table[DELETED] != True)
             mquery = remaining & mquery
@@ -4813,12 +4789,13 @@ class S3ResourceFilter:
                 mquery = mquery & (table._id.belongs(id))
 
         # UID query
-        if uid is not None and xml.UID in table:
+        UID = manager.xml.UID
+        if uid is not None and UID in table:
             if not isinstance(uid, (list, tuple)):
                 self.multiple = False
-                mquery = mquery & (table[xml.UID] == uid)
+                mquery = mquery & (table[UID] == uid)
             else:
-                mquery = mquery & (table[xml.UID].belongs(uid))
+                mquery = mquery & (table[UID].belongs(uid))
 
         self.mquery = mquery
 
@@ -5354,8 +5331,6 @@ class S3ResourceFilter:
             @param distinct: count only distinct rows
         """
 
-        db = current.db
-        model = current.manager.model
         resource = self.resource
         distinct |= self.distinct
         if resource is None:
@@ -5389,19 +5364,20 @@ class S3ResourceFilter:
 
         if self.vfltr is None:
             if distinct:
-                rows = db(self.query).select(table._id,
-                                             left=left,
-                                             distinct=distinct)
+                rows = current.db(self.query).select(table._id,
+                                                     left=left,
+                                                     distinct=distinct)
                 return len(rows)
             else:
                 cnt = table[table._id.name].count()
-                row = db(self.query).select(cnt, left=left).first()
+                row = current.db(self.query).select(cnt, left=left).first()
                 if row:
                     return(row[cnt])
                 else:
                     return 0
         else:
-            list_fields = model.get_config(tablename, "list_fields")
+            list_fields = current.manager.model.get_config(tablename,
+                                                           "list_fields")
             sqltable = resource.sqltable
             rows = sqltable(fields=list_fields,
                             left=left,
@@ -5528,6 +5504,10 @@ class S3FieldSelector:
         return S3ResourceQuery(S3ResourceQuery.CONTAINS, self, value)
 
     # -------------------------------------------------------------------------
+    def anyof(self, value):
+        return S3ResourceQuery(S3ResourceQuery.ANYOF, self, value)
+
+    # -------------------------------------------------------------------------
     def lower(self):
         self.op = self.LOWER
         return self
@@ -5575,6 +5555,8 @@ class S3FieldSelector:
                       the value from the row otherwise
         """
 
+        if isinstance(field, basestring):
+            field = S3FieldSelector(field)
         if isinstance(field, Field):
             f = field
             colname = str(field)
@@ -5593,13 +5575,15 @@ class S3FieldSelector:
             colname = field.colname
         else:
             return field
-        if f is not None:
+        if f is not None and isinstance(row, Row):
             try:
                 return row[f]
             except KeyError:
                 raise KeyError("Field not found: %s" % colname)
         elif fname in row:
             value = row[fname]
+        elif colname in row:
+            value = row[colname]
         elif tname is not None and \
              tname in row and fname in row[tname]:
             value = row[tname][fname]
@@ -5638,8 +5622,11 @@ class S3ResourceQuery:
     LIKE = "like"
     BELONGS = "belongs"
     CONTAINS = "contains"
+    ANYOF = "anyof"
 
-    OPERATORS = [NOT, AND, OR, LT, LE, EQ, NE, GE, GT, LIKE, BELONGS, CONTAINS]
+    OPERATORS = [NOT, AND, OR,
+                 LT, LE, EQ, NE, GE, GT,
+                 LIKE, BELONGS, CONTAINS, ANYOF]
 
     # -------------------------------------------------------------------------
     def __init__(self, op, left=None, right=None):
@@ -5724,7 +5711,7 @@ class S3ResourceQuery:
         if op in (self.AND, self.OR):
             lf = l.fields()
             rf = r.fields()
-            return lf+rf
+            return lf + rf
         elif op == self.NOT:
             return l.fields()
         elif isinstance(l, S3FieldSelector):
@@ -5830,7 +5817,9 @@ class S3ResourceQuery:
         """
 
         if op == self.CONTAINS:
-            q = l.contains(r)
+            q = l.contains(r, all=True)
+        elif op == self.ANYOF:
+            q = l.contains(r, all=False)
         elif op == self.BELONGS:
             if type(r) is list and None in r:
                 _r = [item for item in r if item is not None]
@@ -5973,6 +5962,16 @@ class S3ResourceQuery:
         if op == self.CONTAINS:
             r = convert(l, r)
             result = contains(l, r)
+        elif op == self.ANYOF:
+            if not isinstance(r, (list, tuple)):
+                r = [r]
+            for v in r:
+                if isinstance(l, (list, tuple, basestring)):
+                    if contains(l, r):
+                        return True
+                elif l == r:
+                    return True
+            return False
         elif op == self.BELONGS:
             r = convert(l, r)
             result = contains(r, l)
@@ -6169,7 +6168,6 @@ class S3ResourceQuery:
             return (self.left.name, self.op, self.right, False)
 
 # =============================================================================
-
 class S3TypeConverter:
     """ Universal data type converter """
 
@@ -6251,10 +6249,15 @@ class S3TypeConverter:
         if isinstance(b, bool):
             return b
         if isinstance(b, basestring):
-            if b.lower() == "true":
+            if b.lower() in ("true", "1"):
                 return True
-            elif b.lower() == "false":
+            elif b.lower() in ("false", "0"):
                 return False
+        if isinstance(b, (int, long)):
+            if b == 0:
+                return False
+            else:
+                return True
         raise TypeError
 
     # -------------------------------------------------------------------------
@@ -6307,15 +6310,13 @@ class S3TypeConverter:
         if isinstance(b, datetime.datetime):
             return b
         elif isinstance(b, basestring):
-            manager = current.manager
-            xml = manager.xml
             try:
-                tfmt = xml.ISOFORMAT
-                (y,m,d,hh,mm,ss,t0,t1,t2) = time.strptime(b, tfmt)
+                tfmt = current.manager.xml.ISOFORMAT
+                (y, m, d, hh, mm, ss, t0, t1, t2) = time.strptime(b, tfmt)
             except ValueError:
                 tfmt = "%Y-%m-%d %H:%M:%S"
-                (y,m,d,hh,mm,ss,t0,t1,t2) = time.strptime(b, tfmt)
-            return datetime.datetime(y,m,d,hh,mm,ss)
+                (y, m, d, hh, mm, ss, t0, t1, t2) = time.strptime(b, tfmt)
+            return datetime.datetime(y, m, d, hh, mm, ss)
         else:
             raise TypeError
 
@@ -6327,7 +6328,8 @@ class S3TypeConverter:
         if isinstance(b, datetime.date):
             return b
         elif isinstance(b, basestring):
-            validator = IS_DATE(format=settings.get_L10n_date_format())
+            format = current.deployment_settings.get_L10n_date_format()
+            validator = IS_DATE(format=format)
             value, error = validator(v)
             if error:
                 raise ValueError
@@ -6352,7 +6354,325 @@ class S3TypeConverter:
             raise TypeError
 
 # =============================================================================
+class S3RecordMerger(object):
+    """ Record Merger """
 
+    def __init__(self, resource):
+        """
+            Constructor
+
+            @param resource: the resource
+        """
+
+        self.resource = resource
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def raise_error(msg, error=RuntimeError):
+        """
+            Roll back the current transaction and raise an error
+
+            @param message: error message
+            @param error: exception class to raise
+        """
+
+        current.db.rollback()
+        raise error(msg)
+
+    # -------------------------------------------------------------------------
+    def update_record(self, table, id, row, data):
+
+        form = Storage(vars = Storage([(f, row[f])
+                              for f in table.fields if f in row]))
+        form.vars.update(data)
+        success = current.db(table._id==row[table._id]).update(**data)
+        if success:
+            manager = current.manager
+            manager.model.update_super(table, form.vars)
+            current.auth.s3_set_record_owner(table, row[table._id], force_update=True)
+            manager.onaccept(table, form, method="update")
+        else:
+            self.raise_error("Could not update %s.%s" %
+                            (table._tablename, id))
+        return form.vars
+
+    # -------------------------------------------------------------------------
+    def delete_record(self, table, id, replaced_by=None):
+
+        if replaced_by is not None:
+            replaced_by = {str(id): replaced_by}
+
+        prefix, name = table._tablename.split("_", 1)
+        manager = current.manager
+        resource = manager.define_resource(prefix, name, id=id)
+        ondelete = manager.model.get_config(resource.tablename, "ondelete")
+        success = resource.delete(ondelete=ondelete,
+                                  replaced_by=replaced_by,
+                                  cascade=True)
+        if not success:
+            self.raise_error("Could not delete %s.%s (%s)" %
+                            (resource.tablename, id, manager.error))
+        return success
+
+    # -------------------------------------------------------------------------
+    def fieldname(self, key):
+
+        fn = None
+        if "." in key:
+            alias, fn = key.split(".", 1)
+            if alias != self.resource.alias:
+                fn = None
+        elif self.main is None:
+            fn = key
+        return fn
+
+    # -------------------------------------------------------------------------
+    def merge(self,
+              original_id,
+              duplicate_id,
+              replace=None,
+              update=None,
+              main=None):
+        """
+            Merge a duplicate record into its original and remove the
+            duplicate, updating all references in the database.
+
+            @param original_id: the ID of the original record
+            @param duplicate_id: the ID of the duplicate record
+            @param replace: list fields names for which to replace the
+                            values in the original record with the values
+                            of the duplicate
+            @param update: dict of {field:value} to update the final record
+            @param main: internal indicator for recursive calls
+
+            @status: work in progress
+            @todo: de-duplicate components and link table entries
+
+            @note: virtual references (i.e. non-SQL, without foreign key
+                   constraints) must be declared in the table configuration
+                   of the referenced table like:
+
+                   s3mgr.configure(tablename, referenced_by=[(tablename, fieldname)])
+
+                   This does not apply for list:references which will be found
+                   automatically.
+
+            @note: this method can only be run from master resources (in order
+                   to find all components). To merge component records, you have
+                   to re-define the component as a master resource.
+
+            @note: CLI calls must db.commit()
+        """
+
+        self.main = main
+
+        db = current.db
+        manager = current.manager
+        model = manager.model
+
+        resource = self.resource
+        table = resource.table
+        tablename = resource.tablename
+
+        raise_error = self.raise_error
+
+        # Check for master resource
+        if resource.parent:
+            raise_error("Must not merge from component", SyntaxError)
+
+        # Check permissions
+        auth = current.auth
+        has_permission = auth.s3_has_permission
+        permitted = has_permission("update", table,
+                                   record_id = original_id) and \
+                    has_permission("delete", table,
+                                   record_id = duplicate_id)
+        if not permitted:
+            raise_error("Operation not permitted", auth.permission.error)
+
+        # Load all models
+        s3db = current.s3db
+        if main is None:
+            s3db.load_all_models()
+
+        # Get the records
+        original = None
+        duplicate = None
+        query = table._id.belongs([original_id, duplicate_id])
+        if "deleted" in table.fields:
+            query &= table.deleted != True
+        rows = db(query).select(table.ALL, limitby=(0, 2))
+        for row in rows:
+            record_id = row[table._id]
+            if str(record_id) == str(original_id):
+                original = row
+                original_id = row[table._id]
+            elif str(record_id) == str(duplicate_id):
+                duplicate = row
+                duplicate_id = row[table._id]
+        msg = "Record not found: %s.%s"
+        if original is None:
+            self.raise_error(msg % (tablename, original_id), KeyError)
+        if duplicate is None:
+            self.raise_error(msg % (tablename, duplicate_id), KeyError)
+
+        # Find all single-components
+        single = Storage()
+        for alias in resource.components:
+            component = resource.components[alias]
+            if not component.multiple:
+                single[component.tablename] = component
+
+        # Is this a super-entity?
+        is_super_entity = table._id.name != "id" and \
+                          "instance_type" in table.fields
+
+        # Find all references
+        referenced_by = table._referenced_by
+
+        # Append virtual references
+        virtual_references = model.get_config(tablename, "referenced_by")
+        if virtual_references:
+            referenced_by.extend(virtual_references)
+
+        # Find and append list:references
+        for t in db:
+            for f in t:
+                ftype = str(f.type)
+                if ftype[:14] == "list:reference" and \
+                   ftype[15:15+len(tablename)] == tablename:
+                    referenced_by.append((t._tablename, f.name))
+
+        update_record = self.update_record
+        delete_record = self.delete_record
+        fieldname = self.fieldname
+
+        # Update all references
+        for tn, fn in referenced_by:
+
+            se = model.get_config(tn, "super_entity")
+            if is_super_entity and \
+               (isinstance(se, (list, tuple)) and tablename in se or \
+                se == tablename):
+                # Skip instance types of this super-entity
+                continue
+
+            # Reference field must exist
+            if tn not in db or fn not in db[tn].fields:
+                continue
+
+            rtable = db[tn]
+            if tn in single:
+                component = single[tn]
+                if component.link is not None:
+                    component = component.link
+
+                if fn == component.fkey:
+                    # Single component => must reduce to one record
+                    join = component.get_join()
+                    pkey = component.pkey
+                    lkey = component.lkey or component.fkey
+
+                    # Get the component records
+                    query = (table[pkey] == original[pkey]) & join
+                    osub = db(query).select(limitby=(0, 1)).first()
+                    query = (table[pkey] == duplicate[pkey]) & join
+                    dsub = db(query).select(limitby=(0, 1)).first()
+
+                    ctable = component.table
+
+                    if dsub is None:
+                        # No duplicate => skip this step
+                        continue
+                    elif not osub:
+                        # No original => re-link the duplicate
+                        dsub_id = dsub[ctable._id]
+                        data = {lkey: original[pkey]}
+                        success = update_record(ctable, dsub_id, dsub, data)
+                    elif component.linked is not None:
+                        # Duplicate link => remove it
+                        dsub_id = dsub[component.table._id]
+                        delete_record(ctable, dsub_id)
+                    else:
+                        # Two records => merge them
+                        osub_id = osub[component.table._id]
+                        dsub_id = dsub[component.table._id]
+                        cresource = manager.define_resource(component.prefix,
+                                                            component.name)
+                        cresource.merge(osub_id, dsub_id,
+                                        replace=replace, update=update, main=resource)
+                    continue
+
+            # Find the foreign key
+            rfield = rtable[fn]
+            ktablename, key, multiple = s3_get_foreign_key(rfield)
+            if not ktablename:
+                if str(rfield.type) == "integer":
+                    # Virtual reference
+                    key = table._id.name
+                else:
+                    continue
+
+            # Find the referencing records
+            if multiple:
+                query = rtable[fn].contains(duplicate[key])
+            else:
+                query = rtable[fn] == duplicate[key]
+            rows = db(query).select(rtable._id, rtable[fn])
+
+            # Update the referencing records
+            for row in rows:
+                if not multiple:
+                    data = {fn:original[key]}
+                else:
+                    keys = [k for k in row[fn] if k != duplicate[key]]
+                    if original[key] not in keys:
+                        keys.append(original[key])
+                    data = {fn:keys}
+                update_record(rtable, row[rtable._id], row, data)
+
+        # Merge super-entity records
+        se = model.get_config(tablename, "super_entity")
+        if se is not None:
+            if not isinstance(se, (list, tuple)):
+                se = [se]
+            for entity in se:
+                supertable = s3db[entity]
+                # Get the super-keys
+                superkey = supertable._id.name
+                skey_o = original[superkey]
+                skey_d = duplicate[superkey]
+                # Merge the super-records
+                prefix, name = entity.split("_", 1)
+                sresource = manager.define_resource(prefix, name)
+                sresource.merge(skey_o, skey_d,
+                                replace=replace,
+                                update=update,
+                                main=resource)
+
+        # Merge and update original data
+        data = Storage()
+        if replace:
+            for k in replace:
+                fn = fieldname(k)
+                if fn and fn in duplicate:
+                    data[fn] = duplicate[fn]
+        if update:
+            for k, v in update.items():
+                fn = fieldname(k)
+                if fn in table.fields:
+                    data[fn] = v
+        if len(data):
+            update_record(table, original_id, original, data)
+
+        # Delete the duplicate
+        if not is_super_entity:
+            delete_record(table, duplicate_id, replaced_by=original_id)
+
+        # Success
+        return True
+
+# =============================================================================
 class S3MarkupStripper(HTMLParser.HTMLParser):
     """ Simple markup stripper """
 
@@ -6364,6 +6684,6 @@ class S3MarkupStripper(HTMLParser.HTMLParser):
         self.result.append(d)
 
     def stripped(self):
-        return ''.join(self.result)
+        return "".join(self.result)
 
 # END =========================================================================

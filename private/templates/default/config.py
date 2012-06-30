@@ -171,6 +171,10 @@ settings.L10n.decimal_separator = "."
 # Mouse Position: 'normal', 'mgrs' or 'off'
 #settings.gis.mouse_position = "mgrs"
 
+# Messaging Settings
+# If you wish to use a parser.py in another folder than "default"
+#settings.msg.parser = "mytemplatefolder"
+
 # Use 'soft' deletes
 #settings.security.archive_not_delete = False
 
@@ -300,8 +304,18 @@ settings.L10n.decimal_separator = "."
 #settings.hrm.show_staff = False
 # Uncomment to allow hierarchical categories of Skills, which each need their own set of competency levels.
 #settings.hrm.skill_types = True
-# Uncomment to use an alternate table for HR experience
-#settings.hrm.experience = "programme"
+# Uncomment to disable Staff experience
+#settings.hrm.staff_experience = False
+# Uncomment to disable Volunteer experience
+#settings.hrm.vol_experience = False
+# Uncomment to show the Organisation name in HR represents
+#settings.hrm.show_organisation = True
+# Uncomment to disable the use of HR Credentials
+#settings.hrm.use_credentials = False
+# Uncomment to enable the use of HR Education
+#settings.hrm.use_education = True
+# Uncomment to disable the use of HR Teams
+#settings.hrm.use_teams = False
 
 # Projects
 # Uncomment this to use settings suitable for a global/regional organisation (e.g. DRR)
@@ -336,15 +350,15 @@ settings.L10n.decimal_separator = "."
 #}
 #settings.project.organisation_lead_role = 1
 
+# Incidents
+# Uncomment this to use vehicles when responding to Incident Reports
+#settings.irs.vehicle = True
+
 # Save Search Widget
 #settings.save_search.widget = False
 
 # Terms of Service to be able to Register on the system
 #settings.options.terms_of_service = T("Terms of Service\n\nYou have to be eighteen or over to register as a volunteer.")
-
-#Message Parser Settings
-#Add the enabled parsing workflows to the list below
-#settings.parser.parser_enabled = ["parser_1", "parser_2", "parser_3"]
 
 # Comment/uncomment modules here to disable/enable them
 # @ToDo: Have the system automatically enable migrate if a module is enabled

@@ -37,7 +37,9 @@ __all__ = ["S3AssetModel",
 from gluon import *
 from gluon.sqlhtml import RadioWidget
 from gluon.storage import Storage
+
 from ..s3 import *
+from layouts import S3AddResourceLink
 
 ASSET_TYPE_VEHICLE   = 1   # => Extra Tab(s) for Registration Documents, Fuel Efficiency
 ASSET_TYPE_RADIO     = 2   # => Extra Tab(s) for Radio Channels/Frequencies
@@ -175,11 +177,11 @@ class S3AssetModel(S3Model):
                                    label = T("Supplier")),
                              Field("purchase_date", "date",
                                    label = T("Purchase Date"),
-                                   requires = IS_NULL_OR(IS_DATE(format = s3_date_format)),
+                                   requires = IS_NULL_OR(IS_DATE(format=s3_date_format)),
                                    represent = s3_date_represent,
                                    widget = S3DateWidget()),
                              Field("purchase_price", "double",
-                                   default=0.00,
+                                   #default=0.00,
                                    represent=lambda v, row=None: IS_FLOAT_AMOUNT.represent(v, precision=2)),
                              s3_currency("purchase_currency"),
                              # Base Location, which should always be a Site & set via Log
@@ -220,6 +222,8 @@ class S3AssetModel(S3Model):
                                                                    sort=True)),
                                    represent = self.asset_represent,
                                    label = T("Asset"),
+                                   comment = S3AddResourceLink(c="asset", f="asset",
+                                                tooltip=T("If you don't see the asset in the list, you can add a new one by clicking link 'Add Asset'.")),
                                    ondelete = "CASCADE")
 
         table.virtualfields.append(AssetVirtualFields())
@@ -259,12 +263,6 @@ class S3AssetModel(S3Model):
                         label=T("Category"),
                         cols = 3
                     ),
-                    # S3SearchOptionsWidget(
-                    #     name="asset_search_weight",
-                    #     field="weight",
-                    #     label=T("Weight"),
-                    #     cols = 3
-                    # ),
             ))
 
         hierarchy = current.gis.get_location_hierarchy()
@@ -279,7 +277,9 @@ class S3AssetModel(S3Model):
 
         # Resource Configuration
         configure(tablename,
-                  super_entity=("supply_item_entity", "sit_trackable"),
+                  create_next = URL(c="asset", f="asset",
+                                    args=["[id]"]),
+                  super_entity = ("supply_item_entity", "sit_trackable"),
                   search_method=asset_search,
                   report_options=Storage(
                         search=[
@@ -324,7 +324,6 @@ class S3AssetModel(S3Model):
                                #"L2",
                                #"L3",
                                "comments",
-                               #"weight",
                                ])
 
         # Log as component of Assets
@@ -493,7 +492,7 @@ $(document).ready(function() {
                    )
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (response.s3.*)
+        # Pass variables back to global scope (s3db.*)
         #
         return Storage(
                     asset_asset_id = asset_id,
@@ -569,22 +568,26 @@ $(document).ready(function() {
         """
         """
 
-        db = current.db
-        s3db = current.s3db
         request = current.request
-        s3 = current.response.s3
-        tracker = S3Tracker()
-
-        ltable = s3db.asset_log
+        status = request.vars.pop("status", None)
+        if not status:
+            # e.g. Import or Record merger
+            return
 
         vars = form.vars
-        query = (ltable.id == vars.id)
-        asset_id = db(query).select(ltable.asset_id,
-                                    limitby=(0, 1)).first().asset_id
+        status = int(vars.status or status)
+
+        db = current.db
+        s3db = current.s3db
+        ltable = s3db.asset_log
+        asset = db(ltable.id == vars.id).select(ltable.asset_id,
+                                                limitby=(0, 1)).first()
+        if asset:
+            asset_id = asset.asset_id
+        else:
+            return
         current_log = asset_get_current_log(asset_id)
 
-        status = int(vars.status or request.vars.status)
-        request.get_vars.pop("status", None)
         type = request.get_vars.pop("type", None)
         vars.datetime = vars.datetime.replace(tzinfo=None)
 
@@ -593,6 +596,7 @@ $(document).ready(function() {
              current_log.datetime <= vars.datetime):
             # This is a current assignment
             atable = s3db.asset_asset
+            tracker = S3Tracker()
             asset_tracker = tracker(atable, asset_id)
 
             if status == ASSET_LOG_SET_BASE:
@@ -610,8 +614,9 @@ $(document).ready(function() {
                         asset_tracker.set_location(vars.person_id,
                                                    timestmp = vars.datetime)
                     # Update main record for component
-                    query = (atable.id == asset_id)
-                    db(query).update(assigned_to_id=vars.person_id)
+                    db(atable.id == asset_id).update(
+                                                assigned_to_id=vars.person_id
+                                            )
 
                 elif type == "site":
                     asset_tracker.check_in(s3db.org_site, vars.site_id,
@@ -831,8 +836,8 @@ def asset_rheader(r):
                 func = "asset"
 
             # @ToDo: Check permissions before displaying buttons
-            
-            
+
+
             asset_action_btns = [ A( T("Set Base Facility/Site"),
                                      _href = URL(f=func,
                                                  args = [record.id, "log", "create"],
@@ -925,13 +930,6 @@ def asset_rheader(r):
 # =============================================================================
 class AssetVirtualFields:
     """ Virtual fields as dimension classes for reports """
-
-    def weight(self):
-        """
-        This is just a dummy field to help test S3Resource filters and S3Search
-        """
-        import random
-        return random.randint(1, 10)
 
     def site(self):
         # The site of the asset

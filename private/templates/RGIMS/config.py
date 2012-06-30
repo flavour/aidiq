@@ -10,11 +10,14 @@ T = current.T
     Template settings for RGIMS
 """
 
-settings.base.system_name = T("Relief Goods Inventory & Monitoring System")
-settings.base.system_name_short = T("RGIMS")
+settings.base.system_name = "Relief Goods Inventory & Monitoring System"
+settings.base.system_name_short = "RGIMS"
 
 # Pre-Populate
 settings.base.prepopulate = ["RGIMS"]
+
+# Theme
+settings.base.theme = "RGIMS"
 
 # Uncomment to Hide the language toolbar
 settings.L10n.display_toolbar = False
@@ -34,7 +37,7 @@ settings.fin.currencies = {
 settings.fin.currency_default = "PHP"
 
 # Security Policy
-settings.security.policy = 5 # Table ACLs
+settings.security.policy = 6 # Warehouse-specific restrictions
 settings.security.map = True
 
 # Enable this for a UN-style deployment
