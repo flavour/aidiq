@@ -1,0 +1,25 @@
+@charset "UTF-8";
+
+/* Overrides */
+
+body {
+    background: #005faf;
+}
+
+.S3menulogo {
+    background: url(img/logo_small.png) left top no-repeat;
+    width: 93px;
+}
+.S3menuHome {
+    padding-left: 95px;
+}
+
+#content {
+    background: #f4f8ff;
+}
+#content h1 {
+    background: #f4f8ff;
+}
+#content h2 {
+    background: #f4f8ff;
+}

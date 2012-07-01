@@ -1824,10 +1824,10 @@ class IS_IN_SET_LAZY(Validator):
             if isinstance(theset, dict):
                 self.theset = [str(item) for item in theset]
                 self.labels = theset.values()
-            elif isinstance(theset, (tuple,list)):  # @ToDo: Can this be a Rows?
-                if isinstance(theset[0], (tuple,list)) and len(theset[0])==2:
-                    self.theset = [str(item) for item,label in theset]
-                    self.labels = [str(label) for item,label in theset]
+            elif isinstance(theset, (tuple, list)):  # @ToDo: Can this be a Rows?
+                if isinstance(theset[0], (tuple,list)) and len(theset[0]) == 2:
+                    self.theset = [str(item) for item, label in theset]
+                    self.labels = [str(label) for item, label in theset]
                 else:
                     self.theset = [str(item) for item in theset]
                     if represent:
@@ -1853,7 +1853,7 @@ class IS_IN_SET_LAZY(Validator):
             self._make_theset()
         if self.multiple:
             ### if below was values = re.compile("[\w\-:]+").findall(str(value))
-            if isinstance(value, (str,unicode)):
+            if isinstance(value, (str, unicode)):
                 values = [value]
             elif isinstance(value, (tuple, list)):
                 values = value
@@ -1867,8 +1867,8 @@ class IS_IN_SET_LAZY(Validator):
                 return ([], None)
             return (value, self.error_message)
         if self.multiple:
-            if isinstance(self.multiple,(tuple,list)) and \
-                    not self.multiple[0]<=len(values)<self.multiple[1]:
+            if isinstance(self.multiple, (tuple, list)) and \
+                    not self.multiple[0] <= len(values) < self.multiple[1]:
                 return (values, self.error_message)
             return (values, None)
         return (value, None)

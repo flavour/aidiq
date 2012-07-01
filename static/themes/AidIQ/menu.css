@@ -1,0 +1,103 @@
+@charset "UTF-8";
+
+/* Main Navigation (S3MainMenu or modules menu) */
+#menu_wrapper {
+    background: #fff;
+    height: 36px;
+    padding: 0px 10px;
+}
+#menu_modules {
+    float: left;
+    position: relative;
+    background: #3177bc;
+    padding-top: 0;
+    z-index: 25;
+    width: 1004px;
+    border-radius: 10px;
+}
+#modulenav {
+    position: relative;
+    margin: 0;
+    padding-right: 0.7%;
+}
+#modulenav,
+#modulenav li,
+#modulenav ul {
+    list-style: none;
+}
+#modulenav a {
+    text-decoration: none;
+    font-size: 1.2em;
+}
+#modulenav a:hover {
+    color: #ffd403;
+    background: none;
+}
+#modulenav li {
+    float: left;
+    position: relative;
+    text-align: left;
+    cursor: default;
+    border-width: 1px 0;
+}
+
+/* Menu Buttons */
+#modulenav li div {
+    text-align: center;
+    /*background: url(../../img/BFTBmenu_side.png) right 10px no-repeat;*/
+    /*text-shadow: 0 1px 1px #58606c;*/
+}
+#modulenav li div a{
+    color: #fff;
+    display: inline-block;
+    padding: 5px 8px 10px;
+}
+#modulenav li div.hovered,
+#modulenav li div:hover {
+    background: url(../../img/BFTBmenu_hilight.png) repeat-x;
+}
+
+
+/* Side Menu (S3OptionsMenu) */
+#menu_options {
+    margin: 6px 0 0 0;
+    /*padding:5px;*/
+    background: #e7ebed;
+    /*border: 1px solid #bbb;*/
+    border-radius: 0 5px 5px 0;
+    overflow: auto;
+}
+
+#subnav li, #subnav ul li {
+    list-style: none;
+    clear: both;
+}
+#subnav div a {
+    display: block;
+    padding: 5px;
+    background :#37404c;
+    font-weight: bold;
+}
+#subnav ul li {
+    border-bottom: 1px solid #b4c0c7;
+}
+
+#subnav ul li a{
+    display: block;
+    padding: 2px 2px 3px 10px;
+    text-decoration: none;
+}
+#subnav div a{
+    color: white;
+    font-size: 1.05em;
+    text-decoration: none;
+}
+#subnav div a:hover{
+    background: #112038;
+    color: white;
+}
+
+.menu_separator hr {
+    width: 90%;
+    height: 1px;
+}

@@ -1,0 +1,23 @@
+@charset "UTF-8";
+
+/* Footer */
+
+#footer {
+    background: #fff;
+    margin: 0 auto;
+    clear: both;
+    float: left;
+    width: 100%;
+    text-align: center;
+    border-top: #fff 1px solid;
+    border-radius: 0 0 15px 15px;
+}
+#poweredby {
+    float: right;
+    margin-right: 20px;
+}
+#poweredby a {
+    color: #2A485D;
+    text-decoration: none;
+
+}

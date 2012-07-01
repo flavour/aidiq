@@ -14,7 +14,10 @@ T = current.T
 settings.base.prepopulate = ["AidIQ"]
 
 # Theme
-#settings.base.theme = "AidIQ"
+settings.base.theme = "AidIQ"
+
+# Security Policy
+settings.security.policy = 7 # Organisation-ACLs
 
 # L10n settings
 settings.L10n.languages = OrderedDict([
@@ -100,39 +103,39 @@ settings.modules = OrderedDict([
             name_nice = T("Map"),
             #description = "Situation Awareness & Geospatial Analysis",
             restricted = True,
-            module_type = 6,     # 6th item in the menu
+            module_type = None,     # 6th item in the menu
         )),
     ("pr", Storage(
             name_nice = T("Person Registry"),
             #description = "Central point to record details on People",
             restricted = True,
             access = "|1|",     # Only Administrators can see this module in the default menu (access to controller is possible to all still)
-            module_type = 10
+            module_type = None
         )),
     ("org", Storage(
             name_nice = T("Organizations"),
             #description = 'Lists "who is doing what & where". Allows relief agencies to coordinate their activities',
             restricted = True,
-            module_type = 1
+            module_type = None
         )),
     # All modules below here should be possible to disable safely
     ("hrm", Storage(
             name_nice = T("Staff"),
             #description = "Human Resources Management",
             restricted = True,
-            module_type = 2,
+            module_type = None,
         )),
     ("cms", Storage(
           name_nice = T("Content Management"),
           #description = "Content Management System",
           restricted = True,
-          module_type = 10,
+          module_type = None,
       )),
     ("doc", Storage(
             name_nice = T("Documents"),
             #description = "A library of digital resources, such as photos, documents and reports",
             restricted = True,
-            module_type = 10,
+            module_type = None,
         )),
     ("msg", Storage(
             name_nice = T("Messaging"),
@@ -145,7 +148,7 @@ settings.modules = OrderedDict([
             name_nice = T("Projects"),
             #description = "Tracking of Projects, Activities and Tasks",
             restricted = True,
-            module_type = 2
+            module_type = 1
         )),
     #("survey", Storage(
     #        name_nice = T("Surveys"),
