@@ -41,6 +41,7 @@ class index():
                                                             table.title,
                                                             table.body,
                                                             limitby=(0, 1)).first()
+        title = None
         if row:
             title = row.title
             if current.auth.s3_has_role(current.session.s3.system_roles.ADMIN):
@@ -55,7 +56,6 @@ class index():
                 item = XML(row.body)
 
         elif current.auth.s3_has_role(current.session.s3.system_roles.ADMIN):
-            title = None
             item = A(T("Edit"),
                      _href=URL(c="cms", f="post", args="create",
                                vars=vars),
