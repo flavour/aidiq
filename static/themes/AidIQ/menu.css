@@ -32,6 +32,10 @@
 #modulenav a:hover {
     color: #ffd403;
     background: none;
+    font-size: 1.3em;
+}
+#modulenav a.active {
+    color: #ffd403;
 }
 #modulenav li {
     float: left;
@@ -47,16 +51,19 @@
     /*background: url(../../img/BFTBmenu_side.png) right 10px no-repeat;*/
     /*text-shadow: 0 1px 1px #58606c;*/
 }
-#modulenav li div a{
+#modulenav li div a {
     color: #fff;
     display: inline-block;
     padding: 5px 8px 10px;
 }
+#modulenav li div a:hover {
+    padding: 5px 8px 8px;
+}
 #modulenav li div.hovered,
 #modulenav li div:hover {
     background: url(../../img/BFTBmenu_hilight.png) repeat-x;
+    border-radius: 10px;
 }
-
 
 /* Side Menu (S3OptionsMenu) */
 #menu_options {

@@ -120,11 +120,61 @@ class contact():
                               _for="name")),
                         TR(TEXTAREA(_name="message", _class="resizable", _rows=5, _cols=62)),
                         TR(INPUT(_type="submit", _value="Send e-mail")),
-                        )
+                        ),
+                    _id="mailform"
                     )
                 )
+        s3 = response.s3
+        if s3.cdn:
+            if s3.debug:
+                s3.scripts.append("http://ajax.aspnetcdn.com/ajax/jquery.validate/1.9/jquery.validate.js")
+            else:
+                s3.scripts.append("http://ajax.aspnetcdn.com/ajax/jquery.validate/1.9/jquery.validate.min.js")
+               
+        else:
+            if s3.debug:
+                s3.scripts.append("/%s/static/scripts/jquery.validate.js" % request.application)
+            else:
+                s3.scripts.append("/%s/static/scripts/jquery.validate.min.js" % request.application)
+        s3.jquery_ready.append(
+'''$('#mailform').validate({
+ errorClass:'req',
+ rules:{
+  name:{
+   required:true
+  },
+  subject:{
+   required:true
+  },
+  message:{
+   required:true
+  },
+  name:{
+   required:true
+  },
+  address: {
+   required:true,
+   email:true
+  }
+ },
+ messages:{
+  name:"Enter your name",
+  subject:"Enter a subject",
+  message:"Enter a message",
+  address:{
+   required:"Please enter a valid email address",
+   email:"Please enter a valid email address"
+  }
+ },
+ errorPlacement:function(error,element){
+  error.appendTo(element.parents('tr').prev().children())
+ },
+ submitHandler:function(form){
+  form.submit()
+ }
+})''')
         # @ToDo: Move to static
-        response.s3.jquery_ready.append(  
+        s3.jquery_ready.append(
 '''$('textarea.resizable:not(.textarea-processed)').each(function() {
     // Avoid non-processed teasers.
     if ($(this).is(('textarea.teaser:not(.teaser-processed)'))) {

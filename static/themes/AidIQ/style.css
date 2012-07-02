@@ -22,4 +22,5 @@ body {
 }
 #content h2 {
     background: #f4f8ff;
+    border-bottom: 0;
 }

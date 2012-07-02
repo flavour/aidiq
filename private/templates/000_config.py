@@ -23,7 +23,7 @@ FINISHED_EDITING_CONFIG_FILE = False
 # - Workflows
 # - Theme
 # - note that you should restart your web2py after changing this setting
-settings.base.template = "default"
+settings.base.template = "AidIQ"
 
 # Database settings
 # Uncomment to use a different database, other than sqlite

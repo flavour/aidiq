@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from gluon import current
+from gluon import current, URL
 from gluon.storage import Storage
 from gluon.contrib.simplejson.ordered_dict import OrderedDict
 settings = current.deployment_settings
@@ -18,6 +18,8 @@ settings.base.theme = "AidIQ"
 
 # Security Policy
 settings.security.policy = 7 # Organisation-ACLs
+
+settings.auth.login_next = URL(c="project", f="task", vars={"mine":1})
 
 # L10n settings
 settings.L10n.languages = OrderedDict([
