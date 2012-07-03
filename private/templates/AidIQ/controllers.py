@@ -100,7 +100,7 @@ class contact():
         #T = current.T
 
         form = DIV(
-                H1("Contact"),
+                H1("Contact Us"),
                 P("You can leave a message using the contact form below."),
                 FORM(TABLE(
                         TR(LABEL("Your name:",

@@ -78,8 +78,8 @@
      <li><div><a {{="class=active " if not request.vars and not request.args else ""}}href='/{{=appname}}/default/index'>Home</a></div></li>
      <li><div><a {{="class=active " if "page" in request.vars and request.vars.page == "solutions" else ""}}href='/{{=appname}}/default/index?page=solutions'>Solutions</a></div></li>
      <li><div><a {{="class=active " if "page" in request.vars and request.vars.page == "projects" else ""}}href='/{{=appname}}/default/index?page=projects'>Projects</a></div></li>
-     <li><div><a {{="class=active " if "page" in request.vars and request.vars.page == "people" else ""}}href='/{{=appname}}/default/index?page=people'>People</a></div></li>
-     <li><div><a {{="class=active " if request.args(0) == "contact" else ""}}href='/{{=appname}}/default/index/contact'>Contact</a></div></li>
+     <li><div><a {{="class=active " if "page" in request.vars and request.vars.page == "people" else ""}}href='/{{=appname}}/default/index?page=people'>Our People</a></div></li>
+     <li><div><a {{="class=active " if request.args(0) == "contact" else ""}}href='/{{=appname}}/default/index/contact'>Contact Us</a></div></li>
     </ul>
    </div>
   </div>
