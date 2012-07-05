@@ -59,10 +59,12 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from gluon import current
-from gluon.dal import Field
+from gluon import *
+#from gluon import current
+#from gluon.dal import Field
+#from gluon.validators import IS_DATE_IN_RANGE, IS_MATCH, IS_NOT_IN_DB, IS_IN_SET, IS_INT_IN_RANGE, IS_FLOAT_IN_RANGE, IS_EMAIL
 from gluon.languages import lazyT
-from gluon.validators import Validator, IS_DATE_IN_RANGE, IS_MATCH, IS_NOT_IN_DB, IS_IN_SET, IS_INT_IN_RANGE, IS_FLOAT_IN_RANGE, IS_EMAIL
+from gluon.validators import Validator
 from gluon.storage import Storage
 
 def translate(text):
@@ -452,7 +454,7 @@ class IS_ONE_OF_EMPTY(Validator):
                 query = current.auth.s3_accessible_query("read", table)
                 if "deleted" in table:
                     query = ((table["deleted"] == False) & query)
-                filterby = self.filterby 
+                filterby = self.filterby
                 if filterby and filterby in table:
                     filter_opts = self.filter_opts
                     if filter_opts:
@@ -1246,8 +1248,6 @@ class IS_ADD_PERSON_WIDGET(Validator):
 
         T = current.T
         db = current.db
-        manager = current.manager
-        validate = manager.validate
         request = current.request
         settings = current.deployment_settings
 
@@ -1306,6 +1306,7 @@ class IS_ADD_PERSON_WIDGET(Validator):
                     error = T("Invalid phone number")
                     return (person_id, error)
 
+            validate = current.manager.validate
             if person_id:
                 # Update the person record
                 query = (ptable.id == person_id)
@@ -1376,7 +1377,7 @@ class IS_ADD_PERSON_WIDGET(Validator):
 
                 if person_id:
                     # Update the super-entities
-                    manager.model.update_super(ptable, dict(id=person_id))
+                    current.s3db.update_super(ptable, dict(id=person_id))
                     # Read the created pe_id
                     query = (ptable.id == person_id)
                     person = db(query).select(ptable.pe_id,

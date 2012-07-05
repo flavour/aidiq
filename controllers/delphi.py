@@ -101,13 +101,13 @@ def group():
         if r.interactive:
             if r.component:
                 tablename = r.component.tablename
-                list_fields = s3mgr.model.get_config(tablename,
-                                                     "list_fields")
+                list_fields = s3db.get_config(tablename,
+                                              "list_fields")
                 try:
                     list_fields.remove("group_id")
                 except:
                     pass
-                s3mgr.configure(tablename,
+                s3db.configure(tablename,
                                 list_fields=list_fields)
         return True
     s3.prep = prep
@@ -190,7 +190,7 @@ def problem():
     table = s3db[tablename]
 
     # Custom Methods
-    set_method = s3mgr.model.set_method
+    set_method = s3db.set_method
     set_method(module, resourcename,
                method="discuss",
                action=discuss)
@@ -215,7 +215,7 @@ def problem():
     # @ToDo: Check for Group Moderators too
     #if not s3_has_role("DelphiAdmin"):
         # Remove ability to create new Problems
-        #s3mgr.configure(tablename,
+        #s3db.configure(tablename,
         #                insertable=False)
 
     def prep(r):
@@ -1062,7 +1062,10 @@ def comments():
     except:
         raise HTTP(400)
 
-    id = request.args[1]
+    try:
+        id = request.args[1]
+    except:
+        raise HTTP(400)
 
     if resourcename == "problem":
         problem_id = id
@@ -1081,40 +1084,40 @@ def comments():
         raise HTTP(400)
 
     table = s3db.delphi_comment
-    table.problem_id.default = problem_id
-    table.problem_id.writable = table.problem_id.readable = False
+    field = table.problem_id
+    field.default = problem_id
+    field.writable = field.readable = False
+    sfield = table.solution_id
     if solution_id:
-        table.solution_id.default = solution_id
-        table.solution_id.writable = table.solution_id.readable = False
+        sfield.default = solution_id
+        sfield.writable = sfield.readable = False
     else:
-        table.solution_id.label = T("Related to Solution (optional)")
-        table.solution_id.requires = IS_EMPTY_OR(
-                                        IS_ONE_OF(db,
-                                                  "delphi_solution.id",
-                                                  "%(name)s",
-                                                  filterby="problem_id",
-                                                  filter_opts=[problem_id]
-                                                  ))
+        sfield.label = T("Related to Solution (optional)")
+        sfield.requires = IS_EMPTY_OR(
+                            IS_ONE_OF(db, "delphi_solution.id",
+                                      s3.delphi_solution_represent,
+                                      filterby="problem_id",
+                                      filter_opts=[problem_id]
+                                      ))
 
     # Form to add a new Comment
-    form = crud.create(table)
+    form = crud.create(table, formname="delphi_%s/%s" % (resourcename, id))
 
     # List of existing Comments
     if solution_id:
-        comments = db(table.solution_id == solution_id).select(table.id,
-                                                               table.parent,
-                                                               table.body,
-                                                               table.created_by,
-                                                               table.created_on)
+        comments = db(sfield == solution_id).select(table.id,
+                                                    table.parent,
+                                                    table.body,
+                                                    table.created_by,
+                                                    table.created_on)
     else:
-        comments = db(table.problem_id == problem_id).select(table.id,
-                                                             table.parent,
-                                                             table.solution_id,
-                                                             table.body,
-                                                             table.created_by,
-                                                             table.created_on)
+        comments = db(field == problem_id).select(table.id,
+                                                  table.parent,
+                                                  table.solution_id,
+                                                  table.body,
+                                                  table.created_by,
+                                                  table.created_on)
 
-    _user_table = s3db.auth_user
     output = UL(_id="comments")
     for comment in comments:
         if not comment.parent:

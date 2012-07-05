@@ -59,8 +59,6 @@ class S3IRSModel(S3Model):
         db = current.db
         settings = current.deployment_settings
 
-        location_id = self.gis_location_id
-
         datetime_represent = S3DateTime.datetime_represent
 
         # Shortcuts
@@ -286,7 +284,7 @@ class S3IRSModel(S3Model):
                                    represent = lambda val: datetime_represent(val, utc=True),
                                    requires = IS_NULL_OR(IS_UTC_DATETIME())
                                   ),
-                             location_id(),
+                             self.gis_location_id(),
                              # Very basic Impact Assessment
                              Field("affected", "integer",
                                    label=T("Number of People Affected"),
@@ -512,15 +510,15 @@ class S3IRSModel(S3Model):
 
         # ---------------------------------------------------------------------
         # Custom Methods
-        set_method("irs_ireport",
+        set_method("irs", "ireport",
                    method="dispatch",
                    action=self.irs_dispatch)
 
-        set_method("irs_ireport",
+        set_method("irs", "ireport",
                    method="timeline",
                    action=self.irs_timeline)
 
-        set_method("irs_ireport",
+        set_method("irs", "ireport",
                    method="ushahidi",
                    action=self.irs_ushahidi_import)
 
@@ -594,7 +592,10 @@ class S3IRSModel(S3Model):
 
         settings = current.deployment_settings
 
-        if not settings.has_module("fire"):
+        if settings.has_module("fire") and settings.has_module("vehicle"):
+            pass
+        else:
+            # Not supported!
             return
 
         db = current.db
@@ -636,7 +637,6 @@ class S3IRSModel(S3Model):
                                        left=left,
                                        limitby=(0, 1)).first()
             if vehicle:
-                current.manager.load("vehicle_vehicle")
                 vehicle = vehicle.id
                 query = (vtable.asset_id == vehicle) & \
                         (fvtable.vehicle_id == vtable.id) & \
@@ -869,18 +869,18 @@ class S3IRSModel(S3Model):
             data["events"] = events
             data = json.dumps(data)
 
-            code = "".join(("""
-S3.timeline.data = """, data, """;
-S3.timeline.tl_start = '""", tl_start.isoformat(), """';
-S3.timeline.tl_end = '""", tl_end.isoformat(), """';
-S3.timeline.now = '""", now.isoformat(), """';
-"""))
+            code = "".join((
+'''S3.timeline.data=''', data, '''
+S3.timeline.tl_start="''', tl_start.isoformat(), '''"
+S3.timeline.tl_end="''', tl_end.isoformat(), '''"'
+S3.timeline.now="''', now.isoformat()
+))
 
             # Control our code in static/scripts/S3/s3.timeline.js
             s3.js_global.append(code)
 
             # Create the DIV
-            item = DIV(_id="s3timeline", _style="height: 400px; border: 1px solid #aaa; font-family: Trebuchet MS, sans-serif; font-size: 85%;")
+            item = DIV(_id="s3timeline", _style="height:400px;border:1px solid #aaa;font-family:Trebuchet MS,sans-serif;font-size:85%;")
 
             output = dict(item = item)
 
@@ -1013,16 +1013,13 @@ class S3IRSResponseModel(S3Model):
 
     def model(self):
 
-        db = current.db
         T = current.T
-        request = current.request
-        s3 = current.response.s3
-        settings = current.deployment_settings
+        db = current.db
 
         human_resource_id = self.hrm_human_resource_id
-        location_id = self.gis_location_id
         ireport_id = self.irs_ireport_id
 
+        settings = current.deployment_settings
         hrm = settings.get_hrm_show_staff()
         vol = settings.has_module("vol")
         if hrm and not vol:
@@ -1081,15 +1078,15 @@ class S3IRSResponseModel(S3Model):
                                             f="vehicle",
                                             label=T("Add Vehicle"),
                                             tooltip=T("If you don't see the vehicle in the list, you can add a new one by clicking link 'Add Vehicle'.")),
-                                   
+
                                     ),
                                   Field("datetime", "datetime",
                                         label=T("Dispatch Time"),
                                         widget = S3DateTimeWidget(future=0),
                                         requires = IS_EMPTY_OR(IS_UTC_DATETIME(allow_future=False)),
-                                        default = request.utcnow),
+                                        default = current.request.utcnow),
                                   self.super_link("site_id", "org_site"),
-                                  location_id(label=T("Destination")),
+                                  self.gis_location_id(label=T("Destination")),
                                   Field("closed",
                                         # @ToDo: Close all assignments when Incident closed
                                         readable=False,
@@ -1131,7 +1128,7 @@ class S3IRSResponseModel(S3Model):
                                             f="vehicle",
                                             label=T("Add Vehicle"),
                                             tooltip=T("If you don't see the vehicle in the list, you can add a new one by clicking link 'Add Vehicle'.")),
-                                   
+
                                           ),
                                   Field("closed",
                                         # @ToDo: Close all assignments when Incident closed
@@ -1140,7 +1137,7 @@ class S3IRSResponseModel(S3Model):
                                   *s3_meta_fields())
 
         # ---------------------------------------------------------------------
-        # Return model-global names to response.s3
+        # Return model-global names to s3db.*
         #
         return Storage(
                 )
@@ -1153,11 +1150,8 @@ class S3IRSResponseModel(S3Model):
             based on those vehicles which aren't already on-call
         """
 
-        db = current.db
-        s3db = current.s3db
-        s3 = response = current.response.s3
-
         # Vehicles are a type of Asset
+        s3db = current.s3db
         table = s3db.asset_asset
         ltable = s3db.irs_ireport_vehicle
         asset_represent = s3db.asset_asset_id.represent
@@ -1171,7 +1165,7 @@ class S3IRSResponseModel(S3Model):
                  (ltable.closed == True) | \
                  (ltable.deleted == True))
         left = ltable.on(table.id == ltable.asset_id)
-        requires = IS_NULL_OR(IS_ONE_OF(db(query),
+        requires = IS_NULL_OR(IS_ONE_OF(current.db(query),
                                         "asset_asset.id",
                                         asset_represent,
                                         left=left,
@@ -1191,7 +1185,7 @@ def irs_rheader(r, tabs=[]):
         s3db = current.s3db
         settings = current.deployment_settings
         hrm_label = T("Responder(s)")
-            
+
         tabs = [(T("Report Details"), None),
                 (T("Photos"), "image"),
                 (T("Documents"), "document"),
@@ -1274,9 +1268,8 @@ class irs_ireport_vehicle_virtual_fields:
     extra_fields = ["datetime"]
 
     def minutes(self):
-        request = current.request
         try:
-            delta = request.utcnow - self.irs_ireport_vehicle.datetime
+            delta = current.request.utcnow - self.irs_ireport_vehicle.datetime
         except:
             return 0
 

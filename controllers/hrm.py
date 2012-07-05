@@ -136,13 +136,13 @@ def staff():
             (table.end_date < (request.utcnow + datetime.timedelta(weeks=4)))
         s3.crud_strings[tablename].title_list = T("Staff with Contracts Expiring in the next Month")
         # Remove the big Add button
-        s3mgr.configure(tablename,
+        s3db.configure(tablename,
                         insertable=False)
     # Remove Type filter from the Search widget
-    human_resource_search = s3mgr.model.get_config(tablename,
-                                                   "search_method")
+    human_resource_search = s3db.get_config(tablename,
+                                            "search_method")
     human_resource_search.advanced.pop(1)
-    s3mgr.configure(tablename,
+    s3db.configure(tablename,
                     list_fields = list_fields,
                     search_method = human_resource_search)
 
@@ -209,9 +209,8 @@ def person():
         - includes components relevant to HRM
     """
 
-    configure = s3mgr.configure
-    set_method = s3mgr.model.set_method
-    super_key = s3mgr.model.super_key
+    configure = s3db.configure
+    set_method = s3db.set_method
 
     # Custom Method for Contacts
     set_method("pr", resourcename,
@@ -226,8 +225,8 @@ def person():
 
     if settings.has_module("asset"):
         # Assets as component of people
-        s3mgr.model.add_component("asset_asset",
-                                  pr_person="assigned_to_id")
+        s3db.add_component("asset_asset",
+                            pr_person="assigned_to_id")
         # Edits should always happen via the Asset Log
         # @ToDo: Allow this method too, if we can do so safely
         configure("asset_asset",
@@ -344,7 +343,7 @@ def person():
                                 (htable.organisation_id == otable.id) & \
                                 (htable.type == group)
                         resource = s3mgr.define_resource("hrm", "human_resource", filter=query)
-                        ondelete = s3mgr.model.get_config("hrm_human_resource", "ondelete")
+                        ondelete = s3db.get_config("hrm_human_resource", "ondelete")
                         resource.delete(ondelete=ondelete, format="xml", cascade=True)
 
     s3mgr.import_prep = import_prep
@@ -367,7 +366,7 @@ def person():
                         table.organisation_id.writable = False
                         table.site_id.requires = IS_EMPTY_OR(
                             IS_ONE_OF(db,
-                                      "org_site.%s" % super_key(db.org_site),
+                                      "org_site.%s" % s3db.super_key(db.org_site),
                                       s3db.org_site_represent,
                                       filterby="organisation_id",
                                       filter_opts=[session.s3.hrm.org]))
@@ -481,7 +480,13 @@ def person_search():
         - allows differential access permissions
     """
 
-    s3mgr.configure("hrm_human_resource",
+    group = request.get_vars.get("group", None)
+    if group == "staff":
+        s3.filter = (s3db.hrm_human_resource.type == 1)
+    elif group == "volunteer":
+        s3.filter = (s3db.hrm_human_resource.type == 2)
+
+    s3db.configure("hrm_human_resource",
                     # S3HRSearch
                     search_method = s3db.hrm_autocomplete_search,
                    )
@@ -550,11 +555,11 @@ def group():
         msg_record_deleted = T("Membership deleted"),
         msg_list_empty = T("No Members currently registered"))
 
-    s3mgr.configure(tablename, main="name", extra="description",
+    s3db.configure(tablename, main="name", extra="description",
                     # Redirect to member list when a new group has been created
                     create_next = URL(f="group",
                                       args=["[id]", "group_membership"]))
-    s3mgr.configure("pr_group_membership",
+    s3db.configure("pr_group_membership",
                     list_fields=["id",
                                  "person_id",
                                  "group_head",

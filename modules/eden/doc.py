@@ -258,12 +258,16 @@ class S3DocumentLibrary(S3Model):
         if not id:
             return current.messages.NONE
 
-        represent = s3_get_db_field_value(tablename = "doc_document",
-                                          fieldname = "name",
-                                          look_up_value = id)
-        return A(represent,
-                 _href = URL(c="doc", f="document", args=[id], extension=""),
-                 _target = "blank")
+        db = current.db
+        table = db.doc_document
+        record = db(table.id == id).select(table.name,
+                                           limitby=(0, 1)).first()
+        try:
+            return A(record.name,
+                     _href = URL(c="doc", f="document", args=[id], extension=""),
+                     _target = "blank")
+        except:
+            return current.messages.UNKNOWN_OPT
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -274,8 +278,6 @@ class S3DocumentLibrary(S3Model):
 
         T = current.T
         db = current.db
-        s3db = current.s3db
-        request = current.request
         vars = form.vars
 
         if document:
@@ -285,12 +287,12 @@ class S3DocumentLibrary(S3Model):
             tablename = "doc_image"
             msg = T("Either file upload or image URL required.")
 
-        table = s3db[tablename]
+        table = db[tablename]
 
         doc = vars.file
         url = vars.url
         if not hasattr(doc, "file"):
-            id = request.post_vars.id
+            id = current.request.post_vars.id
             if id:
                 record = db(table.id == id).select(table.file,
                                                    limitby=(0, 1)).first()
