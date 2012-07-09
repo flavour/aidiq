@@ -32,7 +32,7 @@ __all__ = ["S3AssetModel",
            "asset_types",
            "asset_log_status",
            "asset_controller",
-          ]
+           ]
 
 from gluon import *
 from gluon.sqlhtml import RadioWidget
@@ -240,14 +240,16 @@ class S3AssetModel(S3Model):
                                 "comments",
                             ]
                       ),
-                    S3SearchLocationHierarchyWidget(
+                    S3SearchOptionsWidget(
                         name="asset_search_L1",
                         field="L1",
+                        location_level="L1",
                         cols = 3
                     ),
-                    S3SearchLocationHierarchyWidget(
+                    S3SearchOptionsWidget(
                         name="asset_search_L2",
                         field="L2",
+                        location_level="L2",
                         cols = 3
                     ),
                     S3SearchLocationWidget(
@@ -262,15 +264,14 @@ class S3AssetModel(S3Model):
                     ),
             ))
 
-        hierarchy = current.gis.get_location_hierarchy()
         report_fields = [
                          "number",
                          (T("Category"), "item_id$item_category_id"),
                          (T("Item"), "item_id"),
                          (T("Facility/Site"), "site"),
-                         (hierarchy["L1"], "L1"),
-                         (hierarchy["L2"], "L2"),
-                        ]
+                         "L1",
+                         "L2",
+                         ]
 
         # Resource Configuration
         configure(tablename,
@@ -280,14 +281,16 @@ class S3AssetModel(S3Model):
                   search_method=asset_search,
                   report_options=Storage(
                         search=[
-                                S3SearchLocationHierarchyWidget(
+                                S3SearchOptionsWidget(
                                     name="asset_search_L1",
                                     field="L1",
+                                    location_level="L1",
                                     cols = 3
                                 ),
-                                S3SearchLocationHierarchyWidget(
+                                S3SearchOptionsWidget(
                                     name="asset_search_L2",
                                     field="L2",
+                                    location_level="L2",
                                     cols = 3
                                 ),
                                 S3SearchOptionsWidget(

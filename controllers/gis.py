@@ -121,19 +121,22 @@ def location():
             comment = T("To search for a location, enter the name. You may use % as wildcard. Press 'Search' without input to list all locations."),
             field = "name"
             ),
-            s3base.S3SearchLocationHierarchyWidget(
+            s3base.S3SearchOptionsWidget(
                 name="location_search_L0",
                 field="L0",
+                label = T("Country"),
                 cols = 3,
             ),
-            s3base.S3SearchLocationHierarchyWidget(
+            s3base.S3SearchOptionsWidget(
                 name="location_search_L1",
                 field="L1",
+                location_level="L1",
                 cols = 3,
             ),
-            s3base.S3SearchLocationHierarchyWidget(
+            s3base.S3SearchOptionsWidget(
                 name="location_search_L2",
                 field="L2",
+                location_level="L2",
                 cols = 3,
             ),
             s3base.S3SearchOptionsWidget(
@@ -805,8 +808,7 @@ def config():
                             (ltable.config_id == r.id)
                     rows = db(query).select(table.layer_id)
                     # Filter them out
-                    ltable.layer_id.requires = IS_ONE_OF(db,
-                                                         "gis_layer_entity.layer_id",
+                    ltable.layer_id.requires = IS_ONE_OF(db, "gis_layer_entity.layer_id",
                                                          s3db.gis_layer_represent,
                                                          not_filterby="layer_id",
                                                          not_filter_opts=[row.layer_id for row in rows]
@@ -967,8 +969,7 @@ def symbology():
                     rows = db(query).select(table.layer_id)
                     # Filter them out
                     # Restrict Layers to those which have Markers
-                    ltable.layer_id.requires = IS_ONE_OF(db,
-                                                         "gis_layer_entity.layer_id",
+                    ltable.layer_id.requires = IS_ONE_OF(db, "gis_layer_entity.layer_id",
                                                          s3db.gis_layer_represent,
                                                          filterby="instance_type",
                                                          filter_opts=("gis_layer_feature",
@@ -1124,8 +1125,7 @@ def layer_entity():
                             (ltable.layer_id == r.id)
                     rows = db(query).select(table.id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                          "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                           "%(name)s",
                                                           not_filterby="id",
                                                           not_filter_opts=[row.id for row in rows]
@@ -1150,8 +1150,7 @@ def layer_entity():
                             (ltable.layer_id == r.id)
                     rows = db(query).select(table.id)
                     # Filter them out
-                    ltable.symbology_id.requires = IS_ONE_OF(db,
-                                                             "gis_symbology.id",
+                    ltable.symbology_id.requires = IS_ONE_OF(db, "gis_symbology.id",
                                                              "%(name)s",
                                                              not_filterby="id",
                                                              not_filter_opts=[row.id for row in rows]
@@ -1187,8 +1186,7 @@ def layer_feature():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -1202,8 +1200,7 @@ def layer_feature():
                         (table.id == r.id)
                 rows = db(query).select(ltable.symbology_id)
                 # Filter them out
-                ltable.symbology_id.requires = IS_ONE_OF(db,
-                                                         "gis_symbology.id",
+                ltable.symbology_id.requires = IS_ONE_OF(db, "gis_symbology.id",
                                                          "%(name)s",
                                                          not_filterby="id",
                                                          not_filter_opts=[row.symbology_id for row in rows]
@@ -1264,8 +1261,7 @@ def layer_openstreetmap():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -1323,8 +1319,7 @@ def layer_bing():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -1382,8 +1377,7 @@ def layer_empty():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -1432,8 +1426,7 @@ def layer_google():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -1499,8 +1492,7 @@ def layer_mgrs():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -1561,8 +1553,7 @@ def layer_arcrest():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -1629,8 +1620,7 @@ def layer_geojson():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -1648,8 +1638,7 @@ def layer_geojson():
                             (table.id == r.id)
                     rows = db(query).select(ltable.symbology_id)
                     # Filter them out
-                    ltable.symbology_id.requires = IS_ONE_OF(db,
-                                                             "gis_symbology.id",
+                    ltable.symbology_id.requires = IS_ONE_OF(db, "gis_symbology.id",
                                                              "%(name)s",
                                                              not_filterby="id",
                                                              not_filter_opts=[row.symbology_id for row in rows]
@@ -1720,8 +1709,7 @@ def layer_georss():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -1739,8 +1727,7 @@ def layer_georss():
                             (table.id == r.id)
                     rows = db(query).select(ltable.symbology_id)
                     # Filter them out
-                    ltable.symbology_id.requires = IS_ONE_OF(db,
-                                                             "gis_symbology.id",
+                    ltable.symbology_id.requires = IS_ONE_OF(db, "gis_symbology.id",
                                                              "%(name)s",
                                                              not_filterby="id",
                                                              not_filter_opts=[row.symbology_id for row in rows]
@@ -1810,8 +1797,7 @@ def layer_gpx():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -1882,13 +1868,14 @@ def layer_kml():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
                                                          )
             elif r.component_name == "symbology":
+                ltable = s3db.gis_layer_symbology
+                field = ltable.gps_marker
                 field.readable = False
                 field.writable = False
                 if r.method != "update":
@@ -1899,8 +1886,7 @@ def layer_kml():
                             (table.id == r.id)
                     rows = db(query).select(ltable.symbology_id)
                     # Filter them out
-                    ltable.symbology_id.requires = IS_ONE_OF(db,
-                                                             "gis_symbology.id",
+                    ltable.symbology_id.requires = IS_ONE_OF(db, "gis_symbology.id",
                                                              "%(name)s",
                                                              not_filterby="id",
                                                              not_filter_opts=[row.symbology_id for row in rows]
@@ -1975,8 +1961,7 @@ def layer_theme():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -2059,8 +2044,7 @@ def layer_tms():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -2127,8 +2111,7 @@ def layer_wfs():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -2197,8 +2180,7 @@ def layer_wms():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -2270,8 +2252,7 @@ def layer_xyz():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
@@ -2338,8 +2319,7 @@ def layer_js():
                             (table.id == r.id)
                     rows = db(query).select(ltable.config_id)
                     # Filter them out
-                    ltable.config_id.requires = IS_ONE_OF(db,
-                                                         "gis_config.id",
+                    ltable.config_id.requires = IS_ONE_OF(db, "gis_config.id",
                                                          "%(name)s",
                                                          not_filterby="config_id",
                                                          not_filter_opts=[row.config_id for row in rows]
