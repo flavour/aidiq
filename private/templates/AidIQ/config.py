@@ -125,7 +125,7 @@ settings.modules = OrderedDict([
             name_nice = T("Staff"),
             #description = "Human Resources Management",
             restricted = True,
-            module_type = None,
+            module_type = 2,
         )),
     ("cms", Storage(
           name_nice = T("Content Management"),
