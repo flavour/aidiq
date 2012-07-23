@@ -74,11 +74,11 @@ def s3_debug(message, value=None):
     try:
         output = "S3 Debug: %s" % str(message)
         if value:
-            "%s: %s" % (output, str(value))
+            output = "%s: %s" % (output, str(value))
     except:
         output = u"S3 Debug: %s" % unicode(message)
         if value:
-            u"%s: %s" % (output, unicode(value))
+            output = u"%s: %s" % (output, unicode(value))
 
     print >> sys.stderr, output
 
@@ -117,7 +117,7 @@ def s3_dev_toolbar():
 
 # =============================================================================
 def s3_mark_required(fields,
-                     mark_required=None,
+                     mark_required=[],
                      label_html=(lambda field_label:
                                  DIV("%s:" % field_label,
                                      SPAN(" *", _class="req")))):
@@ -139,14 +139,14 @@ def s3_mark_required(fields,
     for field in fields:
         if field.writable:
             validators = field.requires
-            if isinstance(validators, IS_EMPTY_OR):
+            if isinstance(validators, IS_EMPTY_OR) and field.name not in mark_required:
                 # Allow notnull fields to be marked as not required
                 # if we populate them onvalidation
                 labels[field.name] = "%s:" % field.label
                 continue
             else:
                 required = field.required or field.notnull or \
-                            mark_required and field.name in mark_required
+                            field.name in mark_required
             if not validators and not required:
                 labels[field.name] = "%s:" % field.label
                 continue
@@ -458,7 +458,7 @@ def s3_represent_facilities(db, site_ids, link=True):
     return results
 
 # =============================================================================
-def s3_comments_represent(text, showlink=True):
+def s3_comments_represent(text, show_link=True):
     """
         Represent Comments Fields
 
@@ -467,7 +467,7 @@ def s3_comments_represent(text, showlink=True):
 
     if len(text) < 80:
         return text
-    elif not showlink:
+    elif not show_link:
         return "%s..." % text[:76]
     else:
         import uuid
@@ -872,7 +872,7 @@ $('#regform').validate({
   first_name:{
    required:true
   },''', mobile, '''
-  email: {
+  email:{
    required:true,
    email:true
   },''', org1, '''
@@ -885,7 +885,7 @@ $('#regform').validate({
   }
  },
  messages:{
-  firstname:"''', str(T("Enter your firstname")), '''",
+  first_name:"''', str(T("Enter your first name")), '''",
   password:{
    required:"''', str(T("Provide a password")), '''"
   },
@@ -928,30 +928,6 @@ def s3_filename(filename):
     return "".join(c for c in cleanedFilename if c in validFilenameChars)
 
 # =============================================================================
-def s3_table_links(reference):
-    """
-        Return a dict of tables & their fields which have references to the
-        specified table
-
-        @deprecated: to be replaced by db[tablename]._referenced_by
-        - used by controllers/gis.py & pr.py
-    """
-
-    db = current.db
-    current.s3db.load_all_models()
-    tables = {}
-    for table in db.tables:
-        count = 0
-        for field in db[table].fields:
-            if str(db[table][field].type) == "reference %s" % reference:
-                if count == 0:
-                    tables[table] = {}
-                tables[table][count] = field
-                count += 1
-
-    return tables
-
-# =============================================================================
 def s3_has_foreign_key(field, m2m=True):
     """
         Check whether a field contains a foreign key constraint
@@ -964,7 +940,11 @@ def s3_has_foreign_key(field, m2m=True):
                to find real foreign key constraints, then set m2m=False.
     """
 
-    ftype = str(field.type)
+    try:
+        ftype = str(field.type)
+    except:
+        # Virtual Field
+        return False
     if ftype[:9] == "reference":
         return True
     if m2m and ftype[:14] == "list:reference":
@@ -1012,7 +992,7 @@ def s3_get_foreign_key(field, m2m=True):
     return (rtablename, key, multiple)
 
 # =============================================================================
-def s3_unicode(s, encoding='utf-8'):
+def s3_unicode(s, encoding="utf-8"):
     """
         Convert an object into an unicode instance, to be used instead of
         unicode(s) (Note: user data should never be converted into str).
@@ -1025,22 +1005,22 @@ def s3_unicode(s, encoding='utf-8'):
         return s
     try:
         if not isinstance(s, basestring):
-            if hasattr(s, '__unicode__'):
+            if hasattr(s, "__unicode__"):
                 s = unicode(s)
             else:
                 try:
-                    s = unicode(str(s), encoding, 'strict')
+                    s = unicode(str(s), encoding, "strict")
                 except UnicodeEncodeError:
                     if not isinstance(s, Exception):
                         raise
-                    s = ' '.join([s3_unicode(arg, encoding) for arg in s])
+                    s = " ".join([s3_unicode(arg, encoding) for arg in s])
         else:
             s = s.decode(encoding)
     except UnicodeDecodeError:
         if not isinstance(s, Exception):
             raise
         else:
-            s = ' '.join([s3_unicode(arg, encoding) for arg in s])
+            s = " ".join([s3_unicode(arg, encoding) for arg in s])
     return s
 
 # =============================================================================
