@@ -58,7 +58,7 @@ from gluon import *
 #from gluon.html import A, DIV, URL
 #from gluon.http import HTTP, redirect
 #from gluon.validators import IS_EMPTY_OR, IS_NOT_IN_DB, IS_DATE, IS_TIME
-from gluon.dal import Row, Rows
+from gluon.dal import Row, Rows, Table
 from gluon.languages import lazyT
 from gluon.storage import Storage
 from gluon.tools import callback
@@ -2184,7 +2184,7 @@ class S3Resource(object):
                 continue
             try:
                 field = resolve_selector(selector)
-            except (KeyError, SyntaxError):
+            except (AttributeError, SyntaxError):
                 continue
 
             # Fall back to the field label
@@ -2277,7 +2277,7 @@ class S3Resource(object):
                 left[tn] = l
                 table = c.table
             else:
-                raise KeyError("%s is not a component of %s" % (tn, tablename))
+                raise AttributeError("%s is not a component of %s" % (tn, tablename))
         else:
             # Field in the master table
             tn = tablename
@@ -2288,7 +2288,7 @@ class S3Resource(object):
             table = self.table
 
         if table is None:
-            raise KeyError("undefined table %s" % tn)
+            raise AttributeError("undefined table %s" % tn)
         else:
             # Resolve the field name
             if fn == "uid":
@@ -2322,9 +2322,9 @@ class S3Resource(object):
                     lname = fn
 
                 if ltable is None:
-                    ltable = s3db.table(lname)
-                    if not ltable:
-                        raise SyntaxError("%s.%s is not a foreign key" % (tn, fn))
+                    ltable = s3db.table(lname,
+                                        SyntaxError("%s.%s is not a foreign key" % (tn, fn)),
+                                        db_only=True)
 
                 # Get the primary key
                 pkey = table._id.name
@@ -2334,7 +2334,7 @@ class S3Resource(object):
                     search_lkey = True
                 else:
                     if lkey not in ltable.fields:
-                        raise KeyError("No field %s in %s" % (lkey, lname))
+                        raise AttributeError("No field %s in %s" % (lkey, lname))
                     lkey_field = ltable[lkey]
                     _tn, pkey, multiple = s3_get_foreign_key(lkey_field, m2m=False)
                     if _tn and _tn != tn:
@@ -2348,7 +2348,7 @@ class S3Resource(object):
                     search_rkey = True
                 else:
                     if rkey not in ltable.fields:
-                        raise KeyError("No field %s in %s" % (rkey, lname))
+                        raise AttributeError("No field %s in %s" % (rkey, lname))
                     rkey_field = ltable[rkey]
                     ktablename, fkey, multiple = s3_get_foreign_key(rkey_field, m2m=False)
                     if not ktablename:
@@ -2385,9 +2385,9 @@ class S3Resource(object):
                         rkey_field = ltable[rkey]
 
                 # Load the referenced table
-                ktable = s3db.table(ktablename)
-                if ktable is None:
-                    raise KeyError("Undefined table: %s" % ktablename)
+                ktable = s3db.table(ktablename,
+                                    AttributeError("Undefined table: %s" % ktablename),
+                                    db_only=True)
 
                 # Resolve fkey, if still unknown
                 if not fkey:
@@ -2412,9 +2412,9 @@ class S3Resource(object):
                 if not ktablename:
                     raise SyntaxError("%s.%s is not a foreign key" % (tn, f))
 
-                ktable = s3db.table(ktablename)
-                if ktable is None:
-                    raise KeyError("Undefined table %s" % ktablename)
+                ktable = s3db.table(ktablename,
+                                    AttributeError("Undefined table %s" % ktablename),
+                                    db_only=True)
                 if pkey is None:
                     pkey = ktable._id
                 else:
@@ -2818,9 +2818,26 @@ class S3Resource(object):
         headers = dict(map(lambda f: (f.colname, f.label), lfields))
 
         # Fields in the query
-        qfields = [f.field for f in lfields if f.field is not None]
-        if no_ids:
-            qfields.insert(0, table._id)
+        load = current.s3db.table
+        qfields = []
+        qtables = []
+        for f in lfields:
+            field = f.field
+            tname = f.tname
+            if field is None:
+                continue
+            qtable = load(tname)
+            if qtable is None:
+                continue
+            if tname not in qtables:
+                # Make sure the primary key of the table this field
+                # belongs to is included in the SELECT
+                qtables.append(tname)
+                pkey = qtable._id
+                qfields.append(pkey)
+                if str(field) == str(pkey):
+                    continue
+            qfields.append(field)
 
         # Add orderby fields which are not in qfields
         # @todo: this could need some cleanup/optimization
@@ -2942,7 +2959,8 @@ class S3Resource(object):
             record = Storage()
             for lfield in lfields:
                 record[lfield.colname] = S3FieldSelector.extract(self,
-                                                    row, lfield.selector)
+                                                                 row,
+                                                                 lfield)
             records.append(record)
         return json.dumps(records)
 
@@ -3793,8 +3811,6 @@ class S3FieldSelector:
                       the value from the row otherwise
         """
 
-        if isinstance(field, basestring):
-            field = S3FieldSelector(field)
         if isinstance(field, Field):
             f = field
             colname = str(field)
@@ -4354,9 +4370,9 @@ class S3ResourceQuery:
                 url_query[key] = v
             return url_query
         if op == self.AND:
-            lu = l.serialize_url()
+            lu = l.serialize_url(resource=resource)
             url_query.update(lu)
-            ru = r.serialize_url()
+            ru = r.serialize_url(resource=resource)
             url_query.update(ru)
         elif op == self.OR:
             sub = self._or()
@@ -4366,7 +4382,7 @@ class S3ResourceQuery:
             n, o, v, invert = sub
             _serialize(n, o, v, invert)
         elif op == self.NOT:
-            lu = l.serialize_url()
+            lu = l.serialize_url(resource=resource)
             for k in lu:
                 url_query["%s!" % k] = lu[k]
         elif isinstance(l, S3FieldSelector):

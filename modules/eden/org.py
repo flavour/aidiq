@@ -28,6 +28,7 @@
 """
 
 __all__ = ["S3OrganisationModel",
+           "S3OrganisationVirtualFields",
            "S3OrganisationTypeTagModel",
            "S3SiteModel",
            "S3FacilityModel",
@@ -66,6 +67,7 @@ class S3OrganisationModel(S3Model):
 
     names = ["org_sector",
              "org_sector_id",
+             "org_sector_opts",
              #"org_subsector",
              "org_organisation_type",
              "org_organisation_type_id",
@@ -283,7 +285,7 @@ class S3OrganisationModel(S3Model):
                                    length=128,           # Mayon Compatibility
                                    label = T("Name")),
                              # http://hxl.humanitarianresponse.info/#abbreviation
-                             Field("acronym", length=8,
+                             Field("acronym", length=16,
                                    label = T("Acronym"),
                                    represent = lambda val: val or "",
                                    comment = DIV(_class="tooltip",
@@ -353,6 +355,8 @@ class S3OrganisationModel(S3Model):
                              s3_comments(),
                              #document_id(), # Better to have multiple Documents on a Tab
                              *s3_meta_fields())
+
+        table.virtualfields.append(S3OrganisationVirtualFields())
 
         # CRUD strings
         ADD_ORGANIZATION = T("Add Organization")
@@ -623,9 +627,26 @@ class S3OrganisationModel(S3Model):
         #
         return Storage(
                     org_sector_id = sector_id,
+                    org_sector_opts = self.org_sector_opts,
                     org_organisation_type_id = organisation_type_id,
                     org_organisation_id = organisation_id,
                 )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def org_sector_opts():
+        """
+            Provide the options for the Sector search filter
+        """
+        db = current.db
+        table = db.org_sector
+        opts = db(table.deleted == False).select(table.id,
+                                                 table.name,
+                                                 orderby=table.name)
+        od = OrderedDict()
+        for opt in opts:
+            od[opt.id] = opt.name
+        return od
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -661,7 +682,7 @@ class S3OrganisationModel(S3Model):
         query = (table.id == row.get("id"))
         deleted_row = db(query).select(table.logo,
                                        limitby=(0, 1)).first()
-        s3db.pr_image_delete_all(deleted_row.logo)
+        current.s3db.pr_image_delete_all(deleted_row.logo)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -954,6 +975,27 @@ class S3OrganisationModel(S3Model):
             current.s3db.pr_update_affiliations(table, record)
         return
 
+
+# =============================================================================
+class S3OrganisationVirtualFields:
+    """ Virtual fields for the org_organisation table """
+
+    def address(self):
+        """ Fetch the address of an office """
+        from eden.gis import gis_location_represent
+        db = current.db
+
+        query = (db.org_office.deleted != True) & \
+                (db.org_office.organisation_id == self.org_organisation.id) & \
+                (db.org_office.location_id == db.gis_location.id)
+        row = db(query).select(db.gis_location.id).first()
+
+        if row:
+            return gis_location_represent(row.id)
+        else:
+            return None
+
+
 # =============================================================================
 class S3OrganisationTypeTagModel(S3Model):
     """
@@ -1036,7 +1078,7 @@ class S3SiteModel(S3Model):
                                   Field("obsolete", "boolean",
                                         label = T("Obsolete"),
                                         represent = lambda bool: \
-                                          (bool and [T("Obsolete")] or [messages.NONE])[0],
+                                          (bool and [T("Obsolete")] or [current.messages.NONE])[0],
                                         default = False,
                                         readable = False,
                                         writable = False),
@@ -1292,7 +1334,7 @@ class S3FacilityModel(S3Model):
                              Field("obsolete", "boolean",
                                    label = T("Obsolete"),
                                    represent = lambda bool: \
-                                     (bool and [T("Obsolete")] or [messages.NONE])[0],
+                                     (bool and [T("Obsolete")] or [current.messages.NONE])[0],
                                    default = False,
                                    readable = False,
                                    writable = False),
@@ -2307,9 +2349,6 @@ def org_office_controller():
             if r.record and r.record.type == 5: # 5 = Warehouse
                 s3.crud_strings["org_office"] = s3.org_warehouse_crud_strings
 
-            if r.id:
-                table.obsolete.readable = table.obsolete.writable = True
-
             if r.component:
 
                 cname = r.component.name
@@ -2332,6 +2371,8 @@ def org_office_controller():
                     # Hide fields which don't make sense in a Create form
                     # inc list_create (list_fields over-rides)
                     s3db.req_create_form_mods()
+            elif r.id:
+                table.obsolete.readable = table.obsolete.writable = True
 
         return True
     s3.prep = prep

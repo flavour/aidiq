@@ -7,8 +7,71 @@
 #
 import unittest
 
-from gluon import current
+from gluon import *
+from gluon.storage import Storage
 from s3.s3aaa import S3EntityRoleManager
+
+# =============================================================================
+class S3RoleTests(unittest.TestCase):
+    """
+        Example how one could easily prepare a complex resource
+        in order to test permissions
+    """
+
+    def setUp(self):
+
+        auth = current.auth
+
+        xmlstr = """
+<s3xml>
+   <resource name="org_organisation" uuid="TESTORGA">
+     <data field="name">Org-A</data>
+     <resource name="org_office" uuid="TESTOFFICEA">
+       <data field="name">Office-A</data>
+       <resource name="inv_inv_item" uuid="TESTITEMA">
+         <reference field="item_id" resource="supply_item" uuid="TESTSUPPLYITEMA"/>
+         <data field="quantity">10</data>
+       </resource>
+     </resource>
+   </resource>
+   <resource name="supply_item" uuid="TESTSUPPLYITEMA">
+     <data field="name">Item-A</data>
+   </resource>
+</s3xml>"""
+        from lxml import etree
+        self.xmltree = etree.ElementTree(etree.fromstring(xmlstr))
+        auth.override = True
+        resource = current.manager.define_resource("org", "organisation")
+        success = resource.import_xml(self.xmltree)
+
+    def testImport(self):
+
+        resource = current.manager.define_resource("org", "organisation", uid="TESTORGA")
+        resource.load()
+        self.assertEqual(len(resource), 1)
+        record = resource._rows[0]
+        self.assertEqual(record.name, "Org-A")
+
+        resource = current.manager.define_resource("org", "office", uid="TESTOFFICEA")
+        resource.load()
+        self.assertEqual(len(resource), 1)
+        record = resource._rows[0]
+        self.assertEqual(record.name, "Office-A")
+
+        resource = current.manager.define_resource("inv", "inv_item", uid="TESTITEMA")
+        resource.load()
+        self.assertEqual(len(resource), 1)
+        record = resource._rows[0]
+        self.assertEqual(record.quantity, 10)
+
+        resource = current.manager.define_resource("supply", "item", uid="TESTSUPPLYITEMA")
+        resource.load()
+        self.assertEqual(len(resource), 1)
+        record = resource._rows[0]
+        self.assertEqual(record.name, "Item-A")
+
+    def tearDown(self):
+        current.db.rollback()
 
 # =============================================================================
 class S3AuthTests(unittest.TestCase):
@@ -23,7 +86,7 @@ class S3AuthTests(unittest.TestCase):
     def testSystemRoles(self):
         """ Test if system roles are present """
 
-        sr = auth.get_system_roles()
+        sr = current.auth.get_system_roles()
         self.assertTrue("ADMIN" in sr)
         self.assertTrue(sr.ADMIN is not None)
 
@@ -32,11 +95,14 @@ class S3AuthTests(unittest.TestCase):
     #
     def testGetUserIDByEmail(self):
 
-        user_id = auth.s3_get_user_id("normaluser@example.com")
+        user_id = current.auth.s3_get_user_id("normaluser@example.com")
         self.assertTrue(user_id is not None)
 
     def testImpersonate(self):
         """ Test s3_impersonate function """
+
+        auth = current.auth
+        session = current.session
 
         sr = auth.get_system_roles()
         ADMIN = sr.ADMIN
@@ -67,8 +133,12 @@ class S3AuthTests(unittest.TestCase):
 
     def testSetRolesPolicy3(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 3
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
         auth.s3_impersonate("normaluser@example.com")
         realms = auth.user.realms.keys()
         self.assertTrue(2 in realms)
@@ -80,8 +150,12 @@ class S3AuthTests(unittest.TestCase):
 
     def testSetRolesPolicy4(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 4
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
         auth.s3_impersonate("normaluser@example.com")
         realms = auth.user.realms.keys()
         self.assertTrue(2 in realms)
@@ -93,8 +167,12 @@ class S3AuthTests(unittest.TestCase):
 
     def testSetRolesPolicy5(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 5
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
         auth.s3_impersonate("normaluser@example.com")
         realms = auth.user.realms.keys()
         self.assertTrue(2 in realms)
@@ -106,6 +184,10 @@ class S3AuthTests(unittest.TestCase):
 
     def testSetRolesPolicy6(self):
 
+        s3db = current.s3db
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         try:
             org = s3db.pr_get_pe_id("org_organisation", 1)
             role = auth.s3_create_role("Example Role", uid="TESTROLE")
@@ -113,7 +195,8 @@ class S3AuthTests(unittest.TestCase):
             auth.s3_assign_role(user_id, role, for_pe=org)
 
             deployment_settings.security.policy = 6
-            auth.permission = s3base.S3Permission(auth)
+            from s3.s3aaa import S3Permission
+            auth.permission = S3Permission(auth)
             auth.s3_impersonate("normaluser@example.com")
             realms = auth.user.realms.keys()
             self.assertTrue(2 in realms)
@@ -131,6 +214,10 @@ class S3AuthTests(unittest.TestCase):
 
     def testSetRolesPolicy7(self):
 
+        s3db = current.s3db
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         try:
             org1 = s3db.pr_get_pe_id("org_organisation", 1)
             org2 = s3db.pr_get_pe_id("org_organisation", 2)
@@ -141,7 +228,8 @@ class S3AuthTests(unittest.TestCase):
             auth.s3_assign_role(user_id, role, for_pe=org1)
 
             deployment_settings.security.policy = 7
-            auth.permission = s3base.S3Permission(auth)
+            from s3.s3aaa import S3Permission
+            auth.permission = S3Permission(auth)
             auth.s3_impersonate("normaluser@example.com")
             realms = auth.user.realms.keys()
             self.assertTrue(2 in realms)
@@ -157,10 +245,15 @@ class S3AuthTests(unittest.TestCase):
             auth.s3_impersonate(None)
         finally:
             auth.s3_delete_role("TESTROLE")
-            db.rollback()
+            current.db.rollback()
 
     def testSetRolesPolicy8(self):
         """ Test s3_set_roles for entity hierarchy plus delegations (policy8) """
+
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
+        deployment_settings = current.deployment_settings
 
         try:
             # Have two orgs, set org2 as OU descendant of org1
@@ -183,7 +276,8 @@ class S3AuthTests(unittest.TestCase):
 
             # We use delegations (policy 8)
             deployment_settings.security.policy = 8
-            auth.permission = s3base.S3Permission(auth)
+            from s3.s3aaa import S3Permission
+            auth.permission = S3Permission(auth)
 
             # Impersonate as normal user
             auth.s3_impersonate("normaluser@example.com")
@@ -229,7 +323,7 @@ class S3AuthTests(unittest.TestCase):
             s3db.pr_remove_affiliation(org1, org2, role="TestStaff")
             s3db.pr_remove_affiliation(org1, org3, role="TestPartners")
             auth.s3_delete_role("TESTGROUP")
-            db.rollback()
+            current.db.rollback()
 
     #def testPerformance(self):
 
@@ -237,7 +331,8 @@ class S3AuthTests(unittest.TestCase):
         ##MAX_RUNTIME = 3 # Maximum acceptable runtime per request in milliseconds (up to policy 7)
 
         #deployment_settings.security.policy = 8
-        #auth.permission = s3base.S3Permission(auth)
+        #from s3.s3aaa import S3Permission
+        #auth.permission = S3Permission(auth)
 
         #try:
             #org1 = s3db.pr_get_pe_id("org_organisation", 1)
@@ -266,9 +361,12 @@ class S3AuthTests(unittest.TestCase):
             #s3db.pr_remove_affiliation(org1, org2, role="TestStaff")
             #s3db.pr_remove_affiliation(org1, org3, role="TestPartners")
             #auth.s3_delete_role("TESTGROUP")
-            #db.rollback()
+            #current.db.rollback()
 
     def testAssignRole(self):
+
+        db = current.db
+        auth = current.auth
 
         UUID1 = "TESTAUTOCREATEDROLE1"
         UUID2 = "TESTAUTOCREATEDROLE2"
@@ -316,6 +414,7 @@ class S3AuthTests(unittest.TestCase):
 
     def testGetRoles(self):
 
+        auth = current.auth
         UUID = "TESTAUTOCREATEDROLE"
         role_id = auth.s3_create_role(UUID, uid=UUID)
 
@@ -366,61 +465,72 @@ class S3AuthTests(unittest.TestCase):
     #
     def testOwnershipRequired(self):
 
+        from s3.s3aaa import S3Permission
+
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 1
-        auth.permission = s3base.S3Permission(auth)
+        auth.permission = S3Permission(auth)
         ownership_required = auth.permission.ownership_required
         o = ownership_required("update", "dvi_body", c="dvi", f="body")
         self.assertFalse(o)
 
         deployment_settings.security.policy = 2
-        auth.permission = s3base.S3Permission(auth)
+        auth.permission = S3Permission(auth)
         ownership_required = auth.permission.ownership_required
         o = ownership_required("update", "dvi_body", c="dvi", f="body")
         self.assertFalse(o)
 
         deployment_settings.security.policy = 3
-        auth.permission = s3base.S3Permission(auth)
+        auth.permission = S3Permission(auth)
         ownership_required = auth.permission.ownership_required
         o = ownership_required("update", "dvi_body", c="dvi", f="body")
         self.assertTrue(o)
 
         deployment_settings.security.policy = 4
-        auth.permission = s3base.S3Permission(auth)
+        auth.permission = S3Permission(auth)
         ownership_required = auth.permission.ownership_required
         o = ownership_required("update", "dvi_body", c="dvi", f="body")
         self.assertTrue(o)
 
         deployment_settings.security.policy = 5
-        auth.permission = s3base.S3Permission(auth)
+        auth.permission = S3Permission(auth)
         ownership_required = auth.permission.ownership_required
         o = ownership_required("update", "dvi_body", c="dvi", f="body")
         self.assertTrue(o)
 
         deployment_settings.security.policy = 6
-        auth.permission = s3base.S3Permission(auth)
+        auth.permission = S3Permission(auth)
         ownership_required = auth.permission.ownership_required
         o = ownership_required("update", "dvi_body", c="dvi", f="body")
         self.assertTrue(o)
 
         deployment_settings.security.policy = 7
-        auth.permission = s3base.S3Permission(auth)
+        auth.permission = S3Permission(auth)
         ownership_required = auth.permission.ownership_required
         o = ownership_required("update", "dvi_body", c="dvi", f="body")
         self.assertTrue(o)
 
         deployment_settings.security.policy = 8
-        auth.permission = s3base.S3Permission(auth)
+        auth.permission = S3Permission(auth)
         ownership_required = auth.permission.ownership_required
         o = ownership_required("update", "dvi_body", c="dvi", f="body")
         self.assertTrue(o)
 
         deployment_settings.security.policy = 0
-        auth.permission = s3base.S3Permission(auth)
+        auth.permission = S3Permission(auth)
         ownership_required = auth.permission.ownership_required
         o = ownership_required("update", "dvi_body", c="dvi", f="body")
         self.assertTrue(o)
 
     def testSessionOwnership(self):
+
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
 
         table = s3db.pr_person
         table2 = "dvi_body"
@@ -488,6 +598,7 @@ class S3PermissionTests(unittest.TestCase):
     #
     def testRequiredACL(self):
 
+        auth = current.auth
         p = auth.permission
         self.assertEqual(p.required_acl(["read"]), p.READ)
         self.assertEqual(p.required_acl(["create"]), p.CREATE)
@@ -499,6 +610,7 @@ class S3PermissionTests(unittest.TestCase):
 
     def testMostPermissive(self):
 
+        auth = current.auth
         p = auth.permission
         self.assertEqual(p.most_permissive([(p.NONE, p.READ),
                                             (p.READ, p.READ)]),
@@ -510,6 +622,7 @@ class S3PermissionTests(unittest.TestCase):
 
     def testMostRestrictive(self):
 
+        auth = current.auth
         p = auth.permission
         self.assertEqual(p.most_restrictive([(p.NONE, p.READ),
                                              (p.READ, p.READ)]),
@@ -523,6 +636,7 @@ class S3PermissionTests(unittest.TestCase):
     #
     def testOwnershipPublicRecord(self):
 
+        auth = current.auth
         table, record_id = self.create_test_record()
         auth.s3_clear_session_ownership()
 
@@ -547,6 +661,11 @@ class S3PermissionTests(unittest.TestCase):
             self.remove_test_record()
 
     def testOwnershipAdminOwnedRecord(self):
+
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
 
         table, record_id = self.create_test_record()
         auth.s3_clear_session_ownership()
@@ -575,6 +694,11 @@ class S3PermissionTests(unittest.TestCase):
             self.remove_test_record()
 
     def testOwnershipUserOwnedRecord(self):
+
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
 
         table, record_id = self.create_test_record()
         auth.s3_clear_session_ownership()
@@ -605,6 +729,11 @@ class S3PermissionTests(unittest.TestCase):
 
     def testOwnershipGroupOwnedRecord(self):
 
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
+
         table, record_id = self.create_test_record()
         auth.s3_clear_session_ownership()
 
@@ -634,6 +763,11 @@ class S3PermissionTests(unittest.TestCase):
             self.remove_test_record()
 
     def testOwnershipOrganisationOwnedRecord(self):
+
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
 
         table, record_id = self.create_test_record()
         auth.s3_clear_session_ownership()
@@ -683,6 +817,11 @@ class S3PermissionTests(unittest.TestCase):
 
     def testOwnershipOverride(self):
 
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
+
         table, record_id = self.create_test_record()
         auth.s3_clear_session_ownership()
 
@@ -707,6 +846,11 @@ class S3PermissionTests(unittest.TestCase):
             auth.s3_delete_role("TESTROLE")
 
     def testGetOwners(self):
+
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
 
         table, record_id = self.create_test_record()
         auth.s3_clear_session_ownership()
@@ -759,6 +903,11 @@ class S3PermissionTests(unittest.TestCase):
     #
     def testUpdateControllerACL(self):
 
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
+
         table = auth.permission.table
         self.assertNotEqual(table, None)
 
@@ -803,6 +952,11 @@ class S3PermissionTests(unittest.TestCase):
             auth.s3_delete_role(group_id)
 
     def testUpdateTableACL(self):
+
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
 
         table = auth.permission.table
         self.assertNotEqual(table, None)
@@ -850,6 +1004,11 @@ class S3PermissionTests(unittest.TestCase):
 
     def testApplicableACLsPolicy8(self):
 
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
+
         try:
             # Have two orgs, set org2 as OU descendant of org1
             org1 = s3db.pr_get_pe_id("org_organisation", 1)
@@ -878,7 +1037,8 @@ class S3PermissionTests(unittest.TestCase):
 
             # We use delegations (policy 8)
             deployment_settings.security.policy = 8
-            auth.permission = s3base.S3Permission(auth)
+            from s3.s3aaa import S3Permission
+            auth.permission = S3Permission(auth)
 
             # Impersonate as normal user
             auth.s3_impersonate("normaluser@example.com")
@@ -922,12 +1082,17 @@ class S3PermissionTests(unittest.TestCase):
             s3db.pr_remove_affiliation(org1, org2, role="TestStaff")
             s3db.pr_remove_affiliation(org1, org3, role="TestPartners")
             auth.s3_delete_role("TESTGROUP")
-            db.rollback()
+            current.db.rollback()
 
     # -------------------------------------------------------------------------
     # Helpers
     #
     def create_test_record(self):
+
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
 
         # Create a record
         auth.s3_impersonate(None)
@@ -941,6 +1106,7 @@ class S3PermissionTests(unittest.TestCase):
         return table, record_id
 
     def remove_test_record(self):
+        db = current.db
         db(self.table.id == self.record_id).delete()
         db.commit()
         return
@@ -950,6 +1116,11 @@ class S3HasPermissionTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
 
         # Create test roles
         acl = auth.permission
@@ -983,6 +1154,11 @@ class S3HasPermissionTests(unittest.TestCase):
         db.commit()
 
     def setUp(self):
+
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
 
         # Get the role IDs
         gtable = auth.settings.table_group
@@ -1032,11 +1208,16 @@ class S3HasPermissionTests(unittest.TestCase):
         # Remove session ownership
         auth.s3_clear_session_ownership()
         auth.s3_impersonate(None)
+        auth.override = False
 
     def testPolicy1(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 1
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         has_permission = auth.s3_has_permission
 
@@ -1058,8 +1239,12 @@ class S3HasPermissionTests(unittest.TestCase):
 
     def testPolicy3(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 3
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         has_permission = auth.s3_has_permission
 
@@ -1096,8 +1281,12 @@ class S3HasPermissionTests(unittest.TestCase):
 
     def testPolicy4(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 4
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         has_permission = auth.s3_has_permission
 
@@ -1133,8 +1322,12 @@ class S3HasPermissionTests(unittest.TestCase):
 
     def testPolicy5(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 5
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         has_permission = auth.s3_has_permission
         accessible_url = auth.permission.accessible_url
@@ -1191,8 +1384,12 @@ class S3HasPermissionTests(unittest.TestCase):
 
     def testPolicy6(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 6
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         has_permission = auth.s3_has_permission
 
@@ -1247,8 +1444,14 @@ class S3HasPermissionTests(unittest.TestCase):
 
     def testPolicy7(self):
 
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 7
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         has_permission = auth.s3_has_permission
 
@@ -1322,8 +1525,14 @@ class S3HasPermissionTests(unittest.TestCase):
 
     def testPolicy8(self):
 
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 8
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         user = auth.s3_user_pe_id(auth.s3_get_user_id("normaluser@example.com"))
 
@@ -1391,7 +1600,7 @@ class S3HasPermissionTests(unittest.TestCase):
             s3db.pr_remove_affiliation(self.org3, user, role="TestStaff")
             s3db.pr_remove_affiliation(self.org2, self.org3, role="TestOrgUnit")
             auth.s3_retract_role(user, self.dvi_reader, for_pe=self.org3)
-            db.rollback()
+            current.db.rollback()
 
             # Logout
             auth.s3_impersonate(None)
@@ -1401,7 +1610,8 @@ class S3HasPermissionTests(unittest.TestCase):
         #MAX_RUNTIME = 6 # Maximum acceptable runtime per request in milliseconds
 
         #deployment_settings.security.policy = 8
-        #auth.permission = s3base.S3Permission(auth)
+        #from s3.s3aaa import S3Permission
+        #auth.permission = S3Permission(auth)
 
         #auth.s3_impersonate("normaluser@example.com")
         #has_permission = auth.s3_has_permission
@@ -1416,10 +1626,11 @@ class S3HasPermissionTests(unittest.TestCase):
 
     def tearDown(self):
         self.role = None
-        db.rollback()
+        current.db.rollback()
 
     @classmethod
     def tearDownClass(cls):
+        auth = current.auth
         auth.s3_delete_role("TESTDVIREADER")
         auth.s3_delete_role("TESTDVIEDITOR")
         auth.s3_delete_role("TESTDVIADMIN")
@@ -1430,6 +1641,7 @@ class S3AccessibleQueryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
 
+        auth = current.auth
         # Create test roles
         acl = auth.permission
 
@@ -1462,6 +1674,9 @@ class S3AccessibleQueryTests(unittest.TestCase):
         db.commit()
 
     def setUp(self):
+
+        auth = current.auth
+        deployment_settings = current.deployment_settings
 
         # Get the role IDs
         gtable = auth.settings.table_group
@@ -1515,8 +1730,12 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     def testPolicy3(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 3
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         accessible_query = auth.s3_accessible_query
         table = s3db.dvi_body
@@ -1555,8 +1774,12 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     def testPolicy4(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 4
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         accessible_query = auth.s3_accessible_query
         table = s3db.dvi_body
@@ -1603,8 +1826,12 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     def testPolicy5(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 5
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         accessible_query = auth.s3_accessible_query
         table = s3db.dvi_body
@@ -1647,8 +1874,12 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     def testPolicy6(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 6
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         accessible_query = auth.s3_accessible_query
         table = s3db.dvi_body
@@ -1712,8 +1943,12 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     def testPolicy7(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 7
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         accessible_query = auth.s3_accessible_query
         table = s3db.dvi_body
@@ -1832,8 +2067,12 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     def testPolicy8(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 8
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         accessible_query = auth.s3_accessible_query
         table = s3db.dvi_body
@@ -1937,7 +2176,8 @@ class S3AccessibleQueryTests(unittest.TestCase):
         #MAX_RUNTIME = 5 # Maximum acceptable runtime per request in milliseconds
 
         #deployment_settings.security.policy = 8
-        #auth.permission = s3base.S3Permission(auth)
+        #from s3.s3aaa import S3Permission
+        #auth.permission = S3Permission(auth)
 
         #auth.s3_impersonate("normaluser@example.com")
         #accessible_query = auth.s3_accessible_query
@@ -1954,7 +2194,7 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     def tearDown(self):
         self.role = None
-        db.rollback()
+        current.db.rollback()
 
     @classmethod
     def tearDownClass(cls):
@@ -1967,6 +2207,7 @@ class S3RecordApprovalTests(unittest.TestCase):
 
     def setUp(self):
 
+        auth = current.auth
         sr = auth.get_system_roles()
         auth.permission.update_acl(sr.AUTHENTICATED,
                                    c="org",
@@ -1978,10 +2219,17 @@ class S3RecordApprovalTests(unittest.TestCase):
                                    uacl=auth.permission.READ|auth.permission.CREATE,
                                    oacl=auth.permission.READ|auth.permission.UPDATE)
 
-        deployment_settings.security.policy = 5
+        current.deployment_settings.security.policy = 5
+        auth.override = False
+        auth.s3_impersonate(None)
 
     def testRecordApprovedBy(self):
         """ Test whether a new record is unapproved by default """
+
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
 
         try:
             # Set record approval on
@@ -2004,12 +2252,17 @@ class S3RecordApprovalTests(unittest.TestCase):
             self.assertEqual(row.approved_by, None)
 
         finally:
-            db.rollback()
+            current.db.rollback()
             deployment_settings.auth.record_approval = False
             auth.s3_impersonate(None)
 
     def testRecordApprovalWithComponents(self):
         """ Test record approval including components """
+
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
 
         try:
             # Set record approval on
@@ -2053,7 +2306,7 @@ class S3RecordApprovalTests(unittest.TestCase):
             self.assertTrue(unapproved(ftable, office_id))
 
             # Approve
-            resource = s3mgr.define_resource("org", "organisation", id=org_id)
+            resource = current.manager.define_resource("org", "organisation", id=org_id)
             self.assertTrue(resource.approve(components=["office"]))
 
             # Check record
@@ -2071,12 +2324,17 @@ class S3RecordApprovalTests(unittest.TestCase):
             self.assertFalse(unapproved(ftable, office_id))
 
         finally:
-            db.rollback()
+            current.db.rollback()
             deployment_settings.auth.record_approval = False
             auth.s3_impersonate(None)
 
     def testRecordApprovalWithoutComponents(self):
         """ Test record approval without components"""
+
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
 
         try:
             # Set record approval on
@@ -2120,7 +2378,7 @@ class S3RecordApprovalTests(unittest.TestCase):
             self.assertTrue(unapproved(ftable, office_id))
 
             # Approve
-            resource = s3mgr.define_resource("org", "organisation", id=org_id)
+            resource = current.manager.define_resource("org", "organisation", id=org_id)
             self.assertTrue(resource.approve(components=None))
 
             # Check record
@@ -2138,12 +2396,19 @@ class S3RecordApprovalTests(unittest.TestCase):
             self.assertTrue(unapproved(ftable, office_id))
 
         finally:
-            db.rollback()
+            current.db.rollback()
             deployment_settings.auth.record_approval = False
             auth.s3_impersonate(None)
 
     def testHasPermissionWithRecordApproval(self):
         """ Test has_permission with record approval """
+
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
+
+        AUTHENTICATED = auth.get_system_roles().AUTHENTICATED
 
         try:
             # Set record approval on
@@ -2169,9 +2434,12 @@ class S3RecordApprovalTests(unittest.TestCase):
 
             # Normal user can see unapproved record
             # if they have the approver role and method is "approve"
-            AUTHENTICATED = auth.get_system_roles().AUTHENTICATED
-            deployment_settings.auth.record_approver_role = AUTHENTICATED
+            deployment_settings.auth.record_approver_role = "AUTHENTICATED"
+            session = current.session
+            session.approver_role = None
             auth.s3_impersonate("normaluser@example.com")
+            self.assertEqual(session.approver_role, AUTHENTICATED)
+            self.assertTrue(session.approver_role in auth.user.realms)
             permitted = has_permission("read", otable, record_id=org_id, c="org", f="organisation")
             self.assertFalse(permitted)
             permitted = has_permission("approve", otable, record_id=org_id, c="org", f="organisation")
@@ -2201,57 +2469,72 @@ class S3RecordApprovalTests(unittest.TestCase):
     def testAccessibleQueryWithRecordApproval(self):
         """ Test accessible_query with record approval """
 
-        deployment_settings.auth.record_approval = True
+        db = current.db
+        auth = current.auth
+        s3db = current.s3db
+        deployment_settings = current.deployment_settings
         accessible_query = auth.s3_accessible_query
+        session = current.session
 
         table = s3db.pr_person
 
-        # Admin can always see all records
-        auth.s3_impersonate("admin@example.com")
-        query = accessible_query("read", table, c="pr", f="person")
-        self.assertEqual(str(query), "(pr_person.id > 0)")
+        try:
+            # Set record approval on
+            deployment_settings.auth.record_approval = True
 
-        # User can only see their own records - approved_by not relevant
-        auth.s3_impersonate("normaluser@example.com")
-        query = accessible_query("read", table, c="pr", f="person")
-        self.assertFalse("approved_by" in str(query))
+            AUTHENTICATED = auth.get_system_roles().AUTHENTICATED
 
-        table = s3db.org_organisation
+            # Admin can always see all records
+            auth.s3_impersonate("admin@example.com")
+            query = accessible_query("read", table, c="pr", f="person")
+            self.assertEqual(str(query), "(pr_person.id > 0)")
 
-        # Admin can always see all records
-        auth.s3_impersonate("admin@example.com")
-        query = accessible_query("read", table, c="org", f="organisation")
-        self.assertEqual(str(query), "(org_organisation.id > 0)")
+            # User can only see their own records - approved_by not relevant
+            auth.s3_impersonate("normaluser@example.com")
+            query = accessible_query("read", table, c="pr", f="person")
+            self.assertFalse("approved_by" in str(query))
 
-        # User can only see approved records
-        auth.s3_impersonate("normaluser@example.com")
-        query = accessible_query("read", table, c="org", f="organisation")
-        self.assertEqual(str(query), "(org_organisation.approved_by IS NOT NULL)")
+            table = s3db.org_organisation
 
-        # User can see all unapproved records with method approve
-        # if they have the approver role
-        session.approver_role = None
-        deployment_settings.auth.record_approver_role = "AUTHENTICATED"
-        auth.s3_impersonate("normaluser@example.com")
-        self.assertEqual(session.approver_role, AUTHENTICATED)
-        self.assertTrue(session.approver_role in auth.user.realms)
+            # Admin can always see all records
+            session.approver_role = None
+            auth.s3_impersonate("admin@example.com")
+            query = accessible_query("read", table, c="org", f="organisation")
+            self.assertEqual(str(query), "(org_organisation.id > 0)")
 
-        # See only unapproved records in approve
-        query = accessible_query("approve", table, c="org", f="organisation")
-        self.assertTrue("(org_organisation.approved_by IS NULL)" in str(query))
+            # User can only see approved records
+            session.approver_role = None
+            auth.s3_impersonate("normaluser@example.com")
+            query = accessible_query("read", table, c="org", f="organisation")
+            self.assertEqual(str(query), "(org_organisation.approved_by IS NOT NULL)")
 
-        # See no unapproved records in read, though
-        query = accessible_query("read", table, c="org", f="organisation")
-        self.assertTrue("(org_organisation.approved_by IS NOT NULL)" in str(query))
+            # User can see all unapproved records with method approve
+            # if they have the approver role
+            session.approver_role = None
+            deployment_settings.auth.record_approver_role = "AUTHENTICATED"
+            auth.s3_impersonate("normaluser@example.com")
+            self.assertEqual(session.approver_role, AUTHENTICATED)
+            self.assertTrue(session.approver_role in auth.user.realms)
 
-        # Turn of record approval and check the default query
-        deployment_settings.auth.record_approval = False
-        query = accessible_query("read", table, c="org", f="organisation")
-        self.assertEqual(str(query), "(org_organisation.id > 0)")
+            # See only unapproved records in approve
+            query = accessible_query("approve", table, c="org", f="organisation")
+            self.assertTrue("(org_organisation.approved_by IS NULL)" in str(query))
+
+            # See no unapproved records in read, though
+            query = accessible_query("read", table, c="org", f="organisation")
+            self.assertTrue("(org_organisation.approved_by IS NOT NULL)" in str(query))
+
+            # Turn of record approval and check the default query
+            deployment_settings.auth.record_approval = False
+            query = accessible_query("read", table, c="org", f="organisation")
+            self.assertEqual(str(query), "(org_organisation.id > 0)")
+
+        finally:
+            deployment_settings.auth.record_approval = False
 
     def tearDown(self):
 
-        db.rollback()
+        current.db.rollback()
 
 # =============================================================================
 class S3DelegationTests(unittest.TestCase):
@@ -2260,6 +2543,7 @@ class S3DelegationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
 
+        auth = current.auth
         # Create test roles
         acl = auth.permission
 
@@ -2289,10 +2573,13 @@ class S3DelegationTests(unittest.TestCase):
                             dict(t="dvi_body",
                                  uacl=acl.ALL, oacl=acl.ALL),
                             uid="TESTDVIADMIN")
-        db.commit()
+        current.db.commit()
 
     def setUp(self):
 
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
         # Get the role IDs
         gtable = auth.settings.table_group
         row = db(gtable.uuid=="TESTDVIREADER").select(limitby=(0, 1)).first()
@@ -2344,13 +2631,23 @@ class S3DelegationTests(unittest.TestCase):
 
     def testPolicy7(self):
 
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 7
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
     def testPolicy8(self):
 
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 8
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
         auth.s3_impersonate("normaluser@example.com")
         user = auth.user.id
 
@@ -2433,17 +2730,18 @@ class S3DelegationTests(unittest.TestCase):
             s3db.pr_remove_affiliation(self.org3, user, role="TestStaff")
             s3db.pr_remove_affiliation(self.org2, self.org3, role="TestOrgUnit")
             auth.s3_retract_role(user, self.dvi_reader, for_pe=self.org3)
-            db.rollback()
+            current.db.rollback()
 
             # Logout
             auth.s3_impersonate(None)
 
     def tearDown(self):
         self.role = None
-        db.rollback()
+        current.db.rollback()
 
     @classmethod
     def tearDownClass(cls):
+        auth = current.auth
         auth.s3_delete_role("TESTDVIREADER")
         auth.s3_delete_role("TESTDVIEDITOR")
         auth.s3_delete_role("TESTDVIADMIN")
@@ -2453,6 +2751,9 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+
+        db = current.db
+        auth = current.auth
 
         # Create test roles
         acl = auth.permission
@@ -2486,6 +2787,11 @@ class S3AccessibleQueryTests(unittest.TestCase):
         db.commit()
 
     def setUp(self):
+
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
+        deployment_settings = current.deployment_settings
 
         # Get the role IDs
         gtable = auth.settings.table_group
@@ -2539,8 +2845,14 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     def testPolicy3(self):
 
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 3
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         accessible_query = auth.s3_accessible_query
         table = s3db.dvi_body
@@ -2579,8 +2891,14 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     def testPolicy4(self):
 
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 4
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         accessible_query = auth.s3_accessible_query
         table = s3db.dvi_body
@@ -2629,8 +2947,14 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     def testPolicy5(self):
 
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 5
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         accessible_query = auth.s3_accessible_query
         table = s3db.dvi_body
@@ -2675,8 +2999,14 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     def testPolicy6(self):
 
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 6
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         accessible_query = auth.s3_accessible_query
         table = s3db.dvi_body
@@ -2740,8 +3070,14 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     def testPolicy7(self):
 
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 7
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         accessible_query = auth.s3_accessible_query
         table = s3db.dvi_body
@@ -2860,8 +3196,14 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     def testPolicy8(self):
 
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
+        deployment_settings = current.deployment_settings
+
         deployment_settings.security.policy = 8
-        auth.permission = s3base.S3Permission(auth)
+        from s3.s3aaa import S3Permission
+        auth.permission = S3Permission(auth)
 
         accessible_query = auth.s3_accessible_query
         table = s3db.dvi_body
@@ -2963,10 +3305,11 @@ class S3AccessibleQueryTests(unittest.TestCase):
 
     def tearDown(self):
         self.role = None
-        db.rollback()
+        current.db.rollback()
 
     @classmethod
     def tearDownClass(cls):
+        auth = current.auth
         auth.s3_delete_role("TESTDVIREADER")
         auth.s3_delete_role("TESTDVIEDITOR")
         auth.s3_delete_role("TESTDVIADMIN")
@@ -2980,6 +3323,8 @@ class S3EntityRoleManagerTests(unittest.TestCase):
         pass
 
     def setUp(self):
+
+        auth = current.auth
 
         # Test-login as system administrator
         auth.s3_impersonate("admin@example.com")
@@ -3042,6 +3387,7 @@ class S3EntityRoleManagerTests(unittest.TestCase):
                          {self.org_id: before})
 
     def tearDown(self):
+        auth = current.auth
         auth.s3_retract_role(self.user_id, "staff_reader", for_pe=self.org_id)
         auth.s3_retract_role(self.user_id, "project_editor", for_pe=self.org_id)
 
@@ -3066,6 +3412,7 @@ def run_suite(*test_classes):
 if __name__ == "__main__":
 
     run_suite(
+        #S3RoleTests,
         S3AuthTests,
         S3PermissionTests,
         S3HasPermissionTests,
