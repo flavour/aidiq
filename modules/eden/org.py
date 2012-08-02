@@ -502,6 +502,10 @@ class S3OrganisationModel(S3Model):
         add_component("hrm_human_resource",
                       org_organisation="organisation_id")
 
+        # Members
+        add_component("member_membership",
+                      org_organisation="organisation_id")
+
         # Projects
         if settings.get_project_mode_3w():
             add_component("project_project",
@@ -515,6 +519,10 @@ class S3OrganisationModel(S3Model):
         else:
             add_component("project_project",
                           org_organisation="organisation_id")
+            
+        # Assets
+        add_component("asset_asset",
+                      org_organisation="organisation_id")
 
         # Documents
         add_component("doc_document", org_organisation="organisation_id")
@@ -980,15 +988,20 @@ class S3OrganisationModel(S3Model):
 class S3OrganisationVirtualFields:
     """ Virtual fields for the org_organisation table """
 
+    extra_fields = ["organisation_id"]
+
     def address(self):
         """ Fetch the address of an office """
         from eden.gis import gis_location_represent
         db = current.db
 
-        query = (db.org_office.deleted != True) & \
-                (db.org_office.organisation_id == self.org_organisation.id) & \
-                (db.org_office.location_id == db.gis_location.id)
-        row = db(query).select(db.gis_location.id).first()
+        if hasattr(self, "org_organisation"):
+            query = (db.org_office.deleted != True) & \
+                    (db.org_office.organisation_id == self.org_organisation.id) & \
+                    (db.org_office.location_id == db.gis_location.id)
+            row = db(query).select(db.gis_location.id).first()
+        else:
+            row = None
 
         if row:
             return gis_location_represent(row.id)
@@ -1078,7 +1091,8 @@ class S3SiteModel(S3Model):
                                   Field("obsolete", "boolean",
                                         label = T("Obsolete"),
                                         represent = lambda bool: \
-                                          (bool and [T("Obsolete")] or [current.messages.NONE])[0],
+                                          (bool and [T("Obsolete")] or 
+                                           [current.messages.NONE])[0],
                                         default = False,
                                         readable = False,
                                         writable = False),
@@ -1124,6 +1138,10 @@ class S3SiteModel(S3Model):
         add_component("inv_recv",
                       org_site="site_id")
         add_component("inv_send",
+                      org_site="site_id")
+
+        # Assets
+        add_component("asset_asset",
                       org_site="site_id")
 
         # Procurement Plans
@@ -1440,10 +1458,10 @@ class S3FacilityModel(S3Model):
 
 # -----------------------------------------------------------------------------
 def org_facility_rheader(r, tabs=[]):
-    
+
     T = current.T
     s3db = current.s3db
-    
+
     tabs += [(T("Details"), None)]
     try:
         tabs = tabs + s3db.req_tabs(r)
@@ -2180,7 +2198,7 @@ def org_organisation_controller():
                                post_process='''hide_host_role($('#%s').val())''')
                 s3.scripts.append("/%s/static/scripts/S3/s3.hide_host_role.js" % \
                     current.request.application)
-                
+
             # If a filter is being applied to the Organisations, change the CRUD Strings accordingly
             type_filter = current.request.get_vars["organisation.organisation_type_id$name"]
             if type_filter:
@@ -2236,7 +2254,7 @@ def org_organisation_controller():
                                     }
                 if type_filter in type_crud_strings:
                     s3.crud_strings.org_organisation = type_crud_strings[type_filter]
-                
+
                 # default the Type
                 if not r.method or r.method == "create":
                     type_table = s3db.org_organisation_type
@@ -2248,7 +2266,7 @@ def org_organisation_controller():
                         org_type_field = s3db.org_organisation.organisation_type_id
                         org_type_field.default = type
                         org_type_field.writable = False
-                        
+
         return True
     s3.prep = prep
 
