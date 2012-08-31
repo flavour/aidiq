@@ -50,6 +50,9 @@ settings.project.milestones = True
 # Uncomment this to disable Sectors in projects
 settings.project.sectors = False
 
+# Uncomment to allow HR records to be deletable rather than just marking them as obsolete
+settings.hrm.deletable = True
+
 # Frontpage settings
 # RSS feeds
 #deployment_settings.frontpage.rss = [
