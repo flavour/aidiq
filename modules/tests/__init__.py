@@ -1,5 +1,5 @@
-from auth import *
 from core import *
+from roles import *
 from org import *
 from hrm import *
 from inv import *

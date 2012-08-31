@@ -81,7 +81,7 @@ class S3MainMenu(object):
         has_role = auth.s3_has_role
 
         # The Modules to display at the top level (in order)
-        for module_type in [1, 2, 3, 4, 5, 6]:
+        for module_type in [1, 2, 3, 4, 5, 6, 7, 8, 9]:
             for module in all_modules:
                 if module in hidden_modules:
                     continue
@@ -217,6 +217,7 @@ class S3MainMenu(object):
                             MM("Database", c="appadmin", f="index"),
                             MM("Synchronization", c="sync", f="index"),
                             MM("Tickets", f="errors"),
+                            MM("View Test Result Reports", f="result"),
                         )
 
         return menu_admin
@@ -232,12 +233,11 @@ class S3MainMenu(object):
 
         T = current.T
         db = current.db
-        gis = current.gis
         auth = current.auth
         s3db = current.s3db
         request = current.request
-        session = current.session
-        s3 = current.response.s3
+        s3 = current.session.s3
+        _config = s3.gis_config_id
 
         # See if we need to switch config before we decide which
         # config item to mark as active:
@@ -249,20 +249,21 @@ class S3MainMenu(object):
                 # Manually-crafted URL?
                 pass
             else:
-                if s3.gis.config and s3.gis.config.id != config:
+                if _config is None or _config != config:
                     # Set this as the current config
-                    # @ToDo: restore some awareness of this in session
-                    config = gis.set_config(config)
+                    s3.gis_config_id = config
+                    cfg = current.gis.get_config()
+                    s3.location_filter = cfg.region_location_id
                     if settings.has_module("event"):
                         # See if this config is associated with an Event
                         table = s3db.event_config
                         query = (table.config_id == config)
-                        event = db(query).select(table.event_id,
-                                                 limitby=(0, 1)).first()
-                        if event:
-                            session.s3.event = event.event_id
+                        incident = db(query).select(table.incident_id,
+                                                    limitby=(0, 1)).first()
+                        if incident:
+                            s3.event = incident.incident_id
                         else:
-                            session.s3.event = None
+                            s3.event = None
             # Don't use the outdated cache for this call
             cache = None
         else:
@@ -278,27 +279,31 @@ class S3MainMenu(object):
         query &= (table.config_id == ctable.id)
         configs = db(query).select(ctable.id, ctable.name, cache=cache)
 
-        gis_menu = MM(settings.get_gis_menu(), c="gis", f="config", **attr)
+        gis_menu = MM(settings.get_gis_menu(),
+                      c=request.controller,
+                      f=request.function,
+                      **attr)
+        args = request.args
         if len(configs):
             # Use short names for the site and personal configs else they'll wrap.
             # Provide checkboxes to select between pages
             gis_menu(
-                    MM({"name": T("Default Map"),
+                    MM({"name": T("Default"),
                         "id": "gis_menu_id_0",
                         # @ToDo: Show when default item is selected without having
                         # to do a DB query to read the value
-                        #"value": s3.gis.config and s3.gis.config.id is 0,
+                        #"value": _config is 0,
                         "request_type": "load"
-                       }, args=request.args, vars={"_config": 0}
+                       }, args=args, vars={"_config": 0}
                     )
                 )
             for config in configs:
                 gis_menu(
-                    MM({"name": T(config.name),
+                    MM({"name": config.name,
                         "id": "gis_menu_id_%s" % config.id,
-                        "value": s3.gis.config and s3.gis.config.id == config.id,
+                        "value": _config == config.id,
                         "request_type": "load"
-                       }, args=request.args, vars={"_config": config.id}
+                       }, args=args, vars={"_config": config.id}
                     )
                 )
         return gis_menu
@@ -376,6 +381,7 @@ class S3OptionsMenu(object):
                     #M("Edit Application", a="admin", c="default", f="design",
                       #args=[request.application]),
                     M("Tickets", c="admin", f="errors"),
+                    M("View Test Result Reports", c="admin", f="result"),
                     M("Portable App", c="admin", f="portable")
                 )
 
@@ -1297,6 +1303,7 @@ class S3OptionsMenu(object):
                         M("Group Memberships", f="group_membership"),
                     ),
                     M("Email InBox", f="email_inbox"),
+                    M("Twilio SMS InBox", f="twilio_inbox"),
                     M("Log", f="log"),
                     M("Outbox", f="outbox"),
                     M("Search Twitter Tags", f="twitter_search")(
@@ -1323,7 +1330,14 @@ class S3OptionsMenu(object):
                         M("Search", m="search"),
                         M("Import", m="import")
                     ),
-                    M("Offices", f="office", restrict=[ADMIN])(
+                    M("Offices", f="office")(
+                        M("New", m="create"),
+                        M("List All"),
+                        M("Map", m="map"),
+                        M("Search", m="search"),
+                        M("Import", m="import")
+                    ),
+                    M("Facilities", f="facility")(
                         M("New", m="create"),
                         M("List All"),
                         M("Map", m="map"),
@@ -1336,6 +1350,11 @@ class S3OptionsMenu(object):
                         M("List All"),
                     ),
                     M("Office Types", f="office_type",
+                      restrict=[ADMIN])(
+                        M("New", m="create"),
+                        M("List All"),
+                    ),
+                    M("Facility Types", f="facility_type",
                       restrict=[ADMIN])(
                         M("New", m="create"),
                         M("List All"),
@@ -1450,7 +1469,7 @@ class S3OptionsMenu(object):
                     M(IMPORT, f="location",
                       m="import", p="create"),
                  ),
-                M("Partner Orgnisations",  f="partners")(
+                M("Partner Organizations",  f="partners")(
                     M("New", m="create"),
                     M("List All"),
                     M("Search", m="search"),
@@ -1588,6 +1607,29 @@ class S3OptionsMenu(object):
         return self.admin()
 
     # -------------------------------------------------------------------------
+    def transport(self):
+        """ TRANSPORT """
+
+        ADMIN = current.session.s3.system_roles.ADMIN
+
+        return M(c="transport")(
+                    M("Airports", f="airport")(
+                        M("New", m="create"),
+                        M("Import", m="import", restrict=[ADMIN]),
+                        M("List All"),
+                        M("Map", m="map"),
+                        #M("Search", m="search"),
+                    ),
+                    M("Seaports", f="seaport")(
+                        M("New", m="create"),
+                        M("Import", m="import", restrict=[ADMIN]),
+                        M("List All"),
+                        M("Map", m="map"),
+                        #M("Search", m="search"),
+                    ),
+                )
+
+    # -------------------------------------------------------------------------
     def vehicle(self):
         """ VEHICLE / Vehicle Tracking """
 
@@ -1639,6 +1681,7 @@ class S3OptionsMenu(object):
             M("Parsing Settings", c="msg", f="workflow"),                       
             M("SMS Settings", c="msg", f="setting",
                 args=[1], m="update"),
+            M("Twilio SMS Settings", c="msg", f="twilio_inbound_settings"),           
             M("Twitter Settings", c="msg", f="twitter_settings",
                 args=[1], m="update")
         ]

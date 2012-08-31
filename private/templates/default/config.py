@@ -54,7 +54,7 @@ T = current.T
 # Uncomment this to request the Organisation when a user registers
 #settings.auth.registration_requests_organisation = True
 # Uncomment this to have the Organisation selection during registration be mandatory
-#settings.auth.registration_organisation_mandatory = True
+#settings.auth.registration_organisation_required = True
 # Uncomment this to have the Organisation input hidden unless the user enters a non-whitelisted domain
 #settings.auth.registration_organisation_hidden = True
 # Uncomment this to default the Organisation during registration
@@ -156,9 +156,8 @@ settings.L10n.decimal_separator = "."
 # Currently unused
 #settings.gis.display_L1 = False
 # Set this if there will be multiple areas in which work is being done,
-# and a menu to select among them is wanted. With this on, any map
-# configuration that is designated as being available in the menu will appear
-#settings.gis.menu = T("Maps")
+# and a menu to select among them is wanted.
+#settings.gis.menu = "Maps"
 # Maximum Marker Size
 # (takes effect only on display)
 #settings.gis.marker_max_height = 35
@@ -314,12 +313,22 @@ settings.L10n.decimal_separator = "."
 #settings.hrm.vol_experience = False
 # Uncomment to show the Organisation name in HR represents
 #settings.hrm.show_organisation = True
+# Uncomment to disable the use of HR Certificates
+#settings.hrm.use_certificates = False
 # Uncomment to disable the use of HR Credentials
 #settings.hrm.use_credentials = False
+# Uncomment to disable the use of HR Description
+#settings.hrm.use_description = False
 # Uncomment to enable the use of HR Education
 #settings.hrm.use_education = True
+# Uncomment to disable the use of HR ID
+#settings.hrm.use_id = False
+# Uncomment to disable the use of HR Skills
+#settings.hrm.use_skills = False
 # Uncomment to disable the use of HR Teams
 #settings.hrm.use_teams = False
+# Uncomment to disable the use of HR Trainings
+#settings.hrm.use_trainings = False
 
 # Projects
 # Uncomment this to use settings suitable for a global/regional organisation (e.g. DRR)
@@ -538,6 +547,11 @@ settings.modules = OrderedDict([
     ("dvr", Storage(
            name_nice = T("Disaster Victim Registry"),
            #description = "Allow affected individuals & households to register to receive compensation and distributions",
+           restricted = True,
+           module_type = 10,
+       )),
+    ("transport", Storage(
+           name_nice = T("Transport"),
            restricted = True,
            module_type = 10,
        )),

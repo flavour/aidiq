@@ -707,10 +707,11 @@ class S3IRSModel(S3Model):
             message = ""
             if record.message:
                 message = "\n%s" % record.message
-            text = "%s\n%s%s%s" % (id,
+            text = "SI#%s\n%s%s%s" % (id,
                                    record.name,
                                    contact,
                                    message)
+            text += "\nSend help to see how to respond!"
 
             # Encode the message as an OpenGeoSMS
             message = msg.prepare_opengeosms(record.location_id,
@@ -768,7 +769,7 @@ class S3IRSModel(S3Model):
                     # Provide an Autocomplete the select the person to send the notice to
                     opts["recipient_type"] = "pr_person"
             output = msg.compose(**opts)
-            
+
             # Maintain RHeader for consistency
             if "rheader" in attr:
                 rheader = attr["rheader"](r)
