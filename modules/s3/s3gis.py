@@ -73,8 +73,7 @@ from s3fields import s3_all_meta_field_names
 from s3search import S3Search
 from s3track import S3Trackable
 from s3utils import s3_debug, s3_fullname, s3_has_foreign_key
-from s3method import S3Method
-from s3resource import S3Resource
+from s3rest import S3Method
 
 DEBUG = False
 if DEBUG:
@@ -7114,13 +7113,16 @@ class S3ExportPOI(S3Method):
         else:
             self.lx = current_lx.id
 
-        # Parse the ?resources= parameter
         tables = []
+        # Parse the ?resources= parameter
         if "resources" in r.get_vars:
             resources = r.get_vars["resources"]
-            if not isinstance(resources, list):
-                resources = [resources]
-            [tables.extend(t.split(",")) for t in resources]
+        else:
+            # Fallback to deployment_setting
+            resources = current.deployment_settings.get_gis_poi_export_resources()
+        if not isinstance(resources, list):
+            resources = [resources]
+        [tables.extend(t.split(",")) for t in resources]
 
         # Parse the ?update_feed= parameter
         update_feed = True
@@ -7200,7 +7202,7 @@ class S3ExportPOI(S3Method):
 
             # Define the resource
             try:
-                resource = S3Resource(prefix, name, components=[])
+                resource = current.s3db.resource(tablename, components=[])
             except AttributeError:
                 # Table not defined (module deactivated?)
                 continue

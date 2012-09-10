@@ -513,7 +513,7 @@ class S3Importer(S3CRUD):
         # @todo: find file format from request.extension
         fileFormat = "csv"
 
-        # insert data in the table and get the ID
+        # Insert data in the table and get the ID
         try:
             user = session.auth.user.id
         except:
@@ -526,12 +526,12 @@ class S3Importer(S3CRUD):
                                              status = 1)
         db.commit()
 
-        # create the import job
+        # Create the import job
         result = self._generate_import_job(upload_id,
                                            openFile,
                                            fileFormat,
                                            stylesheet=transform
-                                          )
+                                           )
         if result == None:
             if self.error != None:
                 if session.error == None:
@@ -545,11 +545,11 @@ class S3Importer(S3CRUD):
                     session.warning += self.warning
         else:
             items = self._get_all_items(upload_id, True)
-            # commit the import job
+            # Commit the import job
             self._commit_import_job(upload_id, items)
             result = self._update_upload_job(upload_id)
 
-            # get the results and display
+            # Get the results and display
             msg = "%s : %s %s %s" % (source,
                                      self.messages.commit_total_records_imported,
                                      self.messages.commit_total_errors,
@@ -889,15 +889,11 @@ class S3Importer(S3CRUD):
         """
 
         _debug("S3Importer._generate_import_job(%s, %s, %s, %s)" % (upload_id,
-                                                                openFile,
-                                                                fileFormat,
-                                                                stylesheet
-                                                               )
+                                                                    openFile,
+                                                                    fileFormat,
+                                                                    stylesheet
+                                                                    )
               )
-
-        db = current.db
-        request = self.request
-        resource = request.resource
 
         # ---------------------------------------------------------------------
         # CSV
@@ -935,7 +931,10 @@ class S3Importer(S3CRUD):
         if stylesheet == None:
             return None
 
-        # before calling import tree ensure the db.table is the controller_table
+        request = self.request
+        resource = request.resource
+
+        # Before calling import tree ensure the db.table is the controller_table
         self.table = self.controller_table
         self.tablename = self.controller_tablename
 
@@ -966,6 +965,7 @@ class S3Importer(S3CRUD):
                 return None
         else:
             # Job created
+            db = current.db
             job_id = job.job_id
             errors = current.xml.collect_errors(job)
             if errors:
@@ -1054,10 +1054,10 @@ class S3Importer(S3CRUD):
             # This doesn't delete related items
             # but import_tree will tidy it up later
             #****************************************************************
-            # get all the items selected for import
+            # Get all the items selected for import
             rows = self._get_all_items(upload_id, as_string=True)
 
-            # loop through each row and delete the items not required
+            # Loop through each row and delete the items not required
             self._store_import_details(job_id, "preDelete")
             for id in rows:
                 if str(id) not in items:
@@ -1070,7 +1070,7 @@ class S3Importer(S3CRUD):
             # EXPERIMENTAL
             #****************************************************************
 
-            # set up the table we will import data into
+            # Set up the table we will import data into
             self.table = self.controller_table
             self.tablename = self.controller_tablename
 
@@ -1452,7 +1452,8 @@ class S3Importer(S3CRUD):
 
     # -------------------------------------------------------------------------
     def _get_all_items(self, upload_id, as_string=False):
-        """ Get a list of the record IDs of all import items for
+        """
+            Get a list of the record IDs of all import items for
             the the given upload ID
 
             @param upload_id: the upload ID
@@ -1480,13 +1481,11 @@ class S3Importer(S3CRUD):
             Set the resource and the table to being s3_import_upload
         """
 
+        self.tablename = self.upload_tablename
         if self.upload_resource == None:
-            from s3resource import S3Resource
-            (prefix, name) = self.UPLOAD_TABLE_NAME.split("_",1)
-            self.upload_resource = S3Resource(prefix, name)
+            self.upload_resource = current.s3db.resource(self.tablename)
         self.resource = self.upload_resource
         self.table = self.upload_table
-        self.tablename = self.upload_tablename
 
     # -------------------------------------------------------------------------
     def _use_controller_table(self):
@@ -1504,13 +1503,10 @@ class S3Importer(S3CRUD):
             Set the resource and the table to being s3_import_item
         """
 
-        if self.item_resource == None:
-            from s3resource import S3Resource
-            self.table = S3ImportJob.define_item_table()
-            (prefix, name) = S3ImportJob.ITEM_TABLE_NAME.split("_",1)
-            self.item_resource = S3Resource(prefix, name)
-        self.resource = self.item_resource
         self.tablename = S3ImportJob.ITEM_TABLE_NAME
+        if self.item_resource == None:
+            self.item_resource = current.s3db.resource(self.tablename)
+        self.resource = self.item_resource
         self.table = S3ImportJob.define_item_table()
 
     # -------------------------------------------------------------------------
@@ -1532,9 +1528,8 @@ class S3Importer(S3CRUD):
         }
 
         def user_name_represent(id):
-            # @todo: use s3_present_user?
+            # @todo: use s3_represent_user?
 
-            rep_str = "-"
             table = db.auth_user
             query = (table.id == id)
             row = db(query).select(table.first_name,
@@ -1542,6 +1537,9 @@ class S3Importer(S3CRUD):
                                    limitby=(0, 1)).first()
             if row:
                 rep_str = "%s %s" % (row.first_name, row.last_name)
+            else:
+                rep_str = current.messages.NONE
+
             return rep_str
 
         def status_represent(index):
@@ -1581,9 +1579,6 @@ class S3Importer(S3CRUD):
         """ Defines the upload table """
 
         db = current.db
-        uploadfolder = os.path.join(current.request.folder,
-                                    "uploads",
-                                    )
         if cls.UPLOAD_TABLE_NAME not in db:
             upload_table = db.define_table(cls.UPLOAD_TABLE_NAME,
                     Field("controller",
@@ -1593,7 +1588,8 @@ class S3Importer(S3CRUD):
                           readable=False,
                           writable=False),
                     Field("file", "upload",
-                          uploadfolder=os.path.join(current.request.folder, "uploads", "imports"),
+                          uploadfolder=os.path.join(current.request.folder,
+                                                    "uploads", "imports"),
                           autodelete=True),
                     Field("filename",
                           readable=False,
@@ -1763,7 +1759,7 @@ class S3ImportItem(object):
         self.tablename = table._tablename
 
         if original is None:
-            original = manager.original(table, element)
+            original = S3Resource.original(table, element)
         data = xml.record(table, element,
                           files=files,
                           original=original,
@@ -1809,7 +1805,7 @@ class S3ImportItem(object):
         if self.original is not None:
             original = self.original
         else:
-            original = current.manager.original(table, self.data)
+            original = S3Resource.original(table, self.data)
 
         if original is not None:
             self.original = original
@@ -1832,20 +1828,19 @@ class S3ImportItem(object):
             Authorize the import of this item, sets self.permitted
         """
 
-        db = current.db
-        manager = current.manager
-        authorize = manager.permit
-
-        self.permitted = False
-
         if not self.table:
             return False
+
+        manager = current.manager
 
         prefix = self.tablename.split("_", 1)[0]
         if prefix in manager.PROTECTED:
             return False
 
-        if not authorize:
+        authorize = manager.permit
+        if authorize:
+            self.permitted = False
+        else:
             self.permitted = True
 
         self.method = self.METHOD.CREATE
@@ -1858,7 +1853,7 @@ class S3ImportItem(object):
             else:
                 if not self.original:
                     query = (self.table.id == self.id)
-                    self.original = db(query).select(limitby=(0, 1)).first()
+                    self.original = current.db(query).select(limitby=(0, 1)).first()
                 if self.original:
                     self.method = self.METHOD.UPDATE
 
@@ -1927,12 +1922,6 @@ class S3ImportItem(object):
                                   (still reports errors)
         """
 
-        db = current.db
-        s3db = current.s3db
-        xml = current.xml
-        manager = current.manager
-        table = self.table
-
         # Check if already committed
         if self.committed:
             # already committed
@@ -1944,8 +1933,17 @@ class S3ImportItem(object):
 
         _debug("Committing item %s" % self)
 
+        db = current.db
+        s3db = current.s3db
+        xml = current.xml
+        manager = current.manager
+        table = self.table
+
         # Resolve references
         self._resolve_references()
+
+        # Set a flag so that we know this is an import job
+        current.response.s3.bulk = True
 
         # Validate
         if not self.validate():
@@ -2162,7 +2160,7 @@ class S3ImportItem(object):
 
             if not self.skip and not self.conflict:
 
-                resource = S3Resource(self.tablename, id=self.id)
+                resource = s3db.resource(self.tablename, id=self.id)
 
                 ondelete = s3db.get_config(self.tablename, "ondelete")
                 success = resource.delete(ondelete=ondelete,
@@ -2451,7 +2449,7 @@ class S3ImportItem(object):
         else:
             self.table = table
             self.tablename = tablename
-        original = current.manager.original(table, self.data)
+        original = S3Resource.original(table, self.data)
         if original is not None:
             self.original = original
             self.id = original[table._id.name]

@@ -182,6 +182,10 @@ if len(pop_list) > 0:
     if settings.has_module("climate"):
         s3db.climate_first_run()
 
+    # CAP module
+    if settings.has_module("cap"):
+        s3db.cap_first_run()
+
     # Incident Reporting System
     if settings.has_module("irs"):
         # Categories visible to ends-users by default
@@ -216,7 +220,7 @@ if len(pop_list) > 0:
 
     # Additional settings for user table imports:
     s3db.configure("auth_user",
-                    onaccept = lambda form: auth.s3_link_user(form.vars))
+                   onaccept = lambda form: auth.s3_approve_user(form.vars))
     s3db.add_component("auth_membership", auth_user="user_id")
 
     # Allow population via shell scripts

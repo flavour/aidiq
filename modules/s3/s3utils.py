@@ -34,6 +34,7 @@ import os
 import re
 import sys
 import urllib
+import HTMLParser
 
 try:
     import json # try stdlib (Python 2.6)
@@ -2553,6 +2554,20 @@ def URL2(a=None, c=None, r=None):
     return url
 
 # =============================================================================
+class S3MarkupStripper(HTMLParser.HTMLParser):
+    """ Simple markup stripper """
+
+    def __init__(self):
+        self.reset()
+        self.result = []
+
+    def handle_data(self, d):
+        self.result.append(d)
+
+    def stripped(self):
+        return "".join(self.result)
+
+# =============================================================================
 class S3DataTable(object):
     """
         Generate a datatable from a list of Storages and a list of fields
@@ -2753,7 +2768,7 @@ class S3DataTable(object):
 
     # ---------------------------------------------------------------------
     @staticmethod
-    def listFormats(id, rfields=None):
+    def listFormats(id, rfields=None, permalink=None):
         """
             Calculate the export formats that can be added to the table
 
@@ -2765,6 +2780,12 @@ class S3DataTable(object):
         s3 = current.response.s3
         application = current.request.application
 
+        # @todo: this needs rework
+        #        - s3FormatRequest must retain any URL filters
+        #        - s3FormatRequest must remove the "search" method
+        #        - other data formats could have other list_fields,
+        #          hence applying the datatable sorting/filters is
+        #          not transparent
         if s3.datatable_ajax_source:
             end = s3.datatable_ajax_source.find(".aaData")
             default_url = s3.datatable_ajax_source[:end] # strip '.aaData' extension
@@ -2787,6 +2808,13 @@ class S3DataTable(object):
                             _alt=T("Export in RSS format"),
                             ))
         div = DIV(_class='list_formats')
+        if permalink is not None:
+            link = A(T("Link to this result"),
+                     _href=permalink,
+                     _class="permalink")
+            div.append(link)
+            div.append(" | ")
+
         div.append(current.T("Export to:"))
         if "have" in s3.formats:
             iconList.append(IMG(_src="/%s/static/img/have_16.png" % application,
@@ -3002,8 +3030,10 @@ class S3DataTable(object):
         # Wrap the table in a form and add some data in hidden fields
         form = FORM()
         if not s3.no_formats and len(html) > 0:
-            form.append (S3DataTable.listFormats(id, rfields))
-        form.append (html)
+            permalink = attr.get("dt_permalink", None)
+            form.append(S3DataTable.listFormats(id, rfields,
+                                                permalink=permalink))
+        form.append(html)
         # Add the configuration details for this dataTable
         form.append(INPUT(_type="hidden",
                           _id="%s_configurations" % id,
@@ -3060,28 +3090,29 @@ class S3DataTable(object):
                 tr.append(TH(heading[field]))
         header.append(tr)
 
-        # Build the body rows (the actual data)
         body = TBODY()
-        rc = 0
-        for i in xrange(start, end):
-            row = data[i]
-            if rc % 2 == 0:
-                _class = "even"
-            else:
-                _class = "odd"
-            rc += 1
-            tr = TR(_class=_class)
-            for field in flist:
-                # Insert a checkbox for bulk select
-                if field == "BULK":
-                    tr.append(TD(INPUT(_id="select%s" % row[flist[action_col]],
-                                       _type="checkbox",
-                                       _class="bulkcheckbox",
-                                       )))
+        if data:
+            # Build the body rows (the actual data)
+            rc = 0
+            for i in xrange(start, end):
+                row = data[i]
+                if rc % 2 == 0:
+                    _class = "even"
                 else:
-                    tr.append(TD(row[field]))
-            body.append(tr)
-        table = TABLE([header,body], _id=id, _class="dataTable display")
+                    _class = "odd"
+                rc += 1
+                tr = TR(_class=_class)
+                for field in flist:
+                    # Insert a checkbox for bulk select
+                    if field == "BULK":
+                        tr.append(TD(INPUT(_id="select%s" % row[flist[action_col]],
+                                           _type="checkbox",
+                                           _class="bulkcheckbox",
+                                           )))
+                    else:
+                        tr.append(TD(row[field]))
+                body.append(tr)
+        table = TABLE([header, body], _id=id, _class="dataTable display")
         return table
 
     # ---------------------------------------------------------------------
@@ -3218,7 +3249,7 @@ class S3DataTable(object):
             details = []
             for field in flist:
                 if field == "BULK":
-                    details.append('<INPUT id="select%s" type="checkbox" class="bulkcheckbox">' % \
+                    details.append("<INPUT id='select%s' type='checkbox' class='bulkcheckbox'>" % \
                         row[flist[action_col]])
                 else:
                     details.append(s3_unicode(row[field]))
