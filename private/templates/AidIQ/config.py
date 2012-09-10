@@ -39,6 +39,8 @@ settings.L10n.thousands_separator = ","
 settings.auth.registration_requests_organisation = True
 # Uncomment this to have the Organisation selection during registration be mandatory
 settings.auth.registration_organisation_mandatory = True
+# Uncomment to set the default role UUIDs assigned to newly-registered users
+settings.auth.registration_roles = ["project_reader"]
 
 # Projects
 # Uncomment this to use settings suitable for detailed Task management
