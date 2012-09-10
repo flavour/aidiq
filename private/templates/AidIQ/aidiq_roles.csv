@@ -1,8 +1,24 @@
-"role"," description","controller","function","table","oacl","uacl","org","facility","hidden","system","protected","uid"
-"STAFF","Role for AidIQ staff","project",,,"ALL","ALL","all",,,,,"STAFF"
-"STAFF","Role for AidIQ staff","default","project",,"READ|UPDATE","READ|CREATE|UPDATE","all",,,,,"STAFF"
-"STAFF","Role for AidIQ staff","project","project",,"READ|UPDATE","READ|CREATE|UPDATE","all",,,,,"STAFF"
-"STAFF","Role for AidIQ staff","project","time",,"READ|UPDATE|DELETE","READ|CREATE","all",,,,,"STAFF"
-"STAFF","Role for AidIQ staff",,,"project_project","READ","READ","all",,,,,"STAFF"
-"STAFF","Role for AidIQ staff",,,"project_activity","READ","READ","all",,,,,"STAFF"
-"STAFF","Role for AidIQ staff",,,"project_milestone","READ","READ","all",,,,,"STAFF"
+"uid","role"," description","controller","function","table","uacl","oacl","org","hidden","system","protected","Notes",
+"AUTHENTICATED","Authenticated",,"pr",,,"READ|UPDATE",,,,,,"Authenticated users can only see/edit their own PR records",
+"AUTHENTICATED","Authenticated",,,,"pr_person","READ|UPDATE",,,,,,"Authenticated users can only see/edit their own PR records",
+"AUTHENTICATED","Authenticated",,"pr","person",,"CREATE","READ|UPDATE",,,,,"But need to be able to add/edit addresses",
+"AUTHENTICATED","Authenticated",,"pr","pentity",,"READ",,,,,,"Custom Controller to allow access to PR via JSON for AutoComplete",
+"AUTHENTICATED","Authenticated",,"pr","person_search",,"READ",,,,,,"Custom Controller to allow access to PR via JSON for AutoComplete",
+"AUTHENTICATED","Authenticated",,"msg","search",,"READ",,,,,,"Custom Controller to allow access to PR via JSON for AutoComplete",
+"AUTHENTICATED","Authenticated",,"hrm",,,"READ|UPDATE",,,,,,"HRM access is controlled to just HR Staff, except for access to your own record - requires security policy 4+",
+"AUTHENTICATED","Authenticated",,"hrm","person",,,"READ|UPDATE",,,,,"HRM access is controlled to just HR Staff, except for access to your own record - requires security policy 4+",
+"AUTHENTICATED","Authenticated",,"hrm","staff",,,,,,,,"HRM access is controlled to just HR Staff, except for access to your own record - requires security policy 4+",
+"AUTHENTICATED","Authenticated",,"hrm","volunteer",,,,,,,,"HRM access is controlled to just HR Staff, except for access to your own record - requires security policy 4+",
+"AUTHENTICATED","Authenticated",,"project",,,"READ","READ",,,,,,
+"AUTHENTICATED","Authenticated",,"project","project",,"NONE","READ",,,,,,
+"AUTHENTICATED","Authenticated",,"project","task",,"CREATE","READ|UPDATE",,,,,,
+"AUTHENTICATED","Authenticated",,,,"project_project","NONE","READ",,,,,,
+"AUTHENTICATED","Authenticated",,,,"project_activity","NONE","READ",,,,,,
+"AUTHENTICATED","Authenticated",,,,"project_milestone","NONE","READ",,,,,,
+"STAFF","STAFF","Role for AidIQ staff","project",,,"ALL","ALL","all",,,,,"STAFF"
+"STAFF","STAFF","Role for AidIQ staff","default","project",,"READ|UPDATE","READ|CREATE|UPDATE","all",,,,,
+"STAFF","STAFF","Role for AidIQ staff","project","project",,"READ|UPDATE","READ|CREATE|UPDATE","all",,,,,
+"STAFF","STAFF","Role for AidIQ staff","project","time",,"READ|UPDATE|DELETE","READ|CREATE","all",,,,,
+"STAFF","STAFF","Role for AidIQ staff",,,"project_project","READ","READ","all",,,,,
+"STAFF","STAFF","Role for AidIQ staff",,,"project_activity","READ","READ","all",,,,,
+"STAFF","STAFF","Role for AidIQ staff",,,"project_milestone","READ","READ","all",,,,,
