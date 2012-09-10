@@ -17,7 +17,7 @@ settings.base.prepopulate = ["AidIQ"]
 settings.base.theme = "AidIQ"
 
 # Security Policy
-settings.security.policy = 7 # Organisation-ACLs
+settings.security.policy = 6 # Entity Realm
 
 settings.auth.login_next = URL(c="project", f="task", vars={"mine":1})
 
