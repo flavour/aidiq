@@ -225,8 +225,9 @@ class S3Importer(S3CRUD):
         self.xslt_extension = r.XSLT_EXTENSION
 
         # Check authorization
-        authorised = self.permit("create", self.upload_tablename) and \
-                     self.permit("create", self.controller_tablename)
+        permitted = current.auth.s3_has_permission
+        authorised = permitted("create", self.upload_tablename) and \
+                     permitted("create", self.controller_tablename)
         if not authorised:
             if r.method is not None:
                 r.unauthorised()
@@ -642,7 +643,6 @@ class S3Importer(S3CRUD):
         TEMPLATE = "csv_template"
         REPLACE_OPTION = "replace_option"
 
-        session = current.session
         response = current.response
         s3 = response.s3
         request = self.request
@@ -657,6 +657,10 @@ class S3Importer(S3CRUD):
                 table.replace_option.readable = True
                 table.replace_option.writable = True
                 table.replace_option.label = replace_option
+                table.replace_option.comment = DIV(_class="tooltip",
+                                                   _title="%s|%s" % \
+                    (replace_option,
+                     current.T("Delete all data of this type which the user has permission to before upload. This is designed for workflows where the data is maintained in an offline spreadsheet and uploaded just for Reads.")))
 
         fields = [f for f in table if f.readable or f.writable and not f.compute]
         if EXTRA_FIELDS in attr:
@@ -698,7 +702,7 @@ class S3Importer(S3CRUD):
             except:
                 pass
 
-        if form.accepts(r.post_vars, session,
+        if form.accepts(r.post_vars, current.session,
                         formname="upload_form"):
             upload_id = table.insert(**table._filter_fields(form.vars))
             if self.csv_extra_fields:
@@ -1218,7 +1222,7 @@ class S3Importer(S3CRUD):
             sEcho = int(vars.sEcho or 0)
         else: # catch all
             start = 0
-            limit = 1
+            limit = current.manager.ROWSPERPAGE
         if limit is not None:
             try:
                 start = int(start)
@@ -1245,10 +1249,10 @@ class S3Importer(S3CRUD):
         id = "s3import_1"
         if representation == "aadata":
             totalrows = self.resource.count()
-            return dt.json(id,
+            return dt.json(totalrows,
+                           totalrows,
+                           id,
                            sEcho,
-                           totalrows,
-                           totalrows,
                            dt_bulk_actions = [current.T("Import")],
                            )
         else:
@@ -1259,13 +1263,13 @@ class S3Importer(S3CRUD):
                                                       ajax_item_id
                                                       )
             totalrows = self.resource.count()
-            items =  dt.html(id,
-                            totalrows,
-                            totalrows,
-                            dt_ajax_url=url,
-                            dt_bulk_actions = [current.T("Import")],
-                            dt_bulk_selected = dt_bulk_select,
-                            )
+            items =  dt.html(totalrows,
+                             totalrows,
+                             id,
+                             dt_ajax_url=url,
+                             dt_bulk_actions = [current.T("Import")],
+                             dt_bulk_selected = dt_bulk_select,
+                             )
             current.response.s3.dataTableID = ["s3import_1"]
             output.update(items=items)
             return output
@@ -2755,25 +2759,24 @@ class S3ImportJob():
         references = element.findall("reference")
         for reference in references:
             field = reference.get(ATTRIBUTE.field, None)
+
             # Ignore references without valid field-attribute
             if not field or field not in fields:
                 continue
+
             # Find the key table
-            multiple = False
-            fieldtype = str(table[field].type)
-            if fieldtype.startswith("reference"):
-                ktablename = fieldtype[10:]
-            elif fieldtype.startswith("list:reference"):
-                ktablename = fieldtype[15:]
-                multiple = True
-            else:
-                # ignore if the field is not a reference type
-                continue
+            ktablename, key, multiple = s3_get_foreign_key(table[field])
+            if not ktablename:
+                if table._tablename == "auth_user" and \
+                   field == "organisation_id":
+                    ktablename = "org_organisation"
+                else:
+                    continue
             try:
-                ktable = s3db[ktablename]
+                ktable = current.s3db[ktablename]
             except:
-                # Invalid tablename - skip
                 continue
+
             tablename = reference.get(ATTRIBUTE.resource, None)
             # Ignore references to tables without UID field:
             if UID not in ktable.fields:

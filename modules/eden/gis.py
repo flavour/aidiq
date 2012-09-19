@@ -284,10 +284,6 @@ class S3LocationModel(S3Model):
                                        ]
                         )
 
-        from s3.s3gis import S3ExportPOI
-        self.set_method("gis", "location",
-                        method="export_poi", action=S3ExportPOI())
-
         # Tags as component of Locations
         add_component("gis_location_tag",
                       gis_location=dict(joinby="location_id",
@@ -3613,6 +3609,7 @@ def gis_location_represent(id, row=None, show_link=True, simpletext=False):
                                         table.level,
                                         table.parent,
                                         table.addr_street,
+                                        table.inherited,
                                         table.lat,
                                         table.lon,
                                         limitby=(0, 1)).first()
@@ -3722,6 +3719,7 @@ def gis_location_represent(id, row=None, show_link=True, simpletext=False):
                 # Get the 1st line of the street address.
                 represent_text = row.addr_street.splitlines()[0]
             if (not represent_text) and \
+               (row.inherited == False) and \
                (row.lat != None) and \
                (row.lon != None):
                 represent_text = lat_lon_represent(row)
@@ -3858,6 +3856,7 @@ def gis_rheader(r, tabs=[]):
 
     if resourcename == "location":
         tabs = [(T("Location Details"), None),
+                (T("Import PoIs"), "import_poi"),
                 (T("Local Names"), "name"),
                 (T("Key Value pairs"), "tag"),
                 ]

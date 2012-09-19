@@ -38,22 +38,21 @@ def index():
                            "name",
                            "organisation_id",
                            ]
-            initial_limit = current.manager.ROWSPERPAGE
             start = int(vars.iDisplayStart) if vars.iDisplayStart else 0
-            limit = int(vars.iDisplayLength) if vars.iDisplayLength else initial_limit
+            limit = int(vars.iDisplayLength) if vars.iDisplayLength else s3mgr.ROWSPERPAGE
             rfields = resource.resolve_selectors(list_fields)[0]
             (orderby, filter) = S3DataTable.getControlData(rfields, current.request.vars)
             resource.add_filter(filter)
             filteredrows = resource.count()
             rows = resource.select(list_fields,
-                                    orderby="organisation_id",
-                                    start=start,
-                                    limit=limit,
-                                    )
+                                   orderby="organisation_id",
+                                   start=start,
+                                   limit=limit,
+                                   )
             data = resource.extract(rows,
-                                     list_fields,
-                                     represent=True,
-                                     )
+                                    list_fields,
+                                    represent=True,
+                                    )
             dt = S3DataTable(rfields, data)
             dt.defaultActionButtons(resource)
             if request.extension == "html":
@@ -64,7 +63,7 @@ def index():
                                      dt_group=2,
                                      dt_ajax_url=URL(c="inv",
                                                   f="index",
-                                                  extension="aaData",
+                                                  extension="aadata",
                                                   vars={"id":"warehouse_list_1"},
                                                   ),
                                      dt_text_maximum_len = 16,
@@ -102,7 +101,7 @@ def index():
                 (rfields, joins, left, distinct) = resource.resolve_selectors(list_fields)
                 site_list = {}
                 rows = resource.select(list_fields,
-                                        limit=resource.count())
+                                       limit=resource.count())
                 filteredrows = len(rows.records)
                 for row in rows:
                     site_id = row.inv_inv_item.site_id
@@ -117,13 +116,12 @@ def index():
                 if isinstance(orderby, bool):
                     orderby = table.site_id | stable.name | ~table.quantity
                 start = int(vars.iDisplayStart) if vars.iDisplayStart else 0
-                initial_limit = current.manager.ROWSPERPAGE
-                limit = int(vars.iDisplayLength) if vars.iDisplayLength else initial_limit
+                limit = int(vars.iDisplayLength) if vars.iDisplayLength else s3mgr.ROWSPERPAGE
                 rows = resource.select(list_fields,
-                                        orderby=orderby,
-                                        start=start,
-                                        limit=limit,
-                                        )
+                                       orderby=orderby,
+                                       start=start,
+                                       limit=limit,
+                                       )
                 data = resource.extract(rows,
                                         list_fields,
                                         represent=True,
@@ -162,7 +160,7 @@ def index():
                                         dt_action_col=-1,
                                         dt_ajax_url=URL(c="inv",
                                                      f="index",
-                                                     extension="aaData",
+                                                     extension="aadata",
                                                      vars={"id":"inventory_list_1"},
                                                      ),
                                         dt_bulk_actions = "Adjust",
@@ -177,7 +175,7 @@ def index():
                                         )
 
                     s3.actions = None
-                elif request.extension == "aaData":
+                elif request.extension == "aadata":
                     inventory = dt.json(totalrows,
                                         filteredrows,
                                         "inventory_list_1",
@@ -212,10 +210,10 @@ def index():
                            "um",
                            "model",
                            ]
-            limit = 11 if request.extension == "aaData" else 1
+            limit = int(vars.iDisplayLength) if vars.iDisplayLength else s3mgr.ROWSPERPAGE
             rows = resource.select(list_fields,
                                    start=0,
-                                   limit=limit,
+                                   limit=resource.count(),
                                    )
             data = resource.extract(rows,
                                     list_fields,
@@ -232,7 +230,7 @@ def index():
                                        dt_action_col=1,
                                        dt_ajax_url=URL(c="inv",
                                                        f="index",
-                                                       extension="aaData",
+                                                       extension="aadata",
                                                        vars={"id": "supply_list_1"},
                                                        ),
                                        dt_text_maximum_len = 16,
@@ -243,8 +241,6 @@ def index():
                                        displayrows,
                                        "supply_list_1",
                                        int(request.vars.sEcho),
-                                       #11,
-                                       #11,
                                        dt_action_col=1,
                                        )
                 return supply_items

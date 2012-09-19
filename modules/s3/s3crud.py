@@ -216,9 +216,9 @@ class S3CRUD(S3Method):
                     from_record = long(from_record)
                 except:
                     r.error(404, self.resource.ERROR.BAD_RECORD)
-                authorised = self.permit("read",
-                                         from_table._tablename,
-                                         from_record)
+                authorised = current.auth.s3_has_permission("read",
+                                                    from_table._tablename,
+                                                    from_record)
                 if not authorised:
                     r.unauthorised()
                 if map_fields:
@@ -445,36 +445,43 @@ class S3CRUD(S3Method):
                     pass
 
         elif representation == "plain":
-            # Hide empty fields from popups on map
-            for field in table:
-                if field.readable:
-                    value = resource._rows.records[0][tablename][field.name]
-                    if value is None or value == "" or value == []:
-                        field.readable = False
+            T = current.T
+            if r.component:
+                record = table[record_id] if record_id else None
+            else:
+                record = r.record
+            if record:
+                # Hide empty fields from popups on map
+                for field in table:
+                    if field.readable:
+                        value = record[field]
+                        if value is None or value == "" or value == []:
+                            field.readable = False
+                item = self.sqlform(request=request,
+                                    resource=self.resource,
+                                    record_id=record_id,
+                                    readonly=True,
+                                    format=representation)
 
-            # Form
-            item = self.sqlform(request=request,
-                                resource=self.resource,
-                                record_id=record_id,
-                                readonly=True,
-                                format=representation)
-            output["item"] = item
-
-            # Details Link
-            authorised = self._permitted(method="read")
-            if authorised:
+                # Details Link
                 popup_url = _config("popup_url", None)
                 if not popup_url:
                     popup_url = r.url(method="read", representation="html")
                 if popup_url:
-                    details_btn = A(current.T("Show Details"), _href=popup_url,
-                                    _id="details-btn", _target="_blank")
+                    details_btn = A(T("Show Details"),
+                                    _href=popup_url,
+                                    _id="details-btn",
+                                    _target="_blank")
                     output["details_btn"] = details_btn
 
-            # Title and subtitle
-            title = self.crud_string(r.tablename, "title_display")
-            output["title"] = title
+                # Title and subtitle
+                title = self.crud_string(r.tablename, "title_display")
+                output["title"] = title
 
+            else:
+                item = T("Record not found")
+
+            output["item"] = item
             response.view = "plain.html"
 
         elif representation == "csv":
@@ -895,9 +902,7 @@ class S3CRUD(S3Method):
                     vars.update(iSortingCols="1",
                                 iSortCol_0=scol,
                                 sSortDir_0="asc")
-                    orderby = self.ssp_orderby(resource,
-                                               list_fields,
-                                               left=left)
+                    q, orderby, left = resource.datatable_filter(list_fields, vars)
                     del vars["iSortingCols"]
                     del vars["iSortCol_0"]
                     del vars["sSortDir_0"]
@@ -955,19 +960,13 @@ class S3CRUD(S3Method):
             # Count the rows
             totalrows = displayrows = resource.count()
 
-            # Apply data table filter (searchbox)
-            if vars.sSearch:
-                squery = self.ssp_filter(table,
-                                         fields=list_fields,
-                                         left=left)
-                if squery is not None:
-                    resource.add_filter(squery)
-                    displayrows = resource.count(left=left,
-                                                 distinct=distinct)
+            # Apply datatable filters
+            searchq, orderby, left = resource.datatable_filter(list_fields, vars)
+            if searchq is not None:
+                resource.add_filter(searchq)
+                displayrows = resource.count(left=left, distinct=True)
 
-            # Apply datatable sorting
-            if vars.iSortingCols:
-                orderby = self.ssp_orderby(resource, list_fields, left=left)
+            # Orderby fallbacks
             if r.method == "search" and not orderby:
                 orderby = fields[0]
             if orderby is None:
@@ -1158,22 +1157,54 @@ class S3CRUD(S3Method):
             # Field validation
             fields = Storage()
             for fname in record:
+
+                error = None
+                validated = fields[fname] = Storage()
+
+                # We do not validate primary keys
+                # (because we don't update them)
                 if fname in (pkey, "_id"):
                     continue
-                error = None
+
                 value = record[fname]
-                validated = fields[fname] = Storage(value = value)
+
                 if fname not in table.fields:
-                    validated._error = "invalid field"
+                    validated["value"] = value
+                    validated["_error"] = "invalid field"
                     continue
+                else:
+                    field = table[fname]
+
+                # Convert numeric type (does not always happen in the widget)
                 field = table[fname]
+                if field.type == "integer":
+                    if value not in (None, ""):
+                        try:
+                            value = int(value)
+                        except ValueError:
+                            value = 0
+                    else:
+                        value = None
+                if field.type == "double":
+                    if value not in (None, ""):
+                        try:
+                            value = float(value)
+                        except ValueError:
+                            value = 0
+                    else:
+                        value = None
+
+                # Validate and format the value
                 try:
                     value, error = validate(table, original, fname, value)
                 except AttributeError:
                     error = "invalid field"
+                validated["value"] = value # field.formatter(value)?
+
+                # Handle errors, update the validated item
                 if error:
                     has_errors = True
-                    validated._error = s3_unicode(error)
+                    validated["_error"] = s3_unicode(error)
                 else:
                     try:
                         text = represent(field,
@@ -1182,7 +1213,7 @@ class S3CRUD(S3Method):
                                          xml_escape = True)
                     except:
                         text = s3_unicode(value)
-                    validated.text = text
+                    validated["text"] = text
 
             # Form validation (=onvalidation)
             if not has_errors:
@@ -1819,175 +1850,6 @@ class S3CRUD(S3Method):
                         return str(URL(r=r, c=c, f=f,
                                        args=args))
         return list_linkto
-
-    # -------------------------------------------------------------------------
-    def ssp_filter(self, table, fields, left=[]):
-        """
-            Convert the SSPag GET vars into a filter query
-
-            @param table: the table
-            @param fields: list of field names as displayed in the
-                           list view (same order!)
-            @param left: list of left joins
-        """
-
-        db = current.db
-        vars = self.request.get_vars
-        resource = self.resource
-
-        if resource.linked is not None:
-            skip = [resource.linked.tablename]
-        else:
-            skip = []
-        parent = resource.parent
-        fkey = resource.fkey
-
-        context = str(vars.sSearch).lower()
-        columns = int(vars.iColumns)
-
-        wildcard = "%%%s%%" % context
-
-        # Retrieve the list of search fields
-        lfields, joins, ljoins, distinct = resource.resolve_selectors(fields)
-        flist = []
-        for i in xrange(0, columns):
-            field = lfields[i].field
-            if not field:
-                continue
-            fieldtype = str(field.type)
-            if fieldtype.startswith("reference") and \
-               hasattr(field, "sortby") and field.sortby:
-                tn = fieldtype[10:]
-                if parent is not None and \
-                   parent.tablename == tn and field.name != fkey:
-                    alias = "%s_%s_%s" % (parent.prefix, "linked", parent.name)
-                    ktable = db[tn].with_alias(alias)
-                    ktable._id = ktable[ktable._id.name]
-                    tn = alias
-                else:
-                    ktable = db[tn]
-                if tn not in skip:
-                    q = (field == ktable._id)
-                    join = [j for j in left if j.first._tablename == tn]
-                    if not join:
-                        left.append(ktable.on(q))
-                if isinstance(field.sortby, (list, tuple)):
-                    flist.extend([ktable[f] for f in field.sortby
-                                            if f in ktable.fields])
-                else:
-                    if field.sortby in ktable.fields:
-                        flist.append(ktable[field.sortby])
-            else:
-                flist.append(field)
-
-        # Build search query
-        searchq = None
-        for field in flist:
-            query = None
-            ftype = str(field.type)
-            if ftype in ("integer", "list:integer", "list:string") or \
-               ftype.startswith("list:reference") or \
-               ftype.startswith("reference"):
-                requires = field.requires
-                if not isinstance(requires, (list, tuple)):
-                    requires = [requires]
-                if requires:
-                    r = requires[0]
-                    if isinstance(r, IS_EMPTY_OR):
-                        r = r.other
-                    try:
-                        options = r.options()
-                    except:
-                        continue
-                    vlist = []
-                    for (value, text) in options:
-                        if str(text).lower().find(context) != -1:
-                            vlist.append(value)
-                    if vlist:
-                        query = field.belongs(vlist)
-                else:
-                    continue
-            elif str(field.type) in ("string", "text"):
-                query = field.lower().like(wildcard)
-            if searchq is None and query:
-                searchq = query
-            elif query:
-                searchq = searchq | query
-
-        for j in joins.values():
-            for q in j:
-                if searchq is None:
-                    searchq = q
-                elif str(q) not in str(searchq):
-                    searchq &= q
-
-        return searchq
-
-    # -------------------------------------------------------------------------
-    def ssp_orderby(self, resource, fields, left=[]):
-        """
-            Convert the SSPag GET vars into a sorting query
-
-            @param table: the table
-            @param fields: list of field names as displayed
-                           in the list view (same order!)
-            @param left: list of left joins
-        """
-
-        db = current.db
-        vars = self.request.get_vars
-        table = resource.table
-        tablename = table._tablename
-
-        if resource.linked is not None:
-            skip = [resource.linked.tablename]
-        else:
-            skip = []
-        parent = resource.parent
-        fkey = resource.fkey
-
-        iSortingCols = int(vars["iSortingCols"])
-
-        def direction(i):
-            dir = vars["sSortDir_%s" % str(i)]
-            return dir and " %s" % dir or ""
-
-        orderby = []
-
-        lfields, joins, ljoins, distinct = resource.resolve_selectors(fields)
-        columns = [lfields[int(vars["iSortCol_%s" % str(i)])].field
-                   for i in xrange(iSortingCols)]
-        for i in xrange(len(columns)):
-            field = columns[i]
-            if not field:
-                continue
-            fieldtype = str(field.type)
-            if fieldtype.startswith("reference") and \
-               hasattr(field, "sortby") and field.sortby:
-                tn = fieldtype[10:]
-                if parent is not None and \
-                   parent.tablename == tn and field.name != fkey:
-                    alias = "%s_%s_%s" % (parent.prefix, "linked", parent.name)
-                    ktable = db[tn].with_alias(alias)
-                    ktable._id = ktable[ktable._id.name]
-                    tn = alias
-                else:
-                    ktable = db[tn]
-                if tn not in skip:
-                    q = (field == ktable._id)
-                    join = [j for j in left if j.first._tablename == tn]
-                    if not join:
-                        left.append(ktable.on(q))
-                if not isinstance(field.sortby, (list, tuple)):
-                    orderby.append("%s.%s%s" % (tn, field.sortby, direction(i)))
-                else:
-                    orderby.append(", ".join(["%s.%s%s" %
-                                              (tn, fn, direction(i))
-                                              for fn in field.sortby]))
-            else:
-                orderby.append("%s%s" % (field, direction(i)))
-
-        return ", ".join(orderby)
 
 # =============================================================================
 class S3ApproveRecords(S3CRUD):

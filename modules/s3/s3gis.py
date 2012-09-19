@@ -30,7 +30,13 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["GIS", "S3Map", "GoogleGeocoder", "YahooGeocoder", "S3ExportPOI"]
+__all__ = ["GIS",
+           "S3Map",
+           "GoogleGeocoder",
+           "YahooGeocoder",
+           "S3ExportPOI",
+           "S3ImportPOI"
+           ]
 
 import os
 import re
@@ -1366,7 +1372,12 @@ class GIS(object):
             gis.countries_by_id = countries_by_id
             gis.countries_by_code = countries_by_code
 
-        if key_type == "id":
+            if key_type == "id":
+                return countries_by_id
+            else:
+                return countries_by_code
+
+        elif key_type == "id":
             return gis.countries_by_id
         else:
             return gis.countries_by_code
@@ -2266,7 +2277,7 @@ class GIS(object):
         """
             Calculate the shortest distance (in km) over the earth's sphere between 2 points
             Formulae from: http://www.movable-type.co.uk/scripts/latlong.html
-            (NB We should normally use PostGIS functions, where possible, instead of this query)
+            (NB We could also use PostGIS functions, where possible, instead of this query)
         """
 
         import math
@@ -2278,28 +2289,65 @@ class GIS(object):
 
         if quick:
             # Spherical Law of Cosines (accurate down to around 1m & computationally quick)
-            acos = math.acos
             lat1 = radians(lat1)
             lat2 = radians(lat2)
             lon1 = radians(lon1)
             lon2 = radians(lon2)
-            distance = acos(sin(lat1) * sin(lat2) + cos(lat1) * cos(lat2) * cos(lon2-lon1)) * RADIUS_EARTH
+            distance = math.acos(sin(lat1) * sin(lat2) + cos(lat1) * cos(lat2) * cos(lon2 - lon1)) * RADIUS_EARTH
             return distance
 
         else:
             # Haversine
             #asin = math.asin
-            atan2 = math.atan2
             sqrt = math.sqrt
             pow = math.pow
-            dLat = radians(lat2-lat1)
-            dLon = radians(lon2-lon1)
+            dLat = radians(lat2 - lat1)
+            dLon = radians(lon2 - lon1)
             a = pow(sin(dLat / 2), 2) + cos(radians(lat1)) * cos(radians(lat2)) * pow(sin(dLon / 2), 2)
-            c = 2 * atan2(sqrt(a), sqrt(1-a))
+            c = 2 * math.atan2(sqrt(a), sqrt(1 - a))
             #c = 2 * asin(sqrt(a))              # Alternate version
             # Convert radians to kilometers
             distance = RADIUS_EARTH * c
             return distance
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def create_poly(feature):
+        """
+            Create a .poly file for OpenStreetMap exports
+            http://wiki.openstreetmap.org/wiki/Osmosis/Polygon_Filter_File_Format
+        """
+
+        from shapely.wkt import loads as wkt_loads
+
+        name = feature.name
+
+        try:
+            shape = wkt_loads(feature.wkt)
+        except:
+            s3_debug("Invalid WKT: %s" % name)
+            return
+
+        geom_type = shape.geom_type
+        if geom_type == "MultiPolygon" or \
+           geom_type == "MultiLineString" or \
+           geom_type == "MultiPoint":
+            polygons = shape.geoms
+        else:
+            polygons = [shape]
+        filename = "/tmp/%s.poly" % name
+        File = open(filename, "w")
+        File.write(filename)
+        count = 1
+        for polygon in polygons:
+            File.write(count)
+            points = polygon.geoms
+            for point in points:
+                File.write("\t%s\t%s" % (point.x, point.y))
+            File.write("END")
+            ++count
+        File.write("END")
+        File.close()
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2387,11 +2435,17 @@ class GIS(object):
             File.write(json.dumps(data))
             File.close()
 
+        q1 = (table.level == "L1") & \
+             (table.deleted != True)
+        q2 = (table.level == "L2") & \
+             (table.deleted != True)
+        q3 = (table.level == "L3") & \
+             (table.deleted != True)
+        q4 = (table.level == "L4") & \
+             (table.deleted != True)
         if "L1" in levels:
             if "L0" not in levels:
                 countries = db(cquery).select(ifield)
-            q1 = (table.level == "L1") & \
-                 (table.deleted != True)
             for country in countries:
                 if not spatial or "L0" not in levels:
                     _id = country.id
@@ -2401,8 +2455,7 @@ class GIS(object):
                 features = []
                 append = features.append
                 rows = db(query).select(ifield,
-                                        field,
-                                        )
+                                        field)
                 for row in rows:
                     if spatial:
                         id = row["gis_location"].id
@@ -2435,8 +2488,6 @@ class GIS(object):
         if "L2" in levels:
             if "L0" not in levels and "L1" not in levels:
                 countries = db(cquery).select(ifield)
-            q1 = (table.level == "L1") & \
-                 (table.deleted != True)
             for country in countries:
                 if not spatial or "L0" not in levels:
                     id = country.id
@@ -2444,15 +2495,12 @@ class GIS(object):
                     id = country["gis_location"].id
                 query = q1 & (table.parent == id)
                 l1s = db(query).select(ifield)
-                q2 = (table.level == "L2") & \
-                     (table.deleted != True)
                 for l1 in l1s:
                     query = q2 & (table.parent == l1.id)
                     features = []
                     append = features.append
                     rows = db(query).select(ifield,
-                                            field,
-                                            )
+                                            field)
                     for row in rows:
                         if spatial:
                             id = row["gis_location"].id
@@ -2485,8 +2533,6 @@ class GIS(object):
         if "L3" in levels:
             if "L0" not in levels and "L1" not in levels and "L2" not in levels:
                 countries = db(cquery).select(ifield)
-            q1 = (table.level == "L1") & \
-                 (table.deleted != True)
             for country in countries:
                 if not spatial or "L0" not in levels:
                     id = country.id
@@ -2494,20 +2540,15 @@ class GIS(object):
                     id = country["gis_location"].id
                 query = q1 & (table.parent == id)
                 l1s = db(query).select(ifield)
-                q2 = (table.level == "L2") & \
-                     (table.deleted != True)
                 for l1 in l1s:
                     query = q2 & (table.parent == l1.id)
                     l2s = db(query).select(ifield)
-                    q3 = (table.level == "L3") & \
-                         (table.deleted != True)
                     for l2 in l2s:
                         query = q3 & (table.parent == l2.id)
                         features = []
                         append = features.append
                         rows = db(query).select(ifield,
-                                                field,
-                                                )
+                                                field)
                         for row in rows:
                             if spatial:
                                 id = row["gis_location"].id
@@ -2536,6 +2577,57 @@ class GIS(object):
                         File = open(filename, "w")
                         File.write(json.dumps(data))
                         File.close()
+
+        if "L4" in levels:
+            if "L0" not in levels and "L1" not in levels and "L2" not in levels and "L3" not in levels:
+                countries = db(cquery).select(ifield)
+            for country in countries:
+                if not spatial or "L0" not in levels:
+                    id = country.id
+                else:
+                    id = country["gis_location"].id
+                query = q1 & (table.parent == id)
+                l1s = db(query).select(ifield)
+                for l1 in l1s:
+                    query = q2 & (table.parent == l1.id)
+                    l2s = db(query).select(ifield)
+                    for l2 in l2s:
+                        query = q3 & (table.parent == l2.id)
+                        l3s = db(query).select(ifield)
+                        for l3 in l3s:
+                            query = q4 & (table.parent == l3.id)
+                            features = []
+                            append = features.append
+                            rows = db(query).select(ifield,
+                                                    field)
+                            for row in rows:
+                                if spatial:
+                                    id = row["gis_location"].id
+                                    geojson = row.geojson
+                                elif simplify:
+                                    id = row.id
+                                    geojson = _simplify(row.wkt, tolerance=simplify, output="geojson")
+                                else:
+                                    id = row.id
+                                    shape = wkt_loads(row.wkt)
+                                    # Compact Encoding
+                                    geojson = dumps(shape, separators=(",", ":"))
+                                f = dict(
+                                        type = "Feature",
+                                        properties = {"id": id},
+                                        geometry = json.loads(geojson) if geojson else {}
+                                        )
+                                append(f)
+
+                            data = dict(
+                                        type = "FeatureCollection",
+                                        features = features
+                                    )
+                            # Output to file
+                            filename = os.path.join(folder, "4_%s.geojson" % l3.id)
+                            File = open(filename, "w")
+                            File.write(json.dumps(data))
+                            File.close()
 
     # -------------------------------------------------------------------------
     def import_admin_areas(self,
@@ -7259,5 +7351,139 @@ class S3ExportPOI(S3Method):
                 (FS("location_id$path").like("%s/%%" % self.lx))
         resource.add_filter(query)
         return
+
+# -----------------------------------------------------------------------------
+class S3ImportPOI(S3Method):
+    """ Import point-of-interest resources for a location """
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def apply_method(r, **attr):
+        """
+            Apply method.
+
+            @param r: the S3Request
+            @param attr: controller options for this request
+        """
+
+        T = current.T
+        auth = current.auth
+        request = current.request
+        response = current.response
+
+        if r.representation == "html" and \
+           r.name == "location" and r.id and not r.component:
+
+            title = T("Import Points of Interest")
+
+            form = FORM(
+                    TABLE(
+                        TR(
+                            TD(T("Can read PoIs either from an OpenStreetMap mirror or from an uploaded .osm file.")),
+                            ),
+                        TR(
+                            TD(B("%s: " % T("Host"))),
+                            TD(INPUT(_type="text", _name="host",
+                                     _id="host", _value="localhost"))
+                            ),
+                        TR(
+                            TD(B("%s: " % T("Database"))),
+                            TD(INPUT(_type="text", _name="database",
+                                     _id="database", _value="osm"))
+                            ),
+                        TR(
+                            TD(B("%s: " % T("User"))),
+                            TD(INPUT(_type="text", _name="user",
+                                     _id="user", _value="osm"))
+                            ),
+                        TR(
+                            TD(B("%s: " % T("Password"))),
+                            TD(INPUT(_type="text", _name="password",
+                                     _id="password", _value="osm"))
+                            ),
+                        TR(
+                            TH(B("%s: " % T("File"))),
+                            INPUT(_type="file", _name="file", _size="50"),
+                            TH(DIV(SPAN("*", _class="req",
+                                        _style="padding-right: 5px;")))
+                            ),
+                        TR(
+                            TD(B("%s: " % T("Ignore Errors?"))),
+                            TD(INPUT(_type="checkbox", _name="ignore_errors",
+                                     _id="ignore_errors"))
+                            ),
+                        TR("",
+                           INPUT(_type="submit", _value=T("Import"))
+                           )
+                        )
+                    )
+
+            output = dict(title=title,
+                          form=form)
+
+            if form.accepts(request.vars, current.session):
+
+                vars = form.vars
+                if vars.file:
+                    File = vars.file
+                else:
+                    # Create .poly file
+                    S3GIS.create_poly(r.record)
+                    # Use Osmosis to extract an .osm file using this .poly
+                    name = r.record.name
+                    filename = "/tmp/%s.osm" % name
+                    from subprocess import call
+                    subprocess.call(["/home/osm/osmosis/bin/osmosis",
+                                     "--read-pgsql",
+                                     "host=%s" % vars.host,
+                                     "database=%s" % vars.database,
+                                     "user=%s" % vars.user,
+                                     "password=%s" % vars.password,
+                                     "--dataset-dump",
+                                     "--bounding-polygon",
+                                     "file=\"/tmp/%s.poly\"" % name,
+                                     "--write-xml",
+                                     "file=\"%s\"" % filename,
+                                     ], shell=True)
+                    File = open(filename, "r")
+
+                # "Exploit" the de-duplicator hook to count import items
+                import_count = [0]
+                def count_items(job, import_count=import_count):
+                    if job.tablename == "gis_location":
+                        import_count[0] += 1
+                current.s3db.configure("gis_location", deduplicate=count_items)
+
+                import os
+                stylesheet = os.path.join(request.folder, "static", "formats",
+                                          "osm", "import.xsl")
+
+                if os.path.exists(stylesheet):
+                    ignore_errors = vars.get("ignore_errors", None)
+                    try:
+                        success = r.resource.import_xml(File,
+                                                        stylesheet=stylesheet,
+                                                        ignore_errors=ignore_errors)
+                    except:
+                        import sys
+                        e = sys.exc_info()[1]
+                        response.error = e
+                    else:
+                        if success:
+                            count = import_count[0]
+                            if count:
+                                response.confirmation = "%s %s" % \
+                                    (import_count[0],
+                                     T("PoIs successfully imported."))
+                            else:
+                                response.information = T("No PoIs available.")
+                        else:
+                            response.error = self.error
+
+            response.view = "create.html"
+            return output
+
+        else:
+            raise HTTP(501, BADMETHOD)
 
 # END =========================================================================

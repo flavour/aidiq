@@ -77,6 +77,7 @@ class S3OrganisationModel(S3Model):
              "org_organisation",
              "org_organisation_id",
              "org_organisation_branch",
+             "org_organisation_user",
              ]
 
     def model(self):
@@ -503,7 +504,6 @@ class S3OrganisationModel(S3Model):
                   referenced_by=[(utablename, "organisation_id")],
                   search_method=organisation_search,
                   deduplicate=self.organisation_duplicate,
-                  requires_approval=True,
                   list_fields=["id",
                                  "name",
                                  "acronym",
@@ -525,6 +525,10 @@ class S3OrganisationModel(S3Model):
 
         # Warehouses
         add_component("inv_warehouse",
+                      org_organisation="organisation_id")
+
+        # Catalogs
+        add_component("supply_catalog",
                       org_organisation="organisation_id")
 
         # Facilities

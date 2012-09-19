@@ -1753,7 +1753,7 @@ class S3Project3WModel(S3Model):
                   deduplicate=self.project_organisation_deduplicate,
                   onvalidation=self.project_organisation_onvalidation,
                   onaccept=self.project_organisation_onaccept,
-                  ondelete=self.project_organisation_ondelete)
+                  ondelete=self.project_organisation_ondelete,)
 
         # Reusable Field
 
@@ -1937,8 +1937,8 @@ class S3Project3WModel(S3Model):
             Record creation post-processing
 
             If the added organisation is the lead role, set the
-            project.organisation to point to the same organisation 
-            & update the owned_by_entity.
+            project.organisation to point to the same organisation
+            & update the realm_entity.
 
             In DRRPP, update the donors field
         """
@@ -1947,15 +1947,15 @@ class S3Project3WModel(S3Model):
         ptable = db.project_project
         otable = db.project_organisation
         vars = form.vars
-        
+
         # Get the project ID from the new project organisation record
-        project_id = db(otable.id == vars.id).select( otable.project_id,
-                                                      limitby=(0, 1)
+        project_id = db(otable.id == vars.id).select(otable.project_id,
+                                                     limitby=(0, 1)
                                                      ).first().project_id
 
         if current.deployment_settings.get_template() == "DRRPP":
             dtable = db.project_drrpp
-                                                  
+
             # Get all the Donors for this Project
             query = (otable.deleted == False) & \
                     (otable.role == 3) & \
@@ -1974,8 +1974,8 @@ class S3Project3WModel(S3Model):
             organisation_id = vars.organisation_id
             db(ptable.id == project_id).update(
                                         organisation_id = organisation_id,
-                                        owned_by_entity = s3db.pr_get_pe_id("org_organisation",
-                                                                            organisation_id)
+                                        realm_entity = s3db.pr_get_pe_id("org_organisation",
+                                                                         organisation_id)
                                         )
 
         return
@@ -3040,7 +3040,7 @@ class S3ProjectTaskModel(S3Model):
                   super_entity="doc_entity",
                   copyable=True,
                   orderby="project_task.priority",
-                  owner_entity=self.task_owner_entity,
+                  realm_entity=self.task_realm_entity,
                   onvalidation=self.task_onvalidation,
                   create_next=URL(f="task", args=["[id]"]),
                   create_onaccept=self.task_create_onaccept,
@@ -3390,8 +3390,8 @@ class S3ProjectTaskModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def task_owner_entity(table, record):
-        """ Set the task owner entity to the project's owner entity """
+    def task_realm_entity(table, record):
+        """ Set the task realm entity to the project's realm entity """
 
         task_id = record.id
         db = current.db
@@ -3399,10 +3399,10 @@ class S3ProjectTaskModel(S3Model):
         ltable = db.project_task_project
         query = (ltable.task_id == task_id) & \
                 (ltable.project_id == ptable.id)
-        project = db(query).select(ptable.owned_by_entity,
+        project = db(query).select(ptable.realm_entity,
                                    limitby=(0, 1)).first()
         if project:
-            return project.owned_by_entity
+            return project.realm_entity
         else:
             return None
 
@@ -3813,7 +3813,7 @@ def project_project_represent(id, row=None, show_link=True):
     """ FK representation """
 
     if row:
-        pass
+        id = row.id
     elif id:
         db = current.db
         table = db.project_project
@@ -4724,7 +4724,8 @@ def project_rheader(r, tabs=[]):
         query = (ltable.deleted == False) & \
                 (ltable.task_id == r.id) & \
                 (ltable.project_id == ptable.id)
-        project = db(query).select(ptable.code,
+        project = db(query).select(ptable.id,
+                                   ptable.code,
                                    ptable.name,
                                    limitby=(0, 1)).first()
         if project:
@@ -4882,10 +4883,15 @@ def project_task_controller():
             except:
                 current.session.error = T("Project not Found")
                 redirect(URL(args=None, vars=None))
-            ltable = s3db.project_task_project
-            s3.filter = (ltable.project_id == project) & \
-                        (ltable.task_id == table.id) & \
-                        (table.status.belongs(statuses))
+            if r.method == "search":
+                r.get_vars = {"task_search_project": name,
+                              "task_search_status": ",".join([str(status) for status in statuses])
+                              }
+            else:
+                ltable = s3db.project_task_project
+                s3.filter = (ltable.project_id == project) & \
+                            (ltable.task_id == table.id) & \
+                            (table.status.belongs(statuses))
             crud_strings.title_list = T("Open Tasks for %(project)s") % dict(project=name)
             crud_strings.title_search = T("Search Open Tasks for %(project)s") % dict(project=name)
             crud_strings.msg_list_empty = T("No Open Tasks for %(project)s") % dict(project=name)

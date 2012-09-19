@@ -60,6 +60,8 @@ class S3StatsModel(S3Model):
         location_id = self.gis_location_id
         super_entity = self.super_entity
 
+        UNKNOWN_OPT = current.messages.UNKNOWN_OPT
+
         #----------------------------------------------------------------------
         # Super entity: stats_parameter
         #
@@ -118,10 +120,13 @@ class S3StatsModel(S3Model):
                              Field("date", "date",
                                    label = T("Date")),
                              self.doc_source_id(),
+                             Field("approved_by", "integer",
+                                   default = None)
                              )
 
         self.configure("stats_data",
-                        onaccept = self.stats_data_onaccept,
+                        onapprove = self.stats_data_onapprove,
+                        requires_approval = True,
                         )
         #----------------------------------------------------------------------
         # Stats Aggregated data
@@ -131,15 +136,16 @@ class S3StatsModel(S3Model):
         # time, all the stats_data values for the same time period.
         #       currently this is just the latest value in the time period
         # location, all the aggregated values across a number of locations
-        #           thus for an L3 it will aggregate all the L4 values
+        #           thus for an L2 it will aggregate all the L3 values
         # copy, this is a copy of the previous time aggregation because no
         #       data is currently available for this time period
-        UNKNOWN_OPT = current.messages.UNKNOWN_OPT
+
         aggregate_type = {1 : T("Time"),
                           2 : T("Location"),
                           3 : T("Copy"),
                           4 : T("Indicator"),
                          }
+
         tablename = "stats_aggregate"
         table = define_table(tablename,
                              param_id(),
@@ -209,9 +215,9 @@ class S3StatsModel(S3Model):
 
     # ---------------------------------------------------------------------
     @staticmethod
-    def stats_data_onaccept(form):
+    def stats_data_onapprove(row):
         """
-           When a stats_data record is created then the related stats_aggregate
+           When a stats_data record is approved then the related stats_aggregate
            fields need to be updated so that the results are kept up to date.
 
            This is done async as this can take some time
@@ -219,11 +225,8 @@ class S3StatsModel(S3Model):
            Where appropriate add test cases to modules/unit_tests/eden/stats.py
         """
 
-        # calculate the aggregate for the location,
-        # when this has been done requests to calculate the aggregate for
-        # the parent locations will be made.
         current.s3task.async("stats_update_time_aggregate",
-                             args = [form.vars.data_id],
+                             args = [row.data_id],
                              )
 
     # ---------------------------------------------------------------------
@@ -233,10 +236,15 @@ class S3StatsModel(S3Model):
             This will delete all the stats_aggregate records and then
             rebuild them by triggering off a request for each stats_data
             record.
+
+            @ToDo: This means that we could have a significant period without any agg data at all!
+                   - should be reworked to delete old data after new data has been added?
         """
-        resource = current.s3db.resource("stats_aggregate")
+
+        s3db = current.s3db
+        resource = s3db.resource("stats_aggregate")
         resource.delete()
-        table = current.s3db.stats_data
+        table = s3db.stats_data
         rows = current.db().select(table.data_id)
         for row in rows:
             current.s3task.async("stats_update_time_aggregate",
@@ -283,7 +291,8 @@ class S3StatsModel(S3Model):
         # Get all the stats_data record for this location and parameter
         query = (dtable.location_id == location_id) & \
                 (dtable.parameter_id == parameter_id) & \
-                (dtable.deleted != True)
+                (dtable.deleted != True) & \
+                (dtable.approved_by > 0)
         data_rows = db(query).select()
         # Get each record and store them in a dict keyed on the start date of
         # the aggregated period. The value stored is a list containing the date
@@ -350,18 +359,18 @@ class S3StatsModel(S3Model):
                 # Check that the stored aggr data is correct
                 type = aggr[dt]["type"]
                 if type == 2:
-                    # this is built using other location aggregates
-                    # So it can be ignored because only time or copy aggregates
+                    # This is built using other location aggregates
+                    # so it can be ignored because only time or copy aggregates
                     # are being calculated in this function
                     last_type_agg = True
                     last_data_value = aggr[dt]["mean"]
                     continue
                 elif type == 3:
-                    # this is a copy aggregate and can be ignored if there is
+                    # This is a copy aggregate and can be ignored if there is
                     # no data in the data dictionary and the last type was aggr
                     if (dt not in data) and last_type_agg:
                         continue
-                    # if there is data in the data dictionary for this period
+                    # If there is data in the data dictionary for this period
                     # then then aggregate record needs to be changed
                     if dt in data:
                         value = data[dt]["value"]
@@ -437,14 +446,14 @@ class S3StatsModel(S3Model):
                               end_date = end_date,
                               )
                 changed_periods.append((start_date, end_date))
-        # Now that the time aggregate types have been set up correctly
-        # Fire off requests for the location aggregates to be calculated
+        # Now that the time aggregate types have been set up correctly,
+        # fire off requests for the location aggregates to be calculated
         parents = current.gis.get_parents(location_id)
         async = current.s3task.async
         for (start_date, end_date) in changed_periods:
             if parents:
                 for location in parents:
-                    # calculate the aggregates for each parent
+                    # Calculate the aggregates for each parent
                     async("stats_update_aggregate_location",
                           args = [location.id,
                                   parameter_id,
@@ -479,23 +488,22 @@ class S3StatsModel(S3Model):
 
         # Get all the child locations
         child_locations = current.gis.get_children(location_id)
-        child_ids = []
-        append = child_ids.append
-        for row in child_locations:
-            append(row.id)
+        child_ids = [row.id for row in child_locations]
 
         # The dates have been converted to a string so the following is needed
         if end_date == "None":
             # Get the most recent stats_data record for each location
             query = (table.location_id.belongs(child_ids)) & \
                     (table.parameter_id == parameter_id) & \
-                    (table.deleted != True)
+                    (table.deleted != True) & \
+                    (table.approved_by > 0)
             end_date = None
         else:
             query = (table.location_id.belongs(child_ids)) & \
                     (table.parameter_id == parameter_id) & \
                     (table.date <= end_date) & \
-                    (table.deleted != True)
+                    (table.deleted != True) & \
+                    (table.approved_by > 0)
         rows = db(query).select(table.value,
                                 table.date,
                                 table.location_id,
@@ -565,12 +573,14 @@ class S3StatsModel(S3Model):
            Currently the time period is annually so it will return the
            start and end of the current year.
         """
+
         from datetime import date
-        if data_date == None:
+
+        if data_date is None:
             data_date = date.today()
         soap = date(data_date.year, 1, 1)
         eoap = date(data_date.year, 12, 31)
-        return  (soap, eoap)
+        return (soap, eoap)
 
 # =============================================================================
 class S3StatsDemographicModel(S3Model):
@@ -625,6 +635,7 @@ class S3StatsDemographicModel(S3Model):
         configure(tablename,
                   super_entity = "stats_parameter",
                   deduplicate = self.stats_demographic_duplicate,
+                  requires_approval = True,
                   )
 
         #----------------------------------------------------------------------
@@ -728,8 +739,6 @@ class S3StatsSourceModel(S3Model):
                                         requires = IS_NULL_OR(IS_URL()),
                                         represent = lambda url: \
                                             url and A(url,_href=url) or current.messages.NONE),
-                                  Field("status",
-                                        label=T("Status")),
                                   s3_date(label = T("Date Published")),
                                   self.gis_location_id(),
                                   self.doc_source_type_id(),
@@ -776,6 +785,7 @@ class S3StatsSourceModel(S3Model):
         self.configure(tablename,
                        super_entity = "doc_source_entity",
                        deduplicate = self.stats_source_duplicate,
+                       requires_approval=True,
                        )
         # ---------------------------------------------------------------------
         # Pass model-global names to response.s3

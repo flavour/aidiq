@@ -1443,12 +1443,12 @@ class AuthS3(Auth):
 
             @param user: the user record
             @param organisation_id: the user's orgnaisation_id
-                                    to get the person's owned_by_entity
+                                    to get the person's realm_entity
 
             Policy for linking to pre-existing person records:
 
             If this user is already linked to a person record with a different
-            first_name, last_name, email or owned_by_entity these will be
+            first_name, last_name, email or realm_entity these will be
             updated to those of the user.
 
             If a person record with exactly the same first name and
@@ -1475,12 +1475,12 @@ class AuthS3(Auth):
         gtable = s3db.gis_config
         ltable = s3db.pr_person_user
 
-        # Organisation becomes the owner entity of the person record
+        # Organisation becomes the realm entity of the person record
         if organisation_id:
-            owner_entity = s3db.pr_get_pe_id("org_organisation",
+            realm_entity = s3db.pr_get_pe_id("org_organisation",
                                              organisation_id)
         else:
-            owner_entity = None
+            realm_entity = None
 
         left = [ltable.on(ltable.user_id == utable.id),
                 ptable.on(ptable.pe_id == ltable.pe_id),
@@ -1569,7 +1569,7 @@ class AuthS3(Auth):
 
                 # Default record owner/realm
                 owner = Storage(owned_by_user=user.id,
-                                owned_by_entity=owner_entity)
+                                realm_entity=realm_entity)
 
                 if person:
                     query = ltable.pe_id == person.pe_id
@@ -3271,7 +3271,7 @@ class AuthS3(Auth):
 
         ownership_fields = ("owned_by_user",
                             "owned_by_group",
-                            "owned_by_entity")
+                            "realm_entity")
         pkey = table._id.name
         if isinstance(record, (Row, dict)) and pkey in record:
             record_id = record[pkey]
@@ -3295,7 +3295,7 @@ class AuthS3(Auth):
             @param record: the record (or record ID)
             @keyword owned_by_user: the auth_user ID of the owner user
             @keyword owned_by_group: the auth_group ID of the owner group
-            @keyword owned_by_entity: the pe_id of the owner entity, or a tuple
+            @keyword realm_entity: the pe_id of the realm entity, or a tuple
                                       (instance_type, instance_id) to lookup the
                                       pe_id from
         """
@@ -3305,7 +3305,7 @@ class AuthS3(Auth):
         # Ownership fields
         OUSR = "owned_by_user"
         OGRP = "owned_by_group"
-        OENT = "owned_by_entity"
+        OENT = "realm_entity"
         ownership_fields = (OUSR, OGRP, OENT)
 
         # Entity reference fields
@@ -3395,34 +3395,40 @@ class AuthS3(Auth):
             elif OGRP in fields:
                 data[OGRP] = fields[OGRP]
 
-        # Find owned_by_entity
+        # Find realm_entity
         if OENT in fields_in_table:
             if OENT in fields:
                 data[OENT] = fields[OENT]
             elif not row[OENT] or force_update:
-                # Check for custom handler to find the owner entity
-                # (global setting overrides table-specific setting)
-                handler = current.deployment_settings.get_auth_owner_entity()
-                if handler is None:
-                    handler = s3db.get_config(tablename, "owner_entity")
+                # Check for a global method to determine realm_entity
+                handler = current.deployment_settings.get_auth_realm_entity()
                 if callable(handler):
-                    owner_entity = handler(table, row)
-                    data[OENT] = owner_entity
-                # Otherwise, do a fallback cascade
+                    realm_entity = handler(table, row)
                 else:
+                    realm_entity = 0
+                # Fall back to table-specific method
+                if realm_entity == 0:
+                    handler = s3db.get_config(tablename, "realm_entity")
+                    if callable(handler):
+                        realm_entity = handler(table, row)
+                # If successful, set the realm entity
+                if realm_entity != 0:
+                    data[OENT] = realm_entity
+                else:
+                    # Otherwise: introspective (fallback cascade)
                     get_pe_id = s3db.pr_get_pe_id
                     if EID in row and tablename not in ("pr_person", "dvi_body"):
-                        owner_entity = row[EID]
+                        realm_entity = row[EID]
                     elif OID in row:
-                        owner_entity = get_pe_id(otablename, row[OID])
+                        realm_entity = get_pe_id(otablename, row[OID])
                     elif SID in row:
-                        owner_entity = get_pe_id(stablename, row[SID])
+                        realm_entity = get_pe_id(stablename, row[SID])
                     elif GID in row:
-                        owner_entity = get_pe_id(gtablename, row[GID])
+                        realm_entity = get_pe_id(gtablename, row[GID])
                     else:
-                        owner_entity = None
-                    if owner_entity:
-                        data["owned_by_entity"] = owner_entity
+                        realm_entity = None
+                    if realm_entity:
+                        data["realm_entity"] = realm_entity
 
         self.s3_update_record_owner(table, row, **data)
         return
@@ -3580,14 +3586,20 @@ class S3Permission(object):
     # Method string <-> required permission
     METHODS = Storage({
         "create": CREATE,
-        "import": CREATE,
         "read": READ,
-        "map": READ,
-        "report": READ,
-        "search": READ,
         "update": UPDATE,
-        "approve": UPDATE,
-        "delete": DELETE})
+        "delete": DELETE,
+
+        "search": READ,
+        "report": READ,
+        "map": READ,
+
+        "import": CREATE,
+
+        "review": READ,
+        "approve": READ, #UPDATE,
+        "reject": READ, #DELETE
+    })
 
     # Lambda expressions for ACL handling
     required_acl = lambda self, methods: \
@@ -3633,7 +3645,7 @@ class S3Permission(object):
         self.use_facls = self.policy in (4, 5, 6, 7, 8)
         # ACLs to control access per table:
         self.use_tacls = self.policy in (5, 6, 7, 8)
-        # Authorization takes owner entity into account:
+        # Authorization takes realm entity into account:
         self.entity_realm = self.policy in (6, 7, 8)
         # Permissions shared along the hierarchy of entities:
         self.entity_hierarchy = self.policy in (7, 8)
@@ -3718,7 +3730,7 @@ class S3Permission(object):
                             # by this entity
                             Field("entity", "integer"),
                             # apply this ACL to all record regardless
-                            # of the owner entity
+                            # of the realm entity
                             Field("unrestricted", "boolean",
                                   default=False),
                             migrate=migrate,
@@ -3862,13 +3874,13 @@ class S3Permission(object):
             @param record: the record ID (or the Row, if already loaded)
 
             @note: if passing a Row, it must contain all available ownership
-                   fields (id, owned_by_user, owned_by_group, owned_by_entity),
+                   fields (id, owned_by_user, owned_by_group, realm_entity),
                    otherwise the record will be re-loaded by this function.
 
-            @returns: tuple of (owner_entity, owner_group, owner_user)
+            @returns: tuple of (realm_entity, owner_group, owner_user)
         """
 
-        owner_entity = None
+        realm_entity = None
         owner_group = None
         owner_user = None
 
@@ -3883,7 +3895,7 @@ class S3Permission(object):
             return DEFAULT
 
         # Check which ownership fields the table defines
-        ownership_fields = ("owned_by_entity",
+        ownership_fields = ("realm_entity",
                             "owned_by_group",
                             "owned_by_user")
         fields = [f for f in ownership_fields if f in table.fields]
@@ -3913,13 +3925,13 @@ class S3Permission(object):
             # Record does not exist
             return DEFAULT
 
-        if "owned_by_entity" in record:
-            owner_entity = record["owned_by_entity"]
+        if "realm_entity" in record:
+            realm_entity = record["realm_entity"]
         if "owned_by_group" in record:
             owner_group = record["owned_by_group"]
         if "owned_by_user" in record:
             owner_user = record["owned_by_user"]
-        return (owner_entity, owner_group, owner_user)
+        return (realm_entity, owner_group, owner_user)
 
     # -------------------------------------------------------------------------
     def is_owner(self, table, record, owners=None):
@@ -3929,7 +3941,7 @@ class S3Permission(object):
             @param table: the table or tablename
             @param record: the record ID (or the Row if already loaded)
             @param owners: override the actual record owners by a tuple
-                           (owner_entity, owner_group, owner_user)
+                           (realm_entity, owner_group, owner_user)
 
             @returns: True if the current user owns the record, else False
         """
@@ -3949,10 +3961,10 @@ class S3Permission(object):
             # Admin owns all records
             return True
         elif owners is not None:
-            owner_entity, owner_group, owner_user = \
+            realm_entity, owner_group, owner_user = \
                     owners
         elif record:
-            owner_entity, owner_group, owner_user = \
+            realm_entity, owner_group, owner_user = \
                     self.get_owners(table, record)
         else:
             # All users own no records
@@ -3975,20 +3987,20 @@ class S3Permission(object):
             return True
 
         # Public record?
-        if not owner_entity and \
+        if not realm_entity and \
            not owner_group and \
            not owner_user:
             return True
 
         # OrgAuth:
-        # apply only group memberships with are valid for the owner entity
-        if self.entity_realm and owner_entity:
+        # apply only group memberships with are valid for the realm entity
+        if self.entity_realm and realm_entity:
             realms = self.auth.user.realms
             roles = [sr.ANONYMOUS]
             append = roles.append
             for r in realms:
                 realm = realms[r]
-                if realm is None or owner_entity in realm:
+                if realm is None or realm_entity in realm:
                     append(r)
 
         # Ownership based on user role
@@ -4012,7 +4024,7 @@ class S3Permission(object):
 
         OUSR = "owned_by_user"
         OGRP = "owned_by_group"
-        OENT = "owned_by_entity"
+        OENT = "realm_entity"
 
         query = None
         if user is None:
@@ -4097,7 +4109,7 @@ class S3Permission(object):
         """
 
         ANY = "ANY"
-        OENT = "owned_by_entity"
+        OENT = "realm_entity"
 
         if ANY in entities:
             return None
@@ -4126,9 +4138,9 @@ class S3Permission(object):
 
         db = current.db
 
-        approve = current.s3db.get_config(table, "requires_approval", False)
-        if not approve or "approved_by" not in table.fields:
-            return True
+        if "approved_by" not in table.fields or \
+           not self.requires_approval(table):
+            return approved
 
         if isinstance(record, (Row, dict)):
             if "approved_by" not in record:
@@ -4181,7 +4193,10 @@ class S3Permission(object):
         if record == 0:
             record = None
         _debug("\nhas_permission('%s', c=%s, f=%s, t=%s, record=%s)" % \
-               (",".join(method), c, f, t, record))
+               (",".join(method),
+                c or current.request.controller,
+                f or current.request.function,
+                t, record))
 
         # Auth override, system roles and login
         auth = self.auth
@@ -4194,7 +4209,7 @@ class S3Permission(object):
 
         # Required ACL
         racl = self.required_acl(method)
-        _debug("==> racl: %04X" % racl)
+        _debug("==> required ACL: %04X" % racl)
 
         # Get realms and delegations
         if not logged_in:
@@ -4301,27 +4316,49 @@ class S3Permission(object):
             raise self.error("Cannot determine permission.")
 
         elif permitted and \
-             current.deployment_settings.get_auth_record_approval() and \
-             t is not None and record is not None:
+             t is not None and record is not None and \
+             self.requires_approval(t):
 
-            # Check approval
+            # Approval possible for this table?
             if not hasattr(t, "_tablename"):
                 table = current.s3db.table(t)
                 if not table:
                     raise AttributeError("undefined table %s" % tablename)
             else:
                 table = t
-            approver_role = None
             if "approved_by" in table.fields:
+
+                approval_methods = ("approve", "review", "reject")
+                access_approved = not all([m in approval_methods for m in method])
+                access_unapproved = any([m in method for m in approval_methods])
+
                 approver_role = current.session["approver_role"]
-            if approver_role is None:
-                approver_role = sr.ADMIN
-            if approver_role not in realms or "approve" not in method:
-                permitted = self.approved(table, record) #or is_owner
-                if not permitted:
-                    _debug("==> Record not approved")
+                if approver_role is None:
+                    approver_role = sr.ADMIN
+
+                if access_unapproved:
+                    if access_approved:
+                        if approver_role not in realms:
+                            permitted = self.approved(table, record)
+                            if not permitted:
+                                _debug("==> Record not approved")
+                        else:
+                            pass # no change
+                    else:
+                        if approver_role in realms:
+                            permitted = self.unapproved(table, record)
+                            if not permitted:
+                                _debug("==> Record already approved")
+                        else:
+                            permitted = False
+                            _debug("==> Approver role required but not given")
+                else:
+                    permitted = self.approved(table, record)
+                    if not permitted:
+                        _debug("==> Record not approved")
             else:
-                permitted = True
+                # Approval not possible for this table => no change
+                pass
 
         if permitted:
             _debug("*** GRANTED ***")
@@ -4343,11 +4380,13 @@ class S3Permission(object):
             @param f: function name (falls back to current request)
         """
 
+        # Get the table
         if not hasattr(table, "_tablename"):
             tablename = table
-            table = current.s3db.table(tablename)
-            if not table:
-                raise AttributeError("undefined table %s" % tablename)
+            error = AttributeError("undefined table %s" % tablename)
+            table = current.s3db.table(tablename,
+                                       db_only = True,
+                                       default = error)
 
         if not isinstance(method, (list, tuple)):
             method = [method]
@@ -4357,18 +4396,36 @@ class S3Permission(object):
         ALL_RECORDS = (table._id > 0)
         NO_RECORDS = (table._id == 0)
 
+        # Record approval required?
+        if self.requires_approval(table) and \
+           "approved_by" in table.fields:
+            requires_approval = True
+            APPROVED = (table.approved_by != None)
+            UNAPPROVED = (table.approved_by == None)
+        else:
+            requires_approval = False
+            APPROVED = ALL_RECORDS
+            UNAPPROVED = NO_RECORDS
+
+        # Approval method?
+        approval_methods = ("review", "approve", "reject")
+        unapproved = any([m in method for m in approval_methods])
+        approved = not all([m in approval_methods for m in method])
+
+        # What does ALL RECORDS mean?
+        ALL_RECORDS = ALL_RECORDS if approved and unapproved \
+                                  else UNAPPROVED if unapproved \
+                                  else APPROVED
+
         # Auth override, system roles and login
         auth = self.auth
-        if self.auth.override:
+        if auth.override:
             _debug("==> auth.override")
             _debug("*** ALL RECORDS ***")
             return ALL_RECORDS
+
         sr = auth.get_system_roles()
         logged_in = auth.s3_logged_in()
-
-        # Required ACL
-        racl = self.required_acl(method)
-        _debug("==> racl: %04X" % racl)
 
         # Get realms and delegations
         user = auth.user
@@ -4385,22 +4442,23 @@ class S3Permission(object):
             _debug("*** ALL RECORDS ***")
             return ALL_RECORDS
 
-        approve = current.deployment_settings.get_auth_record_approval() & \
-                  current.s3db.get_config(table, "requires_approval", False)
-        if approve and "approved_by" in table.fields:
+        # Re-adjust ALL RECORDS after actual user roles
+        if requires_approval:
             approver_role = current.session["approver_role"]
             if approver_role is None:
                 approver_role = sr.ADMIN
-            if approver_role not in realms or "approve" not in method:
-                base_filter = (table.approved_by != None)
-                approve = False
-            else:
-                base_filter = (table.approved_by == None)
-                approve = True
-            ALL_RECORDS = base_filter
-        else:
-            base_filter = None
+            if approver_role not in realms:
+                if not approved:
+                    _debug("==> user doesn't have approver role")
+                    _debug("*** NO RECORDS ***")
+                    return NO_RECORDS
+                ALL_RECORDS = APPROVED
 
+        # Required ACL
+        racl = self.required_acl(method)
+        _debug("==> required permissions: %04X" % racl)
+
+        # Use ACLs?
         if not self.use_cacls:
             _debug("==> simple authorization")
             # Fall back to simple authorization
@@ -4434,7 +4492,7 @@ class S3Permission(object):
             return ALL_RECORDS
         elif not acls:
             _debug("==> no applicable ACLs")
-            _debug("*** NO RECORDS ***")
+            _debug("*** ACCESS DENIED ***")
             return NO_RECORDS
 
         oacls = []
@@ -4450,7 +4508,7 @@ class S3Permission(object):
         no_realm = []
         check_owner_acls = True
 
-        OENT = "owned_by_entity"
+        OENT = "realm_entity"
 
         if "ANY" in uacls:
             _debug("==> permitted for any records")
@@ -4482,8 +4540,11 @@ class S3Permission(object):
                 _debug("==> permitted for any records owned by entities %s" % str(uacls+oacls))
                 query = self.realm_query(table, uacls+oacls)
 
-            if query is not None and approve:
-                query = base_filter & query
+            if query is not None and requires_approval:
+                base_filter = None if approved and unapproved else \
+                              UNAPPROVED if unapproved else APPROVED
+                if base_filter is not None:
+                    query = base_filter & query
 
         # Fallback
         if query is None:
@@ -4586,7 +4647,7 @@ class S3Permission(object):
             @param c: the controller name, falls back to current request
             @param f: the function name, falls back to current request
             @param t: the tablename
-            @param entity: the owner entity
+            @param entity: the realm entity
 
             @returns: None for no ACLs defined (allow),
                       [] for no ACLs applicable (deny),
@@ -4649,8 +4710,10 @@ class S3Permission(object):
         # Retrieve the ACLs
         if q:
             query &= q
-        query &= (table.group_id == gtable.id)
-        rows = db(query).select(gtable.id, table.ALL)
+            query &= (table.group_id == gtable.id)
+            rows = db(query).select(gtable.id, table.ALL)
+        else:
+            rows = []
 
         # Cascade ACLs
         ANY = "ANY"
@@ -4799,6 +4862,11 @@ class S3Permission(object):
         else:
             default_table_acl = ALL
 
+        # Fall back to default page acl
+        if not acls and not (t and self.use_tacls):
+            acls[ANY] = Storage(c=default_page_acl)
+
+
         # Order by precedence
         result = Storage()
         for e in acls:
@@ -4863,6 +4931,32 @@ class S3Permission(object):
         return True
 
     # -------------------------------------------------------------------------
+    @classmethod
+    def requires_approval(cls, table):
+        """
+            Check whether record approval is required for a table
+
+            @param table: the table (or tablename)
+        """
+
+        settings = current.deployment_settings
+
+        if settings.get_auth_record_approval():
+            tables = settings.get_auth_record_approval_required_for()
+            if tables is not None:
+                table = table._tablename if type(table) is Table else table
+                if table in tables:
+                    return True
+                else:
+                    return False
+            elif current.s3db.get_config(table, "requires_approval"):
+                return True
+            else:
+                return False
+        else:
+            return False
+
+    # -------------------------------------------------------------------------
     def hidden_modules(self):
         """ List of modules to hide from the main menu """
 
@@ -4925,7 +5019,7 @@ class S3Permission(object):
         # If the table doesn't have any ownership fields, then no
         if "owned_by_user" not in table.fields and \
            "owned_by_group" not in table.fields and \
-           "owned_by_entity" not in table.fields:
+           "realm_entity" not in table.fields:
             return False
 
         if not isinstance(method, (list, tuple)):
@@ -4968,11 +5062,45 @@ class S3Permission(object):
         acls = [entity for entity in acls if acls[entity][0] & racl == racl]
 
         # If we have a UACL and it is not limited to any realm, then no
-        if "ANY" in acls or acls and "owned_by_entity" not in table.fields:
+        if "ANY" in acls or acls and "realm_entity" not in table.fields:
             return False
 
         # In all other cases: yes
         return True
+
+    # -------------------------------------------------------------------------
+    def forget(self, table=None, record_id=None):
+        """
+            Remove any cached permissions for a record. This can be
+            necessary in methods which change the status of the record
+            (e.g. approval).
+
+            @param table: the table
+            @param record_id: the record ID
+        """
+
+        if table is None:
+            current.response.s3.permissions = Storage()
+            return
+        try:
+            permissions = current.response.s3.permissions
+        except:
+            return
+        if not permissions:
+            return
+
+        if hasattr(table, "_tablename"):
+            tablename = table._tablename
+        else:
+            tablename = table
+
+        for key in list(permissions.keys()):
+            r = key.split("/")
+            if len(r) > 1 and r[-2] == tablename:
+                if record_id is None or \
+                   record_id is not None and r[-1] == str(record_id):
+                    del permissions[key]
+        return
 
 # =============================================================================
 class S3Audit(object):
@@ -5036,6 +5164,12 @@ class S3Audit(object):
 
         settings = current.deployment_settings
 
+        audit_read = settings.get_security_audit_read()
+        audit_write = settings.get_security_audit_write()
+
+        if not audit_read and not audit_write:
+            return True
+
         #import sys
         #print >> sys.stderr, "Audit %s: %s_%s record=%s representation=%s" % \
                              #(operation, prefix, name, record, representation)
@@ -5071,7 +5205,7 @@ class S3Audit(object):
             record = None
 
         if operation in ("list", "read"):
-            if settings.get_security_audit_read():
+            if audit_read:
                 table.insert(timestmp = now,
                              person = self.user,
                              operation = operation,
@@ -5080,7 +5214,7 @@ class S3Audit(object):
                              representation = representation)
 
         elif operation in ("create", "update"):
-            if settings.get_security_audit_write():
+            if audit_write:
                 if form:
                     record = form.vars.id
                     new_value = ["%s:%s" % (var, str(form.vars[var]))
@@ -5097,7 +5231,7 @@ class S3Audit(object):
                 self.diff = None
 
         elif operation == "delete":
-            if settings.get_security_audit_write():
+            if audit_write:
                 query = db[tablename].id == record
                 row = db(query).select(limitby=(0, 1)).first()
                 old_value = []
