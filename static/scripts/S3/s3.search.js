@@ -4,6 +4,59 @@
 
 S3.search = Object();
 
+/*
+ * Save the current search to the users' profile
+ * so it can be subscribed to
+ */
+S3.search.saveCurrentSearch = function(event) {
+	// The Save this Search button
+	var btn = $(event.currentTarget);
+
+	// Show the progress indicator in the button
+	$('<img/>').attr('src', S3.Ap.concat('/static/img/indicator.gif'))
+               .insertAfter(btn);
+
+	// Disable the button to prevent clicking while loading
+	btn.attr('disabled', 'disabled');
+
+	// POST the s3json to the saved_search REST controller
+	$.ajax({
+		type: 'POST',
+		url: S3.search.saveOptions.url,
+		data: S3.search.saveOptions.data,
+		success: function(data) {
+			// If successful this will be the new record ID
+			var recordId = data.created[0];
+
+			// Set the id of the new hyperlink to the id the button had
+			id = (btn.attr('id') != undefined) ? btn.attr('id') : '';
+
+			// Create a new hyperlink pointing to the new record
+			// under the current users' profile
+			var link = $('<a/>')
+				.attr('id', id)
+				.attr('href', S3.search.saveOptions.url_detail.replace('%3Cid%3E', recordId))
+				.text(S3.i18n.edit_saved_search);
+
+			// replace the Save button with the hyperlink
+			btn.replaceWith(link);
+
+			// change indicator to 'success' icon
+			link.next().attr('src', S3.Ap.concat('/static/img/tick.png'));
+		},
+		error: function(data) {
+			// If the request fails, change the indicator icon
+			btn.next().attr('src', S3.Ap.concat('/static/img/cross2.png'));
+
+			// show the response text
+			$('<span/>').text(data.statusText)
+                        .insertAfter(btn);
+		}
+	});
+	//event.preventDefault();
+	return false;
+}
+
 // ============================================================================
 
 S3.search.AutocompleteTimer = function() {
@@ -35,7 +88,7 @@ S3.search.AutocompleteAjax = function(selSearchDiv) {
     var selInput = $('[name ^= "' + Fieldname + '_search_simple"]');
 
     // Clear the current input
-    selHiddenInput.val("");
+    selHiddenInput.val('');
 	selHiddenInput.change(); // Trigger other events
 
     var selResultList = $('#' + Fieldname + '_result_list');
@@ -178,33 +231,30 @@ $(document).ready(function() {
         Hide all the expanding/collapsing letter widgets that don't have
         any options selected
     */
-    $('.search_select_letter_label,.s3-grouped-checkboxes-widget-label').each(function() {
-        widget = $(this).next();
-        if ($(':checked', widget).length < 1) {
-            widget.toggleClass('hide');
-        }
-        else {
-            $(this).toggleClass('expanded');
-        }
-    })
-    .click( function(event) {
+    $('.search_select_letter_label,.s3-grouped-checkboxes-widget-label').live('click', function(event) {
         /*
             Listen for click events on the expanding/collapsing letter widgets
         */
         var div = $(this)
         div.next('table').toggleClass('hide');
         div.toggleClass('expanded');
+    })
+    .each(function() {
+        widget = $(this).next();
+        if ($(':checked', widget).length < 1) {
+        	$(this).click();
+        }
     });
 
     /* Search AutoComplete */
 
     // Events to capture autocomplete input
-    $('div.simple-form').keyup( S3.search.AutocompleteTimer )
-    					.click( S3.search.AutocompleteTimer )
+    $('div.simple-form').keyup(S3.search.AutocompleteTimer)
+    					.click(S3.search.AutocompleteTimer)
     					.keypress(S3.search.CancelEnterPress);
 
-    $('div.advanced-form').keyup( S3.search.AutocompleteTimer )
-    					  .click( S3.search.AutocompleteTimer )
+    $('div.advanced-form').keyup(S3.search.AutocompleteTimer)
+    					  .click(S3.search.AutocompleteTimer)
     					  .keypress(S3.search.ancelEnterPress);
 
     // Select Item for Autocomplete
@@ -226,6 +276,47 @@ $(document).ready(function() {
             //selInput.attr('_value', represent);
             selResultList.remove();
         }
-
     });
+
+    // Activate the Save Search buttons
+   $('button#save-search').on('click', S3.search.saveCurrentSearch);
+
+    // S3SearchLocationWidget
+    // Allow clearing of map polygons in search forms
+    $('button#gis_search_polygon_input_clear').on('click', function(event) {
+        S3.search.clearMapPolygon();
+        // prevent form submission
+        event.preventDefault();
+    });
+    $('input#gis_search_polygon_input').on('change', S3.search.toggleMapClearButton)
+                                       .trigger('change');
 });
+
+/*
+ * S3SearchLocationWidget
+ *
+ * Clears the map widget in a search form and also removes the
+ * polygon from the map itself
+ */
+S3.search.clearMapPolygon = function() {
+    if (S3.gis.lastDraftFeature) {
+        S3.gis.lastDraftFeature.destroy();
+    }
+    $('input#gis_search_polygon_input').val('').trigger('change');
+}
+
+/*
+ * S3SearchLocationWidget
+ *
+ * If the map widget has a value, a clear button will be shown
+ * otherwise it is hidden
+ */
+S3.search.toggleMapClearButton = function(event) {
+    var inputElement = $(event.currentTarget);
+    var clearButton = inputElement.siblings('button#gis_search_polygon_input_clear');
+    if (inputElement.val()) {
+        clearButton.show();
+    } else {
+        clearButton.hide();
+    }
+}

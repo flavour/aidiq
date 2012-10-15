@@ -69,8 +69,8 @@ class CreateStaffTraining(SeleniumUnitTest):
                      ( "hours",
                        "12"),
                      ( "site_id",
-                       "Bucharest RFAAT Centre",
-                       "autocomplete"),
+                       "AP Zone (Office)",
+                       "option"),
                      ( "comments",
                        "Testing comments"),
                      ]

@@ -62,7 +62,7 @@ from gluon.languages import lazyT
 from gluon.storage import Storage
 from gluon.tools import callback
 
-from s3utils import SQLTABLES3, s3_has_foreign_key, s3_get_foreign_key, s3_unicode, S3DataTable
+from s3utils import s3_has_foreign_key, s3_get_foreign_key, s3_unicode, S3DataTable
 from s3validators import IS_ONE_OF
 
 DEBUG = False
@@ -144,6 +144,7 @@ class S3Resource(object):
         """
 
         s3db = current.s3db
+        auth = current.auth
         manager = current.manager
 
         # Names ---------------------------------------------------------------
@@ -192,6 +193,9 @@ class S3Resource(object):
                 raise # KeyError(manager.error)
         table = self.table
 
+        # Set default approver
+        auth.permission.set_default_approver(table)
+
         self._alias = tablename
         """ Table alias (the tablename used in joins/queries) """
 
@@ -212,8 +216,6 @@ class S3Resource(object):
         self.ERROR = manager.ERROR
 
         # Authorization hooks
-        auth = current.auth
-
         self.permit = auth.s3_has_permission
         self.accessible_query = auth.s3_accessible_query
 
@@ -517,7 +519,7 @@ class S3Resource(object):
                                                            skip_components=False)
 
         distinct = distinct | d
-        attributes = dict(distinct=distinct)
+        attributes = {"distinct":distinct}
 
         # Left joins
         left_joins = left
@@ -549,7 +551,7 @@ class S3Resource(object):
                 left_joins.sort(self.sortleft)
             except:
                 pass
-            attributes.update(left=left_joins)
+            attributes["left"] = left_joins
 
         # Joins
         for join in joins.values():
@@ -558,13 +560,13 @@ class S3Resource(object):
 
         # Orderby
         if orderby is not None:
-            attributes.update(orderby=orderby)
+            attributes["orderby"] = orderby
 
         # Limitby
         if vfltr is None:
             limitby = self.limitby(start=start, limit=limit)
             if limitby is not None:
-                attributes.update(limitby=limitby)
+                attributes["limitby"] = limitby
         else:
             # Retrieve all records when filtering for virtual fields
             # => apply start/limit in vfltr instead
@@ -598,29 +600,37 @@ class S3Resource(object):
 
         # Add orderby fields which are not in qfields
         # @todo: this could need some cleanup/optimization
-        if distinct and orderby is not None:
-            qf = [str(f) for f in qfields]
-            if isinstance(orderby, str):
-                of = orderby.split(",")
-            elif not isinstance(orderby, (list, tuple)):
-                of = [orderby]
-            else:
-                of = orderby
-            for e in of:
-                if isinstance(e, Field) and str(e) not in qf:
-                    qfields.append(e)
-                    qf.append(str(e))
-                elif isinstance(e, str):
-                    fn = e.strip().split()[0].split(".", 1)
-                    tn, fn = ([table._tablename] + fn)[-2:]
-                    try:
-                        t = db[tn]
-                        f = t[fn]
-                    except:
-                        continue
-                    if str(f) not in qf:
-                        qfields.append(f)
+        if distinct:
+            if orderby is not None:
+                qf = [str(f) for f in qfields]
+                if isinstance(orderby, str):
+                    of = orderby.split(",")
+                elif not isinstance(orderby, (list, tuple)):
+                    of = [orderby]
+                else:
+                    of = orderby
+                for e in of:
+                    if isinstance(e, Field) and str(e) not in qf:
+                        qfields.append(e)
                         qf.append(str(e))
+                    elif isinstance(e, str):
+                        fn = e.strip().split()[0].split(".", 1)
+                        tn, fn = ([table._tablename] + fn)[-2:]
+                        try:
+                            t = db[tn]
+                            f = t[fn]
+                        except:
+                            continue
+                        if str(f) not in qf:
+                            qfields.append(f)
+                            qf.append(str(e))
+            else:
+                # default ORDERBY needed with postgresql and DISTINCT,
+                # otherwise DAL will add an ORDERBY for any primary keys
+                # in the join, which could render DISTINCT meaningless here.
+                if str(self._id) not in [str(f) for f in qfields]:
+                    qfields.insert(0, self._id)
+                attributes["orderby"] = self._id
 
         # Retrieve the rows
         rows = db(query).select(*qfields, **attributes)
@@ -933,20 +943,19 @@ class S3Resource(object):
             return False
 
         tablename = self.tablename
+        table = self.table
 
         for record in self.select():
 
-            table = self.table
             record_id = record[table._id]
 
             # Forget any cached permission for this record
             auth.permission.forget(table, record_id)
 
             if "approved_by" in table.fields:
-                query = (table._id == record_id)
-                success = current.db(query).update(approved_by=user_id)
+                success = record.update_record(approved_by=user_id)
                 if not success:
-                    db.rollback()
+                    current.db.rollback()
                     return False
                 else:
                     onapprove = self.get_config("onapprove", None)
@@ -960,7 +969,7 @@ class S3Resource(object):
                 component = self.components[alias]
                 success = component.approve(components=None, approve=approve)
                 if not success:
-                    db.rollback()
+                    current.db.rollback()
                     return False
 
         return True
@@ -1730,13 +1739,13 @@ class S3Resource(object):
     def export_tree(self,
                     start=0,
                     limit=None,
-                    skip=[],
-                    fields=None,
                     msince=None,
+                    fields=None,
+                    skip=[],
+                    references=None,
                     dereference=True,
                     mcomponents=None,
                     rcomponents=None,
-                    references=None,
                     maxbounds=False):
         """
             Export the resource as element tree
@@ -1744,15 +1753,18 @@ class S3Resource(object):
             @param start: index of the first record to export
             @param limit: maximum number of records to export
             @param msince: minimum modification date of the records
+            @param fields: data fields to include (default: all)
             @param skip: list of fieldnames to skip
-            @param show_urls: show record URLs in the export
+            @param references: foreign keys to include (default: all)
+            @param dereference: also export referenced records
             @param mcomponents: components of the master resource to
                                 include (list of tablenames), empty list
                                 for all
             @param rcomponents: components of referenced resources to
                                 include (list of tablenames), empty list
                                 for all
-            @param dereference: also export referenced records
+            @param maxbounds: include lat/lon boundaries in the top
+                              level element (off by default)
 
         """
 
@@ -1909,6 +1921,7 @@ class S3Resource(object):
                                               export_map=export_map,
                                               components=rcomponents,
                                               skip=skip,
+                                              master=False,
                                               marker=marker,
                                               locations=locations)
 
@@ -1920,7 +1933,7 @@ class S3Resource(object):
             duration = end - _start
             duration = '{:.2f}'.format(duration.total_seconds())
             _debug("export_resource of referenced resources and their components completed in %s seconds" % \
-                duration)
+                   duration)
 
         # Complete the tree
         tree = xml.tree(None,
@@ -1949,11 +1962,9 @@ class S3Resource(object):
                           components=None,
                           skip=[],
                           msince=None,
+                          master=True,
                           marker=None,
-                          locations=None,
-                          popup_label=None,
-                          popup_fields=None
-                          ):
+                          locations=None):
         """
             Add a <resource> to the element tree
 
@@ -1968,6 +1979,7 @@ class S3Resource(object):
                                resources (tablenames)
             @param skip: fields to skip
             @param msince: the minimum update datetime for exported records
+            @param master: True of this is the master resource
             @param marker: the marker for GIS encoding
             @param locations: the locations for GIS encoding
         """
@@ -1994,6 +2006,7 @@ class S3Resource(object):
                                export_map=export_map,
                                url=record_url,
                                msince=msince,
+                               master=master,
                                marker=marker,
                                locations=locations)
         if element is not None:
@@ -2051,7 +2064,8 @@ class S3Resource(object):
                                              parent=element,
                                              export_map=export_map,
                                              url=crecord_url,
-                                             msince=msince)
+                                             msince=msince,
+                                             master=False)
                     if celement is not None:
                         add = True # keep the parent record
 
@@ -2083,9 +2097,9 @@ class S3Resource(object):
                         export_map=None,
                         url=None,
                         msince=None,
+                        master=True,
                         marker=None,
-                        locations=None
-                        ):
+                        locations=None):
         """
             Exports a single record to the element tree.
 
@@ -2096,7 +2110,9 @@ class S3Resource(object):
             @param export_map: the export map of the current request
             @param url: URL of the record
             @param msince: minimum last update time
+            @param master: True if this is a record in the master resource
             @param marker: the marker for GIS encoding
+            @param locations: the locations for GIS encoding
         """
 
         s3db = current.s3db
@@ -2158,7 +2174,7 @@ class S3Resource(object):
 
         # GIS-encode the element
         xml.gis_encode(self, record, element, rmap,
-                       marker=marker, locations=locations)
+                       marker=marker, locations=locations, master=master)
 
         return (element, rmap)
 
@@ -3296,9 +3312,10 @@ class S3Resource(object):
         ltable = self.table
         mtable = self.parent.table
         ctable = self.linked.table
-        query = join & \
-                (mtable._id == master_id) & \
-                (ltable._id == link_id)
+        query = join & (ltable._id == link_id)
+        if master_id is not None:
+            # master ID is redundant, but can be used to check negatives
+            query &= (mtable._id == master_id)
         row = current.db(query).select(ctable._id, limitby=(0, 1)).first()
         if row:
             return row[ctable._id.name]
@@ -3765,7 +3782,13 @@ class S3ResourceField(object):
             self.virtual = False
             field = self.field
             self.ftype = str(field.type)
-            self.represent = field.represent
+            if resource.linked is not None and self.ftype == "id":
+                # Always represent the link-table's ID as the
+                # linked record's ID => needed for data tables
+                self.represent = lambda i, resource=resource: \
+                                           resource.component_id(None, i)
+            else:
+                self.represent = field.represent
             self.requires = field.requires
         else:
             self.virtual = True
@@ -6106,6 +6129,39 @@ class S3RecordMerger(object):
         return success
 
     # -------------------------------------------------------------------------
+    def merge_realms(self, table, original, duplicate):
+        """
+            Merge the realms of two person entities (update all
+            realm_entities in all records from duplicate to original)
+
+            @param table: the table original and duplicate belong to
+            @param original: the original record
+            @param duplicate: the duplicate record
+        """
+
+        if "pe_id" not in table.fields:
+            return
+
+        original_pe_id = original["pe_id"]
+        duplicate_pe_id = duplicate["pe_id"]
+
+        db = current.db
+
+        for t in db:
+            if "realm_entity" in t.fields:
+
+                query = (t.realm_entity == duplicate_pe_id)
+                if "deleted" in t.fields:
+                    query &= (t.deleted != True)
+                try:
+                    db(query).update(realm_entity = original_pe_id)
+                except:
+                    db.rollback()
+                    raise
+        return
+
+
+    # -------------------------------------------------------------------------
     def fieldname(self, key):
 
         fn = None
@@ -6363,6 +6419,7 @@ class S3RecordMerger(object):
 
         # Delete the duplicate
         if not is_super_entity:
+            self.merge_realms(table, original, duplicate)
             delete_record(table, duplicate_id, replaced_by=original_id)
 
         # Success

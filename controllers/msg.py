@@ -7,7 +7,7 @@
 module = request.controller
 resourcename = request.function
 
-if not deployment_settings.has_module(module):
+if not settings.has_module(module):
     raise HTTP(404, body="Module disabled: %s" % module)
 
 # -----------------------------------------------------------------------------
@@ -191,15 +191,28 @@ def twitter_search():
 
 # -----------------------------------------------------------------------------
 def twitter_search_results():
-    """ Controller to retrieve tweets for user saved search queries - to be called via cron. Currently in real time also. """
+    """
+        Controller to view tweets from user saved search queries
 
-    # Update results
-    result = msg.receive_subscribed_tweets()
+        @ToDo: Action Button to update async
+    """
 
-    if not result:
-        session.error = T("Need to configure Twitter Authentication")
-        redirect(URL(f="twitter_settings", args=[1, "update"]))
+    def prep(r):
+        if r.interactive:
+            table = r.table
+            if not db(table.id > 0).select(table.id,
+                                           limitby=(0, 1)).first():
+                # Update results
+                result = msg.receive_subscribed_tweets()
+                if not result:
+                    session.error = T("Need to configure Twitter Authentication")
+                    redirect(URL(f="twitter_settings", args=[1, "update"]))
+        return True
+    s3.prep = prep
 
+    s3db.configure("msg_twitter_search_results",
+                   insertable=False,
+                   editable=False)
     return s3_rest_controller()
 
 # =============================================================================
@@ -510,6 +523,18 @@ def twilio_inbound_settings():
     return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
+def keyword():
+    """ REST Controller """
+    
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def sender():
+    """ REST Controller """
+    
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
 def workflow():
     """
         RESTful CRUD controller for workflows
@@ -528,7 +553,7 @@ def workflow():
     table.workflow_task_id.label = T("Parsing Workflow")
     table.workflow_task_id.comment = DIV(DIV(_class="tooltip",
                 _title="%s|%s" % (T("Parsing Workflow"),
-                                  T("This is the name of the parsing functionn used as a workflow."))))
+                                  T("This is the name of the parsing function used as a workflow."))))
 
     # CRUD Strings
     s3.crud_strings["msg_workflow"] = Storage(
@@ -1200,11 +1225,13 @@ def twitter_settings():
     )
 
     def prep(r):
-        if not (settings.twitter.oauth_consumer_key and settings.twitter.oauth_consumer_secret):
+        oauth_consumer_key = settings.msg.twitter_oauth_consumer_key
+        oauth_consumer_secret = settings.msg.twitter_oauth_consumer_secret
+        if not (oauth_consumer_key and oauth_consumer_secret):
             session.error = T("You should edit Twitter settings in models/000_config.py")
             return True
-        oauth = tweepy.OAuthHandler(settings.twitter.oauth_consumer_key,
-                                    settings.twitter.oauth_consumer_secret)
+        oauth = tweepy.OAuthHandler(oauth_consumer_key,
+                                    oauth_consumer_secret)
 
         #tablename = "%s_%s" % (module, resourcename)
         #table = db[tablename]
@@ -1212,17 +1239,16 @@ def twitter_settings():
 
         if r.http == "GET" and r.method in ("create", "update"):
             # We're showing the form
+            _s3 = session.s3
             try:
-                session.s3.twitter_oauth_url = oauth.get_authorization_url()
-                session.s3.twitter_request_key = oauth.request_token.key
-                session.s3.twitter_request_secret = oauth.request_token.secret
+                _s3.twitter_oauth_url = oauth.get_authorization_url()
+                _s3.twitter_request_key = oauth.request_token.key
+                _s3.twitter_request_secret = oauth.request_token.secret
             except tweepy.TweepError:
                 session.error = T("Problem connecting to twitter.com - please refresh")
                 return True
             table.pin.readable = True
-            table.pin.label = SPAN(T("PIN number "),
-                A(T("from Twitter"), _href=T(session.s3.twitter_oauth_url), _target="_blank"),
-                " (%s)" % T("leave empty to detach account"))
+            table.pin.label = T("PIN number from Twitter (leave empty to detach account)")
             table.pin.value = ""
             table.twitter_account.label = T("Current Twitter account")
             return True
@@ -1237,6 +1263,11 @@ def twitter_settings():
     # Post-processor
     def user_postp(r, output):
         output["list_btn"] = ""
+        if r.http == "GET" and r.method in ("create", "update"):
+            rheader = A(T("Collect PIN from Twitter"),
+                        _href=T(session.s3.twitter_oauth_url),
+                        _target="_blank")
+            output["rheader"] = rheader  
         return output
     s3.postp = user_postp
 
@@ -1441,85 +1472,6 @@ def person_search(value, type=None):
 def subscription():
 
     return s3_rest_controller()
-
-# -----------------------------------------------------------------------------
-def load_search(id):
-    var = {}
-    var["load"] = id
-    table = s3db.pr_save_search
-    rows = db(table.id == id).select()
-    import cPickle
-    for row in rows:
-        search_vars = cPickle.loads(row.search_vars)
-        prefix = str(search_vars["prefix"])
-        function = str(search_vars["function"])
-        date = str(row.modified_on)
-        break
-    field = "%s.modified_on__gt" %(function)
-    date = date.replace(" ","T")
-    date = date + "Z"
-    var[field] = date
-    #var["transform"] = "eden/static/formats/xml/import.xsl"
-    r = s3_request(prefix, function, args=["search"],
-                                     #extension="xml",
-                                     get_vars=Storage(var))
-    #redirect(URL(r=request, c=prefix, f=function, args=["search"],vars=var))
-    s3.no_sspag=True
-    output = r()
-    #extract the updates
-    return output
-
-# -----------------------------------------------------------------------------
-def check_updates(user_id):
-    """
-        Check Updates for all the Saved Searches Subscribed by the User
-    """
-
-    message = "<h2>Saved Searches' Update</h2>"
-    flag = 0
-    table = s3db.pr_save_search
-    rows = db(table.user_id == user_id).select()
-    search_vars_represent = s3base.s3_search_vars_represent
-    for row in rows :
-        if row.subscribed:
-            records = load_search(row.id)
-            message = message + "<b>" + search_vars_represent(row.search_vars) + "</b>"
-            if str(records["items"]) != "No Matching Records":
-                message = message + str(records["items"]) + "<br />" #Include the Saved Search details
-                flag = 1
-            db.pr_save_search[row.id] = dict(modified_on = request.utcnow)
-    if flag == 0:
-        return
-    else:
-        return XML(message)
-
-# -----------------------------------------------------------------------------
-def subscription_messages():
-
-    table = s3db.msg_subscription
-    subs = None
-    if request.args[0] == "daily":
-        subs = db(table.subscription_frequency == "daily").select()
-    if request.args[0] == "weekly":
-        subs = db(table.subscription_frequency == "weekly").select()
-    if request.args[0] == "monthly":
-        subs = db(table.subscription_frequency == "monthly").select()
-    if subs:
-        for sub in subs:
-            # Check if the message is not empty
-            message = check_updates(sub.user_id)
-            if message == None:
-                continue
-            pe_id = auth.s3_user_pe_id(sub.user_id)
-            if pe_id:
-                msg.send_by_pe_id(pe_id,
-                                  subject="Subscription Updates",
-                                  message=message,
-                                  sender_pe_id = None,
-                                  pr_message_method = "EMAIL",
-                                  sender="noreply@sahana.com",
-                                  fromaddress="sahana@sahana.com")
-    return
 
 # =============================================================================
 # Enabled only for testing:

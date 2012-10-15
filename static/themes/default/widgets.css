@@ -16,6 +16,7 @@ div.form-container {
     width: 100%;
     overflow: auto;
     margin-top: 5px;
+    margin-bottom: 15px;
 }
 div.form-container form {
     padding: 5px;
@@ -36,6 +37,7 @@ div.form-container form p.note {
     color: #666;
 }
 div.form-container form input,
+div.form-container form button,
 div.form-container form select,
 div.form-container form textarea {
     padding: 2px;
@@ -561,6 +563,7 @@ div#component {
 /* Resource Footer */
 div#rfooter {
 	padding: 15px 0;
+	clear: both;
 }
 
 /* Last Update Meta-data */
@@ -860,9 +863,10 @@ ul.x-tree-root-ct {
     margin-left: 2em;
 }
 
-.search_select_letter_widget label,
-.s3-checkboxes-widget label {
+div.form-container form fieldset .search_select_letter_widget label,
+div.form-container form fieldset  .s3-checkboxes-widget label {
     white-space: nowrap;
+    text-align: left;
 }
 /* Checkboxes with title attributes */
 /*
@@ -955,4 +959,9 @@ table.report td {
     cursor: s-resize;
     height: 9px;
     overflow: hidden;
+}
+
+/* Translation Functionality */
+table.translation_module_table {
+    width: 55%;
 }

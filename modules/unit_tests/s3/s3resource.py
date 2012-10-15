@@ -499,14 +499,14 @@ class ResourceFilterQueryTests(unittest.TestCase):
 
         resource = current.s3db.resource("org_organisation")
         FS = S3FieldSelector
-        q = FS("sector_id").contains([1, 2])
+        q = FS("multi_sector_id").contains([1, 2])
         query = q.query(resource)
-        self.assertEqual(str(query), "((org_organisation.sector_id LIKE '%|1|%') AND "
-                                     "(org_organisation.sector_id LIKE '%|2|%'))")
-        q = FS("sector_id").anyof([1, 2])
+        self.assertEqual(str(query), "((org_organisation.multi_sector_id LIKE '%|1|%') AND "
+                                     "(org_organisation.multi_sector_id LIKE '%|2|%'))")
+        q = FS("multi_sector_id").anyof([1, 2])
         query = q.query(resource)
-        self.assertEqual(str(query), "((org_organisation.sector_id LIKE '%|1|%') OR "
-                                     "(org_organisation.sector_id LIKE '%|2|%'))")
+        self.assertEqual(str(query), "((org_organisation.multi_sector_id LIKE '%|1|%') OR "
+                                     "(org_organisation.multi_sector_id LIKE '%|2|%'))")
 
     # -------------------------------------------------------------------------
     def tearDown(self):
@@ -1247,7 +1247,7 @@ class ResourceExportTests(unittest.TestCase):
             last = resource._rows[1]["uuid"]
 
             import time
-            time.sleep(1) # Wait 2 seconds to change mtime
+            time.sleep(2) # Wait 2 seconds to change mtime
             resource._rows[0].update_record(name="OrderTestHospital1")
 
             msince = msince=datetime.datetime.utcnow() - datetime.timedelta(days=1)
@@ -1620,6 +1620,30 @@ class MergeOrganisationsTests(unittest.TestCase):
         self.assertNotEqual(user, None)
 
         self.assertEqual(str(user.organisation_id), str(self.id1))
+
+    # -------------------------------------------------------------------------
+    def testMergeRealms(self):
+        """ Test merge of realms when merging two person entities """
+
+        org1, org2 = self.get_records()
+
+        s3db = current.s3db
+        org1_pe_id = s3db.pr_get_pe_id(org1)
+        org2_pe_id = s3db.pr_get_pe_id(org2)
+
+        person = Storage(first_name="Nxthga",
+                         realm_entity=org2_pe_id)
+        ptable = s3db.pr_person
+        person_id = ptable.insert(**person)
+
+        person = ptable[person_id]
+        self.assertEqual(person.realm_entity, org2_pe_id)
+
+        success = self.resource.merge(self.id1, self.id2)
+        self.assertTrue(success)
+
+        person = ptable[person_id]
+        self.assertEqual(person.realm_entity, org1_pe_id)
 
     # -------------------------------------------------------------------------
     def get_records(self):

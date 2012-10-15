@@ -28,9 +28,7 @@ if len(pop_list) > 0:
     acl = auth.permission
     sysroles = auth.S3_SYSTEM_ROLES
     create_role = auth.s3_create_role
-    update_acls = auth.s3_update_acls
-
-    default_oacl = acl.READ|acl.UPDATE
+    #update_acls = auth.s3_update_acls
 
     # Do not remove or change order of these 5 definitions (System Roles):
     create_role("Administrator",
@@ -84,7 +82,8 @@ if len(pop_list) > 0:
     # Configure Scheduled Tasks
     #
 
-    if settings.has_module("msg"):
+    has_module = settings.has_module
+    if has_module("msg"):
 
         # Send Messages from Outbox
         # SMS every minute
@@ -100,6 +99,31 @@ if len(pop_list) > 0:
                              period=300,  # seconds
                              timeout=300, # seconds
                              repeats=0    # unlimited
+                             )
+        # saved search notifications
+        s3task.schedule_task("msg_search_subscription_notifications",
+                             vars={"frequency":"hourly"},
+                             period=3600,
+                             timeout=300,
+                             repeats=0
+                             )
+        s3task.schedule_task("msg_search_subscription_notifications",
+                             vars={"frequency":"daily"},
+                             period=86400,
+                             timeout=300,
+                             repeats=0
+                             )
+        s3task.schedule_task("msg_search_subscription_notifications",
+                             vars={"frequency":"weekly"},
+                             period=604800,
+                             timeout=300,
+                             repeats=0
+                             )
+        s3task.schedule_task("msg_search_subscription_notifications",
+                             vars={"frequency":"monthly"},
+                             period=2419200,
+                             timeout=300,
+                             repeats=0
                              )
 
     # Daily maintenance
@@ -155,7 +179,7 @@ if len(pop_list) > 0:
     db.executesql("CREATE INDEX %s__idx on %s(%s);" % (field, tablename, field))
 
     # Messaging Module
-    if settings.has_module("msg"):
+    if has_module("msg"):
         # To read inbound email, set username (email address), password, etc.
         # here. Insert multiple records for multiple email sources.
         db.msg_inbound_email_settings.insert(server = "imap.gmail.com",
@@ -165,7 +189,7 @@ if len(pop_list) > 0:
                                              username = "example-username",
                                              password = "password",
                                              delete_from_server = False
-                                            )
+                                             )
         # Need entries for the Settings/1/Update URLs to work
         db.msg_setting.insert( outgoing_sms_handler = "WEB_API" )
         db.msg_modem_settings.insert( modem_baud = 115200 )
@@ -175,19 +199,19 @@ if len(pop_list) > 0:
         db.msg_twitter_settings.insert( pin = "" )
 
     # Budget Module
-    if settings.has_module("budget"):
+    if has_module("budget"):
         db.budget_parameter.insert() # Defaults are fine
 
     # Climate Module
-    if settings.has_module("climate"):
+    if has_module("climate"):
         s3db.climate_first_run()
 
     # CAP module
-    if settings.has_module("cap"):
+    if has_module("cap"):
         s3db.cap_first_run()
 
     # Incident Reporting System
-    if settings.has_module("irs"):
+    if has_module("irs"):
         # Categories visible to ends-users by default
         table = db.irs_icategory
         table.insert(code = "flood")
@@ -199,7 +223,7 @@ if len(pop_list) > 0:
         table.insert(code = "other.powerFailure")
 
     # Supply Module
-    if settings.has_module("supply"):
+    if has_module("supply"):
         db.supply_catalog.insert(name = settings.get_supply_catalog_default() )
 
     # Ensure DB population committed when running through shell
@@ -345,22 +369,53 @@ if len(pop_list) > 0:
         try:
             # Python-2.7
             duration = '{:.2f}'.format(duration.total_seconds()/60)
-            print >> sys.stdout, "Pre-populate completed in %s mins" % duration
+            print >> sys.stdout, "Pre-populate task completed in %s mins" % duration
         except AttributeError:
             # older Python
-            print >> sys.stdout, "Pre-populate completed in %s" % duration
+            print >> sys.stdout, "Pre-populate task completed in %s" % duration
         bi.resultList = []
-
-    grandTotalEnd = datetime.datetime.now()
-    duration = grandTotalEnd - grandTotalStart
-    print >> sys.stdout, "Pre-populate completed in %s" % (duration)
     for errorLine in bi.errorList:
-        print >> sys.stderr, errorLine
+        try:
+            print >> sys.stderr, errorLine
+        except:
+            s3_unicode = s3base.s3_unicode
+            _errorLine = ""
+            for i in range(0, len(errorLine)):
+                try:
+                    _errorLine += s3_unicode(errorline[i])
+                except:
+                    pass
+            print >> sys.stderr, _errorLine
+
     # Restore table protection
     s3mgr.PROTECTED = protected
 
     # Restore Auth
     auth.override = False
+
+    # Update Location Tree (disabled during prepop)
+    start = datetime.datetime.now()
+    gis.update_location_tree()
+    end = datetime.datetime.now()
+    print >> sys.stdout, "Location Tree update completed in %s" % (end - start)
+
+    # Update stats_aggregate (disabled during prepop)
+    # - needs to be done after locations
+    if has_module("stats"):
+        start = datetime.datetime.now()
+        s3db.stats_rebuild_aggregates()
+        end = datetime.datetime.now()
+        print >> sys.stdout, "Statistics data aggregation completed in %s" % (end - start)
+
+    grandTotalEnd = datetime.datetime.now()
+    duration = grandTotalEnd - grandTotalStart
+    try:
+        # Python-2.7
+        duration = '{:.2f}'.format(duration.total_seconds()/60)
+        print >> sys.stdout, "Pre-populate completed in %s mins" % duration
+    except AttributeError:
+        # older Python
+        print >> sys.stdout, "Pre-populate completed in %s" % duration
 
     # Restore view
     response.view = "default/index.html"

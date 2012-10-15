@@ -169,6 +169,22 @@ def dojs(dogis = False, warnings = True):
         pass
     shutil.move(outputFilenamedataTables, "../S3")
 
+    # Reports
+    print "Compressing Reports"
+    sourceDirectoryReport = ".."
+    configFilenameReport = "sahana.js.report.cfg"
+    outputFilenameReport = "s3.report.min.js"
+    mergedReport = mergejs.run(sourceDirectoryReport,
+                               None,
+                               configFilenameReport)
+    minimizedReport = minimize(mergedReport)
+    open(outputFilenameReport, "w").write(minimizedReport)
+    try:
+        os.remove("../S3/%s" % outputFilenameReport)
+    except:
+        pass
+    shutil.move(outputFilenameReport, "../S3")
+
     # Vulnerability
     print "Compressing Vulnerability"
     sourceDirectoryVulnerability = ".."
@@ -184,6 +200,20 @@ def dojs(dogis = False, warnings = True):
     except:
         pass
     shutil.move(outputFilenameVulnerability, "../S3")
+    print "Compressing Vulnerability GIS"
+    sourceDirectoryVulnerability = "../../themes/Vulnerability/js"
+    configFilenameVulnerability = "sahana.js.vulnerability_gis.cfg"
+    outputFilenameVulnerability = "OpenLayers.js"
+    mergedVulnerability = mergejs.run(sourceDirectoryVulnerability,
+                                      None,
+                                      configFilenameVulnerability)
+    minimizedVulnerability = minimize(mergedVulnerability)
+    open(outputFilenameVulnerability, "w").write(minimizedVulnerability)
+    try:
+        os.remove("../../themes/Vulnerability/js/%s" % outputFilenameVulnerability)
+    except:
+        pass
+    shutil.move(outputFilenameVulnerability, "../../themes/Vulnerability/js")
 
     # Single scripts
     for filename in [
@@ -192,7 +222,6 @@ def dojs(dogis = False, warnings = True):
                      "inline_component",
                      "locationselector.widget",
                      "popup",
-                     "report",
                      "select_person",
                      "timeline",
                      ]:

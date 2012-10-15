@@ -5,6 +5,28 @@
 """
 
 # =============================================================================
+if request.is_local:
+    # This is a request made from the local server
+
+    search_subscription = request.get_vars.get("search_subscription", None)
+    if search_subscription:
+        # We're doing a request for a saved search
+        table = s3db.pr_saved_search
+        search = db(table.auth_token == search_subscription).select(table.pe_id,
+                                                                    limitby=(0, 1)
+                                                                    ).first()
+        if search:
+            # Impersonate user
+            user_id = auth.s3_get_user_id(pe_id=search.pe_id)
+
+            if user_id:
+                # Impersonate the user who is subscribed to this saved search
+                auth.s3_impersonate(user_id)
+            else:
+                # Request is ANONYMOUS
+                auth.s3_impersonate(None)
+
+# =============================================================================
 # Check Permissions & fail as early as we can
 #
 # Set user roles
@@ -255,20 +277,24 @@ def s3_rest_controller(prefix=None, resourcename=None, **attr):
     r.set_handler("import", s3base.S3Importer())
     r.set_handler("map", s3base.S3Map())
 
-    # Activate record approval?
-    if deployment_settings.get_auth_record_approval():
-        prefix, name, table, tablename = r.target()
-        if "approved_by" in table.fields and \
-           current.auth.permission.requires_approval(table):
-            r.set_handler(["approve", "reject"], s3base.S3ApproveRecords(),
-                          http = ["GET", "POST"])
-
     # Don't load S3PDF unless needed (very slow import with reportlab)
     if r.method == "import" and r.representation == "pdf":
         from s3.s3pdf import S3PDF
         r.set_handler("import", S3PDF(),
                       http = ["GET", "POST"],
                       representation="pdf")
+
+    # Plugin OrgRoleManager where appropriate
+    if r.record and auth.user is not None and \
+       r.tablename in s3base.S3OrgRoleManager.ENTITY_TYPES:
+
+        sr = auth.get_system_roles()
+        realms = auth.user.realms or Storage()
+
+        if sr.ADMIN in realms or sr.ORG_ADMIN in realms and \
+           (realms[sr.ORG_ADMIN] is None or \
+            r.record.pe_id in realms[sr.ORG_ADMIN]):
+            r.set_handler("roles", s3base.S3OrgRoleManager())
 
     # Execute the request
     output = r(**attr)
@@ -324,7 +350,7 @@ def s3_rest_controller(prefix=None, resourcename=None, **attr):
                 add_btn = A(label, _href=url, _class="action-btn")
                 output.update(add_btn=add_btn)
 
-    elif r.method not in ("import", "approve", "reject"):
+    elif r.method not in ("import", "review", "approve", "reject"):
         s3.actions = None
 
     return output

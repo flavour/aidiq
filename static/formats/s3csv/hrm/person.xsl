@@ -4,6 +4,7 @@
 
     <!-- **********************************************************************
          Human Resources - CSV Import Stylesheet
+         Must be imported through the pr_person resource
 
          Column headers defined in this stylesheet:
 
@@ -28,6 +29,7 @@
          Father Name....................optional.....person father name
          Mother Name....................optional.....person mother name
          Religion.......................optional.....person religion
+         Blood Type.....................optional.....pr_physical_description blood_type
          National ID....................optional.....person identity type = 2, value
          Passport No....................optional.....person identity type = 1, value
          Passport Country...............optional.....person identity
@@ -37,6 +39,9 @@
          Office Phone...................optional.....office phone number
          Skype..........................optional.....person skype ID
          Callsign.......................optional.....person Radio Callsign
+         Emergency Contact Name.........optional.....pr_contact_emergency name
+         Emergency Contact Relationship.optional.....pr_contact_emergency relationship
+         Emergency Contact Phone........optional.....pr_contact_emergency phone
          Home Address...................optional.....person home address
          Home Postcode..................optional.....person home address postcode
          Home Lat.......................optional.....person home address latitude
@@ -298,13 +303,16 @@
                         <xsl:value-of select="concat(col[@field='Organisation'],$BranchName)"/>
                     </xsl:attribute>
                     <data field="name"><xsl:value-of select="$BranchName"/></data>
-                    <resource name="org_organisation_branch" alias="parent">
-                        <reference field="organisation_id" resource="org_organisation">
-                            <xsl:attribute name="tuid">
-                                <xsl:value-of select="col[@field='Organisation']"/>
-                            </xsl:attribute>
-                        </reference>
-                    </resource>
+                    <!-- Don't create Orgs as Branches of themselves -->
+                    <xsl:if test="col[@field='Organisation']!=$BranchName">
+                        <resource name="org_organisation_branch" alias="parent">
+                            <reference field="organisation_id" resource="org_organisation">
+                                <xsl:attribute name="tuid">
+                                    <xsl:value-of select="col[@field='Organisation']"/>
+                                </xsl:attribute>
+                            </reference>
+                        </resource>
+                    </xsl:if>
                 </resource>
             </xsl:when>
             <xsl:when test="$OrgName!=''">
@@ -444,6 +452,13 @@
                 <data field="religion"><xsl:value-of select="$religion"/></data>
             </xsl:if>
 
+
+            <xsl:if test="col[@field='Blood Type']!=''">
+                <resource name="pr_physical_description">
+                    <data field="blood_type"><xsl:value-of select="col[@field='Blood Type']"/></data>
+                </resource>
+            </xsl:if>
+
             <!-- Identity Information -->
             <xsl:call-template name="IdentityInformation"/>
 
@@ -451,7 +466,7 @@
             <xsl:call-template name="ContactInformation"/>
 
             <!-- Address -->
-            <xsl:if test="col[@field='Home Address']!=''">
+            <xsl:if test="col[@field='Home Address'] or col[@field='Home Postcode'] or col[@field='Home L4'] or col[@field='Home L3'] or col[@field='Home L2'] or col[@field='Home L1']">
                 <xsl:call-template name="Address">
                     <xsl:with-param name="address" select="col[@field='Home Address']/text()"/>
                     <xsl:with-param name="postcode" select="col[@field='Home Postcode']/text()"/>
@@ -464,7 +479,7 @@
                 </xsl:call-template>
             </xsl:if>
 
-            <xsl:if test="col[@field='Permanent Address']!=''">
+            <xsl:if test="col[@field='Permanent Address'] or col[@field='Permanent Postcode'] or col[@field='Permanent L4'] or col[@field='Permanent L3'] or col[@field='Permanent L2'] or col[@field='Permanent L1']">
                 <xsl:call-template name="Address">
                     <xsl:with-param name="address" select="col[@field='Permanent Address']/text()"/>
                     <xsl:with-param name="postcode" select="col[@field='Permanent Postcode']/text()"/>
@@ -523,7 +538,7 @@
         </resource>
 
         <!-- Locations -->
-        <xsl:if test="col[@field='Home Address']!=''">
+        <xsl:if test="col[@field='Home Address'] or col[@field='Home Postcode'] or col[@field='Home L4'] or col[@field='Home L3'] or col[@field='Home L2'] or col[@field='Home L1']">
             <xsl:call-template name="Locations">
                 <xsl:with-param name="address" select="col[@field='Home Address']/text()"/>
                 <xsl:with-param name="postcode" select="col[@field='Home Postcode']/text()"/>
@@ -537,7 +552,7 @@
                 <xsl:with-param name="lon" select="col[@field='Home Lon']/text()"/>
             </xsl:call-template>
         </xsl:if>
-        <xsl:if test="col[@field='Permanent Address']!=''">
+        <xsl:if test="col[@field='Permanent Address'] or col[@field='Permanent Postcode'] or col[@field='Permanent L4'] or col[@field='Permanent L3'] or col[@field='Permanent L2'] or col[@field='Permanent L1']">
             <xsl:call-template name="Locations">
                 <xsl:with-param name="address" select="col[@field='Permanent Address']/text()"/>
                 <xsl:with-param name="postcode" select="col[@field='Permanent Postcode']/text()"/>
@@ -720,6 +735,20 @@
                 <data field="contact_method" value="RADIO"/>
                 <data field="value">
                     <xsl:value-of select="col[@field='Callsign']/text()"/>
+                </data>
+            </resource>
+        </xsl:if>
+
+        <xsl:if test="col[@field='Emergency Contact Name']!=''">
+            <resource name="pr_contact_emergency">
+                <data field="name">
+                    <xsl:value-of select="col[@field='Emergency Contact Name']/text()"/>
+                </data>
+                <data field="relationship">
+                    <xsl:value-of select="col[@field='Emergency Contact Relationship']/text()"/>
+                </data>
+                <data field="phone">
+                    <xsl:value-of select="col[@field='Emergency Contact Phone']/text()"/>
                 </data>
             </resource>
         </xsl:if>

@@ -31,7 +31,7 @@ def create():
 def asset():
     """ RESTful CRUD controller """
 
-    # Use the 'item()' controller in this module to set options correctly
+    # Use the item() controller in this module to set options correctly
     s3db.asset_asset.item_id.comment = S3AddResourceLink(f="item",
         label=T("Add New Item"),
         title=T("Item"),
@@ -39,6 +39,15 @@ def asset():
 
     # Defined in Model for use from Multiple Controllers for unified menus
     return s3db.asset_controller()
+
+# =============================================================================
+def supplier():
+    """
+        REST controller
+    """
+
+    request.get_vars["organisation.organisation_type_id$name"] = "Supplier"
+    return s3db.org_organisation_controller()
 
 # =============================================================================
 def item():

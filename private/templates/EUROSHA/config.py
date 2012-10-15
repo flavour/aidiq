@@ -13,11 +13,11 @@ T = current.T
 # Pre-Populate
 settings.base.prepopulate = ["EUROSHA"]
 
-settings.base.system_name = T("Eurosha Humanitarian Data Registry")
+settings.base.system_name = T("EUROSHA Humanitarian Data Registry")
 settings.base.system_name_short = T("EUROSHA")
 
 # Theme (folder to use for views/layout.html)
-#settings.base.theme = "EUROSHA"
+settings.base.theme = "EUROSHA"
 
 # Auth settings
 # Do new users need to verify their email address?
@@ -35,8 +35,8 @@ settings.auth.role_modules = OrderedDict([
         ("staff", "Staff"),
         ("vol", "Volunteers"),
         ("project", "Projects"),
-        ("asset", "Assets"),
-        ("vehicle", "Vehicles"),
+        #("asset", "Assets"),
+        #("vehicle", "Vehicles"),
     ])
 
 # L10n settings
@@ -77,9 +77,9 @@ settings.auth.realm_entity = eurosha_realm_entity
 # and a menu to select among them is wanted.
 settings.gis.menu = "Country"
 # PoIs to export in KML/OSM feeds from Admin locations
-settings.gis.poi_export_resources = ["cr_shelter", "hms_hospital", "org_office",
-                                     "transport_airport", "transport_seaport"
-                                     ]
+settings.gis.poi_resources = ["cr_shelter", "hms_hospital", "org_office",
+                              "transport_airport", "transport_seaport"
+                              ]
 
 # Enable this for a UN-style deployment
 settings.ui.cluster = True
@@ -231,19 +231,19 @@ settings.modules = OrderedDict([
             restricted = True,
             module_type = 4
         )),
-    ("asset", Storage(
-            name_nice = T("Assets"),
-            #description = "Recording and Assigning Assets",
-            restricted = True,
-            module_type = 5,
-        )),
+    #("asset", Storage(
+    #        name_nice = T("Assets"),
+    #        #description = "Recording and Assigning Assets",
+    #        restricted = True,
+    #        module_type = 5,
+    #    )),
     # Vehicle depends on Assets
-    ("vehicle", Storage(
-            name_nice = T("Vehicles"),
-            #description = "Manage Vehicles",
-            restricted = True,
-            module_type = 6,
-        )),
+    #("vehicle", Storage(
+    #        name_nice = T("Vehicles"),
+    #        #description = "Manage Vehicles",
+    #        restricted = True,
+    #        module_type = 6,
+    #    )),
     ("project", Storage(
             name_nice = T("Projects"),
             #description = "Tracking of Projects, Activities and Tasks",

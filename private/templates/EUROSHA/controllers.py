@@ -72,7 +72,6 @@ class index():
                        #_class="menu_box fleft swidth"
                        _class="menu_box"
                        )
-        s3.stylesheets = ["EUROSHA.css"]
         facility_box  = menu_divs["facility"]
         facility_box.append(A(IMG(_src="/%s/static/img/map_icon_128.png" % \
                                         appname),
@@ -90,7 +89,7 @@ class index():
         if AUTHENTICATED in roles and \
            auth.s3_has_permission("read", current.s3db.org_organisation):
             org_items = self.organisation()
-            datatable_ajax_source = "/%s/default/organisation.aaData" % \
+            datatable_ajax_source = "/%s/default/organisation.aadata" % \
                                     appname
             s3.actions = None
             auth.permission.controller = "org"
@@ -262,7 +261,7 @@ google.setOnLoadCallback(LoadDynamicFeedControl)'''))
         table = resource.table
 
         list_fields = ["id", "name"]
-        limit = int(request.get_vars["iDisplayLength"]) if request.extension == "aaData" else 1
+        limit = int(request.get_vars["iDisplayLength"]) if request.extension == "aadata" else 1
         rfields = resource.resolve_selectors(list_fields)[0]
         (orderby, filter) = S3DataTable.getControlData(rfields, request.vars)
         resource.add_filter(filter)
@@ -288,7 +287,7 @@ google.setOnLoadCallback(LoadDynamicFeedControl)'''))
                             dt_displayLength=10,
                             dt_ajax_url=URL(c="default",
                                             f="organisation",
-                                            extension="aaData",
+                                            extension="aadata",
                                             vars={"id": "org_list_1"},
                                             ),
                            )
@@ -300,7 +299,7 @@ google.setOnLoadCallback(LoadDynamicFeedControl)'''))
                 echo = None
             items = dt.json(totalrows,
                             filteredrows,
-                            "supply_list_1",
+                            "org_list_1",
                             echo)
         else:
             from gluon.http import HTTP

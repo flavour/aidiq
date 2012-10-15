@@ -35,6 +35,7 @@ __all__ = ["S3MessagingModel",
            "S3TwitterModel",
            "S3XFormsModel",
            "S3ParsingModel",
+           "msg_search_subscription_notifications",
            ]
 
 from gluon import *
@@ -570,7 +571,8 @@ class S3TwitterModel(S3Model):
                                    readable = False, writable = False),
                              Field("oauth_secret",
                                    readable = False, writable = False),
-                             Field("twitter_account", writable = False),
+                             Field("twitter_account",
+                                   writable = False),
                              *s3_meta_fields())
 
         configure(tablename,
@@ -586,10 +588,20 @@ class S3TwitterModel(S3Model):
         # ---------------------------------------------------------------------
         tablename = "msg_twitter_search_results"
         table = define_table(tablename,
-                             Field("tweet", length=140),
-                             Field("posted_by"),
-                             Field("posted_at"),
-                             Field("twitter_search", db.msg_twitter_search),
+                             Field("tweet", length=140,
+                                   writable=False),
+                             Field("category",
+                                   writable=False),
+                             Field("priority", "integer",
+                                   writable=False),
+                             self.gis_location_id(),
+                             Field("posted_by",
+                                   represent = self.twitter_represent,
+                                   writable=False),
+                             Field("posted_at",
+                                   writable=False),
+                             Field("twitter_search", db.msg_twitter_search,
+                                   writable=False),
                              *s3_meta_fields())
 
         #table.twitter_search.requires = IS_ONE_OF(db, "twitter_search.search_query")
@@ -599,7 +611,11 @@ class S3TwitterModel(S3Model):
         #self.add_component(table, msg_twitter_search="twitter_search")
 
         configure(tablename,
+                  orderby=table.priority,
                   list_fields=["id",
+                               "priority",
+                               "category",
+                               "location_id",
                                "tweet",
                                "posted_by",
                                "posted_at",
@@ -611,14 +627,43 @@ class S3TwitterModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
+    def twitter_represent(nickname, show_link=True):
+        """
+            Represent a Twitter account
+        """
+
+        db = current.db
+        s3db = current.s3db
+        table = s3db.pr_contact
+        query = (table.contact_method == "TWITTER") & \
+                (table.value == nickname)
+        row = db(query).select(table.pe_id,
+                               limitby=(0, 1)).first()
+        if row:
+            repr = s3db.pr_pentity_represent(row.pe_id, show_label=False)
+            if show_link:
+                # Assume person
+                ptable = s3db.pr_person
+                row = db(ptable.pe_id == row.pe_id).select(ptable.id,
+                                                           limitby=(0, 1))
+                if row:
+                    link = URL(c="pr", f="person", args=[row.id])
+                    return A(repr, _href=link)
+            return repr
+        else:
+            return nickname
+
+    # -------------------------------------------------------------------------
+    @staticmethod
     def twitter_settings_onvalidation(form):
         """
-            Complete oauth: take tokens from session + pin from form, and do the 2nd API call to Twitter
+            Complete oauth: take tokens from session + pin from form,
+            and do the 2nd API call to Twitter
         """
 
         T = current.T
         session = current.session
-        settings = current.deployment_settings
+        settings = current.deployment_settings.msg
         s3 = session.s3
         vars = form.vars
 
@@ -628,8 +673,8 @@ class S3TwitterModel(S3Model):
             except:
                 raise HTTP(501, body=T("Can't import tweepy"))
 
-            oauth = tweepy.OAuthHandler(settings.twitter.oauth_consumer_key,
-                                        settings.twitter.oauth_consumer_secret)
+            oauth = tweepy.OAuthHandler(settings.twitter_oauth_consumer_key,
+                                        settings.twitter_oauth_consumer_secret)
             oauth.set_request_token(s3.twitter_request_key,
                                     s3.twitter_request_secret)
             try:
@@ -683,52 +728,83 @@ class S3ParsingModel(S3Model):
     """
 
     names = ["msg_workflow",
-             "msg_sessions"]
+             "msg_session",
+             "msg_keyword",
+             "msg_sender",
+             ]
 
     def model(self):
 
         T = current.T
-        
+
+        # ---------------------------------------------------------------------
+        #
+        # Link between Message Sources and Workflows in parser.py
+
         tablename = "msg_workflow"
         table = self.define_table(tablename,
                                   Field("source_task_id",
                                         label = T("Inbound Message Source"),
-                                        represent = lambda id: \
-                                        self.source_represent(id, 
-                                                              show_link=True)),
+                                        represent = self.source_represent,
+                                        ),
                                   Field("workflow_task_id",
-                                        label = T("Workflow")),                                          
-                                        *s3_meta_fields())
-                                  
+                                        label = T("Workflow")),
+                                  *s3_meta_fields())
+
         # ---------------------------------------------------------------------
-        # user_opts contains the available users.
-        now = current.request.utcnow
-        
+        #
+        # Login sessions for Message Parsing
+
         tablename = "msg_session"
         table = self.define_table(tablename,
                                   Field("email"),
                                   Field("created_datetime","datetime",
-                                        default = now),
+                                        default = current.request.utcnow),
                                   Field("expiration_time", "integer"),
-                                  Field("is_expired","boolean",
+                                  Field("is_expired", "boolean",
                                         default = False),
                                   Field("sender"),
                                   *s3_meta_fields())
-                                  
-        
+
+        # ---------------------------------------------------------------------
+        #
+        # Keywords for Message Parsing
+
+        tablename = "msg_keyword"
+        table = self.define_table(tablename,
+                                  Field("keyword",
+                                        label=T("Keyword")),
+                                  self.event_incident_type_id(),
+                                  *s3_meta_fields())
+
+        # ---------------------------------------------------------------------
+        #
+        # Senders for Message Parsing
+
+        tablename = "msg_sender"
+        table = self.define_table(tablename,
+                                  self.super_link("pe_id", "pr_pentity"),
+                                  Field("priority", "integer",
+                                        label=T("Priority")),
+                                  *s3_meta_fields())
+
+        # ---------------------------------------------------------------------
         return Storage()
+
     # -------------------------------------------------------------------------
     @staticmethod
-    def source_represent(id, show_link = True):
+    def source_represent(id, show_link=True):
         """ Represent a Message Source in the Workflow Table """
-    
+
         db = current.db
         stable = db.msg_inbound_email_settings
         wtable = db.msg_workflow
         source = db(wtable.source_task_id == id).select(wtable.source_task_id,
-                                                        limitby = (0,1)).first()
+                                                        limitby=(0, 1)
+                                                        ).first()
         setting = db(stable.username == source.source_task_id).select(stable.id,
-                                                        limitby = (0,1)).first()
+                                                                      limitby=(0, 1)
+                                                                      ).first()
         repr = source.source_task_id
         if setting:
             id = setting.id
@@ -737,5 +813,160 @@ class S3ParsingModel(S3Model):
             return repr
         else:
             return repr
+
+# =============================================================================
+def msg_search_subscription_notifications(frequency):
+    """
+        Send Notifications for all Subscriptions
+    """
+
+    s3db = current.s3db
+    table = s3db.pr_saved_search
+
+    if frequency not in dict(table.notification_frequency.requires.options()):
+        return
+
+    db = current.db
+    searches = db(table.notification_frequency == frequency).select()
+    if not searches:
+        return
+
+    import urlparse
+    from urllib import urlencode
+    from uuid import uuid4
+
+    try:
+        import json # try stdlib (Python 2.6)
+    except ImportError:
+        try:
+            import simplejson as json # try external module
+        except:
+            import gluon.contrib.simplejson as json # fallback to pure-Python module
+    loads = json.loads
+
+    from gluon.tools import fetch
+
+    msg = current.msg
+    settings = current.deployment_settings
+    public_url = settings.get_base_public_url()
+    system_name_short = settings.get_system_name_short()
+
+    def send(search, message):
+        if not message:
+            return
+        # Send the email
+        msg.send_by_pe_id(search.pe_id,
+                          subject="%s Search Notification %s" % \
+                            (system_name_short, search.name),
+                          message=message)
+
+    for search in searches:
+        # Fetch the latest records from the search
+
+        # search.url has no host
+        search_url = "%s%s" % (public_url, search.url)
+
+        # Create a temporary token for this search
+        # that will be used when impersonating users
+        auth_token = uuid4()
+        search.update_record(auth_token=auth_token)
+        # Commit so that when we request via http, then we'll see the change
+        db.commit()
+
+        # Parsed URL, break up the URL into its components
+        purl = list(urlparse.urlparse(search_url))
+
+        if search.notification_batch:
+            # Send all records in a single notification
+
+            # query string parameters to be added to the search URL
+            page_qs_parms = {
+                "search_subscription": auth_token,
+                "%s.modified_on__ge" % (search.resource_name): search.last_checked,
+                "format": "email",
+            }
+
+            # Turn the parameter list into a URL query string
+            page_qs = urlencode(page_qs_parms)
+
+            # Put the URL back together
+            page_url = urlparse.urlunparse(
+                [
+                    purl[0], # scheme
+                    purl[1], # netloc
+                    purl[2], # path
+                    purl[3], # params
+                    "&".join([purl[4], page_qs]), # query
+                    purl[5], # fragment
+                ]
+            )
+            message = fetch(page_url)
+
+            # Send the email
+            send(search, message)
+
+        else:
+            # Not batch
+
+            # query string parameters to be added to the search URL
+            page_qs_parms = {
+                "search_subscription": auth_token,
+                "%s.modified_on__ge" % (search.resource_name): search.last_checked,
+                "format": "json",
+            }
+
+            # Turn the parameter list into a URL query string
+            page_qs = urlencode(page_qs_parms)
+
+            # Put the URL back together
+            page_url = urlparse.urlunparse(
+                [
+                    purl[0], # scheme
+                    purl[1], # netloc
+                    purl[2], # path
+                    purl[3], # params
+                    "&".join([purl[4], page_qs]), # query
+                    purl[5], # fragment
+                ]
+            )
+            # Fetch the record list as json
+            json_string = fetch(page_url)
+
+            if json_string:
+                records = loads(json_string)
+
+                for record in records:
+                    email_qs = urlencode(
+                        {
+                            "search_subscription": auth_token,
+                            "format": "email",
+                            "%s.id__eq" % search.resource_name: record["id"],
+                        }
+                    )
+                    email_url = urlparse.urlunparse(
+                        [
+                            purl[0], # scheme
+                            purl[1], # netloc
+                            purl[2], # path
+                            purl[3], # params
+                            email_qs, # query
+                            purl[5], # fragment
+                        ]
+                    )
+
+                    message = fetch(email_url)
+
+                    # Send the email
+                    send(search, message)
+
+    # Update the saved searches to indicate they've just been checked
+    # & revoke the temporary token
+    query = (table.notification_frequency == frequency) & \
+            (table.deleted != True)
+    db(query).update(last_checked=datetime.datetime.utcnow(),
+                     auth_token=None,
+                     )
+    # Explictly commit
+    db.commit()
 
 # END =========================================================================

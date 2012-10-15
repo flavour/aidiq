@@ -51,7 +51,7 @@ from gluon import *
 from gluon.storage import Storage
 
 from s3codec import S3Codec
-from s3utils import s3_get_foreign_key
+from s3utils import s3_get_foreign_key, s3_unicode
 
 try:
     from lxml import etree
@@ -72,6 +72,7 @@ class S3XML(S3Codec):
     UID = "uuid"
     MCI = "mci"
     DELETED = "deleted"
+    APPROVED = "approved"
     CTIME = "created_on"
     CUSER = "created_by"
     MTIME = "modified_on"
@@ -88,6 +89,7 @@ class S3XML(S3Codec):
             "id",
             "deleted_fk",
             "owned_by_entity",
+            "approved_by",
             "realm_entity"] # @todo: export the realm entity
 
     FIELDS_TO_ATTRIBUTES = [
@@ -112,7 +114,8 @@ class S3XML(S3Codec):
             CTIME,
             MTIME,
             MCI,
-            DELETED]
+            DELETED,
+            APPROVED]
 
     TAG = Storage(
         root="s3xml",
@@ -158,8 +161,9 @@ class S3XML(S3Codec):
         lonmin="lonmin",
         lonmax="lonmax",
         marker="marker",
-        popup="popup",  # for GIS Feature Layers/Queries
-        sym="sym",      # For GPS
+        popup="popup",         # for GIS Feature Layers/Queries
+        popup_url="popup_url", # for map popups
+        sym="sym",             # for GPS
         type="type",
         readable="readable",
         writable="writable",
@@ -550,7 +554,7 @@ class S3XML(S3Codec):
                     krecord = db(query).select(k_id, limitby=(0, 1)).first()
                     if not krecord:
                         continue
-            value = str(table[f].formatter(val)).decode("utf-8")
+            value = s3_unicode(table[f].formatter(val))
             if table[f].represent:
                 text = represent(table, f, val)
             else:
@@ -618,6 +622,7 @@ class S3XML(S3Codec):
                    rmap,
                    marker=None,
                    locations=None,
+                   master=True,
                    ):
         """
             GIS-encodes location references
@@ -628,6 +633,7 @@ class S3XML(S3Codec):
             @param rmap: list of references to encode
             @param marker: marker dict
             @param locations: locations dict
+            @param master: True if this is the master resource
         """
 
         db = current.db
@@ -783,24 +789,23 @@ class S3XML(S3Codec):
                     attr[ATTRIBUTE.sym] = symbol
 
             if LatLon or polygon:
-                # Build the URL for the onClick Popup contents
-                # @ToDo: add the Public URL so that layers can be loaded
-                # off remote Sahana instances
-                # (make this optional to keep filesize small when not
-                #  needed?)
-                url = URL(request.controller, request.function).split(".", 1)[0]
-                if format == "geojson":
-                    # Assume being used within the Sahana Mapping client so use local URLs
-                    # to keep filesize down
-                    try:
+                # Build the URL for the onClick Popup contents => only for
+                # the master resource of the export
+                if master:
+                    # Use the current controller for map popup URLs to get
+                    # the controller settings applied even for map popups
+                    url = URL(request.controller,
+                              request.function).split(".", 1)[0]
+                    if format == "geojson":
+                        # Assume being used within the Sahana Mapping client
+                        # so use local URLs to keep filesize down
                         url = "%s/%i.plain" % (url, record[pkey])
-                    except:
-                        # This is a Super-Entity without an id
-                        url = ""
-                else:
-                    # Assume being used outside the Sahana Mapping client so use public URLs
-                    url = "%s%s/%i" % (settings.get_base_public_url(), url, record[pkey])
-                attr[ATTRIBUTE.url] = url
+                    else:
+                        # Assume being used outside the Sahana Mapping client
+                        # so use public URLs
+                        url = "%s%s/%i" % (settings.get_base_public_url(),
+                                           url, record[pkey])
+                    attr[ATTRIBUTE.popup_url] = url
 
                 if tooltips and tablename in tooltips:
                     # Feature Layer / Resource
@@ -936,10 +941,10 @@ class S3XML(S3Codec):
             elif value is not None:
                 text = xml_encode(value)
             else:
-                text = xml_encode(str(formatter(v)).decode("utf-8"))
+                text = xml_encode(s3_unicode(formatter(v)))
             if is_attr:
                 if text is not None:
-                    attrib[f] = str(text)
+                    attrib[f] = s3_unicode(text)
             elif fieldtype == "upload":
                 fileurl = "%s/%s" % (download_url, v)
                 filename = v
@@ -1097,12 +1102,21 @@ class S3XML(S3Codec):
         deleted = False
         for f in self.ATTRIBUTES_TO_FIELDS:
             if f == self.DELETED:
-                v = element.get(f, None)
-                if v == "True":
+                if f in table and \
+                   element.get(f, "false").lower() == "true":
                     record[f] = deleted = True
                     break
                 else:
                     continue
+            if f == self.APPROVED:
+                # Override default-approver:
+                if "approved_by" in table:
+                    if element.get(f, "true").lower() == "false":
+                        record["approved_by"] = None
+                    else:
+                        if table["approved_by"].default == None:
+                            auth.permission.set_default_approver(table)
+                continue
             if f in self.IGNORE_FIELDS or f in skip:
                 continue
             elif f in (self.CUSER, self.MUSER, self.OUSER):
@@ -1249,7 +1263,7 @@ class S3XML(S3Codec):
                     except:
                         error = sys.exc_info()[1]
 
-                child.set(self.ATTRIBUTE.value, str(v).decode("utf-8"))
+                child.set(self.ATTRIBUTE.value, s3_unicode(v))
                 if error:
                     child.set(self.ATTRIBUTE.error, "%s: %s" % (f, error))
                     valid = False
@@ -1320,9 +1334,9 @@ class S3XML(S3Codec):
                     uid = uids[str(value)]
                 else:
                     uid = None
-                value = cls.xml_encode(str(value).decode("utf-8"))
+                value = cls.xml_encode(s3_unicode(value))
                 try:
-                    markup = etree.XML(str(text))
+                    markup = etree.XML(s3_unicode(text))
                     text = markup.xpath(".//text()")
                     if text:
                         text = " ".join(text)
@@ -1330,7 +1344,7 @@ class S3XML(S3Codec):
                         text = ""
                 except:
                     pass
-                text = cls.xml_encode(str(text).decode("utf-8"))
+                text = cls.xml_encode(s3_unicode(text))
                 option = etree.SubElement(select, cls.TAG.option)
                 option.set(cls.ATTRIBUTE.value, value)
                 if uid:
@@ -1438,11 +1452,11 @@ class S3XML(S3Codec):
                                   len(opts) and True or False)
                 field.set(self.ATTRIBUTE.has_options, has_options)
                 if labels:
-                    label = str(table[f].label).decode("utf-8")
+                    label = s3_unicode(table[f].label)
                     field.set(self.ATTRIBUTE.label, label)
                     comment = table[f].comment
                     if comment:
-                        comment = str(comment).decode("utf-8")
+                        comment = s3_unicode(comment)
                     if comment and "<" in comment:
                         try:
                             markup = etree.XML(comment)
@@ -1836,9 +1850,11 @@ class S3XML(S3Codec):
             col = etree.SubElement(row, cls.TAG.col)
             col.set(cls.ATTRIBUTE.field, str(key))
             if value:
-                text = str(value)
+                text = s3_unicode(value)
+                #text = str(value)
                 if text.lower() not in ("null", "<null>"):
-                    text = cls.xml_encode(unicode(text.decode("utf-8")))
+                    text = cls.xml_encode(text)
+                    #text = cls.xml_encode(unicode(text.decode("utf-8")))
                     col.text = text
             else:
                 col.text = ""

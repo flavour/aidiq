@@ -143,9 +143,9 @@ class S3MainMenu(object):
     def menu_help(cls, **attr):
         """ Help Menu """
 
-        menu_help = MM("Help", **attr)(
-            MM("Contact us", c="default", f="contact"),
-            MM("About", c="default", f="about")
+        menu_help = MM("Help", c="default", f="help", **attr)(
+            MM("Contact us", f="contact"),
+            MM("About", f="about")
         )
         return menu_help
 
@@ -438,23 +438,26 @@ class S3OptionsMenu(object):
                         M("New", m="create"),
                         M("List All"),
                         M("Search", m="search"),
+                        M("Report", m="report"),
                         M("Import", m="import", p="create"),
                     ),
-                    M("List", f="asset")(
-                        M("Assets"),
-                        M("Items", f="item")
+                    M("Items", f="item")(
+                        M("New", m="create"),
+                        M("List All"),
+                        M("Search", m="search"),
+                        M("Report", m="report"),
+                        M("Import", m="import", p="create"),
                     ),
-                    M("Search", f="asset", m = "search")(
-                        M("Assets", m = "search"),
-                        M("Items", f="item", m = "search")
+                    M("Item Categories", f="item_category")(
+                        M("New", m="create"),
+                        M("List All"),
                     ),
-                    M("Reports", f="asset", m = "report")(
-                        M("Assets", m = "report"),
-                        M("Items", f="item", m = "report")
+                    M("Suppliers", f="supplier")(
+                        M("New", m="create"),
+                        M("List All"),
+                        M("Search", m="search"),
+                        M("Import", m="import", p="create"),
                     ),
-                    M("Reports")(
-                      M("Assets",  f="asset", m="report")
-                      )
                 )
 
     # -------------------------------------------------------------------------
@@ -778,13 +781,13 @@ class S3OptionsMenu(object):
                     M("Fullscreen Map", f="map_viewing_client"),
                     # Currently not got geocoding support
                     #M("Bulk Uploader", c="doc", f="bulk_upload"),
-                    M("Locations", f="location",
-                      restrict=[MAP_ADMIN])(
+                    M("Locations", f="location")(
                         M("Add Location", m="create"),
-                        M("Add Location Group", m="create", vars={"group": 1}),
+                        #M("Add Location Group", m="create", vars={"group": 1}),
                         M("List All"),
                         M("Search", m="search"),
-                        M("Import", m="import"),
+                        M("Import from CSV", m="import", restrict=[MAP_ADMIN]),
+                        M("Import from OpenStreetMap", m="import_poi", restrict=[MAP_ADMIN]),
                         #M("Geocode", f="geocode_manual"),
                     ),
                     M("Population Report", f="location", m="report",
@@ -850,6 +853,11 @@ class S3OptionsMenu(object):
                     ),
                     M("Teams", f="group",
                       check=[manager_mode, use_teams])(
+                        M("New", m="create"),
+                        M("List All"),
+                    ),
+                    M("Department Catalog", f="department",
+                      check=manager_mode)(
                         M("New", m="create"),
                         M("List All"),
                     ),
@@ -944,6 +952,11 @@ class S3OptionsMenu(object):
                     ),
                     M("Teams", f="group",
                       check=[manager_mode, use_teams])(
+                        M("New", m="create"),
+                        M("List All"),
+                    ),
+                    M("Department Catalog", f="department",
+                      check=manager_mode)(
                         M("New", m="create"),
                         M("List All"),
                     ),
@@ -1063,7 +1076,9 @@ class S3OptionsMenu(object):
                     M("Items", c="supply", f="item")(
                         M("New", m="create"),
                         M("List All"),
-                        M("Search", f="catalog_item", m="search"),
+                        M("Search", m="search"),
+                        M("Report", m="report"),
+                        M("Import", m="import", p="create"),
                     ),
                     # Catalog Items moved to be next to the Item Categories
                     #M("Catalog Items", c="supply", f="catalog_item")(
@@ -1142,13 +1157,13 @@ class S3OptionsMenu(object):
         ADMIN = session.s3.system_roles.ADMIN
 
         return M(c="cap")(
-                    M("Alerts", f="alert", vars={'alert.is_template': 'F'})(
-                        M("List alerts", f="alert", vars={'alert.is_template': 'F'}),
+                    M("Alerts", f="alert", vars={'alert.is_template': 'false'})(
+                        M("List alerts", f="alert", vars={'alert.is_template': 'false'}),
                         M("Create alert", f="alert", m="create"),
                         M("Search & Subscribe", m="search"),
                     ),
-                    M("Templates", f="template", vars={'alert.is_template': 'T'})(
-                        M("List templates", f="template", vars={'alert.is_template': 'T'}),
+                    M("Templates", f="template", vars={'alert.is_template': 'true'})(
+                        M("List templates", f="template", vars={'alert.is_template': 'true'}),
                         M("Create template", f="template", m="create"),
                     ),
                     #M("CAP Profile", f="profile")(
@@ -1330,6 +1345,8 @@ class S3OptionsMenu(object):
                     M("Log", f="log"),
                     M("Outbox", f="outbox"),
                     M("Search Twitter Tags", f="twitter_search")(
+                       M("Keywords", f="keyword"),
+                       M("Senders", f="sender"),
                        M("Queries", f="twitter_search"),
                        M("Results", f="twitter_search_results")
                     ),
@@ -1464,8 +1481,8 @@ class S3OptionsMenu(object):
                         M("List All"),
                         M("Map", m="map"),
                         M("Search", m="search"),
-                        M("List All Community Contacts", f="community_contact"),
-                        M("Search Community Contacts", f="community_contact",
+                        M("List All Community Contacts", f="location_contact"),
+                        M("Search Community Contacts", f="location_contact",
                           m="search"),
                      ),
                     )
@@ -1478,10 +1495,13 @@ class S3OptionsMenu(object):
                         M("Search", m="search"),
                      )
                     )
+            stats = lambda i: settings.has_module("stats")
             menu(
                  M("Reports", f="location", m="report")(
                     M("3W", f="location", m="report"),
-                    M("Beneficiaries", f="beneficiary", m="report"),
+                    M("Beneficiaries", f="beneficiary", m="report",
+                      check = stats,
+                      ),
                     M("Funding", f="organisation", args="report"),
                  ),
                  M("Import", f="index", p="create")(
@@ -1507,7 +1527,8 @@ class S3OptionsMenu(object):
                     M("List All"),
                     #M("Search", m="search")
                  ),
-                 M("Beneficiary Types", f="beneficiary_type")(
+                 M("Beneficiary Types", f="beneficiary_type",
+                   check = stats,)(
                     M("New", m="create"),
                     M("List All"),
                  ),
@@ -1701,10 +1722,10 @@ class S3OptionsMenu(object):
 
         return [
             M("Email Settings", c="msg", f="inbound_email_settings"),
-            M("Parsing Settings", c="msg", f="workflow"),                       
+            M("Parsing Settings", c="msg", f="workflow"),
             M("SMS Settings", c="msg", f="setting",
                 args=[1], m="update"),
-            M("Twilio SMS Settings", c="msg", f="twilio_inbound_settings"),           
+            M("Twilio SMS Settings", c="msg", f="twilio_inbound_settings"),
             M("Twitter Settings", c="msg", f="twitter_settings",
                 args=[1], m="update")
         ]

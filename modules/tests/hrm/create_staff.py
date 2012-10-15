@@ -49,8 +49,8 @@ class CreateStaff(SeleniumUnitTest):
 
         self.create("hrm_human_resource", 
                     [( "organisation_id",
-                       "Acme Suppliers",
-                       "autocomplete"),
+                       "International Federation of Red Cross and Red Crescent Societies (IFRC)",
+                       "option"),
                      ( "first_name",
                        "Robert",
                        "pr_person"),
@@ -67,8 +67,9 @@ class CreateStaff(SeleniumUnitTest):
                        "Warehouse Manager",
                        "option"),
                      ( "site_id",
-                       "AP Zone",
-                       "autocomplete"),
+                       "AP Zone (Office)",
+                       "option",
+                       3),
                      ]
                      )
         

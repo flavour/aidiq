@@ -72,16 +72,14 @@ def s3_debug(message, value=None):
        @ToDo: Should be using python's built-in logging module?
     """
 
-    try:
-        output = "S3 Debug: %s" % str(message)
-        if value:
-            output = "%s: %s" % (output, str(value))
-    except:
-        output = u"S3 Debug: %s" % unicode(message)
-        if value:
-            output = u"%s: %s" % (output, unicode(value))
+    output = "S3 Debug: %s" % s3_unicode(message)
+    if value:
+        output = "%s: %s" % (output, s3_unicode(value))
 
-    print >> sys.stderr, output
+    try:
+        print >> sys.stderr, output
+    except:
+        print >> sys.stderr, "Debug crashed"
 
 # =============================================================================
 def s3_dev_toolbar():
@@ -90,16 +88,21 @@ def s3_dev_toolbar():
         Shows useful stuff at the bottom of the page in Debug mode
     """
 
-    from gluon.dal import thread
+    try:
+        # New web2py
+        from gluon.dal import THREAD_LOCAL
+    except:
+        # Old web2py
+        from gluon.dal import thread as THREAD_LOCAL
     from gluon.utils import web2py_uuid
 
     BUTTON = TAG.button
 
-    if hasattr(thread, "instances"):
+    if hasattr(THREAD_LOCAL, "instances"):
         dbstats = [TABLE(*[TR(PRE(row[0]),
                            "%.2fms" % (row[1]*1000)) \
                            for row in i.db._timings]) \
-                         for i in thread.instances]
+                         for i in THREAD_LOCAL.instances]
     else:
         dbstats = [] # if no db or on GAE
     u = web2py_uuid()
@@ -793,10 +796,10 @@ def s3_register_validation():
 
     if s3.debug:
         s3.scripts.append("/%s/static/scripts/jquery.validate.js" % appname)
-        s3.scripts.append("/%s/static/scripts/jquery.pstrength.1.3.js" % appname)
+        s3.scripts.append("/%s/static/scripts/jquery.pstrength.2.1.0.js" % appname)
     else:
         s3.scripts.append("/%s/static/scripts/jquery.validate.min.js" % appname)
-        s3.scripts.append("/%s/static/scripts/jquery.pstrength.1.3.min.js" % appname)
+        s3.scripts.append("/%s/static/scripts/jquery.pstrength.2.1.0.min.js" % appname)
 
     if request.cookies.has_key("registered"):
         password_position = '''last'''
@@ -1527,9 +1530,6 @@ class S3BulkImporter(object):
         self.alternateTables = {"hrm_person": {"tablename":"pr_person",
                                                "prefix":"pr",
                                                "name":"person"},
-                                "inv_warehouse": {"tablename":"org_office",
-                                                  "prefix":"org",
-                                                  "name":"office"},
                                 "member_person": {"tablename":"pr_person",
                                                   "prefix":"pr",
                                                   "name":"person"},
@@ -2780,8 +2780,8 @@ class S3DataTable(object):
         #          hence applying the datatable sorting/filters is
         #          not transparent
         if s3.datatable_ajax_source:
-            end = s3.datatable_ajax_source.find(".aaData")
-            default_url = s3.datatable_ajax_source[:end] # strip '.aaData' extension
+            end = s3.datatable_ajax_source.find(".aadata")
+            default_url = s3.datatable_ajax_source[:end] # strip '.aadata' extension
         else:
             default_url = current.request.url
         iconList = []
@@ -2944,6 +2944,7 @@ class S3DataTable(object):
                                     consisting of two values, the repr from the
                                     db and the label to display. This can be more than
                                     the actual number of groups (giving an empty group).
+                   dt_group_space: Insert a space between the group heading and the next group
                    dt_bulk_selected: A list of selected items
                    dt_actions: dictionary of actions
                    dt_styles: dictionary of styles to be applied to a list of ids
@@ -2952,7 +2953,10 @@ class S3DataTable(object):
                                "alert" : [2,10,13]}
                    dt_text_maximum_len: The maximum length of text before it is condensed
                    dt_text_condense_len: The length displayed text is condensed down to
-                   dt_shrink_groups: If true then the rows within a group will be hidden
+                   dt_shrink_groups: If set then the rows within a group will be hidden
+                                     two types are supported, 'individulal' and 'accordion'
+                   dt_group_types: The type of indicator for groups that can be 'shrunk'
+                                   Permitted valies are: 'icon' (the default) 'text' and 'none'
             @global current.response.s3.actions used to get the RowActions
         """
 
@@ -2982,7 +2986,7 @@ class S3DataTable(object):
         config.bFilter = attr.get("dt_bFilter", "true")
         config.ajaxUrl = attr.get("dt_ajax_url", URL(c=request.controller,
                                                      f=request.function,
-                                                     extension="aaData",
+                                                     extension="aadata",
                                                      args=request.args,
                                                      vars=request.get_vars,
                                                      ))
@@ -3016,16 +3020,18 @@ class S3DataTable(object):
         config.group = dt_group
         config.groupTotals = attr.get("dt_group_totals", [])
         config.groupTitles = attr.get("dt_group_titles", [])
-        if bulkActions:
-            for order in orderby:
+        config.groupSpacing = attr.get("dt_group_space", "false")
+        for order in orderby:
+            if bulkActions:
                 if config.bulkCol <= order[0]:
                     order[0] += 1
-                if action_col >= order[0]:
-                    order[0] -= 1
+            if action_col >= order[0]:
+                order[0] -= 1
         config.aaSort = orderby
         config.textMaxLength = attr.get("dt_text_maximum_len", 80)
         config.textShrinkLength = attr.get("dt_text_condense_len", 75)
         config.shrinkGroupedRows = attr.get("dt_shrink_groups", "false")
+        config.groupIcon = attr.get("dt_group_types", [])
         # Wrap the table in a form and add some data in hidden fields
         form = FORM()
         if not s3.no_formats and len(html) > 0:

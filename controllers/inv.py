@@ -66,8 +66,6 @@ def index():
                                                   extension="aadata",
                                                   vars={"id":"warehouse_list_1"},
                                                   ),
-                                     dt_text_maximum_len = 16,
-                                     dt_text_condense_len = 12,
                                      )
             else:
                 warehouse = dt.json(totalrows,
@@ -168,8 +166,9 @@ def index():
                                                      "dtwarning": warningList,
                                                      "dtalert": alertList,
                                                      },
-                                        dt_text_maximum_len = 10,
-                                        dt_text_condense_len = 8,
+                                        #dt_text_maximum_len = 10,
+                                        #dt_text_condense_len = 8,
+                                        #dt_group_space = "true",
                                         dt_shrink_groups = "accordion",
                                         #dt_shrink_groups = "individual",
                                         )
@@ -233,8 +232,6 @@ def index():
                                                        extension="aadata",
                                                        vars={"id": "supply_list_1"},
                                                        ),
-                                       dt_text_maximum_len = 16,
-                                       dt_text_condense_len = 12,
                                        )
             else:
                 supply_items = dt.json(totalrows,
@@ -268,7 +265,7 @@ def warehouse():
 
     # CRUD pre-process
     def prep(r):
-
+        
         if r.id:
             r.table.obsolete.readable = r.table.obsolete.writable = True
 
@@ -337,10 +334,11 @@ def warehouse():
                                 csv_template = resourcename,
                                 csv_stylesheet = csv_stylesheet,
                                 # Extra fields for CSV uploads:
-                                csv_extra_fields = [
-                                    dict(label="Organisation",
-                                         field=s3db.org_organisation_id(comment=None))
-                                ])
+                                #csv_extra_fields = [
+                                #         dict(label="Organisation",
+                                #         field=s3db.org_organisation_id(comment=None))
+                                #]
+                                )
     if "add_btn" in output:
         del output["add_btn"]
     return output
@@ -467,11 +465,9 @@ def inv_item():
                        )
 
     output = s3_rest_controller(rheader=s3db.inv_warehouse_rheader,
-                                csv_extra_fields = [
-                                                    dict(label="Organisation",
-                                                         field=s3db.org_organisation_id(comment=None)
-                                                         )
-                                                    ],
+                                #csv_extra_fields = [dict(label="Organisation",
+                                #                         field=s3db.org_organisation_id(comment=None))
+                                #                    ],
                                 pdf_paper_alignment = "Landscape",
                                 pdf_table_autogrow = "B",
                                 pdf_groupby = "site_id, item_id",
@@ -1197,7 +1193,7 @@ def recv():
             tracktable.recv_bin.writable = True
 
     def prep(r):
-        record = recvtable[r.id]
+        record = r.record
         if (record and
             (record.status != SHIP_STATUS_IN_PROCESS and
              record.status != SHIP_STATUS_SENT)):
@@ -1209,7 +1205,7 @@ def recv():
                             editable=False,
                             deletable=False,
                            )
-        if r.component:
+        if r.component and r.component.name == "track_item":
             # Set the track_item attributes
             # Can only create or delete track items for a recv record if the status is preparing
             if r.method == "create" or r.method == "delete":
@@ -1225,6 +1221,9 @@ def recv():
             if r.record and r.record.status == SHIP_STATUS_IN_PROCESS:
                 s3.crud_strings.inv_recv.title_update = \
                 s3.crud_strings.inv_recv.title_display = T("Process Received Shipment")
+                
+            # Default the Supplier/Donor to the Org sending the shipment
+            tracktable.supply_org_id.default = record.organisation_id
         else:
             # Set the recv attributes
             if r.id:

@@ -463,11 +463,13 @@ class S3LocationAutocompleteWidget(FormWidget):
             - needs to have deployment_settings passed-in
             - excludes unreliable imported records (Level 'XX')
 
-        Currently used for selecting the region location in gis_config.
         Appropriate when the location has been previously created (as is the
         case for location groups or other specialized locations that need
         the location create form).
         S3LocationSelectorWidget may be more appropriate for specific locations.
+
+        Currently used for selecting the region location in gis_config
+        and for project/location.
 
         @todo: .represent for the returned data
         @todo: Refreshes any dropdowns as-necessary (post_process)
@@ -509,22 +511,26 @@ class S3LocationAutocompleteWidget(FormWidget):
                           args="search.json",
                           vars={"filter":"~",
                                 "field":fieldname,
-                                "level":levels})
+                                "level":levels,
+                                "simple":1,
+                                })
             else:
                 url = URL(c=self.prefix,
                           f=self.resourcename,
                           args="search.json",
                           vars={"filter":"~",
                                 "field":fieldname,
-                                "level":level})
+                                "level":level,
+                                "simple":1,
+                                })
         else:
             url = URL(c=self.prefix,
                       f=self.resourcename,
                       args="search.json",
                       vars={"filter":"~",
                             "field":fieldname,
-                            "exclude_field":"level",
-                            "exclude_value":"XX"})
+                            "simple":1,
+                            })
 
         # Which Levels do we have in our hierarchy & what are their Labels?
         #location_hierarchy = current.deployment_settings.gis.location_hierarchy
@@ -534,6 +540,16 @@ class S3LocationAutocompleteWidget(FormWidget):
         #except:
         #    pass
 
+        # @ToDo: Something nicer (i.e. server-side formatting within S3LocationSearch)
+        name_getter = \
+'''function(item){
+if(item.level=="L0"){return item.name+" (%(country)s)"
+}else if(item.level=="L1"){return item.name+" ("+item.L0+")"
+}else if(item.level=="L2"){return item.name+" ("+item.L1+","+item.L0+")"
+}else if(item.level=="L3"){return item.name+" ("+item.L2+","+item.L1+","+item.L0+")"
+}else if(item.level=="L4"){return item.name+" ("+item.L3+","+item.L2+","+item.L1+","+item.L0+")"
+}else{return item.name}}''' % dict(country = current.messages.COUNTRY)
+
         return S3GenericAutocompleteTemplate(
             self.post_process,
             self.delay,
@@ -542,6 +558,7 @@ class S3LocationAutocompleteWidget(FormWidget):
             value,
             attributes,
             source = repr(url),
+            name_getter = name_getter,
         )
 
 # =============================================================================
@@ -1298,6 +1315,7 @@ class S3LocationSelectorWidget(FormWidget):
 
         Designed for use for Resources which require a Specific Location, such as Sites, Persons, Assets, Incidents, etc
         Not currently suitable for Resources which require a Hierarchical Location, such as Projects, Assessments, Plans, etc
+        - S3LocationAutocompleteWidget is more appropriate for these.
 
         Can also be used to transparently wrap simple sites (such as project_site) using the IS_SITE_SELECTOR() validator
 
@@ -3323,7 +3341,7 @@ def s3_richtext_widget(field, value):
 # =============================================================================
 def s3_grouped_checkboxes_widget(field,
                                  value,
-                                 size=20,
+                                 size = 20,
                                  **attributes):
     """
         Displays checkboxes for each value in the table column "field".
@@ -3341,8 +3359,6 @@ def s3_grouped_checkboxes_widget(field,
 
         Used by S3SearchOptionsWidget
     """
-
-    import locale
 
     requires = field.requires
     if not isinstance(requires, (list, tuple)):
@@ -3369,24 +3385,26 @@ def s3_grouped_checkboxes_widget(field,
     if total > size:
         # Options are put into groups of "size"
 
-        #letters = [u"A", u"Z"] # ToDo: localisation?
+        import locale
+
         letters = []
         letters_options = {}
 
+        append = letters.append
         for val, label in options:
-            letter = label and label[0]
+            letter = label
 
             if letter:
-                letter = str(letter.upper())
-
+                letter = s3_unicode(letter).upper()[0]
                 if letter not in letters_options:
-                    letters.append(letter)
+                    append(letter)
                     letters_options[letter] = [(val, label)]
                 else:
                     letters_options[letter].append((val, label))
 
         widget = DIV(_class=attributes.pop("_class",
-                                           "s3-grouped-checkboxes-widget"))
+                                           "s3-grouped-checkboxes-widget"),
+                     _name = "%s_widget" % field.name)
 
         input_index = 0
         group_index = 0
@@ -3396,11 +3414,12 @@ def s3_grouped_checkboxes_widget(field,
         to_letter = letters[0]
         letters.sort(locale.strcoll)
 
+        lget = letters_options.get
         for letter in letters:
             if from_letter is None:
                 from_letter = letter
 
-            group_options += letters_options.get(letter, [])
+            group_options += lget(letter, [])
 
             count = len(group_options)
 
@@ -3419,14 +3438,16 @@ def s3_grouped_checkboxes_widget(field,
                 widget.append(DIV(group_label,
                                   _id="%s-group-label-%s" % (field.name,
                                                              group_index),
-                                  _class="s3-grouped-checkboxes-widget-label"))
+                                  _class="s3-grouped-checkboxes-widget-label expanded"))
 
                 group_field = field
-                group_field.requires = IS_IN_SET(group_options,
-                                                 multiple=True)
+                # Can give Unicode issues:
+                #group_field.requires = IS_IN_SET(group_options,
+                #                                 multiple=True)
 
                 letter_widget = s3_checkboxes_widget(group_field,
                                                      value,
+                                                     options = group_options,
                                                      start_at_id=input_index,
                                                      **attributes)
 
@@ -3455,9 +3476,10 @@ def s3_grouped_checkboxes_widget(field,
 # =============================================================================
 def s3_checkboxes_widget(field,
                          value,
-                         cols=1,
-                         start_at_id=0,
-                         help_field=None,
+                         options = None,
+                         cols = 1,
+                         start_at_id = 0,
+                         help_field = None,
                          **attributes):
     """
         Display checkboxes for each value in the table column "field".
@@ -3473,20 +3495,22 @@ def s3_checkboxes_widget(field,
                           containing help text for each option
     """
 
-    values = not isinstance(value,(list,tuple)) and [value] or value
+    values = not isinstance(value, (list, tuple)) and [value] or value
     values = [str(v) for v in values]
 
+    attributes["_name"] = "%s_widget" % field.name
     if "_class" not in attributes:
         attributes["_class"] = "s3-checkboxes-widget"
 
-    requires = field.requires
-    if not isinstance(requires, (list, tuple)):
-        requires = [requires]
+    if options is None:
+        requires = field.requires
+        if not isinstance(requires, (list, tuple)):
+            requires = [requires]
 
-    if hasattr(requires[0], "options"):
-        options = requires[0].options()
-    else:
-        raise SyntaxError, "widget cannot determine options of %s" % field
+        if hasattr(requires[0], "options"):
+            options = requires[0].options()
+        else:
+            raise SyntaxError, "widget cannot determine options of %s" % field
 
     help_text = Storage()
 
@@ -3501,7 +3525,6 @@ def s3_checkboxes_widget(field,
             # not a reference - no expand
             # option text = field representation
             ktablename = None
-
 
         if ktablename is not None:
             if "." in ktablename:
@@ -3518,7 +3541,9 @@ def s3_checkboxes_widget(field,
 
             if lookup_field in ktable.fields:
                 query = ktable[pkey].belongs([k for k, v in options])
-                rows = current.db(query).select(ktable[pkey], ktable[lookup_field])
+                rows = current.db(query).select(ktable[pkey],
+                                                ktable[lookup_field]
+                                                )
 
                 for row in rows:
                     help_text[str(row[ktable[pkey]])] = row[ktable[lookup_field]]
@@ -3531,7 +3556,7 @@ def s3_checkboxes_widget(field,
 
 
     options = [(k, v) for k, v in options if k != ""]
-    options = sorted(options, key=lambda option: s3_unicode(option[1]).lower())
+    options = sorted(options, key=lambda option: option[1])
 
     input_index = start_at_id
     rows = []

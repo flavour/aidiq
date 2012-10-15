@@ -49,8 +49,8 @@ class CreateVolunteer(SeleniumUnitTest):
 
         self.create("hrm_human_resource", 
                     [( "organisation_id",
-                       "Acme Suppliers",
-                       "autocomplete"),
+                       "International Federation of Red Cross and Red Crescent Societies (IFRC)",
+                       "option"),
                      ( "first_name",
                        "John",
                        "pr_person"),
@@ -58,11 +58,15 @@ class CreateVolunteer(SeleniumUnitTest):
                        "Thompson",
                        "pr_person"),
                      ( "email",
-                       "test8@notavalidemail.com",
+                       "test81@notavalidemail.com",
                        "pr_person"),
                      ( "job_title_id",
                        "Security",
                        "option"),
+                     ( "site_id",
+                       "AP Zone (Office)",
+                       "option",
+                       3),
                      ]
                      )
 

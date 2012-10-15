@@ -40,6 +40,7 @@ __all__ = ["S3OrganisationModel",
            "S3OfficeTypeTagModel",
            "org_organisation_logo",
            "org_root_organisation",
+           "org_organisation_requires",
            "org_organisation_represent",
            "org_site_represent",
            "org_rheader",
@@ -70,6 +71,7 @@ class S3OrganisationModel(S3Model):
 
     names = ["org_sector",
              "org_sector_id",
+             "org_multi_sector_id",
              "org_sector_opts",
              #"org_subsector",
              "org_organisation_type",
@@ -93,6 +95,7 @@ class S3OrganisationModel(S3Model):
         crud_strings = current.response.s3.crud_strings
         define_table = self.define_table
         NONE = messages.NONE
+        ORGANISATION = messages.ORGANISATION
 
         location = current.session.s3.location_filter
         if location:
@@ -161,7 +164,12 @@ class S3OrganisationModel(S3Model):
 
         configure("org_sector", deduplicate=self.org_sector_duplicate)
 
-        sector_id = S3ReusableField("sector_id", "list:reference org_sector",
+        sector_comment = S3AddResourceLink(c="org", f="sector",
+                                           label=ADD_SECTOR,
+                                           title=SECTOR,
+                                           tooltip=help)
+
+        sector_id = S3ReusableField("sector_id", "reference org_sector",
                                     sortby="abrv",
                                     requires=IS_NULL_OR(
                                                 IS_ONE_OF(db, "org_sector.id",
@@ -169,13 +177,26 @@ class S3OrganisationModel(S3Model):
                                                           sort=True,
                                                           filterby=filterby,
                                                           filter_opts=filter_opts,
-                                                          multiple=True)),
+                                                          )
+                                                        ),
                                     represent=self.org_sector_multirepresent,
-                                    comment=S3AddResourceLink(c="org",
-                                                f="sector",
-                                                label=ADD_SECTOR,
-                                                title=SECTOR,
-                                                tooltip=help),
+                                    comment=sector_comment,
+                                    label=SECTOR,
+                                    ondelete="SET NULL")
+
+        multi_sector_id = S3ReusableField("multi_sector_id", "list:reference org_sector",
+                                    sortby="abrv",
+                                    requires=IS_NULL_OR(
+                                                IS_ONE_OF(db, "org_sector.id",
+                                                          self.org_sector_represent,
+                                                          sort=True,
+                                                          filterby=filterby,
+                                                          filter_opts=filter_opts,
+                                                          multiple=True
+                                                          )
+                                                        ),
+                                    represent=self.org_sector_multirepresent,
+                                    comment=sector_comment,
                                     label=SECTOR,
                                     ondelete="SET NULL")
 
@@ -311,14 +332,12 @@ class S3OrganisationModel(S3Model):
                                    comment=DIV(_class="tooltip",
                                                  _title="%s|%s" % (T("Acronym"),
                                                                    T("Acronym of the organization's name, eg. IFRC.")))),
-                             organisation_type_id(
-                                                  #readable = False,
+                             organisation_type_id(#readable = False,
                                                   #writable = False,
-                                                ),
-                             sector_id(
-                                       #readable = False,
-                                       #writable = False,
-                                      ),
+                                                  ),
+                             multi_sector_id(#readable = False,
+                                             #writable = False,
+                                             ),
                              #Field("registration", label=T("Registration")),    # Registration Number
                              Field("region",
                                    label=T("Region"),
@@ -335,16 +354,13 @@ class S3OrganisationModel(S3Model):
                                                                   zero=messages.SELECT_LOCATION)),
                                    represent=lambda code: \
                                         gis.get_country(code, key_type="code") or messages.UNKNOWN_OPT),
-                             Field("logo", "upload",
-                                   label=T("Logo"),
-                                   requires=[IS_EMPTY_OR(IS_IMAGE(maxsize=(400, 400),
-                                                                    error_message=T("Upload an image file (png or jpeg), max. 400x400 pixels!"))),
-                                               IS_EMPTY_OR(IS_UPLOAD_FILENAME())],
-                                   represent=self.doc_image_represent,
-                                   comment=DIV(_class="tooltip",
-                                                 _title="%s|%s" % (T("Logo"),
-                                                                   T("Logo of the organization. This should be a png or jpeg file and it should be no larger than 400x400")))
-                                  ),
+                             Field("phone",
+                                   label=T("Phone #"),
+                                   #readable = False,
+                                   #writable = False,
+                                   requires=IS_NULL_OR(s3_phone_requires),
+                                   represent=lambda v: v or NONE
+                                   ),
                              # http://hxl.humanitarianresponse.info/#organisationHomepage
                              Field("website",
                                    label=T("Website"),
@@ -377,6 +393,16 @@ class S3OrganisationModel(S3Model):
                                    comment=DIV(_class="tooltip",
                                                  _title="%s|%s" % (T("Donation Phone #"),
                                                                    T("Phone number to donate to this organization's relief efforts.")))),
+                             Field("logo", "upload",
+                                   label=T("Logo"),
+                                   requires=[IS_EMPTY_OR(IS_IMAGE(maxsize=(400, 400),
+                                                                    error_message=T("Upload an image file (png or jpeg), max. 400x400 pixels!"))),
+                                               IS_EMPTY_OR(IS_UPLOAD_FILENAME())],
+                                   represent=self.doc_image_represent,
+                                   comment=DIV(_class="tooltip",
+                                                 _title="%s|%s" % (T("Logo"),
+                                                                   T("Logo of the organization. This should be a png or jpeg file and it should be no larger than 400x400")))
+                                  ),
                              s3_comments(),
                              #document_id(), # Better to have multiple Documents on a Tab
                              * s3_meta_fields())
@@ -413,28 +439,26 @@ class S3OrganisationModel(S3Model):
         organisation_comment = S3AddResourceLink(c="org",
                                                  f="organisation",
                                                  label=ADD_ORGANIZATION,
-                                                 title=T("Organization"),
+                                                 title=ORGANISATION,
                                                  tooltip=help)
 
         from_organisation_comment = S3AddResourceLink(c="org",
                                                       f="organisation",
                                                       vars=dict(child="from_organisation_id"),
                                                       label=ADD_ORGANIZATION,
-                                                      title=T("Organization"),
+                                                      title=ORGANISATION,
                                                       tooltip=help)
 
+        auth = current.auth
         organisation_id = S3ReusableField("organisation_id", table,
                                           sortby="name",
-                                          requires=IS_NULL_OR(
-                                                        IS_ONE_OF(db, "org_organisation.id",
-                                                                  org_organisation_represent,
-                                                                  orderby="org_organisation.name",
-                                                                  sort=True)),
+                                          default = auth.user.organisation_id if auth.is_logged_in() else None,
+                                          requires=org_organisation_requires(),
                                           represent=org_organisation_represent,
-                                          label=T("Organization"),
+                                          label=ORGANISATION,
                                           comment=organisation_comment,
                                           ondelete="RESTRICT",
-                                          widget=widget
+                                          widget = SQLFORM.widgets.options.widget,
                                          )
 
         organisations_id = S3ReusableField("organisations_id",
@@ -482,7 +506,7 @@ class S3OrganisationModel(S3Model):
                     S3SearchOptionsWidget(
                         name="org_search_sector",
                         label=SECTOR,
-                        field="sector_id",
+                        field="multi_sector_id",
                         options=self.org_sector_opts,
                         cols=3
                     ),
@@ -508,7 +532,7 @@ class S3OrganisationModel(S3Model):
                                  "name",
                                  "acronym",
                                  "organisation_type_id",
-                                 "sector_id",
+                                 "multi_sector_id",
                                  "country",
                                  "website"
                                 ])
@@ -661,6 +685,7 @@ class S3OrganisationModel(S3Model):
         configure(tablename,
                   deduplicate=self.org_branch_duplicate,
                   onaccept=self.org_branch_onaccept,
+                  onvalidation=self.org_branch_onvalidation,
                   ondelete=self.org_branch_ondelete,
                   )
 
@@ -679,7 +704,9 @@ class S3OrganisationModel(S3Model):
         #
         return Storage(
                     org_sector_id=sector_id,
+                    org_multi_sector_id=multi_sector_id,
                     org_sector_opts=self.org_sector_opts,
+                    org_sector_represent = self.org_sector_represent,
                     org_organisation_type_id=organisation_type_id,
                     org_organisation_id=organisation_id,
                 )
@@ -1014,6 +1041,22 @@ class S3OrganisationModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
+    def org_branch_onvalidation(form):
+        """
+            Prevent an Organisation from being a Branch of itself
+            - this is for interactive forms, imports are caught in .xsl
+        """
+
+        vars = form.request_vars
+        if vars and \
+           vars.branch_id and \
+           int(vars.branch_id) == int(vars.organisation_id):
+            error = current.T("Cannot make an Organisation a branch of itself!")
+            form.errors["branch_id"] = error
+            current.response.error = error
+
+    # -------------------------------------------------------------------------
+    @staticmethod
     def org_branch_onaccept(form):
         """
             Remove any duplicate memberships and update affiliations
@@ -1061,7 +1104,6 @@ class S3OrganisationModel(S3Model):
         if record:
             current.s3db.pr_update_affiliations(table, record)
         return
-
 # =============================================================================
 class S3OrganisationVirtualFields:
     """ Virtual fields for the org_organisation table """
@@ -1165,6 +1207,7 @@ class S3SiteModel(S3Model):
     """
 
     names = ["org_site",
+             "org_site_requires",
              "org_site_id",
              ]
 
@@ -1211,19 +1254,19 @@ class S3SiteModel(S3Model):
                                   *s3_ownerstamp())
 
         # ---------------------------------------------------------------------
+        org_site_label = current.deployment_settings.get_org_site_label()
         site_id = self.super_link("site_id", "org_site",
                                   #writable = True,
                                   #readable = True,
-                                  label=T("Facility"),
+                                  label=org_site_label,
                                   default=auth.user.site_id if auth.is_logged_in() else None,
-                                  represent=lambda id: \
-                                    org_site_represent(id, show_link=True),
+                                  represent=org_site_represent,
                                   orderby="org_site.name",
                                   sort=True,
                                   # Comment these to use a Dropdown & not an Autocomplete
                                   widget=S3SiteAutocompleteWidget(),
                                   comment=DIV(_class="tooltip",
-                                                _title="%s|%s" % (T("Facility"),
+                                                _title="%s|%s" % (org_site_label,
                                                                   T("Enter some characters to bring up a list of possible matches")))
                                   )
 
@@ -1797,8 +1840,11 @@ class S3OfficeModel(S3Model):
                                    #writable=False,
                                    # @ToDo: Deployment Setting to add validator to make these unique
                                    ),
-                             self.org_organisation_id(widget=S3OrganisationAutocompleteWidget(
-                                default_from_profile=True)),
+                             self.org_organisation_id(
+                                 #widget=S3OrganisationAutocompleteWidget(default_from_profile=True),
+                                 requires = self.org_organisation_requires(updateable=True,
+                                                                           required=True),
+                                 ),
                              office_type_id(
                                             #readable = False,
                                             #writable = False,
@@ -1856,7 +1902,7 @@ class S3OfficeModel(S3Model):
                       ),
                       S3SearchOptionsWidget(
                         name="office_search_org",
-                        label=T("Organization"),
+                        label=messages.ORGANISATION,
                         comment=T("Search for office by organization."),
                         field="organisation_id",
                         represent="%(name)s",
@@ -1884,14 +1930,32 @@ class S3OfficeModel(S3Model):
                                "organisation_id", # Filtered in Component views
                                "type",
                                #(T("Address"), "location_id$addr_street"),
-                               (T("Country"), "location_id$L0"),
+                               (messages.COUNTRY, "location_id$L0"),
                                "location_id$L1",
                                "location_id$L2",
                                "location_id$L3",
                                #"location_id$L4",
                                "phone1",
                                "email"
-                               ])
+                               ],
+                  realm_components=["contact_emergency",
+                                    "config",
+                                    "image",
+                                    "req",
+                                    "send",
+                                    "human_resource_site",
+                                    "note",
+                                    "contact",
+                                    "role",
+                                    "asset",
+                                    "commit",
+                                    "inv_item",
+                                    "document",
+                                    "recv",
+                                    "address",
+                                    ],
+                  update_realm=True,
+                 )
 
         if current.deployment_settings.get_org_summary():
             add_component("org_office_summary",
@@ -1961,36 +2025,46 @@ class S3OfficeModel(S3Model):
     # ---------------------------------------------------------------------
     @staticmethod
     def org_office_onaccept(form):
-        """ Process injected fields """
+        """
+            * Update Affiliation and Realms
+            * Process injected fields
+        """
 
-        if not current.deployment_settings.get_org_summary():
-            return
+        auth = current.auth
+        s3db = current.s3db
+        otable = s3db.org_office
+        vars = form.vars
 
-        db = current.db
-        id = form.vars.id
-        table = current.s3db.org_office_summary
-        query = (table.office_id == id)
-        existing = db(query).select(table.id,
-                                    limitby=(0, 1)).first()
-        vars = current.request.post_vars
-        if "national_staff" in vars:
-            national_staff = vars.national_staff
-        else:
-            national_staff = None
-        if "international_staff" in vars:
-            international_staff = vars.international_staff
-        else:
-            international_staff = None
+        # Affiliation, record ownership and component ownership
+        s3db.pr_update_affiliations(otable, vars)
 
-        if existing:
-            db(query).update(national_staff=national_staff,
+        if current.deployment_settings.get_org_summary():
+
+            db = current.db
+            id = form.vars.id
+            table = current.s3db.org_office_summary
+            query = (table.office_id == id)
+            existing = db(query).select(table.id,
+                                        limitby=(0, 1)).first()
+            vars = current.request.post_vars
+            if "national_staff" in vars:
+                national_staff = vars.national_staff
+            else:
+                national_staff = None
+            if "international_staff" in vars:
+                international_staff = vars.international_staff
+            else:
+                international_staff = None
+
+            if existing:
+                db(query).update(national_staff=national_staff,
+                                 international_staff=international_staff
+                                 )
+            elif national_staff or international_staff:
+                table.insert(office_id=id,
+                             national_staff=national_staff,
                              international_staff=international_staff
                              )
-        elif national_staff or international_staff:
-            table.insert(office_id=id,
-                         national_staff=national_staff,
-                         international_staff=international_staff
-                         )
 
     # ---------------------------------------------------------------------
     @staticmethod
@@ -2197,6 +2271,23 @@ def org_root_organisation(organisation_id=None, pe_id=None):
     return None, None
 
 # =============================================================================
+def org_organisation_requires(updateable=False,
+                              required=False):
+    """
+        Optionally: Filter the list of organisations for a form field to
+        just those which the user has update permissions for
+    """
+
+    requires = IS_ONE_OF(current.db, "org_organisation.id",
+                         org_organisation_represent,
+                         updateable = updateable,
+                         orderby = "org_organisation.name",
+                         sort = True)
+    if not required:
+        requires = IS_NULL_OR(requires)
+    return requires
+
+# =============================================================================
 def org_organisation_represent(id, row=None, show_link=False,
                                acronym=True, parent=True):
     """
@@ -2344,13 +2435,13 @@ def org_rheader(r, tabs=[]):
                    ]
         rheader_tabs = s3_rheader_tabs(r, tabs)
 
-        if table.sector_id.readable and record.sector_id:
+        if table.multi_sector_id.readable and record.multi_sector_id:
             if settings.get_ui_cluster():
                 sector_label = T("Cluster(s)")
             else:
                 sector_label = T("Sector(s)")
             sectors = TR(TH("%s: " % sector_label),
-                         table.sector_id.represent(record.sector_id))
+                         table.multi_sector_id.represent(record.multi_sector_id))
         else:
             sectors = ""
 
@@ -2380,8 +2471,10 @@ def org_rheader(r, tabs=[]):
         tabs = [(T("Basic Details"), None),
                 #(T("Contact Data"), "contact"),
                 (T("Staff"), "human_resource"),
-                (T("Assign Staff"), "human_resource_site"),
+
                ]
+        if current.auth.s3_has_permission("create", "hrm_human_resource"):
+            tabs.append((T("Assign Staff"), "human_resource_site"))
         if settings.has_module("inv"):
             tabs = tabs + s3db.inv_tabs(r)
         if settings.has_module("req"):
@@ -2448,21 +2541,38 @@ def org_organisation_controller():
             request = current.request
             r.table.country.default = current.gis.get_default_country("code")
 
-            # Plug in role matrix for Admins/OrgAdmins
-            auth = current.auth
-            if r.id and auth.user is not None:
-                sr = auth.get_system_roles()
-                realms = auth.user.realms or Storage()
-                if sr.ADMIN in realms or \
-                   sr.ORG_ADMIN in realms and r.record.pe_id in realms[sr.ORG_ADMIN]:
-                    s3db.set_method(r.prefix, r.name,
-                                    method="roles",
-                                    action=S3OrgRoleManager())
-
             if not r.component and r.method not in ["read", "update", "delete"]:
                 # Filter out branches
-                branch_filter = S3FieldSelector("parent.id") == None
+                lfilter = current.session.s3.location_filter
+                if lfilter:
+                    # Include those whose parent is in a different country
+                    db = current.db
+                    gtable = s3db.gis_location
+                    query = (gtable.id == lfilter)
+                    row = db(query).select(gtable.id,
+                                           gtable.name,
+                                           gtable.level,
+                                           gtable.path,
+                                           limitby=(0, 1)).first()
+                    if row and row.level:
+                        if row.level != "L0":
+                            code = current.gis.get_parent_country(row, key_type="code")
+                        else:
+                            ttable = s3db.gis_location_tag
+                            query = (ttable.tag == "ISO2") & \
+                                    (ttable.location_id == row.id)
+                            tag = db(query).select(ttable.value,
+                                                   limitby=(0, 1)).first()
+                            code = tag.value
+                        branch_filter = (S3FieldSelector("parent.id") == None) | \
+                                        (S3FieldSelector("parent.country") != code) | \
+                                        (S3FieldSelector("parent.country") == None)
+                    else:
+                        branch_filter = (S3FieldSelector("parent.id") == None)
+                else:
+                    branch_filter = (S3FieldSelector("parent.id") == None)
                 r.resource.add_filter(branch_filter)
+
             elif r.component_name == "human_resource" and r.component_id:
                 # Workaround until widget is fixed:
                 htable = s3db.hrm_human_resource
@@ -2470,6 +2580,13 @@ def org_organisation_controller():
                 htable.person_id.writable = False
 
             elif r.component_name == "branch":
+                # Branches default to the same type/sector/country as the parent
+                otable = r.table
+                record = r.record
+                otable.organisation_type_id.default = record.organisation_type_id
+                otable.multi_sector_id.default = record.multi_sector_id
+                otable.country.default = record.country
+                # Represent orgs without the parent prefix as we have that context already
                 s3db.org_organisation_branch.branch_id.represent = lambda val: \
                     s3db.org_organisation_represent(val, parent=False)
 
@@ -2488,6 +2605,8 @@ def org_organisation_controller():
                                post_process='''hide_host_role($('#%s').val())''')
                 s3.scripts.append("/%s/static/scripts/S3/s3.hide_host_role.js" % \
                     request.application)
+
+            s3db.configure("project_project", create_next=None)
 
             # If a filter is being applied to the Organisations, change the CRUD Strings accordingly
             type_filter = request.get_vars["organisation.organisation_type_id$name"]
@@ -2672,17 +2791,6 @@ def org_office_controller():
             table.obsolete.readable = False
 
         if r.interactive:
-            # Plug in role matrix for Admins/OrgAdmins
-            auth = current.auth
-            if r.id and auth.user is not None:
-                sr = auth.get_system_roles()
-                realms = auth.user.realms or Storage()
-                if sr.ADMIN in realms or \
-                   sr.ORG_ADMIN in realms and r.record.pe_id in realms[sr.ORG_ADMIN]:
-                    s3db.set_method(r.prefix, r.name,
-                                    method="roles",
-                                    action=S3OrgRoleManager())
-
             if r.component:
                 cname = r.component.name
                 if cname in ("inv_item", "recv", "send"):
@@ -2698,8 +2806,8 @@ def org_office_controller():
                                    )
 
                 elif cname == "human_resource":
-                    # Filter out people which are already staff for this office
-                    s3_filter_staff(r)
+                    # Filter to just Staff
+                    s3.filter = (s3db.hrm_human_resource.type == 1)
                     # Make it clear that this is for adding new staff, not assigning existing
                     s3.crud_strings.hrm_human_resource.label_create_button = T("Add New Staff Member")
                     # Cascade the organisation_id from the office to the staff
@@ -2707,6 +2815,8 @@ def org_office_controller():
                     htable.organisation_id.default = r.record.organisation_id
                     htable.organisation_id.writable = False
                     htable.organisation_id.comment = None
+                    # Filter out people which are already staff for this office
+                    s3_filter_staff(r)
 
                 elif cname == "req" and r.method not in ("update", "read"):
                     # Hide fields which don't make sense in a Create form
@@ -2787,6 +2897,14 @@ def org_office_controller():
                         except:
                             # A non-standard formstyle with just a single row
                             pass
+            elif r.component_name == "human_resource":
+                # Modify action button to open staff instead of human_resource
+                read_url = URL(c="hrm", f="staff", args=["[id]"])
+                delete_url = URL(c="hrm", f="staff", args=["[id]", "delete"])
+                update_url = URL(c="hrm", f="staff", args=["[id]", "update"])
+                S3CRUD.action_buttons(r, read_url=read_url,
+                                         delete_url=delete_url,
+                                         update_url=update_url)
         return output
     s3.postp = postp
 

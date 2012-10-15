@@ -31,12 +31,10 @@ class Web2UnitTest(unittest.TestCase):
         self.user = "admin"
         self.stdout = sys.stdout
         self.stderr = sys.stderr
-        
+
     def reporter(self, msg, verbose_level = 1):
         if self.config.verbose >= verbose_level:
             print >> sys.stderr, msg
-            if self.config.verbose > 2:
-                print >> self.stdout, msg
 
 # =============================================================================
 class SeleniumUnitTest(Web2UnitTest):
@@ -56,7 +54,7 @@ class SeleniumUnitTest(Web2UnitTest):
             this can be modified by the callback function
         """
 
-        query = (table.deleted == "F")
+        query = (table.deleted != True)
         for details in data:
             query = query & (table[details[0]] == details[1])
         rows = current.db(query).select(orderby=~table.id)
@@ -89,7 +87,7 @@ class SeleniumUnitTest(Web2UnitTest):
         result = {}
         id_data = []
         table = current.s3db[tablename]
-        
+
         date_format = str(current.deployment_settings.get_L10n_date_format())
         datetime_format = str(current.deployment_settings.get_L10n_datetime_format())
         # if the logged in confirm is shown then try and clear it.
@@ -119,7 +117,9 @@ class SeleniumUnitTest(Web2UnitTest):
                             except:
                                 pass
                             break
-                    self.assertTrue(raw_value,"%s option cannot be found in %s" % (el_value, el_id))
+                    # Test that we have an id that can be used in the database
+                    if el_value and el_value != "-":
+                        self.assertTrue(raw_value,"%s option cannot be found in %s" % (el_value, el_id))
                 elif el_type == "checkbox":
                     for value in el_value:
                         self.browser.find_element_by_xpath("//label[contains(text(),'%s')]" % value).click()
@@ -153,7 +153,7 @@ class SeleniumUnitTest(Web2UnitTest):
                     el = browser.find_element_by_id(el_id)
                     el.send_keys(el_value)
                     raw_value = None
-                
+
             else:
                 # Normal Input field
                 el = browser.find_element_by_id(el_id)
@@ -168,13 +168,14 @@ class SeleniumUnitTest(Web2UnitTest):
                     el.send_keys(el_value)
                     #raw_value = el_value_datetime
                     raw_value = el_value
-                    # @ToDo: Fix hack to stop checking datetime field. This is because the field does not support data entry by key press  
+                    # @ToDo: Fix hack to stop checking datetime field. This is because the field does not support data entry by key press
                     # Use the raw value to check that the record was added succesfully
                 else:
+                    el.clear()
                     el.send_keys(el_value)
                     raw_value = el_value
 
-            if raw_value: 
+            if raw_value:
                 id_data.append([details[0], raw_value])
 
         result["before"] = self.getRows(table, id_data, dbcallback)
@@ -188,8 +189,18 @@ class SeleniumUnitTest(Web2UnitTest):
             self.reporter(elem.text)
         except NoSuchElementException:
             confirm = False
+        if (confirm != success):
+            # Do we have a validation error?
+            try:
+                elem_error = browser.find_element_by_xpath("//div[@class='error']")
+                if elem_error:
+                    msg = "%s %s" % (elem_error.get_attribute("id"), elem_error.text)
+                    self.reporter(msg)
+            except NoSuchElementException:
+                pass
         self.assertTrue(confirm == success,
-                        "Unexpected create success of %s" % confirm)
+                        "Unexpected %s to create record" %
+                        (confirm and "success" or "failure"))
         result["after"] = self.getRows(table, id_data, dbcallback)
         successMsg = "Record added to database"
         failMsg = "Record not added to database"

@@ -20,6 +20,7 @@
          Twitter.................org_organisation
          Donation Phone..........org_organisation
          Comments................org_organisation
+         Approved................org_organisation.approved_by
 
     *********************************************************************** -->
     <xsl:output method="xml"/>
@@ -104,6 +105,10 @@
                 </xsl:when>
             </xsl:choose>
 
+            <xsl:if test="col[@field='Approved']!=''">
+                <data field="approved_by">0</data>
+            </xsl:if>
+            
             <xsl:if test="col[@field='Acronym']!=''">
                 <data field="acronym"><xsl:value-of select="col[@field='Acronym']"/></data>
             </xsl:if>
@@ -141,7 +146,7 @@
             </xsl:if>
 
             <xsl:if test="$sector!=''">
-                <reference field="sector_id" resource="org_sector">
+                <reference field="multi_sector_id" resource="org_sector">
                     <xsl:variable name="qlist">
                         <xsl:call-template name="quoteList">
                             <xsl:with-param name="list" select="$sector"/>
@@ -157,13 +162,16 @@
                 <!-- Nest all the Branches -->
                 <xsl:for-each select="//row[col[@field='Organisation']=$OrgName]">
                     <xsl:if test="col[@field='Branch']!=''">
-                        <resource name="org_organisation_branch" alias="branch">
-                            <reference field="branch_id"  resource="org_organisation">
-                                <xsl:attribute name="tuid">
-                                    <xsl:value-of select="concat($OrgName,col[@field='Branch'])"/>
-                                </xsl:attribute>
-                            </reference>
-                        </resource>
+                        <!-- Don't create Orgs as Branches of themselves -->
+                        <xsl:if test="col[@field='Branch']!=$OrgName">
+                            <resource name="org_organisation_branch" alias="branch">
+                                <reference field="branch_id"  resource="org_organisation">
+                                    <xsl:attribute name="tuid">
+                                        <xsl:value-of select="concat($OrgName,col[@field='Branch'])"/>
+                                    </xsl:attribute>
+                                </reference>
+                            </resource>
+                        </xsl:if>
                     </xsl:if>
                 </xsl:for-each>
             </xsl:if>

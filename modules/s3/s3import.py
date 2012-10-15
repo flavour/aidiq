@@ -60,7 +60,6 @@ from gluon.serializers import json as jsons
 from gluon.storage import Storage, Messages
 from gluon.tools import callback
 
-from s3utils import SQLTABLES3
 from s3crud import S3CRUD
 from s3xml import S3XML
 from s3utils import s3_mark_required, s3_has_foreign_key, s3_get_foreign_key
@@ -187,9 +186,9 @@ class S3Importer(S3CRUD):
         messages.commit_total_errors = "%s records in error"
 
         try:
-            self.uploadTitle = current.response.s3.crud_strings[self.tablename].title_upload
+            self.uploadTitle = current.response.s3.crud_strings[self.tablename].title_upload or T("Import")
         except:
-            self.uploadTitle = T("Upload a %s import file" % r.function)
+            self.uploadTitle = T("Import")
 
         # @todo: correct to switch this off for the whole session?
         current.session.s3.ocr_enabled = False
@@ -236,6 +235,7 @@ class S3Importer(S3CRUD):
 
         # @todo: clean this up
         source = None
+        open_file = None
         transform = None
         upload_id = None
         items = None
@@ -261,6 +261,13 @@ class S3Importer(S3CRUD):
             self.job_id = self.upload_job.job_id
         else:
             self.job_id = None
+
+
+        # Experimental uploading via ajax - added for vulnerability
+        # Part of the problem with this is that it works directly with the
+        # opened file. This might pose a security risk, is should be alright
+        # if only trusted users are involved but care should be taken with this
+        self.ajax = current.request.ajax and r.post_vars.approach == "ajax"
 
         # Now branch off to the appropriate controller function
         if r.http == "GET":
@@ -328,48 +335,65 @@ class S3Importer(S3CRUD):
 
         db = current.db
         table = self.upload_table
-
-        title=self.uploadTitle
-        form = self._upload_form(r, **attr)
-
-        r = self.request
-        r.read_body()
-        sfilename = form.vars.file
-        try:
-            ofilename = r.post_vars["file"].filename
-        except:
-            form.errors.file = self.messages.no_file
-
-        if form.errors:
-            response.flash = ""
-            output = self._create_upload_dataTable()
-            output.update(form=form, title=title)
-
-        elif not sfilename or \
-             ofilename not in r.files or r.files[ofilename] is None:
-            response.flash = ""
-            response.error = self.messages.file_not_found
-            output = self._create_upload_dataTable()
-            output.update(form=form, title=title)
-
+        output = None
+        if self.ajax:
+            sfilename = ofilename = r.post_vars["file"].filename
+            upload_id = table.insert(controller=self.controller,
+                                     function=self.function,
+                                     filename=ofilename,
+                                     file = sfilename,
+                                     user_id=current.session.auth.user.id
+                                     )
         else:
+            title=self.uploadTitle
+            form = self._upload_form(r, **attr)
+
+            r = self.request
+            r.read_body()
+            sfilename = form.vars.file
+            try:
+                ofilename = r.post_vars["file"].filename
+            except:
+                form.errors.file = self.messages.no_file
+
+            if form.errors:
+                response.flash = ""
+                output = self._create_upload_dataTable()
+                output.update(form=form, title=title)
+
+            elif not sfilename or \
+                 ofilename not in r.files or r.files[ofilename] is None:
+                response.flash = ""
+                response.error = self.messages.file_not_found
+                output = self._create_upload_dataTable()
+                output.update(form=form, title=title)
+            else:
+                query = (table.file == sfilename)
+                db(query).update(controller=self.controller,
+                                 function=self.function,
+                                 filename=ofilename,
+                                 user_id=current.session.auth.user.id)
+                row = db(query).select(table.id, limitby=(0, 1)).first()
+                upload_id = row.id
+
+        if not output:
             output = dict()
-            query = (table.file == sfilename)
-            db(query).update(controller=self.controller,
-                             function=self.function,
-                             filename=ofilename,
-                             user_id=current.session.auth.user.id)
             # must commit here to separate this transaction from
             # the trial import phase which will be rolled back.
             db.commit()
 
             extension = ofilename.rsplit(".", 1).pop()
             if extension not in ("csv", "xls"):
+                if self.ajax:
+                    return {"Error": self.messages.invalid_file_format}
                 response.flash = None
                 response.error = self.messages.invalid_file_format
                 return self.upload(r, **attr)
 
-            upload_file = r.files[ofilename]
+            if self.ajax:
+                upload_file = r.post_vars.file.file
+            else:
+                upload_file = r.files[ofilename]
             if extension == "xls":
                 if "xls_parser" in s3:
                     upload_file.seek(0)
@@ -383,8 +407,6 @@ class S3Importer(S3CRUD):
             else:
                 upload_file.seek(0)
 
-            row = db(query).select(table.id, limitby=(0, 1)).first()
-            upload_id = row.id
             if "single_pass" in r.vars:
                 single_pass = r.vars["single_pass"]
             else:
@@ -578,6 +600,8 @@ class S3Importer(S3CRUD):
         # record the summary details
         # delete the upload file
         result = self._update_upload_job(upload_id)
+        if self.ajax:
+            return result
         # redirect to the start page (removes all vars)
         self._display_completed_job(result)
         redirect(URL(r=self.request, f=self.function, args=["import"]))
@@ -849,6 +873,19 @@ class S3Importer(S3CRUD):
                 error_list.append(str(row.id))
             else:
                 select_list.append("%s" % row.id)
+
+        # Experimental uploading via ajax - added for vulnerability
+        if self.ajax:
+            resource = self.resource
+            resource.add_filter(s3.filter)
+            rows = resource.select(["id", "element", "error"],
+                                   start=0,
+                                   limit=resource.count(),
+                                   )
+            data = resource.extract(rows,
+                                    ["id", "element", "error"],
+                                    )
+            return (upload_id, select_list, data)
 
         s3.actions = [
                         dict(label= str(self.messages.item_show_details),
@@ -1239,6 +1276,7 @@ class S3Importer(S3CRUD):
         data = resource.extract(rows,
                                 list_fields,
                                 )
+
         # put each value through the represent function
         for row in data:
             for (key, value) in row.items():
@@ -1257,7 +1295,7 @@ class S3Importer(S3CRUD):
                            )
         else:
             output = dict()
-            url = "/%s/%s/%s/import.aaData?job=%s" % (request.application,
+            url = "/%s/%s/%s/import.aadata?job=%s" % (request.application,
                                                       request.controller,
                                                       request.function,
                                                       ajax_item_id
@@ -1509,12 +1547,11 @@ class S3Importer(S3CRUD):
         """
             Set the resource and the table to being s3_import_item
         """
-
+        self.table = S3ImportJob.define_item_table()
         self.tablename = S3ImportJob.ITEM_TABLE_NAME
         if self.item_resource == None:
             self.item_resource = current.s3db.resource(self.tablename)
         self.resource = self.item_resource
-        self.table = S3ImportJob.define_item_table()
 
     # -------------------------------------------------------------------------
     def __define_table(self):
@@ -1799,6 +1836,9 @@ class S3ImportItem(object):
 
     # -------------------------------------------------------------------------
     def deduplicate(self):
+        """
+            Detect whether this is an update or a new record
+        """
 
         RESOLVER = "deduplicate"
 
@@ -1838,18 +1878,11 @@ class S3ImportItem(object):
         if not self.table:
             return False
 
-        manager = current.manager
-
         prefix = self.tablename.split("_", 1)[0]
-        if prefix in manager.PROTECTED:
+        if prefix in current.manager.PROTECTED:
             return False
 
-        authorize = manager.permit
-        if authorize:
-            self.permitted = False
-        else:
-            self.permitted = True
-
+        # Determine the method
         self.method = self.METHOD.CREATE
         if self.id:
 
@@ -1864,13 +1897,18 @@ class S3ImportItem(object):
                 if self.original:
                     self.method = self.METHOD.UPDATE
 
+        # Set self.id
         if self.method == self.METHOD.CREATE:
             self.id = 0
 
+        # Authorization
+        authorize = current.auth.s3_has_permission
         if authorize:
             self.permitted = authorize(self.method,
                                        self.tablename,
                                        record_id=self.id)
+        else:
+            self.permitted = True
 
         return self.permitted
 
@@ -1886,11 +1924,13 @@ class S3ImportItem(object):
             self.accepted = False
             return False
 
-        form = Storage()
-        form.method = self.method
-        form.vars = self.data
+        form = Storage(method = self.method,
+                       vars = self.data,
+                       request_vars = self.data)
+
         if self.id:
             form.vars.id = self.id
+
         form.errors = Storage()
         tablename = self.tablename
         key = "%s_onvalidation" % self.method
@@ -1939,6 +1979,9 @@ class S3ImportItem(object):
             return True
 
         _debug("Committing item %s" % self)
+
+        METHOD = self.METHOD
+        POLICY = self.POLICY
 
         db = current.db
         s3db = current.s3db
@@ -1989,12 +2032,13 @@ class S3ImportItem(object):
             self.skip = True
             return ignore_errors
 
-        _debug("Method: %s" % self.method)
+        method = self.method
+        _debug("Method: %s" % method)
 
         # Check if import method is allowed in strategy
         if not isinstance(self.strategy, (list, tuple)):
             self.strategy = [self.strategy]
-        if self.method not in self.strategy:
+        if method not in self.strategy:
             _debug("Method not in strategy - skip")
             self.error = manager.ERROR.NOT_PERMITTED
             self.skip = True
@@ -2002,7 +2046,7 @@ class S3ImportItem(object):
 
         this = self.original
         if not this and self.id and \
-           self.method in (self.METHOD.UPDATE, self.METHOD.DELETE):
+           method in (METHOD.UPDATE, METHOD.DELETE):
             query = (table.id == self.id)
             this = db(query).select(limitby=(0, 1)).first()
         this_mtime = None
@@ -2028,7 +2072,7 @@ class S3ImportItem(object):
                 self.conflict = True
 
         if self.conflict and \
-           self.method in (self.METHOD.UPDATE, self.METHOD.DELETE):
+           method in (METHOD.UPDATE, METHOD.DELETE):
             _debug("Conflict: %s" % self)
             if self.job.onconflict:
                 self.job.onconflict(self)
@@ -2038,15 +2082,30 @@ class S3ImportItem(object):
         else:
             data = Storage()
 
+        if isinstance(self.update_policy, dict):
+            def update_policy(f):
+                setting = self.update_policy
+                p = setting.get(f,
+                    setting.get("__default__", POLICY.THIS))
+                if p not in POLICY:
+                    return POLICY.THIS
+                return p
+        else:
+            def update_policy(f):
+                p = self.update_policy
+                if p not in POLICY:
+                    return POLICY.THIS
+                return p
+
         # Update existing record
-        if self.method == self.METHOD.UPDATE:
+        if method == METHOD.UPDATE:
 
             if this:
                 if "deleted" in this and this.deleted:
-                    policy = self._get_update_policy(None)
-                    if policy == self.POLICY.NEWER and \
+                    policy = update_policy(None)
+                    if policy == POLICY.NEWER and \
                        this_mtime and this_mtime > self.mtime or \
-                       policy == self.POLICY.MASTER and \
+                       policy == POLICY.MASTER and \
                        (this_mci == 0 or self.mci != 1):
                         self.skip = True
                         return True
@@ -2063,13 +2122,13 @@ class S3ImportItem(object):
                             del data[f]
                             continue
                     remove = False
-                    policy = self._get_update_policy(f)
-                    if policy == self.POLICY.THIS:
+                    policy = update_policy(f)
+                    if policy == POLICY.THIS:
                         remove = True
-                    elif policy == self.POLICY.NEWER:
+                    elif policy == POLICY.NEWER:
                         if this_mtime and this_mtime > self.mtime:
                             remove = True
-                    elif policy == self.POLICY.MASTER:
+                    elif policy == POLICY.MASTER:
                         if this_mci == 0 or self.mci != 1:
                             remove = True
                     if remove:
@@ -2108,7 +2167,7 @@ class S3ImportItem(object):
                 self.committed = True
 
         # Create new record
-        elif self.method == self.METHOD.CREATE:
+        elif method == METHOD.CREATE:
 
             # Do not apply field policy to UID and MCI
             UID = xml.UID
@@ -2119,8 +2178,8 @@ class S3ImportItem(object):
                 del data[MCI]
 
             for f in data:
-                policy = self._get_update_policy(f)
-                if policy == self.POLICY.MASTER and self.mci != 1:
+                policy = update_policy(f)
+                if policy == POLICY.MASTER and self.mci != 1:
                     del data[f]
 
             if len(data) or self.components or self.references:
@@ -2148,18 +2207,18 @@ class S3ImportItem(object):
                 return True
 
         # Delete local record
-        elif self.method == self.METHOD.DELETE:
+        elif method == METHOD.DELETE:
 
             if this:
                 if this.deleted:
                     self.skip = True
-                policy = self._get_update_policy(None)
-                if policy == self.POLICY.THIS:
+                policy = update_policy(None)
+                if policy == POLICY.THIS:
                     self.skip = True
-                elif policy == self.POLICY.NEWER and \
+                elif policy == POLICY.NEWER and \
                      (this_mtime and this_mtime > self.mtime):
                     self.skip = True
-                elif policy == self.POLICY.MASTER and \
+                elif policy == POLICY.MASTER and \
                      (this_mci == 0 or self.mci != 1):
                     self.skip = True
             else:
@@ -2179,27 +2238,36 @@ class S3ImportItem(object):
 
             _debug("Success: %s, id=%s %sd" % (self.tablename, self.id,
                                                self.skip and "skippe" or \
-                                               self.method))
+                                               method))
             return True
 
         # Audit + onaccept on successful commits
         if self.committed:
             form = Storage()
-            form.method = self.method
+            form.method = method
             form.vars = self.data
             tablename = self.tablename
             prefix, name = tablename.split("_", 1)
             if self.id:
                 form.vars.id = self.id
             if manager.audit is not None:
-                manager.audit(self.method, prefix, name,
+                manager.audit(method, prefix, name,
                               form=form,
                               record=self.id,
                               representation="xml")
+            # Update super entity links
             s3db.update_super(table, form.vars)
-            if self.method == self.METHOD.CREATE:
+            if method == METHOD.CREATE:
+                # Set record owner
                 current.auth.s3_set_record_owner(table, self.id)
-            key = "%s_onaccept" % self.method
+            elif method == METHOD.UPDATE:
+                # Update realm
+                update_realm = s3db.get_config(table, "update_realm")
+                if update_realm:
+                    current.auth.set_realm_entity(table, self.id,
+                                                  force_update=True)
+            # Onaccept
+            key = "%s_onaccept" % method
             onaccept = s3db.get_config(tablename, key,
                        s3db.get_config(tablename, "onaccept"))
             if onaccept:
@@ -2224,26 +2292,8 @@ class S3ImportItem(object):
 
         _debug("Success: %s, id=%s %sd" % (self.tablename, self.id,
                                            self.skip and "skippe" or \
-                                           self.method))
+                                           method))
         return True
-
-    # -------------------------------------------------------------------------
-    def _get_update_policy(self, field):
-        """
-            Get the update policy for a field (if the item will
-            update an existing record)
-
-            @param field: the name of the field
-        """
-
-        if isinstance(self.update_policy, dict):
-            r = self.update_policy.get(field,
-                self.update_policy.get("__default__", self.POLICY.THIS))
-        else:
-            r = self.update_policy
-        if not r in self.POLICY.values():
-            r = self.POLICY.THIS
-        return r
 
     # -------------------------------------------------------------------------
     def _resolve_references(self):

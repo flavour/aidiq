@@ -131,7 +131,9 @@ class S3MembersModel(S3Model):
 
         tablename = "member_membership"
         table = define_table(tablename,
-                             organisation_id(widget=S3OrganisationAutocompleteWidget(default_from_profile=True),
+                             organisation_id(#widget=S3OrganisationAutocompleteWidget(default_from_profile=True),
+                                             requires = self.org_organisation_requires(updateable=True),
+                                             widget = None,
                                              empty=False),
                              person_id(widget=S3AddPersonWidget(controller="member"),
                                        requires=IS_ADD_PERSON_WIDGET(),
@@ -263,7 +265,9 @@ class S3MembersModel(S3Model):
                                "location_id$L2",
                                "location_id$L3",
                                "location_id$L4",
-                               ])
+                               ],
+                  update_realm=True,
+                  )
 
         # ---------------------------------------------------------------------
         # Pass variables back to global scope (s3db.*)
@@ -312,6 +316,8 @@ class S3MembersModel(S3Model):
 
         db = current.db
         s3db = current.s3db
+        auth = current.auth
+        setting = current.deployment_settings
 
         utable = current.auth.settings.table_user
         ptable = s3db.pr_person
@@ -332,21 +338,20 @@ class S3MembersModel(S3Model):
 
         data = Storage()
 
-        # Affiliation
+        # Affiliation, record ownership and component ownership
         s3db.pr_update_affiliations(mtable, record)
-        ptable = s3db.pr_person
+
+        # realm_entity for the pr_person record
         person_id = record.person_id
-        
-        setting = current.deployment_settings
+        person = Storage(id = person_id)
         if setting.get_auth_person_realm_member_org():
-            # Set realm_entity = organisation pe_id for pr_person now that it is affliated
-            otable = s3db.org_organisation
+            # Set pr_person.realm_entity to the human_resource's organisation pe_id
             organisation_id = record.organisation_id
-            person = ptable[person_id]
-            organisation = otable[organisation_id]
-            if organisation and not person.realm_entity:
-                db(s3db.pr_person.id == person_id
-                   ).update(realm_entity = organisation.pe_id)
+            entity = s3db.pr_get_pe_id("org_organisation", organisation_id)
+            if entity:
+                auth.set_realm_entity(ptable, person,
+                                      entity = entity,
+                                      force_update = True)
 
         # Update the location ID from the Home Address
         atable = s3db.pr_address

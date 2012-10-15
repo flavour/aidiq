@@ -244,7 +244,7 @@ class S3LocationModel(S3Model):
 
         country_id = S3ReusableField("country_id", table,
                                      sortby = "name",
-                                     label = T("Country"),
+                                     label = messages.COUNTRY,
                                      requires = IS_NULL_OR(
                                                     IS_ONE_OF(db, "gis_location.id",
                                                               self.country_represent,
@@ -371,13 +371,15 @@ class S3LocationModel(S3Model):
             On Accept for GIS Locations (after DB I/O)
         """
 
-        # Update the Path (async if-possible)
-        vars = form.vars
-        feature = json.dumps(dict(id=vars.id,
-                                  level=vars.get("level", False),
-                                  ))
-        current.s3task.async("gis_update_location_tree",
-                             args=[feature])
+        if not current.auth.override:
+            # Update the Path (async if-possible)
+            # (skip during prepop)
+            vars = form.vars
+            feature = json.dumps(dict(id=vars.id,
+                                      level=vars.get("level", False),
+                                      ))
+            current.s3task.async("gis_update_location_tree",
+                                 args=[feature])
         return
 
     # -------------------------------------------------------------------------
@@ -611,8 +613,7 @@ class S3LocationModel(S3Model):
         if not level:
             return current.messages.NONE
         elif level == "L0":
-            T = current.T
-            return T("Country")
+            return current.messages.COUNTRY
         else:
             gis = current.gis
             config = gis.get_config()
@@ -1367,10 +1368,7 @@ class S3GISConfigModel(S3Model):
                   onvalidation=self.gis_config_onvalidation,
                   onaccept=self.gis_config_onaccept,
                   create_next=URL(args=["[id]", "layer_entity"]),
-                  # @ToDo: Not currently allowing delete, but with some
-                  # restrictions, we could.
-                  #delete_onaccept=self.gis_config_ondelete,
-                  update_ondelete=self.gis_config_ondelete,
+                  ondelete=self.gis_config_ondelete,
                   subheadings = {
                        T("Map Settings"): "zoom",
                        T("Form Settings"): "default_location_id",
@@ -1681,16 +1679,14 @@ class S3GISConfigModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def gis_config_ondelete(form):
+    def gis_config_ondelete(row):
         """
             If the currently-active config was deleted, clear the cache
         """
 
-        record_id = form.record_id
         s3 = current.response.s3
-        if s3.gis.config:
-            gis_config_id = s3.gis.config.id
-            if record_id == gis_config_id:
+        if s3.gis.config and \
+           s3.gis.config.id == row.id:
                 s3.gis.config = None
 
     # -------------------------------------------------------------------------
@@ -3547,7 +3543,7 @@ def gis_layer_onaccept(form):
 # =============================================================================
 def gis_location_filter(r):
     """
-        Filter resources to those for a specific location
+        Filter resources to those for a specified location
     """
 
     lfilter = current.session.s3.location_filter
@@ -3558,11 +3554,11 @@ def gis_location_filter(r):
     s3db = current.s3db
     gtable = s3db.gis_location
     query = (gtable.id == lfilter)
-    row = current.db(query).select(gtable.id,
-                                   gtable.name,
-                                   gtable.level,
-                                   gtable.path,
-                                   limitby=(0, 1)).first()
+    row = db(query).select(gtable.id,
+                           gtable.name,
+                           gtable.level,
+                           gtable.path,
+                           limitby=(0, 1)).first()
     if row and row.level:
         resource = r.resource
         if resource.name == "organisation":
@@ -3680,7 +3676,7 @@ def gis_location_represent(id, row=None, show_link=True, simpletext=False):
         # We aren't going to use the represent, so skip making it.
         represent_text = current.T("Show on Map")
     elif row.level == "L0":
-        represent_text = "%s (%s)" % (row.name, current.T("Country"))
+        represent_text = "%s (%s)" % (row.name, current.messages.COUNTRY)
     else:
         s3db = current.s3db
         cache = s3db.cache
@@ -3856,7 +3852,7 @@ def gis_rheader(r, tabs=[]):
 
     if resourcename == "location":
         tabs = [(T("Location Details"), None),
-                (T("Import PoIs"), "import_poi"),
+                (T("Import from OpenStreetMap"), "import_poi"),
                 (T("Local Names"), "name"),
                 (T("Key Value pairs"), "tag"),
                 ]
