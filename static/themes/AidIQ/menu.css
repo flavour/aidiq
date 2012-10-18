@@ -4,7 +4,7 @@
 #menu_wrapper {
     background: #fff;
     height: 36px;
-    padding: 0px 10px;
+    padding: 0px 20px;
 }
 #menu_modules {
     float: left;
@@ -12,13 +12,17 @@
     background: #3177bc;
     padding-top: 0;
     z-index: 25;
-    width: 1004px;
+    height: 35px;
+    width: 984px;
     border-radius: 10px;
+    background: url(../../img/BFTBmenu_hilight.png) repeat-x;
 }
 #modulenav {
     position: relative;
     margin: 0;
-    padding-right: 0.7%;
+    font-family: "VAGRoundedStd";
+    letter-spacing: 0.5px;
+    font-size: 125%;
 }
 #modulenav,
 #modulenav li,
@@ -43,6 +47,7 @@
     text-align: left;
     cursor: default;
     border-width: 1px 0;
+    width: 20%;
 }
 
 /* Menu Buttons */
@@ -54,14 +59,14 @@
 #modulenav li div a {
     color: #fff;
     display: inline-block;
-    padding: 5px 8px 10px;
+    padding: 5px 0;
 }
 #modulenav li div a:hover {
-    padding: 5px 8px 8px;
+    padding: 3px 0;
 }
 #modulenav li div.hovered,
 #modulenav li div:hover {
-    background: url(../../img/BFTBmenu_hilight.png) repeat-x;
+    /*background: url(../../img/BFTBmenu_hilight.png) repeat-x;*/
     border-radius: 10px;
 }
 
