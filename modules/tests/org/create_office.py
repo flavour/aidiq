@@ -53,10 +53,9 @@ class CreateOffice(SeleniumUnitTest):
         ("code",
          "12345678",
         ),
-#        ("organisation_id",
-#         "Romanian Food Assistance Association",
-#         "autocomplete",
-#        ),
+        ( "organisation_id",
+          "International Federation of Red Cross and Red Crescent Societies (IFRC)",
+          "option"),
         ("office_type_id",
          "Headquarters",
          "option",
@@ -78,12 +77,12 @@ class CreateOffice(SeleniumUnitTest):
         # Login, if not-already done so
         self.login(account=account, nexturl=url)
 
+        db = current.db
+        s3db = current.s3db
+        table = s3db[tablename]
         for item in items:
             _data = data[item]
             # Check whether the data already exists
-            s3db = current.s3db
-            db = current.db
-            table = s3db[tablename]
             fieldname = _data[0][0]
             value = _data[0][1]
             query = (table[fieldname] == value) & (table.deleted == "F")

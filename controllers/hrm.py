@@ -344,9 +344,6 @@ def person():
         elif r.interactive and r.method != "import":
             if not r.component:
                 table = r.table
-                # No point showing the 'Occupation' field - that's the Job Title in the Staff Record
-                table.occupation.readable = False
-                table.occupation.writable = False
                 table.pe_label.readable = False
                 table.pe_label.writable = False
                 table.missing.readable = False
@@ -355,12 +352,14 @@ def person():
                 table.age_group.writable = False
                 # Assume volunteers only between 5-120
                 table.date_of_birth.widget = S3DateWidget(past=1440, future=-60)
-                
+
+                person_details_table = s3db.pr_person_details
+                # No point showing the 'Occupation' field - that's the Job Title in the Staff Record
+                person_details_table.occupation.readable = False
+                person_details_table.occupation.writable = False
+
                 # Organisation Dependent Fields
                 set_org_dependent_field = deployment_settings.set_org_dependent_field
-                
-                person_details_table = s3db.pr_person_details
-                
                 set_org_dependent_field(person_details_table.father_name)
                 set_org_dependent_field(person_details_table.mother_name)
                 set_org_dependent_field(person_details_table.affiliations)
@@ -710,6 +709,8 @@ def department():
         return True
     s3.prep = prep
 
+    s3.filter = auth.filter_by_root_org(s3db.hrm_department)
+
     output = s3_rest_controller()
     return output
 
@@ -722,6 +723,8 @@ def job_role():
             r.error(403, message=auth.permission.INSUFFICIENT_PRIVILEGES)
         return True
     s3.prep = prep
+    
+    s3.filter = auth.filter_by_root_org(s3db.hrm_job_role)
 
     output = s3_rest_controller()
     return output
@@ -735,6 +738,8 @@ def job_title():
             r.error(403, message=auth.permission.INSUFFICIENT_PRIVILEGES)
         return True
     s3.prep = prep
+
+    s3.filter = auth.filter_by_root_org(s3db.hrm_job_title)
 
     output = s3_rest_controller()
     return output
@@ -797,6 +802,8 @@ def course():
     if mode is not None:
         session.error = T("Access denied")
         redirect(URL(f="index"))
+
+    s3.filter = auth.filter_by_root_org(s3db.hrm_job_title)
 
     output = s3_rest_controller(rheader=s3db.hrm_rheader)
     return output

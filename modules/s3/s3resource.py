@@ -480,7 +480,9 @@ class S3Resource(object):
                limit=None,
                left=None,
                orderby=None,
-               distinct=False):
+               groupby=None,
+               distinct=False,
+               virtual=True):
         """
             Select records from this resource, applying the current filters.
 
@@ -489,9 +491,9 @@ class S3Resource(object):
             @param limit: maximum number of records
             @param left: left joins
             @param orderby: SQL orderby
+            @param groupby: SQL groupby (make sure all groupby-fields are selected!)
             @param distinct: SQL distinct
-
-            @todo: authorization
+            @param virtual: False to turn off computation of virtual fields
         """
 
         db = current.db
@@ -580,6 +582,8 @@ class S3Resource(object):
         load = current.s3db.table
         qfields = []
         qtables = []
+        gfields = [str(g) for g in groupby] \
+                  if isinstance(groupby, (list, tuple)) else str(groupby)
         for f in lfields:
             field = f.field
             tname = f.tname
@@ -593,10 +597,12 @@ class S3Resource(object):
                 # belongs to is included in the SELECT
                 qtables.append(tname)
                 pkey = qtable._id
-                qfields.append(pkey)
+                if not groupby:
+                    qfields.append(pkey)
                 if str(field) == str(pkey):
                     continue
-            qfields.append(field)
+            if not groupby or str(field) in gfields:
+                qfields.append(field)
 
         # Add orderby fields which are not in qfields
         # @todo: this could need some cleanup/optimization
@@ -632,8 +638,19 @@ class S3Resource(object):
                     qfields.insert(0, self._id)
                 attributes["orderby"] = self._id
 
+        if groupby:
+            attributes["groupby"] = groupby
+
+        # Temporarily deactivate virtual fields
+        osetattr = object.__setattr__
+        if not virtual:
+            vf = table.virtualfields
+            osetattr(table, "virtualfields", [])
         # Retrieve the rows
         rows = db(query).select(*qfields, **attributes)
+        # Restore virtual fields
+        if not virtual:
+            osetattr(table, "virtualfields", vf)
 
         # Apply virtual fields filter
         if rows and vfltr is not None:

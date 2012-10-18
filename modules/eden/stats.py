@@ -35,6 +35,7 @@ __all__ = ["S3StatsModel",
            ]
 
 from gluon import *
+from gluon.dal import Row, Rows
 from gluon.storage import Storage
 
 from ..s3 import *
@@ -155,7 +156,6 @@ class S3StatsModel(S3Model):
                              location_id(widget = S3LocationAutocompleteWidget(),
                                         requires = IS_LOCATION()),
                              Field("agg_type", "integer",
-                                   required = True,
                                    requires = IS_IN_SET(aggregate_type),
                                    represent = lambda opt: \
                                             aggregate_type.get(opt, UNKNOWN_OPT),
@@ -271,7 +271,7 @@ class S3StatsModel(S3Model):
         # Fire off a rebuild task
         current.s3task.async("stats_group_clean",
                              timeout=21600 # 6 hours
-                             ) 
+                             )
 
     # ---------------------------------------------------------------------
     @classmethod
@@ -301,9 +301,9 @@ class S3StatsModel(S3Model):
 
         db = current.db
         s3db = current.s3db
-        dtable = s3db.stats_data
-        atable = s3db.stats_aggregate
-        gis_table = s3db.gis_location
+        dtable = db.stats_data
+        atable = db.stats_aggregate
+        gis_table = db.gis_location
 
         stats_aggregated_period = cls.stats_aggregated_period
 
@@ -533,7 +533,7 @@ class S3StatsModel(S3Model):
             elif location_id not in param_location_dict[parameter_id]:
                 param_location_dict[parameter_id][location_id] = changed_periods
             else:
-                # store the older of the changed periods (the end will always be None)
+                # Store the older of the changed periods (the end will always be None)
                 # Only need to check the start date of the first period
                 if changed_periods[0][0] < param_location_dict[parameter_id][location_id][0][0]:
                     param_location_dict[parameter_id][location_id] = changed_periods
@@ -624,7 +624,6 @@ class S3StatsModel(S3Model):
             resilience_pid = s3db.vulnerability_resilience_id()
             for (location_id, (period, loc_level, use_location)) in resilence_parents.items():
                 for (start_date, end_date) in changed_periods:
-                    s, e = str(start_date), str(end_date)
                     vulnerability_resilience(loc_level,
                                              location_id,
                                              resilience_pid,
@@ -652,10 +651,10 @@ class S3StatsModel(S3Model):
         """
 
         db = current.db
-        s3db = current.s3db
+        #s3db = current.s3db
 
-        dtable = s3db.stats_data
-        atable = s3db.stats_aggregate
+        dtable = db.stats_data
+        atable = db.stats_aggregate
 
         # Get all the child locations
         child_locations = current.gis.get_children(location_id, location_level)
@@ -1131,9 +1130,9 @@ class S3StatsGroupModel(S3Model):
             the related stats_data records calculate the stats_aggregate records.
         """
 
-        s3db = current.s3db
         db = current.db
-        gtable = s3db.stats_group
+        s3db = current.s3db
+        gtable = db.stats_group
         dtable = s3db.stats_data
 
         query = (gtable.deleted != True) & \

@@ -38,7 +38,7 @@ settings.security.policy = 8 # Delegations
 settings.security.map = True
 
 # Owner Entity
-settings.auth.person_realm_human_resource_site = True
+settings.auth.person_realm_human_resource_site_then_org = True
 settings.auth.person_realm_member_org = True
 
 def ifrc_realm_entity(table, row):
@@ -46,9 +46,19 @@ def ifrc_realm_entity(table, row):
         Assign a Realm Entity to records
     """
 
+    tablename = table._tablename
+
+    # Do not apply realms for Master Data
+    # @ToDo: Restore Realms and add a role/functionality support for Master Data  
+    if tablename in ["hrm_department",
+                     "hrm_job_role",
+                     "hrm_job_title",
+                     "hrm_course",
+                     "hrm_programme"]:
+        return None
+
     db = current.db
     s3db = current.s3db
-    tablename = table._tablename
 
     # Entity reference fields
     EID = "pe_id"
@@ -223,14 +233,14 @@ settings.org.site_code_len = 3
 settings.org.site_label = "Office/Warehouse/Facility"
 # Enable certain fields just for specific Organisations
 settings.org.dependent_fields = \
-    {"pr_person_details.mother_name"   : ["Bangladesh Red Crescent Society"],
-     "pr_person_details.father_name"   : ["Bangladesh Red Crescent Society"],
-     "pr_person_details.company"       : ["Philippine Red Cross"],
-     "pr_person_details.affiliations"  : ["Philippine Red Cross"],
-     "vol_volunteer.active"            : ["Timor-Leste Red Cross Society"],
-     "vol_volunteer_cluster.cluster_id": ["Philippine Red Cross"],
-     "vol_volunteer_group.group_id"    : ["Philippine Red Cross"],
-     "vol_volunteer_group.position_id" : ["Philippine Red Cross"],
+    {"pr_person_details.mother_name"             : ["Bangladesh Red Crescent Society"],
+     "pr_person_details.father_name"             : ["Bangladesh Red Crescent Society"],
+     "pr_person_details.company"                 : ["Philippine Red Cross"],
+     "pr_person_details.affiliations"            : ["Philippine Red Cross"],
+     "vol_volunteer.active"                      : ["Timor-Leste Red Cross Society"],
+     "vol_volunteer_cluster.vol_cluster_id"      : ["Philippine Red Cross"],
+     "vol_volunteer_group.vol_group_id"          : ["Philippine Red Cross"],
+     "vol_volunteer_group.vol_group_position_id" : ["Philippine Red Cross"],
      }
 
 # -----------------------------------------------------------------------------

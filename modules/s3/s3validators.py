@@ -547,13 +547,14 @@ class IS_ONE_OF_EMPTY(Validator):
                 orderby = self.orderby or \
                           reduce(lambda a, b: a|b, (f for f in fields
                                                     if not f.name == "id"))
+                # Caching breaks Colorbox dropdown refreshes
                 #dd = dict(orderby=orderby, cache=(current.cache.ram, 60))
                 dd = dict(orderby=orderby)
                 records = dbset.select(db[self.ktable].ALL, **dd)
             self.theset = [str(r[self.kfield]) for r in records]
-            #labels = []
             label = self.label
             try:
+                # Is a function
                 labels = map(label, records)
             except TypeError:
                 if isinstance(label, str):
@@ -562,9 +563,6 @@ class IS_ONE_OF_EMPTY(Validator):
                     labels = map(lambda r: \
                                  " ".join([r[l] for l in label if l in r]),
                                  records)
-                elif callable(label):
-                    # Is a function
-                    labels = map(label, records)
                 elif "name" in table:
                     labels = map(lambda r: r.name, records)
                 else:
@@ -1494,6 +1492,7 @@ class IS_ADD_PERSON_WIDGET(Validator):
 
         T = current.T
         db = current.db
+        s3db = current.s3db
         request = current.request
         settings = current.deployment_settings
 
@@ -1544,20 +1543,17 @@ class IS_ADD_PERSON_WIDGET(Validator):
         if request.env.request_method == "POST":
             _vars = request.post_vars
             mobile = _vars["mobile_phone"]
-
-            # Validate the phone number
-            if _vars.mobile_phone:
+            if mobile:
+                # Validate the phone number
                 regex = re.compile(single_phone_number_pattern)
-                if not regex.match(_vars.mobile_phone):
+                if not regex.match(mobile):
                     error = T("Invalid phone number")
                     return (person_id, error)
 
             validate = current.manager.validate
             if person_id:
-                # Update the person record
-                query = (ptable.id == person_id)
-
                 # Validate and update the person record
+                query = (ptable.id == person_id)
                 data = Storage()
                 for f in ptable._filter_fields(_vars):
                     value, error = validate(ptable, None, f, _vars[f])
@@ -1569,30 +1565,54 @@ class IS_ADD_PERSON_WIDGET(Validator):
                 if data:
                     db(query).update(**data)
 
-                # Update the contact information
+                # Update the contact information & details
                 record = db(query).select(ptable.pe_id, limitby=(0, 1)).first()
                 if record:
                     pe_id = record.pe_id
 
-                    record = ctable(pe_id=pe_id, contact_method="EMAIL")
+                    r = ctable(pe_id=pe_id, contact_method="EMAIL")
                     email = _vars["email"]
-                    if record and email: # update
-                        if email != record.value:
-                            db(ctable.id == record.id).update(value=email)
-                    else: # insert
-                        ctable.insert(pe_id=pe_id,
-                                      contact_method="EMAIL",
-                                      value=email)
+                    if email:
+                        query = (ctable.pe_id == pe_id) & \
+                                (ctable.contact_method == "EMAIL") &\
+                                (ctable.deleted != True)
+                        r = db(query).select(ctable.value,
+                                             limitby=(0, 1)).first()
+                        if r: # update
+                            if email != r.value:
+                                db(query).update(value=email)
+                        else: # insert
+                            ctable.insert(pe_id=pe_id,
+                                          contact_method="EMAIL",
+                                          value=email)
 
-                    record = ctable(pe_id=pe_id, contact_method="SMS")
-                    if record: # update
-                        if mobile != record.value:
-                            db(ctable.id == record.id).update(value=mobile)
-                    else: # insert
-                        if mobile: # Don't insert an empty number
+                    if mobile:
+                        query = (ctable.pe_id == pe_id) & \
+                                (ctable.contact_method == "SMS") &\
+                                (ctable.deleted != True)
+                        r = db(query).select(ctable.value,
+                                             limitby=(0, 1)).first()
+                        if r: # update
+                            if mobile != r.value:
+                                db(query).update(value=mobile)
+                        else: # insert
                             ctable.insert(pe_id=pe_id,
                                           contact_method="SMS",
                                           value=mobile)
+
+                    occupation = _vars["occupation"]
+                    if occupation:
+                        pdtable = s3db.pr_person_details
+                        query = (pdtable.person_id == person_id) & \
+                                (pdtable.deleted != True)
+                        r = db(query).select(pdtable.occupation,
+                                             limitby=(0, 1)).first()
+                        if r: # update
+                            if occupation != r.occupation:
+                                db(query).update(occupation=occupation)
+                        else: # insert
+                            pdtable.insert(person_id=person_id,
+                                           occupation=occupation)
 
             else:
                 # Create a new person record
@@ -1623,7 +1643,7 @@ class IS_ADD_PERSON_WIDGET(Validator):
 
                 if person_id:
                     # Update the super-entities
-                    current.s3db.update_super(ptable, dict(id=person_id))
+                    s3db.update_super(ptable, dict(id=person_id))
                     # Read the created pe_id
                     query = (ptable.id == person_id)
                     person = db(query).select(ptable.pe_id,
@@ -1634,10 +1654,13 @@ class IS_ADD_PERSON_WIDGET(Validator):
                         ctable.insert(pe_id=person.pe_id,
                                       contact_method="EMAIL",
                                       value=_vars.email)
-                    if _vars.mobile_phone:
+                    if mobile:
                         ctable.insert(pe_id=person.pe_id,
                                       contact_method="SMS",
                                       value=_vars.mobile_phone)
+                    if _vars.occupation:
+                        s3db.pr_person_details.insert(person_id = person_id,
+                                                      occupation = occupation)
                 else:
                     # Something went wrong
                     return (person_id, self.error_message or \

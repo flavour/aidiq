@@ -277,19 +277,21 @@ def set_project_multi_activity_type_id_requires(sector_ids):
         Filters the multi_activity_type_id based on the sector_id
     """
 
-    # @ToDo: merge with set_project_multi_theme_id_requires?
-    table = s3db.project_location
-    attable = s3db.project_activity_type
-    atstable = s3db.project_activity_type_sector
+    if sector_ids:
+        # @ToDo: merge with set_project_multi_theme_id_requires?
+        attable = s3db.project_activity_type
+        atstable = s3db.project_activity_type_sector
 
-    # All activity_types linked to the projects sectors or to no sectors 
-    rows = db().select(attable.id,
-                       atstable.sector_id,
-                       left=atstable.on(attable.id == atstable.activity_type_id))
-    activity_type_ids = [row.project_activity_type.id for row in rows 
-                 if not row.project_activity_type_sector.sector_id or 
-                    row.project_activity_type_sector.sector_id in sector_ids]
-    table.multi_activity_type_id.requires = IS_NULL_OR(
+        # All activity_types linked to the projects sectors or to no sectors 
+        rows = db().select(attable.id,
+                           atstable.sector_id,
+                           left=atstable.on(attable.id == atstable.activity_type_id))
+        activity_type_ids = [row.project_activity_type.id for row in rows 
+                     if not row.project_activity_type_sector.sector_id or 
+                        row.project_activity_type_sector.sector_id in sector_ids]
+    else:
+        activity_type_ids = []
+    s3db.project_location.multi_activity_type_id.requires = IS_NULL_OR(
                                         IS_ONE_OF(db, 
                                                   "project_activity_type.id",
                                                   s3db.project_activity_type_represent,
@@ -624,20 +626,23 @@ def time():
         # Show the Logged Time for this User
         s3.crud_strings["project_time"].title_list = T("My Logged Hours")
         s3db.configure("project_time",
+                       orderby=~table.date,
                        listadd=False)
         person_id = auth.s3_logged_in_person()
         if person_id:
-            now = request.utcnow
-            s3.filter = (table.person_id == person_id) & \
-                        (table.date > (now - datetime.timedelta(days=2)))
-        try:
-            list_fields = s3db.get_config(tablename,
-                                          "list_fields")
-            list_fields.remove("person_id")
-            s3db.configure(tablename,
-                           list_fields=list_fields)
-        except:
-            pass
+            # @ToDo: Use URL filter instead, but the Search page will have 
+            # to populate it's widgets based on the URL filter  
+            s3.filter = (table.person_id == person_id)
+        list_fields = ["id",
+                       "date",
+                       "hours",
+                       (T("Project"), "project"),
+                       (T("Activity"), "activity"),
+                       "task_id",
+                       "comments",
+                       ]
+        s3db.configure(tablename,
+                       list_fields=list_fields)
 
     elif "week" in request.get_vars:
         now = request.utcnow

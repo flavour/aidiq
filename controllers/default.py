@@ -593,9 +593,6 @@ def person():
                     table.other_details.readable = True
             else:
                 table = r.table
-                # No point showing the 'Occupation' field - that's the Job Title in the Staff Record
-                table.occupation.readable = False
-                table.occupation.writable = False
                 table.pe_label.readable = False
                 table.pe_label.writable = False
                 table.missing.readable = False
@@ -747,7 +744,7 @@ def about():
                                    database=settings.database.get("database", "sahana"),
                                    user=settings.database.get("username", "sahana"),
                                    password=settings.database.get("password", "password")
-                                   ) 
+                                   )
             cur = con.cursor()
             cur.execute("SELECT version()")
             pgsql_version = cur.fetchone()

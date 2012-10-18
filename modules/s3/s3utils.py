@@ -613,6 +613,52 @@ def s3_auth_group_represent(opt):
     return ", ".join(roles)
 
 # =============================================================================
+def s3_represent_name(table):
+    """
+        Returns a represent function for the common case where we return
+        the name of the record.
+    """
+
+    def represent(id, row=None):
+        if row:
+            return row.name
+        elif not id:
+            return current.messages.NONE
+
+        r = current.db(table._id == id).select(table.name,
+                                               limitby=(0, 1)
+                                               ).first()
+        try:
+            return r.name
+        except:
+            return current.messages.UNKNOWN_OPT
+
+    return represent
+
+# =============================================================================
+def s3_represent_name_translate(table):
+    """
+        Returns a represent function for the common case where we return
+        a translated version of the name of the record.
+    """
+
+    def represent(id, row=None):
+        if row:
+            return current.T(row.name)
+        elif not id:
+            return current.messages.NONE
+
+        r = current.db(table._id == id).select(table.name,
+                                               limitby=(0, 1)
+                                               ).first()
+        try:
+            return current.T(r.name)
+        except:
+            return current.messages.UNKNOWN_OPT
+
+    return represent
+
+# =============================================================================
 def s3_include_debug_css():
     """
         Generates html to include the css listed in
@@ -2595,12 +2641,15 @@ class S3DataTable(object):
 
         self.data = data
         self.rfields = rfields
-        self.lfields = []
-        self.heading = {}
+        lfields = []
+        append = lfields.append
+        heading = {}
         for field in rfields:
             selector = "%s.%s" % (field.tname, field.fname)
-            self.lfields.append(selector)
-            self.heading[selector] = (field.label)
+            append(selector)
+            heading[selector] = (field.label)
+        self.lfields = lfields
+        self.heading = heading
         max = len(data)
         if start < 0:
             start == 0

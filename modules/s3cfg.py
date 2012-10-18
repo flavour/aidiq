@@ -225,12 +225,12 @@ class S3Config(Storage):
     def get_auth_realm_entity(self):
         """ Hook to determine the owner entity of a record """
         return self.auth.get("realm_entity", None)
-    def get_auth_person_realm_human_resource_site(self):
+    def get_auth_person_realm_human_resource_site_then_org(self):
         """
             Should we set pr_person.realm_entity to that of
             hrm_human_resource.site_id$pe_id
         """
-        return self.auth.get("person_realm_human_resource_site", False)
+        return self.auth.get("person_realm_human_resource_site_then_org", False)
     def get_auth_person_realm_member_org(self):
         """
             Sets pr_person.realm_entity to
@@ -507,6 +507,8 @@ class S3Config(Storage):
             - %f -- Degrees in decimal (double)
         """
         return self.L10n.get("lat_lon_display_format", "%f")
+    def get_L10n_languages_readonly(self):
+        return self.L10n.get("languages_readonly", True)
     def get_L10n_mandatory_lastname(self):
         return self.L10n.get("mandatory_lastname", False)
     def get_L10n_thousands_separator(self):
