@@ -4,17 +4,17 @@
 
 #footer {
     background: #fff;
-    margin: 0 auto;
+    margin: 0 auto 20px;
     clear: both;
     float: left;
-    width: 100%;
+    width: 984px;
     text-align: center;
     border-top: #fff 1px solid;
     border-radius: 0 0 15px 15px;
+    padding: 0px 20px 5px 20px;
 }
 #poweredby {
     float: right;
-    margin-right: 20px;
 }
 #poweredby a {
     color: #2A485D;
