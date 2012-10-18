@@ -26,13 +26,13 @@
   font-family: 'VAGRoundedStd';
   font-style: normal;
   font-weight: normal;
-  src:  url('VAGRoundedStd.otf') format('truetype');
+  src:  url('fonts/VAGRoundedStd.otf') format('truetype');
 }
 @font-face {
   font-family: 'VAGRoundedLight';
   font-style: normal;
   font-weight: normal;
-  src:  url('VAGRoundedLight.otf') format('truetype');
+  src:  url('fonts/VAGRoundedLight.otf') format('truetype');
 }
 body {
   font-family: 'Tangerine', serif;
