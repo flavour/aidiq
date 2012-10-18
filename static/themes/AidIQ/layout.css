@@ -2,14 +2,14 @@
 
 #container {
     width: 1024px;
-    margin: 0 auto;
+    margin: 20px auto;
 }
 
 #header {
     position: relative;
     z-index: 999;
     height: 73px;
-    padding: 5px 10px;
+    padding: 30px 20px 20px 20px;
     background: #fff;
     border-radius: 15px 15px 0 0;
 }
@@ -22,13 +22,32 @@
     float: left;
 }
 
+@font-face {
+  font-family: 'VAGRoundedStd';
+  font-style: normal;
+  font-weight: normal;
+  src:  url('VAGRoundedStd.otf') format('truetype');
+}
+@font-face {
+  font-family: 'VAGRoundedLight';
+  font-style: normal;
+  font-weight: normal;
+  src:  url('VAGRoundedLight.otf') format('truetype');
+}
+body {
+  font-family: 'Tangerine', serif;
+  font-size: 48px;
+}
+
 #slogan {
     float: left;
-    margin-top: 25px;
-    font-family: "Myriad Pro","Myriad Web Pro Regular","Lucida Grande",Geneva,Trebuchet MS,sans-serif;
-    font-size: 116.7%;
-    font-weight: bold;
-    padding-left: 20px;
+    heigth: 73px;
+    position: absolute; bottom: 0; left: 266px; 
+    font-family: "VAGRoundedStd","Myriad Pro","Myriad Web Pro Regular","Lucida Grande",Geneva,Trebuchet MS,sans-serif;
+    font-size: 200%;
+    letter-spacing: 1px;
+    line-height: 120%;
+    padding: 0  0 15px 30px;
 }
 
 /* Width of page */
@@ -71,21 +90,35 @@
 .col1, .col2, .col3 {
     float: left;
     position: relative;
-    padding: 0 0 3px 0;
     overflow: hidden;
 }
 
 /* Full page settings */
 .fullpage {
     background: #fff;    /* page background colour */
-    padding-top: 1px;
+    padding: 15px 11px 5px 11px;
+    width: 1002px;
     overflow: visible;
+    margin-top: -1px; /* Removes line in FireFox */
 }
 .fullpage .col1 {
-    width: 99%;         /* page width minus left and right padding */
     left: 0.5%;         /* page left padding */
-    min-width: 800px;
+    width: 994px;
 }
+
+.fullpage .col1  #content p{
+    font-size: 16px;
+}
+.fullpage .col1  #content ul{
+    font-family: "VAGRoundedLight";
+    font-size: 20px;
+    padding: 10px 0 0 50px;
+}
+
+.fullpage .col2 {
+    padding: 5px 0 0 20px;
+}
+
 
 .aside {
     float:left;

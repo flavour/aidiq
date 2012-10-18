@@ -60,6 +60,8 @@ class index():
                      _href=URL(c="cms", f="post", args="create",
                                vars=vars),
                      _class="action-btn")
+        else:
+            item = None
 
         if not title:
             title = current.deployment_settings.get_system_name()
