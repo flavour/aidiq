@@ -9,7 +9,7 @@
     position: relative;
     z-index: 999;
     height: 73px;
-    padding: 30px 20px 20px 20px;
+    padding: 20px;
     background: #fff;
     border-radius: 15px 15px 0 0;
 }
@@ -28,16 +28,12 @@
   font-weight: normal;
   src:  url('fonts/VAGRoundedStd.otf') format('truetype');
 }
-@font-face {
+/*@font-face {
   font-family: 'VAGRoundedLight';
   font-style: normal;
   font-weight: normal;
   src:  url('fonts/VAGRoundedLight.otf') format('truetype');
-}
-body {
-  font-family: 'Tangerine', serif;
-  font-size: 48px;
-}
+}*/
 
 #slogan {
     float: left;
@@ -96,35 +92,34 @@ body {
 /* Full page settings */
 .fullpage {
     background: #fff;    /* page background colour */
+    overflow: visible;
+    padding-top: 1px;
+}
+#container .fullpage {
     padding: 15px 11px 5px 11px;
     width: 1002px;
-    overflow: visible;
     margin-top: -1px; /* Removes line in FireFox */
 }
 .fullpage .col1 {
     left: 0.5%;         /* page left padding */
     width: 994px;
 }
-
-.fullpage .col1  #content p{
+.fullpage .col1  #content p {
     font-size: 16px;
 }
-.fullpage .col1  #content ul{
-    font-family: "VAGRoundedLight";
-    font-size: 20px;
+.fullpage .col1  #content ul {
+    /*font-family: "VAGRoundedLight";*/
+    font-size: 18px;
     padding: 10px 0 0 50px;
 }
-
 .fullpage .col2 {
     padding: 5px 0 0 20px;
 }
 
-
 .aside {
-    float:left;
-    width:200px;
-    /*margin-left: 100%;*/
+    float: left;
+    width: 200px;
 }
 .rightside {
-    margin-left:200px;
+    margin-left: 200px;
 }

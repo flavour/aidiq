@@ -1,28 +1,20 @@
 @charset "UTF-8";
 
 /* Main Navigation (S3MainMenu or modules menu) */
-#menu_wrapper {
-    background: #fff;
-    height: 36px;
-    padding: 0px 20px;
-}
 #menu_modules {
     float: left;
     position: relative;
     background: #3177bc;
     padding-top: 0;
     z-index: 25;
-    height: 35px;
-    width: 984px;
+    width: 1004px;
     border-radius: 10px;
-    background: url(../../img/BFTBmenu_hilight.png) repeat-x;
+    font-size: 125%;
 }
 #modulenav {
     position: relative;
     margin: 0;
-    font-family: "VAGRoundedStd";
-    letter-spacing: 0.5px;
-    font-size: 125%;
+    padding-right: 0.7%;
 }
 #modulenav,
 #modulenav li,
@@ -36,7 +28,6 @@
 #modulenav a:hover {
     color: #ffd403;
     background: none;
-    font-size: 1.3em;
 }
 #modulenav a.active {
     color: #ffd403;
@@ -47,28 +38,51 @@
     text-align: left;
     cursor: default;
     border-width: 1px 0;
+}
+/* Front-page specific */
+#menu_wrapper {
+    background: #fff;
+    height: 36px;
+    padding: 0px 20px;
+}
+#menu_wrapper #menu_modules {
+    height: 35px;
+    width: 984px;
+    background: url(../../img/BFTBmenu_hilight.png) repeat-x;
+}
+#menu_wrapper #menu_modules {
+    /*font-family: "VAGRoundedStd","Myriad Pro","Myriad Web Pro Regular","Lucida Grande",Geneva,Trebuchet MS,sans-serif;*/
+    /*font-family: "Myriad Pro","Myriad Web Pro Regular","Lucida Grande",Geneva,Trebuchet MS,sans-serif;*/
+    letter-spacing: 0.5px;
+    padding-right: 0;
+}
+#menu_wrapper li {
+    /* Front page has 5 menu options */
     width: 20%;
 }
-
 /* Menu Buttons */
 #modulenav li div {
     text-align: center;
-    /*background: url(../../img/BFTBmenu_side.png) right 10px no-repeat;*/
-    /*text-shadow: 0 1px 1px #58606c;*/
+    /*background: url(../../img/BFTBmenu_side.png) right 10px no-repeat;
+    text-shadow: 0 1px 1px #58606c;*/
 }
 #modulenav li div a {
     color: #fff;
     display: inline-block;
+    padding: 5px 8px 10px;
+}
+#menu_wrapper li div a {
     padding: 5px 0;
 }
-#modulenav li div a:hover {
+#menu_wrapper li div a:hover {
+    font-size: 1.3em;
     padding: 3px 0;
 }
-#modulenav li div.hovered,
+/*#modulenav li div.hovered,
 #modulenav li div:hover {
-    /*background: url(../../img/BFTBmenu_hilight.png) repeat-x;*/
+    background: url(../../img/BFTBmenu_hilight.png) repeat-x;
     border-radius: 10px;
-}
+}*/
 
 /* Side Menu (S3OptionsMenu) */
 #menu_options {
