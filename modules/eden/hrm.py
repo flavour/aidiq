@@ -431,9 +431,9 @@ class S3HRModel(S3Model):
                                             "job_title_id",
                                             "job_role_id",
                                             "department_id",
+                                            "volunteer_cluster.vol_cluster_type_id",
                                             "volunteer_cluster.vol_cluster_id",
-                                            "volunteer_group.vol_group_id",
-                                            "volunteer_group.vol_group_position_id",
+                                            "volunteer_cluster.vol_cluster_position_id",
                                             "start_date",
                                             "end_date",
                                             "status",
@@ -4358,9 +4358,8 @@ def hrm_rheader(r, tabs=[],
                                 programme_hours_month += hours
 
                 # Already formatted as HTML
-                enable_active_field = settings.set_org_dependent_field(None,
-                                                                       tablename = "vol_volunteer",
-                                                                       fieldname = "active")
+                enable_active_field = settings.set_org_dependent_field("vol_volunteer", "active", 
+                                                                       enable_field = False)
                 if enable_active_field:
                     active = TD(record.active)
                     tooltip = SPAN(_class="tooltip",
