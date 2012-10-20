@@ -102,6 +102,10 @@
 }
 .fullpage .col1 {
     left: 0.5%;         /* page left padding */
+    width: 1250px;
+}
+#container  .col1 {
+    left: 0.5%;         /* page left padding */
     width: 994px;
 }
 .fullpage .col1  #content p {
