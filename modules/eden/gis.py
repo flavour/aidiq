@@ -1064,7 +1064,10 @@ class S3GISConfigModel(S3Model):
 
         # Reusable field to include in other table definitions
         marker_id = S3ReusableField("marker_id", table, sortby="name",
-                                    requires = IS_NULL_OR(IS_ONE_OF(db, "gis_marker.id", "%(name)s", zero=T("Use default"))),
+                                    requires = IS_NULL_OR(
+                                                IS_ONE_OF(db, "gis_marker.id",
+                                                          "%(name)s",
+                                                          zero=T("Use default"))),
                                     represent = self.gis_marker_represent,
                                     label = T("Marker"),
                                     comment=S3AddResourceLink(c="gis",
@@ -1135,9 +1138,9 @@ class S3GISConfigModel(S3Model):
         # Reusable field to include in other table definitions
         projection_id = S3ReusableField("projection_id", table,
                                         sortby="name",
-                                        requires = IS_NULL_OR(IS_ONE_OF(db,
-                                                                        "gis_projection.id",
-                                                                        "%(name)s")),
+                                        requires = IS_NULL_OR(
+                                                    IS_ONE_OF(db, "gis_projection.id",
+                                                              "%(name)s")),
                                         represent = lambda id: \
                                             (id and [db(db.gis_projection.id == id).select(db.gis_projection.name,
                                                                                            limitby=(0, 1)).first().name] or [NONE])[0],
@@ -2003,8 +2006,9 @@ class S3LayerEntityModel(S3Model):
                                                                    T("This is normally edited using the Widget in the Style Tab in the Layer Properties on the Map."))),
                                    label=T("Style")),
                              *s3_meta_fields())
+
         # Default to the Layer -> Config view
-        # sinne there are many diff layers
+        # since there are many diff layers
         # - override for single Config -> Layer
         crud_strings[tablename] = Storage(
                     title_create = T("Add Profile Configuration for this Layer"),
@@ -3460,22 +3464,24 @@ def name_field():
 # =============================================================================
 def gis_layer_folder():
     T = current.T
+    FOLDER = T("Folder")
     return S3ReusableField("dir", length=32,
                            comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Folder"),
+                                         _title="%s|%s" % (FOLDER,
                                                            T("If you enter a foldername then the layer will appear in this folder in the Map's layer switcher."))),
-                           label = T("Folder"))
+                           label = FOLDER)
 
 # =============================================================================
 def gis_opacity():
     T = current.T
+    OPACITY = T("Opacity")
     return S3ReusableField("opacity", "double", default=1.0,
                            requires = IS_FLOAT_IN_RANGE(0, 1),
                            widget = S3SliderWidget(minval=0, maxval=1, steprange=0.01, value=1),
                            comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Opacity"),
+                                         _title="%s|%s" % (OPACITY,
                                                            T("Left-side is fully transparent (0), right-side is opaque (1.0)."))),
-                           label = T("Opacity"))
+                           label = OPACITY)
 
 # =============================================================================
 def gis_refresh():
@@ -3487,10 +3493,11 @@ def gis_refresh():
 # =============================================================================
 def cluster_distance():
     T = current.T
+    CLUSTER_DISTANCE = T("Cluster Distance")
     return S3ReusableField("cluster_distance", "integer", notnull=True,
-                           label = T("Cluster Distance"),
+                           label = CLUSTER_DISTANCE,
                            comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Cluster Distance"),
+                                         _title="%s|%s" % (CLUSTER_DISTANCE,
                                                            T("The number of pixels apart that features need to be before they are clustered."))),
                            requires = IS_INT_IN_RANGE(1, 30),
                            default = 20)
@@ -3498,10 +3505,11 @@ def cluster_distance():
 # =============================================================================
 def cluster_threshold():
     T = current.T
+    CLUSTER_THRESHOLD = T("Cluster Threshold")
     return S3ReusableField("cluster_threshold", "integer", notnull=True,
-                           label = T("Cluster Threshold"),
+                           label = CLUSTER_THRESHOLD,
                            comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Cluster Threshold"),
+                                         _title="%s|%s" % (CLUSTER_THRESHOLD,
                                                            T("The minimum number of features to form a cluster."))),
                            requires = IS_INT_IN_RANGE(1, 10),
                            default = 2)

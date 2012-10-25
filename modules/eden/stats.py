@@ -756,6 +756,9 @@ class S3StatsModel(S3Model):
                           sum = values_sum,
                           )
 
+        # Explicitly commit when running async
+        db.commit()
+
         return
 
     # ---------------------------------------------------------------------
@@ -1186,8 +1189,6 @@ def stats_parameter_represent(id, row=None):
         return row.name
     elif not id:
         return current.messages.NONE
-    elif isinstance(id, Row):
-        return id.name
 
     db = current.db
     table = db.stats_parameter
@@ -1281,8 +1282,6 @@ def stats_group_represent(id, row=None):
         return stats_source_represent(row.source_id)
     elif not id:
         return current.messages.NONE
-    elif isinstance(id, Row):
-        return stats_source_represent(id.source_id)
 
     s3db = current.s3db
     table = s3db.stats_group

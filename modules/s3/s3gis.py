@@ -78,7 +78,7 @@ from gluon.contrib.simplejson.ordered_dict import OrderedDict
 from s3fields import s3_all_meta_field_names
 from s3search import S3Search
 from s3track import S3Trackable
-from s3utils import s3_debug, s3_fullname, s3_has_foreign_key
+from s3utils import s3_debug, s3_fullname, s3_fullname_bulk, s3_has_foreign_key
 from s3rest import S3Method
 
 DEBUG = False
@@ -1984,7 +1984,7 @@ class GIS(object):
                         try:
                             value = record[fieldname]
                         except:
-                            # Field not in table
+                            # Field not in record (so not in Table?)
                             # This isn't working for some reason :-? AttributeError raised by dal.py & not caught
                             continue
                         # Ignore blank fields
@@ -2147,7 +2147,9 @@ class GIS(object):
             if DEBUG:
                 start = datetime.datetime.now()
             represents = {}
-            values = [record[fieldname] for record in resource]
+            values = [r[fieldname] for r in resource if r[fieldname]]
+            if not values:
+                return represents
             # Deduplicate including non-hashable types (lists)
             #values = list(set(values))
             seen = set()
@@ -2162,10 +2164,7 @@ class GIS(object):
             elif s3_has_foreign_key(field, m2m=False):
                 tablename = field.type[10:]
                 if tablename == "pr_person":
-                    represents = s3_fullname(values)
-                    # Need to modify this function to be able to handle bulk lookups
-                    #for value in values:
-                    #    represents[value] = s3_fullname(value)
+                    represents = s3_fullname_bulk(values)
                 else:
                     table = s3db[tablename]
                     if "name" in table.fields:
@@ -5174,7 +5173,7 @@ class GIS(object):
 
         # Legend panel
         if legend:
-            legend = '''S3.i18n.gis_legend='%s'\n''' % T("Legend")
+            legend = '''i18n.gis_legend='%s'\n''' % T("Legend")
         else:
             legend = ""
 
@@ -5206,19 +5205,19 @@ class GIS(object):
 
         # Upload Layer
         if settings.get_gis_geoserver_password():
-            upload_layer = '''S3.i18n.gis_uploadlayer='Upload Shapefile'\n'''
+            upload_layer = '''i18n.gis_uploadlayer='Upload Shapefile'\n'''
             add_javascript("scripts/gis/gxp/FileUploadField.js")
             add_javascript("scripts/gis/gxp/widgets/LayerUploadPanel.js")
         else:
             upload_layer = ""
 
         # Layer Properties
-        layer_properties = '''S3.i18n.gis_properties='Layer Properties'\n'''
+        layer_properties = '''i18n.gis_properties='Layer Properties'\n'''
 
         # Search
         if search:
-            search = '''S3.i18n.gis_search='%s'\n''' % T("Search location in Geonames")
-            #'''S3.i18n.gis_search_no_internet="%s"''' % T("Geonames.org search requires Internet connectivity!")
+            search = '''i18n.gis_search='%s'\n''' % T("Search location in Geonames")
+            #'''i18n.gis_search_no_internet="%s"''' % T("Geonames.org search requires Internet connectivity!")
         else:
             search = ""
 
@@ -5810,8 +5809,8 @@ S3.gis.layers_feature_resources[%i]={
         # WMS getFeatureInfo
         # (loads conditionally based on whether queryable WMS Layers have been added)
         if s3.gis.get_feature_info:
-            getfeatureinfo = '''S3.i18n.gis_get_feature_info="%s"
-S3.i18n.gis_feature_info="%s"
+            getfeatureinfo = '''i18n.gis_get_feature_info="%s"
+i18n.gis_feature_info="%s"
 ''' % (T("Get Feature Info"),
        T("Feature Info"))
         else:
@@ -5867,30 +5866,30 @@ S3.i18n.gis_feature_info="%s"
             getfeatureinfo,             # Presence of labels turns feature on
             upload_layer,               # Presence of label turns feature on
             layer_properties,           # Presence of label turns feature on
-            '''S3.i18n.gis_requires_login='%s'\n''' % T("Requires Login"),
-            '''S3.i18n.gis_base_layers='%s'\n''' % T("Base Layers"),
-            '''S3.i18n.gis_overlays='%s'\n''' % T("Overlays"),
-            '''S3.i18n.gis_layers='%s'\n''' % T("Layers"),
-            '''S3.i18n.gis_draft_layer='%s'\n''' % T("Draft Features"),
-            '''S3.i18n.gis_cluster_multiple='%s'\n''' % T("There are multiple records at this location"),
-            '''S3.i18n.gis_loading='%s'\n''' % T("Loading"),
-            '''S3.i18n.gis_length_message='%s'\n''' % T("The length is"),
-            '''S3.i18n.gis_area_message='%s'\n''' % T("The area is"),
-            '''S3.i18n.gis_length_tooltip='%s'\n''' % T("Measure Length: Click the points along the path & end with a double-click"),
-            '''S3.i18n.gis_area_tooltip='%s'\n''' % T("Measure Area: Click the points around the polygon & end with a double-click"),
-            '''S3.i18n.gis_zoomfull='%s'\n''' % T("Zoom to maximum map extent"),
-            '''S3.i18n.gis_zoomout='%s'\n''' % T("Zoom Out: click in the map or use the left mouse button and drag to create a rectangle"),
-            '''S3.i18n.gis_zoomin='%s'\n''' % T("Zoom In: click in the map or use the left mouse button and drag to create a rectangle"),
-            '''S3.i18n.gis_pan='%s'\n''' % T("Pan Map: keep the left mouse button pressed and drag the map"),
-            '''S3.i18n.gis_navPrevious='%s'\n''' % T("Previous View"),
-            '''S3.i18n.gis_navNext='%s'\n''' % T("Next View"),
-            '''S3.i18n.gis_geoLocate='%s'\n''' % T("Zoom to Current Location"),
-            '''S3.i18n.gis_draw_feature='%s'\n''' % T("Add Point"),
-            '''S3.i18n.gis_draw_polygon='%s'\n''' % T("Add Polygon"),
-            '''S3.i18n.gis_save='%s'\n''' % T("Save: Default Lat, Lon & Zoom for the Viewport"),
-            '''S3.i18n.gis_potlatch='%s'\n''' % T("Edit the OpenStreetMap data for this area"),
+            '''i18n.gis_requires_login='%s'\n''' % T("Requires Login"),
+            '''i18n.gis_base_layers='%s'\n''' % T("Base Layers"),
+            '''i18n.gis_overlays='%s'\n''' % T("Overlays"),
+            '''i18n.gis_layers='%s'\n''' % T("Layers"),
+            '''i18n.gis_draft_layer='%s'\n''' % T("Draft Features"),
+            '''i18n.gis_cluster_multiple='%s'\n''' % T("There are multiple records at this location"),
+            '''i18n.gis_loading='%s'\n''' % T("Loading"),
+            '''i18n.gis_length_message='%s'\n''' % T("The length is"),
+            '''i18n.gis_area_message='%s'\n''' % T("The area is"),
+            '''i18n.gis_length_tooltip='%s'\n''' % T("Measure Length: Click the points along the path & end with a double-click"),
+            '''i18n.gis_area_tooltip='%s'\n''' % T("Measure Area: Click the points around the polygon & end with a double-click"),
+            '''i18n.gis_zoomfull='%s'\n''' % T("Zoom to maximum map extent"),
+            '''i18n.gis_zoomout='%s'\n''' % T("Zoom Out: click in the map or use the left mouse button and drag to create a rectangle"),
+            '''i18n.gis_zoomin='%s'\n''' % T("Zoom In: click in the map or use the left mouse button and drag to create a rectangle"),
+            '''i18n.gis_pan='%s'\n''' % T("Pan Map: keep the left mouse button pressed and drag the map"),
+            '''i18n.gis_navPrevious='%s'\n''' % T("Previous View"),
+            '''i18n.gis_navNext='%s'\n''' % T("Next View"),
+            '''i18n.gis_geoLocate='%s'\n''' % T("Zoom to Current Location"),
+            '''i18n.gis_draw_feature='%s'\n''' % T("Add Point"),
+            '''i18n.gis_draw_polygon='%s'\n''' % T("Add Polygon"),
+            '''i18n.gis_save='%s'\n''' % T("Save: Default Lat, Lon & Zoom for the Viewport"),
+            '''i18n.gis_potlatch='%s'\n''' % T("Edit the OpenStreetMap data for this area"),
             # For S3LocationSelectorWidget
-            '''S3.i18n.gis_current_location='%s'\n''' % T("Current Location"),
+            '''i18n.gis_current_location='%s'\n''' % T("Current Location"),
         ))
         html_append(SCRIPT(config_script))
 
