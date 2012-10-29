@@ -1047,10 +1047,12 @@ class S3SQLFormElement(object):
         if skip_post_validation and \
            current.request.env.request_method == "POST":
             requires = lambda value: (value, None)
+            widget = None
             required = False
             notnull = False
         else:
             requires = field.requires
+            widget = field.widget
             required = field.required
             notnull = field.notnull
 
@@ -1065,7 +1067,7 @@ class S3SQLFormElement(object):
                   uploadfolder=field.uploadfolder,
                   autodelete = field.autodelete,
 
-                  widget=field.widget,
+                  widget=widget,
                   label=field.label,
                   comment=field.comment,
 
@@ -1572,14 +1574,6 @@ class S3SQLInlineComponent(S3SQLSubForm):
                     _id=self._formname(separator="-"),
                     _field=real_input
                 )
-
-        # JavaScript
-        if s3.debug:
-            script = "s3.inline_component.js"
-        else:
-            script = "s3.inline_component.min.js"
-
-        s3.scripts.append("/%s/static/scripts/S3/%s" % (appname, script))
 
         return output
 
