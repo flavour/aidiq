@@ -33,7 +33,6 @@ __all__ = ["S3HRModel",
            "S3HRSkillModel",
            "S3HRExperienceModel",
            "S3HRProgrammeModel",
-           "hrm_hr_represent",
            "hrm_human_resource_represent",
            #"hrm_position_represent",
            "hrm_vars",
@@ -460,7 +459,7 @@ class S3HRModel(S3Model):
                                     label=ORGANISATION,
                                     field="organisation_id",
                                     represent = self.org_organisation_represent,
-                                    cols = 3
+                                    cols = 2
                                   ),
                                 S3SearchOptionsWidget(
                                     name="human_resource_search_L1",
@@ -2236,7 +2235,7 @@ class S3HRSkillModel(S3Model):
                           _title="%s|%s" % (T("Competency Rating"),
                                             T("Level of competency this person has with this skill.")))
         if current.deployment_settings.get_hrm_skill_types():
-            s3.js_global.append("S3.i18n.no_ratings = '%s';" % T("No Ratings for Skill Type"))
+            s3.js_global.append("i18n.no_ratings = '%s';" % T("No Ratings for Skill Type"))
             s3.jquery_ready.append(
 '''S3FilterFieldChange({
  'FilterField':'skill_id',
@@ -2244,7 +2243,7 @@ class S3HRSkillModel(S3Model):
  'FieldResource':'competency',
  'FieldPrefix':'hrm',
  'url':S3.Ap.concat('/hrm/skill_competencies/'),
- 'msgNoRecords':S3.i18n.no_ratings
+ 'msgNoRecords':i18n.no_ratings
 })''')
         return comment
 
@@ -3058,33 +3057,13 @@ def hrm_vars():
         hrm_vars.mode = "personal"
     return
 
-# =============================================================================
-def hrm_hr_represent(id):
-    """ Simple representation of HRs """
-
-    if not id:
-        return current.messages.NONE
-
-    s3db = current.s3db
-    htable = s3db.hrm_human_resource
-    ptable = s3db.pr_person
-
-    query = (htable.id == id) & \
-            (ptable.id == htable.person_id)
-    person = current.db(query).select(ptable.first_name,
-                                      ptable.middle_name,
-                                      ptable.last_name,
-                                      limitby=(0, 1)).first()
-    if person:
-        return s3_fullname(person)
-    else:
-        return current.messages.UNKNOWN_OPT
-
 # -------------------------------------------------------------------------
-def hrm_human_resource_represent(id, show_link=False):
+def hrm_human_resource_represent(id, row=None, show_link=False):
     """ Representation of human resource records """
 
-    if not id:
+    if row:
+        id = row.id
+    elif not id:
         return current.messages.NONE
 
     s3db = current.s3db
@@ -3309,10 +3288,12 @@ def hrm_training_event_represent(id, row=None):
     return represent
 
 # =============================================================================
-#def hrm_position_represent(id):
+#def hrm_position_represent(id, row=None):
 #    """
 #    """
-#    if not id:
+#    if row:
+#        id = row.id
+#    elif not id:
 #        return current.messages.NONE
 #    db = current.db
 #    s3db = current.s3db

@@ -337,34 +337,24 @@ def s3_fullname(person=None, pe_id=None, truncate=True):
     """
         Returns the full name of a person
 
-        @param person: the pr_person record or record_id or a list of record_ids
-                       (last used by gis.get_representation())
+        @param person: the pr_person record or record_id
         @param pe_id: alternatively, the person entity ID
         @param truncate: truncate the name to max 24 characters
     """
-
-    DEFAULT = ""
 
     db = current.db
     ptable = db.pr_person
 
     record = None
     query = None
-    rows = None
     if isinstance(person, (int, long)) or str(person).isdigit():
         query = (ptable.id == person) & (ptable.deleted != True)
-    elif isinstance(person, list):
-        query = (ptable.id.belongs(person)) & (ptable.deleted != True)
-        rows = db(query).select(ptable.id,
-                                ptable.first_name,
-                                ptable.middle_name,
-                                ptable.last_name)
     elif person is not None:
         record = person
     elif pe_id is not None:
         query = (ptable.pe_id == pe_id) & (ptable.deleted != True)
 
-    if not record and not rows and query is not None:
+    if not record and query is not None:
         record = db(query).select(ptable.first_name,
                                   ptable.middle_name,
                                   ptable.last_name,
@@ -381,26 +371,39 @@ def s3_fullname(person=None, pe_id=None, truncate=True):
             lname = record.last_name.strip()
         return s3_format_fullname(fname, mname, lname, truncate)
 
-    elif rows:
-        represents = {}
-        for row in rows:
-            fname, mname, lname = "", "", ""
-            if "pr_person" in row:
-                record = row["pr_person"]
-            else:
-                record = row
-            if record.first_name:
-                fname = record.first_name.strip()
-            if record.middle_name:
-                mname = record.middle_name.strip()
-            if record.last_name:
-                lname = record.last_name.strip()
-            represent = s3_format_fullname(fname, mname, lname, truncate)
-            represents[record.id] = represent
-        return represents
-
     else:
-        return DEFAULT
+        return ""
+
+# =============================================================================
+def s3_fullname_bulk(record_ids=[], truncate=True):
+    """
+        Returns the full name for a set of Persons
+        - used by GIS.get_representation()
+
+        @param record_ids: a list of record_ids
+        @param truncate: truncate the name to max 24 characters
+    """
+
+    db = current.db
+    ptable = db.pr_person
+    query = (ptable.id.belongs(record_ids))
+    rows = db(query).select(ptable.id,
+                            ptable.first_name,
+                            ptable.middle_name,
+                            ptable.last_name)
+
+    represents = {}
+    for row in rows:
+        fname, mname, lname = "", "", ""
+        if row.first_name:
+            fname = row.first_name.strip()
+        if row.middle_name:
+            mname = row.middle_name.strip()
+        if row.last_name:
+            lname = row.last_name.strip()
+        represent = s3_format_fullname(fname, mname, lname, truncate)
+        represents[row.id] = represent
+    return represents
 
 # =============================================================================
 def s3_represent_facilities(db, site_ids, link=True):
@@ -452,8 +455,6 @@ def s3_represent_facilities(db, site_ids, link=True):
 def s3_comments_represent(text, show_link=True):
     """
         Represent Comments Fields
-
-        @todo: parameter description?
     """
 
     if len(text) < 80:
@@ -479,8 +480,6 @@ def s3_comments_represent(text, show_link=True):
 def s3_url_represent(url):
     """
         Make URLs clickable
-
-        @todo: parameter description?
     """
 
     if not url:
@@ -561,14 +560,14 @@ def s3_avatar_represent(id, tablename="auth_user", _class="avatar"):
               )
 
 # =============================================================================
-def s3_auth_user_represent(id):
+def s3_auth_user_represent(id, row=None):
     """
         Represent a user as their email address
-
-        @todo: parameter description?
     """
 
-    if not id:
+    if row:
+        return row.email
+    elif not id:
         return current.messages.NONE
 
     db = current.db
@@ -585,8 +584,6 @@ def s3_auth_user_represent(id):
 def s3_auth_group_represent(opt):
     """
         Represent user groups by their role names
-
-        @todo: parameter description?
     """
 
     if not opt:
@@ -722,8 +719,6 @@ def s3_include_debug_js():
 def s3_is_mobile_client(request):
     """
         Simple UA Test whether client is a mobile device
-
-        @todo: parameter description?
     """
 
     env = request.env
@@ -794,7 +789,6 @@ def s3_populate_browser_compatibility(request):
     """
         Use WURFL for browser compatibility detection
 
-        @todo: parameter description?
         @ToDo: define a list of features to store
     """
 
