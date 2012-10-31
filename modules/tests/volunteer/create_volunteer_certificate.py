@@ -46,7 +46,8 @@ class CreateVolunteerCertificate(SeleniumUnitTest):
                        ),
                      ( "organisation_id",
                        "Timor-Leste Red Cross Society",
-                       "autocomplete"),
+                       "option"
+                       ),
                      ( "expiry",
                        "12"
                        ),

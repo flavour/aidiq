@@ -1283,7 +1283,7 @@ class S3Project3WModel(S3Model):
                     title_search = T("Search Community"),
                     title_upload = T("Import Community Data"),
                     title_report = T("3W Report"),
-                    title_map = T("Map of Communties"),
+                    title_map = T("Map of Communities"),
                     subtitle_create = T("Add New Community"),
                     label_list_button = T("List Communities"),
                     label_create_button = ADD_LOCATION,
@@ -4310,6 +4310,9 @@ def task_notify(form):
     vars = form.vars
     pe_id = vars.pe_id
     if not pe_id:
+        return
+    if int(vars.status) in s3.project_task_active_statuses:
+        # No need to notify about closed tasks
         return
     if form.record is None or (int(pe_id) != form.record.pe_id):
         # Assignee has changed
