@@ -104,9 +104,13 @@
     left: 0.5%;         /* page left padding */
     width: 1250px;
 }
-#container  .col1 {
+#container .col1 {
     left: 0.5%;         /* page left padding */
     width: 994px;
+    min-height: 466px;
+}
+#container .col1 #content {
+    min-height: 450px;
 }
 .fullpage .col1  #content p {
     font-size: 16px;
@@ -114,7 +118,7 @@
 .fullpage .col1  #content ul {
     /*font-family: "VAGRoundedLight";*/
     font-size: 18px;
-    padding: 10px 0 0 50px;
+    padding: 1em 0 0 75px;
 }
 .fullpage .col2 {
     padding: 5px 0 0 20px;
