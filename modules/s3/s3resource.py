@@ -3461,7 +3461,7 @@ class S3Resource(object):
             for i in xrange(numcols):
                 try:
                     field = rfields[i].field
-                except KeyError:
+                except (KeyError, IndexError):
                     continue
                 if field is None:
                     continue
@@ -5788,7 +5788,8 @@ class S3Pivottable(object):
         self.dfields = dfields
 
         # rfields (resource-fields): dfields resolved into a ResourceFields map
-        rfields, joins, left, distinct = resource.resolve_selectors(dfields)
+        rfields, joins, left, distinct = resource.resolve_selectors(dfields,
+                                                                    skip_components=False)
         rfields = Storage([(f.selector, f) for f in rfields])
         self.rfields = rfields
 

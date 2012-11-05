@@ -59,11 +59,11 @@ class S3Report(S3CRUD):
 
     T = current.T
     METHODS = {
-        "list": T("Total"),
-        "count": T("Total"),
+        "list": T("List"),
+        "count": T("Count"),
         "min": T("Minimum"),
         "max": T("Maximum"),
-        "sum": T("Sum"),
+        "sum": T("Total"),
         "avg": T("Average"),
         #"std": T("Standard Deviation")
     }
@@ -518,23 +518,24 @@ class S3Report(S3CRUD):
             @param attr: the HTML attributes for the SELECT
         """
 
+        resource = self.resource
+
         name = attr["_name"]
         if form_values:
             value = form_values.get(name, "")
         else:
             value = ""
+        if "." not in value.split("$", 1)[0]:
+            value = "%s.%s" % (resource.alias, value)
 
         table = self.table
-        lfields, joins, left, distinct = self.resource.resolve_selectors(list_fields)
+        rfields, j, l, d = resource.resolve_selectors(list_fields,
+                                                      skip_components=False)
+        options = [(f.selector, f.label) for f in rfields
+                   if f.show and
+                      (f.field is None or f.field.name != table._id.name)]
 
-        options = []
-        for f in lfields:
-            if (f.field is None or f.field.name != table._id.name) and f.show:
-                options.append((f.selector, f.label))
-
-        dummy_field = Storage(name=name,
-                              requires=IS_IN_SET(options))
-
+        dummy_field = Storage(name=name, requires=IS_IN_SET(options))
         return OptionsWidget.widget(dummy_field, value, **attr)
 
     # -------------------------------------------------------------------------
