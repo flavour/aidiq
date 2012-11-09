@@ -72,11 +72,11 @@
     padding: 5px 8px 10px;
 }
 #menu_wrapper li div a {
-    padding: 5px 0;
+    padding: 2px 0;
 }
 #menu_wrapper li div a:hover {
     font-size: 1.3em;
-    padding: 3px 0;
+    padding: 2px 0;
 }
 /*#modulenav li div.hovered,
 #modulenav li div:hover {

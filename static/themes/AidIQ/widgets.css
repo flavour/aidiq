@@ -15,3 +15,17 @@
     height: 9px;
     overflow: hidden;
 }
+
+div.w2p_fl {
+    float: left;
+    font-weight: bold;
+}
+
+div.w2p_fw {
+    float: left;
+    clear: both;
+}
+div.w2p_fc {
+    float: left;
+    margin: 0 10px;
+}
