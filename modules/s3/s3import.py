@@ -2029,11 +2029,9 @@ class S3ImportItem(object):
                     _debug("Validation error, component=%s" % tn)
                     component.skip = True
                     # Skip this item on any component validation errors
-                    if ignore_errors:
-                        continue
-                    else:
-                        self.skip = True
-                        return False
+                    self.skip = True
+                    self.error = self.ERROR.VALIDATION_ERROR
+                    return False
 
         # De-duplicate
         self.deduplicate()
@@ -2902,7 +2900,7 @@ class S3ImportJob():
                                             tablename)
                 relements = reference.xpath(expr)
                 if relements and not multiple:
-                    relements = [relements[0]]
+                    relements = relements[:1]
 
             elif root is not None:
 

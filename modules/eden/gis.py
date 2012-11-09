@@ -106,7 +106,7 @@ class S3LocationModel(S3Model):
         if current.deployment_settings.get_gis_spatialdb():
             # Add a spatial field
             # Should we do a test to confirm this? Ideally that would be done only in eden_update_check
-            meta_spatial_fields = (s3_lx_fields() + s3_meta_fields() + (Field("the_geom", "geometry()"),))
+            meta_spatial_fields = (s3_lx_fields() + s3_meta_fields() + (Field("the_geom", "geometry()", readable=False, writable=False),))
         else:
             meta_spatial_fields = (s3_lx_fields() + s3_meta_fields())
 
@@ -352,6 +352,9 @@ class S3LocationModel(S3Model):
         if not ids:
             return current.messages.NONE
 
+        if not isinstance(ids, (list, tuple)):
+            ids = [ids]
+
         db = current.db
         table = db.gis_location
         rows = db(table.id.belongs(ids)).select(table.name)
@@ -379,7 +382,6 @@ class S3LocationModel(S3Model):
     # -------------------------------------------------------------------------
     @staticmethod
     def gis_location_onvalidation(form):
-
         """
             On Validation for GIS Locations (before DB I/O)
         """
@@ -3042,7 +3044,7 @@ class S3MapModel(S3Model):
                                    requires = IS_NOT_EMPTY(),
                                    comment=DIV(_class="tooltip",
                                                _title="%s|%s" % (LOCATION,
-                                                                 T("Mandatory. The URL to access the service.")))),
+                                                                 T("Mandatory. The base URL to access the service. e.g. http://host.domain/geoserver/wfs?")))),
                              Field("featureType",
                                    label=T("Feature Type"),
                                    requires = IS_NOT_EMPTY(),
@@ -3053,7 +3055,7 @@ class S3MapModel(S3Model):
                                    requires=IS_NULL_OR(IS_URL()),
                                    comment=DIV(_class="tooltip",
                                                _title="%s|%s" % (T("Feature Namespace"),
-                                                                 T("Optional. In GeoServer, this is the Workspace Namespace URI (not the name!). Within the WFS getCapabilities, this is the FeatureType Name part before the colon(:).")))),
+                                                                 T("Optional. In GeoServer, this is the Workspace Namespace URI (not the name!). Within the WFS getCapabilities, the workspace is the FeatureType Name part before the colon(:).")))),
                              Field("title",
                                    label=T("Title"),
                                    default="name",
@@ -3144,7 +3146,7 @@ class S3MapModel(S3Model):
                                    requires = IS_NOT_EMPTY(),
                                    comment=DIV(_class="tooltip",
                                                _title="%s|%s" % (LOCATION,
-                                                                 T("The URL to access the service.")))),
+                                                                 T("Mandatory. The base URL to access the service. e.g. http://host.domain/geoserver/wms?")))),
                              Field("version", length=32,
                                    label=T("Version"),
                                    default="1.1.1",
@@ -3421,8 +3423,6 @@ class S3GISThemeModel(S3Model):
         T = current.T
         db = current.db
 
-        #UNKNOWN_OPT = current.messages.UNKNOWN_OPT
-
         # Shortcuts
         add_component = self.add_component
         configure = self.configure
@@ -3433,22 +3433,14 @@ class S3GISThemeModel(S3Model):
         # Theme Layer
         #
 
-        gis_theme_type_opts = {
-            # This should be stored
-            #"population":T("Population"),
-            }
-
         tablename = "gis_layer_theme"
         table = define_table(tablename,
                              layer_id,
                              name_field()(unique = True),
                              Field("description",
                                    label=T("Description")),
-                             #Field("type", label = T("Type"),
-                             #      requires=IS_NULL_OR(IS_IN_SET(gis_theme_type_opts))
-                             #      represent = lambda opt: gis_theme_type_opts.get(opt,
-                             #                                                      UNKNOWN_OPT),
-                             #      ),
+                             # @ToDo:
+                             #self.stats_parameter_id(),
                              Field("date", "datetime",
                                    label = T("Date")),
                              gis_layer_folder()(),

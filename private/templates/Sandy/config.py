@@ -123,12 +123,12 @@ settings.modules = OrderedDict([
             restricted = True,
             module_type = 10,
         )),
-    ("vol", Storage(
-            name_nice = T("Volunteers"),
-            #description = "Human Resources Management",
-            restricted = True,
-            module_type = 10,
-        )),
+    #("vol", Storage(
+    #        name_nice = T("Volunteers"),
+    #        #description = "Human Resources Management",
+    #        restricted = True,
+    #        module_type = 10,
+    #    )),
     ("cms", Storage(
           name_nice = T("Content Management"),
           #description = "Content Management System",
@@ -179,12 +179,12 @@ settings.modules = OrderedDict([
     #        restricted = True,
     #        module_type = 10,
     #    )),
-    ("req", Storage(
-            name_nice = T("Requests"),
-            #description = "Manage requests for supplies, assets, staff or other resources. Matches against Inventories where supplies are requested.",
-            restricted = True,
-            module_type = 2,
-        )),
+    #("req", Storage(
+    #        name_nice = T("Requests"),
+    #        #description = "Manage requests for supplies, assets, staff or other resources. Matches against Inventories where supplies are requested.",
+    #        restricted = True,
+    #        module_type = 3,
+    #    )),
     #("project", Storage(
     #        name_nice = T("Projects"),
     #        #description = "Tracking of Projects, Activities and Tasks",
@@ -197,12 +197,12 @@ settings.modules = OrderedDict([
     #        restricted = True,
     #        module_type = 5,
     #    )),
-    #("cr", Storage(
-    #        name_nice = T("Shelters"),
-    #        #description = "Tracks the location, capacity and breakdown of victims in Shelters",
-    #        restricted = True,
-    #        module_type = 10
-    #    )),
+    ("cr", Storage(
+            name_nice = T("Shelters"),
+            #description = "Tracks the location, capacity and breakdown of victims in Shelters",
+            restricted = True,
+            module_type = 2
+        )),
     ("hms", Storage(
             name_nice = T("Hospitals"),
             #description = "Helps to monitor status of hospitals",

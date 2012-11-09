@@ -44,7 +44,7 @@ class index():
                                              args=["create"]),
                                  _id = "add-btn",
                                  _class = "action-btn",
-                                 _style = "margin-right: 10px;"),
+                                 _style = "margin-right:10px;"),
                                hospital_items,
                                _id = "org_box",
                                _class = "menu_box fleft"
@@ -173,7 +173,7 @@ google.setOnLoadCallback(LoadDynamicFeedControl)'''))
     @staticmethod
     def hospital():
         """
-            Function to handle pagination for the org list on the homepage
+            Function to handle pagination for the hospitals list on the homepage
         """
 
         request = current.request
@@ -204,7 +204,7 @@ google.setOnLoadCallback(LoadDynamicFeedControl)'''))
         if request.extension == "html":
             items = dt.html(totalrows,
                             filteredrows,
-                            "org_list_1",
+                            "hospital_list_1",
                             dt_displayLength=10,
                             dt_ajax_url=URL(c="default",
                                             f="hospital",

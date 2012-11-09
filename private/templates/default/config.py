@@ -238,9 +238,17 @@ settings.L10n.decimal_separator = "."
 #settings.org.summary = True
 # Enable certain fields just for specific Organisations
 # Requires a call to settings.set_org_dependent_field(field)
+# empty list => disabled for all (including Admin)
 #settings.org.dependent_fields = \
-#    {"<table name>.<field name>"  : ["<Organisation Name>"],
-#    ...
+#    {#"<table name>.<field name>"  : ["<Organisation Name>"],
+#     "pr_person_details.mother_name"             : [],
+#     "pr_person_details.father_name"             : [],
+#     "pr_person_details.company"                 : [],
+#     "pr_person_details.affiliations"            : [],
+#     "vol_volunteer.active"                      : [],
+#     "vol_volunteer_cluster.vol_cluster_type_id"      : [],
+#     "vol_volunteer_cluster.vol_cluster_id"          : [],
+#     "vol_volunteer_cluster.vol_cluster_position_id" : [],
 #     }
 
 # Human Resource Management
@@ -305,6 +313,7 @@ settings.L10n.decimal_separator = "."
 #settings.req.show_quantity_transit = False
 #settings.req.multiple_req_items = False
 #settings.req.use_commit = False
+#settings.req.requester_optional = True
 #settings.req.use_req_number = False
 #settings.req.generate_req_number = False
 #settings.req.req_form_name = "Request Issue Form"

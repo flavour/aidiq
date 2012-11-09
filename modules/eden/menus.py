@@ -548,9 +548,9 @@ class S3OptionsMenu(object):
                         M("New", m="create"),
                         M("List All"),
                         M("Map", m="map"),
-                        # @ToDo Search by type, services, location, available space
-                        #M("Search", m="search"),
-                        M("Import", m="import"),
+                        M("Search", m="search"),
+                        M("Report", m="report"),
+                        M("Import", m="import", p="create"),
                     ),
                     M(types, restrict=[ADMIN])(
                         M("Types", f="shelter_type"),
@@ -790,10 +790,10 @@ class S3OptionsMenu(object):
                         M("Import from OpenStreetMap", m="import_poi", restrict=[MAP_ADMIN]),
                         #M("Geocode", f="geocode_manual"),
                     ),
-                    M("Population Report", f="location", m="report",
-                      vars=dict(rows="name",
-                                fact="population",
-                                aggregate="sum")),
+                    #M("Population Report", f="location", m="report",
+                    #  vars=dict(rows="name",
+                    #            fact="population",
+                    #            aggregate="sum")),
                     M("Configuration", f="config", args=config_args(),
                       _id="gis_menu_config",
                       check=config_menu),
@@ -1606,6 +1606,8 @@ class S3OptionsMenu(object):
     def req(self):
         """ REQ / Request Management """
 
+        ADMIN = current.session.s3.system_roles.ADMIN
+
         settings = current.deployment_settings
         use_commit = lambda i: settings.get_req_use_commit()
         req_skills = lambda i: "People" in settings.get_req_req_type()
@@ -1621,6 +1623,29 @@ class S3OptionsMenu(object):
                     ),
                     M("Commitments", f="commit", check=use_commit)(
                         M("List All")
+                    ),
+                    M("Items", c="supply", f="item")(
+                        M("New", m="create"),
+                        M("List All"),
+                        M("Search", m="search"),
+                        M("Report", m="report"),
+                        M("Import", m="import", p="create"),
+                    ),
+                    # Catalog Items moved to be next to the Item Categories
+                    #M("Catalog Items", c="supply", f="catalog_item")(
+                       #M("New", m="create"),
+                       #M("List All"),
+                       #M("Search", m="search"),
+                    #),
+                    M("Catalogs", c="supply", f="catalog")(
+                        M("New", m="create"),
+                        M("List All"),
+                        #M("Search", m="search"),
+                    ),
+                    M("Item Categories", c="supply", f="item_category",
+                      restrict=[ADMIN])(
+                        M("New", m="create"),
+                        M("List All"),
                     ),
                 )
 

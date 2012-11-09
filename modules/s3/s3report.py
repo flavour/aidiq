@@ -120,7 +120,9 @@ class S3Report(S3CRUD):
             if "totals" not in r.post_vars:
                 form_values["totals"] = "off"
         else:
-            url_options = Storage([(k, v) for k, v in r.get_vars.iteritems() if v])
+            last = lambda opt: opt[-1] if type(opt) is list else opt
+            url_options = Storage([(k, last(v))
+                                   for k, v in r.get_vars.iteritems() if v])
             if url_options:
                 # GET
                 form_values = url_options
@@ -523,17 +525,19 @@ class S3Report(S3CRUD):
 
         resource = self.resource
 
+        prefix = lambda v: "%s.%s" % (resource.alias, v) \
+                           if "." not in v.split("$", 1)[0] else v
+
         name = attr["_name"]
         if form_values:
             value = form_values.get(name, "")
         else:
             value = ""
-        if "." not in value.split("$", 1)[0]:
-            value = "%s.%s" % (resource.alias, value)
+        if value:
+            value = prefix(value)
 
         table = self.table
-        rfields, j, l, d = resource.resolve_selectors(list_fields,
-                                                      skip_components=False)
+        rfields, j, l, d = resource.resolve_selectors(list_fields)
         options = [(f.selector, f.label) for f in rfields
                    if f.show and
                       (f.field is None or f.field.name != table._id.name)]
@@ -843,23 +847,19 @@ class S3ContingencyTable(TABLE):
             col_label = "%s %s" % (BY, str(col_label))
         layer_label=str(layer_label)
 
-        print filter_query
         if filter_query and hasattr(filter_query, "serialize_url"):
             filter_vars = filter_query.serialize_url(resource=report.resource)
         else:
             filter_vars = {}
 
-        json_data = json.dumps(dict(r=report.rows,
+        json_data = json.dumps(dict(t=layer_label,
+                                    x=col_label,
+                                    y=row_label,
+                                    r=report.rows,
                                     c=report.cols,
                                     d=report.compact(n=50, represent=True),
                                     u=url,
                                     f=filter_vars,
-                                    rows=drows,
-                                    cols=dcols,
-                                    #data=report.compact(10, represent=True),
-                                    row_label=row_label,
-                                    col_label=col_label,
-                                    layer_label=layer_label,
                                     cell_lookup_table=cell_lookup_table
                                    ))
         self.report_data = Storage(row_label=row_label,
