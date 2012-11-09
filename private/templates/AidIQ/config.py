@@ -50,7 +50,11 @@ settings.project.activities = True
 # Uncomment this to use Milestones in project/task.
 settings.project.milestones = True
 # Uncomment this to disable Sectors in projects
-settings.project.sectors = False
+settings.project.sectors = True
+# Change the label for Organisation from 'Lead Implementer'
+settings.project.organisation_roles = {
+    1: T("Customer")
+}
 
 # Uncomment to allow HR records to be deletable rather than just marking them as obsolete
 settings.hrm.deletable = True
