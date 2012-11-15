@@ -15,10 +15,10 @@ T = current.T
 """
 
 # Pre-Populate
-settings.base.prepopulate = ["HelpNY"]
+settings.base.prepopulate = ["SandyRelief"]
 
-settings.base.system_name = T("Help New York")
-settings.base.system_name_short = T("HelpNY")
+settings.base.system_name = T("Sandy Relief")
+settings.base.system_name_short = T("SandyRelief")
 
 # Theme (folder to use for views/layout.html)
 #settings.base.theme = "OCHA"
@@ -43,6 +43,11 @@ settings.ui.label_mobile_phone = "Cell Phone"
 # Enable this to change the label for 'Postcode'
 settings.ui.label_postcode = "ZIP Code"
 
+# Restrict the Location Selector to just certain countries
+# NB This can also be over-ridden for specific contexts later
+# e.g. Activities filtered to those of parent Project
+settings.gis.countries = ["US"]
+
 settings.fin.currencies = {
     "USD" : T("United States Dollars"),
 }
@@ -66,12 +71,62 @@ settings.auth.registration_requires_approval = True
 # Roles that newly-registered users get automatically
 settings.auth.registration_roles = { 0: ["super"]}
 
+settings.auth.registration_link_user_to = {"staff":T("Staff"),
+                                           "volunteer":T("Volunteer")}
+
 settings.security.policy = 4 # Controller & Function ACLs
 
+# Inventory Management
+# Uncomment to customise the label for Facilities in Inventory Management
+settings.inv.facility_label = "Facility"
+# Uncomment if you need a simpler (but less accountable) process for managing stock levels
+#settings.inv.direct_stock_edits = True
+# Uncomment to call Stock Adjustments, 'Stock Counts'
+settings.inv.stock_count = True
+# Uncomment to not track pack values
+settings.inv.track_pack_values = False
+
 # Request Management
-settings.req.req_type = ["Stock"]
+settings.req.req_type = ["People", "Stock", "Summary"]
+settings.req.prompt_match = False
 settings.req.use_commit = False
 settings.req.requester_optional = True
+
+settings.org.site_label = "Facility"
+# Enable certain fields just for specific Organisations
+# empty list => disabled for all (including Admin)
+#settings.org.dependent_fields = \
+#    {"pr_person_details.mother_name"             : [],
+#     "pr_person_details.father_name"             : [],
+#     "pr_person_details.company"                 : [],
+#     "pr_person_details.affiliations"            : [],
+#     "vol_volunteer.active"                      : [],
+#     "vol_volunteer_cluster.vol_cluster_type_id"      : [],
+#     "vol_volunteer_cluster.vol_cluster_id"          : [],
+#     "vol_volunteer_cluster.vol_cluster_position_id" : [],
+#     }
+
+# -----------------------------------------------------------------------------
+# Human Resource Management
+# Uncomment to chage the label for 'Staff'
+settings.hrm.staff_label = "Contacts"
+# Uncomment to allow Staff & Volunteers to be registered without an email address
+settings.hrm.email_required = False
+# Uncomment to show the Organisation name in HR represents
+settings.hrm.show_organisation = True
+# Uncomment to disable Staff experience
+settings.hrm.staff_experience = False
+# Uncomment to disable the use of HR Credentials
+settings.hrm.use_credentials = False
+# Uncomment to enable the use of HR Education
+settings.hrm.use_education = False
+# Uncomment to disable the use of HR Skills
+settings.hrm.use_skills = True
+# Uncomment to disable the use of HR Teams
+#settings.hrm.use_teams = False
+# Custom label for Organisations in HR module
+#settings.hrm.organisation_label = "National Society / Branch"
+settings.hrm.organisation_label = "Organization"
 
 # Comment/uncomment modules here to disable/enable them
 settings.modules = OrderedDict([
@@ -119,7 +174,7 @@ settings.modules = OrderedDict([
             name_nice = T("Map"),
             #description = "Situation Awareness & Geospatial Analysis",
             restricted = True,
-            module_type = 3,     # 6th item in the menu
+            module_type = 8,     # 8th item in the menu
         )),
     ("pr", Storage(
             name_nice = T("Person Registry"),
@@ -129,24 +184,24 @@ settings.modules = OrderedDict([
             module_type = 10
         )),
     ("org", Storage(
-            name_nice = T("Organizations"),
+            name_nice = T("Facilities"),
             #description = 'Lists "who is doing what & where". Allows relief agencies to coordinate their activities',
             restricted = True,
-            module_type = 10
+            module_type = 1
         )),
     # All modules below here should be possible to disable safely
     ("hrm", Storage(
-            name_nice = T("Staff"),
+            name_nice = T("Contacts"),
             #description = "Human Resources Management",
             restricted = True,
-            module_type = 10,
+            module_type = 2,
         )),
-    #("vol", Storage(
-    #        name_nice = T("Volunteers"),
-    #        #description = "Human Resources Management",
-    #        restricted = True,
-    #        module_type = 10,
-    #    )),
+    ("vol", Storage(
+            name_nice = T("Volunteers"),
+            #description = "Human Resources Management",
+            restricted = True,
+            module_type = 4,
+        )),
     ("cms", Storage(
           name_nice = T("Content Management"),
           #description = "Content Management System",
@@ -173,10 +228,10 @@ settings.modules = OrderedDict([
             module_type = None, # Not displayed
         )),
     ("inv", Storage(
-            name_nice = T("Warehouses"),
+            name_nice = T("Inventory"),
             #description = "Receiving and Sending Items",
             restricted = True,
-            module_type = 2
+            module_type = 6
         )),
     #("proc", Storage(
     #        name_nice = T("Procurement"),
@@ -184,12 +239,12 @@ settings.modules = OrderedDict([
     #        restricted = True,
     #        module_type = 10
     #    )),
-    #("asset", Storage(
-    #        name_nice = T("Assets"),
-    #        #description = "Recording and Assigning Assets",
-    #        restricted = True,
-    #        module_type = 5,
-    #    )),
+    ("asset", Storage(
+            name_nice = T("Assets"),
+            #description = "Recording and Assigning Assets",
+            restricted = True,
+            module_type = 7,
+        )),
     # Vehicle depends on Assets
     #("vehicle", Storage(
     #        name_nice = T("Vehicles"),
@@ -201,7 +256,7 @@ settings.modules = OrderedDict([
             name_nice = T("Requests"),
             #description = "Manage requests for supplies, assets, staff or other resources. Matches against Inventories where supplies are requested.",
             restricted = True,
-            module_type = 1,
+            module_type = 3,
         )),
     #("project", Storage(
     #        name_nice = T("Projects"),

@@ -15,8 +15,50 @@ if not settings.has_module(module):
 
 # -----------------------------------------------------------------------------
 def index():
+    """ Module's Home Page """
+
+    module_name = settings.modules[module].name_nice
+    response.title = module_name
+
+    item = None
+    if settings.has_module("cms"):
+        table = s3db.cms_post
+        _item = db(table.module == module).select(table.id,
+                                                  table.body,
+                                                  limitby=(0, 1)).first()
+        if _item:
+            if s3_has_role(ADMIN):
+                item = DIV(XML(_item.body),
+                           BR(),
+                           A(T("Edit"),
+                             _href=URL(c="cms", f="post",
+                                       args=[_item.id, "update"],
+                                       vars={"module":module}),
+                             _class="action-btn"))
+            else:
+                item = XML(_item.body)
+        elif s3_has_role(ADMIN):
+            item = DIV(H2(module_name),
+                       A(T("Edit"),
+                         _href=URL(c="cms", f="post", args="create",
+                                   vars={"module":module}),
+                         _class="action-btn"))
+
+    if not item:
+        #item = H2(module_name)
+        # Just redirect to the list of Warehouses
+        redirect(URL(f="warehouse"))
+
+    # tbc
+    report = ""
+
+    response.view = "index.html"
+    return dict(item=item, report=report)
+
+# -----------------------------------------------------------------------------
+def index2():
     """
-        Application Home page
+        Alternative Application Home page
         - custom View
     """
 
@@ -379,7 +421,7 @@ def inv_item():
                            )
     else:
         s3db.configure(tablename,
-                       insertable=False,
+                       insertable= settings.get_inv_direct_stock_edits(),
                        list_fields = ["id",
                                       "site_id",
                                       "item_id",
@@ -473,7 +515,7 @@ def inv_item():
                                 pdf_groupby = "site_id, item_id",
                                 pdf_orderby = "expiry_date, supply_org_id",
                                 )
-    if "add_btn" in output:
+    if "add_btn" in output and not settings.get_inv_direct_stock_edits():
         del output["add_btn"]
     return output
 
@@ -1646,15 +1688,21 @@ def adj():
     def prep(r):
         if r.interactive:
             if r.component:
-                if r.component_id:
-                    aitable = s3db.inv_adj_item
-                    if r.record.status == 0:
-                        aitable.reason.writable = True
-                    record = aitable[r.component_id]
-                    if record.inv_item_id:
-                        aitable.item_id.writable = False
-                        aitable.item_id.comment = None
-                        aitable.item_pack_id.writable = False
+                if r.component_name == "adj_item":
+                    if r.component_id:
+                        aitable = s3db.inv_adj_item
+                        if r.record.status == 0:
+                            aitable.reason.writable = True
+                        record = aitable[r.component_id]
+                        if record.inv_item_id:
+                            aitable.item_id.writable = False
+                            aitable.item_id.comment = None
+                            aitable.item_pack_id.writable = False
+                elif r.component_name == "image":
+                    doc_table = s3db.doc_image
+                    doc_table.organisation_id.readable = doc_table.organisation_id.writable = False
+                    doc_table.person_id.readable = doc_table.person_id.writable = False
+                    doc_table.location_id.readable = doc_table.location_id.writable = False
             else:
                 # if an adjustment has been selected and it has been completed
                 # then make the fields read only

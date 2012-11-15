@@ -453,7 +453,7 @@ class S3CampDataModel(S3Model):
         #
         tablename = "cr_shelter_status"
         table = define_table(tablename,
-                             shelter_id(),
+                             shelter_id(ondelete = "CASCADE"),
                              s3_date(),
                              Field("status", "integer",
                                    requires = IS_NULL_OR(
@@ -524,6 +524,28 @@ class S3CampDataModel(S3Model):
         #                                writable=False)
 
         return
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def cr_shelter_onaccept(form):
+        """
+            After DB I/O
+        """
+
+        # @ToDo: Update/Create a cr_shelter_status record
+        # Status & Population
+        pass
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def cr_shelter_status_onaccept(form):
+        """
+            After DB I/O
+        """
+
+        # @ToDo: Update the cr_shelter record
+        # Status & Population
+        pass
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -649,7 +671,7 @@ class S3CampDataModel(S3Model):
             except:
                 return current.messages.UNKNOWN_OPT
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 def cr_shelter_rheader(r, tabs=[]):
     """ Resource Headers """
 
@@ -700,10 +722,6 @@ def cr_shelter_rheader(r, tabs=[]):
                                       ),
                                     ),
                               rheader_tabs)
-
-            #if r.component and r.component.name == "req":
-                # Inject the helptext script
-            #    rheader.append(response.s3.req_helptext_script)
 
     return rheader
 

@@ -16,17 +16,30 @@ def index():
     module_name = settings.modules[module].name_nice
     response.title = module_name
 
-    # Include an embedded Map on the index page
-    map = define_map(window=False,
-                     toolbar=True,
-                     closable=False,
-                     maximizable=False)
+    # Read user request
+    vars = request.get_vars
+    height = vars.get("height", None)
+    width = vars.get("width", None)
+    iframe = vars.get("iframe", False)
+    toolbar = vars.get("toolbar", True)
+    collapsed = vars.get("collapsed", False)
 
-    # Code to go fullscreen
-    # IE (even 9) doesn't like the dynamic full-screen, so simply do a page refresh for now
-    # Remove components from embedded Map's containers without destroying their contents
-    # Add a full-screen window which will inherit these components
-    s3.jquery_ready.append(
+    if collapsed:
+        collapsed = True
+
+    if toolbar == "0":
+        toolbar = False
+    else:
+        toolbar = True
+
+    if iframe:
+        response.view = "gis/iframe.html"
+    else:
+        # Code to go fullscreen
+        # IE (even 9) doesn't like the dynamic full-screen, so simply do a page refresh for now
+        # Remove components from embedded Map's containers without destroying their contents
+        # Add a full-screen window which will inherit these components
+        s3.jquery_ready.append(
 '''$('#gis_fullscreen_map-btn').click(function(evt){
  if (navigator.appVersion.indexOf("MSIE")!=-1){
  }else{
@@ -39,6 +52,15 @@ def index():
  evt.preventDefault()
  }
 })''')
+
+    # Include an embedded Map on the index page
+    map = define_map(height=height,
+                     width=width,
+                     window=False,
+                     toolbar=toolbar,
+                     collapsed=collapsed,
+                     closable=False,
+                     maximizable=False)
 
     return dict(map=map)
 
@@ -58,7 +80,14 @@ def map_viewing_client():
     return dict(map=map)
 
 # -----------------------------------------------------------------------------
-def define_map(window=False, toolbar=False, closable=True, maximizable=True, config=None):
+def define_map(height = None,
+               width = None,
+               window = False,
+               toolbar = False,
+               closable = True,
+               collapsed = False,
+               maximizable = True,
+               config = None):
     """
         Define the main Situation Map
         This can then be called from both the Index page (embedded)
@@ -91,10 +120,12 @@ def define_map(window=False, toolbar=False, closable=True, maximizable=True, con
     else:
         print_tool = {}
 
-    map = gis.show_map(
+    map = gis.show_map(height=height,
+                       width=width,
                        window=window,
                        wms_browser = wms_browser,
                        toolbar=toolbar,
+                       collapsed=collapsed,
                        closable=closable,
                        maximizable=maximizable,
                        legend=legend,
@@ -102,7 +133,7 @@ def define_map(window=False, toolbar=False, closable=True, maximizable=True, con
                        catalogue_layers=catalogue_layers,
                        mouse_position = mouse_position,
                        print_tool = print_tool
-                      )
+                       )
 
     return map
 

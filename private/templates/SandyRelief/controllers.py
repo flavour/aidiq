@@ -30,8 +30,8 @@ class index():
         AUTHENTICATED = system_roles.AUTHENTICATED
         if AUTHENTICATED in roles and \
            auth.s3_has_permission("read", s3db.req_req):
-            req_items = self.req()
-            datatable_ajax_source = "/%s/default/req.aadata" % \
+            req_items = req()()
+            datatable_ajax_source = "/%s/default/index/req.aadata" % \
                                     appname
             s3.actions = None
             auth.permission.controller = "org"
@@ -177,7 +177,7 @@ google.setOnLoadCallback(LoadDynamicFeedControl)'''))
             s3.js_global.append(feed_control)
 
         view = path.join(request.folder, "private", "templates",
-                         "HelpNY", "views", "index.html")
+                         "SandyRelief", "views", "index.html")
         try:
             # Pass view as file not str to work in compiled mode
             response.view = open(view, "rb")
@@ -199,13 +199,13 @@ google.setOnLoadCallback(LoadDynamicFeedControl)'''))
                     register_div=register_div
                     )
 
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def req():
-        """
-            Function to handle pagination for the requests list on the homepage
-        """
+# =============================================================================
+class req():
+    """
+        Function to handle pagination for the requests list on the homepage
+    """
 
+    def __call__(self):
         request = current.request
         resource = current.s3db.resource("req_req")
         totalrows = resource.count()
@@ -237,7 +237,8 @@ google.setOnLoadCallback(LoadDynamicFeedControl)'''))
                             "req_list_1",
                             dt_displayLength=10,
                             dt_ajax_url=URL(c="default",
-                                            f="req",
+                                            f="index",
+                                            args=["req"],
                                             extension="aadata",
                                             vars={"id": "req_list_1"},
                                             ),

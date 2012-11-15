@@ -922,11 +922,12 @@ $(document).ready(function(){
             #        so that they can be used without a screen refresh
             url = URL(f="location", extension="geojson")
             layer = {
-                    "name"   : T("Projects"),
-                    "id"     : "projects",
-                    "url"    : url,
-                    "active" : True,
-                    #"marker" : None,
+                    "name"      : T("Projects"),
+                    "id"        : "projects",
+                    "tablename" : "project_location",
+                    "url"       : url,
+                    "active"    : True,
+                    #"marker"   : None,
                 }
 
             map = current.gis.show_map(
@@ -3504,12 +3505,12 @@ class S3ProjectTaskModel(S3Model):
                                                  label=T("Date"),
                                                  field="date"),
                             ]
-        
+
         if settings.get_project_sectors():
             report_fields.insert(3, (T("Sectors"), "sectors"))
             def get_sector_opts():
                 stable = self.org_sector
-                rows = db(stable.id > 0).select(stable.name)
+                rows = db(stable.deleted == False).select(stable.name)
                 sector_opts = {}
                 for row in rows:
                     name = row.name
@@ -4533,13 +4534,13 @@ class S3ProjectBeneficiaryVirtualFields:
 
         if not date or not end_date:
             table = current.s3db.project_project
-            project = current.db(table.id == project_id).select(table.date,
+            project = current.db(table.id == project_id).select(table.start_date,
                                                                 table.end_date,
                                                                 limitby=(0, 1)
                                                                 ).first()
             if project:
                 if not date:
-                    date = project.date
+                    date = project.start_date
                 if not end_date:
                     end_date = project.end_date
         if not date and not end_date:
@@ -5092,7 +5093,9 @@ def project_task_form_inject(r, output, project=True):
             default = field.default
         field_id = "%s_%s" % (table._tablename, field.name)
         # Options will be added later based on the Project
-        widget = SELECT(_id=field_id, _name=field.name)
+        field.requires = IS_IN_SET([default])
+        #widget = SELECT(_id=field_id, _name=field.name)
+        widget = SQLFORM.widgets.options.widget(field, default)
         label = field.label
         label = LABEL(label, label and sep, _for=field_id,
                       _id=field_id + SQLFORM.ID_LABEL_SUFFIX)
@@ -5134,7 +5137,9 @@ def project_task_form_inject(r, output, project=True):
                 default = field.default
             field_id = "%s_%s" % (table._tablename, field.name)
             # Options will be added later based on the Project
-            widget = SELECT(_id=field_id, _name=field.name)
+            field.requires = IS_IN_SET([default])
+            #widget = SELECT(_id=field_id, _name=field.name)
+            widget = SQLFORM.widgets.options.widget(field, default)
             label = field.label
             label = LABEL(label, label and sep, _for=field_id,
                           _id=field_id + SQLFORM.ID_LABEL_SUFFIX)

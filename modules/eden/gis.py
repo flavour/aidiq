@@ -268,7 +268,7 @@ class S3LocationModel(S3Model):
         self.configure(tablename,
                        onvalidation=self.gis_location_onvalidation,
                        onaccept=self.gis_location_onaccept,
-                       deduplicate=self.gis_location_deduplicate,
+                       deduplicate=self.gis_location_duplicate,
                        list_fields = ["id",
                                       "name",
                                       "level",
@@ -548,7 +548,7 @@ class S3LocationModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def gis_location_deduplicate(job):
+    def gis_location_duplicate(job):
         """
           This callback will be called when importing location records it will look
           to see if the record being imported is a duplicate.
@@ -2199,6 +2199,12 @@ class S3FeatureLayerModel(S3Model):
                                         comment = DIV(_class="tooltip",
                                                       _title="%s|%s" % (T("Popup Fields"),
                                                                         T("Used to build onHover Tooltip & 1st field also used in Cluster Popups to differentiate between records.")))),
+                                  Field("use_site",
+                                        default = False,
+                                        label = T("Use Site?"),
+                                        comment = DIV(_class="tooltip",
+                                                      _title="%s|%s" % (T("Use Site?"),
+                                                                        T("Select this if you need this resource to be mapped from site_id instead of location_id.")))),
                                   gis_layer_folder()(),
                                   Field("polygons", "boolean", default=False,
                                         label=T("Display Polygons?")),

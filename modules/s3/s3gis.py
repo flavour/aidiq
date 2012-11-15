@@ -246,7 +246,7 @@ class GIS(object):
         messages.lat_empty = "Invalid: Latitude can't be empty if Longitude specified!"
         messages.unknown_parent = "Invalid: %(parent_id)s is not a known Location"
         self.DEFAULT_SYMBOL = "White Dot"
-        self.hierarchy_level_keys = ["L0", "L1", "L2", "L3", "L4"]
+        self.hierarchy_level_keys = ["L0", "L1", "L2", "L3", "L4", "L5"]
         self.hierarchy_levels = {}
         self.max_allowed_level_num = 4
 
@@ -2152,7 +2152,6 @@ class GIS(object):
             else:
                 # Points
                 rows = db(query).select(table.id,
-                                        gtable.path,
                                         gtable.lat,
                                         gtable.lon)
                 for row in rows:
@@ -2316,7 +2315,6 @@ class GIS(object):
 
         geojsons = {}
         # Broken: row["gis_location"] doesn't exist :-?
-        # Broken: row["gis_location"] doesn't exist :-?
         #if current.deployment_settings.get_gis_spatialdb():
         #    # Do the Simplify & GeoJSON direct from the DB
         #    rows = current.db(query).select(table.id,
@@ -2325,12 +2323,23 @@ class GIS(object):
         #        geojsons[row[tablename].id] = row["gis_location"].geojson
         #else:
         rows = current.db(query).select(table.id,
+                                        gtable.level,
                                         gtable.wkt)
+        simplify = GIS.simplify
+        tolerance = {"L0":0.01,
+                     "L1":0.005,
+                     "L2":0.00125,
+                     "L3":0.000625,
+                     "L4":0.0003125,
+                     "L5":0.00015625,
+                     }
         for row in rows:
             # Simplify the polygon to reduce download size
-            geojson = GIS.simplify(row["gis_location"].wkt, output="geojson")
+            geojson = simplify(row.gis_location.wkt,
+                               tolerance=tolerance[row.gis_location.level],
+                               output="geojson")
             if geojson:
-                geojsons[row[tablename].id] = geojson
+                geojsons[row.gis_theme_data.id] = geojson
 
         _geojsons = {}
         _geojsons[tablename] = geojsons
@@ -4018,7 +4027,8 @@ class GIS(object):
                 else:
                     s3_debug("Parent of L2 Location ID %s has invalid level: %s is %s" % \
                                 (id, parent, Lx.level))
-                    raise ValueError
+                    #raise ValueError
+                    return "%s/%s" % (parent, id)
                 Lx_lat = Lx.lat
                 Lx_lon = Lx.lon
             else:
@@ -4155,7 +4165,8 @@ class GIS(object):
                 else:
                     s3_debug("Parent of L3 Location ID %s has invalid level: %s is %s" % \
                                 (id, parent, Lx.level))
-                    raise ValueError
+                    #raise ValueError
+                    return "%s/%s" % (parent, id)
                 Lx_lat = Lx.lat
                 Lx_lon = Lx.lon
             else:
@@ -4326,7 +4337,8 @@ class GIS(object):
                 else:
                     s3_debug("Parent of L4 Location ID %s has invalid level: %s is %s" % \
                                 (id, parent, Lx.level))
-                    raise ValueError
+                    #raise ValueError
+                    return "%s/%s" % (parent, id)
                 Lx_lat = Lx.lat
                 Lx_lon = Lx.lon
             else:
@@ -4535,7 +4547,8 @@ class GIS(object):
                 else:
                     s3_debug("Parent of L5 Location ID %s has invalid level: %s is %s" % \
                                 (id, parent, Lx.level))
-                    raise ValueError
+                    #raise ValueError
+                    return "%s/%s" % (parent, id)
                 Lx_lat = Lx.lat
                 Lx_lon = Lx.lon
             else:
@@ -4777,7 +4790,8 @@ class GIS(object):
                 L4_name = None
                 L5_name = None
             else:
-                raise ValueError
+                #raise ValueError
+                return id
             Lx_lat = Lx.lat
             Lx_lon = Lx.lon
         else:
@@ -5173,38 +5187,38 @@ class GIS(object):
         return output
 
     # -------------------------------------------------------------------------
-    def show_map( self,
-                  height = None,
-                  width = None,
-                  bbox = {},
-                  lat = None,
-                  lon = None,
-                  zoom = None,
-                  projection = None,
-                  add_feature = False,
-                  add_feature_active = False,
-                  add_polygon = False,
-                  add_polygon_active = False,
-                  features = [],
-                  feature_queries = [],
-                  feature_resources = [],
-                  wms_browser = {},
-                  catalogue_layers = False,
-                  legend = False,
-                  toolbar = False,
-                  search = False,
-                  googleEarth = False,
-                  googleStreetview = False,
-                  mouse_position = "normal",
-                  print_tool = {},
-                  mgrs = {},
-                  window = False,
-                  window_hide = False,
-                  closable = True,
-                  maximizable = True,
-                  collapsed = False,
-                  location_selector = False,
-                  plugins = None,
+    def show_map(self,
+                 height = None,
+                 width = None,
+                 bbox = {},
+                 lat = None,
+                 lon = None,
+                 zoom = None,
+                 projection = None,
+                 add_feature = False,
+                 add_feature_active = False,
+                 add_polygon = False,
+                 add_polygon_active = False,
+                 features = [],
+                 feature_queries = [],
+                 feature_resources = [],
+                 wms_browser = {},
+                 catalogue_layers = False,
+                 legend = False,
+                 toolbar = False,
+                 search = False,
+                 googleEarth = False,
+                 googleStreetview = False,
+                 mouse_position = "normal",
+                 print_tool = {},
+                 mgrs = {},
+                 window = False,
+                 window_hide = False,
+                 closable = True,
+                 maximizable = True,
+                 collapsed = False,
+                 location_selector = False,
+                 plugins = None,
                 ):
         """
             Returns the HTML to display a map
@@ -5248,14 +5262,15 @@ class GIS(object):
                 }]
             @param feature_resources: REST URLs for (filtered) resources to overlay onto the map & their options (List of Dicts):
                 [{
-                  "name"   : T("MyLabel"), # A string: the label for the layer
-                  "id"     : "search",     # A string: the id for the layer (for manipulation by JavaScript)
-                  "url"    : "/eden/module/resource.geojson?filter", # A URL to load the resource
-                  "active" : True,         # Is the feed displayed upon load or needs ticking to load afterwards?
-                  "marker" : None,         # Optional: A per-Layer marker dict for the icon used to display the feature
-                  "opacity" : 1,           # Optional
-                  "cluster_distance",      # Optional
-                  "cluster_threshold"      # Optional
+                  "name"      : T("MyLabel"), # A string: the label for the layer
+                  "id"        : "search",     # A string: the id for the layer (for manipulation by JavaScript)
+                  "tablename" : "module_resource", # A string: the tablename (used to determine whether to locate via location_id or site_id)
+                  "url"       : "/eden/module/resource.geojson?filter", # A URL to load the resource
+                  "active"    : True,         # Is the feed displayed upon load or needs ticking to load afterwards?
+                  "marker"    : None,         # Optional: A per-Layer marker dict for the icon used to display the feature
+                  "opacity"   : 1,            # Optional
+                  "cluster_distance",         # Optional
+                  "cluster_threshold"         # Optional
                 }]
             @param wms_browser: WMS Server's GetCapabilities & options (dict)
                 {
@@ -5998,8 +6013,25 @@ S3.gis.layers_feature_resources=new Array()'''
 
             # URL to retrieve the data
             url = layer["url"]
+            tablename = layer["tablename"]
+            table = s3db[tablename]
             # Optimise the query & tell back-end not to add the type to the tooltips
-            options = "components=None&maxdepth=0&references=location_id&fields=name&label_off=1"
+            if "location_id" in table.fields:
+                maxdepth = 0
+                references = "location_id"
+            elif "site_id" in table.fields:
+                maxdepth = 1
+                references = "site_id,location_id&show_ids=true"
+            else:
+                # Not much we can do!
+                raise
+            # @ToDo: layer["namefield"]
+            if "name" in table.fields:
+                title = "name"
+            else:
+                title = "id"
+            options = "components=None&maxdepth=%s&references=%s&fields=%s&label_off=1" % \
+                        (maxdepth, references, title)
             if "?" in url:
                 url = "%s&%s" % (url, options)
             else:
@@ -6163,9 +6195,9 @@ i18n.gis_feature_info="%s"
             collapsed,
             toolbar,
             loc_select,
-            '''S3.gis.map_height=%i\n''' % map_height,
-            '''S3.gis.map_width=%i\n''' % map_width,
-            '''S3.gis.zoom=%i\n''' % (zoom or 1),
+            '''S3.gis.map_height=%s\n''' % map_height,
+            '''S3.gis.map_width=%s\n''' % map_width,
+            '''S3.gis.zoom=%s\n''' % (zoom or 1),
             center,
             '''S3.gis.projection='%i'\n''' % projection,
             '''S3.gis.units='%s'\n''' % units,
@@ -6703,8 +6735,14 @@ class FeatureLayer(Layer):
                 return
             controller = self.controller or self.module # Backwards-compatibility
             function = self.function or self.resource   # Backwards-compatibility
-            url = "%s.geojson?layer=%i&components=None&maxdepth=0&references=location_id&fields=name" % \
-                (URL(controller, function), self.id)
+            if self.use_site:
+                maxdepth = 1
+                references = "site_id,location_id&show_ids=true"
+            else:
+                maxdepth = 0
+                references = "location_id"
+            url = "%s.geojson?layer=%i&components=None&maxdepth=%s&references=%s&fields=name" % \
+                (URL(controller, function), self.id, maxdepth, references)
             if self.filter:
                 url = "%s&%s" % (url, self.filter)
             if self.trackable:
@@ -7539,11 +7577,12 @@ class S3Map(S3Search):
                       args=None,
                       vars=vars)
             feature_resources = [{
-                    "name"   : T("Search Results"),
-                    "id"     : "search_results",
-                    "url"    : url,
-                    "active" : True,
-                    "marker" : marker
+                    "name"      : T("Search Results"),
+                    "id"        : "search_results",
+                    "tablename" : tablename,
+                    "url"       : url,
+                    "active"    : True,
+                    "marker"    : marker
                 }]
             map = gis.show_map(feature_resources=feature_resources,
                                catalogue_layers=True,

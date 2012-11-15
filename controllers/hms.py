@@ -93,7 +93,6 @@ def marker_fn(record):
         @ToDo: Use Symbology
     """
 
-    mtable = db.gis_marker
     stable = db.hms_status
     status = db(stable.hospital_id == record.id).select(stable.facility_status,
                                                         limitby=(0, 1)
@@ -113,6 +112,7 @@ def marker_fn(record):
             # Compromised
             marker = "%s_yellow" % marker
 
+    mtable = db.gis_marker
     marker = db(mtable.name == marker).select(mtable.image,
                                               mtable.height,
                                               mtable.width,
@@ -293,7 +293,9 @@ def hospital():
                 table = r.table
                 if r.id:
                     table.obsolete.readable = table.obsolete.writable = True
+
                 elif r.method == "map":
+                    # Tell the client to request per-feature markers
                     s3db.configure("hms_hospital", marker_fn=marker_fn)
 
                 s3.formats["have"] = r.url() # .have added by JS

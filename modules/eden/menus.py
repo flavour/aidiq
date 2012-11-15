@@ -845,7 +845,7 @@ class S3OptionsMenu(object):
         use_teams = lambda i: settings.get_hrm_use_teams()
 
         return M(c="hrm")(
-                    M("Staff", f="staff",
+                    M(settings.get_hrm_staff_label(), f="staff",
                       check=manager_mode)(
                         M("New", m="create"),
                         M("List All"),
@@ -1080,7 +1080,7 @@ class S3OptionsMenu(object):
                         M("List All"),
                         M("Search", m="search"),
                         M("Report", m="report"),
-                        M("Import", m="import", p="create"),
+                        M("Import", f="catalog_item", m="import", p="create"),
                     ),
                     # Catalog Items moved to be next to the Item Categories
                     #M("Catalog Items", c="supply", f="catalog_item")(
@@ -1610,19 +1610,29 @@ class S3OptionsMenu(object):
 
         settings = current.deployment_settings
         use_commit = lambda i: settings.get_req_use_commit()
+        use_summary = lambda i: "Summary" in settings.get_req_req_type()
+        req_items = lambda i: "Stock" in settings.get_req_req_type()
         req_skills = lambda i: "People" in settings.get_req_req_type()
 
         return M(c="req")(
                     M("Requests", f="req")(
                         M("New", m="create"),
                         M("List All"),
-                        M("List All Requested Items", f="req_item"),
-                        M("List All Requested Skills", f="req_skill",
-                          check=req_skills),
-                        #M("Search Requested Items", f="req_item", m="search"),
+                        M("List Recurring Requests", f="req_template"),
+                        M("Search", m="search"),
+                        M("Map", m="map"),
+                        M("Report", m="report"),
+                        M("Search All Requested Items", f="req_item",
+                          m="search", check=req_skills),
+                        M("Search All Requested Skills", f="req_skill",
+                          m="search", check=req_skills),
                     ),
                     M("Commitments", f="commit", check=use_commit)(
                         M("List All")
+                    ),
+                    M("Priority Items", f="summary_option", check=use_summary)(
+                        M("New", m="create"),
+                        M("List All"),
                     ),
                     M("Items", c="supply", f="item")(
                         M("New", m="create"),

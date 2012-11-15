@@ -157,6 +157,14 @@ class S3Config(Storage):
         return self.auth.get("registration_requires_verification", False)
     def get_auth_registration_requires_approval(self):
         return self.auth.get("registration_requires_approval", False)
+    def get_auth_registration_link_user_to(self):
+        """
+            Link User accounts to none or more of:
+            * Staff
+            * Volunteer
+            * Member
+        """
+        return self.auth.get("registration_link_user_to", None)
     def get_auth_opt_in_team_list(self):
         return self.auth.get("opt_in_team_list", [])
     def get_auth_opt_in_to_email(self):
@@ -802,6 +810,12 @@ class S3Config(Storage):
 
     # -------------------------------------------------------------------------
     # Human Resource Management
+    def get_hrm_staff_label(self):
+        """
+            Label for 'Staff'
+        """
+        return current.T(self.hrm.get("staff_label", "Staff"))
+
     def get_hrm_email_required(self):
         """
             If set to True then Staff & Volunteers require an email address
@@ -915,6 +929,28 @@ class S3Config(Storage):
     #
     def get_inv_collapse_tabs(self):
         return self.inv.get("collapse_tabs", True)
+
+    def get_inv_facility_label(self):
+        return self.inv.get("facility_label", current.T("Warehouse"))
+
+    def get_inv_direct_stock_edits(self):
+        """
+            Can Stock levels be adjusted directly?
+            - defaults to False
+        """
+        return self.inv.get("direct_stock_edits", False)
+
+    def get_inv_stock_count(self):
+        """
+            Call Stock Adjustments 'Stock Counts'
+        """
+        return self.inv.get("stock_count", True)
+
+    def get_inv_track_pack_values(self):
+        """
+            Whether or not Pack values are tracked
+        """
+        return self.inv.get("track_pack_values", True)
 
     def get_inv_item_status(self):
         """
@@ -1141,7 +1177,6 @@ class S3Config(Storage):
         return self.req.get("type_inv_label", current.T("Warehouse Stock"))
     def get_req_type_hrm_label(self):
         return self.req.get("type_hrm_label", current.T("People"))
-
     def get_req_status_writable(self):
         """ Whether Request Status should be manually editable """
         return self.req.get("status_writable", True)
@@ -1152,23 +1187,52 @@ class S3Config(Storage):
         """ Whether People Quantities should be manually editable """
         return self.req.get("skill_quantities_writable", False)
     def get_req_multiple_req_items(self):
+        """
+            Can a Request have multiple line items?
+            - e.g. ICS says that each request should be just for items of a single Type
+        """
         return self.req.get("multiple_req_items", True)
     def get_req_show_quantity_transit(self):
         return self.req.get("show_quantity_transit", True)
+    def get_req_prompt_match(self):
+        """
+            Whether a Requester is prompted to match each line item in an Item request
+        """
+        return self.req.get("prompt_match", True)
     def get_req_use_commit(self):
+        """
+            Whether there is a Commit step in Requests Management
+        """
         return self.req.get("use_commit", True)
     def get_req_requester_optional(self):
         return self.req.get("requester_optional", False)
+    def get_req_ask_security(self):
+        """
+            Should Requests ask whether Security is required?
+        """
+        return self.req.get("ask_security", False)
+    def get_req_ask_transport(self):
+        """
+            Should Requests ask whether Transportation is required?
+        """
+        return self.req.get("ask_transport", False)
     def get_req_req_crud_strings(self, type = None):
         return self.req.get("req_crud_strings") and \
                self.req.req_crud_strings.get(type, None)
-    def get_supply_use_alt_name(self):
-        return self.supply.get("use_alt_name", True)
     def get_req_use_req_number(self):
         return self.req.get("use_req_number", True)
     def get_req_generate_req_number(self):
         return self.req.get("generate_req_number", True)
     def get_req_req_type(self):
+        """
+            The Types of Request which can be made.
+            Select one or more from:
+            * People
+            * Stock
+            * Summary
+            * Other
+            tbc: Assets, Shelter, Food
+        """
         return self.req.get("req_type", ["Stock", "People", "Other"])
     def get_req_form_name(self):
         return self.req.get("req_form_name", "Requisition Form")
@@ -1179,6 +1243,8 @@ class S3Config(Storage):
     # Supply
     def get_supply_catalog_default(self):
         return self.inv.get("catalog_default", "Default")
+    def get_supply_use_alt_name(self):
+        return self.supply.get("use_alt_name", True)
 
     # -------------------------------------------------------------------------
     # Hospital Registry
