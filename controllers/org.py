@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+ # -*- coding: utf-8 -*-
 
 """
     Organization Registry - Controllers
@@ -43,8 +43,8 @@ def index():
 
     if not item:
         #item = H2(module_name)
-        # Just redirect to the Facilities Map
-        redirect(URL(f="facility", args=["map"]))
+        # Just redirect to the Facilities
+        redirect(URL(f="facility", args=["search"]))
 
     # tbc
     report = ""
@@ -81,9 +81,13 @@ def site():
 
     # Pre-processor
     def prep(r):
-        if r.representation != "json" or \
-           r.method != "search":
+        if r.representation != "json":
             return False
+        if "address" in request.args:
+            s3db.configure("org_site",
+                           search_method=s3base.S3SiteAddressSearch()
+                           )
+
         # Location Filter
         s3db.gis_location_filter(r)
         return True
@@ -226,7 +230,20 @@ def facility():
                     field.writable = False
                     field.comment = None
                     # Filter out people which are already staff for this office
-                    s3_filter_staff(r)
+                    s3base.s3_filter_staff(r)
+                    # Modify list_fields
+                    s3db.configure("hrm_human_resource",
+                                   list_fields=["person_id",
+                                                "phone",
+                                                "email",
+                                                "organisation_id",
+                                                "job_title_id",
+                                                "department_id",
+                                                "site_contact",
+                                                "status",
+                                                "comments",
+                                                ]
+                                   )
 
                 elif cname == "req" and r.method not in ("update", "read"):
                     # Hide fields which don't make sense in a Create form
@@ -305,7 +322,9 @@ def facility():
                              8:"",
                              9:"",
                              }
-                vals = [A(req.req_ref, _href=URL(c="req", f="req", args=[req.id, req_types[req.type]])) for req in reqs]
+                vals = [A(req.req_ref,
+                          _href=URL(c="req", f="req",
+                                    args=[req.id, req_types[req.type]])) for req in reqs]
                 for val in vals:
                     append(TR(TD(val, _colspan=2)))
 
@@ -525,5 +544,15 @@ def incoming():
     """
 
     return inv_incoming()
+
+# -----------------------------------------------------------------------------
+def facility_geojson():
+    """
+        Create GeoJSON[P] of Facilities for use by a high-traffic website
+        - controller just for testing
+        - function normally run on a schedule
+    """
+
+    s3db.org_facility_geojson()
 
 # END =========================================================================

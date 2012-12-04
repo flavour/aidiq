@@ -47,6 +47,14 @@ div.form-container form input.string,
 div.form-container form textarea  {
     width: 500px;
 }
+div#login_form form table,
+div#register_form form table {
+    width: 95%;
+}
+div#login_form input.string,
+div#register_form input.string {
+    width: 95%;
+}
 div.form-container form input[type="checkbox"],
 div.form-container form input[type="radio"] {
     margin: 2px 5px;
@@ -88,7 +96,7 @@ table.embeddedComponent {
     border-top: 0;
     border-right: 0;
 }
-form tr td table.embeddedComponent td {
+form table.embeddedComponent td {
     border: 1px solid #B3B3B3;
     padding: 0 5px;
     border-bottom: 0;
@@ -139,7 +147,7 @@ table.dataTable thead th {
 }
 
 div#table-container th {
-	text-align: left;
+    text-align: center;
     border: 1px solid #ccc;
 }
 div#table-container th.rtotal {
@@ -170,6 +178,7 @@ div#table-container td.totals_header {
 }
 .list_formats img {
     padding: 1px;
+    cursor: pointer;
 }
 /* msg_list_empty */
 .empty {
@@ -490,6 +499,7 @@ div#rheader th {
 /* Tabs */
 div.tabs {
     width: 100%;
+    clear: left;
 	height: 1.5em;
     padding: 8px 0 2px 0;
     margin: 5px 0 0 0;
@@ -779,6 +789,7 @@ li input + a {
 /* HRM RHeader */
 .hrm_avatar {
     float: left;
+    clear: right;
     padding-bottom: 5px;
     padding-right: 10px;
 }

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from gluon import current
+from gluon import current, TR, TD, DIV
 from gluon.storage import Storage
 from gluon.contrib.simplejson.ordered_dict import OrderedDict
 settings = current.deployment_settings
@@ -17,11 +17,11 @@ T = current.T
 # Pre-Populate
 settings.base.prepopulate = ["SandyRelief"]
 
-settings.base.system_name = T("Sandy Relief")
-settings.base.system_name_short = T("SandyRelief")
+settings.base.system_name = "Sandy Relief"
+settings.base.system_name_short = "SandyRelief"
 
 # Theme (folder to use for views/layout.html)
-#settings.base.theme = "OCHA"
+settings.base.theme = "SandyRelief"
 
 # Uncomment to Hide the language toolbar
 settings.L10n.display_toolbar = False
@@ -31,6 +31,8 @@ settings.L10n.utc_offset = "UTC +0500"
 settings.L10n.date_format = T("%m-%d-%Y")
 settings.L10n.time_format = T("%H:%M:%S")
 settings.L10n.datetime_format = T("%m-%d-%Y %H:%M")
+# Start week on Sunday
+settings.L10n.firstDOW = 0
 # Number formats (defaults to ISO 31-0)
 # Decimal separator for numbers (defaults to ,)
 settings.L10n.decimal_separator = "."
@@ -68,13 +70,27 @@ settings.auth.registration_requires_verification = True
 settings.auth.registration_requires_approval = True
 # Always notify the approver of a new (verified) user, even if the user is automatically approved
 #settings.auth.always_notify_approver = False
+# Uncomment this to request the Organisation when a user registers
+#settings.auth.registration_requests_organisation = True
+# Uncomment this to request the Site when a user registers
+settings.auth.registration_requests_site = True
+
 # Roles that newly-registered users get automatically
-settings.auth.registration_roles = { 0: ["super"]}
+settings.auth.registration_roles = { 0: ["comms_dispatch"]}
 
 settings.auth.registration_link_user_to = {"staff":T("Staff"),
-                                           "volunteer":T("Volunteer")}
+                                           #"volunteer":T("Volunteer")
+                                           }
 
-settings.security.policy = 4 # Controller & Function ACLs
+settings.security.policy = 5 # Controller, Function & Table ACLs
+
+# Resource which need approval
+#settings.auth.record_approval_required_for = ["org_facility"]
+
+settings.ui.update_label = "Edit"
+
+# Uncomment to disable that LatLons are within boundaries of their parent
+settings.gis.check_within_parent_boundaries = False
 
 # Inventory Management
 # Uncomment to customise the label for Facilities in Inventory Management
@@ -85,18 +101,47 @@ settings.inv.facility_label = "Facility"
 settings.inv.stock_count = True
 # Uncomment to not track pack values
 settings.inv.track_pack_values = False
+settings.inv.send_show_org = False
+# Types common to both Send and Receive
+settings.inv.shipment_types = {
+        1: T("Other Warehouse")
+    }
+settings.inv.send_types = {
+        #21: T("Distribution")
+    }
+settings.inv.send_type_default = 1
+settings.inv.item_status = {
+        #0: current.messages["NONE"],
+        #1: T("Dump"),
+        #2: T("Sale"),
+        #3: T("Reject"),
+        #4: T("Surplus")
+   }
 
 # Request Management
-settings.req.req_type = ["People", "Stock", "Summary"]
+settings.req.req_type = ["People", "Stock"]#, "Summary"]
 settings.req.prompt_match = False
-settings.req.use_commit = False
+#settings.req.use_commit = False
 settings.req.requester_optional = True
+settings.req.date_writable = False
+settings.req.item_quantities_writable = True
+settings.req.skill_quantities_writable = True
+settings.req.items_ask_purpose = False
+#settings.req.use_req_number = False
+# Label for Requester
+settings.req.requester_label = "Site Contact"
+# Filter Requester as being from the Site 
+settings.req.requester_from_site = True
+# Label for Inventory Requests
+settings.req.type_inv_label = "Supplies"
+# Uncomment to enable Summary 'Site Needs' tab for Offices/Facilities
+settings.req.summary = True
 
 settings.org.site_label = "Facility"
 # Enable certain fields just for specific Organisations
 # empty list => disabled for all (including Admin)
-#settings.org.dependent_fields = \
-#    {"pr_person_details.mother_name"             : [],
+#settings.org.dependent_fields = { \
+#     "pr_person_details.mother_name"             : [],
 #     "pr_person_details.father_name"             : [],
 #     "pr_person_details.company"                 : [],
 #     "pr_person_details.affiliations"            : [],
@@ -105,6 +150,20 @@ settings.org.site_label = "Facility"
 #     "vol_volunteer_cluster.vol_cluster_id"          : [],
 #     "vol_volunteer_cluster.vol_cluster_position_id" : [],
 #     }
+# Uncomment to use an Autocomplete for Site lookup fields
+settings.org.site_autocomplete = True
+# Uncomment to have Site Autocompletes search within Address fields
+settings.org.site_address_autocomplete = True
+# Uncomment to hide inv & req tabs from Sites
+settings.org.site_inv_req_tabs = False
+
+# -----------------------------------------------------------------------------
+# Persons
+# Uncomment to hide fields in S3AddPersonWidget
+settings.pr.request_dob = False
+settings.pr.request_gender = False
+# Doesn't yet work (form fails to submit)
+#settings.pr.select_existing = False
 
 # -----------------------------------------------------------------------------
 # Human Resource Management
@@ -112,21 +171,76 @@ settings.org.site_label = "Facility"
 settings.hrm.staff_label = "Contacts"
 # Uncomment to allow Staff & Volunteers to be registered without an email address
 settings.hrm.email_required = False
+# Uncomment to allow Staff & Volunteers to be registered without an Organisation
+settings.hrm.org_required = False
 # Uncomment to show the Organisation name in HR represents
 settings.hrm.show_organisation = True
 # Uncomment to disable Staff experience
 settings.hrm.staff_experience = False
+# Uncomment to disable the use of HR Certificates
+settings.hrm.use_certificates = False
 # Uncomment to disable the use of HR Credentials
 settings.hrm.use_credentials = False
 # Uncomment to enable the use of HR Education
 settings.hrm.use_education = False
 # Uncomment to disable the use of HR Skills
-settings.hrm.use_skills = True
+#settings.hrm.use_skills = False
+# Uncomment to disable the use of HR Trainings
+settings.hrm.use_trainings = False
+# Uncomment to disable the use of HR Description
+settings.hrm.use_description = False
 # Uncomment to disable the use of HR Teams
 #settings.hrm.use_teams = False
 # Custom label for Organisations in HR module
 #settings.hrm.organisation_label = "National Society / Branch"
 settings.hrm.organisation_label = "Organization"
+
+# Projects
+# Uncomment this to use settings suitable for detailed Task management
+settings.project.mode_task = True
+# Uncomment this to use Activities for projects
+settings.project.activities = True
+# Uncomment this to use Milestones in project/task.
+settings.project.milestones = True
+# Uncomment this to disable Sectors in projects
+settings.project.sectors = False
+
+# Uncomment to show created_by/modified_by using Names not Emails
+settings.ui.auth_user_represent = "name"
+# Formstyle
+def formstyle_row(id, label, widget, comment, hidden=False):
+    if hidden:
+        hide = "hide"
+    else:
+        hide = ""
+    row = TR(TD(DIV(label,
+                _id=id + "1",
+                _class="w2p_fl %s" % hide),
+            DIV(widget,
+                _id=id,
+                _class="w2p_fw %s" % hide),
+            DIV(comment,
+                _id=id, 
+                _class="w2p_fc %s" % hide),
+           ))
+    return row
+def form_style(self, xfields):
+    """
+        @ToDo: Requires further changes to code to use
+        - Adding a formstyle_row setting to use for indivdual rows
+        Use new Web2Py formstyle to generate form using DIVs & CSS
+        CSS can then be used to create MUCH more flexible form designs:
+        - Labels above vs. labels to left
+        - Multiple Columns 
+    """
+    form = DIV()
+
+    for id, a, b, c, in xfields:
+        form.append(formstyle_row(id, a, b, c))
+
+    return form
+settings.ui.formstyle_row = formstyle_row
+settings.ui.formstyle = formstyle_row
 
 # Comment/uncomment modules here to disable/enable them
 settings.modules = OrderedDict([
@@ -174,7 +288,7 @@ settings.modules = OrderedDict([
             name_nice = T("Map"),
             #description = "Situation Awareness & Geospatial Analysis",
             restricted = True,
-            module_type = 8,     # 8th item in the menu
+            module_type = 9,     # 8th item in the menu
         )),
     ("pr", Storage(
             name_nice = T("Person Registry"),
@@ -184,23 +298,23 @@ settings.modules = OrderedDict([
             module_type = 10
         )),
     ("org", Storage(
-            name_nice = T("Facilities"),
+            name_nice = T("Locations"),
             #description = 'Lists "who is doing what & where". Allows relief agencies to coordinate their activities',
             restricted = True,
-            module_type = 1
+            module_type = 4
         )),
     # All modules below here should be possible to disable safely
     ("hrm", Storage(
             name_nice = T("Contacts"),
             #description = "Human Resources Management",
             restricted = True,
-            module_type = 2,
+            module_type = 3,
         )),
     ("vol", Storage(
             name_nice = T("Volunteers"),
             #description = "Human Resources Management",
             restricted = True,
-            module_type = 4,
+            module_type = 2,
         )),
     ("cms", Storage(
           name_nice = T("Content Management"),
@@ -231,7 +345,7 @@ settings.modules = OrderedDict([
             name_nice = T("Inventory"),
             #description = "Receiving and Sending Items",
             restricted = True,
-            module_type = 6
+            module_type = 10
         )),
     #("proc", Storage(
     #        name_nice = T("Procurement"),
@@ -243,7 +357,7 @@ settings.modules = OrderedDict([
             name_nice = T("Assets"),
             #description = "Recording and Assigning Assets",
             restricted = True,
-            module_type = 7,
+            module_type = 10,
         )),
     # Vehicle depends on Assets
     #("vehicle", Storage(
@@ -256,14 +370,20 @@ settings.modules = OrderedDict([
             name_nice = T("Requests"),
             #description = "Manage requests for supplies, assets, staff or other resources. Matches against Inventories where supplies are requested.",
             restricted = True,
-            module_type = 3,
+            module_type = 1,
         )),
-    #("project", Storage(
-    #        name_nice = T("Projects"),
-    #        #description = "Tracking of Projects, Activities and Tasks",
-    #        restricted = True,
-    #        module_type = 2
-    #    )),
+    ("project", Storage(
+            name_nice = T("Projects"),
+            #description = "Tracking of Projects, Activities and Tasks",
+            restricted = True,
+            module_type = 10
+        )),
+    ("assess", Storage(
+            name_nice = T("Assessments"),
+            #description = "Rapid Assessments & Flexible Impact Assessments",
+            restricted = True,
+            module_type = 5,
+        )),
     #("survey", Storage(
     #        name_nice = T("Surveys"),
     #        #description = "Create, enter, and manage surveys.",
@@ -376,14 +496,6 @@ settings.modules = OrderedDict([
     #("building", Storage(
     #        name_nice = T("Building Assessments"),
     #        #description = "Building Safety Assessments",
-    #        restricted = True,
-    #        module_type = 10,
-    #    )),
-    # Deprecated by Surveys module
-    # - depends on CR, IRS & Impact
-    #("assess", Storage(
-    #        name_nice = T("Assessments"),
-    #        #description = "Rapid Assessments & Flexible Impact Assessments",
     #        restricted = True,
     #        module_type = 10,
     #    )),

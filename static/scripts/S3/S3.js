@@ -65,12 +65,21 @@ S3.Utf8 = {
 
 // Used by Scenario module currently, but may be deprecated as not great UI
 var popupWin = null;
-function openPopup(url) {
+// function openPopup(url) {
+    // if ( !popupWin || popupWin.closed ) {
+        // popupWin = window.open(url, 'popupWin', 'width=640, height=480');
+    // } else popupWin.focus();
+// }
+function openPopup(url, center) {
     if ( !popupWin || popupWin.closed ) {
-        popupWin = window.open(url, 'popupWin', 'width=640, height=480');
+        var params = 'width=640, height=480';
+        if (center == true) {
+            params += ',left=' + (screen.width - 640)/2 +
+                ',top=' + (screen.height - 480)/2;
+        }
+        popupWin = window.open(url, 'popupWin', params);
     } else popupWin.focus();
 }
-
 S3.addTooltips = function() {
     // Help Tooltips
     $.cluetip.defaults.cluezIndex = 9999; // Need to be able to show on top of Ext Windows
@@ -98,67 +107,6 @@ S3.addTooltips = function() {
     	closePosition: 'title',
     	closeText: tipCloseText,
     	width: 380
-    });
-}
-
-S3.deduplication = function() {
-    // Deduplication event handlers
-
-    $('.mark-deduplicate').click(function() {
-        var url = $('#markDuplicateURL').attr('href');
-        if (url) {
-            $.ajaxS3({
-                type: "POST",
-                url: url,
-                data: {},
-                success: function(data) {
-                    $('.mark-deduplicate, .unmark-deduplicate, .deduplicate').toggleClass('hide');
-                    return;
-                },
-                dataType: 'JSON'
-            });
-        }
-    });
-    $('.unmark-deduplicate').click(function() {
-        var url = $('#markDuplicateURL').attr('href');
-        if (url) {
-            $.ajaxS3({
-                type: "POST",
-                url: url + '?remove=1',
-                data: {},
-                success: function(data) {
-                    $('.mark-deduplicate, .unmark-deduplicate, .deduplicate').toggleClass('hide');
-                    return;
-                },
-                dataType: 'JSON'
-            });
-        }
-    });
-    $('.swap-button').click(function() {
-        // Swap widgets between original and duplicate side
-        var id = this.id;
-        var name = id.slice(5);
-
-        var original = $('#original_' + name);
-        var original_name = original.attr('name');
-        var original_id = original.attr('id');
-        var original_parent = original.parent();
-
-        var duplicate = $('#duplicate_' + name);
-        var duplicate_name = duplicate.attr('name');
-        var duplicate_id = duplicate.attr('id');
-        var duplicate_parent = duplicate.parent();
-
-        var o = original.detach();
-        o.attr('id', duplicate_id);
-        o.attr('name', duplicate_name);
-
-        var d = duplicate.detach();
-        d.attr('id', original_id);
-        d.attr('name', original_name);
-
-        o.appendTo(duplicate_parent);
-        d.appendTo(original_parent);
     });
 }
 
@@ -207,11 +155,19 @@ $(document).ready(function() {
                 return false;
             }
         });
+        $('input:text:visible:first').focus();
     }
 
-    // accept comma as thousands separator
+    // Accept comma as thousands separator
     $('input.int_amount').keyup(function(){this.value=this.value.reverse().replace(/[^0-9\-,]|\-(?=.)/g,'').reverse();});
     $('input.float_amount').keyup(function(){this.value=this.value.reverse().replace(/[^0-9\-\.,]|[\-](?=.)|[\.](?=[0-9]*[\.])/g,'').reverse();});
+    // Auto-capitalize first names
+    $('input[name="first_name"]').focusout(function() {this.value = this.value.charAt(0).toLocaleUpperCase() + this.value.substring(1);})
+    // Hide password verification field in admin/user until changed
+    $('input[name="password"]').keyup(function() {
+        $('.verify-password').removeClass('hide');
+        $('#password_two').removeAttr('disabled');
+    });
 
     // Resizable textareas
     $('textarea.resizable:not(.textarea-processed)').each(function() {
@@ -269,22 +225,27 @@ $(document).ready(function() {
     // Colorbox Popups
     $('a.colorbox').attr('href', function(index, attr) {
         // Add the caller to the URL vars so that the popup knows which field to refresh/set
-        var caller = '';
-        try {
-            caller = $(this).parents('tr').attr('id').replace(/__row/, '');
-        } catch(e) {
-            // Do nothing
-            if(caller == '') return attr;
+        var caller = $(this).parents('tr').attr('id');
+        if (!caller) {
+            // DIV-based formstyle
+            caller = $(this).parent().parent().attr('id');
         }
+        caller = caller.replace(/__row/, '');
         // Avoid Duplicate callers
         var url_out = attr;
-        if (attr.indexOf('&caller=') == -1){
+        if (attr.indexOf('&caller=') == -1) {
             url_out = attr + '&caller=' + caller;
         }
         return url_out;
     });
-    $('.colorbox').click(function(){
-        $.fn.colorbox({iframe:true, width:'99%', height:'99%', href:this.href, title:this.title});
+    $('.colorbox').click(function() {
+        $.fn.colorbox({
+            iframe: true,
+            width: '99%',
+            height: '99%',
+            href: this.href,
+            title: this.title
+        });
         return false;
     });
 
@@ -316,6 +277,81 @@ $(document).ready(function() {
 function s3_tb_remove(){
     // Colorbox Popup
     $.fn.colorbox.close();
+}
+
+// ============================================================================
+S3.deduplication = function() {
+    // Deduplication event handlers
+    $('.mark-deduplicate').click(function() {
+        var url = $('#markDuplicateURL').attr('href');
+        if (url) {
+            $.ajaxS3({
+                type: 'POST',
+                url: url,
+                data: {},
+                success: function(data) {
+                    $('.mark-deduplicate, .unmark-deduplicate, .deduplicate').toggleClass('hide');
+                    return;
+                },
+                dataType: 'JSON'
+            });
+        }
+    });
+    $('.unmark-deduplicate').click(function() {
+        var url = $('#markDuplicateURL').attr('href');
+        if (url) {
+            $.ajaxS3({
+                type: 'POST',
+                url: url + '?remove=1',
+                data: {},
+                success: function(data) {
+                    $('.mark-deduplicate, .unmark-deduplicate, .deduplicate').toggleClass('hide');
+                    return;
+                },
+                dataType: 'JSON'
+            });
+        }
+    });
+    $('.swap-button').click(function() {
+        // Swap widgets between original and duplicate side
+        var id = this.id;
+        var name = id.slice(5);
+
+        var original = $('#original_' + name);
+        var original_id = original.attr('id');
+        var original_name = original.attr('name');
+        var original_parent = original.parent().closest('td.mwidget');
+        var duplicate = $('#duplicate_' + name);
+        var duplicate_id = duplicate.attr('id');
+        var duplicate_name = duplicate.attr('name');
+        var duplicate_parent = duplicate.parent().closest('td.mwidget');
+
+        // Rename with placeholder names
+        original.attr('id', 'swap_original_id');
+        original.attr('name', 'swap_original_name');
+        $('#dummy' + original_id).attr('id', 'dummy_swap_original_id');
+        duplicate.attr('id', 'swap_duplicate_id');
+        duplicate.attr('name', 'swap_duplicate_name');
+        $('#dummy' + duplicate_id).attr('id', 'dummy_swap_duplicate_id');
+
+        // Swap elements
+        original_parent.before('<td id="swap_original_placeholder"></td>');
+        var o = original_parent.detach();
+        duplicate_parent.before('<td id="swap_duplicate_placeholder"></td>');
+        var d = duplicate_parent.detach();
+        $('#swap_original_placeholder').after(d);
+        $('#swap_original_placeholder').remove();
+        $('#swap_duplicate_placeholder').after(o);
+        $('#swap_duplicate_placeholder').remove();
+
+        // Rename to original names
+        original.attr('id', duplicate_id);
+        original.attr('name', duplicate_name);
+        $('#dummy_swap_original_id').attr('id', 'dummy' + duplicate_id);
+        duplicate.attr('id', original_id);
+        duplicate.attr('name', original_name);
+        $('#dummy_swap_duplicate').attr('id', 'dummy' + original_id);
+    });
 }
 
 // ============================================================================
@@ -596,19 +632,20 @@ function s3_viewMapMulti(module, resource, instance, jresource) {
 function s3_showMap(feature_id) {
     // Display a Feature on a BaseMap within an iframe
     var url = S3.Ap.concat('/gis/display_feature/') + feature_id;
-	new Ext.Window({
-		autoWidth: true,
-		floating: true,
-		items: [{
-			xtype: 'component',
-			autoEl: {
-				tag: 'iframe',
-				width: 650,
-				height: 490,
-				src: url
-			}
-		}]
-	}).show();
+	// new Ext.Window({
+		// autoWidth: true,
+		// floating: true,
+		// items: [{
+			// xtype: 'component',
+			// autoEl: {
+				// tag: 'iframe',
+				// width: 650,
+				// height: 490,
+				// src: url
+			// }
+		// }]
+	// }).show();
+    openPopup(url, true);
 }
 
 // ============================================================================
@@ -761,6 +798,8 @@ function S3FilterFieldChange(setting) {
             var msgNoRecords = '-';
             setting.msgNoRecords = msgNoRecords;
         }
+
+        // Representation of the target options
         if (setting.fncPrep != undefined) {
             var fncPrep = setting.fncPrep;
         } else {
@@ -839,7 +878,15 @@ function S3FilterFieldChange(setting) {
                     }
                     /* Show "Add" Button & modify link */
                     var selFieldAdd = $('#' + FieldResource + '_add');
-                    var href = selFieldAdd.attr('href') + '&' + FilterField + '=' + selFilterField.val();
+                    var href = selFieldAdd.attr('href');
+                    if (href.indexOf(FilterField) == -1) {
+                        // Add to URL
+                        href = href + '&' + FilterField + '=' + selFilterField.val();
+                    } else {
+                        // Update URL
+                        var re = new RegExp(FilterField + '=.*', 'g');
+                        href = href.replace(re, FilterField + '=' + selFilterField.val());
+                    }
                     selFieldAdd.attr('href', href)
                                .show();
 
@@ -876,6 +923,325 @@ function S3FilterFieldChange(setting) {
 
     // If the field value is empty - disable - but keep initial value
     selFilterField.change();
+    // Don't include this change in the deliberate changes
+    S3ClearNavigateAwayConfirm();
+    S3EnableNavigateAwayConfirm();
+};
+
+function S3OptionsFilter(settings) {
+    /**
+     * New version of S3FilterFieldChange that works both with regular
+     * as well as with inline forms.
+     *
+     * @todo: migrate all use-cases to this version
+     *
+     * Settings:
+     *          triggerName: the trigger field name (not the HTML element name)
+     *          targetName: the target field name (not the HTML element name)
+     *
+     *          lookupPrefix: the lookup controller prefix
+     *          lookupResource: the lookup resource (=function to call)
+     *          lookupKey: the lookup key field name (default=triggerName)
+     *          lookupField: the field to look up (default="id")
+     *
+     *          lookupURL: the lookup URL (optional)
+     *          getWidgetHTML: the lookup URL returns the options widget as HTML
+     *
+     *          optional: target field value is optional (i.e. can be '', default=false)
+     *          showEmptyField: show the empty options list (default=true)
+     *          msgNoRecords: internationalized message for "no records"
+     *          targetWidget: the target widget (if different from target field)
+     *          fncPrep: function to pre-process the target options
+     *          fncRepresent: function to represent the target options
+     */
+
+    var triggerName = settings.triggerName
+    var targetName = settings.targetName
+
+    // Selector for regular form fields: prefix_field
+    var triggerSelector = '[name="' + triggerName + '"]';
+    // Selector for inline-form fields: prefix_alias_field
+    triggerSelector += ',[name*="_i_' + triggerName + '_edit_"]';
+
+    // Find the trigger field
+    var triggerField = $(triggerSelector);
+    if (triggerField.length === 0) {
+        // Trigger field not present
+        return;
+    }
+
+    triggerField.change(function() {
+        var triggerField = $(this);
+        var triggerSelector = triggerField.attr('name');
+
+        // Find the target field
+        var targetSelector, targetField;
+        if (triggerSelector == triggerName) {
+            // Regular form field
+            targetField = $('[name="' + targetName + '"]');
+            if (targetField.length === 0) {
+                return;
+            }
+            targetSelector = targetField.attr('name');
+        } else {
+            // Inline field
+            var names = triggerSelector.split('_');
+            var prefix = names[0];
+            var rowindex = names.pop();
+            targetField = $('[name*="' + prefix + '_"][name*="_i_' + targetName + '_edit_' + rowindex + '"]');
+            if (targetField.length === 0) {
+                return;
+            }
+            targetSelector = targetField.attr('name');
+        }
+
+        // Cancel previous Ajax request
+        try {
+            S3.JSONRequest[targetField.attr('id')].abort();
+        } catch(err) {};
+
+        // Get the lookup value from the trigger field
+        var lookupValue = '';
+        if (triggerField.length == 1) {
+            // SELECT
+            lookupValue = triggerField.val();
+        } else if (triggerField.length > 1) {
+            // Checkboxes
+            lookupValue = new Array();
+            triggerField.filter('input:checked').each(function() {
+                lookupValue.push($(this).val());
+            });
+        }
+
+        // Disable the target field if no value selected
+        if (lookupValue == '' || lookupValue === undefined) {
+            targetField.attr('disabled', 'disabled');
+            return;
+        }
+
+        // Get the current value of the target field
+        var currentValue = '';
+        if (targetField.length == 1) {
+            // SELECT
+            currentValue = targetField.val();
+            if (!currentValue) {
+                // Options list not populated yet?
+                currentValue = targetField.attr('value');
+            }
+        } else if (targetField.length > 1) {
+            // Checkboxes
+            currentValue = new Array();
+            targetField.filter('input:checked').each(function() {
+                currentValue.push($(this).val());
+            });
+        }
+
+        // Construct the URL for the Ajax request
+        var lookupResource = settings.lookupResource;
+        if (settings.lookupURL) {
+            var url = settings.lookupURL;
+        } else {
+            var lookupPrefix = settings.lookupPrefix;
+            var url = S3.Ap.concat('/', lookupPrefix, '/', lookupResource, '.json');
+        }
+        var q;
+        // Append lookup key to the URL
+        if (lookupValue) {
+            var lookupKey;
+            if (typeof settings.lookupKey == 'undefined') {
+                // Same field name in both tables
+                lookupKey = settings.triggerName;
+            } else {
+                lookupKey = settings.lookupKey;
+            }
+            q = lookupResource + '.' + lookupKey + '=' + lookupValue;
+            if (url.indexOf('?') != -1) {
+                url = url.concat('&' + q);
+            } else {
+                url = url.concat('?' + q);
+            }
+        }
+        // Append the current value to the URL (what for?)
+        if (currentValue) {
+            q = 'value=' + currentValue;
+            if (url.indexOf('?') != -1) {
+                url = url.concat('&' + q);
+            } else {
+                url = url.concat('?' + q);
+            }
+        }
+
+        // Construct the Ajax context
+        var context = {
+            triggerSelector: triggerSelector,
+            targetSelector: targetSelector,
+            currentValue: currentValue,
+            lookupResource: lookupResource,
+            triggerName: triggerName
+        };
+        // Field to look up
+        if (settings.lookupField) {
+            context['lookupField'] = settings.lookupField;
+        } else {
+            context['lookupField'] = 'id';
+        }
+        // Show an empty select?
+        if (settings.optional) {
+            context['optional'] = settings.optional;
+        } else {
+            context['optional'] = false;
+        }
+        if (settings.showEmptyField) {
+            context['showEmptyField'] = settings.showEmptyField;
+        } else {
+            context['showEmptyField'] = true;
+        }
+        // Message for no records
+        if (settings.msgNoRecords) {
+            context['msgNoRecords'] = settings.msgNoRecords;
+        } else {
+            context['msgNoRecords'] = '-';
+        }
+        // Representation of the target options
+        if (settings.fncPrep) {
+            context['fncPrep'] = settings.fncPrep;
+        } else {
+            context['fncPrep'] = function(data) { return null };
+        }
+        if (settings.fncRepresent) {
+            context['fncRepresent'] = settings.fncRepresent;
+        } else {
+            context['fncRepresent'] = function(record) { return record.name };
+        }
+
+        // Find the target widget and replace it by a throbber
+        if (settings.targetWidget != undefined) {
+            var targetWidget = settings.targetWidget;
+        } else {
+            var targetWidget = targetSelector;
+        }
+        context['targetWidget'] = targetWidget;
+        var widget = $('[name = "' + targetWidget + '"]');
+        widget.hide();
+        if ($('#' + lookupResource + '_ajax_throbber').length === 0 ) {
+            widget.after('<div id="' + lookupResource + '_ajax_throbber" class="ajax_throbber"/>');
+        }
+
+        if (!settings.getWidgetHTML) {
+            // URL returns the widget options as JSON
+            S3.JSONRequest[targetField.attr('id')] = $.ajax({
+                url: url,
+                dataType: 'json',
+                context: context,
+                success: function(data) {
+
+                    // Pre-process the data
+                    var fncPrep = this.fncPrep;
+                    try {
+                        var prepResult = fncPrep(data);
+                    } catch (e) {
+                        var prepResult = null;
+                    };
+
+                    // Render options list
+                    var fncRepresent = this.fncRepresent;
+                    var FilterField = this.FilterField;
+                    var FieldResource = this.FieldResource;
+                    var triggerField = $('[name = "' + FilterField + '"]');
+                    var options = '';
+                    if (data.length === 0) {
+                        // No options available
+                        if (this.showEmptyField) {
+                            var currentValue = 0;
+                            options += '<option value="">' + this.msgNoRecords + '</options>';
+                        }
+                    } else {
+                        // Render the options
+                        var lookupField = this.lookupField
+                        for (var i = 0; i < data.length; i++) {
+                            if (i == 0) {
+                                var currentValue = data[i][lookupField];
+                            }
+                            options += '<option value="' + data[i][lookupField] + '">';
+                            options += fncRepresent(data[i], prepResult);
+                            options += '</option>';
+                        }
+                        if (this.optional) {
+                            currentValue = 0;
+                            options = '<option value=""></option>' + options;
+                        }
+                        if (this.currentValue) {
+                            currentValue = this.currentValue;
+                        }
+                    }
+
+                    // Set the current field value
+                    var targetField = $('[name = "' + this.targetSelector + '"]');
+                    if (options != '') {
+                        targetField.html(options)
+                                   .val(currentValue)
+                                   .change()
+                                   .removeAttr('disabled')
+                                   .show();
+                    } else {
+                        // No options available => disable the target field
+                        targetField.attr('disabled', 'disabled')
+                                   .show();
+                    }
+
+                    // Modify URL for Add-link and show the Add-link
+                    var lookupResource = this.lookupResource;
+                    var targetFieldAdd = $('#' + lookupResource + '_add');
+                    if (targetFieldAdd.length !== 0) {
+                        var href = targetFieldAdd.attr('href');
+                        var triggerField = $('[name = "' + this.triggerSelector + '"]');
+                        var triggerName = this.triggerName;
+                        if (href.indexOf(triggerName) == -1) {
+                            // Add to URL
+                            href += '&' + triggerName + '=' + triggerField.val();
+                        } else {
+                            // Update URL
+                            var re = new RegExp(triggerName + '=.*', 'g');
+                            href = href.replace(re, triggerName + '=' + triggerField.val());
+                        }
+                        targetFieldAdd.attr('href', href).show();
+                    }
+
+                    // Remove the throbber
+                    $('#' + lookupResource + '_ajax_throbber').remove();
+                }
+            });
+        } else {
+            // URL returns the widget as HTML
+            S3.JSONRequest[targetField.attr('id')] = $.ajax({
+                url: url,
+                dataType: 'html',
+                context: context,
+                success: function(data) {
+                    var targetWidget = $('[name = "' + this.targetWidget + '"]');
+                    if (data != '') {
+                        // Replace the target field with the HTML returned
+                        targetWidget.html(data)
+                                    .change()
+                                    .removeAttr('disabled')
+                                    .show();
+                    } else {
+                        // Disable the target field
+                        targetWidget.attr('disabled', 'disabled');
+                    }
+                    // Remove Throbber
+                    $('#' + this.lookupResource + '_ajax_throbber').remove();
+                }
+            });
+        }
+    });
+
+    // If the field value is empty - disable - but keep initial value
+    triggerField.change();
+
+    // Don't include this change in the deliberate changes
+    S3ClearNavigateAwayConfirm();
+    S3EnableNavigateAwayConfirm();
 };
 
 // ============================================================================

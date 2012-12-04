@@ -27,70 +27,55 @@ class index():
         auth = current.auth
         roles = current.session.s3.roles
         system_roles = auth.get_system_roles()
+        ADMIN = system_roles.ADMIN
         AUTHENTICATED = system_roles.AUTHENTICATED
-        if AUTHENTICATED in roles and \
-           auth.s3_has_permission("read", s3db.req_req):
-            req_items = req()()
-            datatable_ajax_source = "/%s/default/index/req.aadata" % \
-                                    appname
-            s3.actions = None
-            auth.permission.controller = "org"
-            auth.permission.function = "site"
-            permitted_facilities = auth.permitted_facilities(redirect_on_error=False)
-            manage_facility_box = ""
-            if permitted_facilities:
-                facility_list = s3_represent_facilities(db, permitted_facilities,
-                                                        link=False)
-                facility_list = sorted(facility_list, key=lambda fac: fac[1])
-                facility_opts = [OPTION(opt[1], _value = opt[0])
-                                 for opt in facility_list]
-                if facility_list:
-                    manage_facility_box = DIV(H3(T("Manage Your Facilities")),
-                                              SELECT(_id = "manage_facility_select",
-                                                     _style = "max-width:400px;",
-                                                     *facility_opts
-                                                     ),
-                                              A(T("Go"),
-                                                _href = URL(c="default", f="site",
-                                                            args=[facility_list[0][0]]),
-                                                #_disabled = "disabled",
-                                                _id = "manage_facility_btn",
-                                                _class = "action-btn"
-                                                ),
-                                              _id = "manage_facility_box",
-                                              _class = "menu_box fleft"
-                                              )
-                    s3.jquery_ready.append(
-    '''$('#manage_facility_select').change(function(){
-     $('#manage_facility_btn').attr('href',S3.Ap.concat('/default/site/',$('#manage_facility_select').val()))
-    })''')
-                else:
-                    manage_facility_box = DIV()
-            requests_box = DIV(H3(T("Requests")),
-                               A(T("Add Request"),
-                                 _href = URL(c="req", f="req",
-                                             args=["create"]),
-                                 _id = "add-btn",
-                                 _class = "action-btn",
-                                 _style = "margin-right:10px;"),
-                               req_items,
-                               _id = "org_box",
-                               _class = "menu_box fleft"
-                               )
-        else:
-            requests_box = ""
-            manage_facility_box = ""
-            datatable_ajax_source = ""
+        s3_has_role = auth.s3_has_role
 
+        # CMS
         item = ""
         if settings.has_module("cms"):
             table = s3db.cms_post
-            item = db(table.module == "default").select(table.body,
+            item = db(table.module == "default").select(table.id,
+                                                        table.body,
                                                         limitby=(0, 1)).first()
             if item:
-                item = DIV(XML(item.body))
+                if s3_has_role(ADMIN):
+                    item = DIV(XML(item.body),
+                               BR(),
+                               A(T("Edit"),
+                                 _href=URL(c="cms", f="post",
+                                           args=[item.id, "update"],
+                                           vars={"module":"default"}),
+                                 _class="action-btn"))
+                else:
+                    item = XML(item.body)
+            elif s3_has_role(ADMIN):
+                item = DIV(A(T("Edit"),
+                             _href=URL(c="cms", f="post", args="create",
+                                       vars={"module":"default"}),
+                             _class="action-btn"))
             else:
                 item = ""
+            
+        # Big Buttons
+        big_buttons = DIV(
+                        A(DIV(T("Request Supplies"),
+                              _class = "menu-btn-r"),
+                          _class = "menu-btn-l",
+                          _href = URL(c="req", f="req", args=["create"], vars={"type":1})
+                          ),
+                        A(DIV(T("Request People"),
+                              _class = "menu-btn-r"),
+                          _class = "menu-btn-l",
+                          _href=URL(c="req", f="req", args=["create"], vars={"type":3})
+                          ),
+                        A(DIV(T("Fulfill Requests"),
+                              _class = "menu-btn-r"),
+                          _class = "menu-btn-l",
+                          _href=URL(c="req", f="req", args=["search"])
+                          ),
+                        _id = "sit_dec_res_box",
+                        _class = "menu_box fleft swidth")
 
         # Login/Registration forms
         self_registration = settings.get_security_self_registration()
@@ -187,10 +172,7 @@ google.setOnLoadCallback(LoadDynamicFeedControl)'''))
 
         return dict(title = response.title,
                     item = item,
-                    manage_facility_box = manage_facility_box,
-                    requests_box = requests_box,
-                    r = None, # Required for dataTable to work
-                    datatable_ajax_source = datatable_ajax_source,
+                    big_buttons = big_buttons,
                     self_registration=self_registration,
                     registered=registered,
                     login_form=login_form,
@@ -257,5 +239,144 @@ class req():
             from gluon.http import HTTP
             raise HTTP(501, current.manager.ERROR.BAD_FORMAT)
         return items
+
+# =============================================================================
+class contact():
+    """ Contact Form """
+
+    def __call__(self):
+
+        request = current.request
+        response = current.response
+
+        view = path.join(request.folder, "private", "templates",
+                         "SandyRelief", "views", "contact.html")
+        try:
+            # Pass view as file not str to work in compiled mode
+            response.view = open(view, "rb")
+        except IOError:
+            from gluon.http import HTTP
+            raise HTTP("404", "Unable to open Custom View: %s" % view)
+
+        if request.env.request_method == "POST":
+            # Processs Form
+            vars = request.post_vars
+            result = current.msg.send_email(
+                    to=current.deployment_settings.get_mail_approver(),
+                    subject=vars.subject,
+                    message=vars.message,
+                    reply_to=vars.address,
+                )
+            if result:
+                response.confirmation = "Thankyou for your message - we'll be in touch shortly"
+
+        #T = current.T
+
+        form = DIV(
+                H1("Contact Us"),
+                P("You can leave a message using the contact form below."),
+                FORM(TABLE(
+                        TR(LABEL("Your name:",
+                              SPAN(" *", _class="req"),
+                              _for="name")),
+                        TR(INPUT(_name="name", _type="text", _size=62, _maxlength="255")),
+                        TR(LABEL("Your e-mail address:",
+                              SPAN(" *", _class="req"),
+                              _for="address")),
+                        TR(INPUT(_name="address", _type="text", _size=62, _maxlength="255")),
+                        TR(LABEL("Subject:",
+                              SPAN(" *", _class="req"),
+                              _for="subject")),
+                        TR(INPUT(_name="subject", _type="text", _size=62, _maxlength="255")),
+                        TR(LABEL("Message:",
+                              SPAN(" *", _class="req"),
+                              _for="name")),
+                        TR(TEXTAREA(_name="message", _class="resizable", _rows=5, _cols=62)),
+                        TR(INPUT(_type="submit", _value="Send e-mail")),
+                        ),
+                    _id="mailform"
+                    )
+                )
+        s3 = response.s3
+        if s3.cdn:
+            if s3.debug:
+                s3.scripts.append("http://ajax.aspnetcdn.com/ajax/jquery.validate/1.9/jquery.validate.js")
+            else:
+                s3.scripts.append("http://ajax.aspnetcdn.com/ajax/jquery.validate/1.9/jquery.validate.min.js")
+
+        else:
+            if s3.debug:
+                s3.scripts.append("/%s/static/scripts/jquery.validate.js" % request.application)
+            else:
+                s3.scripts.append("/%s/static/scripts/jquery.validate.min.js" % request.application)
+        s3.jquery_ready.append(
+'''$('#mailform').validate({
+ errorClass:'req',
+ rules:{
+  name:{
+   required:true
+  },
+  subject:{
+   required:true
+  },
+  message:{
+   required:true
+  },
+  name:{
+   required:true
+  },
+  address: {
+   required:true,
+   email:true
+  }
+ },
+ messages:{
+  name:"Enter your name",
+  subject:"Enter a subject",
+  message:"Enter a message",
+  address:{
+   required:"Please enter a valid email address",
+   email:"Please enter a valid email address"
+  }
+ },
+ errorPlacement:function(error,element){
+  error.appendTo(element.parents('tr').prev().children())
+ },
+ submitHandler:function(form){
+  form.submit()
+ }
+})''')
+        # @ToDo: Move to static
+        s3.jquery_ready.append(
+'''$('textarea.resizable:not(.textarea-processed)').each(function() {
+    // Avoid non-processed teasers.
+    if ($(this).is(('textarea.teaser:not(.teaser-processed)'))) {
+        return false;
+    }
+    var textarea = $(this).addClass('textarea-processed'), staticOffset = null;
+    // When wrapping the text area, work around an IE margin bug. See:
+    // http://jaspan.com/ie-inherited-margin-bug-form-elements-and-haslayout
+    $(this).wrap('<div class="resizable-textarea"><span></span></div>')
+    .parent().append($('<div class="grippie"></div>').mousedown(startDrag));
+    var grippie = $('div.grippie', $(this).parent())[0];
+    grippie.style.marginRight = (grippie.offsetWidth - $(this)[0].offsetWidth) +'px';
+    function startDrag(e) {
+        staticOffset = textarea.height() - e.pageY;
+        textarea.css('opacity', 0.25);
+        $(document).mousemove(performDrag).mouseup(endDrag);
+        return false;
+    }
+    function performDrag(e) {
+        textarea.height(Math.max(32, staticOffset + e.pageY) + 'px');
+        return false;
+    }
+    function endDrag(e) {
+        $(document).unbind("mousemove", performDrag).unbind("mouseup", endDrag);
+        textarea.css('opacity', 1);
+    }
+});''')
+
+        response.title = "Contact | SandyRelief"
+        return dict(form=form)
 
 # END =========================================================================

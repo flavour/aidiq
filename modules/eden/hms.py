@@ -330,6 +330,7 @@ class HospitalDataModel(S3Model):
                   super_entity=("org_site", "doc_entity", "pr_pentity"),
                   search_method=hms_hospital_search,
                   deduplicate = self.hms_hospital_duplicate,
+                  onaccept = self.hms_hospital_onaccept,
                   report_options = Storage(
                         search=[
                           S3SearchOptionsWidget(
@@ -377,7 +378,7 @@ class HospitalDataModel(S3Model):
                         ],
                         rows=report_fields,
                         cols=report_fields,
-                        facts=report_fields,
+                        fact=report_fields,
                         methods=["count", "list", "sum"],
                         defaults=Storage(rows="location_id$L2",
                                          cols="status.facility_status",
@@ -930,7 +931,7 @@ class HospitalDataModel(S3Model):
         if row:
             return row.name
         elif not id:
-            return current.messages.NONE
+            return current.messages["NONE"]
 
         db = current.db
         table = db.hms_hospital
@@ -966,6 +967,16 @@ class HospitalDataModel(S3Model):
             if row:
                 item.id = row.id
                 item.method = item.METHOD.UPDATE
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def hms_hospital_onaccept(form):
+        """
+            Update Affiliation, record ownership and component ownership
+        """
+
+        s3db = current.s3db
+        s3db.pr_update_affiliations(s3db.hms_hospital, form.vars)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1074,7 +1085,7 @@ class CholeraTreatmentCapabilityModel(S3Model):
                                    label = T("Deaths in the past 24h"),
                                    represent = lambda v: IS_INT_AMOUNT.represent(v)),
                              #Field("staff_total", "integer", default=0),
-                             Field("icaths_available", "integer", 
+                             Field("icaths_available", "integer",
                                    default=0,
                                    requires = IS_NULL_OR(IS_INT_IN_RANGE(0, 99999999)),
                                    label = T("Infusion catheters available"),
@@ -1289,7 +1300,7 @@ class HMSHospitalVirtualFields:
         if r:
             return s3_unicode(field.represent(r.facility_status))
         else:
-            return current.messages.NONE
+            return current.messages["NONE"]
 
 # =============================================================================
 def hms_hospital_rheader(r, tabs=[]):
@@ -1347,7 +1358,7 @@ def hms_hospital_rheader(r, tabs=[]):
             status = lambda k: (s is not None and
                                 [stable[k].represent(s[k])] or
                                 [T("n/a")])[0]
-            NONE = current.messages.NONE
+            NONE = current.messages["NONE"]
             total_beds = hospital.total_beds
             if total_beds is None:
                 total_beds = NONE

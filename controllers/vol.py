@@ -134,24 +134,25 @@ def volunteer():
             report_fields.append((T("Active?"), "active"))
         report_options.rows = report_fields
         report_options.cols = report_fields
-        report_options.facts = report_fields
-        # Add VF to the Search Filters
+        report_options.fact = report_fields
         # Remove deprecated Active/Obsolete
         human_resource_search.advanced.pop(1)
         table.status.readable = table.status.writable = False
-        if enable_active_field:
-            widget = s3base.S3SearchOptionsWidget(
-                                name="human_resource_search_active",
-                                label=T("Active?"),
-                                field="active",
-                                cols = 2,
-                                options = {
-                                        T("Yes"): T("Yes"),
-                                        T("No"): T("No")
-                                    }
-                              ),
-            search_widget = ("human_resource_search_active", widget[0])
-            human_resource_search.advanced.insert(1, search_widget)
+        # Add VF to the Search Filters
+        # Don't make a VF a Search Option as not scalable
+        #if enable_active_field:
+        #    widget = s3base.S3SearchOptionsWidget(
+        #                        name="human_resource_search_active",
+        #                        label=T("Active?"),
+        #                        field="active",
+        #                        cols = 2,
+        #                        options = {
+        #                                T("Yes"): T("Yes"),
+        #                                T("No"): T("No")
+        #                            }
+        #                      ),
+        #    search_widget = ("human_resource_search_active", widget[0])
+        #    human_resource_search.advanced.insert(1, search_widget)
 
         def hrm_programme_opts():
             """
@@ -173,15 +174,16 @@ def volunteer():
                 _dict[opt.id] = opt.name
             return _dict
 
-        widget = s3base.S3SearchOptionsWidget(
-                            name="human_resource_search_programme",
-                            label=T("Programme"),
-                            field="programme",
-                            cols = 2,
-                            options = hrm_programme_opts
-                          ),
-        search_widget = ("human_resource_search_programme", widget[0])
-        human_resource_search.advanced.insert(3, search_widget)
+        # Don't make a VF a Search Option as not scalable
+        #widget = s3base.S3SearchOptionsWidget(
+        #                    name="human_resource_search_programme",
+        #                    label=T("Programme"),
+        #                    field="programme",
+        #                    cols = 2,
+        #                    options = hrm_programme_opts
+        #                  ),
+        #search_widget = ("human_resource_search_programme", widget[0])
+        #human_resource_search.advanced.insert(3, search_widget)
     else:
         list_fields.append("status")
     s3.crud_strings[tablename] = s3.crud_strings["hrm_volunteer"]
@@ -497,6 +499,8 @@ def person():
                               insertable = False,
                               editable = False,
                               deletable = False)
+                elif r.component_name == "group_membership":
+                    s3db.hrm_configure_pr_group_membership()
 
             resource = r.resource
             if mode is not None:
@@ -589,7 +593,7 @@ def person():
                                 rheader=s3db.hrm_rheader,
                                 orgname=orgname,
                                 replace_option=T("Remove existing data before import"),
-                                csv_template="volunteer",
+                                csv_template=("hrm", "volunteer"),
                                 csv_stylesheet=("hrm", "person.xsl"),
                                 csv_extra_fields=[
                                     dict(label="Type",
@@ -624,99 +628,7 @@ def group():
         Team controller
         - uses the group table from PR
     """
-
-    tablename = "pr_group"
-    table = s3db[tablename]
-
-    _group_type = table.group_type
-    _group_type.label = T("Team Type")
-    table.description.label = T("Team Description")
-    table.name.label = T("Team Name")
-    mtable = s3db.pr_group_membership
-    mtable.group_id.label = T("Team ID")
-    mtable.group_head.label = T("Team Leader")
-
-    # Set Defaults
-    _group_type.default = 3  # 'Relief Team'
-    _group_type.readable = _group_type.writable = False
-
-    # Only show Relief Teams
-    # Do not show system groups
-    s3.filter = (table.system == False) & \
-                (_group_type == 3)
-
-    # CRUD Strings
-    ADD_TEAM = T("Add Team")
-    s3.crud_strings[tablename] = Storage(
-        title_create = ADD_TEAM,
-        title_display = T("Team Details"),
-        title_list = T("Teams"),
-        title_update = T("Edit Team"),
-        title_search = T("Search Teams"),
-        subtitle_create = T("Add New Team"),
-        label_list_button = T("List Teams"),
-        label_create_button = T("Add New Team"),
-        label_search_button = T("Search Teams"),
-        msg_record_created = T("Team added"),
-        msg_record_modified = T("Team updated"),
-        msg_record_deleted = T("Team deleted"),
-        msg_list_empty = T("No Teams currently registered"))
-
-    s3.crud_strings["pr_group_membership"] = Storage(
-        title_create = T("Add Member"),
-        title_display = T("Membership Details"),
-        title_list = T("Team Members"),
-        title_update = T("Edit Membership"),
-        title_search = T("Search Member"),
-        subtitle_create = T("Add New Member"),
-        label_list_button = T("List Members"),
-        label_create_button = T("Add Team Member"),
-        label_delete_button = T("Delete Membership"),
-        msg_record_created = T("Team Member added"),
-        msg_record_modified = T("Membership updated"),
-        msg_record_deleted = T("Membership deleted"),
-        msg_list_empty = T("No Members currently registered"))
-
-    configure = s3db.configure
-    configure(tablename, main="name", extra="description",
-              # Redirect to member list when a new group has been created
-              create_next = URL(f="group",
-                                args=["[id]", "group_membership"]))
-    configure("pr_group_membership",
-              list_fields=["id",
-                           "person_id",
-                           "group_head",
-                           "description"])
-
-    # Post-process
-    def postp(r, output):
-
-        if r.interactive:
-            if not r.component:
-                update_url = URL(args=["[id]", "group_membership"])
-                s3_action_buttons(r, deletable=False, update_url=update_url)
-                if "msg" in settings.modules:
-                    s3.actions.append({
-                        "url": URL(f = "compose",
-                                   vars = {"group_id": "[id]"}),
-                        "_class": "action-btn",
-                        "label": str(T("Send Notification"))})
-
-        return output
-    s3.postp = postp
-
-    tabs = [
-            (T("Team Details"), None),
-            # Team should be contacted either via the Leader or
-            # simply by sending a message to the group as a whole.
-            #(T("Contact Data"), "contact"),
-            (T("Members"), "group_membership")
-            ]
-
-    output = s3_rest_controller("pr", resourcename,
-                                rheader=lambda r: s3db.pr_rheader(r, tabs=tabs))
-
-    return output
+    return s3db.hrm_group_controller()
 
 
 # =============================================================================
@@ -875,6 +787,9 @@ def certificate_skill():
 def training():
     """ Training Controller - used for Searching for Participants """
 
+    table = s3db.hrm_human_resource
+    s3.filter = ((table.type == 2) & \
+                 (s3db.hrm_training.person_id == table.person_id))
     return s3db.hrm_training_controller()
 
 # -----------------------------------------------------------------------------
@@ -948,7 +863,8 @@ def programme_hours():
         session.error = T("Access denied")
         redirect(URL(f="index"))
 
-    output = s3_rest_controller("hrm", resourcename)
+    output = s3_rest_controller("hrm", resourcename,
+                                csv_template = ("hrm", "programme_hours"))
     return output
 # =============================================================================
 def cluster_type():

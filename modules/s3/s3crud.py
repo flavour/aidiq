@@ -77,7 +77,12 @@ class S3CRUD(S3Method):
             @returns: output object to send to the view
         """
 
-        self.sqlform = self._config("crud_form", S3SQLDefaultForm())
+        settings = current.deployment_settings
+
+        self.sqlform = settings.get_ui_crud_form(self.tablename)
+        if not self.sqlform:
+            self.sqlform = self._config("crud_form", S3SQLDefaultForm())
+
         self.settings = current.response.s3.crud
 
         # Pre-populate create-form?
@@ -905,10 +910,6 @@ class S3CRUD(S3Method):
                     if buttons:
                         output["buttons"] = buttons
 
-            # Count rows
-            totalrows = resource.count()
-            displayrows = totalrows
-
             # How many records per page?
             if s3.dataTable_iDisplayLength:
                 display_length = s3.dataTable_iDisplayLength
@@ -937,12 +938,13 @@ class S3CRUD(S3Method):
                 dt_pagination = "false"
 
             # Get the data table
-            dt = resource.datatable(fields=list_fields,
-                                    start=start,
-                                    limit=limit,
-                                    left=left,
-                                    orderby=orderby,
-                                    distinct=distinct)
+            dt, totalrows, ids = resource.datatable(fields=list_fields,
+                                                    start=start,
+                                                    limit=limit,
+                                                    left=left,
+                                                    orderby=orderby,
+                                                    distinct=distinct)
+            displayrows = totalrows
 
             # Empty table - or just no match?
             if dt is None:
@@ -982,14 +984,13 @@ class S3CRUD(S3Method):
                 resource.build_query(filter=s3.filter,
                                      vars=session.s3.filter)
 
-            # Count the rows
-            totalrows = displayrows = resource.count()
-
             # Apply datatable filters
             searchq, orderby, left = resource.datatable_filter(list_fields, vars)
             if searchq is not None:
+                totalrows = resource.count()
                 resource.add_filter(searchq)
-                displayrows = resource.count(left=left, distinct=True)
+            else:
+                totalrows = None
 
             # Orderby fallbacks
             if r.method == "search" and not orderby:
@@ -998,12 +999,18 @@ class S3CRUD(S3Method):
                 orderby = _config("orderby", None)
 
             # Get a data table
-            dt = resource.datatable(fields=list_fields,
-                                    start=start,
-                                    limit=limit,
-                                    left=left,
-                                    orderby=orderby,
-                                    distinct=distinct)
+            if totalrows != 0:
+                dt, displayrows, ids = resource.datatable(fields=list_fields,
+                                                          start=start,
+                                                          limit=limit,
+                                                          left=left,
+                                                          orderby=orderby,
+                                                          distinct=distinct,
+                                                          getids=False)
+            else:
+                dt, displayrows = None, 0
+            if totalrows is None:
+                totalrows = displayrows
 
             # Echo
             sEcho = int(vars.sEcho or 0)
@@ -1186,10 +1193,6 @@ class S3CRUD(S3Method):
                 title = crud_string(self.tablename, "title_list")
             output["title"] = title
 
-            # Count rows
-            totalrows = resource.count()
-            displayrows = totalrows
-
             # How many records per page?
             if s3.dataTable_iDisplayLength:
                 display_length = s3.dataTable_iDisplayLength
@@ -1218,21 +1221,24 @@ class S3CRUD(S3Method):
                 dt_pagination = "false"
 
             # Get the data table
-            dt = resource.datatable(fields=list_fields,
-                                    start=start,
-                                    limit=limit,
-                                    left=left,
-                                    orderby=orderby,
-                                    distinct=distinct)
+            dt, totalrows, ids = resource.datatable(fields=list_fields,
+                                                    start=start,
+                                                    limit=limit,
+                                                    left=left,
+                                                    orderby=orderby,
+                                                    distinct=distinct)
+            displayrows = totalrows
 
             # No records?
             if dt is None:
                 s3.no_formats = True
                 datatable = current.T("No records to review")
             else:
+                dt_sDom = s3.get("dataTable_sDom", 'fril<"dataTable_table"t>pi')
                 datatable = dt.html(totalrows, displayrows, "list",
                                     dt_pagination=dt_pagination,
-                                    dt_displayLength=display_length)
+                                    dt_displayLength=display_length,
+                                    dt_sDom = dt_sDom)
                 s3.actions = [{"label": str(current.T("Review")),
                                "url": r.url(id="[id]", method="review"),
                                "_class": "action-btn"}]
@@ -1244,14 +1250,13 @@ class S3CRUD(S3Method):
 
             resource.build_query(filter=s3.filter, vars=session.s3.filter)
 
-            # Count the rows
-            totalrows = displayrows = resource.count()
-
             # Apply datatable filters
             searchq, orderby, left = resource.datatable_filter(list_fields, vars)
             if searchq is not None:
+                totalrows = resource.count()
                 resource.add_filter(searchq)
-                displayrows = resource.count(left=left, distinct=True)
+            else:
+                totalrows = None
 
             # Orderby fallbacks
             if r.method == "search" and not orderby:
@@ -1260,12 +1265,17 @@ class S3CRUD(S3Method):
                 orderby = _config("orderby", None)
 
             # Get a data table
-            dt = resource.datatable(fields=list_fields,
-                                    start=start,
-                                    limit=limit,
-                                    left=left,
-                                    orderby=orderby,
-                                    distinct=distinct)
+            if totalrows != 0:
+                dt, displayrows, ids = resource.datatable(fields=list_fields,
+                                                          start=start,
+                                                          limit=limit,
+                                                          left=left,
+                                                          orderby=orderby,
+                                                          distinct=distinct)
+            else:
+                dt, displayrows = None, 0
+            if totalrows is None:
+                totalrows = displayrows
 
             # Echo
             sEcho = int(vars.sEcho or 0)

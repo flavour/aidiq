@@ -47,6 +47,21 @@ def gis_update_location_tree(feature, user_id=None):
 tasks["gis_update_location_tree"] = gis_update_location_tree
 
 # -----------------------------------------------------------------------------
+def org_facility_geojson(user_id=None):
+    """
+        Export GeoJSON[P] Of Facility data
+
+        @param user_id: calling request's auth.user.id or None
+    """
+    if user_id:
+        # Authenticate
+        auth.s3_impersonate(user_id)
+    # Run the Task & return the result
+    s3db.org_facility_geojson()
+
+tasks["org_facility_geojson"] = org_facility_geojson
+
+# -----------------------------------------------------------------------------
 def sync_synchronize(repository_id, user_id=None, manual=False):
     """
         Run all tasks for a repository, to be called from scheduler
@@ -147,7 +162,22 @@ if settings.has_module("msg"):
     tasks["msg_process_inbound_email"] = msg_process_inbound_email
 
     # -------------------------------------------------------------------------
-    def msg_twilio_inbound_sms(account, user_id):
+    def msg_mcommons_inbound_sms(campaign_id, user_id=None):
+        """
+            Poll an inbound SMS(Mobile Commons) source.
+
+            @param campaign_id: account name for the SMS source to read from.
+            This uniquely identifies one inbound SMS task.
+        """
+        # Run the Task & return the result
+        result = msg.mcommons_inbound_sms(campaign_id)
+        db.commit()
+        return result
+
+    tasks["msg_mcommons_inbound_sms"] = msg_mcommons_inbound_sms
+
+    # -------------------------------------------------------------------------
+    def msg_twilio_inbound_sms(account, user_id=None):
         """
             Poll an inbound SMS(Twilio) source.
 

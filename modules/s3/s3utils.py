@@ -442,14 +442,10 @@ def s3_represent_facilities(db, site_ids, link=True):
                                        table.facility_type_id,
                                        table.site_id,
                                        table.name)
-            ttable = db.org_facility_type
-            type_ids = [r.facility_type_id[0] for r in records if r.facility_type_id]
-            facility_types = db(ttable.id.belongs(type_ids)).select(ttable.id,
-                                                                    ttable.name)
-            facility_types = facility_types.as_dict()
+            type_represent = table.facility_type_id.represent
             for record in records:
                 if record.facility_type_id:
-                    facility_type = facility_types[record.facility_type_id[0]]["name"]
+                    facility_type = type_represent(record.facility_type_id[:1])
                     site_str = "%s (%s)" % (record.name, facility_type)
                 else:
                     site_str = "%s (%s)" % (record.name, instance_type_nice)
@@ -605,7 +601,28 @@ def s3_auth_user_represent(id, row=None):
     try:
         return user.email
     except:
-        return current.messages["UNKNOWN_OPT"]
+        return current.messages.UNKNOWN_OPT
+
+# =============================================================================
+def s3_auth_user_represent_name(id):
+    """
+        Represent users by their names
+    """
+
+    if not id:
+        return current.messages["NONE"]
+
+    db = current.db
+    table = db.auth_user
+    user = db(table.id == id).select(table.first_name,
+                                     table.last_name,
+                                     limitby=(0, 1)).first()
+    try:
+        return s3_format_fullname(user.first_name.strip(),
+                                  None,
+                                  user.last_name.strip())
+    except:
+        return current.messages.UNKNOWN_OPT
 
 # =============================================================================
 def s3_auth_group_represent(opt):
@@ -638,50 +655,59 @@ def s3_auth_group_represent(opt):
     return ", ".join(roles)
 
 # =============================================================================
-def s3_represent_name(table):
+def s3_represent_id(table):
     """
-        Returns a represent function for the common case where we return
-        the name of the record.
+        Returns a represent function for a record id.
     """
 
     def represent(id, row=None):
-        if row:
-            return row.name
-        elif not id:
-            return current.messages["NONE"]
-
-        r = current.db(table._id == id).select(table.name,
-                                               limitby=(0, 1)
-                                               ).first()
+        if not row:
+            if not id:
+                return current.messages["NONE"]
+            row  = current.db(table._id == id).select(table.name,
+                                                      limitby=(0, 1)
+                                                      ).first()
         try:
-            return r.name
+            return row.name
         except:
-            return current.messages["UNKNOWN_OPT"]
+            return current.messages.UNKNOWN_OPT
 
     return represent
 
 # =============================================================================
-def s3_represent_name_translate(table):
+def s3_represent_multi_id(table):
     """
-        Returns a represent function for the common case where we return
-        a translated version of the name of the record.
+        Returns a represent function for a record id.
     """
 
-    def represent(id, row=None):
-        if row:
-            return current.T(row.name)
-        elif not id:
+    def represent(ids):
+        if not ids:
             return current.messages["NONE"]
 
-        r = current.db(table._id == id).select(table.name,
-                                               limitby=(0, 1)
-                                               ).first()
+        ids = [ids] if type(ids) is not list else ids
+
+        rows = current.db(table.id.belongs(ids)).select(table.name)
+
         try:
-            return current.T(r.name)
+            strings = [str(row.name) for row in rows]
         except:
-            return current.messages["UNKNOWN_OPT"]
+            return current.messages["NONE"]
+
+        if strings:
+            return ", ".join(strings)
+        else:
+            return current.messages["NONE"]
 
     return represent
+
+# =============================================================================
+def s3_yes_no_represent(value):
+    " Represent a Boolean field as Yes/No instead of True/False "
+
+    if value:
+        return current.T("Yes")
+    else:
+        return current.T("No")
 
 # =============================================================================
 def s3_include_debug_css():
@@ -1368,6 +1394,7 @@ class CrudS3(Crud):
         """ Initialise parent class & make any necessary modifications """
         Crud.__init__(self, current.db)
 
+
     def select(
         self,
         table,
@@ -1756,6 +1783,7 @@ class S3BulkImporter(object):
                     f = urllib2.urlopen(req)
                 except urllib2.HTTPError, e:
                     self.errorList.append("Could not access %s: %s" % (filename, e.read()))
+
                     return
                 except:
                     self.errorList.append(errorString % filename)
@@ -2861,17 +2889,21 @@ class S3DataTable(object):
         iconList.append(IMG(_src="/%s/static/img/pdficon_small.gif" % application,
                             _onclick="s3FormatRequest('pdf','%s','%s');" % (id, url),
                             _alt=T("Export in PDF format"),
+                            _title=T("Export in PDF format"),
                             ))
         url = s3.formats.xls if s3.formats.xls else default_url
         iconList.append(IMG(_src="/%s/static/img/icon-xls.png" % application,
                             _onclick="s3FormatRequest('xls','%s','%s');" % (id, url),
                             _alt=T("Export in XLS format"),
+                            _title=T("Export in XLS format"),
                             ))
         url = s3.formats.rss if s3.formats.rss else default_url
         iconList.append(IMG(_src="/%s/static/img/RSS_16.png" % application,
                             _onclick="s3FormatRequest('rss','%s','%s');" % (id, url),
                             _alt=T("Export in RSS format"),
+                            _title=T("Export in RSS format"),
                             ))
+
         div = DIV(_class='list_formats')
         if permalink is not None:
             link = A(T("Link to this result"),
@@ -2885,11 +2917,19 @@ class S3DataTable(object):
             iconList.append(IMG(_src="/%s/static/img/have_16.png" % application,
                                 _onclick="s3FormatRequest('have','%s','%s');" % (id, s3.formats.have),
                                 _alt=T("Export in HAVE format"),
+                                _title=T("Export in HAVE format"),
                                 ))
         if "kml" in s3.formats:
             iconList.append(IMG(_src="/%s/static/img/kml_icon.png" % application,
                                 _onclick="s3FormatRequest('kml','%s','%s');" % (id, s3.formats.kml),
                                 _alt=T("Export in KML format"),
+                                _title=T("Export in KML format"),
+                                ))
+        if "xml" in s3.formats:
+            iconList.append(IMG(_src="/%s/static/img/icon-xml.png" % application,
+                                _onclick="s3FormatRequest('xml','%s','%s');" % (id, url),
+                                _alt=T("Export in XML format"),
+                                _title=T("Export in XML format"),
                                 ))
         elif rfields:
             kml_list = ["location_id",
@@ -3392,5 +3432,8 @@ class S3DataTable(object):
                            action_col=action_col,
                            stringify=stringify,
                            **attr)
+
+
+
 
 # END =========================================================================

@@ -645,7 +645,7 @@ def translate():
            language file
 
         4) Upload a text file containing a list of new-line separated strings
-           which are to be considered for translation in the future. These 
+           which are to be considered for translation in the future. These
            strings are termed as "user-supplied" strings and are picked up by
            the first workflow when preparing the spreadsheet for translation
 
@@ -925,10 +925,11 @@ def result_automated():
     """
         Selenium Test Result Reports list
     """
-
     file_list_automated = UL()
     static_path = os.path.join(request.folder, "static", "test_automated")
-    for filename in os.listdir(static_path):
+    filenames = os.listdir(static_path)
+    filenames.reverse()
+    for filename in filenames:
         link = A(filename,
                  _href = URL(c = "static",
                              f = "test_automated",
@@ -945,7 +946,9 @@ def result_smoke():
 
     file_list_smoke = UL()
     static_path = os.path.join(request.folder, "static", "test_smoke")
-    for filename in os.listdir(static_path):
+    filenames = os.listdir(static_path)
+    filenames.reverse()
+    for filename in filenames:
         link = A(filename,
                  _href = URL(c = "static",
                              f = "test_smoke",
@@ -962,7 +965,9 @@ def result_roles():
 
     file_list_roles = UL()
     static_path = os.path.join(request.folder, "static", "test_roles")
-    for filename in os.listdir(static_path):
+    filenames = os.listdir(static_path)
+    filenames.reverse()
+    for filename in filenames:
         link = A(filename,
                  _href = URL(c = "static",
                              f = "test_roles",

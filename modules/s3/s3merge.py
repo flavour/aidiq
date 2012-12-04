@@ -31,11 +31,15 @@
 
 __all__ = ["S3Merge"]
 
+import sys
+
 from gluon import *
 from gluon.html import BUTTON
 from gluon.storage import Storage
 from s3rest import S3Method
 from s3resource import S3FieldSelector
+from s3widgets import *
+from s3validators import *
 from s3utils import S3DataTable, s3_unicode
 
 # =============================================================================
@@ -451,9 +455,9 @@ class S3Merge(S3Method):
                           TD(label, _class="w2p_fl")))
 
             # Append widget row
-            trs.append(TR(TD(owidget),
+            trs.append(TR(TD(owidget, _class="mwidget"),
                           TD(swap),
-                          TD(dwidget)))
+                          TD(dwidget, _class="mwidget")))
 
         # Show created_on/created_by for each record
         if "created_on" in table:
@@ -557,12 +561,17 @@ class S3Merge(S3Method):
             resource = s3db.resource(tablename)
             try:
                 resource.merge(original[table._id],
-                                duplicate[table._id],
-                                update=data)
+                               duplicate[table._id],
+                               update=data)
             except current.auth.permission.error:
                 r.unauthorized()
             except KeyError:
                 r.error(404, r.ERROR.BAD_RECORD)
+            except:
+                r.error(424,
+                        T("Could not merge records. (Internal Error: %s)") %
+                            sys.exc_info()[1],
+                        next=r.url())
             else:
                 # Cleanup bookmark list
                 if mode == "Inclusive":
@@ -686,7 +695,20 @@ class S3Merge(S3Method):
                 #inp = widgets.upload.widget(field, value,
                                             #download_url=download_url, **attr)
         elif field.widget:
-            inp = field.widget(field, value, **attr)
+            if isinstance(field.widget, S3LocationSelectorWidget):
+                # Workaround - location selector does not support
+                # renaming of the fields => switch to dropdown
+                level = None
+                if value:
+                    try:
+                        level = s3db.gis_location[value].level
+                    except:
+                        pass
+                widget = S3LocationDropdownWidget(level, value)
+                field.requires = IS_EMPTY_OR(IS_ONE_OF(current.db, "gis_location.id"))
+                inp = widget(field, value, **attr)
+            else:
+                inp = field.widget(field, value, **attr)
         elif ftype == "boolean":
             inp = widgets.boolean.widget(field, value, **attr)
         elif widgets.options.has_options(field):

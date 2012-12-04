@@ -75,11 +75,11 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     #    M("List All"),
                     #    M("Search", m="search"),
                     #),
-                    #M("Sent Shipments", c="inv", f="send")(
-                    #    M("New", m="create"),
-                    #    M("List All"),
-                    #    M("Search Shipped Items", f="track_item", m="search"),
-                    #),
+                    M("Sent Shipments", c="inv", f="send")(
+                        M("New", m="create"),
+                        M("List All"),
+                        M("Search Shipped Items", f="track_item", m="search"),
+                    ),
                     M("Items", c="supply", f="item")(
                         M("New", m="create"),
                         M("List All"),
@@ -95,6 +95,96 @@ class S3OptionsMenu(default.S3OptionsMenu):
                 )
 
     # -------------------------------------------------------------------------
+    def hrm(self):
+        """ HRM / Human Resources Management """
+
+        s3 = current.session.s3
+        ADMIN = s3.system_roles.ADMIN
+
+        # Custom conditions for the check-hook, as lambdas in order
+        # to have them checked only immediately before rendering:
+        manager_mode = lambda i: s3.hrm.mode is None
+        personal_mode = lambda i: s3.hrm.mode is not None
+        is_org_admin = lambda i: s3.hrm.orgs and True or \
+                                 ADMIN in s3.roles
+        settings = current.deployment_settings
+        job_roles = lambda i: settings.get_hrm_job_roles()
+        use_teams = lambda i: settings.get_hrm_use_teams()
+
+        return M(c="hrm")(
+                    M(settings.get_hrm_staff_label(), f="staff",
+                      check=manager_mode)(
+                        M("New", m="create"),
+                        M("List All"),
+                        M("Search", m="search"),
+                        M("Import", f="person", m="import",
+                          vars={"group":"staff"}, p="create"),
+                    ),
+                    M("Teams", f="group",
+                      check=[manager_mode, use_teams])(
+                        M("New", m="create"),
+                        M("List All"),
+                    ),
+                    M("Department Catalog", f="department",
+                      check=manager_mode)(
+                        M("New", m="create"),
+                        M("List All"),
+                    ),
+                    M("Job Role Catalog", f="job_role",
+                      check=[manager_mode, job_roles])(
+                        M("New", m="create"),
+                        M("List All"),
+                    ),
+                    M("Job Title Catalog", f="job_title",
+                      check=manager_mode)(
+                        M("New", m="create"),
+                        M("List All"),
+                    ),
+                    M("Skill Catalog", f="skill",
+                      check=manager_mode)(
+                        M("New", m="create"),
+                        M("List All"),
+                        #M("Skill Provisions", f="skill_provision"),
+                    ),
+                    #M("Training Events", f="training_event",
+                    #  check=manager_mode)(
+                    #    M("New", m="create"),
+                    #    M("List All"),
+                    #    M("Search", m="search"),
+                    #    M("Search Training Participants", f="training",
+                    #      m="search"),
+                    #    M("Import Participant List", f="training", m="import"),
+                    #),
+                    #M("Training Course Catalog", f="course",
+                    #  check=manager_mode)(
+                    #    M("New", m="create"),
+                    #    M("List All"),
+                    #    #M("Course Certificates", f="course_certificate"),
+                    #),
+                    #M("Certificate Catalog", f="certificate",
+                    #  check=manager_mode)(
+                    #    M("New", m="create"),
+                    #    M("List All"),
+                    #    #M("Skill Equivalence", f="certificate_skill"),
+                    #),
+                    #M("Reports", f="staff", m="report",
+                    #  check=manager_mode)(
+                    #    M("Staff Report", m="report"),
+                    #    M("Expiring Staff Contracts Report",
+                    #      vars=dict(expiring=1)),
+                    #    M("Training Report", f="training", m="report"),
+                    #),
+                    M("Personal Profile", f="person",
+                      check=personal_mode, vars=dict(mode="personal")),
+                    # This provides the link to switch to the manager mode:
+                    M("Staff Management", f="index",
+                      check=[personal_mode, is_org_admin]),
+                    # This provides the link to switch to the personal mode:
+                    M("Personal Profile", f="person",
+                      check=manager_mode, vars=dict(mode="personal"))
+                )
+
+    # -------------------------------------------------------------------------
     def org(self):
         """ ORG / Organization Registry """
 
@@ -104,6 +194,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     M("Facilities", f="facility")(
                         M("New", m="create"),
                         M("List All"),
+                        #M("Review/Approve New", m="review"),
                         M("Map", m="map"),
                         M("Search", m="search"),
                         M("Import", m="import")
@@ -136,20 +227,31 @@ class S3OptionsMenu(default.S3OptionsMenu):
 
         return M(c="req")(
                     M("Requests", f="req")(
-                        M("New", m="create"),
-                        M("List All"),
+                        M("Request Supplies", m="create", vars={"type":1}),
+                        M("Request People", m="create", vars={"type":3}),
+                        M("Search Requests", m="search"),
+                        #M("List All"),
                         M("List Recurring Requests", f="req_template"),
-                        M("Search", m="search"),
-                        M("Map", m="map"),
+                        #M("Search", m="search"),
+                        #M("Map", m="map"),
                         M("Report", m="report"),
                         M("Search All Requested Items", f="req_item", m="search"),
                         M("Search All Requested Skills", f="req_skill", m="search"),
                     ),
-                    M("Priority Items", f="summary_option")(
-                        M("New", m="create"),
-                        M("List All"),
+                    #M("Priority Items", f="summary_option")(
+                    #    M("New", m="create"),
+                    #    M("List All"),
+                    #),
+                    M("Commitments", f="commit")(
+                        M("List All")
                     ),
-                    M("Items", c="supply", f="item")(
+                    M("Sent Shipments", f="send")(
+                        #M("New", m="create"),
+                        M("List All"),
+                        #M("Search Shipped Items", f="track_item", m="search"),
+                    ),
+                    M("Items", c="supply", f="item",
+                      restrict=[ADMIN])(
                         M("New", m="create"),
                         M("List All"),
                         M("Search", m="search"),

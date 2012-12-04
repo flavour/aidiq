@@ -94,7 +94,7 @@ class S3OrganisationModel(S3Model):
         configure = self.configure
         crud_strings = current.response.s3.crud_strings
         define_table = self.define_table
-        NONE = messages.NONE
+        NONE = messages["NONE"]
         ORGANISATION = messages.ORGANISATION
 
         location = current.session.s3.location_filter
@@ -169,17 +169,18 @@ class S3OrganisationModel(S3Model):
                                            title=SECTOR,
                                            tooltip=help)
 
+        represent = s3_represent_id(table)
         sector_id = S3ReusableField("sector_id", "reference org_sector",
                                     sortby="abrv",
                                     requires=IS_NULL_OR(
                                                 IS_ONE_OF(db, "org_sector.id",
-                                                          self.org_sector_represent,
+                                                          represent,
                                                           sort=True,
                                                           filterby=filterby,
                                                           filter_opts=filter_opts,
                                                           )
                                                         ),
-                                    represent=self.org_sector_multirepresent,
+                                    represent=represent,
                                     comment=sector_comment,
                                     label=SECTOR,
                                     ondelete="SET NULL")
@@ -188,14 +189,14 @@ class S3OrganisationModel(S3Model):
                                     sortby="abrv",
                                     requires=IS_NULL_OR(
                                                 IS_ONE_OF(db, "org_sector.id",
-                                                          self.org_sector_represent,
+                                                          represent,
                                                           sort=True,
                                                           filterby=filterby,
                                                           filter_opts=filter_opts,
                                                           multiple=True
                                                           )
                                                         ),
-                                    represent=self.org_sector_multirepresent,
+                                    represent=s3_represent_multi_id(table),
                                     comment=sector_comment,
                                     label=SECTOR,
                                     ondelete="SET NULL")
@@ -706,7 +707,6 @@ class S3OrganisationModel(S3Model):
                     org_sector_id=sector_id,
                     org_multi_sector_id=multi_sector_id,
                     org_sector_opts=self.org_sector_opts,
-                    org_sector_represent = self.org_sector_represent,
                     org_organisation_type_id=organisation_type_id,
                     org_organisation_id=organisation_id,
                 )
@@ -780,63 +780,6 @@ class S3OrganisationModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def org_sector_represent(id, row=None):
-        """ FK representation """
-
-        if row:
-            return row.name
-        elif not id:
-            return current.messages.NONE
-
-        db = current.db
-        table = db.org_sector
-        r = db(table.id == id).select(table.name,
-                                      limitby=(0, 1)).first()
-        try:
-            return current.T(r.name)
-        except:
-            return current.messages.UNKNOWN_OPT
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def org_sector_multirepresent(opt):
-        """ Sector/Cluster representation for multiple=True options """
-
-        if not opt:
-            return current.messages.NONE
-
-        db = current.db
-        table = db.org_sector
-        set = db(table.id > 0).select(table.id,
-                                      table.abrv).as_dict()
-
-        if isinstance(opt, (list, tuple)):
-            opts = opt
-            vals = [str(set.get(o)["abrv"]) for o in opts]
-            multiple = True
-        elif isinstance(opt, int):
-            opts = [opt]
-            vals = str(set.get(opt)["abrv"])
-            multiple = False
-        else:
-            try:
-                opt = int(opt)
-            except:
-                return current.messages.NONE
-            else:
-                opts = [opt]
-                vals = str(set.get(opt)["abrv"])
-                multiple = False
-
-        if multiple:
-            if len(opts) > 1:
-                vals = ", ".join(vals)
-            else:
-                vals = len(vals) and vals[0] or ""
-        return vals
-
-    # -------------------------------------------------------------------------
-    @staticmethod
     def org_sector_opts():
         """
             Provide the options for Sector search filters
@@ -857,6 +800,7 @@ class S3OrganisationModel(S3Model):
         od = OrderedDict()
         for opt in opts:
             od[opt.id] = current.T(opt.name)
+        od[None] = current.messages["NONE"]
         return od
 
     # -------------------------------------------------------------------------
@@ -889,7 +833,7 @@ class S3OrganisationModel(S3Model):
         if row:
             return row.name
         elif not id:
-            return current.messages.NONE
+            return current.messages["NONE"]
 
         db = current.db
         table = db.org_subsector
@@ -929,7 +873,7 @@ class S3OrganisationModel(S3Model):
         if row:
             return row.name
         elif not id:
-            return current.messages.NONE
+            return current.messages["NONE"]
 
         db = current.db
         table = db.org_organisation_type
@@ -989,7 +933,7 @@ class S3OrganisationModel(S3Model):
             opts = [opt]
             vals = str(set.get(opt)["name"])
         else:
-            return current.messages.NONE
+            return current.messages["NONE"]
 
         if len(opts) > 1:
             vals = ", ".join(vals)
@@ -1003,7 +947,7 @@ class S3OrganisationModel(S3Model):
         """ Representation of donor record IDs """
 
         if not donor_ids:
-            return current.messages.NONE
+            return current.messages["NONE"]
 
         db = current.db
         table = db.org_organisation
@@ -1247,14 +1191,23 @@ class S3SiteModel(S3Model):
                                         label=T("Obsolete"),
                                         represent=lambda bool: \
                                           (bool and [T("Obsolete")] or
-                                           [current.messages.NONE])[0],
+                                           [current.messages["NONE"]])[0],
                                         default=False,
                                         readable=False,
                                         writable=False),
                                   *s3_ownerstamp())
 
         # ---------------------------------------------------------------------
-        org_site_label = current.deployment_settings.get_org_site_label()
+        settings = current.deployment_settings
+        org_site_label = settings.get_org_site_label()
+        if settings.get_org_site_autocomplete():
+            widget=S3SiteAutocompleteWidget(),
+            comment=DIV(_class="tooltip",
+                        _title="%s|%s" % (org_site_label,
+                                          T("Enter some characters to bring up a list of possible matches")))
+        else:
+            widget = None
+            comment = None
         site_id = self.super_link("site_id", "org_site",
                                   #writable = True,
                                   #readable = True,
@@ -1263,11 +1216,8 @@ class S3SiteModel(S3Model):
                                   represent=org_site_represent,
                                   orderby="org_site.name",
                                   sort=True,
-                                  # Comment these to use a Dropdown & not an Autocomplete
-                                  widget=S3SiteAutocompleteWidget(),
-                                  comment=DIV(_class="tooltip",
-                                              _title="%s|%s" % (org_site_label,
-                                                                T("Enter some characters to bring up a list of possible matches")))
+                                  widget=widget,
+                                  comment=comment
                                   )
 
         # Components
@@ -1308,15 +1258,18 @@ class S3SiteModel(S3Model):
                       org_site="site_id")
         add_component("req_commit",
                       org_site="site_id")
+        add_component("req_site_needs",
+                      org_site=dict(joinby="site_id",
+                                    multiple=False))
 
         self.configure(tablename,
                        onaccept=self.org_site_onaccept,
                        list_fields=["id",
-                                     "code",
-                                     "instance_type",
-                                     "name",
-                                     "organistion_id",
-                                     "location_id"]
+                                    "code",
+                                    "instance_type",
+                                    "name",
+                                    "organistion_id",
+                                    "location_id"]
                        )
 
         # ---------------------------------------------------------------------
@@ -1426,6 +1379,7 @@ class S3FacilityModel(S3Model):
 
     names = ["org_facility_type",
              "org_facility",
+             "org_facility_geojson",
              ]
 
     def model(self):
@@ -1438,7 +1392,7 @@ class S3FacilityModel(S3Model):
         define_table = self.define_table
         super_link = self.super_link
 
-        NONE = current.messages.NONE
+        NONE = current.messages["NONE"]
 
         # ---------------------------------------------------------------------
         # Facility Types (generic)
@@ -1538,7 +1492,7 @@ class S3FacilityModel(S3Model):
                              Field("obsolete", "boolean",
                                    label=T("Obsolete"),
                                    represent=lambda bool: \
-                                     (bool and [T("Obsolete")] or [current.messages.NONE])[0],
+                                     (bool and [T("Obsolete")] or [current.messages["NONE"]])[0],
                                    default=False,
                                    readable=False,
                                    writable=False),
@@ -1577,10 +1531,11 @@ class S3FacilityModel(S3Model):
         org_facility_search = [
             S3SearchSimpleWidget(
                 name="facility_search_advanced",
-                label=T("Name, Org and/or Code"),
-                comment=T("To search for a facility, enter any of the names or code of the facility, or the organisation name or acronym, separated by spaces. You may use % as wildcard. Press 'Search' without input to list all facilities."),
+                label=T("Name, Address, Organization and/or Code"),
+                comment=T("To search for a facility, enter the name, address or code of the facility, or the organisation name or acronym, separated by spaces. You may use % as wildcard. Press 'Search' without input to list all facilities."),
                 field=["name",
                        "code",
+                       "location_id$address",
                        "organisation_id$name",
                        "organisation_id$acronym"
                        ]
@@ -1590,6 +1545,13 @@ class S3FacilityModel(S3Model):
                 label=T("Type"),
                 field="facility_type_id",
                 options = get_facility_opts,
+                cols=2,
+            ),
+            S3SearchOptionsWidget(
+                name="facility_search_org",
+                label=T("Organization"),
+                field="organisation_id",
+                cols=3,
             ),
             #S3SearchOptionsWidget(
             #  name="facility_search_L1",
@@ -1625,8 +1587,8 @@ class S3FacilityModel(S3Model):
                          "location_id$L3",
                          "location_id$L4",
                          ]
-
-        if current.deployment_settings.has_module("req"):
+        settings = current.deployment_settings
+        if settings.has_module("req"):
             # Add Req virtual fields
             table.virtualfields.append(self.req_site_virtualfields(tablename))
             widget = S3SearchOptionsWidget(
@@ -1648,8 +1610,10 @@ class S3FacilityModel(S3Model):
                     search=org_facility_search,
                     rows=report_fields,
                     cols=report_fields,
-                    facts=report_fields,
-                    methods=["count", "list", "sum"],
+                    #facts=report_fields,
+                    #methods=["count", "list", "sum"],
+                    fact = [("id", "count", T("Number of facilities")),
+                            ("name", "list", T("List of facilities"))],
                     defaults=Storage(rows="location_id$L4",
                                      cols="facility_type_id",
                                      fact="name",
@@ -1661,6 +1625,7 @@ class S3FacilityModel(S3Model):
         # Pass variables back to global scope (s3db.*)
         #
         return Storage(
+                    org_facility_geojson = self.org_facility_geojson
                 )
 
     # -------------------------------------------------------------------------
@@ -1709,7 +1674,7 @@ class S3FacilityModel(S3Model):
         if row:
             return row.name
         elif not id:
-            return current.messages.NONE
+            return current.messages["NONE"]
 
         db = current.db
         table = db.org_facility_type
@@ -1726,40 +1691,135 @@ class S3FacilityModel(S3Model):
         """ Represent a facility type in list views """
 
         if not opt:
-            return current.messages.NONE
+            return current.messages["NONE"]
+
+        opts = opt if type(opt) is list else [opt]
+
+        table = current.s3db.org_facility_type
+        query = table.id.belongs(opts)
+        rows = current.db(query).select(table.id,
+                                        table.name,
+                                        cacheable=True,
+                                        limitby=(0, len(opts)))
+        vals = dict([(r.id, r.name) for r in rows])
+
+        UNKNOWN_OPT = current.messages.UNKNOWN_OPT
+        names = [vals[k] if k in vals else UNKNOWN_OPT for k in opts]
+        return ", ".join(names)
+
+    # -----------------------------------------------------------------------------
+    @staticmethod
+    def org_facility_geojson(jsonp=True,
+                             decimals=4):
+        """
+            Produce a static GeoJSON[P] feed of Facility data
+            Designed to be run on a schedule to serve a high-volume website
+        """
+
+        from shapely.geometry import Point
+        from ..geojson import dumps
 
         db = current.db
-        table = db.org_facility_type
-        set = db(table.id > 0).select(table.id,
-                                      table.name).as_dict()
+        s3db = current.s3db
+        stable = s3db.org_facility
+        gtable = db.gis_location
+        ntable = s3db.req_site_needs
 
-        if isinstance(opt, (list, tuple)):
-            opts = opt
-            vals = [str(set.get(o)["name"]) for o in opts]
-            multiple = True
-        elif isinstance(opt, int):
-            opts = [opt]
-            vals = str(set.get(opt)["name"])
-            multiple = False
+        # Limit the number of decimal places
+        formatter = ".%sf" % decimals
+
+        # All Facilities
+        query = (stable.deleted != True) & \
+                (stable.obsolete != True) & \
+                (gtable.id == stable.location_id)
+        lquery = (ntable.deleted != True) & \
+                 (ntable.site_id == stable.site_id)
+        left = ntable.on(lquery)
+        facs = db(query).select(stable.id,
+                                stable.name,
+                                stable.facility_type_id,
+                                stable.opening_times,
+                                stable.phone1,
+                                stable.phone2,
+                                stable.email,
+                                stable.website,
+                                ntable.urgently_needed,
+                                ntable.needed,
+                                ntable.not_needed,
+                                gtable.addr_street,
+                                gtable.lat,
+                                gtable.lon,
+                                left=left,
+                                )
+        features = []
+        append = features.append
+        represent = stable.facility_type_id.represent
+        for f in facs:
+            g = f.gis_location
+            x = g.lon
+            y = g.lat
+            if x is None or y is None:
+                continue
+            x = float(format(x, formatter))
+            y = float(format(y, formatter))
+            shape = Point(x, y)
+            # Compact Encoding
+            geojson = dumps(shape, separators=(",", ":"))
+            o = f.org_facility
+            properties = {
+                    "id": o.id,
+                    "name": o.name,
+                    }
+            if o.facility_type_id:
+                properties.update(type=represent(o.facility_type_id))
+            if o.opening_times:
+                properties.update(open=o.opening_times)
+            if g.addr_street:
+                properties.update(addr=g.addr_street)
+            if o.phone1:
+                properties.update(ph1=o.phone1)
+            if o.phone2:
+                properties.update(ph2=o.phone2)
+            if o.email:
+                properties.update(email=o.email)
+            if o.website:
+                properties.update(web=o.website)
+            n = f.req_site_needs
+            if n:
+                if n.urgently_needed:
+                    properties.update(urgent=n.urgently_needed)
+                if n.needed:
+                    properties.update(need=n.needed)
+                if n.not_needed:
+                    properties.update(no=n.not_needed)
+            f = dict(
+                type = "Feature",
+                properties = properties,
+                geometry = json.loads(geojson)
+                )
+            append(f)
+        data = dict(
+                    type = "FeatureCollection",
+                    features = features
+                    )
+        output = json.dumps(data)
+        if jsonp:
+            filename = "facility.geojsonp"
+            output = "grid(%s)" % output
         else:
-            try:
-                opt = int(opt)
-            except:
-                return current.messages.UNKNOWN_OPT
-            else:
-                opts = [opt]
-                vals = str(set.get(opt)["name"])
-                multiple = False
-
-        if multiple:
-            if len(opts) > 1:
-                vals = ", ".join(vals)
-            else:
-                vals = len(vals) and vals[0] or ""
-        return vals
+            filename = "facility.geojson"
+        path = os.path.join(current.request.folder,
+                            "static", "cache",
+                            filename)
+        File = open(path, "w")
+        File.write(output)
+        File.close()
 
 # -----------------------------------------------------------------------------
 def org_facility_rheader(r, tabs=[]):
+    """
+        RHeader for facilities when doing a req_match
+    """
 
     T = current.T
     s3db = current.s3db
@@ -1887,7 +1947,7 @@ class S3RoomModel(S3Model):
         if row:
             return row.name
         elif not id:
-            return current.messages.NONE
+            return current.messages["NONE"]
 
         db = current.db
         table = db.org_room
@@ -1998,13 +2058,21 @@ class S3OfficeModel(S3Model):
                                             ),
                              self.gis_location_id(),
                              Field("phone1", label=T("Phone 1"),
-                                   requires=IS_NULL_OR(s3_phone_requires)),
+                                   requires=IS_NULL_OR(s3_phone_requires),
+                                   represent = lambda v: v or "",
+                                   ),
                              Field("phone2", label=T("Phone 2"),
-                                   requires=IS_NULL_OR(s3_phone_requires)),
+                                   requires=IS_NULL_OR(s3_phone_requires),
+                                   represent = lambda v: v or "",
+                                   ),
                              Field("email", label=T("Email"),
-                                   requires=IS_NULL_OR(IS_EMAIL())),
+                                   requires=IS_NULL_OR(IS_EMAIL()),
+                                   represent = lambda v: v or "",
+                                   ),
                              Field("fax", label=T("Fax"),
-                                   requires=IS_NULL_OR(s3_phone_requires)),
+                                   requires=IS_NULL_OR(s3_phone_requires),
+                                   represent = lambda v: v or "",
+                                   ),
                              # @ToDo: Move to Fixed Assets
                              #Field("number_of_vehicles", "integer",
                              #      label = T("# of Vehicles"),
@@ -2014,7 +2082,7 @@ class S3OfficeModel(S3Model):
                              Field("obsolete", "boolean",
                                    label=T("Obsolete"),
                                    represent=lambda bool: \
-                                    (bool and [T("Obsolete")] or [messages.NONE])[0],
+                                    (bool and [T("Obsolete")] or [messages["NONE"]])[0],
                                    default=False,
                                    readable=False,
                                    writable=False),
@@ -2139,7 +2207,7 @@ class S3OfficeModel(S3Model):
         if row:
             return row.name
         elif not id:
-            return current.messages.NONE
+            return current.messages["NONE"]
 
         db = current.db
         table = db.org_office_type
@@ -2158,7 +2226,7 @@ class S3OfficeModel(S3Model):
         if row:
             return row.name
         elif not id:
-            return current.messages.NONE
+            return current.messages["NONE"]
 
         db = current.db
         table = db.org_office
@@ -2455,7 +2523,7 @@ def org_organisation_represent(id, row=None, show_link=False,
                                         table.acronym,
                                         limitby=(0, 1)).first()
     else:
-        return current.messages.NONE
+        return current.messages["NONE"]
 
     try:
         represent = row.name
@@ -2501,10 +2569,14 @@ def org_site_represent(id, row=None, show_link=True):
         db = current.db
         s3db = current.s3db
         stable = s3db.org_site
-        row = db(stable._id == id).select(stable.instance_type,
-                                          limitby=(0, 1)).first()
+        try:
+            row = db(stable._id == id).select(stable.instance_type,
+                                              limitby=(0, 1)).first()
+        except:
+            # Bad data (e.g. list:reference)
+            return current.messages.UNKNOWN_OPT
     else:
-        return current.messages.NONE
+        return current.messages["NONE"]
 
     instance_type = row.instance_type
     instance_type_nice = stable.instance_type.represent(instance_type)
@@ -2590,6 +2662,8 @@ def org_rheader(r, tabs=[]):
                     (T("User Roles"), "roles"),
                     #(T("Tasks"), "task"),
                    ]
+            if settings.has_module("asset"):
+                tabs.insert(6,(T("Assets"), "asset"))
         rheader_tabs = s3_rheader_tabs(r, tabs)
 
         if table.multi_sector_id.readable and record.multi_sector_id:
@@ -2632,6 +2706,10 @@ def org_rheader(r, tabs=[]):
                ]
         if current.auth.s3_has_permission("create", "hrm_human_resource"):
             tabs.append((T("Assign %(staff)s") % dict(staff=STAFF), "human_resource_site"))
+        if settings.get_req_summary():
+            tabs.append((T("Needs"), "site_needs"))
+        if settings.has_module("asset"):
+            tabs.append((T("Assets"), "asset"))
         if settings.has_module("inv"):
             tabs = tabs + s3db.inv_tabs(r)
         if settings.has_module("req"):
@@ -2865,7 +2943,7 @@ def org_organisation_controller():
                         if row:
                             widget = row[field]
                         else:
-                            widget = current.messages.NONE
+                            widget = current.messages["NONE"]
                         field_id = "%s_%s" % (table._tablename, field.name)
                         label = field.label
                         label = LABEL(label, _for=field_id,
@@ -3017,7 +3095,7 @@ def org_office_controller():
                         if row:
                             widget = row[field]
                         else:
-                            widget = current.messages.NONE
+                            widget = current.messages["NONE"]
                         field_id = "%s_%s" % (table._tablename, field.name)
                         label = field.label
                         label = LABEL(label, _for=field_id,

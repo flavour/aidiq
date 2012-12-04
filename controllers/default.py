@@ -75,8 +75,11 @@ def index():
             if page in custom.__dict__:
                 exec ("output = custom.%s()()" % page)
                 return output
-            else:
+            elif page != "login":
                 raise(HTTP(404, "Function not found: %s()" % page))
+            else:
+                output = custom.index()()
+                return output
     elif settings.get_template() != "default":
         # Try a Custom Homepage
         controller = "applications.%s.private.templates.%s.controllers" % \
@@ -493,11 +496,22 @@ def user():
     #    response.title = T("Login")
     #    response.view = "auth/login.html"
 
+    if settings.get_template() != "default":
+        # Try a Custom View
+        view = os.path.join(request.folder, "private", "templates",
+                            settings.get_template(), "views", "user.html")
+        if os.path.exists(view):
+            try:
+                # Pass view as file not str to work in compiled mode
+                response.view = open(view, "rb")
+            except IOError:
+                from gluon.http import HTTP
+                raise HTTP("404", "Unable to open Custom View: %s" % view)
+
     return dict(form=form,
                 login_form=login_form,
                 register_form=register_form,
                 self_registration=self_registration)
-
 
 # -----------------------------------------------------------------------------
 def person():
@@ -869,19 +883,34 @@ def contact():
 
         output = s3_rest_controller(prefix, resourcename)
         return output
-    elif settings.get_template() != "default":
-        # Try a Custom View
-        view = os.path.join(request.folder, "private", "templates",
-                            settings.get_template(), "views", "contact.html")
-        if os.path.exists(view):
-            try:
-                # Pass view as file not str to work in compiled mode
-                response.view = open(view, "rb")
-            except IOError:
-                from gluon.http import HTTP
-                raise HTTP("404", "Unable to open Custom View: %s" % view)
 
-    response.title = T("Contact us")
+    else:
+        template = settings.get_template()
+        if template != "default":
+            # Try a Custom Page
+            controller = "applications.%s.private.templates.%s.controllers" % \
+                                (appname, template)
+            try:
+                exec("import %s as custom" % controller) in globals(), locals()
+            except ImportError, e:
+                # No Custom Page available, try a custom view
+                pass
+            else:
+                if "contact" in custom.__dict__:
+                    output = custom.contact()()
+                    return output
+
+            view = os.path.join(request.folder, "private", "templates",
+                                template, "views", "contact.html")
+            if os.path.exists(view):
+                try:
+                    # Pass view as file not str to work in compiled mode
+                    response.view = open(view, "rb")
+                except IOError:
+                    from gluon.http import HTTP
+                    raise HTTP("404", "Unable to open Custom View: %s" % view)
+
+                response.title = T("Contact us")
     return dict()
 
 # END =========================================================================

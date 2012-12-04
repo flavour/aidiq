@@ -58,10 +58,10 @@ from gluon.utils import web2py_uuid
 
 from gluon.contrib.simplejson.ordered_dict import OrderedDict
 
+from s3error import S3PermissionError
 from s3fields import s3_uid, s3_timestamp, s3_deletion_status, s3_comments
 from s3rest import S3Method
 from s3utils import s3_mark_required
-from s3error import S3PermissionError
 
 DEFAULT = lambda: None
 table_field = re.compile("[\w_]+\.[\w_]+")
@@ -196,6 +196,7 @@ Thank you
         self.messages.help_mobile_phone = "Entering a phone number is optional, but doing so allows you to subscribe to receive SMS messages."
         self.messages.help_organisation = "Entering an Organization is optional, but doing so directs you to the appropriate approver & means you automatically get the appropriate permissions."
         self.messages.help_image = "You can either use %(gravatar)s or else upload a picture here. The picture will be resized to 50x50."
+        self.messages.label_remember_me = "Remember Me"
         #self.messages.logged_in = "Signed In"
         #self.messages.submit_button = "Signed In"
         #self.messages.logged_out = "Signed Out"
@@ -317,7 +318,7 @@ Thank you
                                           readable=False,
                                           label=messages.label_password))
 
-            utable = define_table(uname, 
+            utable = define_table(uname,
                                   migrate = migrate,
                                   fake_migrate=fake_migrate,
                                   *utable_fields)
@@ -705,15 +706,15 @@ Thank you
         self.user = user
         self.s3_set_roles()
 
+        # Set a Cookie to present user with login box by default
+        self.set_cookie()
+
         # Read their language from the Profile
         language = user.language
         current.T.force(language)
         session.s3.language = language
 
         session.confirmation = self.messages.logged_in
-
-        # Set a Cookie to present user with login box by default
-        self.set_cookie()
 
         # Update the timestamp of the User so we know when they last logged-in
         utable = settings.table_user
@@ -921,6 +922,9 @@ Thank you
                         form.vars.language = T.accepted_language
                     user = Storage(utable._filter_fields(form.vars, id=True))
                     self.login_user(user)
+
+            # Set a Cookie to present user with login box by default
+            self.set_cookie()
 
             if log:
                 self.log_event(log % form.vars)
@@ -1148,6 +1152,7 @@ Thank you
             Configure User Fields - for registration & user administration
         """
 
+        request = current.request
         messages = self.messages
         cmessages = current.messages
         settings = self.settings
@@ -1204,61 +1209,76 @@ Thank you
         except:
             pass
 
-        if deployment_settings.get_auth_registration_requests_organisation():
+        req_org = deployment_settings.get_auth_registration_requests_organisation()
+        if req_org:
             organisation_id = utable.organisation_id
             organisation_id.writable = True
             organisation_id.readable = True
             from s3validators import IS_ONE_OF
             organisation_id.requires = IS_ONE_OF(db, "org_organisation.id",
-                                                s3db.org_organisation_represent,
-                                                orderby="org_organisation.name",
-                                                sort=True)
+                                                 s3db.org_organisation_represent,
+                                                 orderby="org_organisation.name",
+                                                 sort=True)
             organisation_id.represent = s3db.org_organisation_represent
             organisation_id.default = deployment_settings.get_auth_registration_organisation_id_default()
             #from s3widgets import S3OrganisationAutocompleteWidget
             #organisation_id.widget = S3OrganisationAutocompleteWidget()
             # no permissions for autocomplete on registration page
-            organisation_id.comment = DIV(_class="tooltip",
-                                          _title="%s|%s" % (T("Organization"),
-                                                            T("Enter some characters to bring up a list of possible matches")))
+            #organisation_id.comment = DIV(_class="tooltip",
+            #                              _title="%s|%s" % (T("Organization"),
+            #                                                T("Enter some characters to bring up a list of possible matches")))
 
             if not deployment_settings.get_auth_registration_organisation_required():
                 organisation_id.requires = IS_NULL_OR(organisation_id.requires)
 
         if deployment_settings.get_auth_registration_requests_site():
-            site_id = utable.site_id
-            site_id.writable = True
-            site_id.readable = True
-            from s3validators import IS_ONE_OF
-            site_id.requires = IS_ONE_OF( db, "org_site.site_id",
-                                          s3db.org_site_represent,
-                                          orderby="org_site.name",
-                                          sort=True )
-            site_id.represent = s3db.org_site_represent
-            site_id.default = deployment_settings.get_auth_registration_organisation_id_default()
-            #from s3widgets import S3SiteAutocompleteWidget
-            #site_id.widget = S3SiteAutocompleteWidget()
-            # no permissions for autocomplete on registration page
-            site_id.comment = (DIV(_class="tooltip",
-                                   _title="%s|%s" % (deployment_settings.get_org_site_label(),
-                                                     T("Enter some characters to bring up a list of possible matches"))),
-                               SCRIPT(
+            site_id = request.get_vars.get("site_id", None)
+            if site_id:
+                field = utable.site_id
+                field.default = site_id
+                field.readable = True
+                field.represent = lambda v: s3db.org_site_represent(site_id)
+            else:
+                site_id = utable.site_id
+                site_id.writable = True
+                site_id.readable = True
+                if req_org:
+                    from s3validators import IS_ONE_OF_EMPTY_SELECT
+                    site_id.requires = IS_ONE_OF_EMPTY_SELECT(db, "org_site.site_id",
+                                                              s3db.org_site_represent,
+                                                              orderby="org_site.name",
+                                                              sort=True)
+                else:
+                    from s3validators import IS_ONE_OF
+                    site_id.requires = IS_ONE_OF(db, "org_site.site_id",
+                                                 s3db.org_site_represent,
+                                                 orderby="org_site.name",
+                                                 sort=True)
+                site_id.represent = s3db.org_site_represent
+                #site_id.default = deployment_settings.get_auth_registration_site_id_default()
+                #from s3widgets import S3SiteAutocompleteWidget
+                #site_id.widget = S3SiteAutocompleteWidget()
+                # no permissions for autocomplete on registration page
+                site_id.comment = DIV(_class="tooltip",
+                                      _title="%s|%s" % (T("Facility"),
+                                                        T("Select the default site.")))
+                current.response.s3.jquery_ready.append(
 '''S3FilterFieldChange({
  'FilterField':'organisation_id',
  'Field':'site_id',
  'FieldResource':'site',
  'url':S3.Ap.concat('/org/sites_for_org/')
 })''')
-                               )
+                if not deployment_settings.get_auth_registration_site_required():
+                    site_id.requires = IS_NULL_OR(site_id.requires)
 
-            if not deployment_settings.get_auth_registration_site_required():
-                site_id.requires = IS_NULL_OR(site_id.requires)
-
+        if "profile" in request.args:
+            return
         link_user_to_opts = deployment_settings.get_auth_registration_link_user_to()
         if link_user_to_opts:
             link_user_to = utable.link_user_to
             link_user_to_default = []
-            vars = current.request.vars
+            vars = request.vars
             for type in ["staff", "volunteer", "member"]:
                 if "link_user_to_%s" % type in vars:
                     link_user_to_default.append(type)
@@ -1272,7 +1292,7 @@ Thank you
                                                   multiple = True
                                                   )
                 link_user_to.represent = lambda ids: \
-                    ids and ", ".join([str(link_user_to_opts[id]) for id in ids]) or cmessages.NONE
+                    ids and ", ".join([str(link_user_to_opts[id]) for id in ids]) or cmessages["NONE"]
                 link_user_to.widget = SQLFORM.widgets.checkboxes.widget
                 link_user_to.comment = DIV(_class="tooltip",
                                            _title="%s|%s" % (link_user_to.label,
@@ -1420,11 +1440,11 @@ Thank you
             message = self.messages.approve_user % \
                         dict(first_name = user.first_name,
                              last_name = user.last_name,
-                             email = user.email)
+                             email = user.email,
+                             id = user.id)
         else:
             approved = True
             self.s3_approve_user(user)
-            self.s3_send_welcome_email(user)
             session = current.session
             session.confirmation = self.messages.email_verified
             session.flash = self.messages.registration_successful
@@ -1523,6 +1543,9 @@ Thank you
 
         # Allow them to login
         db(utable.id == user_id).update(registration_key = "")
+
+        # Send Welcome mail
+        self.s3_send_welcome_email(user)
 
         return
 
@@ -1934,7 +1957,8 @@ Thank you
         htablename = "hrm_human_resource"
         htable = s3db.table(htablename)
 
-        if not htable or not organisation_id:
+        if not htable or (not organisation_id and \
+                          current.deployment_settings.get_hrm_org_required()):
             return None
 
         # Update existing HR record for this user
@@ -2252,8 +2276,11 @@ Thank you
         session = current.session
         settings = current.deployment_settings
 
-        if "permissions" in current.response.s3:
-            del current.response.s3["permissions"]
+        s3 = current.response.s3
+        if "permissions" in s3:
+            del s3["permissions"]
+        if "restricted_tables" in s3:
+            del s3["restricted_tables"]
 
         system_roles = self.get_system_roles()
         ANONYMOUS = system_roles.ANONYMOUS
@@ -2285,7 +2312,8 @@ Thank you
             query = (mtable.deleted != True) & \
                     (mtable.user_id == user_id) & \
                     (mtable.group_id != None)
-            rows = db(query).select(mtable.group_id, mtable.pe_id)
+            rows = db(query).select(mtable.group_id, mtable.pe_id,
+                                    cacheable=True)
 
             # Add all group_ids to session.s3.roles
             session.s3.roles.extend(list(set([row.group_id for row in rows])))
@@ -2366,7 +2394,8 @@ Thank you
                                 (rtable.id == dtable.role_id)
                         rows = db(query).select(rtable.pe_id,
                                                 dtable.group_id,
-                                                atable.pe_id)
+                                                atable.pe_id,
+                                                cacheable=True)
 
                         extensions = []
                         partners = []
@@ -4261,8 +4290,11 @@ class S3Permission(object):
             # ACLs not relevant to this security policy
             return None
 
-        if "permissions" in current.response.s3:
-            del current.response.s3["permissions"]
+        s3 = current.response.s3
+        if "permissions" in s3:
+            del s3["permissions"]
+        if "restricted_tables" in s3:
+            del s3["restricted_tables"]
 
         if c is None and f is None and t is None:
             return None
@@ -5243,14 +5275,13 @@ class S3Permission(object):
                 q = q | tq
             else:
                 q = tq
-            any_acl = db((table.deleted != True) & tq).select(limitby=(0, 1))
-            table_restricted = len(any_acl) > 0
+            table_restricted = self.table_restricted(t)
 
         # Retrieve the ACLs
         if q:
             query &= q
             query &= (table.group_id == gtable.id)
-            rows = db(query).select(gtable.id, table.ALL)
+            rows = db(query).select(gtable.id, table.ALL, cacheable=True)
         else:
             rows = []
 
@@ -5468,6 +5499,28 @@ class S3Permission(object):
              c in modules and not modules[c].restricted:
             return False
         return True
+
+    # -------------------------------------------------------------------------
+    def table_restricted(self, t=None):
+        """
+            Check whether access to a table is restricted
+
+            @param t: the table name or Table
+        """
+
+        s3 = current.response.s3
+
+        if not "restricted_tables" in s3:
+
+            table = self.table
+            query = (table.deleted != True) & \
+                    (table.controller == None) & \
+                    (table.function == None)
+            rows = current.db(query).select(table.tablename,
+                                            groupby=table.tablename)
+            s3.restricted_tables = [row.tablename for row in rows]
+
+        return str(t) in s3.restricted_tables
 
     # -------------------------------------------------------------------------
     def hidden_modules(self):

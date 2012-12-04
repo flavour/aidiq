@@ -261,7 +261,7 @@ class S3CampDataModel(S3Model):
                              Field("obsolete", "boolean",
                                    label = T("Obsolete"),
                                    represent = lambda bool: \
-                                     (bool and [T("Obsolete")] or [messages.NONE])[0],
+                                     (bool and [T("Obsolete")] or [messages["NONE"]])[0],
                                    default = False,
                                    readable = False,
                                    writable = False),
@@ -402,7 +402,7 @@ class S3CampDataModel(S3Model):
                         ],
                         rows=report_fields,
                         cols=report_fields,
-                        facts=report_fields,
+                        fact=report_fields,
                         methods=["count", "list", "sum"],
                         defaults=Storage(rows="location_id$L2",
                                          cols="status",
@@ -446,7 +446,7 @@ class S3CampDataModel(S3Model):
         self.add_component("cr_shelter_status",
                            cr_shelter=dict(joinby="shelter_id",
                                            name="status"))
-        
+
         # -------------------------------------------------------------------------
         # Shelter statuses
         # - a historical record of shelter status: opening/closing dates & populations
@@ -555,7 +555,7 @@ class S3CampDataModel(S3Model):
         if row:
             return row.name
         elif not id:
-            return current.messages.NONE
+            return current.messages["NONE"]
 
         db = current.db
         table = db.cr_shelter
@@ -600,7 +600,7 @@ class S3CampDataModel(S3Model):
         if row:
             return row.name
         elif not id:
-            return current.messages.NONE
+            return current.messages["NONE"]
 
         db = current.db
         table = db.cr_shelter_type
@@ -637,7 +637,7 @@ class S3CampDataModel(S3Model):
         if row:
             return row.name
         elif not id:
-            return current.messages.NONE
+            return current.messages["NONE"]
 
         db = current.db
         table = db.cr_shelter_service
@@ -654,7 +654,7 @@ class S3CampDataModel(S3Model):
         """
         """
         if not shelter_service_ids:
-            return current.messages.NONE
+            return current.messages["NONE"]
 
         db = current.db
         table = db.cr_shelter_service
