@@ -34,6 +34,8 @@ settings.L10n.display_toolbar = False
 settings.L10n.decimal_separator = "."
 # Thousands separator for numbers (defaults to space)
 settings.L10n.thousands_separator = ","
+
+# Formstyle
 def formstyle_row(id, label, widget, comment, hidden=False):
     if hidden:
         hide = "hide"
@@ -67,7 +69,6 @@ def form_style(self, xfields):
     return form
 settings.ui.formstyle_row = formstyle_row
 settings.ui.formstyle = formstyle_row
-
 
 # Uncomment this to request the Organisation when a user registers
 settings.auth.registration_requests_organisation = True
