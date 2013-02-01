@@ -16,7 +16,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2011-12 (c) Sahana Software Foundation
+    @copyright: 2011-13 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -252,10 +252,10 @@ class S3Task(object):
             # Run the task synchronously
             _args = []
             for arg in args:
-                if isinstance(arg, (int, long)):
+                if isinstance(arg, (int, long, float)):
                     _args.append(str(arg))
                 elif isinstance(arg, str):
-                    _args.append("'%s'" % str(arg))
+                    _args.append("%s" % str(json.dumps(arg)))
                 else:
                     raise HTTP(501, "Unhandled arg type")
             args = " ,".join(_args)

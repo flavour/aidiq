@@ -1407,9 +1407,7 @@ class S3QuestionTypeAbstractWidget(FormWidget):
             The basic details will be written to Cell objects that can be
             added to a row in a table object.
         """
-        from PyRTF import Paragraph, \
-                          Cell, \
-                          B
+        from PyRTF import Paragraph, Cell, B
         line = []
         p = Paragraph(ss.ParagraphStyles.Normal)
         p.append(B(str(self.fullName())))
@@ -1510,9 +1508,7 @@ class S3QuestionTypeTextWidget(S3QuestionTypeAbstractWidget):
             The basic details will be written to Cell objects that can be
             added to a row in a table object.
         """
-        from PyRTF import Paragraph, \
-                          Cell, \
-                          B
+        from PyRTF import Paragraph, Cell, B
         line = []
         p = Paragraph(ss.ParagraphStyles.Normal)
         p.append(B(str(self.fullName())))
@@ -2854,9 +2850,9 @@ class S3AnalysisPriority():
         if key == -1:
             return ""
         elif key == 0:
-            return T("At or below %s" % (pBand[1]))
+            return T("At or below %s") % (pBand[1])
         elif key == len(pBand)-1:
-            return T("Above %s" % (pBand[len(pBand)-1]))
+            return T("Above %s") % (pBand[len(pBand)-1])
         else:
             return "%s - %s" % (pBand[key], pBand[key+1])
 

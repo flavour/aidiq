@@ -2,7 +2,7 @@
 
 """ Sahana Eden Situation Model
 
-    @copyright: 2009-2012 (c) Sahana Software Foundation
+    @copyright: 2009-2013 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -111,7 +111,7 @@ class S3SituationModel(S3Model):
                             sit_trackable=self.super_key(sit_trackable))
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (s3db.*)
+        # Pass names back to global scope (s3.*)
         #
         return Storage()
 

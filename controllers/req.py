@@ -219,17 +219,6 @@ def req_template():
 def req_controller():
     """ REST Controller """
 
-    # Set the req_item site_id (Requested From), called from action buttons on req/req_item_inv_item/x page
-    if "req_item_id" in request.vars and "inv_item_id" in request.vars:
-        inv_item = s3db.inv_inv_item[request.vars.inv_item_id]
-        site_id = inv_item.site_id
-        item_id = inv_item.item_id
-        s3db.req_req_item[request.vars.req_item_id] = dict(site_id = site_id)
-        response.confirmation = T("%(item)s requested from %(site)s" % \
-            {"item":s3db.supply_item_represent(item_id, show_link=False),
-             "site":s3db.org_site_represent(site_id, show_link=False)
-             })
-
     def prep(r):
 
         table = r.table
@@ -248,15 +237,35 @@ def req_controller():
         #    s3db.configure("req_req", list_fields=list_fields)
 
         type = (r.record and r.record.type) or \
-               (request.vars and request.vars.type)
+               (request.vars.type and int(request.vars.type))
 
         if r.interactive:
+            # Set the req_item site_id (Requested From), called from action buttons on req/req_item_inv_item/x page
+            if "req_item_id" in request.vars and "inv_item_id" in request.vars:
+                iitable = s3db.inv_inv_item
+                inv_item = db(iitable.id == request.vars.inv_item_id).select(iitable.site_id,
+                                                                             iitable.item_id,
+                                                                             limitby=(0, 1)
+                                                                             ).first()
+                site_id = inv_item.site_id
+                item_id = inv_item.item_id
+                db(s3db.req_req_item.id == request.vars.req_item_id).update(site_id = site_id)
+                response.confirmation = T("%(item)s requested from %(site)s") % \
+                    {"item": s3db.supply_item_represent(item_id, show_link=False),
+                     "site": s3db.org_site_represent(site_id, show_link=False)
+                     }
+            elif "req.site_id" in r.get_vars:
+                # Called from 'Make new request' button on [siteinstance]/req page
+                table.site_id.default = request.get_vars.get("req.site_id")
+                table.site_id.writable = False
+                if r.http == "POST":
+                    del r.get_vars["req.site_id"]
+
             table.requester_id.represent = requester_represent
 
             # Set Fields and Labels depending on type
             if type:
-                type = int(type)
-                table.type.default = int(type)
+                table.type.default = type
 
                 # This prevents the type from being edited AFTER it is set
                 table.type.readable = table.type.writable = False
@@ -264,6 +273,10 @@ def req_controller():
                 crud_strings = settings.get_req_req_crud_strings(type)
                 if crud_strings:
                     s3.crud_strings["req_req"] = crud_strings
+                elif type == 1:
+                    s3.crud_strings["req_req"].title_create = T("Make Supplies Request")
+                elif type == 3:
+                    s3.crud_strings["req_req"].title_create = T("Make People Request")
 
                 # Filter the query based on type
                 if s3.filter:
@@ -338,26 +351,31 @@ def req_controller():
                     # - list_fields over-rides, so still visible within list itself
                     s3.req_create_form_mods()
 
-                    # Inline Forms
-                    s3.req_inline_form(type, method)
+                    if type and settings.get_req_inline_forms():
+                        # Inline Forms
+                        s3.req_inline_form(type, method)
 
                     # Get the default Facility for this user
-                    # @ToDo: Use site_id in User Profile (like current organisation_id)
-                    if settings.has_module("hrm"):
-                        hrtable = s3db.hrm_human_resource
-                        query = (hrtable.person_id == s3_logged_in_person())
-                        site = db(query).select(hrtable.site_id,
-                                                limitby=(0, 1)).first()
-                        if site:
-                            r.table.site_id.default = site.site_id
+                    #if settings.has_module("hrm"):
+                    #    hrtable = s3db.hrm_human_resource
+                    #    query = (hrtable.person_id == s3_logged_in_person())
+                    #    site = db(query).select(hrtable.site_id,
+                    #                            limitby=(0, 1)).first()
+                    #    if site:
+                    #        r.table.site_id.default = site.site_id
+                    # Use site_id in User Profile
+                    if auth.is_logged_in():
+                        if not table.site_id.default:
+                            table.site_id.default = auth.user.site_id
 
                 elif method == "map":
                     # Tell the client to request per-feature markers
                     s3db.configure("req_req", marker_fn=marker_fn)
 
                 elif method == "update":
-                    # Inline Forms
-                    s3.req_inline_form(type, method)
+                    if settings.get_req_inline_forms():
+                        # Inline Forms
+                        s3.req_inline_form(type, method)
                     s3.scripts.append("/%s/static/scripts/S3/s3.req_update.js" % appname)
 
         elif r.representation == "plain":
@@ -496,7 +514,7 @@ S3OptionsFilter({
     # Post-process
     def postp(r, output):
 
-        if r.interactive:
+        if r.interactive and r.method != "import":
             if not r.component:
                 s3_action_buttons(r)
                 #s3_action_buttons(r, copyable=True)
@@ -546,6 +564,15 @@ S3OptionsFilter({
                 #         restrict = restrict
                 #        )
                 #    )
+                s3.actions.append(
+                        dict(url = URL(c="req", f="req",
+                                       args=["[id]", "commit_all", "send"]),
+                             _class = "action-btn send-btn",
+                             label = str(T("Send"))
+                            )
+                        )
+                s3.jquery_ready.append(
+'''S3ConfirmClick('.send-btn','%s')''' % T("Are you sure you want to commit to this request and send a shipment?"))
             else:
                 s3_action_buttons(r)
                 if r.component.name == "req_item" and settings.get_req_prompt_match():
@@ -653,66 +680,70 @@ def req_item():
         @ToDo: Filter out fulfilled Items?
     """
 
-    # Filter out Template Items
-    table = s3db.req_req_item
-    rtable = s3db.req_req
-    s3.filter = (rtable.is_template == False) & \
-                (rtable.id == table.req_id)
+    if not s3.filter:
+        # Filter out Template Items
+        ritable = s3db.req_req_item
+        rtable = db.req_req
+        s3.filter = (rtable.is_template == False) & \
+                    (rtable.id == ritable.req_id)
 
     # Search method
-    S3SearchOptionsWidget = s3base.S3SearchOptionsWidget
-    req_item_search = (
-        S3SearchOptionsWidget(
-            name="req_search_fulfil_status",
-            label=T("Status"),
-            field="req_id$fulfil_status",
-            options = s3.req_status_opts,
-            cols = 3,
-        ),
-        S3SearchOptionsWidget(
-            name="req_search_priority",
-            label=T("Priority"),
-            field="req_id$priority",
-            options = s3.req_priority_opts,
-            cols = 3,
-        ),
-        #S3SearchOptionsWidget(
-        #  name="req_search_L1",
-        #  field="req_id$site_id$location_id$L1",
-        #  location_level="L1",
-        #  cols = 3,
-        #),
-        #S3SearchOptionsWidget(
-        #  name="req_search_L2",
-        #  field="req_id$site_id$location_id$L2",
-        #  location_level="L2",
-        #  cols = 3,
-        #),
-        S3SearchOptionsWidget(
-            name="req_search_L3",
-            field="req_id$site_id$location_id$L3",
-            location_level="L3",
-            cols = 3,
-        ),
-        S3SearchOptionsWidget(
-            name="req_search_L4",
-            field="req_id$site_id$location_id$L4",
-            location_level="L4",
-            cols = 3,
-        ),
-    )
-    s3db.configure("req_req_item",
-                   search_method = s3base.S3Search(advanced=req_item_search),
-                   )
+    search_method = s3db.get_config("req_req_item", "search_method")
+    if not search_method:
+        S3SearchOptionsWidget = s3base.S3SearchOptionsWidget
+        req_item_search = (
+            S3SearchOptionsWidget(
+                name="req_search_fulfil_status",
+                label=T("Status"),
+                field="req_id$fulfil_status",
+                options = s3.req_status_opts,
+                cols = 3,
+            ),
+            S3SearchOptionsWidget(
+                name="req_search_priority",
+                label=T("Priority"),
+                field="req_id$priority",
+                options = s3.req_priority_opts,
+                cols = 3,
+            ),
+            #S3SearchOptionsWidget(
+            #  name="req_search_L1",
+            #  field="req_id$site_id$location_id$L1",
+            #  location_level="L1",
+            #  cols = 3,
+            #),
+            #S3SearchOptionsWidget(
+            #  name="req_search_L2",
+            #  field="req_id$site_id$location_id$L2",
+            #  location_level="L2",
+            #  cols = 3,
+            #),
+            S3SearchOptionsWidget(
+                name="req_search_L3",
+                field="req_id$site_id$location_id$L3",
+                location_level="L3",
+                cols = 3,
+            ),
+            S3SearchOptionsWidget(
+                name="req_search_L4",
+                field="req_id$site_id$location_id$L4",
+                location_level="L4",
+                cols = 3,
+            ),
+        )
+        s3db.configure("req_req_item",
+                       search_method = s3base.S3Search(advanced=req_item_search),
+                       )
 
     def prep(r):
         if r.interactive:
+
             list_fields = s3db.get_config("req_req_item", "list_fields")
             list_fields.insert(1, "req_id$site_id")
             list_fields.insert(1, "req_id$site_id$location_id$L4")
             list_fields.insert(1, "req_id$site_id$location_id$L3")
             s3db.configure("req_req_item",
-                           insertable=False,
+                           insertable = False,
                            list_fields = list_fields,
                            )
 
@@ -726,7 +757,7 @@ def req_item():
         return True
     s3.prep = prep
 
-    output = s3_rest_controller()
+    output = s3_rest_controller("req", "req_item")
 
     if settings.get_req_prompt_match():
         req_item_inv_item_btn = dict(url = URL(c="req", f="req_item_inv_item",
@@ -1204,19 +1235,19 @@ def commit_rheader(r):
                                 )
             else:
                 # Other (& Assets/Shelter)
-                rheader = DIV( TABLE( TR( TH( "%s: " % table.req_id.label),
-                                          table.req_id.represent(record.req_id),
-                                         ),
-                                      TR( TH( "%s: " % T("Committing Person")),
-                                          s3db.pr_person_represent(record.committer_id),
-                                          TH( "%s: " % T("Commit Date")),
-                                          s3_date_represent(record.date),
-                                          ),
-                                      TR( TH( "%s: " % table.comments.label),
-                                          TD(record.comments or "", _colspan=3)
-                                          ),
-                                         ),
-                                        )
+                rheader = DIV(TABLE(TR(TH("%s: " % table.req_id.label),
+                                       table.req_id.represent(record.req_id),
+                                       ),
+                                    TR(TH("%s: " % T("Committing Person")),
+                                       table.committer_id.represent(record.committer_id),
+                                       TH("%s: " % T("Commit Date")),
+                                       s3_date_represent(record.date),
+                                       ),
+                                    TR(TH("%s: " % table.comments.label),
+                                       TD(record.comments or "", _colspan=3)
+                                       ),
+                                    ),
+                              )
 
             rheader_tabs = s3_rheader_tabs(r,
                                            tabs)
@@ -1257,17 +1288,18 @@ def commit_item():
 # =============================================================================
 def commit_req():
     """
-        function to commit items according to a request.
-        copy data from a req into a commitment
+        Function to commit items for a Request
+        - i.e. copy data from a req into a commitment
         arg: req_id
         vars: site_id
     """
 
     req_id = request.args[0]
+    site_id = request.vars.get("site_id")
+
     table = s3db.req_req
     r_req = db(table.id == req_id).select(table.type,
                                           limitby=(0, 1)).first()
-    site_id = request.vars.get("site_id")
 
     # User must have permissions over facility which is sending
     (prefix, resourcename, id) = s3db.get_instance(s3db.org_site, site_id)
@@ -1339,11 +1371,14 @@ def commit_req():
 # =============================================================================
 def send_req():
     """
-        function to send items according to a request.
-        copy data from a req into a send
+        Function to send items for a Request.
+        - i.e. copy data from a req into a send
         arg: req_id
         vars: site_id
     """
+
+    req_id = request.args[0]
+    site_id = request.vars.get("site_id", None)
 
     ritable = s3db.req_req_item
     iitable = s3db.inv_inv_item
@@ -1351,13 +1386,11 @@ def send_req():
     tracktable = s3db.inv_track_item
     siptable = s3db.supply_item_pack
 
-    req_id = request.args[0]
     table = s3db.req_req
     r_req = db(table.id == req_id).select(table.req_ref,
                                           table.requester_id,
                                           table.site_id,
                                           limitby=(0, 1)).first()
-    site_id = request.vars.get("site_id")
 
     # User must have permissions over facility which is sending
     (prefix, resourcename, id) = s3db.get_instance(db.org_site, site_id)
@@ -1385,66 +1418,139 @@ def send_req():
                                )
 
     # Get the items for this request that have not been fulfilled (in transit)
+    sip_id_field = siptable.id
+    sip_quantity_field = siptable.quantity
     query = (ritable.req_id == req_id) & \
             (ritable.quantity_transit < ritable.quantity) & \
-            (ritable.deleted == False)
+            (ritable.deleted == False) & \
+            (ritable.item_pack_id == sip_id_field)
     req_items = db(query).select(ritable.id,
                                  ritable.quantity,
                                  ritable.quantity_transit,
+                                 ritable.quantity_fulfil,
                                  ritable.item_id,
-                                 ritable.item_pack_id,
-                                )
+                                 sip_quantity_field
+                                 )
 
-    # loop through each request item and find matched in the site inventory
-    for req_i in req_items:
-        query = (iitable.item_id == req_i.item_id) & \
-                (iitable.quantity > 0) & \
-                (iitable.site_id == site_id) & \
-                (iitable.deleted == False)
-        inv_items = db(query).select(iitable.id,
-                                     iitable.item_id,
-                                     iitable.quantity,
-                                     iitable.item_pack_id,
-                                     iitable.pack_value,
-                                     iitable.currency,
-                                     iitable.expiry_date,
-                                     iitable.bin,
-                                     iitable.owner_org_id,
-                                     iitable.supply_org_id,
-                                    )
-        # if their is a single match then set up a tracktable record
-        # get the request pack_quantity
-        req_p_qnty = siptable[req_i.item_pack_id].quantity
-        req_qnty = req_i.quantity
-        req_qnty_in_t = req_i.quantity_transit
-        req_qnty_wanted = (req_qnty - req_qnty_in_t) * req_p_qnty
-        # insert the track item records
-        # if their is more than one item match then set the quantity to 0
-        # and add the quantity requested in the comments
-        for inv_i in inv_items:
-            # get inv_item.pack_quantity
-            if len(inv_items) == 1:
+    # Loop through each request item and find matched in the site inventory
+    IN_PROCESS = s3db.inv_tracking_status["IN_PROCESS"]
+    insert = tracktable.insert
+    inv_remove = s3db.inv_remove
+    ii_item_id_field = iitable.item_id
+    ii_quantity_field = iitable.quantity
+    ii_expiry_field = iitable.expiry_date
+    ii_purchase_field = iitable.purchase_date
+    iifields = [iitable.id,
+                ii_item_id_field,
+                ii_quantity_field,
+                iitable.item_pack_id,
+                iitable.pack_value,
+                iitable.currency,
+                ii_expiry_field,
+                ii_purchase_field,
+                iitable.bin,
+                iitable.owner_org_id,
+                iitable.supply_org_id,
+                sip_quantity_field,
+                ]
+    bquery = (ii_quantity_field > 0) & \
+             (iitable.site_id == site_id) & \
+             (iitable.deleted == False) & \
+             (iitable.item_pack_id == sip_id_field)
+    orderby = ii_expiry_field | ii_purchase_field
+    for ritem in req_items:
+        rim = ritem.req_req_item
+        rim_id = rim.id
+        query = bquery & \
+                (ii_item_id_field == rim.item_id)
+        inv_items = db(query).select(*iifields,
+                                     orderby=orderby)
+        one_match = len(inv_items) == 1
+        # Get the Quantity Needed
+        quantity_shipped = max(rim.quantity_transit, rim.quantity_fulfil)
+        quantity_needed = (rim.quantity - quantity_shipped) * ritem.supply_item_pack.quantity
+        # Insert the track item records
+        # If there is more than one item match then we select the stock with the oldest expiry date first
+        # then the oldest purchase date first
+        # then a complete batch, if-possible
+        iids = []
+        append = iids.append
+        for item in inv_items:
+            if not quantity_needed:
+                break
+            iitem = item.inv_inv_item
+            if one_match:
                 # Remove this total from the warehouse stock
-                send_item_quantity = s3db.inv_remove(inv_i, req_qnty_wanted)
+                send_item_quantity = inv_remove(iitem, quantity_needed)
+                quantity_needed -= send_item_quantity
+                append(iitem.id)
             else:
-                send_item_quantity = 0
-            comment = "%d items needed to match total request" % req_qnty_wanted
-            tracktable.insert(send_id = send_id,
-                              send_inv_item_id = inv_i.id,
-                              item_id = inv_i.item_id,
-                              req_item_id = req_i.id,
-                              item_pack_id = inv_i.item_pack_id,
-                              quantity = send_item_quantity,
-                              status = s3db.inv_tracking_status["IN_PROCESS"],
-                              pack_value = inv_i.pack_value,
-                              currency = inv_i.currency,
-                              bin = inv_i.bin,
-                              expiry_date = inv_i.expiry_date,
-                              owner_org_id = inv_i.owner_org_id,
-                              supply_org_id = inv_i.supply_org_id,
-                              comments = comment,
-                             )
-    # Redirect to commit
+                quantity_available = iitem.quantity * item.supply_item_pack.quantity
+                if iitem.expiry_date:
+                    # We take first from the oldest expiry date
+                    send_item_quantity = min(quantity_needed, quantity_available)
+                    # Remove this total from the warehouse stock
+                    send_item_quantity = inv_remove(iitem, send_item_quantity)
+                    quantity_needed -= send_item_quantity
+                    append(iitem.id)
+                elif iitem.purchase_date:
+                    # We take first from the oldest purchase date for non-expiring stock
+                    send_item_quantity = min(quantity_needed, quantity_available)
+                    # Remove this total from the warehouse stock
+                    send_item_quantity = inv_remove(iitem, send_item_quantity)
+                    quantity_needed -= send_item_quantity
+                    append(iitem.id)
+                elif quantity_needed <= quantity_available:
+                    # Assign a complete batch together if possible
+                    # Remove this total from the warehouse stock
+                    send_item_quantity = inv_remove(iitem, quantity_needed)
+                    quantity_needed = 0
+                    append(iitem.id)
+                else:
+                    # Try again on the second loop, if-necessary
+                    continue
+
+            insert(send_id = send_id,
+                   send_inv_item_id = iitem.id,
+                   item_id = iitem.item_id,
+                   req_item_id = rim_id,
+                   item_pack_id = iitem.item_pack_id,
+                   quantity = send_item_quantity,
+                   status = IN_PROCESS,
+                   pack_value = iitem.pack_value,
+                   currency = iitem.currency,
+                   bin = iitem.bin,
+                   expiry_date = iitem.expiry_date,
+                   owner_org_id = iitem.owner_org_id,
+                   supply_org_id = iitem.supply_org_id,
+                   #comments = comment,
+                   )
+        # 2nd pass
+        for item in inv_items:
+            if not quantity_needed:
+                break
+            iitem = item.inv_inv_item
+            if iitem.id in iids:
+                continue
+            # We have no way to know which stock we should take 1st so show all with quantity 0 & let the user decide
+            send_item_quantity = 0
+            insert(send_id = send_id,
+                   send_inv_item_id = iitem.id,
+                   item_id = iitem.item_id,
+                   req_item_id = rim_id,
+                   item_pack_id = iitem.item_pack_id,
+                   quantity = send_item_quantity,
+                   status = IN_PROCESS,
+                   pack_value = iitem.pack_value,
+                   currency = iitem.currency,
+                   bin = iitem.bin,
+                   expiry_date = iitem.expiry_date,
+                   owner_org_id = iitem.owner_org_id,
+                   supply_org_id = iitem.supply_org_id,
+                   #comments = comment,
+                   )
+
+    # Redirect to view the list of items in the Send
     redirect(URL(c = "inv",
                  f = "send",
                  args = [send_id, "track_item"]))
@@ -1474,5 +1580,54 @@ def commit_item_json():
 
     response.headers["Content-Type"] = "application/json"
     return json_str
+
+# =============================================================================
+def fema():
+    """
+        Custom Report to list all open requests for items that FEMA can supply
+
+        @ToDo: Filter to just Sites that FEMA support
+    """
+
+    ritable = s3db.req_req_item
+    rtable = db.req_req
+    itable = db.supply_item
+    ictable = db.supply_item_category
+    citable = db.supply_catalog_item
+    query = (ictable.name == "FEMA") & \
+            (citable.item_category_id == ictable.id) & \
+            (citable.item_id == itable.id) & \
+            (itable.deleted != True)
+    fema_items = db(query).select(itable.id)
+    fema_item_ids = [item.id for item in fema_items]
+
+    REQ_STATUS_COMPLETE = 2
+    s3.filter = (rtable.deleted != True) & \
+                (rtable.is_template == False) & \
+                (rtable.commit_status != REQ_STATUS_COMPLETE) & \
+                (rtable.transit_status != REQ_STATUS_COMPLETE) & \
+                (rtable.fulfil_status != REQ_STATUS_COMPLETE) & \
+                (ritable.req_id == rtable.id) & \
+                (ritable.quantity > ritable.quantity_commit) & \
+                (ritable.quantity > ritable.quantity_transit) & \
+                (ritable.quantity > ritable.quantity_fulfil) & \
+                (ritable.deleted != True) & \
+                (ritable.item_id.belongs(fema_item_ids))
+
+    # Search method
+    req_item_search = [
+        s3base.S3SearchOptionsWidget(
+            name="req_search_site",
+            field="req_id$site_id",
+            label = T("Facility"),
+            cols = 3,
+        ),
+        ]
+    s3db.configure("req_req_item",
+                   search_method = s3base.S3Search(advanced=req_item_search),
+                   )
+
+    output = req_item()
+    return output
 
 # END =========================================================================

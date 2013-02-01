@@ -2,7 +2,7 @@
 
 """ Sahana Eden Flood Model
 
-    @copyright: 2011-12 (c) Sahana Software Foundation
+    @copyright: 2011-13 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -144,7 +144,7 @@ class S3FloodModel(S3Model):
         #                           ondelete = "RESTRICT")
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (s3db.*)
+        # Pass names back to global scope (s3.*)
         #
         return Storage()
 

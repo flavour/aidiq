@@ -2,7 +2,7 @@
 
 """ S3 RESTful API
 
-    @copyright: 2009-2012 (c) Sahana Software Foundation
+    @copyright: 2009-2013 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -238,6 +238,7 @@ class S3RequestManager(object):
             @param value: value to check
 
             @status: deprecated, use S3Resource.validate instead
+                     (still used by validate.json in Inline Forms)
         """
 
         try:
@@ -863,6 +864,10 @@ class S3Request(object):
                         current.session.error = self.ERROR.BAD_RECORD
                         redirect(URL(r=self, c=self.prefix, f=self.name))
 
+        if self.interactive and self.representation == "html":
+            settings = current.deployment_settings
+            attr = settings.ui_customize(self.tablename, **attr)
+
         # Pre-process
         if hooks is not None:
             preprocess = hooks.get("prep", None)
@@ -1186,7 +1191,10 @@ class S3Request(object):
         args = Storage()
         if stylesheet is not None:
             if r.component:
-                args.update(id=r.id, component=r.component.tablename)
+                args.update(id=r.id,
+                            component=r.component.tablename)
+                if r.component.alias:
+                    args.update(alias=r.component.alias)
             mode = _vars.get("xsltmode", None)
             if mode is not None:
                 args.update(mode=mode)
@@ -1334,6 +1342,7 @@ class S3Request(object):
             output = r.resource.import_xml(source,
                                            id=id,
                                            format=format,
+                                           files=r.files,
                                            stylesheet=stylesheet,
                                            ignore_errors=ignore_errors,
                                            **args)
@@ -1358,7 +1367,7 @@ class S3Request(object):
         """
 
         json_formats = current.manager.json_formats
-        if format in json_formats:
+        if r.representation in json_formats:
             as_json = True
             content_type = "application/json"
         else:
@@ -1583,19 +1592,40 @@ class S3Request(object):
                        **headers)
 
     # -------------------------------------------------------------------------
-    def url(self, id=None, method=None, representation=None, vars=None):
+    def url(self,
+            id=None,
+            component=None,
+            component_id=None,
+            target=None,
+            method=None,
+            representation=None,
+            vars=None):
         """
-            Returns the URL of this request
+            Returns the URL of this request, use parameters to override
+            current requests attributes:
 
-            @param id: the record ID
+                - None to keep current attribute (default)
+                - 0 or "" to set attribute to NONE
+                - value to use explicit value
+
+            @param id: the master record ID
+            @param component: the component name
+            @param component_id: the component ID
+            @param target: the target record ID (choose automatically)
             @param method: the URL method
             @param representation: the representation for the URL
             @param vars: the URL query variables
+
+            Particular behavior:
+                - changing the master record ID resets the component ID
+                - removing the target record ID sets the method to None
+                - removing the method sets the target record ID to None
+                - [] as id will be replaced by the "[id]" wildcard
         """
 
         if vars is None:
             vars = self.get_vars
-        elif isinstance(vars, str):
+        elif vars and isinstance(vars, str):
             # We've come from a dataTable_vars which has the vars as
             # a JSON string, but with the wrong quotation marks
             vars = json.loads(vars.replace("'", "\""))
@@ -1606,47 +1636,76 @@ class S3Request(object):
         args = []
         read = False
 
-        component_id = self.component_id
-        if id is None:
-            id = self.id
-        else:
-            read = True
+        cname = self.component_name
 
-        if not representation:
-            representation = self.representation
+        # target
+        if target is not None:
+            if cname and (component is None or component == cname):
+                component_id = target
+            else:
+                id = target
+
+        # method
+        default_method = False
         if method is None:
+            default_method = True
             method = self.method
         elif method == "":
+            # Switch to list? (= method="" and no explicit target ID)
+            if component_id is None:
+                if self.component_id is not None:
+                    component_id = 0
+                elif not self.component:
+                    if id is None:
+                        if self.id is not None:
+                            id = 0
             method = None
-            if not read:
-                if self.component:
-                    component_id = None
-                else:
-                    id = None
-        else:
-            if id is None:
-                id = self.id
-            elif id == 0:
-                id = None
-            else:
-                id = str(id)
-                if len(id) == 0:
-                    id = "[id]"
 
-        if self.component:
-            if id:
-                args.append(id)
-            args.append(self.component_name)
-            if component_id:
-                args.append(component_id)
-            if method:
-                args.append(method)
-        else:
-            if id:
-                args.append(id)
-            if method:
-                args.append(method)
+        # id
+        if id is None:
+            id = self.id
+        elif id in (0, ""):
+            id = None
+        elif id in ([], "[id]", "*"):
+            id = "[id]"
+            component_id = 0
+        elif str(id) != str(self.id):
+            component_id = 0
 
+        # component
+        if component is None:
+            component = cname
+        elif component == "":
+            component = None
+        if cname and cname != component or not component:
+            component_id = 0
+        
+        # component_id
+        if component_id is None:
+            component_id = self.component_id
+        elif component_id == 0:
+            component_id = None
+            if self.component_id and default_method:
+                method = None
+
+        if id is None and self.id and \
+           (not component or not component_id) and default_method:
+            method = None
+
+        if id:
+            args.append(id)
+        if component:
+            args.append(component)
+        if component_id:
+            args.append(component_id)
+        if method:
+            args.append(method)
+
+        # representation
+        if representation is None:
+            representation = self.representation
+        elif representation == "":
+            representation = self.DEFAULT_REPRESENTATION
         f = self.function
         if not representation == self.DEFAULT_REPRESENTATION:
             if len(args) > 0:
@@ -1861,10 +1920,6 @@ class S3Method(object):
         if self.method == "_init":
             return None
 
-        if r.interactive and r.representation == "html":
-            settings = current.deployment_settings
-            attr = settings.ui_customize(self.tablename, **attr)
-
         # Apply method
         output = self.apply_method(r, **attr)
 
@@ -2050,6 +2105,7 @@ class S3Method(object):
                         # Propagate all other errors to the caller
                         raise
                 else:
+                    resolve = False
                     display = handler
                 if isinstance(display, dict) and resolve:
                     output.update(**display)
@@ -2057,6 +2113,17 @@ class S3Method(object):
                     output.update(**{key: display})
                 elif key in output and callable(handler):
                     del output[key]
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _remove_filters(vars):
+        """
+            Remove all filters from URL vars
+
+            @param vars: the URL vars as dict
+        """
+
+        return dict([(k, v) for k, v in vars.items() if "." not in k])
 
     # -------------------------------------------------------------------------
     @staticmethod

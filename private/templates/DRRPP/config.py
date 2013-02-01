@@ -37,8 +37,9 @@ settings.auth.record_approval_required_for = ["org_organisation", "project_proje
 
 # L10n settings
 settings.L10n.languages = OrderedDict([
-    ("en", "English"),
+    ("en-gb", "English"),
 ])
+settings.L10n.default_language = "en-gb"
 # Default timezone for users
 settings.L10n.utc_offset = "UTC +0700"
 # Number formats (defaults to ISO 31-0)
@@ -52,13 +53,14 @@ settings.L10n.thousands_separator = ","
 
 # Finance settings
 settings.fin.currencies = {
-    "AUD" : T("Australian Dollars"),
-    "CAD" : T("Canadian Dollars"),
-    "EUR" : T("Euros"),
-    "GBP" : T("Great British Pounds"),
-    "PHP" : T("Philippine Pesos"),
-    "CHF" : T("Swiss Francs"),
+    #"AUD" : T("Australian Dollars"),
+    #"CAD" : T("Canadian Dollars"),
+    #"EUR" : T("Euros"),
+    #"GBP" : T("Great British Pounds"),
+    #"PHP" : T("Philippine Pesos"),
+    #"CHF" : T("Swiss Francs"),
     "USD" : T("United States Dollars"),
+    "NZD" : T("New Zealand Dollars"),
 }
 
 # Security Policy
@@ -78,9 +80,12 @@ settings.gis.countries = [ "AF", "AU", "BD", "BN", "CK", "CN", "FJ", "FM", "HK",
 # Enable this for a UN-style deployment
 settings.ui.cluster = True
 
+settings.ui.hide_report_options = False
+settings.ui.hide_report_filter_options = True
+
 # Organisations
 # Uncomment to add summary fields for Organisations/Offices for # National/International staff
-settings.org.summary = True
+#settings.org.summary = True # Doesn't work with DRRPP formstyle
 
 # Projects
 # Uncomment this to use settings suitable for a global/regional organisation (e.g. DRR)
@@ -91,6 +96,9 @@ settings.project.mode_drr = True
 settings.project.codes = True
 # Uncomment this to call project locations 'Communities'
 #settings.project.community = True
+# Uncomment this to create a project_location for each country which is a project is implemented in
+# - done via Custom Form instead
+#settings.project.locations_from_countries = True
 # Uncomment this to use multiple Budgets per project
 #settings.project.multiple_budgets = True
 # Uncomment this to use multiple Organisations per project
@@ -98,6 +106,7 @@ settings.project.multiple_organisations = True
 # Uncomment this to disable Sectors in projects
 settings.project.sectors = False
 # Uncomment this to customise
+# Links to Filtered Components for Donors & Partners
 settings.project.organisation_roles = {
     1: T("Lead Organization"),
     2: T("Partner Organization"),
@@ -110,21 +119,20 @@ def formstyle_row(id, label, widget, comment, hidden=False):
         hide = "hide"
     else:
         hide = ""
-    row = DIV(
-           DIV(comment,label,
-                _id=id + "1",
-                _class="w2p_fl %s" % hide),
-          DIV(widget,
-                _id=id,
-                _class="w2p_fw %s" % hide),
-          _class = "w2p_r",
-             
-            )
+    row = DIV(DIV(comment, label,
+                  _id=id + "1",
+                  _class="w2p_fl %s" % hide),
+              DIV(widget,
+                  _id=id,
+                  _class="w2p_fw %s" % hide),
+              _class = "w2p_r",
+              )
     return row
+
 def form_style(self, xfields):
     """
         @ToDo: Requires further changes to code to use
-        - Adding a formstyle_row setting to use for indivdual rows
+        - Adding a formstyle_row setting to use for individual rows
         Use new Web2Py formstyle to generate form using DIVs & CSS
         CSS can then be used to create MUCH more flexible form designs:
         - Labels above vs. labels to left
@@ -136,19 +144,24 @@ def form_style(self, xfields):
         form.append(formstyle_row(id, a, b, c))
 
     return form
+
 settings.ui.formstyle_row = formstyle_row
-settings.ui.formstyle = form_style
+#settings.ui.formstyle = form_style # Breaks e.g. org/organisation/create
+settings.ui.formstyle = formstyle_row
 
 def customize_project_project(**attr):
     s3db = current.s3db
-    
-    current.response.s3.crud_strings.project_project.title_search = T("Project List")
-    table = s3db.project_project
-    table.budget.label = T("Total Funding")
+    s3 = current.response.s3
 
-    # For Inline Forms
+    tablename = "project_project"
+    s3.crud_strings.project_project.title_search = T("Project List")
+
+    s3db.project_project.budget.label = T("Total Funding")
+    
     location_id = s3db.project_location.location_id
+    # Limit to just Countries
     location_id.requires = s3db.gis_country_requires
+    # Use dropdown, not AC
     location_id.widget = None
 
     # In DRRPP this is a free field
@@ -161,19 +174,55 @@ def customize_project_project(**attr):
     table = s3db.doc_document
     table.file.widget = lambda field, value, download_url: \
         SQLFORM.widgets.upload.widget(field, value, download_url, _size = 15)
-    #table.file.widget = SQLFORM.widgets.upload.widget
     table.comments.widget = SQLFORM.widgets.string.widget
-    
-    current.response.s3["dataTable_sDom"] = 'ripl<"dataTable_table"t>p'
-    
-    current.response.s3.formats = Storage(xls= None, xml = None)
-    
-    return attr
 
-settings.ui.customize_project_project = customize_project_project
+    s3["dataTable_sDom"] = 'ripl<"dataTable_table"t>p'
 
-from s3 import s3forms
-settings.ui.crud_form_project_project = s3forms.S3SQLCustomForm(
+    # Don't show export buttons for XLS/XML    
+    s3.formats = Storage(xls= None, xml = None)
+    
+    table.name.label = T("Project Title")
+    
+    attr["rheader"] = None
+    
+    standard_prep = s3.prep
+    
+    # custom Post-process
+    def drrpp_prep(r):
+        # Call standard prep
+        if callable(standard_prep):
+            output = standard_prep(r)
+        else:
+            output = True
+        if r.interactive:
+            # Is Cook Islands in the Locations?
+            pltable = s3db.project_location
+            ltable = s3db.gis_location
+            query = (pltable.project_id == r.id) & \
+                    (pltable.location_id == ltable.id) & \
+                    (ltable.name =="Cook Islands")
+            if current.db(query).select(pltable.id,
+                                        limitby=(0, 1)).first() is None:
+                drrpptable = s3db.project_drrpp
+                drrpptable.pifacc.readable = False
+                drrpptable.pifacc.writable = False
+                drrpptable.jnap.readable = False
+                drrpptable.jnap.writable = False
+                drrpptable.L1.readable = False
+                drrpptable.L1.writable = False
+            else:
+                # If no Cook Islands are checked, then check them all
+                script = '''
+if($('[name=sub_drrpp_L1]').is(':checked')==false){
+ $('[name=sub_drrpp_L1]').attr('checked','checked')}'''
+                s3.jquery_ready.append(script)
+        return output
+    
+    s3.prep = drrpp_prep
+
+    from s3 import s3forms
+    
+    crud_form = s3forms.S3SQLCustomForm(
         "name",
         "code",
         "status_id",
@@ -182,39 +231,60 @@ settings.ui.crud_form_project_project = s3forms.S3SQLCustomForm(
         "drrpp.duration",
         s3forms.S3SQLInlineComponent(
             "location",
-            label=T("Countries"),
-            fields=["location_id"],
+            label = T("Countries"),
+            fields = ["location_id"],
         ),
-        "multi_hazard_id",
-        "multi_theme_id",
+        "drrpp.L1",
+        s3forms.S3SQLInlineComponentCheckbox(
+            "hazard",
+            label = T("Hazards"),
+            field = "hazard_id",
+            cols = 4,
+        ),
+        #s3forms.S3SQLInlineComponentCheckbox(
+        #    "sector",
+        #    label = T("Sectors"),
+        #    field = "sector_id",
+        #    cols = 4,
+        #),
+        s3forms.S3SQLInlineComponentCheckbox(
+            "theme",
+            label = T("Themes"),
+            field = "theme_id",
+            cols = 3,
+        ),
         "objectives",
         "drrpp.activities",
         # Outputs
         s3forms.S3SQLInlineComponent(
             "output",
-            label=T("Outputs:"),
-            comment = "Bob",
-            fields=["output","status"],
+            label = T("Outputs"),
+            #comment = "Bob",
+            fields = ["output", "status"],
         ),
-        "hfa",
+        "drr.hfa",
         "drrpp.rfa",
+        "drrpp.pifacc",
+        "drrpp.jnap",
         "organisation_id",
-        # Partner Org
+        # Partner Orgs
         s3forms.S3SQLInlineComponent(
             "organisation",
             name = "partner",
-            label=T("Partner Organisations:"),
-            fields=["organisation_id","comments"],
+            label = T("Partner Organizations"),
+            fields = ["organisation_id",
+                      "comments", # NB This is labelled 'Role' in DRRPP
+                      ],
             filterby = dict(field = "role",
                             options = "2"
                             )
         ),
-        # Donor
+        # Donors
         s3forms.S3SQLInlineComponent(
             "organisation",
             name = "donor",
-            label=T("Donor(s):"),
-            fields=["organisation_id","amount", "currency"],
+            label = T("Donor(s)"),
+            fields = ["organisation_id", "amount", "currency"],
             filterby = dict(field = "role",
                             options = "3"
                             )
@@ -228,8 +298,8 @@ settings.ui.crud_form_project_project = s3forms.S3SQLCustomForm(
         s3forms.S3SQLInlineComponent(
             "document",
             name = "file",
-            label=T("Files"),
-            fields=["file","comments"],
+            label = T("Files"),
+            fields = ["file", "comments"],
             filterby = dict(field = "file",
                             options = "",
                             invert = True,
@@ -239,8 +309,8 @@ settings.ui.crud_form_project_project = s3forms.S3SQLCustomForm(
         s3forms.S3SQLInlineComponent(
             "document",
             name = "url",
-            label=T("Links"),
-            fields=["url","comments"],
+            label = T("Links"),
+            fields = ["url", "comments"],
             filterby = dict(field = "url",
                             options = None,
                             invert = True,
@@ -248,8 +318,15 @@ settings.ui.crud_form_project_project = s3forms.S3SQLCustomForm(
         ),
         "drrpp.parent_project",
         "comments",
-        
     )
+
+             
+    s3db.configure(tablename,
+                   crud_form = crud_form)
+    
+    return attr
+
+settings.ui.customize_project_project = customize_project_project
 
 # Comment/uncomment modules here to disable/enable them
 settings.modules = OrderedDict([

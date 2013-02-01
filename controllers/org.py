@@ -107,36 +107,27 @@ def sites_for_org():
     except:
         result = current.xml.json_message(False, 400, "No Org provided!")
     else:
-        table = s3db.org_site
-        query = (table.organisation_id == org)
-        records = db(query).select(table.id,
-                                   table.name,
-                                   orderby=table.name)
-        result = records.json()
+        # Find all branches for this Organisation
+        btable = s3db.org_organisation_branch
+        query = (btable.organisation_id == org)
+        rows = db(query).select(btable.branch_id)
+        org_ids = [row.branch_id for row in rows] + [org]
+        stable = s3db.org_site
+        query = (stable.organisation_id.belongs(org_ids))
+        rows = db(query).select(stable.site_id,
+                                stable.name,
+                                orderby=stable.name)
+        result = rows.json()
     finally:
         response.headers["Content-Type"] = "application/json"
         return result
 
 # -----------------------------------------------------------------------------
-def site_org_json():
-    """
-        Provide the Org(s) belonging to a Site
-        - unused?
-    """
-
-    table = s3db.org_site
-    otable = s3db.org_organisation
-    query = (table.site_id == request.args[0]) & \
-            (table.organisation_id == otable.id)
-    records = db(query).select(otable.id,
-                               otable.name)
-    response.headers["Content-Type"] = "application/json"
-    return records.json()
-
-# -----------------------------------------------------------------------------
 def facility_marker_fn(record):
     """
         Function to decide which Marker to use for Facilities Map
+        @ToDo: Legend
+        @ToDo: Move to Templates
         @ToDo: Use Symbology
     """
 
@@ -197,7 +188,7 @@ def facility_marker_fn(record):
 # -----------------------------------------------------------------------------
 def facility():
     """ RESTful CRUD controller """
-    
+
     # Pre-processor
     def prep(r):
         # Location Filter
@@ -205,7 +196,7 @@ def facility():
 
         if r.interactive:
             if r.component:
-                cname = r.component.name
+                cname = r.component_name
                 if cname in ("inv_item", "recv", "send"):
                     # Filter out items which are already in this inventory
                     s3db.inv_prep(r)
@@ -249,6 +240,20 @@ def facility():
                     # Hide fields which don't make sense in a Create form
                     # inc list_create (list_fields over-rides)
                     s3db.req_create_form_mods()
+
+                elif cname == "asset":
+                    # Default/Hide the Organisation & Site fields
+                    record = r.record
+                    atable = s3db.asset_asset
+                    field = atable.organisation_id
+                    field.default = record.organisation_id
+                    field.readable = field.writable = False
+                    field = atable.site_id
+                    field.default = record.site_id
+                    field.readable = field.writable = False
+                    # Stay within Facility tab
+                    s3db.configure("asset_asset",
+                                   create_next = None)
 
             elif r.id:
                 field = r.table.obsolete
@@ -417,19 +422,12 @@ def organisation_list_represent(l):
 
     organisation_represent = s3db.org_organisation_represent
     if l:
-        max = 4
-        if len(l) > max:
-            count = 1
-            for x in l:
-                if count == 1:
-                    output = organisation_represent(x)
-                elif count > max:
-                    return "%s, etc" % output
-                else:
-                    output = "%s, %s" % (output, organisation_represent(x))
-                count += 1
+        max_length = 4
+        if len(l) > max_length:
+            return "%s, etc" % \
+                   organisation_represent.multiple(l[:max_length])
         else:
-            return ", ".join([organisation_represent(x) for x in l])
+            return organisation_represent.multiple(l)
     else:
         return NONE
 
@@ -483,7 +481,7 @@ def mailing_list():
                                                       ])
     # Components
     _rheader = s3db.pr_rheader
-    _tabs = [(T("Organisation"), "organisation/"),
+    _tabs = [(T("Organization"), "organisation/"),
             (T("Mailing List Details"), None),
            ]
     if len(request.args) > 0:

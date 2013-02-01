@@ -2,7 +2,7 @@
 
 """ Sahana Eden Stats Model
 
-    @copyright: 2012 (c) Sahana Software Foundation
+    @copyright: 2012-13 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -167,7 +167,7 @@ class S3StatsModel(S3Model):
                                    label = T("The number of aggregated records")
                                    ),
                              Field("ward_count", "integer",
-                                   label = T("The number geographical units that may be part of the aggregation")
+                                   label = T("The number of geographical units that may be part of the aggregation")
                                    ),
                              Field("date", "date",
                                    label = T("Start Date"),
@@ -207,7 +207,7 @@ class S3StatsModel(S3Model):
                              )
 
         # ---------------------------------------------------------------------
-        # Pass model-global names to response.s3
+        # Pass names back to global scope (s3.*)
         #
         return Storage(
                 stats_param_id = param_id,
@@ -882,7 +882,7 @@ class S3StatsDemographicModel(S3Model):
                   )
 
         # ---------------------------------------------------------------------
-        # Pass model-global names to response.s3
+        # Pass names back to global scope (s3.*)
         #
         return Storage()
 
@@ -1068,7 +1068,7 @@ class S3StatsGroupModel(S3Model):
                   )
 
         # ---------------------------------------------------------------------
-        # Pass model-global names to response.s3
+        # Pass names back to global scope (s3.*)
         #
         return Storage(
                        demographic_source_crud_strings = demographic_crud_strings,
@@ -1200,7 +1200,7 @@ def stats_parameter_represent(id, row=None):
 def stats_demographic_data_controller():
     """
         Function to be called from controller functions to display all
-        requests as a tab for a site.
+        demographic data as a tab for a location.
     """
 
     vars = current.request.vars

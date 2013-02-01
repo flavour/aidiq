@@ -2,7 +2,7 @@
 
 """ Sahana Eden Messaging Model
 
-    @copyright: 2009-2012 (c) Sahana Software Foundation
+    @copyright: 2009-2013 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -225,6 +225,7 @@ class S3MessagingModel(S3Model):
                              *s3_meta_fields())
 
         configure(tablename,
+                  orderby = ~table.created_on,
                   list_fields=["id",
                                "message_id",
                                "pe_id",
@@ -236,19 +237,19 @@ class S3MessagingModel(S3Model):
         # Inbound Messages
         # ---------------------------------------------------------------------
         # Channel - For inbound messages this tells which channel the message came in from.
-        tablename = "msg_channel"
-        table = define_table(tablename,
-                             message_id(),
-                             Field("pr_message_method",
-                                   length=32,
-                                   requires = IS_IN_SET(msg_contact_method_opts,
-                                                        zero=None),
-                                   default = "EMAIL"),
-                             Field("log"),
-                             *s3_meta_fields())
+        #tablename = "msg_channel"
+        #table = define_table(tablename,
+        #                     message_id(),
+        #                     Field("pr_message_method",
+        #                           length=32,
+        #                           requires = IS_IN_SET(msg_contact_method_opts, # @ToDo: Inbound channels are more than Outbound as should include Gateway
+        #                                                zero=None),
+        #                           default = "EMAIL"),
+        #                     Field("log"),
+        #                     *s3_meta_fields())
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (s3db.*)
+        # Pass names back to global scope (s3.*)
         return Storage(
                 msg_message_id=message_id,
             )
@@ -706,7 +707,7 @@ class S3TwitterModel(S3Model):
         #self.add_component(table, msg_twitter_search="twitter_search")
 
         configure(tablename,
-                  orderby=table.priority,
+                  orderby=~table.priority,
                   list_fields=["id",
                                "priority",
                                "category",

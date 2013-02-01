@@ -15,7 +15,7 @@ S3.uid = function () {
     // Used by GIS
     // http://jsperf.com/random-uuid/2
     return (((+(new Date())) / 1000 * 0x10000 + Math.random() * 0xffff) >> 0).toString(16);
-}
+};
 
 S3.Utf8 = {
     // Used by dataTables
@@ -61,7 +61,7 @@ S3.Utf8 = {
         }
         return string;
     }
-}
+};
 
 // Used by Scenario module currently, but may be deprecated as not great UI
 var popupWin = null;
@@ -73,7 +73,7 @@ var popupWin = null;
 function openPopup(url, center) {
     if ( !popupWin || popupWin.closed ) {
         var params = 'width=640, height=480';
-        if (center == true) {
+        if (center === true) {
             params += ',left=' + (screen.width - 640)/2 +
                 ',top=' + (screen.height - 480)/2;
         }
@@ -108,17 +108,17 @@ S3.addTooltips = function() {
     	closeText: tipCloseText,
     	width: 380
     });
-}
+};
 
 $(document).ready(function() {
     // Web2Py Layer
     $('.error').hide().slideDown('slow');
     $('.error').click(function() { $(this).fadeOut('slow'); return false; });
-    $('.warning').hide().slideDown('slow')
+    $('.warning').hide().slideDown('slow');
     $('.warning').click(function() { $(this).fadeOut('slow'); return false; });
-    $('.information').hide().slideDown('slow')
+    $('.information').hide().slideDown('slow');
     $('.information').click(function() { $(this).fadeOut('slow'); return false; });
-    $('.confirmation').hide().slideDown('slow')
+    $('.confirmation').hide().slideDown('slow');
     $('.confirmation').click(function() { $(this).fadeOut('slow'); return false; });
     $("input[type='checkbox'].delete").click(function() {
         if ((this.checked) && (!confirm(i18n.delete_confirmation))) {
@@ -133,7 +133,7 @@ $(document).ready(function() {
         inputName = inputErrorId.replace('__error', '');
         inputId = $('[name=' + inputName + ']').attr('id');
         inputLabel = $('[for=' + inputId + ']');
-        window.scrollTo(0, inputLabel.offset().top)
+        window.scrollTo(0, inputLabel.offset().top);
     }
 
     // T2 Layer
@@ -141,7 +141,7 @@ $(document).ready(function() {
     //    scaleImg: true,
     //    closeOnClick: true,
     //    directory: S3.Ap.concat('/static/media')
-    //}); } catch(e) {};
+    //}); } catch(e) {}
 
     // S3 Layer
     // dataTables' delete button
@@ -162,7 +162,7 @@ $(document).ready(function() {
     $('input.int_amount').keyup(function(){this.value=this.value.reverse().replace(/[^0-9\-,]|\-(?=.)/g,'').reverse();});
     $('input.float_amount').keyup(function(){this.value=this.value.reverse().replace(/[^0-9\-\.,]|[\-](?=.)|[\.](?=[0-9]*[\.])/g,'').reverse();});
     // Auto-capitalize first names
-    $('input[name="first_name"]').focusout(function() {this.value = this.value.charAt(0).toLocaleUpperCase() + this.value.substring(1);})
+    $('input[name="first_name"]').focusout(function() {this.value = this.value.charAt(0).toLocaleUpperCase() + this.value.substring(1);});
     // Hide password verification field in admin/user until changed
     $('input[name="password"]').keyup(function() {
         $('.verify-password').removeClass('hide');
@@ -197,6 +197,7 @@ $(document).ready(function() {
             $(document).unbind('mousemove', performDrag).unbind('mouseup', endDrag);
             textarea.css('opacity', 1);
         }
+        return true;
     });
 
     // IE6 non anchor hover hack
@@ -210,7 +211,7 @@ $(document).ready(function() {
         function() {
                 var header_width = $(this).width();
                 var popup_width = $('ul', this).width();
-                if (popup_width != null){
+                if (popup_width !== null){
                   if (popup_width < header_width){
                     $('ul', this).css({
                         'width': header_width.toString() + 'px'
@@ -233,7 +234,7 @@ $(document).ready(function() {
         caller = caller.replace(/__row/, '');
         // Avoid Duplicate callers
         var url_out = attr;
-        if (attr.indexOf('&caller=') == -1) {
+        if (attr.indexOf('caller=') == -1) {
             url_out = attr + '&caller=' + caller;
         }
         return url_out;
@@ -277,6 +278,16 @@ $(document).ready(function() {
 function s3_tb_remove(){
     // Colorbox Popup
     $.fn.colorbox.close();
+}
+
+function s3_get_client_location(targetfield) {
+   // Geolocation
+   if (navigator.geolocation) {
+    	navigator.geolocation.getCurrentPosition(function(position) {
+			var clientlocation = position.coords.latitude + '|' + position.coords.longitude + '|' + position.coords.accuracy;
+			targetfield.val(clientlocation);
+    	});
+    }
 }
 
 // ============================================================================
@@ -352,7 +363,7 @@ S3.deduplication = function() {
         duplicate.attr('name', original_name);
         $('#dummy_swap_duplicate').attr('id', 'dummy' + original_id);
     });
-}
+};
 
 // ============================================================================
 function S3ConfirmClick(ElementID, Message) {
@@ -368,7 +379,7 @@ function S3ConfirmClick(ElementID, Message) {
             }
         });
     }
-};
+}
 
 // ============================================================================
 // Code to warn on exit without saving
@@ -376,11 +387,11 @@ function S3SetNavigateAwayConfirm() {
     window.onbeforeunload = function() {
         return i18n.unsaved_changes;
     };
-};
+}
 
 function S3ClearNavigateAwayConfirm() {
     window.onbeforeunload = function() {};
-};
+}
 
 function S3EnableNavigateAwayConfirm() {
     $(document).ready(function() {
@@ -392,7 +403,7 @@ function S3EnableNavigateAwayConfirm() {
         $(':input:not(input[id=gis_location_advanced_checkbox])').change( S3SetNavigateAwayConfirm );
         $('form').submit( S3ClearNavigateAwayConfirm );
     });
-};
+}
 
 // ============================================================================
 /**
@@ -411,7 +422,7 @@ function S3EnableNavigateAwayConfirm() {
             s3_hideStatus();
             if (s.success)
                 s.success(data, status);
-        }
+        };
         options.error = function(xhr, textStatus, errorThrown ) {
             if (textStatus == 'timeout') {
                 this.tryCount++;
@@ -477,7 +488,7 @@ function S3EnableNavigateAwayConfirm() {
             data = null;
         }
         if (!sync) {
-            var sync = false;
+            sync = false;
         }
         return $.getS3(url, data, callback, 'json', message, sync);
     };
@@ -573,13 +584,13 @@ function S3StatusBar(sel, options) {
                 },
                 timeout);
         }
-    }
+    };
     this.release = function() {
         if (_statusbar) {
             $('#_statusbar').remove();
             _statusbar = undefined;
         }
-    }
+    };
 }
 // Use this as a global instance to customize constructor
 // or do nothing and get a default status bar
@@ -654,287 +665,10 @@ function s3_showMap(feature_id) {
  * Rooms filtered by Site
  * Item Packs filtered by Item
  * Competency Ratings filtered by Skill Type
- * @ToDo: - Ensure that the automatically set value of the select field
- * 			doesn't activate the "NavigateAwayConfirm"
- */
-function S3FilterFieldChange(setting) {
-	/**
-     * Sets a Field to be hidden until a FilterField is set,
-	 * then filters it's options according to that filter field
-	 *
-	 * @param: Field
-	 * @param: FilterField
-	 * @param: FieldPrefix
-	 * @param: FieldResource
-	 * @param: Widget			(optional) The name of the Field's Widget element to hide
-	 * 							default: Field
-	 * @param: FieldKey			(optional) The key field in the filter (parent) resource
-	 * 							default: FilterField
-	 * @param: FieldID			(optional) The ID field in the resource the field refers to
-	 * 							default: "id"
-	 * @param: url				(optional) URL to get filtered options for the Field
-	 * 							default:	S3.Ap.concat('/', FieldPrefix, '/', FieldResource, '.json?',
-	    									FieldResource, '.',  FilterField, '=' )
-	 * @param: GetWidgetHTML	(optional) The ID field in the resource the field refers to
-	 * 							default: "id"
-	 * @param: ShowEmptyField	(optional) Is the Field displayed if there are no valid options
-	 * 							default: true
-	 * @param: msgNoRecords		(optional)
-	 * @param: fncPrep			(optional) Pre-Processes the data returned. Returns PrepResult
-	 * 							default: function(data) {return null}
-	 * @param: fncRepresent		(optional) Represents the data returned for the Field option
-	 * 							default: function(record, PrepResult) {return record.name}
-	 * @param: FilterOnLoad		(optional) If the field is empty should it be filtered when the page loads
-	 * 							default: true
-	 * @param: Optional         (optional) If the field is optional & so should default to blank
-	 * 							default: false
-	 */
-
-	// Check if this field is present in this page
-	var FilterField = setting.FilterField;
-    var selFilterField = $('[name = "' + FilterField + '"]');
-    if (undefined == selFilterField[0]) {
-        return
-    }
-
-	var Field = setting.Field;
-    var selField = $('[name = "' + Field + '"]');
-    //var selFieldRows = $('[id *= "' + Field + '__row"]');
-
-    if (setting.FilterOnLoad != undefined) {
-        var FilterOnLoad = setting.FilterOnLoad;
-    } else {
-        var FilterOnLoad = true;
-    }
-
-    selFilterField.change(function() {
-
-        // Cancel previous request
-        try {
-            S3.JSONRequest[selField.attr('id')].abort();
-        } catch(err) {};
-
-        var FilterVal;
-
-        // Get Filter Val from Select or CheckBoxes
-        if (selFilterField.length == 0 || selFilterField.length == undefined ) {
-        	FilterVal = '';
-        } else if (selFilterField.length == 1) {
-        	FilterVal = selFilterField.val();
-        } else {
-        	FilterVal = new Array();
-        	selFilterField.filter('input:checked').each(function() {
-        		FilterVal.push($(this).val());
-        	});
-        }
-
-        if ( FilterVal == "" || FilterVal == undefined) {
-            // No value to filter
-            //selFieldRows.hide();
-            selField.attr('disabled', 'disabled');
-            return;
-        }
-
-        var FieldResource = setting.FieldResource;
-
-        if (setting.Widget != undefined) {
-            var Widget = setting.Widget;
-        } else {
-            var Widget = Field;
-        }
-        var selWidget =  $('[name = "' + Widget + '"]');
-
-        if (setting.FieldKey != undefined) {
-            var FieldKey = setting.FieldKey;
-        } else {
-            var FieldKey = FilterField;
-        }
-
-        var FieldID = setting.FieldID;
-        if (FieldID == undefined) {
-            var FieldID = 'id';
-        }
-
-        if (setting.url  != undefined && setting.url  != null) {
-            var url = setting.url;
-        } else {
-            var FieldPrefix = setting.FieldPrefix;
-            var url = S3.Ap.concat('/', FieldPrefix, '/', FieldResource, '.json?',
-                                   FieldResource, '.',  FieldKey, '=' );
-        }
-        url = url.concat(FilterVal);
-
-        // Get Field Val from Select or CheckBoxes
-        if (selField.length == 0 || selField.length == undefined ) {
-            FieldVal = '';
-        } else if (selField.length == 1) {
-        	FieldVal = selField.val();
-        } else {
-        	FieldVal = new Array();
-        	selField.filter('input:checked').each(function() {
-        		FieldVal.push($(this).val());
-        	});
-        }
-        if (url.indexOf('?') != -1) {
-            url = url.concat('&value=');
-        } else {
-            url = url.concat('?value=');
-        }
-        url = url.concat(FieldVal);
-
-        var GetWidgetHTML = setting.GetWidgetHTML;
-        if (GetWidgetHTML == undefined) {
-            var GetWidgetHTML = false;
-        }
-
-        if (setting.ShowEmptyField != undefined) {
-            var ShowEmptyField = setting.ShowEmptyField;
-        } else {
-            var ShowEmptyField = true;
-        }
-        if (setting.msgNoRecords != undefined) {
-            var msgNoRecords = setting.msgNoRecords;
-        } else {
-            var msgNoRecords = '-';
-            setting.msgNoRecords = msgNoRecords;
-        }
-
-        // Representation of the target options
-        if (setting.fncPrep != undefined) {
-            var fncPrep = setting.fncPrep;
-        } else {
-            var fncPrep = function(data) {return null};
-            setting.fncPrep = fncPrep;
-        }
-        if (setting.fncRepresent != undefined) {
-            var fncRepresent = setting.fncRepresent;
-        } else {
-            var fncRepresent = function(record) {return record.name};
-            setting.fncRepresent = fncRepresent;
-        }
-
-        //if ($('[id$="' + FilterField + '__row1"]:visible').length > 0) {
-            // Only show if the filter field is shown
-            //selFieldRows.show();
-        //}
-
-        /* Show Throbber */
-        selWidget.hide();
-        if ($('#' + FieldResource + '_ajax_throbber').length == 0 ) {
-            selWidget.after('<div id="' + FieldResource + '_ajax_throbber" class="ajax_throbber"/>')
-        }
-
-        var data;
-        setting.FieldVal = FieldVal;
-
-        // Save JSON Request by element id
-        if (!GetWidgetHTML) {
-            S3.JSONRequest[selField.attr('id')] = $.ajax( {
-                url: url,
-                dataType: 'json',
-                context: setting,
-                success: function(data) {
-                    /* Create Select Element */
-                    var options = '';
-                    var FilterField = this.FilterField;
-                    var FieldResource = this.FieldResource;
-                    var selField = $('[name = "' + this.Field + '"]');
-                    var selFilterField = $('[name = "' + FilterField + '"]');
-
-                    var PrepResult = fncPrep(data);
-
-                    if (data.length == 0) {
-                        if (ShowEmptyField) {
-                            var first_value = 0;
-                            options += '<option value="">' + this.msgNoRecords + '</options>';
-                        }
-                    } else {
-                        for (var i = 0; i < data.length; i++) {
-                            if (i == 0) {
-                                var first_value = data[i][FieldID];
-                            }
-                            options += '<option value="' +  data[i][FieldID] + '">';
-                            options += this.fncRepresent(data[i], PrepResult);
-                            options += '</option>';
-                        }
-                        if (setting.Optional) {
-                            first_value = 0;
-                            options = '<option value=""></option>' + options;
-                        }
-                        if (setting.FieldVal) {
-                            first_value = setting.FieldVal;
-                        }
-                    }
-                    /* Set field value */
-                    if (options != '') {
-                        selField.html(options)
-                                .val(first_value)
-                                .change()
-                                .removeAttr('disabled')
-                                .show();
-                    } else {
-                        //selFieldRows.hide();
-                        selField.attr('disabled', 'disabled');
-                    }
-                    /* Show "Add" Button & modify link */
-                    var selFieldAdd = $('#' + FieldResource + '_add');
-                    var href = selFieldAdd.attr('href');
-                    if (href.indexOf(FilterField) == -1) {
-                        // Add to URL
-                        href = href + '&' + FilterField + '=' + selFilterField.val();
-                    } else {
-                        // Update URL
-                        var re = new RegExp(FilterField + '=.*', 'g');
-                        href = href.replace(re, FilterField + '=' + selFilterField.val());
-                    }
-                    selFieldAdd.attr('href', href)
-                               .show();
-
-                    /* Remove Throbber */
-                    $('#' + FieldResource + '_ajax_throbber').remove();
-                }
-            });
-        } else {
-            S3.JSONRequest[selField.attr('id')] = $.ajax( {
-                url: url,
-                dataType: 'html',
-                context: setting,
-                success: function(data) {
-                    /* Replace widget with data */
-                    var selField = $('[name = "' + this.Field + '"]');
-
-                    /* Set field widget */
-                    if (data != '') {
-                        selWidget.html(data)
-                                 .change()
-                                 .removeAttr('disabled')
-                                 .show();
-                    } else {
-                        //selFieldRows.hide();
-                        selWidget.attr('disabled', 'disabled');
-                    }
-
-                    /* Remove Throbber */
-                    $('#' + FieldResource + '_ajax_throbber').remove();
-                }
-            });
-        }
-    });
-
-    // If the field value is empty - disable - but keep initial value
-    selFilterField.change();
-    // Don't include this change in the deliberate changes
-    S3ClearNavigateAwayConfirm();
-    S3EnableNavigateAwayConfirm();
-};
+ **/
 
 function S3OptionsFilter(settings) {
     /**
-     * New version of S3FilterFieldChange that works both with regular
-     * as well as with inline forms.
-     *
-     * @todo: migrate all use-cases to this version
-     *
      * Settings:
      *          triggerName: the trigger field name (not the HTML element name)
      *          targetName: the target field name (not the HTML element name)
@@ -955,8 +689,8 @@ function S3OptionsFilter(settings) {
      *          fncRepresent: function to represent the target options
      */
 
-    var triggerName = settings.triggerName
-    var targetName = settings.targetName
+    var triggerName = settings.triggerName;
+    var targetName = settings.targetName;
 
     // Selector for regular form fields: prefix_field
     var triggerSelector = '[name="' + triggerName + '"]';
@@ -969,6 +703,9 @@ function S3OptionsFilter(settings) {
         // Trigger field not present
         return;
     }
+
+    // Flag to show whether this is the first run
+    var first = true;
 
     triggerField.change(function() {
         var triggerField = $(this);
@@ -998,11 +735,17 @@ function S3OptionsFilter(settings) {
         // Cancel previous Ajax request
         try {
             S3.JSONRequest[targetField.attr('id')].abort();
-        } catch(err) {};
+        } catch(err) {}
 
         // Get the lookup value from the trigger field
         var lookupValue = '';
-        if (triggerField.length == 1) {
+        if (triggerField.attr('type') == 'checkbox') {
+            checkboxesWidget = triggerField.closest('.checkboxes-widget-s3');
+            if (checkboxesWidget) {
+                triggerField = checkboxesWidget;
+            }
+        }
+        if (triggerField.length == 1 && !triggerField.hasClass('checkboxes-widget-s3')) {
             // SELECT
             lookupValue = triggerField.val();
         } else if (triggerField.length > 1) {
@@ -1011,10 +754,15 @@ function S3OptionsFilter(settings) {
             triggerField.filter('input:checked').each(function() {
                 lookupValue.push($(this).val());
             });
+        } else if (triggerField.hasClass('checkboxes-widget-s3')) {
+            lookupValue = new Array();
+            triggerField.find('input:checked').each(function() {
+                lookupValue.push($(this).val());
+            });
         }
 
         // Disable the target field if no value selected
-        if (lookupValue == '' || lookupValue === undefined) {
+        if (lookupValue === '' || lookupValue === undefined) {
             targetField.attr('disabled', 'disabled');
             return;
         }
@@ -1038,36 +786,40 @@ function S3OptionsFilter(settings) {
 
         // Construct the URL for the Ajax request
         var lookupResource = settings.lookupResource;
+        var url;
         if (settings.lookupURL) {
-            var url = settings.lookupURL;
+            url = settings.lookupURL;
+            if (lookupValue) {
+                url = url.concat(lookupValue);
+            }
         } else {
             var lookupPrefix = settings.lookupPrefix;
-            var url = S3.Ap.concat('/', lookupPrefix, '/', lookupResource, '.json');
-        }
-        var q;
-        // Append lookup key to the URL
-        if (lookupValue) {
-            var lookupKey;
-            if (typeof settings.lookupKey == 'undefined') {
-                // Same field name in both tables
-                lookupKey = settings.triggerName;
-            } else {
-                lookupKey = settings.lookupKey;
+            url = S3.Ap.concat('/', lookupPrefix, '/', lookupResource, '.json');
+            // Append lookup key to the URL
+            var q;
+            if (lookupValue) {
+                var lookupKey;
+                if (typeof settings.lookupKey == 'undefined') {
+                    // Same field name in both tables
+                    lookupKey = settings.triggerName;
+                } else {
+                    lookupKey = settings.lookupKey;
+                }
+                q = lookupResource + '.' + lookupKey + '=' + lookupValue;
+                if (url.indexOf('?') != -1) {
+                    url = url.concat('&' + q);
+                } else {
+                    url = url.concat('?' + q);
+                }
             }
-            q = lookupResource + '.' + lookupKey + '=' + lookupValue;
-            if (url.indexOf('?') != -1) {
-                url = url.concat('&' + q);
-            } else {
-                url = url.concat('?' + q);
-            }
-        }
-        // Append the current value to the URL (what for?)
-        if (currentValue) {
-            q = 'value=' + currentValue;
-            if (url.indexOf('?') != -1) {
-                url = url.concat('&' + q);
-            } else {
-                url = url.concat('?' + q);
+            // Append the current value to the URL (what for?)
+            if (currentValue) {
+                q = 'value=' + currentValue;
+                if (url.indexOf('?') != -1) {
+                    url = url.concat('&' + q);
+                } else {
+                    url = url.concat('?' + q);
+                }
             }
         }
 
@@ -1106,19 +858,20 @@ function S3OptionsFilter(settings) {
         if (settings.fncPrep) {
             context['fncPrep'] = settings.fncPrep;
         } else {
-            context['fncPrep'] = function(data) { return null };
+            context['fncPrep'] = function(data) { return null; };
         }
         if (settings.fncRepresent) {
             context['fncRepresent'] = settings.fncRepresent;
         } else {
-            context['fncRepresent'] = function(record) { return record.name };
+            context['fncRepresent'] = function(record) { return record.name; };
         }
 
         // Find the target widget and replace it by a throbber
+        var targetWidget;
         if (settings.targetWidget != undefined) {
-            var targetWidget = settings.targetWidget;
+            targetWidget = settings.targetWidget;
         } else {
-            var targetWidget = targetSelector;
+            targetWidget = targetSelector;
         }
         context['targetWidget'] = targetWidget;
         var widget = $('[name = "' + targetWidget + '"]');
@@ -1137,11 +890,12 @@ function S3OptionsFilter(settings) {
 
                     // Pre-process the data
                     var fncPrep = this.fncPrep;
+                    var prepResult;
                     try {
-                        var prepResult = fncPrep(data);
+                        prepResult = fncPrep(data);
                     } catch (e) {
-                        var prepResult = null;
-                    };
+                        prepResult = null;
+                    }
 
                     // Render options list
                     var fncRepresent = this.fncRepresent;
@@ -1149,18 +903,19 @@ function S3OptionsFilter(settings) {
                     var FieldResource = this.FieldResource;
                     var triggerField = $('[name = "' + FilterField + '"]');
                     var options = '';
+                    var currentValue;
                     if (data.length === 0) {
                         // No options available
                         if (this.showEmptyField) {
-                            var currentValue = 0;
+                            currentValue = 0;
                             options += '<option value="">' + this.msgNoRecords + '</options>';
                         }
                     } else {
                         // Render the options
-                        var lookupField = this.lookupField
+                        var lookupField = this.lookupField;
                         for (var i = 0; i < data.length; i++) {
-                            if (i == 0) {
-                                var currentValue = data[i][lookupField];
+                            if (i === 0) {
+                                currentValue = data[i][lookupField];
                             }
                             options += '<option value="' + data[i][lookupField] + '">';
                             options += fncRepresent(data[i], prepResult);
@@ -1175,10 +930,15 @@ function S3OptionsFilter(settings) {
                         }
                     }
 
-                    // Set the current field value
                     var targetField = $('[name = "' + this.targetSelector + '"]');
-                    if (options != '') {
+                    // Convert IS_ONE_OF_EMPTY INPUT to a SELECT
+                    var html = targetField.parent().html().replace('<input', '<select');
+                    targetField.parent().html(html);
+                    // reselect since it may have changed
+                    targetField = $('[name = "' + this.targetSelector + '"]');
+                    if (options !== '') {
                         targetField.html(options)
+                                   // Set the current field value
                                    .val(currentValue)
                                    .change()
                                    .removeAttr('disabled')
@@ -1194,7 +954,7 @@ function S3OptionsFilter(settings) {
                     var targetFieldAdd = $('#' + lookupResource + '_add');
                     if (targetFieldAdd.length !== 0) {
                         var href = targetFieldAdd.attr('href');
-                        var triggerField = $('[name = "' + this.triggerSelector + '"]');
+                        triggerField = $('[name = "' + this.triggerSelector + '"]');
                         var triggerName = this.triggerName;
                         if (href.indexOf(triggerName) == -1) {
                             // Add to URL
@@ -1209,6 +969,11 @@ function S3OptionsFilter(settings) {
 
                     // Remove the throbber
                     $('#' + lookupResource + '_ajax_throbber').remove();
+                    if (first) {
+                        // Don't include this change in the deliberate changes
+                        S3ClearNavigateAwayConfirm();
+                        first = false;
+                    }
                 }
             });
         } else {
@@ -1219,7 +984,7 @@ function S3OptionsFilter(settings) {
                 context: context,
                 success: function(data) {
                     var targetWidget = $('[name = "' + this.targetWidget + '"]');
-                    if (data != '') {
+                    if (data !== '') {
                         // Replace the target field with the HTML returned
                         targetWidget.html(data)
                                     .change()
@@ -1231,18 +996,20 @@ function S3OptionsFilter(settings) {
                     }
                     // Remove Throbber
                     $('#' + this.lookupResource + '_ajax_throbber').remove();
+                    if (first) {
+                        // Don't include this change in the deliberate changes
+                        S3ClearNavigateAwayConfirm();
+                        first = false;
+                    }
                 }
             });
+
         }
     });
 
     // If the field value is empty - disable - but keep initial value
     triggerField.change();
-
-    // Don't include this change in the deliberate changes
-    S3ClearNavigateAwayConfirm();
-    S3EnableNavigateAwayConfirm();
-};
+}
 
 // ============================================================================
 /**
@@ -1255,28 +1022,26 @@ S3.autocomplete = function(fieldname, module, resourcename, input, filter, link,
     var dummy_input = '#' + dummy;
 
     if ($(dummy_input) == 'undefined') {
-        return true;
+        return;
     }
 
     var url = S3.Ap.concat('/', module, '/', resourcename, '/search.json?filter=~&field=', fieldname);
     if (filter != 'undefined') {
         url += '&' + filter;
     }
-    if ((link == 'undefined') || (link == '')) {
-        // pass
-    } else {
+    if ((link != 'undefined') && (link !== '')) {
         url += '&link=' + link;
     }
 
     // Optional args
     if (postprocess == 'undefined') {
-        var postprocess = '';
+        postprocess = '';
     }
     if (delay == 'undefined') {
-        var delay = 450;
+        delay = 450;
     }
     if (min_length == 'undefined') {
-        var min_length = 2;
+        min_length = 2;
     }
     var data = {
         val: $(dummy_input).val(),
@@ -1346,5 +1111,39 @@ S3.slider = function(fieldname, minval, maxval, steprange, value) {
         }
     });
 };
+
+// ============================================================================
+/**
+ * Reusable function to add a querystring variable to an existing URL and redirect into it.
+ * It accounts for existing variables and will override an existing one.
+ * Sample usage: _onchange="S3reloadWithQueryStringVars({'_language': $(this).val()});")
+ */
+
+function S3reloadWithQueryStringVars (queryStringVars) {
+    var existingQueryVars = location.search ? location.search.substring(1).split("&") : [],
+        currentUrl = location.search ? location.href.replace(location.search,"") : location.href,
+        newQueryVars = {},
+        newUrl = currentUrl + "?";
+    if(existingQueryVars.length > 0) {
+        for (var i = 0; i < existingQueryVars.length; i++) {
+            var pair = existingQueryVars[i].split("=");
+            newQueryVars[pair[0]] = pair[1];
+        }
+    }
+    if(queryStringVars) {
+        for (var queryStringVar in queryStringVars) {
+            newQueryVars[queryStringVar] = queryStringVars[queryStringVar];
+        }
+    }
+    if(newQueryVars) { 
+        for (var newQueryVar in newQueryVars) {
+            newUrl += newQueryVar + "=" + newQueryVars[newQueryVar] + "&";
+        }
+        newUrl = newUrl.substring(0, newUrl.length-1);
+        window.location.href = newUrl;
+    } else {
+        window.location.href = location.href;
+    }
+}
 
 // ============================================================================

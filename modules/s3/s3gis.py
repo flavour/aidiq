@@ -5,7 +5,7 @@
     @requires: U{B{I{gluon}} <http://web2py.com>}
     @requires: U{B{I{shapely}} <http://trac.gispython.org/lab/wiki/Shapely>}
 
-    @copyright: (c) 2010-2012 Sahana Software Foundation
+    @copyright: (c) 2010-2013 Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -256,7 +256,7 @@ class GIS(object):
         return GPS_SYMBOLS
 
     # -------------------------------------------------------------------------
-    def download_kml(self, record_id, filename):
+    def download_kml(self, record_id, filename, session_id_name, session_id):
         """
             Download a KML file:
                 - unzip it if-required
@@ -266,6 +266,11 @@ class GIS(object):
 
             Designed to be called asynchronously using:
                 current.s3task.async("download_kml", [record_id, filename])
+
+            @param record_id: id of the record in db.gis_layer_kml
+            @param filename: name to save the file as
+            @param session_id_name: name of the session
+            @param session_id: id of the session
 
             @ToDo: Pass error messages to Result & have JavaScript listen for these
         """
@@ -284,7 +289,7 @@ class GIS(object):
                                 "gis_cache",
                                 filename)
 
-        warning = self.fetch_kml(url, filepath)
+        warning = self.fetch_kml(url, filepath, session_id_name, session_id)
 
         # @ToDo: Handle errors
         #query = (cachetable.name == name)
@@ -330,7 +335,7 @@ class GIS(object):
                 pass
 
     # -------------------------------------------------------------------------
-    def fetch_kml(self, url, filepath):
+    def fetch_kml(self, url, filepath, session_id_name, session_id):
         """
             Fetch a KML file:
                 - unzip it if-required
@@ -358,7 +363,8 @@ class GIS(object):
             # Keep Session for local URLs
             import Cookie
             cookie = Cookie.SimpleCookie()
-            cookie[response.session_id_name] = response.session_id
+            cookie[session_id_name] = session_id
+            # For sync connections
             current.session._unlock(response)
             try:
                 file = fetch(url, cookie=cookie)
@@ -2057,9 +2063,12 @@ class GIS(object):
                 #    end = datetime.datetime.now()
                 #    duration = end - start
                 #    duration = "{:.2f}".format(duration.total_seconds())
-                #    query = (ftable.id == layer_id)
-                #    layer_name = db(query).select(ftable.name,
-                #                                  limitby=(0, 1)).first().name
+                #    if layer_id:
+                #        query = (ftable.id == layer_id)
+                #        layer_name = db(query).select(ftable.name,
+                #                                      limitby=(0, 1)).first().name
+                #    else:
+                #        layer_name = "Unknown"
                 #    _debug("tooltip lookup of layer %s completed in %s seconds" % \
                 #            (layer_name, duration))
 
@@ -2079,7 +2088,7 @@ class GIS(object):
                         markers[record[pkey]] = marker
 
                 markers[tablename] = markers
-                
+
         # Lookup the LatLons now so that it can be done as a single
         # query rather than per record
         #if DEBUG:
@@ -2206,8 +2215,8 @@ class GIS(object):
 
         if resource:
             # We can lookup the representations in bulk rather than 1/record
-            if DEBUG:
-                start = datetime.datetime.now()
+            #if DEBUG:
+            #    start = datetime.datetime.now()
             represents = {}
             values = [r[fieldname] for r in resource if r[fieldname]]
             if not values:
@@ -2248,12 +2257,12 @@ class GIS(object):
                 for value in values:
                     represents[value] = value
 
-            if DEBUG:
-                end = datetime.datetime.now()
-                duration = end - start
-                duration = '{:.2f}'.format(duration.total_seconds())
-                _debug("representation of %s completed in %s seconds" % \
-                        (fieldname, duration))
+            #if DEBUG:
+            #    end = datetime.datetime.now()
+            #    duration = end - start
+            #    duration = '{:.2f}'.format(duration.total_seconds())
+            #    _debug("representation of %s completed in %s seconds" % \
+            #            (fieldname, duration))
             return represents
 
         else:
@@ -4674,7 +4683,7 @@ class GIS(object):
                 _path = Lx.path
                 if _path and L0_name and L1_name and L2_name and L3_name and L4_name:
                     _path = "%s/%s" % (_path, id)
-                
+
                 else:
                     # This feature needs to be updated
                     _path = self.update_location_tree(Lx)
@@ -5585,8 +5594,8 @@ class GIS(object):
             mouse_position = '''S3.gis.mouse_position=true\n'''
 
         # OSM Authoring
-        if config.osm_oauth_consumer_key and \
-           config.osm_oauth_consumer_secret:
+        pe_id = auth.s3_user_pe_id(auth.user.id) if auth.s3_logged_in() else None
+        if pe_id and s3db.auth_user_options_get_osm(pe_id):
             osm_auth = '''S3.gis.osm_oauth='%s'\n''' % T("Zoom in closer to Edit OpenStreetMap layer")
         else:
             osm_auth = ""
@@ -5845,9 +5854,10 @@ S3.gis.lon=%s
             append = _f.append
             for feature in features:
                 geojson = simplify(feature, output="geojson")
-                f = dict(type = "Feature",
-                         geometry = json.loads(geojson))
-                append(f)
+                if geojson:
+                    f = dict(type = "Feature",
+                             geometry = json.loads(geojson))
+                    append(f)
             # Generate JS snippet to pass to static
             _features = '''S3.gis.features=%s\n''' % json.dumps(_f)
         else:
@@ -6124,6 +6134,16 @@ S3.gis.layers_feature_resources[%i]={
                     (ltable.enabled == True)
             layer = db(query).select(etable.instance_type,
                                      limitby=(0, 1)).first()
+            if not layer:
+                # Use Site Default
+                ctable = db.gis_config
+                query = (etable.id == ltable.layer_id) & \
+                        (ltable.config_id == ctable.id) & \
+                        (ctable.uuid == "SITE_DEFAULT") & \
+                        (ltable.base == True) & \
+                        (ltable.enabled == True)
+                layer = db(query).select(etable.instance_type,
+                                         limitby=(0, 1)).first()
             if layer:
                 layer_type = layer.instance_type
                 if layer_type == "gis_layer_openstreetmap":
@@ -6143,6 +6163,7 @@ S3.gis.layers_feature_resources[%i]={
                     layer_types = [XYZLayer]
                 elif layer_type == "gis_layer_empty":
                     layer_types = [EmptyLayer]
+
             if not layer_types:
                 layer_types = [EmptyLayer]
 
@@ -7049,7 +7070,6 @@ class JSLayer(Layer):
         else:
             return None
 
-
 # -----------------------------------------------------------------------------
 class KMLLayer(Layer):
     """
@@ -7094,7 +7114,6 @@ class KMLLayer(Layer):
         KMLLayer.cacheable = cacheable
         KMLLayer.cachepath = cachepath
 
-
     # -------------------------------------------------------------------------
     class SubLayer(Layer.SubLayer):
         def as_dict(self):
@@ -7127,8 +7146,11 @@ class KMLLayer(Layer):
 
                 if download:
                     # Download file (async, if workers alive)
+                    response = current.response
+                    session_id_name = response.session_id_name
+                    session_id = response.session_id
                     current.s3task.async("gis_download_kml",
-                                         args=[self.id, filename])
+                                         args=[self.id, filename, session_id_name, session_id])
                     if cached:
                         db(query).update(modified_on=request.utcnow)
                     else:
@@ -7210,7 +7232,7 @@ class OpenWeatherMapLayer(Layer):
         if sublayers:
             if current.response.s3.debug:
                 # Non-debug has this included within OpenLayers.js
-                self.scripts.append("scripts/gis/OWM.OpenLayers.1.3.0.2.js")
+                self.scripts.append("scripts/gis/OWM.OpenLayers.js")
             output = {}
             for sublayer in sublayers:
                 if sublayer.type == "station":
@@ -7522,7 +7544,10 @@ class S3Map(S3Search):
                 session_options = session.s3.search_options
                 if session_options and tablename in session_options:
                     # session
-                    session_options = session_options[tablename]
+                    if "clear_opts" in r.get_vars:
+                        session_options = Storage()
+                    else:
+                        session_options = session_options[tablename] or Storage()
                 else:
                     # unfiltered
                     session_options = Storage()
@@ -7599,12 +7624,21 @@ class S3Map(S3Search):
                     "active"    : True,
                     "marker"    : marker
                 }]
+            # @ToDo: deployment_setting for whether to show WMSBrowser in Search?
+            # @ToDo: WMSBrowser setting should come from hierarchy
+            config = gis.get_config()
+            if config.wmsbrowser_url:
+                wms_browser = {"name": config.wmsbrowser_name,
+                               "url": config.wmsbrowser_url}
+            else:
+                wms_browser = {}
             map = gis.show_map(feature_resources=feature_resources,
                                catalogue_layers=True,
                                legend=True,
                                toolbar=True,
                                collapsed=True,
                                search = True,
+                               wms_browser = wms_browser,
                                )
 
         else:
@@ -7915,7 +7949,9 @@ class S3ExportPOI(S3Method):
 
 # -----------------------------------------------------------------------------
 class S3ImportPOI(S3Method):
-    """ Import point-of-interest resources for a location """
+    """
+        Import point-of-interest resources for a location
+    """
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -7930,12 +7966,22 @@ class S3ImportPOI(S3Method):
         if r.representation == "html":
 
             T = current.T
-            auth = current.auth
             s3db = current.s3db
             request = current.request
             response = current.response
 
             title = T("Import from OpenStreetMap")
+
+            res_select = [TR(TD(B("%s: " % T("Select resources to import")),
+                                _colspan=3))]
+            for resource in current.deployment_settings.get_gis_poi_resources():
+                id = "res_" + resource
+                res_select.append(TR(TD(LABEL(resource, _for=id)),
+                                     TD(INPUT(_type="checkbox",
+                                              _name=id,
+                                              _id=id,
+                                              _checked=True)),
+                                     TD()))
 
             form = FORM(
                     TABLE(
@@ -7975,7 +8021,7 @@ class S3ImportPOI(S3Method):
                         TR(
                             TD(B("%s: " % T("Password"))),
                             TD(INPUT(_type="text", _name="password",
-                                     _id="password", _value="osm")),
+                                     _id="password", _value="planet")),
                             TD(),
                             ),
                         TR(
@@ -7984,6 +8030,7 @@ class S3ImportPOI(S3Method):
                                      _id="ignore_errors")),
                             TD(),
                             ),
+                        res_select,
                         TR(TD(),
                            TD(INPUT(_type="submit", _value=T("Import"))),
                            TD(),
@@ -8064,6 +8111,7 @@ class S3ImportPOI(S3Method):
                         # Python < 2.7
                         error = subprocess.call(cmd, shell=True)
                         if error:
+                            s3_debug(cmd)
                             current.session.error = T("OSM file generation failed!")
                             redirect(URL(args=r.id))
                     try:
@@ -8080,7 +8128,13 @@ class S3ImportPOI(S3Method):
                 define_resource = s3db.resource
                 response.error = ""
                 import_count = 0
-                for tablename in current.deployment_settings.get_gis_poi_resources():
+
+                import_res = []
+                for resource in current.deployment_settings.get_gis_poi_resources():
+                    if getattr(vars, "res_" + resource):
+                        import_res.append(resource)
+
+                for tablename in import_res:
                     try:
                         table = s3db[tablename]
                     except:

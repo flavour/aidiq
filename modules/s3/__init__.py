@@ -11,7 +11,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2009-2012 (c) Sahana Software Foundation
+    @copyright: 2009-2013 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -46,6 +46,7 @@
 from s3validators import *
 from s3utils import *
 from s3widgets import *
+from s3data import *
 
 # Basic Toolkits ==============================================================
 #
@@ -80,6 +81,7 @@ from s3rest import *
 
 # CRUD
 from s3crud import *
+from s3forms import *
 
 # Search
 from s3search import *

@@ -86,6 +86,12 @@ T = current.T
 #settings.auth.gmail_domains = ["gmail.com"]
 # Uncomment this to allow users to Login using OpenID
 #settings.auth.openid = True
+# Uncomment this to enable presence records on login based on HTML5 geolocations
+#settings.auth.set_presence_on_login = True
+# Uncomment this and specify a list of location levels to be ignored by presence records
+#settings.auth.ignore_levels_for_presence = ["L0", "L1", "L2", "L3"]
+# Uncomment this to enable the creation of new locations if a user logs in from an unknown location. Warning: This may lead to many useless location entrys
+#settings.auth.create_unknown_locations = True
 
 # L10n settings
 # Languages used in the deployment (used for Language Toolbar & GIS Locations)
@@ -218,6 +224,11 @@ settings.L10n.decimal_separator = "."
 #
 #settings.security.policy = 7 # Organisation-ACLs
 
+# Ownership-rule for records without owner:
+# True = not owned by any user (strict ownership, default)
+# False = owned by any authenticated user
+#settings.security.strict_ownership = False
+
 # Lock-down access to Map Editing
 #settings.security.map = True
 # Allow non-MapAdmins to edit hierarchy locations? Defaults to True if not set.
@@ -257,6 +268,8 @@ settings.L10n.decimal_separator = "."
 #settings.org.site_code_len = 3
 # Set the label for Sites
 #settings.org.site_label = "Facility"
+# Uncomment to show the date when a Site (Facilities-only for now) was last contacted
+#settings.org.site_last_contacted = True
 # Uncomment to use an Autocomplete for Site lookup fields
 #settings.org.site_autocomplete = True
 # Uncomment to have Site Autocompletes search within Address fields
@@ -364,6 +377,8 @@ settings.L10n.decimal_separator = "."
 #   }
 
 # Requests Management
+# Uncomment to disable Inline Forms in Requests module
+#settings.req.inline_forms = False
 # Label for Inventory Requests
 #settings.req.type_inv_label = "Donations"
 # Label for People Requests
@@ -463,6 +478,7 @@ settings.L10n.decimal_separator = "."
 # Uncomment this to use multiple Organisations per project
 #settings.project.multiple_organisations = True
 # Uncomment this to customise
+# Links to Filtered Components for Donors & Partners
 #settings.project.organisation_roles = {
 #    1: T("Lead Implementer"), # T("Host National Society")
 #    2: T("Partner"), # T("Partner National Society")

@@ -11,7 +11,7 @@ from gluon import *
 from gluon.storage import Storage
 from gluon.dal import Row
 
-from s3.s3utils import S3DataTable
+from s3.s3data import S3DataTable
 
 # =============================================================================
 class S3DataTableTests(unittest.TestCase):
@@ -128,11 +128,11 @@ class S3DataTableTests(unittest.TestCase):
             render to an HTML TABLE
         """
         dt = S3DataTable(self.rfields, self.data)
-        actual = dt.html()
+        actual = dt.html(14, 14)
         # @todo: Need to add a test for the format returned
         #print actual
         dt = S3DataTable(self.rfields, self.data, start = 3, limit = 5)
-        actual = dt.html()
+        actual = dt.html(14, 14)
         # @todo: Need to add a test for the format returned
         #print actual
 

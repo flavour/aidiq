@@ -2,7 +2,7 @@
 
 """ S3 Encoder/Decoder Base Class
 
-    @copyright: 2011-12 (c) Sahana Software Foundation
+    @copyright: 2011-13 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -53,7 +53,6 @@ from gluon import current
 from gluon.storage import Storage
 
 # =============================================================================
-
 class S3Codec(object):
     """
         Base class for converting S3Resources into/from external
@@ -207,6 +206,23 @@ class S3Codec(object):
             format = fmt
         dx = dt - datetime.timedelta(microseconds=dt.microsecond)
         return dx.strftime(str(format))
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def crud_string(tablename, name):
+        """
+            Get a CRUD string
+
+            @param tablename: the table name
+            @param name: the name of the CRUD string
+        """
+
+        crud_strings = current.response.s3.crud_strings
+        # CRUD strings for this table
+        _crud_strings = crud_strings.get(tablename, crud_strings)
+        return _crud_strings.get(name,
+                                 # Default fallback
+                                 crud_strings.get(name, None))
 
     # -------------------------------------------------------------------------
     # Error handling

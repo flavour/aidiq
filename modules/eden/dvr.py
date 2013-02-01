@@ -2,7 +2,7 @@
 
 """ Sahana Eden Disaster Victim Registration Model
 
-    @copyright: 2012 (c) Sahana Software Foundation
+    @copyright: 2012-13 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -48,12 +48,7 @@ class S3DVRModel(S3Model):
 
         T = current.T
 
-        person_id = self.pr_person_id
-        location_id = self.gis_location_id
-        multi_activity_id = self.project_multi_activity_id
         UNKNOWN_OPT = current.messages.UNKNOWN_OPT
-
-        crud_strings = current.response.s3.crud_strings
 
         # ---------------------------------------------------------------------
         # Case
@@ -74,13 +69,15 @@ class S3DVRModel(S3Model):
         tablename = "dvr_case"
         table = self.define_table(tablename,
                                   # @ToDo: Option to autogenerate these, like Waybills, et al
-                                  Field("reference", label = T("Case Number")),
-                                  person_id(widget=S3AddPersonWidget(controller="pr"),
-                                            # @ToDo: Modify this to update location_id if the selected person has a Home Address already
-                                            requires=IS_ADD_PERSON_WIDGET(),
-                                            comment=None
-                                            ),
-                                  location_id(label = T("Home Address")),
+                                  Field("reference",
+                                        label = T("Case Number")),
+                                  self.pr_person_id(
+                                    widget=S3AddPersonWidget(controller="pr"),
+                                    # @ToDo: Modify this to update location_id if the selected person has a Home Address already
+                                    requires=IS_ADD_PERSON_WIDGET(),
+                                    comment=None
+                                    ),
+                                  self.gis_location_id(label = T("Home Address")),
                                   Field("damage", "integer",
                                         requires = IS_NULL_OR(IS_IN_SET(dvr_damage_opts)),
                                         represent = lambda opt: \
@@ -95,13 +92,12 @@ class S3DVRModel(S3Model):
                                         represent = lambda opt: \
                                             dvr_status_opts.get(opt, UNKNOWN_OPT),
                                         label= T("Status")),
-                                  multi_activity_id(),
                                   s3_comments(),
                                   *s3_meta_fields())
 
         # CRUD Strings
         ADD_CASE = T("Add Case")
-        crud_strings[tablename] = Storage(
+        current.response.s3.crud_strings[tablename] = Storage(
             title_create = ADD_CASE,
             title_display = T("Case Details"),
             title_list = T("Cases"),
@@ -124,7 +120,7 @@ class S3DVRModel(S3Model):
                     )
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (s3db.*)
+        # Pass names back to global scope (s3.*)
         #
         return Storage()
 
@@ -166,8 +162,6 @@ class S3DVRModel(S3Model):
                     onaccept = _config("pr_address", "create_onaccept") or \
                                _config("pr_address", "onaccept")
                     callback(onaccept, _form, tablename="pr_address")
-                    # Normally happens onvalidation:
-                    s3_lx_update(atable, id)
                 else:
                     # Update Home Address from location_id
                     id = person["pr_address"].id
@@ -183,8 +177,6 @@ class S3DVRModel(S3Model):
                                     )
                     _form = Storage(vars=_vars)
                     callback(onaccept, _form, tablename="pr_address")
-                    # Normally happens onvalidation:
-                    s3_lx_update(atable, id)
         return
 
 # END =========================================================================

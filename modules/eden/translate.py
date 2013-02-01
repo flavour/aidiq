@@ -2,7 +2,7 @@
 
 """ Sahana Eden Translate Model
 
-    @copyright: 2012 (c) Sahana Software Foundation
+    @copyright: 2012-13 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -93,7 +93,7 @@ class S3TranslateModel(S3Model):
                              *s3_meta_fields())
 
         #----------------------------------------------------------------------
-        # Return names to response.s3
+        # Pass names back to global scope (s3.*)
         return Storage()
 
     # ---------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 """ S3 Data Model Extensions
 
-    @copyright: 2009-2012 (c) Sahana Software Foundation
+    @copyright: 2009-2013 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -37,8 +37,9 @@ from gluon.dal import Table
 #from gluon.validators import IS_EMPTY_OR
 from gluon.storage import Storage
 
-from s3validators import IS_ONE_OF
+from s3navigation import S3ScriptItem
 from s3resource import S3Resource
+from s3validators import IS_ONE_OF
 
 DEFAULT = lambda: None
 
@@ -56,6 +57,8 @@ ogetattr = object.__getattribute__
 # =============================================================================
 class S3Model(object):
     """ Base class for S3 models """
+
+    _s3model = True
 
     LOCK = "s3_model_lock"
     LOAD = "s3_model_load"
@@ -200,21 +203,23 @@ class S3Model(object):
                 generic = []
                 for n in module.__all__:
                     model = module.__dict__[n]
-                    if type(model).__name__ == "type":
+                    if hasattr(model, "_s3model"):
                         if loaded:
                             continue
                         if hasattr(model, "names"):
                             if tablename in model.names:
                                 model(prefix)
                                 loaded = True
-                                generic = []
                             else:
                                 continue
                         else:
                             generic.append(n)
-                    elif n.startswith("%s_" % prefix):
+                    else:
+                        if n == tablename:
+                            loaded = True
                         s3[n] = model
-                [module.__dict__[n](prefix) for n in generic]
+                if not loaded:
+                    [module.__dict__[n](prefix) for n in generic]
         if not db_only and tablename in s3:
             return s3[tablename]
         elif hasattr(db, tablename):
@@ -336,10 +341,14 @@ class S3Model(object):
     # -------------------------------------------------------------------------
     # Resource configuration
     # -------------------------------------------------------------------------
-    @classmethod
-    def resource(cls, prefix, name=None, **attr):
+    @staticmethod
+    def resource(tablename, *args, **kwargs):
+        """
+            Wrapper for the S3Resource constructor to realize
+            the global s3db.resource() method
+        """
 
-        return S3Resource(prefix, name=name, **attr)
+        return S3Resource(tablename, *args, **kwargs)
 
    # -------------------------------------------------------------------------
     @classmethod
@@ -433,6 +442,8 @@ class S3Model(object):
                     autocomplete = None
                     values = None
                     multiple = True
+                    filterby = None
+                    filterfor = None
                 else:
                     alias = link.get("name", name)
                     joinby = link.get("joinby", None)
@@ -457,6 +468,9 @@ class S3Model(object):
                     autocomplete = link.get("autocomplete", None)
                     values = link.get("values", None)
                     multiple = link.get("multiple", True)
+                    filterby = link.get("filterby", None)
+                    filterfor = link.get("filterfor", None)
+                    
                 component = Storage(tablename=tablename,
                                     pkey=pkey,
                                     fkey=fkey,
@@ -467,7 +481,10 @@ class S3Model(object):
                                     autodelete=autodelete,
                                     autocomplete=autocomplete,
                                     values=values,
-                                    multiple=multiple)
+                                    multiple=multiple,
+                                    filterby=filterby,
+                                    filterfor=filterfor
+                                    )
 
                 hooks[alias] = component
             components[primary] = hooks
@@ -600,6 +617,12 @@ class S3Model(object):
                 component.actuate = None
                 component.autocomplete = None
                 component.autodelete = None
+
+            if hook.filterby is not None:
+                component.filterby = hook.filterby
+
+            if hook.filterfor is not None:
+                component.filterfor = hook.filterfor
 
             components[alias] = component
         return components
@@ -810,6 +833,7 @@ class S3Model(object):
                    instance_types=None,
                    updateable=False,
                    groupby=None,
+                   script=None,
                    widget=None,
                    empty=True,
                    default=DEFAULT,
@@ -854,6 +878,14 @@ class S3Model(object):
                                  not_filter_opts=not_filter_opts,)
             if empty:
                 requires = IS_EMPTY_OR(requires)
+
+        # Add the script into the comment
+        if script:
+            if comment:
+                comment = TAG[""](comment,
+                                  S3ScriptItem(script=script))
+            else:
+                comment = S3ScriptItem(script=script)
 
         return Field(key, supertable,
                      default = default,

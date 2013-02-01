@@ -39,25 +39,11 @@ def index():
         # IE (even 9) doesn't like the dynamic full-screen, so simply do a page refresh for now
         # Remove components from embedded Map's containers without destroying their contents
         # Add a full-screen window which will inherit these components
-        s3.jquery_ready.append(
-'''$('#gis_fullscreen_map-btn').click(function(evt){
- if(navigator.appVersion.indexOf("MSIE")!=-1){
- }else{
- S3.gis.mapWestPanelContainer.removeAll(false)
- S3.gis.mapPanelContainer.removeAll(false)
- S3.gis.mapWin.items.items=[]
- S3.gis.mapWin.doLayout()
- S3.gis.mapWin.destroy()
- addMapWindow()
- evt.preventDefault()
- if(document.body.requestFullScreen){
-  document.body.requestFullScreen()
- }else if(document.body.webkitRequestFullScreen){
-  document.body.webkitRequestFullScreen()
- }else if(document.body.mozRequestFullScreen){
-  document.body.mozRequestFullScreen()
-}}
-})''')
+        if s3.debug:
+            script = "/%s/static/scripts/S3/s3.gis.fullscreen.js" % appname
+        else:
+            script = "/%s/static/scripts/S3/s3.gis.fullscreen.min.js" % appname
+        s3.scripts.append(script)
 
     # Include an embedded Map on the index page
     map = define_map(height=height,
@@ -2913,9 +2899,10 @@ def potlatch2():
     """
 
     config = gis.get_config()
-    osm_oauth_consumer_key = config.osm_oauth_consumer_key
-    osm_oauth_consumer_secret = config.osm_oauth_consumer_secret
-    if osm_oauth_consumer_key and osm_oauth_consumer_secret:
+    pe_id = auth.s3_user_pe_id(auth.user.id) if auth.s3_logged_in() else None
+    opt = s3db.auth_user_options_get_osm(auth.user.pe_id) if pe_id else None
+    if opt:
+        osm_oauth_consumer_key, osm_oauth_consumer_secret = opt
         gpx_url = None
         if "gpx_id" in request.vars:
             # Pass in a GPX Track

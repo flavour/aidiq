@@ -2,7 +2,7 @@
 
 """ Sahana Eden GIS Model
 
-    @copyright: 2009-2012 (c) Sahana Software Foundation
+    @copyright: 2009-2013 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -73,6 +73,7 @@ class S3LocationModel(S3Model):
              "gis_country_id",
              "gis_countries_id",
              "gis_country_requires",
+             "gis_country_code_represent",
              "gis_location_onvalidation",
              ]
 
@@ -107,9 +108,9 @@ class S3LocationModel(S3Model):
         if current.deployment_settings.get_gis_spatialdb():
             # Add a spatial field
             # Should we do a test to confirm this? Ideally that would be done only in eden_update_check
-            meta_spatial_fields = (s3_lx_fields() + s3_meta_fields() + (Field("the_geom", "geometry()", readable=False, writable=False),))
+            meta_spatial_fields = (s3_meta_fields() + (Field("the_geom", "geometry()", readable=False, writable=False),))
         else:
-            meta_spatial_fields = (s3_lx_fields() + s3_meta_fields())
+            meta_spatial_fields = (s3_meta_fields())
 
         tablename = "gis_location"
         table = self.define_table(tablename,
@@ -156,10 +157,6 @@ class S3LocationModel(S3Model):
                              Field("lon", "double",
                                    label = T("Longitude"),
                                    requires = IS_NULL_OR(IS_LON()),
-                                   comment = A(T("Conversion Tool"),
-                                               _style="cursor:pointer;",
-                                               _title=T("You can use the Conversion Tool to convert from either GPS coordinates or Degrees/Minutes/Seconds."),
-                                               _id="gis_location_converter-btn"),
                                    ),
                              Field("wkt", "text",
                                    # Full WKT validation is done in the onvalidation callback
@@ -188,10 +185,31 @@ class S3LocationModel(S3Model):
                                    readable=False, writable=False),
                              # Street Address (other address fields come from hierarchy)
                              Field("addr_street", "text",
+                                   represent = lambda v: v or "",
                                    label = T("Street Address")),
                              Field("addr_postcode", length=128,
+                                   represent = lambda v: v or "",
                                    label = T("Postcode")),
                              s3_comments(),
+                             Field("L5",
+                                   readable=False,
+                                   writable=False),
+                             Field("L4",
+                                   readable=False,
+                                   writable=False),
+                             Field("L3",
+                                   readable=False,
+                                   writable=False),
+                             Field("L2",
+                                   readable=False,
+                                   writable=False),
+                             Field("L1",
+                                   readable=False,
+                                   writable=False),
+                             Field("L0",
+                                   #label=current.messages.COUNTRY,
+                                   readable=False,
+                                   writable=False),
                              *meta_spatial_fields)
 
         # Default the owning role to Authenticated. This can be used to allow the site
@@ -298,6 +316,10 @@ class S3LocationModel(S3Model):
         #add_component(table, joinby=dict(gis_location="parent"),
         #              multiple=False)
 
+        # Sites as component of Locations
+        add_component("org_site",
+                      gis_location="location_id")
+
         # ---------------------------------------------------------------------
         # Error
         # - needed for COT support
@@ -317,15 +339,27 @@ class S3LocationModel(S3Model):
                              # *s3_meta_fields())
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (s3db.*)
+        # Pass names back to global scope (s3.*)
         #
         return Storage(
                     gis_location_id = location_id,
                     gis_country_id = country_id,
                     gis_countries_id = countries_id,
                     gis_country_requires = country_requires,
+                    gis_country_code_represent = self.gis_country_code_represent,
                     gis_location_onvalidation = self.gis_location_onvalidation,
                 )
+
+    # ---------------------------------------------------------------------
+    @staticmethod
+    def gis_country_code_represent(code):
+        """ FK representation """
+
+        if not code:
+            return current.messages["NONE"]
+
+        return current.gis.get_country(code, key_type="code") or \
+               current.messages.UNKNOWN_OPT
 
     # ---------------------------------------------------------------------
     @staticmethod
@@ -670,7 +704,7 @@ class S3LocationNameModel(S3Model):
                                   *s3_meta_fields())
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (s3db.*)
+        # Pass names back to global scope (s3.*)
         #
         return Storage(
                 )
@@ -719,7 +753,7 @@ class S3LocationTagModel(S3Model):
                        deduplicate=self.gis_location_tag_deduplicate)
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (s3db.*)
+        # Pass names back to global scope (s3.*)
         #
         return Storage(
                     gis_country_opts = self.gis_country_opts,
@@ -822,7 +856,7 @@ class S3LocationGroupModel(S3Model):
                              *s3_meta_fields())
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (s3db.*)
+        # Pass names back to global scope (s3.*)
         #
         return Storage(
                 )
@@ -896,7 +930,7 @@ class S3LocationHierarchyModel(S3Model):
                        )
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (s3db.*)
+        # Pass names back to global scope (s3.*)
         #
         return Storage(
                 gis_hierarchy_form_setup = self.gis_hierarchy_form_setup,
@@ -960,7 +994,7 @@ class S3LocationHierarchyModel(S3Model):
             table[field].comment = DIV(
                         _class="tooltip",
                         _title="%s|%s|%s" % (
-                            T("Is editing level L%d locations allowed?" % n),
+                            T("Is editing level L%d locations allowed?") % n,
                             edit_Ln_tip_1,
                             edit_Ln_tip_2
                             )
@@ -1081,6 +1115,8 @@ class S3GISConfigModel(S3Model):
                                     label = T("Marker"),
                                     comment=S3AddResourceLink(c="gis",
                                                               f="marker",
+                                                              vars={"child":"marker_id",
+                                                                    "parent": "symbology"},
                                                               label=ADD_MARKER,
                                                               title=T("Marker"),
                                                               tooltip="%s|%s|%s" % (T("Defines the icon used for display of features on interactive map & KML exports."),
@@ -1321,10 +1357,6 @@ class S3GISConfigModel(S3Model):
                              Field("wmsbrowser_name",
                                    # @ToDo: Remove default once we have cascading working
                                    default="Web Map Service"),
-                             # OpenStreetMap settings:
-                             # Register your app by logging in to www.openstreetmap.org & then selecting 'oauth settings'
-                             Field("osm_oauth_consumer_key"),
-                             Field("osm_oauth_consumer_secret"),
                              # Note: This hasn't yet been changed for any instance
                              # Do we really need it to be configurable?
                              Field("zoom_levels", "integer",
@@ -1433,7 +1465,7 @@ class S3GISConfigModel(S3Model):
             # msg_list_empty = T("No Menu Entries currently defined"))
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (s3db.*)
+        # Pass names back to global scope (s3.*)
         #
         return Storage(
                 gis_config_form_setup = self.gis_config_form_setup,
@@ -1502,18 +1534,6 @@ class S3GISConfigModel(S3Model):
                 T("Web Map Service Browser URL"),
                 T("The URL for the GetCapabilities page of a Web Map Service (WMS) whose layers you want available via the Browser panel on the Map."),
                 T("The form of the URL is http://your/web/map/service?service=WMS&request=GetCapabilities where your/web/map/service stands for the URL path to the WMS.")))
-        table.osm_oauth_consumer_key.label = T("OpenStreetMap OAuth Consumer Key")
-        table.osm_oauth_consumer_key.comment = DIV(
-            _class="stickytip",
-            _title="%s|%s|%s" % (
-                T("OpenStreetMap OAuth Consumer Key"),
-                T("In order to be able to edit OpenStreetMap data from within %(name_short)s, you need to register for an account on the OpenStreet server.") % \
-                    dict(name_short=current.deployment_settings.get_system_name_short()),
-                T("Go to %(url)s, sign up & then register your application. You can put any URL in & you only need to select the 'modify the map' permission.") % \
-                    dict(url=A("http://www.openstreetmap.org",
-                         _href="http://www.openstreetmap.org",
-                         _target="blank"))))
-        table.osm_oauth_consumer_secret.label = T("OpenStreetMap OAuth Consumer Secret")
         table.geocoder.label = T("Use Geocoder for address lookups?")
         table.min_lat.label = T("Minimum Location Latitude")
         table.min_lat.comment = DIV(
@@ -2248,14 +2268,16 @@ class S3FeatureLayerModel(S3Model):
                         list_fields=["id",
                                      "name",
                                      "description",
-                                     "module",
-                                     "resource",
+                                     "controller",
+                                     "function",
                                      "filter",
-                                     "filter_field",
-                                     "filter_value",
+                                     #"filter_field",
+                                     #"filter_value",
                                      "popup_label",
                                      "popup_fields",
                                      "dir",
+                                     "trackable",
+                                     "polygons",
                                      ])
 
         # Components
@@ -2391,7 +2413,8 @@ class S3MapModel(S3Model):
                              Field("shape",
                                    requires=IS_NULL_OR(IS_IN_SET(["circle", "square", "star", "x", "cross", "triangle"]))),
                              Field("size", "integer"),
-                             Field("colour", requires=IS_NULL_OR(IS_HTML_COLOUR())),
+                             Field("colour", requires=IS_NULL_OR(IS_HTML_COLOUR()),
+                                 widget=S3ColorPickerWidget(),),
                              gis_opacity()(),
                              *s3_meta_fields())
 
@@ -3209,6 +3232,7 @@ class S3MapModel(S3Model):
                              Field("bgcolor", length=32,
                                    label=T("Background Color"),
                                    requires=IS_NULL_OR(IS_HTML_COLOUR()),
+                                   widget=S3ColorPickerWidget(),
                                    comment=DIV(_class="tooltip",
                                                _title="%s|%s" % (T("Background Color"),
                                                                  T("Optional selection of a background color.")))),
@@ -3537,7 +3561,7 @@ class S3GISThemeModel(S3Model):
         )
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (s3db.*)
+        # Pass names back to global scope (s3.*)
         #
         return Storage(
                     gis_layer_theme_id = layer_theme_id,
@@ -3883,33 +3907,75 @@ def gis_location_lx_represent(id):
     """
         Represent a location as a hierarchical string
 
+        Assumes that the Location Hierarchy has been updated
+
         @param id: location_id
-        @return: string
+        @returns: string
     """
 
     if not id:
         return current.messages["NONE"]
 
-    s3db = current.s3db
-    table = s3db.gis_location
+    table = current.s3db.gis_location
     location = current.db(table.id == id).select(table.name,
-                                                 cache=s3db.cache,
+                                                 table.L0,
+                                                 table.L1,
+                                                 table.L2,
+                                                 table.L3,
+                                                 table.L4,
+                                                 table.L5,
                                                  limitby=(0, 1)).first()
 
-    parents = Storage()
-    parents = current.gis.get_parent_per_level(parents,
-                                               id,
-                                               ids=False,
-                                               names=True)
-
-    location_list = []
-    if location.name:
-        location_list.append(location.name)
-    if parents:
-        fields = ["L%s" % (i) for i in xrange(0, 5)]
-        for field in reversed(fields):
-            if field in parents and parents[field]:
-                location_list.append(parents[field])
+    name = location.name
+    location_list = [name]
+    lappend = location_list.append
+    matched = False
+    L5 = location.L5
+    if L5:
+        if L5 == name:
+            matched = True
+        else:
+            lappend(L5)
+    L4 = location.L4
+    if L4:
+        if L4 == name:
+            if matched:
+                lappend(L4)
+            matched = True
+        else:
+            lappend(L4)
+    L3 = location.L3
+    if L3:
+        if L3 == name:
+            if matched:
+                lappend(L3)
+            matched = True
+        else:
+            lappend(L3)
+    L2 = location.L2
+    if L2:
+        if L2 == name:
+            if matched:
+                lappend(L2)
+            matched = True
+        else:
+            lappend(L2)
+    L1 = location.L1
+    if L1:
+        if L1 == name:
+            if matched:
+                lappend(L1)
+            matched = True
+        else:
+            lappend(L1)
+    L0 = location.L0
+    if L0:
+        if L0 == name:
+            if matched:
+                lappend(L0)
+            matched = True
+        else:
+            lappend(L0)
 
     return ", ".join(location_list)
 

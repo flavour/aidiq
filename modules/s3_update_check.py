@@ -70,10 +70,11 @@ def update_check():
         import matplotlib
     except(ImportError):
         warnings.append("S3Chart unresolved dependency: matplotlib required for charting")
-    try:
-        import numpy
-    except(ImportError):
-        warnings.append("S3Report unresolved dependency: numpy required for pivot table reports")
+    # Not currently needed
+    #try:
+        #import numpy
+    #except(ImportError):
+        #warnings.append("S3Resource unresolved dependency: numpy required for pivot table reports")
     try:
         import tweepy
     except(ImportError):
@@ -89,14 +90,17 @@ def update_check():
     # Currently, the minimum usable Web2py is determined by whether the
     # Scheduler is available
     web2py_minimum_version = "Version 1.99.3 (2011-10-27 13:23:13)"
+    # Offset of datetime in return value of parse_version.
+    datetime_index = 4
     web2py_version_ok = True
     try:
         from gluon.fileutils import parse_version
     except ImportError:
         web2py_version_ok = False
     if web2py_version_ok:
-        web2py_minimum_datetime = parse_version(web2py_minimum_version)[3]
-        web2py_installed_datetime = request.global_settings.web2py_version[3]
+        web2py_minimum_parsed = parse_version(web2py_minimum_version)
+        web2py_minimum_datetime = web2py_minimum_parsed[datetime_index]
+        web2py_installed_datetime = request.global_settings.web2py_version[datetime_index]
         web2py_version_ok = web2py_installed_datetime >= web2py_minimum_datetime
     if not web2py_version_ok:
         warnings.append(

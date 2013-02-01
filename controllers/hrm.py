@@ -51,6 +51,13 @@ def human_resource():
             elif r.method == "delete":
                 # Don't redirect
                 pass
+            elif r.method == "deduplicate":
+                # Don't use AddPersonWidget here
+                from gluon.sqlhtml import OptionsWidget
+                field = r.table.person_id
+                field.requires = IS_ONE_OF(db, "pr_person.id",
+                                           label = field.represent)
+                field.widget = OptionsWidget.widget
             elif r.id:
                 # Redirect to person controller
                 vars = {
@@ -75,7 +82,7 @@ def human_resource():
                     # @ToDo: Remove this now that we have it in Events?
                     s3.actions.append({
                         "url": URL(f="compose",
-                                   vars = {"hrm_id": "[id]"}),
+                                   vars = {"human_resource.id": "[id]"}),
                         "_class": "action-btn",
                         "label": str(T("Send Message"))})
         elif r.representation == "plain" and \
@@ -97,33 +104,49 @@ def staff():
     tablename = "hrm_human_resource"
     table = s3db[tablename]
 
+    get_vars = request.get_vars
     _type = table.type
     _type.default = 1
     s3.filter = (_type == 1)
     table.site_id.writable = True
     table.site_id.readable = True
-    list_fields = ["id",
-                   "person_id",
-                   "job_title_id",
-                   "organisation_id",
-                   "department_id",
-                   "site_id",
-                   #"site_contact",
-                   (T("Email"), "email"),
-                   (settings.get_ui_label_mobile_phone(), "phone"),
-                   (T("Trainings"), "course"),
-                   (T("Certificates"), "certificate"),
-                   (T("Contract End Date"), "end_date"),
-                   "status",
-                   ]
     s3.crud_strings[tablename] = s3.crud_strings["hrm_staff"]
-    if "expiring" in request.get_vars:
+    if "expiring" in get_vars:
         s3.filter = s3.filter & \
             (table.end_date < (request.utcnow + datetime.timedelta(weeks=4)))
         s3.crud_strings[tablename].title_list = T("Staff with Contracts Expiring in the next Month")
-        # Remove the big Add button
         s3db.configure(tablename,
-                        insertable=False)
+                       # Sort by Expiry
+                       sortby = table.end_date,
+                       # Remove the Add button
+                       insertable=False
+                       )
+        list_fields = ["id",
+                       (T("Contract End Date"), "end_date"),
+                       "person_id",
+                       "job_title_id",
+                       "organisation_id",
+                       "department_id",
+                       "site_id",
+                       #"site_contact",
+                       ]
+    else:
+        list_fields = ["id",
+                       "person_id",
+                       "job_title_id",
+                       "organisation_id",
+                       "department_id",
+                       "site_id",
+                       #"site_contact",
+                       (T("Email"),"email.value"),
+                       (settings.get_ui_label_mobile_phone(),"phone.value"),
+                       ]
+        if settings.get_hrm_use_trainings():
+            list_fields.append("person_id$training.course_id")
+        if settings.get_hrm_use_certificates():
+            list_fields.append("person_id$certification.certificate_id")
+        list_fields.append((T("Contract End Date"), "end_date"))
+        list_fields.append("status")
     # Remove Type filter from the Search widget
     human_resource_search = s3db.get_config(tablename,
                                             "search_method")
@@ -139,7 +162,7 @@ def staff():
                r.method in [None, "create"]:
                 # Don't redirect
                 table = r.table
-                site_id = request.get_vars.get("site_id", None)
+                site_id = get_vars.get("site_id", None)
                 if site_id:
                     table.site_id.default = site_id
                     table.site_id.writable = False
@@ -163,6 +186,11 @@ def staff():
                 }
                 redirect(URL(f="person",
                              vars=vars))
+            elif r.method == "import":
+                # Redirect to person controller
+                redirect(URL(f="person",
+                             args="import",
+                             vars={"group": "staff"}))
         return True
     s3.prep = prep
 
@@ -179,10 +207,13 @@ def staff():
                     # @ToDo: Remove this now that we have it in Events?
                     s3.actions.append({
                             "url": URL(f="compose",
-                                       vars = {"hrm_id": "[id]"}),
+                                       vars = {"human_resource.id": "[id]"}),
                             "_class": "action-btn",
                             "label": str(T("Send Message"))
                         })
+                #s3.scripts.append("/%s/static/scripts/jquery.doubleScroll.js" % appname)
+                #s3.jquery_ready.append('''$('.dataTable_table').doubleScroll()''')
+                #s3.jquery_ready.append('''$('.dataTables_wrapper').doubleScroll()''')
         elif r.representation == "plain" and \
              r.method !="search":
             # Map Popups
@@ -247,9 +278,6 @@ def person():
     # Configure person table
     tablename = "pr_person"
     table = s3db[tablename]
-    if (group == "staff" and settings.get_hrm_staff_experience() == "programme") or \
-       (group == "volunteer" and settings.get_hrm_vol_experience() == "programme"):
-        table.virtualfields.append(s3db.hrm_programme_person_virtual_fields())
     configure(tablename,
               deletable=False)
 
@@ -405,27 +433,24 @@ def person():
             resource = r.resource
             if mode is not None:
                 r.resource.build_query(id=s3_logged_in_person())
-            else:
+            elif r.method != "deduplicate":
                 if not r.id and not hr_id:
                     # pre-action redirect => must retain prior errors
                     if response.error:
                         session.error = response.error
                     redirect(URL(r=r, f="staff"))
-            if resource.count() == 1:
-                resource.load()
-                r.record = resource.records().first()
-                if r.record:
-                    r.id = r.record.id
-            if not r.record:
-                session.error = T("Record not found")
-                redirect(URL(f="staff",
-                             args=["search"]))
-            if hr_id and r.component_name == "human_resource":
-                r.component_id = hr_id
-            configure("hrm_human_resource",
-                      insertable = False)
-            #if not r.component_id or r.method in ("create", "update"):
-            #    s3base.s3_address_hide(s3db.pr_address)
+                if resource.count() == 1:
+                    resource.load()
+                    r.record = resource.records().first()
+                    if r.record:
+                        r.id = r.record.id
+                if not r.record:
+                    session.error = T("Record not found")
+                    redirect(URL(f="staff", args=["search"]))
+                if hr_id and r.component_name == "human_resource":
+                    r.component_id = hr_id
+                configure("hrm_human_resource", insertable = False)
+                
         return True
     s3.prep = prep
 
@@ -457,7 +482,6 @@ def person():
         orgname = None
 
     output = s3_rest_controller("pr", resourcename,
-                                native=False,
                                 rheader=s3db.hrm_rheader,
                                 orgname=orgname,
                                 replace_option=T("Remove existing data before import"),
@@ -467,7 +491,9 @@ def person():
                                     dict(label="Type",
                                          field=s3db.hrm_human_resource.type)
                                                   ],
-                                )
+                                # Better in the native person controller:
+                                deduplicate="",
+                               )
     return output
 
 # -----------------------------------------------------------------------------
@@ -499,9 +525,6 @@ def profile():
     # Configure person table
     tablename = "pr_person"
     table = s3db[tablename]
-    if (group == "staff" and settings.get_hrm_staff_experience() == "programme") or \
-       (group == "volunteer" and settings.get_hrm_vol_experience() == "programme"):
-        table.virtualfields.append(s3db.hrm_programme_person_virtual_fields())
     s3db.configure(tablename,
                    deletable=False)
 
@@ -554,7 +577,6 @@ def profile():
     s3.postp = postp
 
     output = s3_rest_controller("pr", "person",
-                                native=False,
                                 rheader=s3db.hrm_rheader,
                                 )
     return output
@@ -604,11 +626,13 @@ def department():
         return True
     s3.prep = prep
 
-    s3.filter = auth.filter_by_root_org(s3db.hrm_department)
+    if not auth.s3_has_role(ADMIN):
+        s3.filter = auth.filter_by_root_org(s3db.hrm_department)
 
     output = s3_rest_controller()
     return output
 
+# -----------------------------------------------------------------------------
 def job_role():
     """ Job Roles Controller """
 
@@ -619,11 +643,13 @@ def job_role():
         return True
     s3.prep = prep
     
-    s3.filter = auth.filter_by_root_org(s3db.hrm_job_role)
+    if not auth.s3_has_role(ADMIN):
+        s3.filter = auth.filter_by_root_org(s3db.hrm_job_role)
 
     output = s3_rest_controller()
     return output
 
+# -----------------------------------------------------------------------------
 def job_title():
     """ Job Titles Controller """
 
@@ -634,7 +660,8 @@ def job_title():
         return True
     s3.prep = prep
 
-    s3.filter = auth.filter_by_root_org(s3db.hrm_job_title)
+    if not auth.s3_has_role(ADMIN):
+        s3.filter = auth.filter_by_root_org(s3db.hrm_job_title)
 
     output = s3_rest_controller()
     return output
@@ -698,7 +725,8 @@ def course():
         session.error = T("Access denied")
         redirect(URL(f="index"))
 
-    s3.filter = auth.filter_by_root_org(s3db.hrm_job_title)
+    if not auth.s3_has_role(ADMIN):
+        s3.filter = auth.filter_by_root_org(s3db.hrm_course)
 
     output = s3_rest_controller(rheader=s3db.hrm_rheader)
     return output
@@ -759,7 +787,7 @@ def training_event():
 # =============================================================================
 def skill_competencies():
     """
-        Called by S3FilterFieldChange to provide the competency options for a
+        Called by S3OptionsFilter to provide the competency options for a
             particular Skill Type
     """
 
@@ -800,7 +828,7 @@ def staff_for_site():
     """
 
     try:
-        site_id = request.get_vars.get("staff.site_id")
+        site_id = request.args[0]
     except:
         result = current.xml.json_message(False, 400, "No Site provided!")
     else:

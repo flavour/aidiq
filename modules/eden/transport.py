@@ -2,7 +2,7 @@
 
 """ Sahana Eden Transport Model
 
-    @copyright: 2012 (c) Sahana Software Foundation
+    @copyright: 2012-13 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -317,7 +317,7 @@ class S3TransportModel(S3Model):
                   )
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (s3db.*)
+        # Pass names back to global scope (s3.*)
         #
         return Storage(
                 )

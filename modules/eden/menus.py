@@ -2,7 +2,7 @@
 
 """ Sahana Eden Menu Structure and Layout
 
-    @copyright: 2011-2012 (c) Sahana Software Foundation
+    @copyright: 2011-2013 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -135,7 +135,9 @@ class S3MainMenu(object):
         for language in languages:
             menu_lang.append(MM(languages[language], r=request,
                                 translate=False,
-                                vars={"_language":language}))
+                                vars={"_language":language},
+                                ltr=True
+                                ))
         return menu_lang
 
     # -------------------------------------------------------------------------
@@ -183,8 +185,7 @@ class S3MainMenu(object):
                            **attr)(
                             MM("Logout", m="logout", _id="auth_menu_logout"),
                             MM("User Profile", m="profile"),
-                            MM("Personal Data", c="pr", f="person", m="update",
-                                vars={"person.pe_id" : auth.user.pe_id}),
+                            MM("Personal Data", c="default", f="person", m="update"),
                             MM("Contact Details", c="pr", f="person",
                                 args="contact",
                                 vars={"person.pe_id" : auth.user.pe_id}),
@@ -364,12 +365,13 @@ class S3OptionsMenu(object):
         # ATTN: Do not specify a controller for the main menu to allow
         #       re-use of this menu by other controllers
         return M(restrict=[ADMIN])(
-                    M("Settings", c="admin", f="settings")(
+                    M("Settings", c="admin", f="setting")(
                         settings_messaging,
                     ),
                     M("User Management", c="admin", f="user")(
                         M("New User", m="create"),
-                        M("List All Users", f="user"),
+                        M("List All Users"),
+                        M("Import Users", m="import"),
                         M("List All Roles", f="role"),
                         M("List All Organization Approvers & Whitelists", f="organisation"),
                         #M("Roles", f="group"),
@@ -411,11 +413,13 @@ class S3OptionsMenu(object):
                         M("New", m="create"),
                         M("List All"),
                         M("Search", m="search"),
+                        M("Map", m="map"),
                     ),
                     M("Canvassing", f="canvass")(
                         M("New", m="create"),
                         M("List All"),
                         M("Search", m="search"),
+                        M("Map", m="map"),
                     ),
                     #M("Rapid Assessments", f="rat")(
                     #    M("New", m="create"),
@@ -443,6 +447,8 @@ class S3OptionsMenu(object):
     def asset(self):
         """ ASSET Controller """
 
+        ADMIN = current.session.s3.system_roles.ADMIN
+
         return M(c="asset")(
                     M("Assets", f="asset")(
                         M("New", m="create"),
@@ -451,6 +457,11 @@ class S3OptionsMenu(object):
                         M("Report", m="report"),
                         M("Import", m="import", p="create"),
                     ),
+                    #M("Brands", f="brand",
+                    #  restrict=[ADMIN])(
+                    #    M("New", m="create"),
+                    #    M("List All"),
+                    #),
                     M("Items", f="item")(
                         M("New", m="create"),
                         M("List All"),
@@ -458,9 +469,16 @@ class S3OptionsMenu(object):
                         M("Report", m="report"),
                         M("Import", m="import", p="create"),
                     ),
-                    M("Item Categories", f="item_category")(
+                    M("Item Categories", f="item_category",
+                      restrict=[ADMIN])(
                         M("New", m="create"),
                         M("List All"),
+                    ),
+                    M("Catalogs", f="catalog",
+                      restrict=[ADMIN])(
+                        M("New", m="create"),
+                        M("List All"),
+                        #M("Search", m="search"),
                     ),
                     M("Suppliers", f="supplier")(
                         M("New", m="create"),
@@ -1083,6 +1101,7 @@ class S3OptionsMenu(object):
                     M("Sent Shipments", c="inv", f="send")(
                         M("New", m="create"),
                         M("List All"),
+                        M("Search", m="search"),
                         M("Search Shipped Items", f="track_item", m="search"),
                     ),
                     M("Items", c="supply", f="item")(
@@ -1097,6 +1116,11 @@ class S3OptionsMenu(object):
                        #M("New", m="create"),
                        #M("List All"),
                        #M("Search", m="search"),
+                    #),
+                    #M("Brands", c="supply", f="brand",
+                    #  restrict=[ADMIN])(
+                    #    M("New", m="create"),
+                    #    M("List All"),
                     #),
                     M("Catalogs", c="supply", f="catalog")(
                         M("New", m="create"),
@@ -1115,11 +1139,12 @@ class S3OptionsMenu(object):
                         M("Import", m="import", p="create"),
                     ),
                     M("Facilities", c="inv", f="facility")(
-                        M("New", m="create"),
+                        M("New", m="create", t="org_facility"),
                         M("List All"),
                         #M("Search", m="search"),
                     ),
-                    M("Facility Types", c="inv", f="facility_type")(
+                    M("Facility Types", c="inv", f="facility_type",
+                      restrict=[ADMIN])(
                         M("New", m="create"),
                         M("List All"),
                         #M("Search", m="search"),
@@ -1131,7 +1156,8 @@ class S3OptionsMenu(object):
                         #M("Search Requested Items", f="req_item", m="search"),
                     ),
                     M("Commitments", c="req", f="commit", check=use_commit)(
-                        M("List All")
+                        M("List All"),
+                        M("Search", m="search"),
                     ),
                 )
 
@@ -1524,9 +1550,8 @@ class S3OptionsMenu(object):
                       ),
                     M("Funding", f="organisation", args="report"),
                  ),
-                 M("Import", f="index", p="create")(
-                    M("Import Projects", f="project",
-                      m="import", p="create"),
+                 M("Import", f="project", m="import", p="create")(
+                    M("Import Projects", m="import", p="create"),
                     M("Import Project Organizations", f="organisation",
                       m="import", p="create"),
                     M(IMPORT, f="location",
@@ -1640,7 +1665,8 @@ class S3OptionsMenu(object):
                           m="search", check=req_skills),
                     ),
                     M("Commitments", f="commit", check=use_commit)(
-                        M("List All")
+                        M("List All"),
+                        M("Search", m="search"),
                     ),
                     M("Items", c="supply", f="item")(
                         M("New", m="create"),

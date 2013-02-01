@@ -121,6 +121,12 @@ class S3Config(Storage):
         """
         return self.auth.get("hmac_key", "akeytochange")
 
+    def get_auth_password_min_length(self):
+     	""" 
+            To set the Minimum Password Length
+ 	    """
+        return self.auth.get("password_min_length", int(4))
+
     def get_auth_facebook(self):
         """
             Read the FaceBook OAuth settings
@@ -281,6 +287,12 @@ class S3Config(Storage):
             ("editor", "Editor"),
             ("super", "Super Editor")
         ]))
+    def get_auth_set_presence_on_login(self):
+        return self.auth.get("set_presence_on_login", False)
+    def get_auth_ignore_levels_for_presence(self):
+        return self.auth.get("ignore_levels_for_presence", ["L0"])
+    def get_auth_create_unknown_locations(self):
+        return self.auth.get("create_unknown_locations", False)
 
     def get_security_archive_not_delete(self):
         return self.security.get("archive_not_delete", True)
@@ -291,6 +303,13 @@ class S3Config(Storage):
     def get_security_policy(self):
         " Default is Simple Security Policy "
         return self.security.get("policy", 1)
+    def get_security_strict_ownership(self):
+        """
+            Ownership-rule for records without owner:
+            True = not owned by any user (strict ownership, default)
+            False = owned by any authenticated user
+        """
+        return self.security.get("strict_ownership", True)
     def get_security_map(self):
         return self.security.get("map", False)
     def get_security_self_registration(self):
@@ -689,7 +708,13 @@ class S3Config(Storage):
             Hide report options form by default
         """
         return self.ui.get("hide_report_options", True)
-            
+
+    def get_ui_hide_report_filter_options(self):
+        """
+            Show report filter options form by default
+        """
+        return self.ui.get("hide_report_filter_options", False)
+
     # =========================================================================
     # Messaging
     # -------------------------------------------------------------------------
@@ -1124,6 +1149,12 @@ class S3Config(Storage):
         """
         return self.org.get("site_address_autocomplete", False)
 
+    def get_org_site_last_contacted(self):
+        """
+            Whether to display the last_contacted field for a Site
+        """
+        return self.org.get("site_last_contacted", False)
+
     def get_org_summary(self):
         """
             Whether to use Summary fields for Organisation/Office:
@@ -1233,6 +1264,13 @@ class S3Config(Storage):
         """
         return self.project.get("community", False)
 
+    #def get_project_locations_from_countries(self):
+    #    """
+    #        Create a project_location for each country that a Project is
+    #        implemented in
+    #    """
+    #    return self.project.get("locations_from_countries", False)
+
     def get_project_milestones(self):
         """
             Use Milestones in Projects
@@ -1308,6 +1346,11 @@ class S3Config(Storage):
         return self.req.get("multiple_req_items", True)
     def get_req_show_quantity_transit(self):
         return self.req.get("show_quantity_transit", True)
+    def get_req_inline_forms(self):
+        """
+            Whether Requests module should use inline forms for Items
+        """
+        return self.req.get("inline_forms", True)
     def get_req_prompt_match(self):
         """
             Whether a Requester is prompted to match each line item in an Item request

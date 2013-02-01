@@ -1,5 +1,5 @@
 /**
- * Used by S3SQLInlineComponentField (modules/s3forms.py)
+ * Used by S3SQLInlineComponent (modules/s3forms.py)
  */
 
 $(function() {
@@ -10,32 +10,33 @@ $(function() {
     // Utilities --------------------------------------------------------------
 
     // Get the real input name
-    inline_get_field = function(formname) {
+    var inline_get_field = function(formname) {
         var selector = '#sub-' + formname;
         var field = $(selector).attr('field');
         return field;
     };
 
     // Read JSON from real_input, decode and store as data object
-    inline_deserialize = function(formname) {
+    var inline_deserialize = function(formname) {
         var real_input = '#' + inline_get_field(formname);
-        data_json = $(real_input).val();
-        data = JSON.parse(data_json);
+        var data_json = $(real_input).val();
+        var data = JSON.parse(data_json);
         $(real_input).data('data', data);
         return data;
     };
 
     // Serialize the data object as JSON and store into real_input
-    inline_serialize = function(formname) {
+    var inline_serialize = function(formname) {
         var real_input = '#' + inline_get_field(formname);
-        data = $(real_input).data('data');
-        data_json = JSON.stringify(data);
+        var data = $(real_input).data('data');
+        var data_json = JSON.stringify(data);
         $(real_input).val(data_json);
         return data_json;
     };
 
     // Append an error to a form field or row
-    inline_append_error = function(formname, rowindex, fieldname, message) {
+    var inline_append_error = function(formname, rowindex, fieldname, message) {
+        var field_id, msg;
         if (null === fieldname) {
             if ('none' == rowindex) {
                 field_id = '#add-row-' + formname;
@@ -49,15 +50,11 @@ $(function() {
                         message +
                       '</div></td></tr>';
         } else {
-            field_id = '#sub_' +
-                       formname + '_' + formname + '_i_' +
-                       fieldname + '_edit_' + rowindex;
-            msg = '<div class="' + formname + '_error error">' +
-                    message +
-                  '</div>';
+            field_id = '#sub_' + formname + '_' + formname + '_i_' + fieldname + '_edit_' + rowindex;
+            msg = '<div class="' + formname + '_error error">' + message + '</div>';
         }
         $(field_id).after(msg);
-        $('.'+formname+'_error').hide();
+        $('.' + formname + '_error').hide();
         $('.error').click(function() {
             $(this).fadeOut('slow');
             return false;
@@ -65,35 +62,35 @@ $(function() {
     };
 
     // Display all errors
-    inline_display_errors = function(formname) {
-        $('.'+formname+'_error').slideDown();
+    var inline_display_errors = function(formname) {
+        $('.' + formname + '_error').slideDown();
     };
 
     // Remove all error messages from the form
-    inline_remove_errors = function(formname) {
-        $('.'+formname+'_error').remove();
+    var inline_remove_errors = function(formname) {
+        $('.' + formname + '_error').remove();
     };
 
     // Disable the add-row
-    function disable_inline_add(formname)
-    {
-        $('#add-row-'+formname +' > td > input').attr('disabled', true);
-        $('#add-row-'+formname +' > td > select').attr('disabled', true);
-        $('#add-row-'+formname +' > td > textarea').attr('disabled', true);
-        $('#add-row-'+formname +' > td > .inline-add').addClass('hide');
-    }
+    var disable_inline_add = function(formname) {
+        $('#add-row-' + formname + ' > td input').attr('disabled', true);
+        $('#add-row-' + formname + ' > td select').attr('disabled', true);
+        $('#add-row-' + formname + ' > td textarea').attr('disabled', true);
+        $('#add-row-' + formname + ' > td .inline-add').addClass('hide');
+        $('#add-row-' + formname + ' > td .action-lnk').addClass('hide');
+    };
 
     // Enable the add-row
-    function enable_inline_add(formname)
-    {
-        $('#add-row-'+formname +' > td > input').removeAttr('disabled');
-        $('#add-row-'+formname +' > td > select').removeAttr('disabled');
-        $('#add-row-'+formname +' > td > textarea').removeAttr('disabled');
-        $('#add-row-'+formname +' > td > .inline-add').removeClass('hide');
-    }
+    var enable_inline_add = function(formname) {
+        $('#add-row-' + formname + ' > td input').removeAttr('disabled');
+        $('#add-row-' + formname + ' > td select').removeAttr('disabled');
+        $('#add-row-' + formname + ' > td textarea').removeAttr('disabled');
+        $('#add-row-' + formname + ' > td .inline-add').removeClass('hide');
+        $('#add-row-' + formname + ' > td .action-lnk').removeClass('hide');
+    };
 
     // Collect the data from the form
-    function inline_collect_data(formname, data, rowindex) {
+    var inline_collect_data = function(formname, data, rowindex) {
 
         // Retain the original record ID
         var rows = data['data'];
@@ -111,7 +108,9 @@ $(function() {
         var fieldname;
         var element;
         var value;
-        for (var i=0; i<fields.length; i++) {
+        var intvalue;
+        var cssclass;
+        for (var i=0; i < fields.length; i++) {
             fieldname = fields[i]['name'];
             element = '#sub_' +
                       formname + '_' + formname + '_i_' +
@@ -121,13 +120,24 @@ $(function() {
                 form = $(element).closest('form');
                 upload = $(element).clone();
                 upload_id = 'upload_' + formname + '_' + fieldname + '_' + rowindex;
-                $('#'+upload_id).remove();
+                $('#' + upload_id).remove();
                 upload.attr('id', upload_id);
                 upload.attr('name', upload_id);
                 upload.css({display: 'none'});
                 form.append(upload);
             }
             value = $(element).val();
+            cssclass = $(element).attr('class');
+            //if ((cssclass == 'anytime') | (cssclass == 'double')) {
+                // pass
+            //} else {
+            if (cssclass == 'generic-widget') {
+                // Reference values need to be ints for S3Represent to find a match in theset
+                intvalue = parseInt(value, 10);
+                if (!isNaN(intvalue)) {
+                    value = intvalue;
+                }
+            }
             row[fieldname] = value;
         }
 
@@ -142,10 +152,10 @@ $(function() {
 
         // Return the row object
         return row;
-    }
+    };
 
     // Validate a new/updated row
-    function inline_validate(formname, rowindex, data, row) {
+    var inline_validate = function(formname, rowindex, data, row) {
 
         // Construct the URL
         var c = data['controller'];
@@ -153,14 +163,14 @@ $(function() {
         var url = S3.Ap.concat('/' + c + '/' + f + '/validate.json');
         var resource = data['resource'];
         if (null !== resource && typeof resource != 'undefined') {
-            url += '?resource='+resource;
+            url += '?resource=' + resource;
             concat = '&';
         } else {
             concat = '?';
         }
         var component = data['component'];
         if (null !== component && typeof component != 'undefined') {
-            url += concat+'component='+component;
+            url += concat + 'component=' + component;
         }
 
         // Request validation of the row
@@ -191,7 +201,7 @@ $(function() {
             }
         }
 
-        // Return the validated+represented row
+        // Return the validated + represented row
         // (or null if there was an error)
         if (has_errors) {
             inline_display_errors(formname);
@@ -200,33 +210,36 @@ $(function() {
             return response;
         }
 
-    }
+    };
 
     // Form actions -----------------------------------------------------------
 
     // Edit a row
-    inline_edit = function(formname, rowindex) {
+    var inline_edit = function(formname, rowindex) {
         var rowname = formname + '-' + rowindex;
 
         inline_remove_errors(formname);
 
         // Hide the current read row, show all other read rows
         $('.read-row').removeClass('hide');
-        $('#read-row-'+rowname).addClass('hide');
+        $('#read-row-' + rowname).addClass('hide');
 
         // Populate the edit row with the data for this rowindex
-        data = inline_deserialize(formname);
-        fields = data['fields'];
-        row = data['data'][rowindex];
-        for (i=0; i<fields.length; i++) {
+        var data = inline_deserialize(formname);
+        var fields = data['fields'];
+        var row = data['data'][rowindex];
+        var element;
+        var fieldname;
+        var value;
+        for (i=0; i < fields.length; i++) {
             fieldname = fields[i]['name'];
             value = row[fieldname]['value'];
             element = '#sub_' + formname + '_' + formname + '_i_' + fieldname + '_edit_0';
             // If the element is a select then we may need to add the option we're choosing
-            var select = $('select'+element);
-            if (select.length != 0) {
+            var select = $('select' + element);
+            if (select.length !== 0) {
                 var option = $('select' + element + ' option[value="' + value + '"]');
-                if (option.length == 0) {
+                if (option.length === 0) {
                     // This option does not exist in the select, so add it
                     // because otherwise val() won't work. Maybe the option
                     // gets added later by a script (e.g. FilterFieldChange)
@@ -237,7 +250,7 @@ $(function() {
                 $(element).val(value);
             } else {
                 // Update the existing upload item, if there is one
-                upload = $('#upload_' + formname + '_' + fieldname + '_' + rowindex);
+                var upload = $('#upload_' + formname + '_' + fieldname + '_' + rowindex);
                 if (upload.length) {
                     var id = $(element).attr('id');
                     var name = $(element).attr('name');
@@ -248,7 +261,7 @@ $(function() {
                 }
             }
             // Populate text in autocompletes
-            text =  row[fieldname]['text'];
+            var text = row[fieldname]['text'];
             element = '#dummy_sub_' + formname + '_' + formname + '_i_' + fieldname + '_edit_0';
             $(element).val(text);
         }
@@ -268,19 +281,19 @@ $(function() {
     };
 
     // Cancel editing a row
-    inline_cancel = function(formname, rowindex) {
+    var inline_cancel = function(formname, rowindex) {
         var rowname = formname + '-' + rowindex;
 
         inline_remove_errors(formname);
 
         // Hide the edit-row
-        $('#edit-row-'+formname).addClass('hide');
+        $('#edit-row-' + formname).addClass('hide');
 
         // Reset the row index
-        $('#edit-row-'+formname).data('rowindex', null);
+        $('#edit-row-' + formname).data('rowindex', null);
 
         // Show the read-row
-        $('#read-row-'+rowname).removeClass('hide');
+        $('#read-row-' + rowname).removeClass('hide');
 
         // Enable the add-row
         enable_inline_add(formname);
@@ -290,7 +303,7 @@ $(function() {
     };
 
     // Add a new row
-    inline_add = function(formname) {
+    var inline_add = function(formname) {
         var rowindex = 'none';
 
         // Hide add-button, show throbber
@@ -312,20 +325,21 @@ $(function() {
             success = true;
             // Add a new row to the real_input JSON
             new_row['_changed'] = true; // mark as changed
-            newindex = data['data'].push(new_row) - 1;
+            var newindex = data['data'].push(new_row) - 1;
             new_row['_index'] = newindex;
             inline_serialize(formname, data);
 
             // Create a new read-row, clear add-row
-            read_row = '<tr id="read-row-'+formname+'-'+newindex+'" class="read-row">';
-            fields = data['fields'];
-            for (i=0; i<fields.length; i++) {
-                field = fields[i]['name'];
+            var read_row = '<tr id="read-row-' + formname + '-' + newindex + '" class="read-row">';
+            var fields = data['fields'];
+            var default_value;
+            for (i=0; i < fields.length; i++) {
+                var field = fields[i]['name'];
                 // Update all uploads to the new index
-                upload = $('#upload_' + formname + '_' + field + '_none');
+                var upload = $('#upload_' + formname + '_' + field + '_none');
                 if (upload.length) {
-                    upload_id = 'upload_' + formname + '_' + field + '_' + newindex;
-                    $('#'+upload_id).remove();
+                    var upload_id = 'upload_' + formname + '_' + field + '_' + newindex;
+                    $('#' + upload_id).remove();
                     upload.attr('id', upload_id);
                     upload.attr('name', upload_id);
                 }
@@ -346,8 +360,8 @@ $(function() {
                 $('#dummy_sub_' + formname + '_' + formname + '_i_' + field + '_edit_none').val(default_value);
             }
             // Add edit-button
-            edit = '#edt-' + formname + '-none';
-            if ($(edit).length != 0) {
+            var edit = '#edt-' + formname + '-none';
+            if ($(edit).length !== 0) {
                 read_row += '<td><a id="edt-' +
                             formname + '-' +
                             newindex + '" class="inline-edt" href="#">' +
@@ -357,10 +371,9 @@ $(function() {
                 read_row += '<td></td>';
             }
             // Add remove-button
-            remove = '#rmv-' + formname + '-none';
-            if ($(remove).length != 0) {
-                read_row += '<td><a id="rmv-' +
-                            formname + '-' +
+            var remove = '#rmv-' + formname + '-none';
+            if ($(remove).length !== 0) {
+                read_row += '<td><a id="rmv-' + formname + '-' +
                             newindex + '" class="inline-rmv" href="#">' +
                             $(remove).html() +
                             '</a></td>';
@@ -369,7 +382,7 @@ $(function() {
             }
             read_row += '</tr>';
             // Append the new read-row to the table
-            $('#sub-'+formname+' > table.embeddedComponent > tbody').append(read_row);
+            $('#sub-' + formname + ' > table.embeddedComponent > tbody').append(read_row);
             inline_button_events();
         }
 
@@ -380,7 +393,7 @@ $(function() {
     };
 
     // Update row
-    inline_update = function(formname, rowindex) {
+    var inline_update = function(formname, rowindex) {
         var rowname = formname + '-' + rowindex;
 
         // Hide rdy, show throbber
@@ -398,7 +411,7 @@ $(function() {
         var new_row = inline_validate(formname, '0', data, edit_row);
 
         var success = false;
-        if (null != new_row) {
+        if (null !== new_row) {
             success = true;
 
             // Update the row in the real_input JSON
@@ -409,10 +422,11 @@ $(function() {
             inline_serialize(formname, data);
 
             // Update read-row in the table, clear edit-row
-            read_row = '';
-            fields = data['fields'];
-            for (i=0; i<fields.length; i++) {
-                field = fields[i]['name'];
+            var read_row = '';
+            var fields = data['fields'];
+            var default_value;
+            for (i=0; i < fields.length; i++) {
+                var field = fields[i]['name'];
                 read_row += '<td>' + new_row[field]['text'] + '</td>';
                 // Reset edit-field to default value
                 var d = $('#sub_' + formname + '_' + formname + '_i_' + field + '_edit_default');
@@ -430,8 +444,8 @@ $(function() {
                 $('#dummy_sub_' + formname + '_' + formname + '_i_' + field + '_edit_0').val(default_value);
             }
             // Add edit-button
-            edit = '#edt-' + formname + '-none';
-            if ($(edit).length != 0) {
+            var edit = '#edt-' + formname + '-none';
+            if ($(edit).length !== 0) {
                 read_row += '<td><a id="edt-' +
                             formname + '-' +
                             rowindex + '" class="inline-edt" href="#">' +
@@ -441,8 +455,8 @@ $(function() {
                 read_row += '<td></td>';
             }
             // Add remove-button
-            remove = '#rmv-' + formname + '-none';
-            if ($(remove).length != 0) {
+            var remove = '#rmv-' + formname + '-none';
+            if ($(remove).length !== 0) {
                 read_row += '<td><a id="rmv-' +
                             formname + '-' +
                             rowindex + '" class="inline-rmv" href="#">' +
@@ -485,7 +499,7 @@ $(function() {
         }
 
         // Update the real_input JSON with deletion of this row
-        data = inline_deserialize(formname);
+        var data = inline_deserialize(formname);
         data['data'][rowindex]['_delete'] = true;
         inline_serialize(formname, data);
 
@@ -501,7 +515,7 @@ $(function() {
     // Event handlers ---------------------------------------------------------
 
     // Submit the inline form which has currently the focus
-    inline_row_submit = function() {
+    var inline_row_submit = function() {
         if ('none' != inline_current_formname) {
             var success = false;
             if ('none' == inline_current_rowindex) {
@@ -522,7 +536,7 @@ $(function() {
 
     // When an inline-form has focus, then pressing 'enter' should
     // submit this inline-form, and not the master form
-    inline_catch_submit = function(toggle, formname, rowindex) {
+    var inline_catch_submit = function(toggle, formname, rowindex) {
         if (toggle) {
             inline_current_formname = formname;
             inline_current_rowindex = rowindex;
@@ -537,11 +551,11 @@ $(function() {
 
     // Events -----------------------------------------------------------------
 
-    inline_form_events = function(id) {
+    var inline_form_events = function() {
 
         // Enforce submission of the inline-row if changed
         var enforce_inline_submit = function(i, add) {
-            var subform = $(i).parent().parent();
+            var subform = $(i).parent().closest('tr.inline-form');
             var names = subform.attr('id').split('-');
             var rowindex = subform.data('rowindex');
             if (add) {
@@ -597,7 +611,7 @@ $(function() {
     };
     inline_form_events();
 
-    inline_button_events = function() {
+    var inline_button_events = function() {
 
         $('.inline-add').unbind('click');
         $('.inline-add').click(function() {
@@ -615,7 +629,7 @@ $(function() {
             var names = $(this).attr('id').split('-');
             var zero = names.pop();
             var formname = names.pop();
-            var rowindex = $('#edit-row-'+formname).data('rowindex');
+            var rowindex = $('#edit-row-' + formname).data('rowindex');
             inline_cancel(formname, rowindex);
             inline_catch_submit(false, 'none', 'none');
             return false;
@@ -625,7 +639,7 @@ $(function() {
             var names = $(this).attr('id').split('-');
             var zero = names.pop();
             var formname = names.pop();
-            var rowindex = $('#edit-row-'+formname).data('rowindex');
+            var rowindex = $('#edit-row-' + formname).data('rowindex');
             var success = inline_update(formname, rowindex);
             if (success) {
                 inline_catch_submit(false, 'none', 'none');
@@ -652,4 +666,42 @@ $(function() {
         });
     };
     inline_button_events();
+
+    // Used by S3SQLInlineComponentCheckbox
+    var inline_checkbox_events = function() {
+        // Listen for changes on all Inline Checkboxes
+        $('.inline-checkbox :checkbox').click(function() {
+            var value = $(this).val();
+            var names = $(this).attr('id').split('-');
+            var formname = names[1];
+            var fieldname = names[2];
+            // Read current data from real input
+            var data = inline_deserialize(formname);
+            var _data = data['data'];
+            var item;
+            for (var prop in _data) {
+                var i = _data[prop];
+                if (i.hasOwnProperty(fieldname) && i[fieldname]['value'] == value) {
+                    item = i;
+                    break;
+                }
+            }
+            // Modify data
+            if ($(this).prop('checked')) {
+                if (!item) {
+                    // Not yet found, so initialise
+                    var label = $(this).next().html(); // May be fragile to different formstyles :/
+                    item = {};
+                    item[fieldname] = {'text': label, 'value': value};
+                    _data.push(item);
+                }
+                item['_changed'] = true;
+            } else if (item && item.hasOwnProperty('_id')) {
+                item['_delete'] = true;
+            }
+            // Write data back to real input
+            inline_serialize(formname);
+        });
+    };
+    inline_checkbox_events();
 });

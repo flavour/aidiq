@@ -2,7 +2,7 @@
 
 """ Sahana Eden Assessments Model
 
-    @copyright: 2012 (c) Sahana Software Foundation
+    @copyright: 2012-13 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -131,19 +131,19 @@ assess_personal_protection_opts = {
     11 : T("Ear plugs"),
     }
 
-assess_skills_required_opts = {
-    1 : T("Pump equipment"),
-    2 : T("Mold removal"),
-    3 : T("Demolition/gutting"),
-    4 : T("Construction"),
-    }
+#assess_skills_required_opts = {
+#    1 : T("Pump equipment"),
+#    2 : T("Mold removal"),
+#    3 : T("Demolition/gutting"),
+#    4 : T("Construction"),
+#    }
 
-assess_special_skills_opts = {
-    1 : T("Plumber"),
-    2 : T("Engineer"),
-    3 : T("Electrician"),
-    4 : T("Other"),
-    }
+#assess_special_skills_opts = {
+#    1 : T("Plumber"),
+#    2 : T("Engineer"),
+#    3 : T("Electrician"),
+#    4 : T("Other"),
+#    }
 
 assess_vulnerability_opts = {
     1 : T("Elderly"),
@@ -168,12 +168,15 @@ class S3AssessBuildingModel(S3Model):
     """
 
     names = ["assess_building",
+             "assess_building_rheader",
              ]
 
     def model(self):
 
         T = current.T
-        UNKNOWN_OPT = current.messages.UNKNOWN_OPT
+        messages = current.messages
+        NONE = messages["NONE"]
+        UNKNOWN_OPT = messages.UNKNOWN_OPT
 
         # ---------------------------------------------------------------------
         # Building Assessment
@@ -187,6 +190,17 @@ class S3AssessBuildingModel(S3Model):
             2 : T("Ready to Start"),
             3 : T("In-Progress"),
             4 : T("Finished"),
+            }
+        assess_status2_opts = {
+            1 : T("N/A"),
+            2 : T("To be done"),
+            3 : T("In-Progress"),
+            4 : T("Finished"),
+            }
+        assess_priority_opts = {
+            1 : T("High"),
+            2 : T("Medium"),
+            3 : T("Low"),
             }
         building_status_opts = {
             1 : T("Green"),
@@ -208,7 +222,7 @@ class S3AssessBuildingModel(S3Model):
 
         tablename = "assess_building"
         table = self.define_table(tablename,
-                                  Field("database_id",
+                                  Field("database_id", "integer",
                                         label=T("Database ID")),
                                   Field("status", "integer",
                                         requires=IS_EMPTY_OR(
@@ -220,18 +234,59 @@ class S3AssessBuildingModel(S3Model):
                                         widget = lambda f, v, **attr: \
                                             SQLFORM.widgets.radio.widget(f, v, cols=4, **attr),
                                         label=T("Status")),
+                                  Field("status_gutting", "integer",
+                                        requires=IS_EMPTY_OR(
+                                                    IS_IN_SET(assess_status2_opts)
+                                                ),
+                                        represent = lambda opt:
+                                            assess_status2_opts.get(opt,
+                                                                   UNKNOWN_OPT),
+                                        widget = lambda f, v, **attr: \
+                                            SQLFORM.widgets.radio.widget(f, v, cols=4, **attr),
+                                        label=T("Gutting Status")),
+                                  Field("status_mold", "integer",
+                                        requires=IS_EMPTY_OR(
+                                                    IS_IN_SET(assess_status2_opts)
+                                                ),
+                                        represent = lambda opt:
+                                            assess_status2_opts.get(opt,
+                                                                   UNKNOWN_OPT),
+                                        widget = lambda f, v, **attr: \
+                                            SQLFORM.widgets.radio.widget(f, v, cols=4, **attr),
+                                        label=T("Mold Status")),
+                                  s3_comments("mold_notes",
+                                              comment=None,
+                                              label=T("Mold Notes")),
+                                  Field("priority", "integer",
+                                        requires=IS_EMPTY_OR(
+                                                    IS_IN_SET(assess_priority_opts)
+                                                ),
+                                        represent = lambda opt:
+                                            assess_priority_opts.get(opt,
+                                                                   UNKNOWN_OPT),
+                                        widget = lambda f, v, **attr: \
+                                            SQLFORM.widgets.radio.widget(f, v, cols=3, **attr),
+                                        label=T("Priority")),
                                   s3_date(label=T("Intake Date")),
                                   Field("assessor1",
+                                        represent = lambda v: v or NONE,
                                         label=T("Assessor 1")),
                                   Field("assessor2",
+                                        represent = lambda v: v or NONE,
                                         label=T("Assessor 2")),
                                   Field("name",
+                                        represent = lambda v: v or NONE,
                                         label=T("Name")),
                                   Field("phone",
                                         requires=IS_NULL_OR(s3_phone_requires),
+                                        represent = lambda v: v or NONE,
                                         label=T("Phone Number")),
+                                  Field("contact_other",
+                                        represent = lambda v: v or NONE,
+                                        label=T("Other Contact Information")),
                                   self.gis_location_id(),
                                   Field("homeowner_availability",
+                                        represent = lambda v: v or NONE,
                                         label=T("Homeowner Availability")),
                                   Field("type_of_property", "list:integer",
                                         requires=IS_EMPTY_OR(
@@ -245,11 +300,13 @@ class S3AssessBuildingModel(S3Model):
                                             CheckboxesWidgetS3.widget(f, v, cols=4, **attr),
                                         label=T("Type of Property")),
                                   Field("inhabitants", "integer",
+                                        represent = lambda v: v or NONE,
                                         label=T("# of Inhabitants")),
                                   Field("year_built", "integer",
                                         requires = IS_EMPTY_OR(
                                                     IS_INT_IN_RANGE(1800, 2012)
                                                     ),
+                                        represent = lambda v: v or NONE,
                                         label=T("Year Built")),
                                   Field("current_residence", "integer",
                                         requires=IS_EMPTY_OR(
@@ -272,6 +329,7 @@ class S3AssessBuildingModel(S3Model):
                                             SQLFORM.widgets.radio.widget(f, v, cols=2, **attr),
                                         label=T("Ownership")),
                                   Field("intention",
+                                        represent = lambda v: v or NONE,
                                         label=T("Intention to Stay Home")),
                                   Field("vulnerability", "list:integer",
                                         requires=IS_EMPTY_OR(
@@ -318,12 +376,12 @@ class S3AssessBuildingModel(S3Model):
                                         label=T("Work Requested")),
                                   Field("construction_type", "list:integer",
                                         requires=IS_EMPTY_OR(
-                                                    IS_IN_SET(assess_work_requested_opts,
+                                                    IS_IN_SET(assess_construction_type_opts,
                                                               multiple=True)
                                                 ),
                                         represent = lambda ids: \
                                             assess_multi_type_represent(ids,
-                                                                        assess_work_requested_opts),
+                                                                        assess_construction_type_opts),
                                         widget = lambda f, v, **attr: \
                                             CheckboxesWidgetS3.widget(f, v, cols=4, **attr),
                                         label=T("Construction Type (Check all that apply)"),
@@ -362,6 +420,24 @@ class S3AssessBuildingModel(S3Model):
                                         requires=IS_EMPTY_OR(
                                                     IS_INT_IN_RANGE(1, 99)
                                                     ),
+                                        represent = lambda v: v or NONE,
+                                        label=T("Depth (feet)"),
+                                        ),
+                                  Field("first_flooding", "integer",
+                                        requires=IS_EMPTY_OR(
+                                                    IS_IN_SET(yes_no_opts)
+                                                ),
+                                        represent = lambda opt: \
+                                            yes_no_opts.get(opt,
+                                                            UNKNOWN_OPT),
+                                        widget = lambda f, v, **attr: \
+                                            SQLFORM.widgets.radio.widget(f, v, cols=2, **attr),
+                                        label=T("First Floor Flooding")),
+                                  Field("first_flooding_depth", "integer",
+                                        requires=IS_EMPTY_OR(
+                                                    IS_INT_IN_RANGE(1, 99)
+                                                    ),
+                                        represent = lambda v: v or NONE,
                                         label=T("Depth (feet)"),
                                         ),
                                   Field("drywall", "integer",
@@ -424,6 +500,16 @@ class S3AssessBuildingModel(S3Model):
                                         widget = lambda f, v, **attr: \
                                             SQLFORM.widgets.radio.widget(f, v, cols=2, **attr),
                                         label=T("Remove Major Appliances")),
+                                  Field("asbestos", "integer",
+                                        requires=IS_EMPTY_OR(
+                                                    IS_IN_SET(yes_no_opts)
+                                                ),
+                                        represent = lambda opt: \
+                                            yes_no_opts.get(opt,
+                                                            UNKNOWN_OPT),
+                                        widget = lambda f, v, **attr: \
+                                            SQLFORM.widgets.radio.widget(f, v, cols=2, **attr),
+                                        label=T("Asbestos")),
                                   Field("damage_source", "integer",
                                         requires=IS_EMPTY_OR(
                                                     IS_IN_SET(assess_damage_opts)
@@ -435,6 +521,7 @@ class S3AssessBuildingModel(S3Model):
                                             SQLFORM.widgets.radio.widget(f, v, cols=3, **attr),
                                         label=T("Damage Source")),
                                   Field("damage_source_other",
+                                        represent = lambda v: v or NONE,
                                         label=T("Other")),
                                   s3_comments("damage_details",
                                               label=T("Additional Description of Damage"),
@@ -444,76 +531,78 @@ class S3AssessBuildingModel(S3Model):
                                               label=T("Work Plan"),
                                               comment=T("Describe access points, advice for team leaders"),
                                               ),
-                                  Field("tools_required", "list:integer",
-                                        requires=IS_EMPTY_OR(
-                                                    IS_IN_SET(assess_tools_opts,
-                                                              multiple=True)
-                                                ),
-                                        represent = lambda ids: \
-                                            assess_multi_type_represent(ids,
-                                                                        assess_tools_opts),
-                                        widget = lambda f, v, **attr: \
-                                            CheckboxesWidgetS3.widget(f, v, cols=3, **attr),
-                                        label=T("Tools and materials required"),
-                                        ),
-                                  s3_comments("tools_other",
+                                  #Field("tools_required", "list:integer",
+                                  #      requires=IS_EMPTY_OR(
+                                  #                  IS_IN_SET(assess_tools_opts,
+                                  #                            multiple=True)
+                                  #              ),
+                                  #      represent = lambda ids: \
+                                  #          assess_multi_type_represent(ids,
+                                  #                                      assess_tools_opts),
+                                  #      widget = lambda f, v, **attr: \
+                                  #          CheckboxesWidgetS3.widget(f, v, cols=3, **attr),
+                                  #      label=T("Tools and materials required"),
+                                  #      ),
+                                  #s3_comments("tools_other",
+                                  #            comment=None,
+                                  #            label=T("Tools Other")),
+                                  #Field("mold_equipment", "list:integer",
+                                  #      requires=IS_EMPTY_OR(
+                                  #                  IS_IN_SET(assess_mold_removal_opts,
+                                  #                            multiple=True)
+                                  #              ),
+                                  #      represent = lambda ids: \
+                                  #          assess_multi_type_represent(ids,
+                                  #                                      assess_mold_removal_opts),
+                                  #      widget = lambda f, v, **attr: \
+                                  #          CheckboxesWidgetS3.widget(f, v, cols=3, **attr),
+                                  #      label=T("Mold removal equipment"),
+                                  #      ),
+                                  #Field("personal_protectivity", "list:integer",
+                                  #      requires=IS_EMPTY_OR(
+                                  #                  IS_IN_SET(assess_personal_protection_opts,
+                                  #                            multiple=True)
+                                  #              ),
+                                  #      represent = lambda ids: \
+                                  #          assess_multi_type_represent(ids,
+                                  #                                      assess_personal_protection_opts),
+                                  #      widget = lambda f, v, **attr: \
+                                  #          CheckboxesWidgetS3.widget(f, v, cols=2, **attr),
+                                  #      label=T("All Teams Must Have Personal Protectivity Equipment"),
+                                  #      ),
+                                  #Field("skills_required", "list:integer",
+                                  #      requires=IS_EMPTY_OR(
+                                  #                  IS_IN_SET(assess_skills_required_opts,
+                                  #                            multiple=True)
+                                  #              ),
+                                  #      represent = lambda ids: \
+                                  #          assess_multi_type_represent(ids,
+                                  #                                      assess_skills_required_opts),
+                                  #      widget = lambda f, v, **attr: \
+                                  #          CheckboxesWidgetS3.widget(f, v, cols=2, **attr),
+                                  #      label=T("Skills Required"),
+                                  #      ),
+                                  #Field("special_skills_required", "list:integer",
+                                  #      requires=IS_EMPTY_OR(
+                                  #                  IS_IN_SET(assess_special_skills_opts,
+                                  #                            multiple=True)
+                                  #              ),
+                                  #      represent = lambda ids: \
+                                  #          assess_multi_type_represent(ids,
+                                  #                                      assess_special_skills_opts),
+                                  #      widget = lambda f, v, **attr: \
+                                  #          CheckboxesWidgetS3.widget(f, v, cols=2, **attr),
+                                  #      label=T("Special Skills Required"),
+                                  #      ),
+                                  s3_comments("special_skills",
                                               comment=None,
-                                              label=T("Tools Other")),
-                                  Field("mold_equipment", "list:integer",
-                                        requires=IS_EMPTY_OR(
-                                                    IS_IN_SET(assess_mold_removal_opts,
-                                                              multiple=True)
-                                                ),
-                                        represent = lambda ids: \
-                                            assess_multi_type_represent(ids,
-                                                                        assess_mold_removal_opts),
-                                        widget = lambda f, v, **attr: \
-                                            CheckboxesWidgetS3.widget(f, v, cols=3, **attr),
-                                        label=T("Mold removal equipment"),
-                                        ),
-                                  Field("personal_protectivity", "list:integer",
-                                        requires=IS_EMPTY_OR(
-                                                    IS_IN_SET(assess_personal_protection_opts,
-                                                              multiple=True)
-                                                ),
-                                        represent = lambda ids: \
-                                            assess_multi_type_represent(ids,
-                                                                        assess_personal_protection_opts),
-                                        widget = lambda f, v, **attr: \
-                                            CheckboxesWidgetS3.widget(f, v, cols=2, **attr),
-                                        label=T("All Teams Must Have Personal Protectivity Equipment"),
-                                        ),
-                                  Field("skills_required", "list:integer",
-                                        requires=IS_EMPTY_OR(
-                                                    IS_IN_SET(assess_skills_required_opts,
-                                                              multiple=True)
-                                                ),
-                                        represent = lambda ids: \
-                                            assess_multi_type_represent(ids,
-                                                                        assess_skills_required_opts),
-                                        widget = lambda f, v, **attr: \
-                                            CheckboxesWidgetS3.widget(f, v, cols=2, **attr),
-                                        label=T("Special Skills Required"),
-                                        ),
-                                  Field("special_skills_required", "list:integer",
-                                        requires=IS_EMPTY_OR(
-                                                    IS_IN_SET(assess_special_skills_opts,
-                                                              multiple=True)
-                                                ),
-                                        represent = lambda ids: \
-                                            assess_multi_type_represent(ids,
-                                                                        assess_special_skills_opts),
-                                        widget = lambda f, v, **attr: \
-                                            CheckboxesWidgetS3.widget(f, v, cols=2, **attr),
-                                        label=T("Special Skills Required"),
-                                        ),
-                                  s3_comments("special_skills_other",
-                                              comment=None,
-                                              label=T("Other")),
+                                              label=T("Special Tools and Skills")),
                                   Field("estimated_volunteers",
+                                        represent = lambda v: v or NONE,
                                         label=T("Estimated Volunteers"),
                                         ),
                                   Field("estimated_days",
+                                        represent = lambda v: v or NONE,
                                         label=T("Estimated Days"),
                                         ),
                                   Field("additional_needs", "list:integer",
@@ -554,6 +643,9 @@ class S3AssessBuildingModel(S3Model):
                                   s3_date("date_ready",
                                           label=T("Date Ready")),
                                   s3_comments(),
+                                  s3_comments("progress",
+                                              comment=None,
+                                              label=T("Progress and Notes")),
                                   *s3_meta_fields())
 
         # CRUD Strings
@@ -588,21 +680,260 @@ class S3AssessBuildingModel(S3Model):
                         label=T("Status"),
                         field="status",
                         options = assess_status_opts,
+                        cols = 4
+                      ),
+                      S3SearchOptionsWidget(
+                        name="building_search_status_gutting",
+                        label=T("Gutting Status"),
+                        field="status_gutting",
+                        options = assess_status2_opts,
+                        cols = 4
+                      ),
+                      S3SearchOptionsWidget(
+                        name="building_search_status_mold",
+                        label=T("Mold Status"),
+                        field="status_mold",
+                        options = assess_status2_opts,
+                        cols = 4
+                      ),
+                      S3SearchOptionsWidget(
+                        name="building_search_priority",
+                        label=T("Priority"),
+                        field="priority",
+                        options = assess_priority_opts,
                         cols = 3
-                      ))
+                      ),
+                      )
             )
 
         self.configure(tablename,
+                       onvalidation = self.assess_building_onvalidation,
                        search_method = building_search,
                        subheadings = {
                         T("Damages"): "electricity",
                         }
                        )
 
+        # Generate Work Order
+        self.set_method("assess", "building",
+                        method="form",
+                        action=self.assess_building_form)
+
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (s3.*)
+        # Pass names back to global scope (s3.*)
         #
-        return Storage()
+        return Storage(
+                assess_building_rheader = self.assess_building_rheader
+            )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def assess_building_onvalidation(form):
+        """
+            Update the overall status from the Gutting/Mold status
+        """
+
+        vars = form.vars
+        status = vars.status and int(vars.status) or None
+        if status < 3:
+            status_gutting = vars.status_gutting and int(vars.status_gutting) or None
+            status_mold = vars.status_mold and int(vars.status_mold) or None
+            if status_gutting in (3, 4) or \
+               status_mold in (3, 4):
+
+                vars.status = 3
+
+        return
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def assess_building_rheader(r):
+        """ Resource Header """
+        
+        if r.representation != "html" or r.method == "import" or not r.record:
+            # RHeaders only used in interactive views
+            return None
+
+        rheader = TABLE(A(T("Print Work Order"),
+                        _href = URL(args = [r.record.id, "form"]
+                                    ),
+                        _class = "action-btn"
+                        ))
+        return rheader
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def assess_building_form(r, **attr):
+        """
+            Generate a PDF of a Work Order
+
+            @ToDo: Move this to Template?
+        """
+
+        db = current.db
+        table = db.assess_building
+        gtable = db.gis_location
+        query = (table.id == r.id)
+        left = gtable.on(gtable.id == table.location_id)
+        record = db(query).select(left=left,
+                                  limitby=(0, 1)).first()
+        location = record.gis_location
+        record = record.assess_building
+        address = location.get("address", current.messages["NONE"])
+        header = TABLE(
+                    TR(TD(),
+                       TD(),
+                       TD(),
+                       TD("Rockaways", _align="right"),
+                       ),
+                    TR(TD(),
+                       TD(),
+                       TD(),
+                       TD("HOUSEHOLD ASSESSMENT"),
+                       ),
+                    TR(TD(),
+                       TD(),
+                       TD(),
+                       TD("Database ID: %s" % record.database_id),
+                       ),
+                    TR(TD("Intake Date: %s" % table.date.represent(record.date)),
+                       ),
+                    TR(TD("Assessor 1: %s" % record.assessor1,
+                          _colspan=2,
+                          ),
+                       TD("Assessor 2: %s" % record.assessor2,
+                          _colspan=2,
+                          ),
+                       ),
+                    TR(TD("Name: %s" % record.name),
+                       TD("Phone Number: %s" % table.phone.represent(record.phone)),
+                       TD("Other Contact: %s" % table.contact_other.represent(record.contact_other),
+                          _colspan=2,
+                          ),
+                       ),
+                    TR(TD("Address: %s" % address,
+                          _colspan=4,
+                          ),
+                       ),
+                    TR(TD("Homeowner Availability: %s" % record.homeowner_availability,
+                          _colspan=4,
+                          ),
+                       ),
+                    TR(TD("Type of Property: %s" % table.type_of_property.represent(record.type_of_property),
+                          _colspan=4,
+                          ),
+                       ),
+                    TR(TD("# of Inhabitants: %s" % table.inhabitants.represent(record.inhabitants)),
+                       TD("Year Built: %s" % table.year_built.represent(record.year_built)),
+                       TD("Ownership: %s" % table.ownership.represent(record.ownership)),
+                       ),
+                    TR(TD("Current Residence: %s" % table.current_residence.represent(record.current_residence),
+                          _colspan=4,
+                          ),
+                       ),
+                    TR(TD("Intention to Stay Home: %s" % table.intention.represent(record.intention),
+                          _colspan=2,
+                          ),
+                       TD("Vulnerabilities: %s" % table.vulnerability.represent(record.vulnerability),
+                          _colspan=2,
+                          ),
+                       ),
+                    TR(TD("Based on the DOB/FEMA sticker, the property is: %s" % table.building_status.represent(record.building_status),
+                          _colspan=2,
+                          ),
+                       TD("Type of Insurance: %s" % table.insurance.represent(record.insurance),
+                          _colspan=2,
+                          ),
+                       ),
+                    TR(TD("Work Requested: %s" % table.work_requested.represent(record.work_requested),
+                          _colspan=2),
+                       TD("Construction Type: %s" % table.construction_type.represent(record.construction_type),
+                          _colspan=2,
+                          ),
+                       ),
+                    TR(TD("Damages"),
+                       TD("Electricity: %s" % table.electricity.represent(record.electricity)),
+                       TD("Gas: %s" % table.gas.represent(record.gas)),
+                       TD("Basement Flooding: %s Depth: %s feet" % (table.basement_flooding.represent(record.basement_flooding),
+                                                                    table.basement_flooding_depth.represent(record.basement_flooding_depth))),
+                       ),
+                    TR(TD(),
+                       TD("Drywall: %s" % table.drywall.represent(record.drywall)),
+                       TD("Floor: %s" % table.floor.represent(record.floor)),
+                       TD("First Floor Flooding: %s Depth: %s feet" % (table.first_flooding.represent(record.first_flooding),
+                                                                       table.first_flooding_depth.represent(record.first_flooding_depth))),
+                       ),
+                    TR(TD("Remove Loose Debris: %s" % table.remove_loose_debris.represent(record.remove_loose_debris)),
+                       TD("Remove Furniture: %s" % table.remove_furniture.represent(record.remove_furniture)),
+                       TD("Remove Water Heater: %s" % table.remove_water_heater.represent(record.remove_water_heater)),
+                       TD("Remove Major Appliances: %s" % table.remove_appliances.represent(record.remove_appliances)),
+                       ),
+                    TR(TD("Asbestos: %s" % table.asbestos.represent(record.asbestos)),
+                       ),
+                    TR(TD("Source of Damages: %s" % table.damage_source.represent(record.damage_source),
+                          _colspan=2,
+                          ),
+                       TD("Other: %s" % table.damage_source_other.represent(record.damage_source_other),
+                          _colspan=2,
+                          ),
+                       ),
+                    TR(TD("Additional Description of Damage: %s" % table.damage_details.represent(record.damage_details),
+                          _colspan=4,
+                          ),
+                       ),
+                    TR(TD("Workplan: %s" % table.work_plan.represent(record.work_plan),
+                          _colspan=4,
+                          ),
+                       ),
+                    TR(TD("Special Skills: %s" % table.special_skills.represent(record.special_skills),
+                          _colspan=4,
+                          ),
+                       ),
+                     TR(TD("Estimated Volunteers: %s" % table.estimated_volunteers.represent(record.estimated_volunteers),
+                          _colspan=2,
+                          ),
+                       TD("Estimated Days: %s" % table.estimated_days.represent(record.estimated_days),
+                          _colspan=2,
+                          ),
+                       ),
+                    TR(TD("Additional Needs: %s" % table.additional_needs.represent(record.additional_needs),
+                          _colspan=4,
+                          ),
+                       ),
+                    TR(TD("Approval: %s" % table.approval.represent(record.approval)),
+                       TD("Details: %s" % table.approval_details.represent(record.approval_details),
+                          _colspan=3,
+                          ),
+                       ),
+                    TR(TD("Permission from Owner to Work: %s" % table.permission.represent(record.permission),
+                          _colspan=2,
+                          ),
+                       TD("Date Ready: %s" % table.date_ready.represent(record.date_ready),
+                          _colspan=2,
+                          ),
+                       ),
+                    TR(TD("Comments: %s" % table.comments.represent(record.comments),
+                          _colspan=4,
+                          ),
+                       ),
+                    TR(TD("Progress and Notes: %s" % table.progress.represent(record.progress),
+                          _colspan=4,
+                          _rowspan=4,
+                          ),
+                       ),
+                    )
+        
+        WORK_ORDER = current.T("Work Order")
+        exporter = S3Exporter().pdf
+        return exporter(r,
+                        method = "read",
+                        pdf_title = WORK_ORDER,
+                        pdf_filename = "%s %s" % (WORK_ORDER,
+                                                  record.database_id),
+                        pdf_header = header,
+                        pdf_header_padding = 12,
+                        pdf_table_autogrow = "B",
+                        **attr
+                        )
 
 # =============================================================================
 class S3AssessCanvassModel(S3Model):
@@ -694,7 +1025,7 @@ class S3AssessCanvassModel(S3Model):
                        )
 
         # ---------------------------------------------------------------------
-        # Pass variables back to global scope (s3.*)
+        # Pass names back to global scope (s3.*)
         #
         return Storage()
 

@@ -6,21 +6,20 @@
     <!-- **********************************************************************
          Project Organisations - CSV Import Stylesheet
 
-         2011-12-16 / Dominic König <dominic[AT]aidiq[DOT]com>
-
          CSV column...........Format..........Content
 
          Project..............string..........Project Name
          Organisation.........string..........Organisation Name
          Role.................code............Organisation Role
-         Funding Amount.......float...........Funding Amount
+         Amount...............float...........Funding Amount
          Currency.............code............Currency of the Funding Amount
 
     *********************************************************************** -->
 
     <xsl:output method="xml"/>
 
-    <!-- Project Organisation Roles, see models/09_project.py, project_organisation_types -->
+    <!-- Project Organisation Roles, see modules/s3/s3cfg.py or private/templates/IFRC/config.py,
+         project_organisation_types -->
     <project:organisation-role code="1">Host National Society</project:organisation-role>
     <project:organisation-role code="2">Partner National Society</project:organisation-role>
     <project:organisation-role code="3">Donor</project:organisation-role>

@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2009-2012 (c) Sahana Software Foundation
+    @copyright: 2009-2013 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -33,7 +33,9 @@ __all__ = ["S3HiddenWidget",
            "S3DateWidget",
            "S3DateTimeWidget",
            "S3BooleanWidget",
+           "S3ColorPickerWidget",
            #"S3UploadWidget",
+           "S3ImageCropWidget",
            "S3AutocompleteWidget",
            "S3LocationAutocompleteWidget",
            "S3LatLonWidget",
@@ -47,6 +49,7 @@ __all__ = ["S3HiddenWidget",
            "S3LocationDropdownWidget",
            #"S3CheckboxesWidget",
            "S3MultiSelectWidget",
+           "S3PriorityListWidget",
            "S3ACLWidget",
            "CheckboxesWidgetS3",
            "S3AddPersonWidget",
@@ -228,7 +231,7 @@ class S3DateTimeWidget(FormWidget):
         selector = str(field).replace(".", "_")
 
         now = request.utcnow
-        offset = IS_UTC_OFFSET.get_offset_value(current.session.s3.utc_offset)
+        offset = S3DateTime.get_offset_value(current.session.s3.utc_offset)
         if offset:
             now = now + datetime.timedelta(seconds=offset)
         timedelta = datetime.timedelta
@@ -272,10 +275,12 @@ if (!$('#%(selector)s').val()){
   format:'%(format)s'
  }).focus()
 }})
-clear_button=$('<input type="button" value="clear"/>').click(function(e){
+clear_button=$('<input id="%(selector)s_clear" type="button" value="clear"/>').click(function(e){
  $('#%(selector)s').val('')
 })
-$('#%(selector)s').after(clear_button)''' % \
+if($('#%(selector)s_clear').length == 0){
+$('#%(selector)s').after(clear_button)
+}''' % \
         dict(rounded=rounded,
              selector=selector,
              firstDOW=firstDOW,
@@ -340,16 +345,68 @@ $('#%s').click(function(){
             click_end = "}})"
             if click_to_show:
                 # Hide by default
-                script = "%s\n%s\n%s\n%s\n%s\n%s" % (hide, click_start, show, middle, hide, click_end)
+                script = '''%s\n%s\n%s\n%s\n%s\n%s''' % \
+                    (hide, click_start, show, middle, hide, click_end)
             else:
                 # Show by default
-                script = "%s\n%s\n%s\n%s\n%s\n%s" % (show, click_start, hide, middle, show, click_end)
+                script = '''%s\n%s\n%s\n%s\n%s\n%s''' % \
+                    (show, click_start, hide, middle, show, click_end)
             response.s3.jquery_ready.append(script)
 
         return TAG[""](
                         INPUT(**attr),
                         requires = field.requires
                       )
+
+# =============================================================================
+class S3ColorPickerWidget(FormWidget):
+    """
+        Displays an <input type="color"> widget to allow the user to pick a
+        color, and falls back to using JSColor or a regular text input if
+        necessary.
+    """
+
+    DEFAULT_OPTIONS = {
+        "showInput": True,
+        "showInitial": True,
+        "preferredFormat": "hex",
+        "showPalette": True,
+        "palette": ("red", "yellow", "green", "blue", "white", "black")
+    }
+
+    def __init__(self, options=None):
+        """
+            @param options: options for the JavaScript widget
+            @see: http://bgrins.github.com/spectrum/
+        """
+        self.options = dict(self.DEFAULT_OPTIONS)
+        self.options.update(options or {})
+
+    def __call__(self, field, value, **attributes):
+        s3 = current.response.s3
+        app = current.request.application
+
+        min = "" if s3.debug else ".min"
+
+        script = "/%s/static/scripts/spectrum%s.js" % (app, min)
+        style = "spectrum%s.css" % min
+
+        if script not in s3.scripts:
+            s3.scripts.append(script)
+
+        if style not in s3.stylesheets:
+            s3.stylesheets.append(style)
+
+        s3.jquery_ready.append('''
+var sp_options=%s
+sp_options.change=function(color){this.value=color.toHex()}
+$('.color').spectrum(sp_options)''' % json.dumps(self.options) if self.options else "")
+
+        attr = self._attributes(field, {"_class": "color",
+                                        "_value": value
+                                        }, **attributes)
+
+        return INPUT(**attr)
 
 # =============================================================================
 class S3UploadWidget(UploadWidget):
@@ -404,6 +461,84 @@ class S3UploadWidget(UploadWidget):
         return inp
 
 # =============================================================================
+class S3ImageCropWidget(FormWidget):
+    """
+        Allows the user to crop an image and uploads it.
+        Cropping is done client-side where supported, otherwise using PIL.
+    """
+
+    DEFAULT_WIDTH = 300
+
+    def __init__(self, image_bounds=None):
+        self.image_bounds = image_bounds
+
+    def __call__(self, field, value, download_url=None, **attributes):
+        request = current.request
+        s3 = current.response.s3
+        T = current.T
+
+        script_dir = "/%s/static/scripts" % request.application
+
+        if s3.debug and \
+           "%s/jquery.Jcrop.js" % script_dir not in s3.scripts:
+            s3.scripts.append("%s/jquery.Jcrop.js" % script_dir)
+
+        if s3.debug and \
+            "%s/jquery.color.js" % script_dir not in s3.scripts:
+            s3.scripts.append("%s/jquery.color.js" % script_dir)
+
+        s3.scripts.append("%s/S3/s3.imagecrop.widget.js" % script_dir)
+
+        s3.stylesheets.append("plugins/jquery.Jcrop.css")
+
+        attr = self._attributes(field, {
+                "_type": "file",
+                "_class": "imagecrop-upload"
+            }, **attributes)
+
+        elements = [INPUT(_type="hidden", _name="imagecrop-points")]
+
+        if value and download_url:
+            if callable(download_url):
+                download_url = download_url()
+
+            URL = download_url + '/' + value
+
+            elements.append(IMG(_class="imagecrop-preview",
+                _style="display: hidden;", _src=URL,
+                _width=str(self.DEFAULT_WIDTH)+'px'))
+            elements.append(P(T("You can select an area on the image and save to crop it."), _class="imagecrop-help",
+              _style="display: none;"))
+            elements.append(INPUT(_value=T("Crop Image"), _type="button", _class="imagecrop-toggle"))
+            elements.append(INPUT(**attr))
+            # Set up the canvas
+            canvas = TAG["canvas"](_class="imagecrop-canvas", _style="display: none;")
+            elements.append(canvas)
+
+        else:
+            elements.append(DIV(_class="tooltip",
+              _title=T("Crop Image|Select an image to upload. You can crop this later by opening this record.")))
+            # Set up the canvas
+            canvas = TAG["canvas"](_class="imagecrop-canvas", _style="display: none;")
+            if self.image_bounds:
+                canvas.attributes["_width"] = self.image_bounds[0]
+                canvas.attributes["_height"] = self.image_bounds[1]
+                canvas.attributes["_style"] = "background: black;"
+            elements.append(INPUT(**attr))
+            elements.append(INPUT(_type="hidden", _name="imagecrop-data", _class="imagecrop-data"))
+            elements.append(P(T("Drag an image below to crop and scale it before uploading it:")))
+            elements.append(canvas)
+
+        # Prevent multiple widgets on the same page from interfering with each
+        # other.
+        import uuid
+        uid = "cropwidget-" + uuid.uuid4().hex
+        for element in elements:
+          element.attributes["_data-uid"] = uid
+
+        return DIV(elements)
+
+# =============================================================================
 class S3AutocompleteWidget(FormWidget):
     """
         Renders a SELECT as an INPUT field with AJAX Autocomplete
@@ -456,18 +591,13 @@ class S3AutocompleteWidget(FormWidget):
              self.link_filter, self.post_process, self.delay, self.min_length)
 
         if value:
-            text = str(field.represent(default["value"]))
+            try:
+                value = long(value)
+            except ValueError:
+                pass
+            text = s3_unicode(field.represent(value))
             if "<" in text:
-                # Strip Markup
-                try:
-                    markup = etree.XML(text)
-                    text = markup.xpath(".//text()")
-                    if text:
-                        text = " ".join(text)
-                    else:
-                        text = ""
-                except etree.XMLSyntaxError:
-                    pass
+                text = s3_strip_markup(text)
             represent = text
         else:
             represent = ""
@@ -476,7 +606,7 @@ class S3AutocompleteWidget(FormWidget):
         return TAG[""](
                         INPUT(_id=dummy_input,
                               _class="string",
-                              _value=represent),
+                              _value=represent.encode("utf-8")),
                         IMG(_src="/%s/static/img/ajax-loader.gif" % \
                                  current.request.application,
                             _height=32, _width=32,
@@ -706,6 +836,7 @@ class S3PersonAutocompleteWidget(FormWidget):
                  controller = "pr",
                  function = "person_search",
                  post_process = "",
+                 hideerror = False,
                  delay = 450,   # milliseconds
                  min_length=2): # Increase this for large deployments
 
@@ -714,6 +845,7 @@ class S3PersonAutocompleteWidget(FormWidget):
         self.min_length = min_length
         self.c = controller
         self.f = function
+        self.hideerror = hideerror
 
     def __call__(self, field, value, **attributes):
 
@@ -805,19 +937,14 @@ $('#%(dummy_input)s').blur(function(){
               real_input = real_input)))
 
         if value:
+            try:
+                value = long(value)
+            except ValueError:
+                pass
             # Provide the representation for the current/default Value
-            text = str(field.represent(default["value"]))
+            text = s3_unicode(field.represent(value))
             if "<" in text:
-                # Strip Markup
-                try:
-                    markup = etree.XML(text)
-                    text = markup.xpath(".//text()")
-                    if text:
-                        text = " ".join(text)
-                    else:
-                        text = ""
-                except etree.XMLSyntaxError:
-                    pass
+                text = s3_strip_markup(text)
             represent = text
         else:
             represent = ""
@@ -826,13 +953,13 @@ $('#%(dummy_input)s').blur(function(){
         return TAG[""](
                         INPUT(_id=dummy_input,
                               _class="string",
-                              _value=represent),
+                              _value=represent.encode("utf-8")),
                         IMG(_src="/%s/static/img/ajax-loader.gif" % \
                                  current.request.application,
                             _height=32, _width=32,
                             _id="%s_throbber" % dummy_input,
                             _class="throbber hide"),
-                        INPUT(**attr),
+                        INPUT(hideerror=self.hideerror, **attr),
                         requires = field.requires
                       )
 
@@ -899,6 +1026,7 @@ class S3HumanResourceAutocompleteWidget(FormWidget):
 
         js_autocomplete = "".join((
 '''var %(real_input)s={val:$('#%(dummy_input)s').val(),accept:false}
+try{
 $('#%(dummy_input)s').autocomplete({
  source:'%(url)s',
  delay:%(delay)d,
@@ -989,7 +1117,7 @@ $('#%(dummy_input)s').autocomplete({
   }
  }
  return $('<li></li>').data('item.autocomplete',item).append('<a>'+name+'</a>').appendTo(ul)
-}
+}}catch(e){}
 $('#%(dummy_input)s').blur(function(){
  if(!$('#%(dummy_input)s').val()){
   $('#%(real_input)s').val('').change()
@@ -1005,19 +1133,14 @@ $('#%(dummy_input)s').blur(function(){
               real_input = real_input)))
 
         if value:
+            try:
+                value = long(value)
+            except ValueError:
+                pass
             # Provide the representation for the current/default Value
-            text = str(field.represent(default["value"]))
+            text = s3_unicode(field.represent(value))
             if "<" in text:
-                # Strip Markup
-                try:
-                    markup = etree.XML(text)
-                    text = markup.xpath(".//text()")
-                    if text:
-                        text = " ".join(text)
-                    else:
-                        text = ""
-                except etree.XMLSyntaxError:
-                    pass
+                text = s3_strip_markup(text)
             represent = text
         else:
             represent = ""
@@ -1026,7 +1149,7 @@ $('#%(dummy_input)s').blur(function(){
         return TAG[""](
                         INPUT(_id=dummy_input,
                               _class="string",
-                              _value=represent),
+                              _value=represent.encode("utf-8")),
                         IMG(_src="/%s/static/img/ajax-loader.gif" % \
                                  request.application,
                             _height=32, _width=32,
@@ -1091,6 +1214,7 @@ class S3SiteAutocompleteWidget(FormWidget):
   %s}
 }''' % cases, '''
 var %(real_input)s={val:$('#%(dummy_input)s').val(),accept:false}
+try{
 $('#%(dummy_input)s').autocomplete({
  source:'%(url)s',
  delay:%(delay)d,
@@ -1142,7 +1266,7 @@ $('#%(dummy_input)s').autocomplete({
   name+=' ('+s3_site_lookup(item.instance_type)+')'
  }
  return $('<li></li>').data('item.autocomplete',item).append('<a>'+name+'</a>').appendTo(ul)
-}
+}}catch(e){}
 $('#%(dummy_input)s').blur(function(){
  if(!$('#%(dummy_input)s').val()){
   $('#%(real_input)s').val('').change()
@@ -1158,19 +1282,14 @@ $('#%(dummy_input)s').blur(function(){
              real_input=real_input)))
 
         if value:
+            try:
+                value = long(value)
+            except ValueError:
+                pass
             # Provide the representation for the current/default Value
-            text = str(field.represent(default["value"]))
+            text = s3_unicode(field.represent(value))
             if "<" in text:
-                # Strip Markup
-                try:
-                    markup = etree.XML(text)
-                    text = markup.xpath(".//text()")
-                    if text:
-                        text = " ".join(text)
-                    else:
-                        text = ""
-                except etree.XMLSyntaxError:
-                    pass
+                text = s3_strip_markup(text)
             represent = text
         else:
             represent = ""
@@ -1179,7 +1298,7 @@ $('#%(dummy_input)s').blur(function(){
         return TAG[""](
                         INPUT(_id=dummy_input,
                               _class="string",
-                              _value=represent),
+                              _value=represent.encode("utf-8")),
                         IMG(_src="/%s/static/img/ajax-loader.gif" % \
                                  current.request.application,
                             _height=32, _width=32,
@@ -1277,19 +1396,14 @@ $('#%(dummy_input)s').blur(function(){
              real_input=real_input)))
 
         if value:
+            try:
+                value = long(value)
+            except ValueError:
+                pass
             # Provide the representation for the current/default Value
-            text = str(field.represent(default["value"]))
+            text = s3_unicode(field.represent(value))
             if "<" in text:
-                # Strip Markup
-                try:
-                    markup = etree.XML(text)
-                    text = markup.xpath(".//text()")
-                    if text:
-                        text = " ".join(text)
-                    else:
-                        text = ""
-                except etree.XMLSyntaxError:
-                    pass
+                text = s3_strip_markup(text)
             represent = text
         else:
             represent = ""
@@ -1298,7 +1412,7 @@ $('#%(dummy_input)s').blur(function(){
         return TAG[""](
                         INPUT(_id=dummy_input,
                               _class="string",
-                              _value=represent),
+                              _value=represent.encode("utf-8")),
                         IMG(_src="/%s/static/img/ajax-loader.gif" % \
                                  current.request.application,
                             _height=32, _width=32,
@@ -1346,6 +1460,7 @@ def S3GenericAutocompleteTemplate(post_process,
 var %(real_input)s={val:$('#%(dummy_input)s').val(),accept:false}
 var get_name=%(name_getter)s
 var get_id=%(id_getter)s
+try{
 $('#%(dummy_input)s').autocomplete({
  source:%(source)s,
  delay:%(delay)d,
@@ -1374,7 +1489,7 @@ $('#%(dummy_input)s').autocomplete({
  }
 }).data('autocomplete')._renderItem=function(ul,item){
  return $('<li></li>').data('item.autocomplete',item).append('<a>'+get_name(item)+'</a>').appendTo(ul)
-}''' % locals(),
+}}catch(e){}''' % locals(),
 '''
 $('#%(dummy_input)s').blur(function(){
  $('#%(real_input)s').val($('#%(dummy_input)s').val())
@@ -1394,19 +1509,14 @@ $('#%(dummy_input)s').blur(function(){
 })''' % locals()))
 
     if value:
+        try:
+            value = long(value)
+        except ValueError:
+            pass
         # Provide the representation for the current/default Value
-        text = s3_unicode(field.represent(default["value"]))
+        text = s3_unicode(field.represent(value))
         if "<" in text:
-            # Strip Markup
-            try:
-                markup = etree.XML(text)
-                text = markup.xpath(".//text()")
-                if text:
-                    text = " ".join(text)
-                else:
-                    text = ""
-            except etree.XMLSyntaxError:
-                pass
+            text = s3_strip_markup(text)
         represent = text
     else:
         represent = ""
@@ -1415,7 +1525,7 @@ $('#%(dummy_input)s').blur(function(){
     return TAG[""](
                     INPUT(_id=dummy_input,
                           _class="string",
-                          value=represent),
+                          value=represent.encode("utf-8")),
                     IMG(_src="/%s/static/img/ajax-loader.gif" % \
                              current.request.application,
                         _height=32, _width=32,
@@ -1503,7 +1613,7 @@ class S3LocationSelectorWidget(FormWidget):
                     Lx as dropdowns. Default label is 'Select previous to populate this dropdown' (Fixme!)
                 Mode not Strict (default):
                     L2-L5 as Autocompletes which create missing locations automatically
-                    @ToDo: L1 as Dropdown? (Have a gis_config setting to inform whether this is populated for a given L0)
+                    @ToDo: Lx as Dropdown (where the 'Edit Lx' is set)
                 Map:
                     @ToDo: Inline or Popup? (Deployment Option?)
                     Set Map Viewport to default on best currently selected Hierarchy
@@ -1634,8 +1744,7 @@ class S3LocationSelectorWidget(FormWidget):
             if default_location.level:
                 # Add this one to the defaults too
                 defaults[default_location.level] = Storage(name=default_location.name,
-                                                           id=config.default_location_id
-                                                           )
+                                                           id=config.default_location_id)
             if "L0" in defaults:
                 default_L0 = defaults["L0"]
                 if default_L0:
@@ -1645,6 +1754,9 @@ class S3LocationSelectorWidget(FormWidget):
                         countries[id] = defaults["L0"].name
                 country_snippet = '''S3.gis.country="%s"\n''' % \
                     gis.get_default_country(key_type="code")
+        elif len(_countries) == 1:
+            default_L0.id = countries.keys()[0]
+            country_snippet = '''S3.gis.country="%s"\n''' % _countries[0]
         elif len(countries) == 1:
             default_L0.id = countries.keys()[0]
 
@@ -2172,10 +2284,14 @@ S3.gis.geocoder=true'''
                                _id="gis_location_map-btn",
                                _class="action-btn")
             if geocoder:
+                if value:
+                    _class = "action-btn hide"
+                else:
+                    _class = "action-btn"
                 geocoder_button = A(T("Geocode"),
                                     _style="cursor:pointer; cursor:hand",
                                     _id="gis_location_geocoder-btn",
-                                    _class="action-btn")
+                                    _class=_class)
             else:
                 geocoder_button = ""
             map_button_row = TR(TD(geocoder_button, map_button),
@@ -2243,7 +2359,7 @@ i18n.gis_country_required="%s"''' % (country_snippet,
             script = "s3.locationselector.widget.min.js"
 
         s3.scripts.append("/%s/static/scripts/S3/%s" % (appname, script))
-        
+
         if self.polygon:
             hidden = ""
             if value:
@@ -2275,24 +2391,23 @@ i18n.gis_country_required="%s"''' % (country_snippet,
 
         # The overall layout of the components
         s3.gis.location_selector_loaded = 1
-        return TAG[""](
-                        TR(INPUT(**attr)),  # Real input, which is hidden
-                        label_row,
-                        tab_rows,
-                        Lx_search_rows,
-                        search_rows,
-                        L0_rows,
-                        name_rows,
-                        street_rows,
-                        postcode_rows,
-                        Lx_rows,
-                        wkt_input_row,
-                        map_button_row,
-                        latlon_rows,
-                        divider,
-                        TR(map_popup, TD(), _class="box_middle"),
-                        requires=requires
-                      )
+        return TAG[""](TR(INPUT(**attr)),  # Real input, which is hidden
+                       label_row,
+                       tab_rows,
+                       Lx_search_rows,
+                       search_rows,
+                       L0_rows,
+                       name_rows,
+                       street_rows,
+                       postcode_rows,
+                       Lx_rows,
+                       wkt_input_row,
+                       map_button_row,
+                       latlon_rows,
+                       divider,
+                       TR(map_popup, TD(), _class="box_middle"),
+                       requires=requires
+                       )
 
 # =============================================================================
 class S3LatLonWidget(DoubleWidget):
@@ -2370,13 +2485,12 @@ i18n.gis_range_error={degrees:{lat:'%s',lon:'%s'},minutes:'%s',seconds:'%s',deci
                         dms_boxes,
                         _class="gis_coord_wrap")
         else:
-            return SPAN(
-                        decimal,
+            return SPAN(decimal,
                         dms_boxes,
                         *controls,
                         requires = field.requires,
                         _class="gis_coord_wrap"
-                      )
+                        )
 
 # =============================================================================
 class S3CheckboxesWidget(OptionsWidget):
@@ -2436,8 +2550,9 @@ class S3CheckboxesWidget(OptionsWidget):
         lookup_table_name = self.lookup_table_name
         lookup_field_name = self.lookup_field_name
         if lookup_table_name and lookup_field_name:
+            table = db[lookup_table_name]
             requires = IS_NULL_OR(IS_IN_DB(db,
-                                   db[lookup_table_name].id,
+                                   table.id,
                                    "%(" + lookup_field_name + ")s",
                                    multiple = multiple))
         else:
@@ -2460,8 +2575,8 @@ class S3CheckboxesWidget(OptionsWidget):
         if len(options) % num_column > 0:
              num_row = num_row +1
 
-        table = TABLE(_id = str(field).replace(".", "_"))
-        append = table.append
+        t = TABLE(_id = str(field).replace(".", "_"))
+        append = t.append
         for i in range(0, num_row):
             table_row = TR()
             for j in range(0, num_column):
@@ -2479,10 +2594,11 @@ class S3CheckboxesWidget(OptionsWidget):
                     tip_attr = {}
                     help_text = ""
                     if self.help_lookup_field_name:
-                        help_text = str(P(s3_get_db_field_value(tablename = lookup_table_name,
-                                                                fieldname = self.help_lookup_field_name,
-                                                                look_up_value = options[index][0],
-                                                                look_up_field = "id")))
+                        help_lookup_field_name = self.help_lookup_field_name
+                        row = db(table.id == options[index][0]).select(table[help_lookup_field_name],
+                                                                       limitby=(0, 1)).first()
+                        if row:
+                            help_text = str(P(row[help_lookup_field_name]))
                     if self.help_footer:
                         help_text = help_text + str(self.help_footer)
                     if help_text:
@@ -2499,17 +2615,23 @@ class S3CheckboxesWidget(OptionsWidget):
             append(table_row)
         if self.multiple:
             append(TR(I("(Multiple selections allowed)")))
-        return table
+        return t
 
     # -------------------------------------------------------------------------
-    def represent(self,
-                  value):
+    def represent(self, value):
 
-        list = [s3_get_db_field_value(tablename = lookup_table_name,
-                                      fieldname = lookup_field_name,
-                                      look_up_value = id,
-                                      look_up_field = "id")
-                   for id in s3_split_multi_value(value) if id]
+        db = current.db
+        table = db[self.lookup_table_name]
+        lookup_field_name = self.lookup_field_name
+        list = []
+        lappend = list.append
+        # @ToDo: Optimise if widget ever used! Use belongs
+        for id in s3_split_multi_value(value):
+            if id:
+                row = db(table.id == id).select(table[lookup_field_name],
+                                                limitby=(0, 1)).first()
+                if row:
+                    lappend(row[lookup_field_name])
         if list and not None in list:
             return ", ".join(list)
         else:
@@ -2550,15 +2672,46 @@ $('#%s').addClass('multiselect')
 $('#%s').multiselect({
  dividerLocation:0.5,
  sortable:false
-})
-''' % (selector,
-       selector,
-       selector))
+})''' % (selector,
+         selector,
+         selector))
 
-        return TAG[""](
-                        MultipleOptionsWidget.widget(field, value, **attributes),
-                        requires = field.requires
-                      )
+        return TAG[""](MultipleOptionsWidget.widget(field, value, **attributes),
+                       requires = field.requires
+                       )
+
+# =============================================================================
+class S3PriorityListWidget(StringWidget):
+
+    """
+        Widget to broadcast facility needs
+    """
+
+    def __call__(self, field, value, **attributes):
+
+        s3 = current.response.s3
+
+        default = dict(
+            _type = "text",
+            value = (value != None and str(value)) or "",
+            )
+        attr = StringWidget._attributes(field, default, **attributes)
+
+        # @ToDo: i18n strings in JS
+        #T = current.T
+
+        selector = str(field).replace(".", "_")
+        s3.jquery_ready.append('''
+$('#%s').removeClass('list').addClass('prioritylist').prioritylist()''' % \
+            (selector))
+
+        # @ToDo: minify
+        s3.scripts.append("/%s/static/scripts/S3/s3.prioritylist.js" % current.request.application)
+        s3.stylesheets.append("S3/s3.prioritylist.css")
+
+        return TAG[""](INPUT(**attr),
+                       requires = field.requires
+                       )
 
 # =============================================================================
 class S3ACLWidget(CheckboxesWidget):
@@ -2645,15 +2798,15 @@ class CheckboxesWidgetS3(OptionsWidget):
         - supports also integer-type keys in option sets
         - has an identifiable class for styling
 
-        Used in Sync, Projects, Assess
+        Used in Sync, Projects, Assess, Facilities
     """
 
     @classmethod
     def widget(cls, field, value, **attributes):
         """
-        generates a TABLE tag, including INPUT checkboxes (multiple allowed)
+            generates a TABLE tag, including INPUT checkboxes (multiple allowed)
 
-        see also: :meth:`FormWidget.widget`
+            see also: :meth:`FormWidget.widget`
         """
 
         #values = re.compile("[\w\-:]+").findall(str(value))
@@ -2691,8 +2844,8 @@ class CheckboxesWidgetS3(OptionsWidget):
             T = current.T
             opts.append(TR(TD(SPAN(T("no options available"),
                                    _class="no-options-available"),
-                              INPUT(_type="hide",
-                                    _name=field.name,
+                              INPUT(_name=field.name,
+                                    _class="hide",
                                     _value=None))))
 
         for r_index in range(rows):
@@ -2774,7 +2927,8 @@ class S3AddPersonWidget(FormWidget):
         if self.select_existing:
             # Autocomplete
             select = '''select_person($('#%s').val())''' % real_input
-            widget = S3PersonAutocompleteWidget(post_process=select)
+            widget = S3PersonAutocompleteWidget(post_process=select,
+                                                hideerror=True)
             ac_row = TR(TD(LABEL("%s: " % T("Name"),
                                  _class="hide",
                                  _id="person_autocomplete_label"),
@@ -2869,18 +3023,52 @@ class S3AddPersonWidget(FormWidget):
                              requires=validator,
                              label=T("Email Address")),
                        Field("mobile_phone",
-                             label=T("Mobile Phone Number"))
+                             label=T("Mobile Phone Number"),
+                             # requires=None to work around a web2py bug
+                             requires=None)
                        ])
 
         labels, required = s3_mark_required(fields)
         if required:
             s3.has_required = True
 
+        if current.request.env.request_method == "POST" and not value:
+            # Read the POST vars:
+            post_vars = current.request.post_vars
+            values = Storage(ptable._filter_fields(post_vars))
+            values["email"] = post_vars["email"]
+            values["mobile_phone"] = post_vars["mobile_phone"]
+
+            # Use the validators to convert the POST vars into
+            # internal format (not validating here):
+            data = Storage()
+            for f in fields:
+                fname = f.name
+                if fname in values:
+                    v, error = values[fname], None
+                    requires = f.requires
+                    if requires:
+                        if not isinstance(requires, (list, tuple)):
+                            requires = [requires]
+                        for validator in requires:
+                            v, error = validator(v)
+                            if error:
+                                break
+                    if not error:
+                        data[fname] = v
+
+            record_id = 0
+        else:
+            data = None
+            record_id = value
+
         form = SQLFORM.factory(table_name="pr_person",
+                               record=data,
                                labels=labels,
                                formstyle=formstyle,
                                upload="default/download",
                                separator = "",
+                               record_id = record_id,
                                *fields)
         trs = []
         for tr in form[0]:
@@ -3706,7 +3894,6 @@ def s3_grouped_checkboxes_widget(field,
 
     return widget
 
-
 # =============================================================================
 def s3_checkboxes_widget(field,
                          value,
@@ -3732,7 +3919,8 @@ def s3_checkboxes_widget(field,
     values = not isinstance(value, (list, tuple)) and [value] or value
     values = [str(v) for v in values]
 
-    attributes["_name"] = "%s_widget" % field.name
+    field_name = field.name
+    attributes["_name"] = "%s_widget" % field_name
     if "_class" not in attributes:
         attributes["_class"] = "s3-checkboxes-widget"
 
@@ -3775,9 +3963,10 @@ def s3_checkboxes_widget(field,
 
     options = [(k, v) for k, v in options if k != ""]
     options = sorted(options, key=lambda option: option[1])
-
+    
     input_index = start_at_id
     rows = []
+    rappend = rows.append
     count = len(options)
     mods = count % cols
     num_of_rows = count / cols
@@ -3786,9 +3975,10 @@ def s3_checkboxes_widget(field,
 
     for r in range(num_of_rows):
         cells = []
+        cappend = cells.append
 
         for k, v in options[r * cols:(r + 1) * cols]:
-            input_id = "id-%s-%s" % (field.name, str(input_index))
+            input_id = "id-%s-%s" % (field_name, input_index)
 
             title = help_text.get(str(k), None)
             if title:
@@ -3796,25 +3986,24 @@ def s3_checkboxes_widget(field,
             else:
                 label_attr = {}
 
-            cells.append(TD(INPUT(_type="checkbox",
-                                  _name=field.name,
-                                  _id=input_id,
-                                  hideerror=True,
-                                  _value=k,
-                                  value=(k in values)),
-                            LABEL(v,
-                                  _for=input_id,
-                                  **label_attr)))
+            cappend(TD(INPUT(_type="checkbox",
+                             _name=field_name,
+                             _id=input_id,
+                             hideerror=True,
+                             _value=s3_unicode(k).encode("utf-8"),
+                             value=(k in values)),
+                       LABEL(v,
+                             _for=input_id,
+                             **label_attr)))
 
             input_index += 1
 
-        rows.append(TR(cells))
+        rappend(TR(cells))
 
     if rows:
         rows[-1][0][0]["hideerror"] = False
 
     return TABLE(*rows, **attributes)
-
 
 # =============================================================================
 class S3SliderWidget(FormWidget):

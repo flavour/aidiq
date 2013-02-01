@@ -83,6 +83,7 @@ def ifrc_realm_entity(table, row):
                             hrm_human_resource = SID,
                             inv_recv = SID,
                             inv_recv_item = "req_id",
+                            inv_send = SID,
                             inv_track_item = "track_org_id",
                             inv_adj_item = "adj_id",
                             req_req_item = "req_id"
@@ -234,7 +235,7 @@ settings.org.dependent_fields = \
      "pr_person_details.father_name"             : ["Bangladesh Red Crescent Society"],
      "pr_person_details.company"                 : ["Philippine Red Cross"],
      "pr_person_details.affiliations"            : ["Philippine Red Cross"],
-     "vol_volunteer.active"                      : ["Timor-Leste Red Cross Society"],
+     "vol_details.active"                        : ["Timor-Leste Red Cross Society"],
      "vol_volunteer_cluster.vol_cluster_type_id"     : ["Philippine Red Cross"],
      "vol_volunteer_cluster.vol_cluster_id"          : ["Philippine Red Cross"],
      "vol_volunteer_cluster.vol_cluster_position_id" : ["Philippine Red Cross"],
@@ -272,6 +273,7 @@ settings.project.multiple_budgets = True
 # Uncomment this to use multiple Organisations per project
 settings.project.multiple_organisations = True
 # Uncomment this to customise
+# Links to Filtered Components for Donors & Partners
 settings.project.organisation_roles = {
     1: T("Host National Society"),
     2: T("Partner National Society"),
@@ -280,6 +282,82 @@ settings.project.organisation_roles = {
     5: T("Partner")
 }
 
+from s3 import s3forms
+settings.ui.crud_form_project_project = s3forms.S3SQLCustomForm(
+        "organisation_id",
+        "name",
+        #"code",
+        "description",
+        "status_id",
+        "start_date",
+        "end_date",
+        #s3forms.S3SQLInlineComponent(
+        #    "location",
+        #    label = T("Countries"),
+        #    fields = ["location_id"],
+        #),
+        s3forms.S3SQLInlineComponentCheckbox(
+            "hazard",
+            label = T("Hazards"),
+            field = "hazard_id",
+            cols = 4,
+        ),
+        s3forms.S3SQLInlineComponentCheckbox(
+            "sector",
+            label = T("Sectors"),
+            field = "sector_id",
+            cols = 4,
+        ),
+        s3forms.S3SQLInlineComponentCheckbox(
+            "theme",
+            label = T("Themes"),
+            field = "theme_id",
+            cols = 4,
+        ),
+        "drr.hfa",
+        "objectives",
+        "human_resource_id",
+        # Partner Orgs
+        #s3forms.S3SQLInlineComponent(
+        #    "organisation",
+        #    name = "partner",
+        #    label = T("Partner Organizations"),
+        #    fields = ["organisation_id",
+        #              "comments", # NB This is labelled 'Role' in DRRPP
+        #              ],
+        #    filterby = dict(field = "role",
+        #                    options = "2"
+        #                    )
+        #),
+        # Donors
+        #s3forms.S3SQLInlineComponent(
+        #    "organisation",
+        #    name = "donor",
+        #    label = T("Donor(s)"),
+        #    fields = ["organisation_id",
+        #              "amount",
+        #              "currency"],
+        #    filterby = dict(field = "role",
+        #                    options = "3"
+        #                    )
+        #),
+        #"budget",
+        #"currency",
+        "comments",
+    )
+settings.ui.crud_form_project_location = s3forms.S3SQLCustomForm(
+        "project_id",
+        "location_id",
+        # @ToDo: Grouped Checkboxes
+        s3forms.S3SQLInlineComponentCheckbox(
+            "activity_type",
+            label = T("Activity Types"),
+            field = "activity_type_id",
+            cols = 3,
+        ),
+        "comments",
+    )
+
 # -----------------------------------------------------------------------------
 # Inventory Management
 settings.inv.show_mode_of_transport = True
@@ -287,6 +365,8 @@ settings.inv.send_show_time_in = True
 
 # -----------------------------------------------------------------------------
 # Request Management
+# Uncomment to disable Inline Forms in Requests module
+settings.req.inline_forms = False
 settings.req.req_type = ["Stock"]
 settings.req.use_commit = False
 #settings.inv.collapse_tabs = True
