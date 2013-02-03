@@ -1614,11 +1614,12 @@ class S3FacilityModel(S3Model):
         # Search method
         def facility_type_opts():
             table = self.org_facility_type
-            rows = db(table.deleted == False).select(table.name)
+            rows = db(table.deleted == False).select(table.id, table.name)
             opts = {}
             for row in rows:
                 name = row.name
-                opts[name] = name
+                id = row.id
+                opts[id] = name
             return opts
 
         org_facility_search = [
@@ -1723,8 +1724,8 @@ class S3FacilityModel(S3Model):
                     cols=report_fields,
                     #facts=report_fields,
                     #methods=["count", "list", "sum"],
-                    fact = [("id", "count", T("Number of facilities")),
-                            ("name", "list", T("List of facilities"))],
+                    fact = [("id", "count", T("Number of Facilities")),
+                            ("name", "list", T("List of Facilities"))],
                     defaults=Storage(rows="location_id$L4",
                                      cols="facility_type_id",
                                      fact="name",

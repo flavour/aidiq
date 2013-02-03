@@ -770,8 +770,8 @@ class S3SearchOptionsWidget(S3SearchWidget):
 
         # For many-to-many fields the user can search for records containing
         # all the options or any of the options.
+        self.filter_type = vars.get("%s_filter" % name, "any")
         if len(options) > 1 and field_type[:4] == "list":
-            self.filter_type = vars.get("%s_filter" % name, "any")
             any_all = DIV(
                 T("Filter type "),
                 INPUT(_name="%s_filter" % name,
@@ -1539,6 +1539,7 @@ i18n.edit_saved_search="%s"
         else:
             dt_pagination = "false"
             limit = None
+            left = None
 
         # Truncate long texts
         if r.interactive or representation == "aadata":
@@ -1556,7 +1557,8 @@ i18n.edit_saved_search="%s"
                                                 start=None,
                                                 limit=limit,
                                                 orderby=orderby,
-                                                getids=True)
+                                                getids=True,
+                                                left=left)
         displayrows = totalrows
 
         # Render the datatable and add it to the output
