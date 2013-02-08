@@ -78,7 +78,7 @@ from gluon.tools import callback
 
 from s3fields import S3Represent, S3RepresentLazy
 from s3utils import s3_has_foreign_key, s3_get_foreign_key, s3_unicode, S3MarkupStripper
-from s3data import S3DataTable
+from s3data import S3DataTable, S3DataList
 from s3validators import IS_ONE_OF
 
 DEBUG = False
@@ -789,7 +789,7 @@ class S3Resource(object):
                 # Create a simplified query for the page
                 # (this will improve performance of the second select):
                 if left_joins:
-                    page = row_ids[limitby[0]:limitby[0]+limitby[1]]
+                    page = row_ids[limitby[0]:limitby[1]]
                     query = table._id.belongs(page)
                     del attributes["limitby"]
 
@@ -1413,6 +1413,71 @@ class S3Resource(object):
         if rows:
             data = self.extract(rows, selectors, represent=True)
             return S3DataTable(rfields, data), numrows, ids
+        else:
+            return None, 0, []
+
+    # -------------------------------------------------------------------------
+    def datalist(self,
+                 fields=None,
+                 start=0,
+                 limit=None,
+                 left=None,
+                 orderby=None,
+                 distinct=False,
+                 getids=False,
+                 listid=None):
+        """
+            Generate a data list of this resource
+
+            @param fields: list of fields to include (field selector strings)
+            @param start: index of the first record to include
+            @param limit: maximum number of records to include
+            @param left: additional left joins for DB query
+            @param orderby: orderby for DB query
+            @param distinct: distinct-flag for DB query
+            @param getids: return the record IDs of all records matching the
+                           query (used in search to create a filter)
+
+            @return: tuple (S3DataList, numrows, ids), where numrows represents
+                     the total number of rows in the table that match the query;
+                     ids is empty unless getids=True
+        """
+
+        # Choose fields
+        if fields is None:
+            fields = [f.name for f in self.readable_fields()]
+        selectors = list(fields)
+
+        # Automatically include the record ID
+        table = self.table
+        if table._id.name not in selectors:
+            fields.insert(0, table._id.name)
+            selectors.insert(0, table._id.name)
+
+        # Resolve the selectors
+        rfields = self.resolve_selectors(fields, extra_fields=False)[0]
+
+        # Retrieve the rows
+        rows, numrows, ids = self.select(fields=selectors,
+                                         start=start,
+                                         limit=limit,
+                                         orderby=orderby,
+                                         left=left,
+                                         distinct=distinct,
+                                         count=True,
+                                         getids=getids,
+                                         cacheable=True)
+
+        # Generate the data table
+        if rows:
+            data = self.extract(rows, selectors, represent=True)
+            return S3DataList(self,
+                              fields,
+                              data,
+                              listid=listid,
+                              start=start,
+                              total=numrows,
+                              limit=limit), numrows, ids
         else:
             return None, 0, []
 
@@ -3993,30 +4058,42 @@ class S3Resource(object):
         return (searchq, orderby, left)
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def sortleft(joins):
+    @classmethod
+    def sortleft(cls, joins):
         """
             Sort a list of left-joins by their interdependency
 
             @param joins: the list of joins
         """
 
-        s = []
-        append, insert = s.append, s.insert
+        if len(joins) <= 1:
+            return joins
+        r = list(joins)
+
+        tables = current.db._adapter.tables
+
+        append = r.append
+        head = None
         for i in xrange(len(joins)):
-            join = joins[i]
-            try:
-                tn = join.first._tablename
-            except AttributeError:
-                tn = str(join.first)
-            for j in xrange(len(s)):
-                if "%s." % tn in str(s[j].second):
-                    insert(j, join)
-                    join = None
+            join = r.pop(0)
+            head = join
+            tablenames = tables(join.second)
+            for j in r:
+                try:
+                    tn = j.first._tablename
+                except AttributeError:
+                    tn = str(j.first)
+                if tn in tablenames:
+                    head = None
                     break
-            if join:
+            if head is not None:
+                break
+            else:
                 append(join)
-        return s
+        if head is not None:
+            return [head] + cls.sortleft(r)
+        else:
+            raise RuntimeError("circular left-join dependency")
 
     # -------------------------------------------------------------------------
     def list_fields(self, key="list_fields"):
@@ -6367,9 +6444,9 @@ class S3Pivottable(object):
             rdim = irows[rindex]["value"] if rindex != OTHER else None
             if represent:
                 repr_str = row_repr(rdim) if rindex != OTHER else others
-                orows.append((rindex, rdim, repr_str, rtotal))
+                orows.append((rindex, s3_unicode(rdim), repr_str, rtotal))
             else:
-                orows.append((rindex, rdim, rtotal))
+                orows.append((rindex, s3_unicode(rdim), rtotal))
             for cindex, ctotal in cols:
                 value = cells[rindex][cindex]
                 if type(value) is list:
@@ -6379,9 +6456,9 @@ class S3Pivottable(object):
                     cdim = icols[cindex]["value"] if cindex != OTHER else None
                     if represent:
                         repr_str = col_repr(cdim) if cindex != OTHER else others
-                        ocols.append((cindex, cdim, repr_str, ctotal))
+                        ocols.append((cindex, s3_unicode(cdim), repr_str, ctotal))
                     else:
-                        ocols.append((cindex, cdim, ctotal))
+                        ocols.append((cindex, s3_unicode(cdim), ctotal))
             ctotals = False
             ocells.append(orow)
 
