@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from gluon import current, TAG, DIV
+from gluon import current, TAG, DIV, H3
 from gluon.storage import Storage
 from gluon.contrib.simplejson.ordered_dict import OrderedDict
 settings = current.deployment_settings
@@ -33,7 +33,10 @@ For enquiries contact %s""" % settings.get_mail_approver()
 
 # Record Approval
 settings.auth.record_approval = True
-settings.auth.record_approval_required_for = ["org_organisation", "project_project", "project_framework"]
+settings.auth.record_approval_required_for = ["org_organisation",
+                                              "project_project",
+                                              "project_framework"
+                                              ]
 
 # L10n settings
 settings.L10n.languages = OrderedDict([
@@ -159,6 +162,7 @@ def customize_project_project(**attr):
     s3db.project_project.budget.label = T("Total Funding")
     
     location_id = s3db.project_location.location_id
+    location_id.label = ""
     # Limit to just Countries
     location_id.requires = s3db.gis_country_requires
     # Use dropdown, not AC
@@ -327,6 +331,16 @@ if($('[name=sub_drrpp_L1]').is(':checked')==false){
     return attr
 
 settings.ui.customize_project_project = customize_project_project
+
+def customize_pr_person(**attr):
+    s3 = current.response.s3
+    t = current.T  
+    
+    s3.crud_strings.pr_person.title_display = T("My Page")
+    attr["rheader"] = H3(T("Saved Searches"))
+    return attr
+
+settings.ui.customize_pr_person = customize_pr_person
 
 # Comment/uncomment modules here to disable/enable them
 settings.modules = OrderedDict([
