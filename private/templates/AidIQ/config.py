@@ -91,6 +91,27 @@ settings.project.organisation_roles = {
     1: T("Customer")
 }
 
+from s3 import s3forms
+settings.ui.crud_form_project_project = s3forms.S3SQLCustomForm(
+        "organisation_id",
+        "name",
+        "description",
+        "status_id",
+        "start_date",
+        "end_date",
+        "calendar",
+        "human_resource_id",
+        s3forms.S3SQLInlineComponentCheckbox(
+            "sector",
+            label = T("Sectors"),
+            field = "sector_id",
+            cols = 4,
+        ),
+        "budget",
+        "currency",
+        "comments",
+    )
+
 # Uncomment to allow HR records to be deletable rather than just marking them as obsolete
 settings.hrm.deletable = True
 
