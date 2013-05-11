@@ -34,9 +34,8 @@ import unittest
 from unittest.case import SkipTest, _ExpectedFailure, _UnexpectedSuccess
 
 from dateutil.relativedelta import relativedelta
-from selenium.common.exceptions import NoSuchElementException
-from selenium.webdriver.support.ui import Select
-from selenium.webdriver.support.wait import WebDriverWait
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.webdriver.support.ui import Select, WebDriverWait
 
 from gluon import current
 
@@ -339,6 +338,7 @@ class SeleniumUnitTest(Web2UnitTest):
         try:
             elem = browser.find_element_by_xpath("//div[@class='confirmation']")
             elem.click()
+            time.sleep(1) # Give it time to dissolve
         except:
             pass
 
@@ -453,17 +453,22 @@ class SeleniumUnitTest(Web2UnitTest):
                 id_data.append([details[0], raw_value])
 
         result["before"] = self.getRows(table, id_data, dbcallback)
+        
         # Submit the Form
         submit_btn = browser.find_element_by_css_selector("input[type='submit']")
         submit_btn.click()
-        self.wait_for_page_to_load()
+        #self.wait_for_page_to_load()
+
         # Check & Report the results
         confirm = True
         try:
-            elem = browser.find_element_by_xpath("//div[@class='confirmation']")
+            elem = WebDriverWait(browser, 30).until(
+                        lambda driver: \
+                               driver.find_element_by_xpath("//div[@class='confirmation']"))
             self.reporter(elem.text)
-        except NoSuchElementException:
+        except (NoSuchElementException, TimeoutException):
             confirm = False
+
         if (confirm != success):
             # Do we have a validation error?
             try:
@@ -473,9 +478,11 @@ class SeleniumUnitTest(Web2UnitTest):
                     self.reporter(msg)
             except NoSuchElementException:
                 pass
+
         self.assertTrue(confirm == success,
                         "Unexpected %s to create record" %
                         (confirm and "success" or "failure"))
+
         result["after"] = self.getRows(table, id_data, dbcallback)
         successMsg = "Records added to database: %s" %id_data
         failMsg = "Records not added to database %s" %id_data
@@ -604,11 +611,20 @@ class SeleniumUnitTest(Web2UnitTest):
                     field = field(field_spec[query_type])
 
             if ("label" in field_spec) and ("name" in field_spec):
-                xpath = "//*[contains(@for,'{name}') and contains(text(), '{label}')]".format(**field_spec)
+                splitted_label = field_spec["label"].split()
+                xpath = "//*[contains(@for,'{name}') ".format(**field_spec)
+                for word in splitted_label:
+                    xpath += "and contains(text(), '" + word + "') "
+                xpath = xpath + "]"
                 field = browser.find_element_by_xpath(xpath)
             elif "label" in field_spec:
-                field = browser.find_element_by_xpath(
-                    "//label[contains(text(),'{label}')]".format(**field_spec))
+                xpath = "//*[ "
+                splitted_label = field_spec["label"].split()
+                for word in splitted_label[0 : -1]:
+                    xpath += "contains(text(), '" + word + "') and "
+                xpath = xpath + "contains(text(), '" + splitted_label[-1] + "')]"
+                field = browser.find_element_by_xpath(xpath)
+                    
 
             if isinstance(value, basestring):  # Text inputs
                 field.send_keys(value)
@@ -671,14 +687,14 @@ class SeleniumUnitTest(Web2UnitTest):
                   row = 1,
                   action = None,
                   column = 1,
-                  tableID = "list",
+                  tableID = "datatable",
                   ):
 
         return dt_action(row, action, column, tableID)
 
     # -------------------------------------------------------------------------
     def w_autocomplete(self,
-                       search,
+                       value,
                        autocomplete,
                        needle = None,
                        quiet = True,
@@ -690,11 +706,11 @@ class SeleniumUnitTest(Web2UnitTest):
         autocomplete_id = "dummy_%s" % autocomplete
         throbber_id = "dummy_%s_throbber" % autocomplete
         if needle == None:
-            needle = search
+            needle = value
 
         elem = browser.find_element_by_id(autocomplete_id)
         elem.clear()
-        elem.send_keys(search)
+        elem.send_keys(value)
         # Give time for the throbber to appear
         time.sleep(1)
         # Now wait for throbber to close
@@ -707,36 +723,22 @@ class SeleniumUnitTest(Web2UnitTest):
                 return False
         # Throbber has closed and data was found, return
         for i in range(10):
-            # For each autocomplete on the form the menu will have an id starting from 0
-            automenu = 0
-            try:
-                menu = browser.find_element_by_id("ui-menu-%s" % automenu)
-            except:
-                menu = None
-            while menu:
-                # Try and get the value directly
-                menu_items = menu.text.splitlines()
-                autoitem = 0
-                for linkText in menu_items:
-                    if needle in linkText:
-                        # Found the text, now need to click on it to get the db id
-                        menuitem = browser.find_element_by_id("ui-menu-%s-%s" % (automenu,autoitem))
-                        menuitem.click()
-                        time.sleep(15)
-                        # The id is copied into the value attribute so use that
-                        db_id = browser.find_element_by_id(autocomplete)
-                        value = db_id.get_attribute("value")
-                        if value:
-                            return int(value)
-                        else:
-                            return False
-                    autoitem += 1
-                automenu += 1
-                try:
-                    menu = browser.find_element_by_id("ui-menu-%s" % automenu)
-                except:
-                    menu = None
-                # end of looping through each autocomplete menu
+            # For each autocomplete on the form the menu will have an id starting from 1
+            autocomplete_xpath = "//ul[contains(@class,'ui-autocomplete')]"
+            results_xpath = "/li[@class='ui-menu-item']/a"
+            autocomplete_results = browser.find_elements_by_xpath(autocomplete_xpath + results_xpath)
+            for j in range(len(autocomplete_results)):
+                # If the value is in the result - might not be a match as AC may be a represent 
+                if value in autocomplete_results[j].text:
+                    autocomplete_results[j].click()
+                    time.sleep(3)
+                    db_id = browser.find_element_by_id(autocomplete)
+                    id = db_id.get_attribute("value")
+                    if id:
+                        return int(id)
+                    else:
+                        return False
+            
             time.sleep(sleeptime)
 
     # -------------------------------------------------------------------------

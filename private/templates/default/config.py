@@ -3,8 +3,9 @@
 from gluon import current
 from gluon.storage import Storage
 from gluon.contrib.simplejson.ordered_dict import OrderedDict
-settings = current.deployment_settings
+
 T = current.T
+settings = current.deployment_settings
 
 """
     Template settings
@@ -124,7 +125,6 @@ T = current.T
 # Uncomment these to use US-style dates in English (localisations can still convert to local format)
 #settings.L10n.date_format = T("%m-%d-%Y")
 #settings.L10n.time_format = T("%H:%M:%S")
-#settings.L10n.datetime_format = T("%m-%d-%Y %H:%M")
 # Start week on Sunday
 #settings.L10n.firstDOW = 0
 # Number formats (defaults to ISO 31-0)
@@ -197,10 +197,20 @@ settings.L10n.decimal_separator = "."
 # lon<0 have a duplicate at lon+360
 # lon>0 have a duplicate at lon-360
 #settings.gis.duplicate_features = True
-# Mouse Position: 'normal', 'mgrs' or 'off'
+# Mouse Position: 'normal', 'mgrs' or None
 #settings.gis.mouse_position = "mgrs"
+# Uncomment to hide the Overview map
+#settings.gis.overview = False
+# Uncomment to hide the permalink control
+#settings.gis.permalink = False
 # PoIs to export in KML/OSM feeds from Admin locations
 #settings.gis.poi_resources = ["cr_shelter", "hms_hospital", "org_office"]
+# Uncomment to hide the ScaleLine control
+#settings.gis.scaleline = False
+# Uncomment to modify the Simplify Tolerance
+#settings.gis.simplify_tolerance = 0.001
+# Uncomment to hide the Zoom control
+#settings.gis.zoomcontrol = False
 
 # Messaging Settings
 # If you wish to use a parser.py in another folder than "default"
@@ -245,6 +255,8 @@ settings.L10n.decimal_separator = "."
 #settings.ui.cluster = True
 # Enable this to use the label 'Camp' instead of 'Shelter'
 #settings.ui.camp = True
+# Enable this to change the label for 'Attachments' tabs
+#settings.ui.label_attachments = "Attachments"
 # Enable this to change the label for 'Mobile Phone'
 #settings.ui.label_mobile_phone = "Cell Phone"
 # Enable this to change the label for 'Postcode'
@@ -255,6 +267,10 @@ settings.L10n.decimal_separator = "."
 #settings.ui.hide_report_options = False
 # Uncomment to show created_by/modified_by using Names not Emails
 #settings.ui.auth_user_represent = "name"
+# Uncomment to restrict the export formats available
+#settings.ui.export_formats = ["kml", "pdf", "rss", "xls", "xml"]
+# Uncomment to include an Interim Save button on CRUD forms
+#settings.ui.interim_save = True
 
 # -----------------------------------------------------------------------------
 # Persons
@@ -415,6 +431,8 @@ settings.L10n.decimal_separator = "."
 #settings.req.req_type = ["Stock"]
 # Uncomment to enable Summary 'Site Needs' tab for Offices/Facilities
 #settings.req.summary = True
+# Uncomment to restrict adding new commits to Completed commits
+#settings.req.req_restrict_on_complete = True
 
 # Custom Crud Strings for specific req_req types
 #settings.req.req_crud_strings = dict()

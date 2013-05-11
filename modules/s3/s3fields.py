@@ -29,10 +29,10 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-import sys
 import datetime
-from uuid import uuid4
+import sys
 from itertools import chain
+from uuid import uuid4
 
 from gluon import *
 # Here are dependencies listed for reference:
@@ -979,39 +979,34 @@ def s3_roles_permitted(name="roles_permitted", **attr):
 
     T = current.T
     if "label" not in attr:
-        label = T("Roles Permitted")
+        attr["label"] = T("Roles Permitted")
     if "sortby" not in attr:
-        sortby = "role"
+        attr["sortby"] = "role"
     if "represent" not in attr:
-        represent = s3_auth_group_represent
+        attr["represent"] = s3_auth_group_represent
     if "requires" not in attr:
-        requires = IS_NULL_OR(IS_ONE_OF(current.db,
-                                        "auth_group.id",
-                                        "%(role)s",
-                                        multiple=True))
+        attr["requires"] = IS_NULL_OR(IS_ONE_OF(current.db,
+                                                "auth_group.id",
+                                                "%(role)s",
+                                                multiple=True))
     if "comment" not in attr:
-        comment = DIV(_class="tooltip",
-                          _title="%s|%s" % (T("Roles Permitted"),
-                                            T("If this record should be restricted then select which role(s) are permitted to access the record here.")))
+        attr["comment"] = DIV(_class="tooltip",
+                              _title="%s|%s" % (T("Roles Permitted"),
+                                                T("If this record should be restricted then select which role(s) are permitted to access the record here.")))
     if "ondelete" not in attr:
-        ondelete = "RESTRICT"
+        attr["ondelete"] = "RESTRICT"
+
+    # @ToDo:
+    #if "widget" not in attr:
+    #    attr["widget"] = S3CheckboxesWidget(lookup_table_name = "auth_group",
+    #                                        lookup_field_name = "role",
+    #                                        multiple = True)
 
     f = S3ReusableField(name, "list:reference auth_group",
-                        sortby = sortby,
-                        requires = requires,
-                        represent = represent,
-                        # @ToDo
-                        #widget = S3CheckboxesWidget(lookup_table_name = "auth_group",
-                        #                            lookup_field_name = "role",
-                        #                            multiple = True),
-                        label = label,
-                        comment = comment,
-                        ondelete = ondelete)
+                        **attr)
     return f()
 
 # =============================================================================
-# Comments
-#
 def s3_comments(name="comments", **attr):
     """
         Return a standard Comments field
@@ -1037,14 +1032,11 @@ def s3_comments(name="comments", **attr):
     return f()
 
 # =============================================================================
-# Currency field
-#
-# @ToDo: Move to a Finance module
-#
-
 def s3_currency(name="currency", **attr):
     """
         Return a standard Currency field
+
+        @ToDo: Move to a Finance module
     """
 
     settings = current.deployment_settings
@@ -1065,9 +1057,6 @@ def s3_currency(name="currency", **attr):
     return f()
 
 # =============================================================================
-# Date field
-#
-
 def s3_date(name="date", **attr):
     """
         Return a standard Date field
@@ -1196,9 +1185,6 @@ def s3_date(name="date", **attr):
     return f()
 
 # =============================================================================
-# Datetime field
-#
-
 def s3_datetime(name="date", **attr):
     """
         Return a standard Datetime field

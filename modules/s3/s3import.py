@@ -31,24 +31,20 @@
 __all__ = ["S3Importer",
            "S3ImportJob",
            "S3ImportItem",
+           "S3BulkImporter",
            ]
 
+import cPickle
 import os
 import sys
-import cPickle
 import tempfile
-from datetime import datetime
+import uuid
 from copy import deepcopy
+from datetime import datetime
 try:
     from cStringIO import StringIO    # Faster, where available
 except:
     from StringIO import StringIO
-
-try:
-    from lxml import etree
-except ImportError:
-    print >> sys.stderr, "ERROR: lxml module needed for XML handling"
-    raise
 
 try:
     import json # try stdlib (Python 2.6)
@@ -58,15 +54,21 @@ except ImportError:
     except:
         import gluon.contrib.simplejson as json # fallback to pure-Python module
 
+try:
+    from lxml import etree
+except ImportError:
+    print >> sys.stderr, "ERROR: lxml module needed for XML handling"
+    raise
+
 from gluon import *
 from gluon.serializers import json as jsons
 from gluon.storage import Storage, Messages
 from gluon.tools import callback
 
 from s3crud import S3CRUD
-from s3xml import S3XML
-from s3utils import s3_mark_required, s3_has_foreign_key, s3_get_foreign_key, s3_unicode
 from s3resource import S3Resource
+from s3utils import s3_debug, s3_mark_required, s3_has_foreign_key, s3_get_foreign_key, s3_unicode
+from s3xml import S3XML
 
 DEBUG = False
 if DEBUG:
@@ -524,15 +526,13 @@ class S3Importer(S3CRUD):
 
         _debug("S3Importer.commit(%s, %s)" % (source, transform))
 
-        db = current.db
         session = current.session
-        request = self.request
 
         try:
             openFile = open(source, "r")
         except:
             session.error = self.messages.file_open_error % source
-            redirect(URL(r=request, f=self.function))
+            redirect(URL(r=self.request, f=self.function))
 
         # @todo: manage different file formats
         # @todo: find file format from request.extension
@@ -549,7 +549,7 @@ class S3Importer(S3CRUD):
                                              filename = source,
                                              user_id = user,
                                              status = 1)
-        db.commit()
+        current.db.commit()
 
         # Create the import job
         result = self._generate_import_job(upload_id,
@@ -557,14 +557,14 @@ class S3Importer(S3CRUD):
                                            fileFormat,
                                            stylesheet=transform
                                            )
-        if result == None:
+        if result is None:
             if self.error != None:
-                if session.error == None:
+                if session.error is None:
                     session.error = self.error
                 else:
                     session.error += self.error
             if self.warning != None:
-                if session.warning == None:
+                if session.warning is None:
                     session.warning = self.warning
                 else:
                     session.warning += self.warning
@@ -575,16 +575,18 @@ class S3Importer(S3CRUD):
             result = self._update_upload_job(upload_id)
 
             # Get the results and display
+            messages = self.messages
             msg = "%s : %s %s %s" % (source,
-                                     self.messages.commit_total_records_imported,
-                                     self.messages.commit_total_errors,
-                                     self.messages.commit_total_records_ignored)
+                                     messages.commit_total_records_imported,
+                                     messages.commit_total_errors,
+                                     messages.commit_total_records_ignored)
             msg = msg % result
 
-            if session.flash == None:
-                session.flash = msg
+            flash = session.flash
+            if flash is None:
+                flash = msg
             else:
-                session.flash += msg
+                flash += msg
 
         # @todo: return the upload_id?
 
@@ -622,7 +624,6 @@ class S3Importer(S3CRUD):
 
         request = self.request
         resource = request.resource # use self.resource?
-        response = current.response
 
         # Get the import job ID
         job_id = self.job_id
@@ -636,25 +637,24 @@ class S3Importer(S3CRUD):
                                          delete_job = True)
         # @todo: check result
 
-        # now delete the upload entry
-        query = (self.upload_table.id == upload_id)
-        count = db(query).delete()
+        # Delete the upload entry
+        count = db(self.upload_table.id == upload_id).delete()
         # @todo: check that the record has been deleted
 
-        # Now commit the changes
+        # Commit the changes
         db.commit()
 
         result = count
 
-        # return to the main import screen
+        # Return to the main import screen
         # @todo: check result properly
         if result == False:
-            response.warning = self.messages.no_job_to_delete
+            current.response.warning = self.messages.no_job_to_delete
         else:
-            response.flash = self.messages.job_deleted
+            current.response.flash = self.messages.job_deleted
 
         # redirect to the start page (remove all vars)
-        self.next = self.request.url(vars=dict())
+        self.next = request.url(vars=dict())
         return
 
     # ========================================================================
@@ -680,11 +680,11 @@ class S3Importer(S3CRUD):
         if REPLACE_OPTION in attr:
             replace_option = attr[REPLACE_OPTION]
             if replace_option is not None:
-                table.replace_option.readable = True
-                table.replace_option.writable = True
-                table.replace_option.label = replace_option
-                table.replace_option.comment = DIV(_class="tooltip",
-                                                   _title="%s|%s" % \
+                field = table.replace_option
+                field.readable = field.writable = True
+                field.label = replace_option
+                field.comment = DIV(_class="tooltip",
+                                    _title="%s|%s" % \
                     (replace_option,
                      current.T("Delete all data of this type which the user has permission to before upload. This is designed for workflows where the data is maintained in an offline spreadsheet and uploaded just for Reads.")))
 
@@ -856,7 +856,6 @@ class S3Importer(S3CRUD):
         """
 
         s3 = current.response.s3
-        T = current.T
 
         represent = {"s3_import_item.element" : self._item_element_represent}
         self._use_import_item_table(job_id)
@@ -890,11 +889,10 @@ class S3Importer(S3CRUD):
                                     )
             return (upload_id, select_list, data)
 
-        s3.actions = [
-                        dict(label= str(self.messages.item_show_details),
-                             _class="action-btn",
-                             _jqclick="$('.importItem.'+id).toggle();",
-                             ),
+        s3.actions = [dict(label=str(self.messages.item_show_details),
+                           _class="action-btn",
+                           _jqclick="$('.importItem.'+id).toggle();",
+                           ),
                       ]
         output = self._dataTable(["id", "element", "error"],
                                  sort_by = [[1, "asc"]],
@@ -1080,10 +1078,9 @@ class S3Importer(S3CRUD):
         self.importDetails = dict()
 
         table = self.upload_table
-        query = (table.id == upload_id)
-        row = db(query).select(table.job_id,
-                               table.replace_option,
-                               limitby=(0, 1)).first()
+        row = db(table.id == upload_id).select(table.job_id,
+                                               table.replace_option,
+                                               limitby=(0, 1)).first()
         if row is None:
             return False
         else:
@@ -1107,8 +1104,7 @@ class S3Importer(S3CRUD):
                 if str(id) not in items:
                     # @todo: replace with a helper method from the API
                     _debug("Deleting item.id = %s" % id)
-                    query = (itemTable.id == id)
-                    db(query).delete()
+                    db(itemTable.id == id).delete()
 
             #****************************************************************
             # EXPERIMENTAL
@@ -1157,8 +1153,7 @@ class S3Importer(S3CRUD):
 
         _debug("S3Importer._update_upload_job(%s)" % (upload_id))
 
-        request = self.request
-        resource = request.resource
+        resource = self.request.resource
         db = current.db
 
         totalPreDelete = len(self.importDetails["preDelete"])
@@ -1181,7 +1176,7 @@ class S3Importer(S3CRUD):
                                   summary_ignored = totalIgnored,
                                   status = 3)
 
-        # Now commit the changes
+        # Commit the changes
         db.commit()
         return (totalRecords, totalErrors, totalIgnored)
 
@@ -1197,14 +1192,15 @@ class S3Importer(S3CRUD):
 
         session = current.session
 
+        messages = self.messages
         msg = "%s - %s - %s" % \
-              (self.messages.commit_total_records_imported,
-               self.messages.commit_total_errors,
-               self.messages.commit_total_records_ignored)
+              (messages.commit_total_records_imported,
+               messages.commit_total_errors,
+               messages.commit_total_records_ignored)
         msg = msg % totals
 
         if timestmp != None:
-            session.flash = self.messages.job_completed % \
+            session.flash = messages.job_completed % \
                             (self.date_represent(timestmp), msg)
         elif totals[1] is not 0:
             session.error = msg
@@ -1344,16 +1340,14 @@ class S3Importer(S3CRUD):
             @param value: the string containing the element
         """
 
-        T = current.T
-        db = current.db
-
         try:
             element = etree.fromstring(value)
         except:
             return DIV(value)
 
+        db = current.db
         tablename = element.get("name")
-        table = current.db[tablename]
+        table = db[tablename]
 
         output = DIV()
         details = TABLE(_class="importItem %s" % id)
@@ -1372,7 +1366,7 @@ class S3Importer(S3CRUD):
         # Add error messages, if present
         errors = current.xml.collect_errors(element)
         if errors:
-            details.append(TFOOT(TR(TH("%s:" % T("Errors")),
+            details.append(TFOOT(TR(TH("%s:" % current.T("Errors")),
                                    TD(UL([LI(e) for e in errors])))))
         if rows == [] and components == []:
             # At this stage we don't have anything to display to see if we can
@@ -1458,16 +1452,18 @@ class S3Importer(S3CRUD):
         """
 
         if field.type == "string" or \
-            field.type == "string" or  \
-            field.type == "password" or \
-            field.type == "upload" or \
-            field.type == "text":
+           field.type == "string" or  \
+           field.type == "password" or \
+           field.type == "upload" or \
+           field.type == "text":
             return value
-        elif field.type == "integer" or field.type == "id":
+        elif field.type == "integer" or \
+             field.type == "id":
             return int(value)
-        elif field.type == "double" or field.type == "decimal":
+        elif field.type == "double" or \
+             field.type == "decimal":
             return double(value)
-        elif  field.type == 'boolean':
+        elif field.type == "boolean":
             if value and not str(value)[:1].upper() in ["F", "0"]:
                 return "T"
             else:
@@ -1491,6 +1487,7 @@ class S3Importer(S3CRUD):
 
             @todo: replace by S3DateTime method?
         """
+
         return date_obj.strftime("%d %B %Y, %I:%M%p")
 
     # -------------------------------------------------------------------------
@@ -1549,7 +1546,7 @@ class S3Importer(S3CRUD):
         """
 
         self.tablename = self.upload_tablename
-        if self.upload_resource == None:
+        if self.upload_resource is None:
             self.upload_resource = current.s3db.resource(self.tablename)
         self.resource = self.upload_resource
         self.table = self.upload_table
@@ -1596,21 +1593,20 @@ class S3Importer(S3CRUD):
         def user_name_represent(id):
             # @todo: use s3_represent_user?
 
+            if not id:
+                return current.messages["NONE"]
             table = db.auth_user
-            query = (table.id == id)
-            row = db(query).select(table.first_name,
-                                   table.last_name,
-                                   limitby=(0, 1)).first()
-            if row:
-                rep_str = "%s %s" % (row.first_name, row.last_name)
-            else:
-                rep_str = current.manager.LABEL["NONE"]
-
-            return rep_str
+            row = db(table.id == id).select(table.first_name,
+                                            table.last_name,
+                                            limitby=(0, 1)).first()
+            try:
+                return "%s %s" % (row.first_name, row.last_name)
+            except:
+                return current.messages.UNKNOWN_OPT
 
         def status_represent(index):
-            if index == None:
-                return "Unknown" # @todo: use messages (internationalize)
+            if index is None:
+                return current.messages.UNKNOWN_OPT
             else:
                 return import_upload_status[index]
 
@@ -1620,14 +1616,14 @@ class S3Importer(S3CRUD):
                                                 "uploads",
                                                 #"imports"
                                                 )
+        messages = self.messages
         table.file.comment = DIV(_class="tooltip",
-                                 _title="%s|%s" %
-                                    (self.messages.import_file,
-                                     self.messages.import_file_comment))
-        table.file.label = self.messages.import_file
+                                 _title="%s|%s" % (messages.import_file,
+                                                   messages.import_file_comment))
+        table.file.label = messages.import_file
         table.status.requires = IS_IN_SET(import_upload_status, zero=None)
         table.status.represent = status_represent
-        table.user_id.label = self.messages.user_name
+        table.user_id.label = messages.user_name
         table.user_id.represent = user_name_represent
         table.created_on.default = now
         table.created_on.represent = self.date_represent
@@ -1671,8 +1667,7 @@ class S3Importer(S3CRUD):
                           default=False,
                           readable=False,
                           writable=False),
-                    Field("job_id",
-                          length=128,
+                    Field("job_id", length=128,
                           readable=False,
                           writable=False),
                     Field("user_id", "integer",
@@ -1706,16 +1701,16 @@ class S3ImportItem(object):
     """ Class representing an import item (=a single record) """
 
     METHOD = Storage(
-        CREATE="create",
-        UPDATE="update",
-        DELETE="delete"
+        CREATE = "create",
+        UPDATE = "update",
+        DELETE = "delete"
     )
 
     POLICY = Storage(
-        THIS="THIS",                # keep local instance
-        OTHER="OTHER",              # update unconditionally
-        NEWER="NEWER",              # update if import is newer
-        MASTER="MASTER"             # update if import is master
+        THIS   = "THIS",            # keep local instance
+        OTHER  = "OTHER",           # update unconditionally
+        NEWER  = "NEWER",           # update if import is newer
+        MASTER = "MASTER"           # update if import is master
     )
 
     # -------------------------------------------------------------------------
@@ -1734,7 +1729,6 @@ class S3ImportItem(object):
         self.error = None
 
         # Identification
-        import uuid
         self.item_id = uuid.uuid4() # unique ID for this item
         self.id = None
         self.uid = None
@@ -1805,11 +1799,8 @@ class S3ImportItem(object):
             @returns: True if successful, False if not (sets self.error)
         """
 
-        db = current.db
-        xml = current.xml
-        manager = current.manager
-        validate = manager.validate
         s3db = current.s3db
+        xml = current.xml
 
         self.element = element
         if table is None:
@@ -1825,10 +1816,12 @@ class S3ImportItem(object):
 
         if original is None:
             original = S3Resource.original(table, element)
+        postprocess = s3db.get_config(self.tablename, "xml_post_parse")
         data = xml.record(table, element,
                           files=files,
                           original=original,
-                          validate=validate)
+                          postprocess=postprocess,
+                          validate=current.manager.validate)
 
         if data is None:
             self.error = self.ERROR.VALIDATION_ERROR
@@ -1865,10 +1858,16 @@ class S3ImportItem(object):
             Detect whether this is an update or a new record
         """
 
-        RESOLVER = "deduplicate"
-
         if self.id:
             return
+
+        RESOLVER = "deduplicate"
+
+        METHOD = self.METHOD
+        UPDATE = METHOD["UPDATE"]
+        DELETE = METHOD["DELETE"]
+
+        UID = current.xml.UID
 
         table = self.table
 
@@ -1876,13 +1875,14 @@ class S3ImportItem(object):
             return
         if self.original is not None:
             original = self.original
-        else:
+        elif self.data:
             original = S3Resource.original(table, self.data)
+        else:
+            original = None
 
         if original is not None:
             self.original = original
             self.id = original[table._id.name]
-            UID = current.xml.UID
             if UID in original:
                 self.uid = original[UID]
                 self.data.update({UID:self.uid})
@@ -1891,6 +1891,12 @@ class S3ImportItem(object):
             resolve = current.s3db.get_config(self.tablename, RESOLVER)
             if self.data and resolve:
                 resolve(self)
+            if self.id and self.method in (UPDATE, DELETE):
+                self.original = current.db(table._id == self.id).select(limitby=(0, 1)
+                                                                        ).first()
+                if original and UID in original:
+                    self.uid = original[UID]
+                    self.data.update({UID:self.uid})
 
         return
 
@@ -1908,11 +1914,12 @@ class S3ImportItem(object):
             return False
 
         # Determine the method
-        self.method = self.METHOD["CREATE"]
+        METHOD = self.METHOD
+        self.method = METHOD["CREATE"]
         if self.id:
 
             if self.data.deleted is True:
-                self.method = self.METHOD["DELETE"]
+                self.method = METHOD["DELETE"]
                 self.accepted = True
 
             else:
@@ -1920,10 +1927,10 @@ class S3ImportItem(object):
                     query = (self.table.id == self.id)
                     self.original = current.db(query).select(limitby=(0, 1)).first()
                 if self.original:
-                    self.method = self.METHOD["UPDATE"]
+                    self.method = METHOD["UPDATE"]
 
         # Set self.id
-        if self.method == self.METHOD["CREATE"]:
+        if self.method == METHOD["CREATE"]:
             self.id = 0
 
         # Authorization
@@ -1949,10 +1956,57 @@ class S3ImportItem(object):
             self.accepted = False
             return False
 
+        ERROR = current.xml.ATTRIBUTE["error"]
+
+        # Detect update
+        self.deduplicate()
+
+        # Set dynamic defaults for new records
+        if not self.id:
+            self._dynamic_defaults(self.data)
+
+        # Check for mandatory fields
+        required_fields = self._mandatory_fields()
+
+        all_fields = self.data.keys()
+
+        items = self.job.items
+        for reference in self.references:
+            resolved = True
+            entry = reference.entry
+            if entry and not entry.id:
+                if entry.item_id:
+                    item = items[entry.item_id]
+                    if item.error:
+                        resolved = False
+                else:
+                    resolved = False
+            if resolved:
+                field = reference.field
+                if isinstance(field, (tuple, list)):
+                    all_fields.append(field[1])
+                else:
+                    all_fields.append(field)
+
+        missing = [fname for fname in required_fields
+                         if fname not in all_fields]
+            
+        if missing:
+            original = self.original
+            if original:
+                missing = [fname for fname in missing
+                                 if fname not in original]
+            if missing:
+                fields = ", ".join(missing)
+                self.error = "%s: value(s) required" % fields
+                self.element.set(ERROR, self.error)
+                self.accepted = False
+                return False
+
+        # Run onvalidation
         form = Storage(method = self.method,
                        vars = self.data,
                        request_vars = self.data)
-
         if self.id:
             form.vars.id = self.id
 
@@ -1969,7 +2023,6 @@ class S3ImportItem(object):
                 pass # @todo need a better handler here.
         self.accepted = True
         if form.errors:
-            error = current.xml.ATTRIBUTE["error"]
             for k in form.errors:
                 e = self.element.findall("data[@field='%s']" % k)
                 if not e:
@@ -1979,8 +2032,7 @@ class S3ImportItem(object):
                     form.errors[k] = "[%s] %s" % (k, form.errors[k])
                 else:
                     e = e[0]
-                e.set(error,
-                      str(form.errors[k]).decode("utf-8"))
+                e.set(ERROR, str(form.errors[k]).decode("utf-8"))
             self.error = self.ERROR.VALIDATION_ERROR
             self.accepted = False
 
@@ -1995,10 +2047,33 @@ class S3ImportItem(object):
                                   (still reports errors)
         """
 
-        # Check if already committed
         if self.committed:
             # already committed
             return True
+
+        # Globals
+        db = current.db
+        xml = current.xml
+        ATTRIBUTE = xml.ATTRIBUTE
+        s3db = current.s3db
+        manager = current.manager
+
+        # Methods
+        METHOD = self.METHOD
+        CREATE = METHOD.CREATE
+        UPDATE = METHOD.UPDATE
+        DELETE = METHOD.DELETE
+
+        # Policies
+        POLICY = self.POLICY
+        THIS = POLICY["THIS"]
+        NEWER = POLICY["NEWER"]
+        MASTER = POLICY["MASTER"]
+
+        # Constants
+        UID = xml.UID
+        MCI = xml.MCI
+        MTIME = xml.MTIME
 
         # If the parent item gets skipped, then skip this item as well
         if self.parent is not None and self.parent.skip:
@@ -2009,22 +2084,32 @@ class S3ImportItem(object):
         # Resolve references
         self._resolve_references()
 
-        # Set a flag so that we know this is an import job
-        current.response.s3.bulk = True
-
-        xml = current.xml
-
-        # Validate
+        # Deduplicate and validate
         if not self.validate():
             _debug("Validation error: %s (%s)" %
                     (self.error,
                      xml.tostring(self.element, pretty_print=True)))
             self.skip = True
+
+            # Notify the error in the parent to have reported in the
+            # interactive (2-phase) importer
+            # Note that the parent item is already written at this point,
+            # so this notification can NOT prevent/rollback the import of
+            # the parent item if ignore_errors is True (forced commit), or
+            # if the user deliberately chose to import it despite error.
+            parent = self.parent
+            if parent is not None:
+                parent.error = self.ERROR.VALIDATION_ERROR
+                element = parent.element
+                if not element.get(ATTRIBUTE.error, False):
+                    element.set(ATTRIBUTE.error, str(parent.error))
+                    
             return ignore_errors
 
         elif self.components:
             for component in self.components:
-                if not component.validate():
+                if component.accepted is False or \
+                   component.data is None:
                     if hasattr(component, "tablename"):
                         tn = component.tablename
                     else:
@@ -2036,28 +2121,6 @@ class S3ImportItem(object):
                     self.error = self.ERROR.VALIDATION_ERROR
                     return False
 
-        # De-duplicate
-        self.deduplicate()
-
-        METHOD = self.METHOD
-        CREATE = METHOD.CREATE
-        UPDATE = METHOD.UPDATE
-        DELETE = METHOD.DELETE
-
-        POLICY = self.POLICY
-        THIS = POLICY["THIS"]
-        NEWER = POLICY["NEWER"]
-        MASTER = POLICY["MASTER"]
-
-        db = current.db
-        s3db = current.s3db
-        manager = current.manager
-        table = self.table
-
-        # Log this item
-        if manager.log is not None:
-            manager.log(self)
-
         # Authorize item
         if not self.authorize():
             _debug("Not authorized - skip")
@@ -2065,6 +2128,7 @@ class S3ImportItem(object):
             self.skip = True
             return ignore_errors
 
+        # Update the method
         method = self.method
         _debug("Method: %s" % method)
 
@@ -2078,14 +2142,9 @@ class S3ImportItem(object):
             self.skip = True
             return True
 
-        UID = xml.UID
-        MCI = xml.MCI
-        MTIME = xml.MTIME
-
+        # Check mtime and mci
+        table = self.table
         this = self.original
-        if not this and self.id and method in (UPDATE, DELETE):
-            query = (table.id == self.id)
-            this = db(query).select(limitby=(0, 1)).first()
         this_mtime = None
         this_mci = 0
         if this:
@@ -2095,7 +2154,7 @@ class S3ImportItem(object):
                 this_mci = this[MCI]
         self.mtime = xml.as_utc(self.mtime)
 
-        # Conflict detection
+        # Detect conflicts
         this_modified = True
         self.modified = True
         self.conflict = False
@@ -2107,17 +2166,17 @@ class S3ImportItem(object):
                 self.modified = False
             if self.modified and this_modified:
                 self.conflict = True
-
         if self.conflict and method in (UPDATE, DELETE):
             _debug("Conflict: %s" % self)
             if self.job.onconflict:
                 self.job.onconflict(self)
 
         if self.data is not None:
-            data = Storage(self.data)
+            data = table._filter_fields(self.data, id=True)
         else:
             data = Storage()
 
+        # Update policy
         if isinstance(self.update_policy, dict):
             def update_policy(f):
                 setting = self.update_policy
@@ -2132,6 +2191,10 @@ class S3ImportItem(object):
                 if p not in POLICY:
                     return THIS
                 return p
+
+        # Log this item
+        if manager.log is not None:
+            manager.log(self)
 
         # Update existing record
         if method == UPDATE:
@@ -2315,7 +2378,7 @@ class S3ImportItem(object):
                 field = u.get("field", None)
                 if isinstance(field, (list, tuple)):
                     pkey, fkey = field
-                    query = table.id == self.id
+                    query = (table.id == self.id)
                     row = db(query).select(table[pkey],
                                            limitby=(0, 1)).first()
                     if row:
@@ -2329,6 +2392,53 @@ class S3ImportItem(object):
         return True
 
     # -------------------------------------------------------------------------
+    def _dynamic_defaults(self, data):
+        """
+            Applies dynamic defaults from any keys in data that start with
+            an underscore, used only for new records and only if the respective
+            field is not populated yet.
+
+            @param data: the data dict
+        """
+
+        for k, v in data.items():
+            if k[0] == "_":
+                fn = k[1:]
+                if fn in self.table.fields and fn not in data:
+                    data[fn] = v
+        return
+
+    # -------------------------------------------------------------------------
+    def _mandatory_fields(self):
+
+        job = self.job
+
+        mandatory = None
+        tablename = self.tablename
+
+        mfields = job.mandatory_fields
+        if tablename in mfields:
+            mandatory = mfields[tablename]
+
+        if mandatory is None:
+            mandatory = []
+            for field in self.table:
+                if field.default is not None:
+                    continue
+                requires = field.requires
+                if requires:
+                    if not isinstance(requires, (list, tuple)):
+                        requires = [requires]
+                    if isinstance(requires[0], IS_EMPTY_OR):
+                        continue
+                    value, error = field.validate("")
+                    if error:
+                        mandatory.append(field.name)
+            mfields[tablename] = mandatory
+
+        return mandatory
+
+    # -------------------------------------------------------------------------
     def _resolve_references(self):
         """
             Resolve the references of this item (=look up all foreign
@@ -2339,6 +2449,7 @@ class S3ImportItem(object):
         if not self.table:
             return
 
+        db = current.db
         items = self.job.items
         for reference in self.references:
 
@@ -2376,8 +2487,8 @@ class S3ImportItem(object):
                 if item:
                     fk = item.id
             if fk and pkey != "id":
-                row = current.db(ktable._id == fk).select(ktable[pkey],
-                                                          limitby=(0, 1)).first()
+                row = db(ktable._id == fk).select(ktable[pkey],
+                                                  limitby=(0, 1)).first()
                 if not row:
                     fk = None
                     continue
@@ -2413,8 +2524,8 @@ class S3ImportItem(object):
 
         if not value or not self.table:
             return
-        db = current.db
         if self.id and self.permitted:
+            db = current.db
             fieldtype = str(self.table[field].type)
             if fieldtype.startswith("list:reference"):
                 query = (self.table.id == self.id)
@@ -2438,8 +2549,9 @@ class S3ImportItem(object):
         if item_table is None:
             return None
         db = current.db
-        query = item_table.item_id == self.item_id
-        row = db(query).select(item_table.id, limitby=(0, 1)).first()
+        row = db(item_table.item_id == self.item_id).select(item_table.id,
+                                                            limitby=(0, 1)
+                                                            ).first()
         if row:
             record_id = row.id
         else:
@@ -2531,8 +2643,9 @@ class S3ImportItem(object):
         if row.ritems:
             self.load_references = [json.loads(ritem) for ritem in row.ritems]
         self.load_parent = row.parent
+        s3db = current.s3db
         try:
-            table = current.s3db[tablename]
+            table = s3db[tablename]
         except:
             self.error = self.ERROR.BAD_RESOURCE
             return False
@@ -2547,6 +2660,9 @@ class S3ImportItem(object):
                 self.uid = original[UID]
                 self.data.update({UID:self.uid})
         self.error = row.error
+        postprocess = s3db.get_config(self.tablename, "xml_post_parse")
+        if postprocess:
+            postprocess(self.element, self.data)
         if self.error and not self.data:
             # Validation error
             return False
@@ -2593,6 +2709,9 @@ class S3ImportJob():
         self.files = files
         self.directory = Storage()
 
+        # Mandatory fields
+        self.mandatory_fields = Storage()
+
         self.elements = Storage()
         self.items = Storage()
         self.references = []
@@ -2606,21 +2725,24 @@ class S3ImportJob():
         self.deleted = [] # IDs of deleted records
 
         # Import strategy
+        if strategy is None:
+            METHOD = S3ImportItem.METHOD
+            strategy = [METHOD.CREATE,
+                        METHOD.UPDATE,
+                        METHOD.DELETE]
+        if not isinstance(strategy, (tuple, list)):
+            strategy = [strategy]
         self.strategy = strategy
-        if self.strategy is None:
-            self.strategy = [S3ImportItem.METHOD.CREATE,
-                             S3ImportItem.METHOD.UPDATE,
-                             S3ImportItem.METHOD.DELETE]
-        if not isinstance(self.strategy, (tuple, list)):
-            self.strategy = [self.strategy]
 
         # Update policy (default=always update)
-        self.update_policy = update_policy
-        if not self.update_policy:
+        if update_policy:
+            self.update_policy = update_policy
+        else:
             self.update_policy = S3ImportItem.POLICY.OTHER
         # Conflict resolution policy (default=always update)
-        self.conflict_policy = conflict_policy
-        if not self.conflict_policy:
+        if conflict_policy:
+            self.conflict_policy = conflict_policy
+        else:
             self.conflict_policy = S3ImportItem.POLICY.OTHER
 
         # Synchronization settings
@@ -2632,10 +2754,12 @@ class S3ImportJob():
             self.__define_tables()
             jobtable = self.job_table
             if str(job_id).isdigit():
-                query = jobtable.id == job_id
+                query = (jobtable.id == job_id)
             else:
-                query = jobtable.job_id == job_id
-            row = current.db(query).select(limitby=(0, 1)).first()
+                query = (jobtable.job_id == job_id)
+            row = current.db(query).select(jobtable.job_id,
+                                           jobtable.tablename,
+                                           limitby=(0, 1)).first()
             if not row:
                 raise SyntaxError("Job record not found")
             self.job_id = row.job_id
@@ -2646,7 +2770,6 @@ class S3ImportJob():
                 except:
                     pass
         else:
-            import uuid
             self.job_id = uuid.uuid4() # unique ID for this job
 
     # -------------------------------------------------------------------------
@@ -2829,7 +2952,7 @@ class S3ImportJob():
         TAG = xml.TAG
         UID = xml.UID
         reference_list = []
-
+        
         root = None
         if tree is not None:
             if isinstance(tree, etree._Element):
@@ -2841,7 +2964,7 @@ class S3ImportJob():
             field = reference.get(ATTRIBUTE.field, None)
 
             # Ignore references without valid field-attribute
-            if not field or field not in fields:
+            if not field or field not in fields or field not in table:
                 continue
 
             # Find the key table
@@ -2853,7 +2976,7 @@ class S3ImportJob():
                 else:
                     continue
             try:
-                ktable = current.s3db[ktablename]
+                ktable = s3db[ktablename]
             except:
                 continue
 
@@ -2911,13 +3034,12 @@ class S3ImportJob():
                     if directory is not None:
                         entry = directory.get((tablename, attr, uid), None)
                     if not entry:
-                        expr = ".//%s[@%s='%s' and @%s='%s']" % (
+                        expr = './/%s[@%s="%s" and @%s=$uid]' % (
                                     TAG.resource,
                                     ATTRIBUTE.name,
                                     tablename,
-                                    attr,
-                                    xml.xml_encode(uid))
-                        e = root.xpath(expr)
+                                    attr)
+                        e = root.xpath(expr, uid=uid)
                         if e:
                             # Element in the source => append to relements
                             relements.append(e[0])
@@ -3012,6 +3134,7 @@ class S3ImportJob():
         """
 
         ATTRIBUTE = current.xml.ATTRIBUTE
+        METHOD = S3ImportItem.METHOD
 
         # Resolve references
         import_list = []
@@ -3047,11 +3170,11 @@ class S3ImportJob():
                 if mtime is None or item.mtime > mtime:
                     mtime = item.mtime
                 if item.id:
-                    if item.method == item.METHOD.CREATE:
+                    if item.method == METHOD.CREATE:
                         cappend(item.id)
-                    elif item.method == item.METHOD.UPDATE:
+                    elif item.method == METHOD.UPDATE:
                         updated.append(item.id)
-                    elif item.method == item.METHOD.DELETE:
+                    elif item.method == METHOD.DELETE:
                         deleted.append(item.id)
         self.count = count
         self.mtime = mtime
@@ -3236,5 +3359,456 @@ class S3ImportJob():
             if item.load_parent is not None:
                 item.parent = self.items[item.load_parent]
                 item.load_parent = None
+
+# =============================================================================
+class S3BulkImporter(object):
+    """
+        Import CSV files of data to pre-populate the database.
+        Suitable for use in Testing, Demos & Simulations
+
+        http://eden.sahanafoundation.org/wiki/DeveloperGuidelines/PrePopulate
+    """
+
+    def __init__(self):
+        """ Constructor """
+
+        import csv
+        from xml.sax.saxutils import unescape
+
+        self.csv = csv
+        self.unescape = unescape
+        self.importTasks = []
+        self.specialTasks = []
+        self.tasks = []
+        self.alternateTables = {
+            "hrm_group_membership": {"tablename": "pr_group_membership",
+                                     "prefix": "pr",
+                                     "name": "group_membership"},
+            "hrm_person": {"tablename": "pr_person",
+                           "prefix": "pr",
+                           "name": "person"},
+            "member_person": {"tablename": "pr_person",
+                              "prefix": "pr",
+                              "name": "person"},
+            }
+        self.errorList = []
+        self.resultList = []
+
+    # -------------------------------------------------------------------------
+    def load_descriptor(self, path):
+        """
+            Load the descriptor file and then all the import tasks in that file
+            into the importTasks property.
+            The descriptor file is the file called tasks.cfg in path.
+            The file consists of a comma separated list of:
+            application, resource name, csv filename, xsl filename.
+        """
+
+        source = open(os.path.join(path, "tasks.cfg"), "r")
+        values = self.csv.reader(source)
+        for details in values:
+            if details == []:
+                continue
+            prefix = details[0][0].strip('" ')
+            if prefix == "#": # comment
+                continue
+            if prefix == "*": # specialist function
+                self.extractSpecialistLine(path, details)
+            else: # standard importer
+                self.extractImporterLine(path, details)
+
+    # -------------------------------------------------------------------------
+    def extractImporterLine(self, path, details):
+        """
+            Extract the details for an import Task
+        """
+
+        argCnt = len(details)
+        if argCnt == 4 or argCnt == 5:
+             # remove any spaces and enclosing double quote
+            app = details[0].strip('" ')
+            res = details[1].strip('" ')
+            request = current.request
+
+            csvFileName = details[2].strip('" ')
+            if csvFileName[:7] == "http://":
+                csv = csvFileName
+            else:
+                (csvPath, csvFile) = os.path.split(csvFileName)
+                if csvPath != "":
+                    path = os.path.join(request.folder,
+                                        "private",
+                                        "templates",
+                                        csvPath)
+                csv = os.path.join(path, csvFile)
+
+            xslFileName = details[3].strip('" ')
+            templateDir = os.path.join(request.folder,
+                                       "static",
+                                       "formats",
+                                       "s3csv")
+            # Try the app directory in the templates directory first
+            xsl = os.path.join(templateDir, app, xslFileName)
+            _debug("%s %s" % (xslFileName, xsl))
+            if os.path.exists(xsl) == False:
+                # Now try the templates directory
+                xsl = os.path.join(templateDir, xslFileName)
+                _debug ("%s %s" % (xslFileName, xsl))
+                if os.path.exists(xsl) == False:
+                    # Use the same directory as the csv file
+                    xsl = os.path.join(path, xslFileName)
+                    _debug ("%s %s" % (xslFileName, xsl))
+                    if os.path.exists(xsl) == False:
+                        self.errorList.append(
+                        "Failed to find a transform file %s, Giving up." % xslFileName)
+                        return
+            vars = None
+            if argCnt == 5:
+                vars = details[4]
+            self.tasks.append([1, app, res, csv, xsl, vars])
+            self.importTasks.append([app, res, csv, xsl, vars])
+        else:
+            self.errorList.append(
+            "prepopulate error: job not of length 4. %s job ignored" % task)
+
+    # -------------------------------------------------------------------------
+    def extractSpecialistLine(self, path, details):
+        """
+            Store a single import job into the importTasks property
+        """
+
+        function = details[1].strip('" ')
+        csv = None
+        if len(details) >= 3:
+            fileName = details[2].strip('" ')
+            (csvPath, csvFile) = os.path.split(fileName)
+            if csvPath != "":
+                path = os.path.join(current.request.folder,
+                                    "private",
+                                    "templates",
+                                    csvPath)
+            csv = os.path.join(path, csvFile)
+        extraArgs = None
+        if len(details) >= 4:
+            extraArgs = details[3:]
+        self.tasks.append([2, function, csv, extraArgs])
+        self.specialTasks.append([function, csv, extraArgs])
+
+    # -------------------------------------------------------------------------
+    def execute_import_task(self, task):
+        """
+            Execute each import job, in order
+        """
+
+        start = datetime.now()
+        if task[0] == 1:
+            db = current.db
+            s3db = current.s3db
+            request = current.request
+            response = current.response
+            errorString = "prepopulate error: file %s missing"
+            # Store the view
+            view = response.view
+
+            _debug ("Running job %s %s (filename=%s transform=%s)" % (task[1], task[2], task[3], task[4]))
+            prefix = task[1]
+            name = task[2]
+            tablename = "%s_%s" % (prefix, name)
+            if tablename in self.alternateTables:
+                details = self.alternateTables[tablename]
+                if "tablename" in details:
+                    tablename = details["tablename"]
+                s3db.table(tablename)
+                if "loader" in details:
+                    loader = details["loader"]
+                    if loader is not None:
+                        loader()
+                if "prefix" in details:
+                    prefix = details["prefix"]
+                if "name" in details:
+                    name = details["name"]
+
+            try:
+                resource = s3db.resource(tablename)
+            except AttributeError:
+                # Table cannot be loaded
+                self.errorList.append("WARNING: Unable to find table %s import job skipped" % tablename)
+                return
+
+            # Check if the source file is accessible
+            filename = task[3]
+            if filename[:7] == "http://":
+                import urllib2
+                req = urllib2.Request(url=filename)
+                try:
+                    f = urllib2.urlopen(req)
+                except urllib2.HTTPError, e:
+                    self.errorList.append("Could not access %s: %s" % (filename, e.read()))
+
+                    return
+                except:
+                    self.errorList.append(errorString % filename)
+                    return
+                else:
+                    csv = f
+            else:
+                try:
+                    csv = open(filename, "r")
+                except IOError:
+                    self.errorList.append(errorString % filename)
+                    return
+
+            # Check if the stylesheet is accessible
+            try:
+                open(task[4], "r")
+            except IOError:
+                self.errorList.append(errorString % task[4])
+                return
+
+            extra_data = None
+            if task[5]:
+                try:
+                    extradata = self.unescape(task[5], {"'": '"'})
+                    extradata = json.loads(extradata)
+                    extra_data = extradata
+                except:
+                    self.errorList.append("WARNING:5th parameter invalid, parameter %s ignored" % task[5])
+            try:
+                # @todo: add extra_data and file attachments
+                result = resource.import_xml(csv,
+                                             format="csv",
+                                             stylesheet=task[4],
+                                             extra_data=extra_data)
+            except SyntaxError, e:
+                self.errorList.append("WARNING: import error - %s (file: %s, stylesheet: %s)" %
+                                     (e, filename, task[4]))
+                return
+
+            if not resource.error:
+                db.commit()
+            else:
+                # Must roll back if there was an error!
+                error = resource.error
+                self.errorList.append("%s - %s: %s" % (
+                                      task[3], resource.tablename, error))
+                errors = current.xml.collect_errors(resource)
+                if errors:
+                    self.errorList.extend(errors)
+                db.rollback()
+
+            # Restore the view
+            response.view = view
+            end = datetime.now()
+            duration = end - start
+            csvName = task[3][task[3].rfind("/") + 1:]
+            try:
+                # Python-2.7
+                duration = '{:.2f}'.format(duration.total_seconds()/60)
+                msg = "%s import job completed in %s mins" % (csvName, duration)
+            except AttributeError:
+                # older Python
+                msg = "%s import job completed in %s" % (csvName, duration)
+            self.resultList.append(msg)
+            if response.s3.debug:
+                s3_debug(msg)
+
+    # -------------------------------------------------------------------------
+    def execute_special_task(self, task):
+        """
+            Execute import tasks which require a custom function,
+            such as import_role
+        """
+
+        start = datetime.now()
+        s3 = current.response.s3
+        if task[0] == 2:
+            fun = task[1]
+            csv = task[2]
+            extraArgs = task[3]
+            if csv is None:
+                if extraArgs is None:
+                    error = s3[fun]()
+                else:
+                    error = s3[fun](*extraArgs)
+            elif extraArgs is None:
+                error = s3[fun](csv)
+            else:
+                error = s3[fun](csv, *extraArgs)
+            if error:
+                self.errorList.append(error)
+            end = datetime.now()
+            duration = end - start
+            try:
+                # Python-2.7
+                duration = '{:.2f}'.format(duration.total_seconds()/60)
+                msg = "%s import job completed in %s mins" % (fun, duration)
+            except AttributeError:
+                # older Python
+                msg = "%s import job completed in %s" % (fun, duration)
+            self.resultList.append(msg)
+            if s3.debug:
+                s3_debug(msg)
+
+    # -------------------------------------------------------------------------
+    def import_role(self, filename):
+        """ Import Roles from CSV """
+
+        # Check if the source file is accessible
+        try:
+            openFile = open(filename, "r")
+        except IOError:
+            return "Unable to open file %s" % filename
+
+        auth = current.auth
+        acl = auth.permission
+        create_role = auth.s3_create_role
+
+        def parseACL(_acl):
+            permissions = _acl.split("|")
+            aclValue = 0
+            for permission in permissions:
+                if permission == "READ":
+                    aclValue = aclValue | acl.READ
+                if permission == "CREATE":
+                    aclValue = aclValue | acl.CREATE
+                if permission == "UPDATE":
+                    aclValue = aclValue | acl.UPDATE
+                if permission == "DELETE":
+                    aclValue = aclValue | acl.DELETE
+                if permission == "ALL":
+                    aclValue = aclValue | acl.ALL
+            return aclValue
+
+        reader = self.csv.DictReader(openFile)
+        roles = {}
+        acls = {}
+        args = {}
+        for row in reader:
+            if row != None:
+                role = row["role"]
+                if "description" in row:
+                    desc = row["description"]
+                else:
+                    desc = ""
+                rules = {}
+                extra_param = {}
+                if "controller" in row and row["controller"]:
+                    rules["c"] = row["controller"]
+                if "function" in row and row["function"]:
+                    rules["f"] = row["function"]
+                if "table" in row and row["table"]:
+                    rules["t"] = row["table"]
+                if row["oacl"]:
+                    rules["oacl"] = parseACL(row["oacl"])
+                if row["uacl"]:
+                    rules["uacl"] = parseACL(row["uacl"])
+                #if "org" in row and row["org"]:
+                    #rules["organisation"] = row["org"]
+                #if "facility" in row and row["facility"]:
+                    #rules["facility"] = row["facility"]
+                if "entity" in row and row["entity"]:
+                    rules["entity"] = row["entity"]
+                if "hidden" in row and row["hidden"]:
+                    extra_param["hidden"] = row["hidden"]
+                if "system" in row and row["system"]:
+                    extra_param["system"] = row["system"]
+                if "protected" in row and row["protected"]:
+                    extra_param["protected"] = row["protected"]
+                if "uid" in row and row["uid"]:
+                    extra_param["uid"] = row["uid"]
+            if role in roles:
+                acls[role].append(rules)
+            else:
+                roles[role] = [role,desc]
+                acls[role] = [rules]
+            if len(extra_param) > 0 and role not in args:
+                args[role] = extra_param
+        for rulelist in roles.values():
+            if rulelist[0] in args:
+                create_role(rulelist[0],
+                            rulelist[1],
+                            *acls[rulelist[0]],
+                            **args[rulelist[0]])
+            else:
+                create_role(rulelist[0],
+                            rulelist[1],
+                            *acls[rulelist[0]])
+    # -------------------------------------------------------------------------
+    def import_image(self,
+                     filename,
+                     tablename,
+                     idname,
+                     imagename):
+        """
+            Import images, such as a logo or person image
+            
+            filename     a CSV list of records and filenames
+            tablename    the name of the table
+            idname       the field used to identify the record
+            imagename    the field to where the image will be added
+            
+            Example:
+            bi.import_image ("org_logos.csv", "org_organisation", "name", "logo")
+            and the file org_logos.csv may look as follows
+            id                            file
+            Sahana Software Foundation    sahanalogo.jpg
+            American Red Cross            icrc.gif
+        """
+         # Check if the source file is accessible
+        try:
+            openFile = open(filename, "r")
+        except IOError:
+            return "Unable to open file %s" % filename
+        reader = self.csv.DictReader(openFile)
+        table = current.s3db[tablename]
+        for row in reader:
+            if row != None:
+                id = row["id"]
+                image = row["file"]
+                # Open the file
+                try:
+                    # Extract the path to the CSV file, image should bi in
+                    # this directory, or relative to it
+                    (path, file) = os.path.split(filename)
+                    imagepath= os.path.join(path, image)
+                    openFile = open(imagepath, "r")
+                except IOError:
+                    s3_debug("Unable to open image file %s" % image)
+                    continue
+                image_source = StringIO(openFile.read())
+                # get the id of the resource
+                try:
+                    record = current.db((table.deleted != True) & \
+                                        (table[idname] == id)).select(limitby=(0, 1)).first()
+                except:
+                    s3_debug("Unable get %s of the resource %s to attach the image file to" % (id, tablename))
+                    continue
+                # create and accept the form
+                image_form = SQLFORM(table, record, fields=["id", imagename])
+                form_vars = Storage()
+                form_vars._formname = "%s/%s" % (tablename, record.id)
+                form_vars.id = record.id
+                source = Storage()
+                source.filename = imagepath
+                source.file = image_source
+                form_vars[imagename] = source
+                if not image_form.accepts(form_vars):
+                    for (key,error) in image_form.errors.items():
+                        s3_debug("error importing logo %s: %s %s" % (image, key, error))
+
+
+    # -------------------------------------------------------------------------
+    def perform_tasks(self, path):
+        """
+            Load and then execute the import jobs that are listed in the
+            descriptor file (tasks.cfg)
+        """
+
+        self.load_descriptor(path)
+        for task in self.tasks:
+            if task[0] == 1:
+                self.execute_import_task(task)
+            elif task[0] == 2:
+                self.execute_special_task(task)
 
 # END =========================================================================

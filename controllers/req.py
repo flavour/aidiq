@@ -14,43 +14,16 @@ if not settings.has_module(module):
 def index():
     """ Module's Home Page """
 
-    module_name = settings.modules[module].name_nice
-    response.title = module_name
+    return s3db.cms_index(module, alt_function="index_alt")
 
-    item = None
-    if settings.has_module("cms"):
-        table = s3db.cms_post
-        _item = db(table.module == module).select(table.id,
-                                                  table.body,
-                                                  limitby=(0, 1)).first()
-        if _item:
-            if s3_has_role(ADMIN):
-                item = DIV(XML(_item.body),
-                           BR(),
-                           A(T("Edit"),
-                             _href=URL(c="cms", f="post",
-                                       args=[_item.id, "update"],
-                                       vars={"module": module}),
-                             _class="action-btn"))
-            else:
-                item = XML(_item.body)
-        elif s3_has_role(ADMIN):
-            item = DIV(H2(module_name),
-                       A(T("Edit"),
-                         _href=URL(c="cms", f="post", args="create",
-                                   vars={"module":module}),
-                         _class="action-btn"))
+# -----------------------------------------------------------------------------
+def index_alt():
+    """
+        Module homepage for non-Admin users when no CMS content found
+    """
 
-    if not item:
-        #item = H2(module_name)
-        # Just redirect to the list of Requests
-        redirect(URL(f="req", args=["search"]))
-
-    # tbc
-    report = ""
-
-    response.view = "index.html"
-    return dict(item=item, report=report)
+    # Just redirect to the list of Requests
+    redirect(URL(f="req", args=["search"]))
 
 # -----------------------------------------------------------------------------
 def is_affiliated():
@@ -249,6 +222,7 @@ def req_controller():
                                                                              ).first()
                 site_id = inv_item.site_id
                 item_id = inv_item.item_id
+                # @ToDo: Check Permissions & Avoid DB updates in GETs
                 db(s3db.req_req_item.id == request.vars.req_item_id).update(site_id = site_id)
                 response.confirmation = T("%(item)s requested from %(site)s") % \
                     {"item": s3db.supply_item_represent(item_id, show_link=False),
@@ -378,6 +352,11 @@ def req_controller():
                         s3.req_inline_form(type, method)
                     s3.scripts.append("/%s/static/scripts/S3/s3.req_update.js" % appname)
 
+            # Prevent Items from being added to closed or cancelled requests
+            if r.record and (r.record.closed or r.record.cancel):
+                s3db.configure("req_req_item",
+                               insertable = False)
+
         elif r.representation == "plain":
             # Map Popups
             pass
@@ -390,10 +369,36 @@ def req_controller():
         if r.component and r.component.name == "commit":
             table = r.component.table
             record = r.record
-            # Allow commitments to be added when doing so as a component
-            s3db.configure(table,
-                           listadd = True)
-
+            stable = s3db.org_site
+            commit_status = record.commit_status
+            
+            # Commits belonging to this request
+            rsites = []
+            query = (table.deleted == False)&(table.req_id == record.id)
+            req_sites = db(query).select(table.site_id)
+            for req_site in req_sites:
+                rsites += [req_site.site_id]
+            
+            # All the sites
+            commit_sites = db((stable.deleted == False)).select(stable.id,
+                                                              stable.code)
+            
+            # Sites which have not committed to this request yet
+            site_opts = {}
+            for site in commit_sites:
+                if (site.id not in site_opts) and (site.id not in rsites):
+                    site_opts[site.id] = site.code
+            
+            table.site_id.requires = IS_IN_SET(site_opts)
+            if (commit_status == 2) and settings.get_req_restrict_on_complete():
+                # Restrict from committing to completed requests                
+                s3db.configure(table,
+                               listadd=False)
+            else:    
+                # Allow commitments to be added when doing so as a component
+                s3db.configure(table,
+                               listadd = True)
+                
             if type == 1: # Items
                 # Limit site_id to facilities the user has permissions for
                 auth.permitted_facilities(table=r.table,
@@ -462,9 +467,6 @@ S3OptionsFilter({
                 if r.interactive:
                     #table.organisation_id.readable = True
                     #table.organisation_id.writable = True
-                    # Dropdown not Autocomplete
-                    itable = s3db.req_commit_skill
-                    itable.skill_id.widget = None
                     # Custom Form
                     s3forms = s3base.s3forms
                     crud_form = s3forms.S3SQLCustomForm(
@@ -609,6 +611,16 @@ S3OptionsFilter({
                                                _id="commit-btn")
                             s3.jquery_ready.append('''
 S3ConfirmClick('#commit-btn','%s')''' % T("Do you want to commit to this request?"))
+                        else:
+                            s3.actions.append(
+                                          dict(url = URL(c="req", f="send_commit",
+                                                         args = ["[id]"]),
+                                               _class = "action-btn send-btn",
+                                               label = str(T("Prepare Shipment"))
+                                              )
+                                       )
+                            s3.jquery_ready.append(
+'''S3ConfirmClick('.send-btn','%s')''' % T("Are you sure you want to send this shipment?"))
                 if r.component.alias == "job":
                     s3.actions = [
                         dict(label=str(T("Open")),
@@ -986,7 +998,7 @@ def req_skill():
     # Post-process
     def postp(r, output):
         if r.interactive:
-            response.s3.actions = [
+            s3.actions = [
                 dict(url = URL(c="req", f="req",
                                args=["req_skill", "[id]"]),
                      _class = "action-btn",
@@ -1103,9 +1115,6 @@ S3OptionsFilter({
                     #auth.permitted_organisations(table=r.table, redirect_on_error=False)
                     #table.organisation_id.readable = True
                     #table.organisation_id.writable = True
-                    # Dropdown not Autocomplete
-                    stable = s3db.req_commit_skill
-                    stable.skill_id.widget = None
                     # Custom Form
                     s3forms = s3base.s3forms
                     crud_form = s3forms.S3SQLCustomForm(
@@ -1165,6 +1174,25 @@ S3OptionsFilter({
         return True
     s3.prep = prep
 
+    def postp(r, output):
+        if r.interactive and r.method != "import":
+            if not r.component:
+                table = r.table
+                record = r.record
+                s3_action_buttons(r)
+                s3.actions.append(
+                        dict(url = URL(f = "send_commit",
+                                       args=["[id]"]),
+                             _class = "action-btn send-btn",
+                             label = str(T("Prepare Shipment"))
+                            )
+                       )
+                s3.jquery_ready.append(
+'''S3ConfirmClick('.send-btn','%s')''' % T("Are you sure you want to send this shipment?"))
+
+        return output
+    s3.postp = postp    
+    
     output = s3_rest_controller(rheader=commit_rheader)
     return output
 
@@ -1390,6 +1418,7 @@ def send_req():
 
     req_id = request.args[0]
     site_id = request.vars.get("site_id", None)
+    site_name = s3db.org_site_represent(site_id, show_link=False)
 
     ritable = s3db.req_req_item
     iitable = s3db.inv_inv_item
@@ -1469,6 +1498,9 @@ def send_req():
              (iitable.deleted == False) & \
              (iitable.item_pack_id == sip_id_field)
     orderby = ii_expiry_field | ii_purchase_field
+
+    no_match = True
+
     for ritem in req_items:
         rim = ritem.req_req_item
         rim_id = rim.id
@@ -1476,6 +1508,10 @@ def send_req():
                 (ii_item_id_field == rim.item_id)
         inv_items = db(query).select(*iifields,
                                      orderby=orderby)
+
+        if len(inv_items) == 0:
+            break;
+        no_match = False
         one_match = len(inv_items) == 1
         # Get the Quantity Needed
         quantity_shipped = max(rim.quantity_transit, rim.quantity_fulfil)
@@ -1561,10 +1597,16 @@ def send_req():
                    #comments = comment,
                    )
 
+    if no_match:
+        session.warning = \
+            T("%(site)s has no items exactly matching this request. There may still be other items in stock which can fulfill this request!") % \
+                dict(site=site_name)
+
     # Redirect to view the list of items in the Send
     redirect(URL(c = "inv",
                  f = "send",
-                 args = [send_id, "track_item"]))
+                 args = [send_id, "track_item"])
+             )
 
 # =============================================================================
 def commit_item_json():

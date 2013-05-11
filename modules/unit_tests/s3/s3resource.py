@@ -541,16 +541,193 @@ class ResourceFilterQueryTests(unittest.TestCase):
         FS = S3FieldSelector
         q = FS("multi_sector_id").contains([1, 2])
         query = q.query(resource)
-        self.assertEqual(str(query), "((org_organisation.multi_sector_id LIKE '%|1|%') AND "
-                                     "(org_organisation.multi_sector_id LIKE '%|2|%'))")
+        try:
+            self.assertEqual(str(query), "((org_organisation.multi_sector_id LIKE (CONCAT('%|',(REPLACE((REPLACE('1','%','%%')),'|','||')),'|%'))) AND "
+                                         "(org_organisation.multi_sector_id LIKE (CONCAT('%|',(REPLACE((REPLACE('2','%','%%')),'|','||')),'|%'))))")
+        except AssertionError:
+            self.assertEqual(str(query), "((org_organisation.multi_sector_id LIKE '%|1|%') AND "
+                                         "(org_organisation.multi_sector_id LIKE '%|2|%'))")
         q = FS("multi_sector_id").anyof([1, 2])
         query = q.query(resource)
-        self.assertEqual(str(query), "((org_organisation.multi_sector_id LIKE '%|1|%') OR "
-                                     "(org_organisation.multi_sector_id LIKE '%|2|%'))")
+        try:
+            self.assertEqual(str(query), "((org_organisation.multi_sector_id LIKE (CONCAT('%|',(REPLACE((REPLACE('1','%','%%')),'|','||')),'|%'))) OR "
+                                         "(org_organisation.multi_sector_id LIKE (CONCAT('%|',(REPLACE((REPLACE('2','%','%%')),'|','||')),'|%'))))")
+        except AssertionError:
+            self.assertEqual(str(query), "((org_organisation.multi_sector_id LIKE '%|1|%') OR "
+                                        "(org_organisation.multi_sector_id LIKE '%|2|%'))")
 
     # -------------------------------------------------------------------------
     def tearDown(self):
 
+        current.auth.override = False
+
+# =============================================================================
+class ResourceContextFilterTests(unittest.TestCase):
+    """ Test global context filter """
+
+    def setUp(self):
+
+        # Two organisations with offices and human resources,
+        # one person record linked to both organisation contexts
+        xmlstr = """
+<s3xml>
+    <resource name="org_organisation" uuid="CONTEXTORG1">
+        <data field="name">ContextFilterTestOrg1</data>
+        <resource name="org_office" uuid="CONTEXT1OFFICE1">
+            <data field="name">Context1Office1</data>
+        </resource>
+        <resource name="org_office" uuid="CONTEXT1OFFICE2">
+            <data field="name">Context1Office2</data>
+        </resource>
+        <resource name="hrm_human_resource" uuid="CONTEXT1HR1">
+            <reference field="person_id" resource="pr_person">
+                <resource name="pr_person" uuid="CONTEXT1PERSON">
+                    <data field="first_name">Context1</data>
+                    <data field="last_name">Person</data>
+                </resource>
+            </reference>
+        </resource>
+        <resource name="hrm_human_resource" uuid="CONTEXT1HR2">
+            <reference field="person_id" resource="pr_person">
+                <resource name="pr_person" uuid="CONTEXT12PERSON">
+                    <data field="first_name">Context12</data>
+                    <data field="last_name">Person</data>
+                </resource>
+            </reference>
+        </resource>
+    </resource>
+    <resource name="org_organisation" uuid="CONTEXTORG2">
+        <data field="name">ContextFilterTestOrg2</data>
+        <resource name="org_office" uuid="CONTEXT2OFFICE1">
+            <data field="name">Context2Office1</data>
+        </resource>
+        <resource name="hrm_human_resource" uuid="CONTEXT2HR1">
+            <reference field="person_id" resource="pr_person">
+                <resource name="pr_person" uuid="CONTEXT2PERSON">
+                    <data field="first_name">Context2</data>
+                    <data field="last_name">Person</data>
+                </resource>
+            </reference>
+        </resource>
+        <resource name="hrm_human_resource" uuid="CONTEXT2HR2">
+            <reference field="person_id" resource="pr_person" uuid="CONTEXT12PERSON"/>
+        </resource>
+    </resource>
+</s3xml>"""
+
+        from lxml import etree
+        xmltree = etree.ElementTree(etree.fromstring(xmlstr))
+
+        current.auth.override = True
+        resource = current.s3db.resource("org_organisation")
+        resource.import_xml(xmltree)
+        
+    # -------------------------------------------------------------------------
+    def testContextFilter(self):
+        """ Test global context filter """
+        
+        s3db = current.s3db
+
+        # Configure contexts
+        s3db.configure("org_office",
+                       context = {"organisation":
+                                  "organisation_id"})
+        s3db.configure("pr_person",
+                       context = {"organisation":
+                                  "human_resource.organisation_id"})
+                                    
+        # Without global context filter
+        s3db.context = None
+                                    
+        resource = s3db.resource("org_office",
+                                 uid=["CONTEXT1OFFICE1",
+                                      "CONTEXT1OFFICE2",
+                                      "CONTEXT2OFFICE1"],
+                                 context=True)
+        rows = resource.select(["name"], start=None, limit=None)
+        items = resource.extract(rows, ["name"])
+        self.assertEqual(len(items), 3)
+        names = [item.values()[0] for item in items]
+        self.assertTrue("Context1Office1" in names)
+        self.assertTrue("Context1Office2" in names)
+        self.assertTrue("Context2Office1" in names)
+
+        resource = s3db.resource("pr_person",
+                                 uid=["CONTEXT1PERSON",
+                                      "CONTEXT2PERSON",
+                                      "CONTEXT12PERSON"],
+                                 context=True)
+        rows = resource.select(["first_name"], start=None, limit=None)
+        items = resource.extract(rows, ["first_name"])
+        self.assertEqual(len(items), 3)
+        names = [item.values()[0] for item in items]
+        self.assertTrue("Context1" in names)
+        self.assertTrue("Context2" in names)
+        self.assertTrue("Context12" in names)
+
+        # Global context filter 1
+        s3db.context = S3FieldSelector("(organisation)$uuid").belongs(["CONTEXTORG1"])
+
+        resource = s3db.resource("org_office",
+                                 uid=["CONTEXT1OFFICE1",
+                                      "CONTEXT1OFFICE2",
+                                      "CONTEXT2OFFICE1"],
+                                 context=True)
+        rows = resource.select(["name"], start=None, limit=None)
+        items = resource.extract(rows, ["name"])
+        self.assertEqual(len(items), 2)
+        names = [item.values()[0] for item in items]
+        self.assertTrue("Context1Office1" in names)
+        self.assertTrue("Context1Office2" in names)
+        self.assertFalse("Context2Office1" in names)
+
+        resource = s3db.resource("pr_person",
+                                 uid=["CONTEXT1PERSON",
+                                      "CONTEXT2PERSON",
+                                      "CONTEXT12PERSON"],
+                                 context=True)
+        rows = resource.select(["first_name"], start=None, limit=None)
+        items = resource.extract(rows, ["first_name"])
+        self.assertEqual(len(items), 2)
+        names = [item.values()[0] for item in items]
+        self.assertTrue("Context1" in names)
+        self.assertFalse("Context2" in names)
+        self.assertTrue("Context12" in names)
+        
+        # Global context filter 2
+        s3db.context = S3FieldSelector("(organisation)$uuid").belongs(["CONTEXTORG2"])
+        
+        resource = s3db.resource("org_office",
+                                 uid=["CONTEXT1OFFICE1",
+                                      "CONTEXT1OFFICE2",
+                                      "CONTEXT2OFFICE1"],
+                                 context=True)
+        rows = resource.select(["name"], start=None, limit=None)
+        items = resource.extract(rows, ["name"])
+        self.assertEqual(len(items), 1)
+        names = [item.values()[0] for item in items]
+        self.assertFalse("Context1Office1" in names)
+        self.assertFalse("Context1Office2" in names)
+        self.assertTrue("Context2Office1" in names)
+
+        resource = s3db.resource("pr_person",
+                                 uid=["CONTEXT1PERSON",
+                                      "CONTEXT2PERSON",
+                                      "CONTEXT12PERSON"],
+                                 context=True)
+        rows = resource.select(["first_name"], start=None, limit=None)
+        items = resource.extract(rows, ["first_name"])
+        self.assertEqual(len(items), 2)
+        names = [item.values()[0] for item in items]
+        self.assertFalse("Context1" in names)
+        self.assertTrue("Context2" in names)
+        self.assertTrue("Context12" in names)
+
+    # -------------------------------------------------------------------------
+    def tearDown(self):
+
+        current.s3db.context = None
+        current.db.rollback()
         current.auth.override = False
 
 # =============================================================================
@@ -743,6 +920,82 @@ class ResourceFieldTests(unittest.TestCase):
     """ Test field selector resolution with S3ResourceField """
 
     # -------------------------------------------------------------------------
+    def testResolveContextSimple(self):
+
+        resource = current.s3db.resource("org_office")
+        resource.configure(context = {"organisation": "organisation_id"})
+
+        selector = "(organisation)$name"
+
+        f = S3ResourceField(resource, selector)
+        
+        # Check field
+        self.assertEqual(f.selector, selector)
+        self.assertEqual(str(f.field), "org_organisation.name")
+        self.assertEqual(f.tname, "org_organisation")
+        self.assertEqual(f.fname, "name")
+        self.assertEqual(f.colname, "org_organisation.name")
+
+        tname = f.tname
+
+        # Check join
+        join = f.join
+        self.assertTrue(isinstance(join, Storage))
+        self.assertTrue(tname in join)
+        self.assertEqual(str(join[tname]), "(org_office.organisation_id = org_organisation.id)")
+
+        # Check left join
+        left = f.left
+        self.assertTrue(isinstance(join, Storage))
+        self.assertTrue(tname in left)
+        self.assertTrue(isinstance(left[tname], list))
+
+        self.assertEqual(len(f.left[tname]), 1)
+        self.assertEqual(str(f.left[tname][0]), "org_organisation ON "
+                                                "(org_office.organisation_id = org_organisation.id)")
+
+        # Check distinct
+        self.assertTrue(f.distinct)
+        
+    # -------------------------------------------------------------------------
+    def testResolveContextComplex(self):
+
+        resource = current.s3db.resource("pr_person")
+        resource.configure(context = {"organisation": "person_id:hrm_human_resource.organisation_id"})
+
+        selector = "(organisation)$name"
+
+        f = S3ResourceField(resource, selector)
+
+        # Check field
+        self.assertEqual(f.selector, selector)
+        self.assertEqual(str(f.field), "org_organisation.name")
+        self.assertEqual(f.tname, "org_organisation")
+        self.assertEqual(f.fname, "name")
+        self.assertEqual(f.colname, "org_organisation.name")
+
+        tname = f.tname
+
+        # Check join
+        join = f.join
+        self.assertTrue(isinstance(join, Storage))
+        self.assertTrue(tname in join)
+        self.assertEqual(str(join[tname]), "(hrm_human_resource.organisation_id = org_organisation.id)")
+
+        # Check left join
+        left = f.left
+        self.assertTrue(isinstance(join, Storage))
+        self.assertTrue(tname in left)
+        self.assertTrue(isinstance(left[tname], list))
+
+        self.assertEqual(len(f.left[tname]), 1)
+        self.assertEqual(str(f.left[tname][0]), "org_organisation ON "
+                                                "(hrm_human_resource.organisation_id = org_organisation.id)")
+
+        # Check distinct
+        self.assertTrue(f.distinct)
+
+    # -------------------------------------------------------------------------
     @unittest.skipIf(not current.deployment_settings.has_module("project"), "project module disabled")
     def testResolveSelectorInnerField(self):
         """ Resolution of a selector for a field in master table """
@@ -751,7 +1004,6 @@ class ResourceFieldTests(unittest.TestCase):
         selector = "name"
 
         f = S3ResourceField(resource, selector)
-        self.assertNotEqual(f, None)
 
         # Check field
         self.assertEqual(f.selector, selector)
@@ -1291,6 +1543,150 @@ class ResourceExportTests(unittest.TestCase):
 
         finally:
             current.db.rollback()
+
+    # -------------------------------------------------------------------------
+    def testExportXMLWithSyncFilters(self):
+        """ Test XML Export with Sync Filters """
+
+        manager = current.manager
+        auth = current.auth
+        s3db = current.s3db
+        
+        auth.override = True
+
+        xmlstr = """
+<s3xml>
+    <resource name="org_office_type" uuid="SFT1">
+        <data field="name">SFT1</data>
+    </resource>
+    <resource name="org_office_type" uuid="SFT2">
+        <data field="name">SFT2</data>
+    </resource>
+    <resource name="org_organisation" uuid="SFO1">
+        <data field="name">Sync1FilterOrganisation</data>
+        <resource name="org_office" uuid="S1FO1">
+            <data field="name">Sync1FilterOffice1</data>
+            <reference field="office_type_id" resource="org_office_type" uuid="SFT1"/>
+        </resource>
+    </resource>
+    <resource name="org_organisation" uuid="SFO2">
+        <data field="name">Sync2FilterOrganisation</data>
+        <resource name="org_office" uuid="S1FO2">
+            <data field="name">Sync1FilterOffice2</data>
+            <reference field="office_type_id" resource="org_office_type" uuid="SFT2"/>
+        </resource>
+    </resource>
+    <resource name="org_organisation" uuid="SFO3">
+        <data field="name">Sync3FilterOrganisation</data>
+        <resource name="org_office" uuid="S1FO3">
+            <data field="name">Sync1FilterOffice3</data>
+        </resource>
+        <resource name="org_office" uuid="S2FO1">
+            <data field="name">Sync2FilterOffice1</data>
+        </resource>
+    </resource>
+</s3xml>"""
+
+        try:
+            from lxml import etree
+            xmltree = etree.ElementTree(etree.fromstring(xmlstr))
+            resource = current.s3db.resource("org_organisation")
+            resource.import_xml(xmltree)
+
+            # Filter master by master field
+            resource = s3db.resource(resource,
+                                     uid=["SFO1", "SFO2", "SFO3"])
+
+            filters = {"org_organisation": {"organisation.name__like": "Sync1%"}}
+
+            xmlexport = resource.export_xml(filters=filters,
+                                            mcomponents=["org_office"],
+                                            dereference=False)
+                                            
+            xmltree = etree.ElementTree(etree.fromstring(xmlexport))
+            orgs = xmltree.xpath("resource[@name='org_organisation']")
+            self.assertEqual(len(orgs), 1)
+            self.assertEqual(orgs[0].get("uuid"), "SFO1")
+
+            offices = xmltree.xpath("//resource[@name='org_office']")
+            self.assertEqual(len(offices), 1)
+            self.assertEqual(offices[0].get("uuid"), "S1FO1")
+
+            # Filter master by component field
+            resource = s3db.resource(resource,
+                                     uid=["SFO1", "SFO2", "SFO3"])
+
+            filters = {"org_organisation": {"office.name__like": "Sync2%"}}
+
+            xmlexport = resource.export_xml(filters=filters,
+                                            mcomponents=["org_office"],
+                                            dereference=False)
+
+            xmltree = etree.ElementTree(etree.fromstring(xmlexport))
+            orgs = xmltree.xpath("resource[@name='org_organisation']")
+            self.assertEqual(len(orgs), 1)
+            self.assertEqual(orgs[0].get("uuid"), "SFO3")
+
+            offices = xmltree.xpath("//resource[@name='org_office']")
+            self.assertEqual(len(offices), 1)
+            self.assertEqual(offices[0].get("uuid"), "S2FO1")
+
+            # Filter component by component field
+            resource = s3db.resource(resource,
+                                     uid=["SFO1", "SFO2", "SFO3"])
+
+            filters = {"org_office": {"office.name__like": "Sync1%"}}
+
+            xmlexport = resource.export_xml(filters=filters,
+                                            mcomponents=["org_office"],
+                                            dereference=False)
+            xmltree = etree.ElementTree(etree.fromstring(xmlexport))
+
+            orgs = xmltree.xpath("resource[@name='org_organisation']")
+            self.assertEqual(len(orgs), 3)
+            uids = [org.get("uuid") for org in orgs]
+            self.assertTrue("SFO1" in uids)
+            self.assertTrue("SFO2" in uids)
+            self.assertTrue("SFO3" in uids)
+            
+            offices = xmltree.xpath("//resource[@name='org_office']")
+            self.assertEqual(len(offices), 3)
+            uids = [office.get("uuid") for office in offices]
+            self.assertTrue("S1FO1" in uids)
+            self.assertTrue("S1FO2" in uids)
+            self.assertTrue("S1FO3" in uids)
+            self.assertFalse("S2FO1" in uids)
+
+            # Filter referenced table
+            resource = s3db.resource(resource,
+                                     uid=["SFO1", "SFO2"])
+
+            xmlexport = resource.export_xml(filters=None,
+                                            mcomponents=["org_office"])
+            xmltree = etree.ElementTree(etree.fromstring(xmlexport))
+
+            types = xmltree.xpath("resource[@name='org_office_type']")
+            self.assertEqual(len(types), 2)
+            uids = [t.get("uuid") for t in types]
+            self.assertTrue("SFT1" in uids)
+            self.assertTrue("SFT2" in uids)
+
+            resource = s3db.resource(resource,
+                                     uid=["SFO1", "SFO2"])
+
+            filters = {"org_office_type": {"office_type.name__like": "SFT1%"}}
+
+            xmlexport = resource.export_xml(filters=filters,
+                                            mcomponents=["org_office"])
+            xmltree = etree.ElementTree(etree.fromstring(xmlexport))
+
+            types = xmltree.xpath("resource[@name='org_office_type']")
+            self.assertEqual(len(types), 1)
+            self.assertEqual(types[0].get("uuid"), "SFT1")
+
+        finally:
+            current.db.rollback()
+            auth.override = False
 
 # =============================================================================
 class ResourceImportTests(unittest.TestCase):
@@ -2050,9 +2446,11 @@ class MergeReferenceListsTest(unittest.TestCase):
 <s3xml>
     <resource name="org_sector" uuid="TESTMERGESECTOR1">
         <data field="name">TestMergeSector1</data>
+        <data field="abrv">TMS1</data>
     </resource>
     <resource name="org_sector" uuid="TESTMERGESECTOR2">
         <data field="name">TestMergeSector2</data>
+        <data field="abrv">TMS2</data>
     </resource>
     <resource name="org_organisation" uuid="TESTMERGEMULTISECTORORG">
         <data field="name">TestMergeMultiSectorOrg</data>
@@ -2349,6 +2747,8 @@ class URLQueryParserTests(unittest.TestCase):
             ("NONE,1", [None, "1"]),
             ('"NONE",1', ["NONE", "1"]),
             ('"NONE,1"', "NONE,1"),
+            ('"NONE",NONE,1,"Test\\""', ['NONE', None, "1", 'Test"']),
+            (['"NONE",NONE,1','"Test\\"",None'], ['NONE', None, "1", 'Test"', None])
         ]
         for v, r in items:
             self.assertEqual((v, parse(v)), (v, r))
@@ -2864,6 +3264,7 @@ if __name__ == "__main__":
 
         ResourceFilterJoinTests,
         ResourceFilterQueryTests,
+        ResourceContextFilterTests,
 
         URLQueryParserTests,
 

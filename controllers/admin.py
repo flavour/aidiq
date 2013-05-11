@@ -12,7 +12,7 @@ resourcename = request.function
 def index():
     """ Module's Home Page """
 
-    module_name = deployment_settings.modules[module].name_nice
+    module_name = settings.modules[module].name_nice
     response.title = module_name
     return dict(module_name=module_name)
 
@@ -42,7 +42,7 @@ def role():
         if r.representation != "html":
             return False
         handler = s3base.S3RoleManager()
-        modules = deployment_settings.modules
+        modules = settings.modules
         handler.controllers = Storage([(m, modules[m])
                                         for m in modules
                                         if modules[m].restricted])
@@ -72,13 +72,29 @@ def user():
 
     auth.configure_user_fields()
 
+    s3db.add_component("auth_membership", auth_user="user_id")
+
+    list_fields = ["first_name",
+                   "last_name",
+                   "email",
+                   ]
+    lappend = list_fields.append
+    if len(settings.get_L10n_languages()) > 1:
+        lappend("language")
+    if settings.get_auth_registration_requests_organisation():
+        lappend("organisation_id")
+    if settings.get_auth_registration_requests_site():
+        lappend("site_id")
+    if settings.get_auth_registration_link_user_to():
+        lappend("link_user_to")
+    lappend((T("Roles"), "membership.group_id"))
+
     s3db.configure(tablename,
                    main="first_name",
+                   create_next = URL(c="admin", f="user", args=["[id]", "roles"]),
                    create_onaccept = lambda form: auth.s3_approve_user(form.vars),
+                   list_fields = list_fields,
                    )
-
-    if "import" in request.args:
-        s3db.add_component("auth_membership", auth_user="user_id")
 
     def disable_user(r, **args):
         if not r.id:
@@ -89,8 +105,7 @@ def user():
             session.error = T("Cannot disable your own account!")
             redirect(URL(args=[]))
 
-        query = (table.id == r.id)
-        db(query).update(registration_key = "disabled")
+        db(table.id == r.id).update(registration_key = "disabled")
         session.confirmation = T("User Account has been Disabled")
         redirect(URL(args=[]))
 
@@ -99,7 +114,7 @@ def user():
             session.error = T("Can only approve 1 record at a time!")
             redirect(URL(args=[]))
 
-        user = table[r.id]
+        user = db(table.id == r.id).select(limitby=(0, 1)).first()
         auth.s3_approve_user(user)
 
         session.confirmation = T("User Account has been Approved")
@@ -110,7 +125,7 @@ def user():
             session.error = T("Can only update 1 record at a time!")
             redirect(URL(args=[]))
 
-        user = table[r.id]
+        user = db(table.id == r.id).select(limitby=(0, 1)).first()
         auth.s3_link_user(user)
 
         session.confirmation = T("User has been (re)linked to Person and Human Resource record")
@@ -205,6 +220,8 @@ def user():
                            sortby = [[2, "asc"], [1, "asc"]],
                            # Password confirmation
                            create_onvalidation = user_create_onvalidation)
+        elif r.representation == "xls":
+            lappend((T("Status"), "registration_key"))
 
         if r.method == "delete" and r.http == "GET":
             if r.id == session.auth.user.id: # we're trying to delete ourself
@@ -227,23 +244,22 @@ def user():
                     (table.registration_key == "")
             rows = db(query).select(table.id)
             restrict = [str(row.id) for row in rows]
-            s3.actions = [
-                            dict(label=str(UPDATE), _class="action-btn",
-                                 url=URL(c="admin", f="user",
-                                         args=["[id]", "update"])),
-                            dict(label=str(T("Link")),
-                                 _class="action-btn",
-                                 _title = str(T("Link (or refresh link) between User, Person & HR Record")),
-                                 url=URL(c="admin", f="user",
-                                         args=["[id]", "link"]),
-                                 restrict = restrict),
-                            dict(label=str(T("Roles")), _class="action-btn",
-                                 url=URL(c="admin", f="user",
-                                         args=["[id]", "roles"])),
-                            dict(label=str(T("Disable")), _class="action-btn",
-                                 url=URL(c="admin", f="user",
-                                         args=["[id]", "disable"]),
-                                 restrict = restrict)
+            s3.actions = [dict(label=str(UPDATE), _class="action-btn",
+                               url=URL(c="admin", f="user",
+                                       args=["[id]", "update"])),
+                          dict(label=str(T("Link")),
+                               _class="action-btn",
+                               _title = str(T("Link (or refresh link) between User, Person & HR Record")),
+                               url=URL(c="admin", f="user",
+                                       args=["[id]", "link"]),
+                               restrict = restrict),
+                          dict(label=str(T("Roles")), _class="action-btn",
+                               url=URL(c="admin", f="user",
+                                       args=["[id]", "roles"])),
+                          dict(label=str(T("Disable")), _class="action-btn",
+                               url=URL(c="admin", f="user",
+                                       args=["[id]", "disable"]),
+                               restrict = restrict)
                           ]
             # Only show the approve button if the user is currently pending
             query = (table.registration_key != "disabled") & \
@@ -271,6 +287,61 @@ def user():
                       dict(col=6, key="disabled", display=str(T("Disabled")))
                       ]
             s3.dataTableDisplay = values
+
+            # @ToDo: Merge these with the code in s3aaa.py and use S3SQLCustomForm to implement
+            form = output.get("form", None)
+            if not form:
+                return output
+            form.attributes["_id"] = "regform"
+            if s3_formstyle == "bootstrap":
+                div = DIV(LABEL("%s:" % T("Verify password"),
+                                _id="auth_user_password_two__label",
+                                _for="password_two",
+                                _class="control-label",
+                                ),
+                          DIV(INPUT(_name="password_two",
+                                    _id="password_two",
+                                    _type="password",
+                                    _disabled="disabled",
+                                    _class="password input-xlarge",
+                                    ),
+                              _class="controls",
+                              ),
+                          # Somewhere to store Error Messages
+                          SPAN(_class="help-block"),
+                          _id="auth_user_password_two__row",
+                          _class="control-group hide",
+                          )
+                form[0].insert(4, div)
+                # @ToDo:
+                #if settings.get_auth_registration_requests_mobile_phone():
+            else:
+                # Assume callable
+                id = "auth_user_password_two__row"
+                label = "%s:" % T("Verify password")
+                widget = INPUT(_name="password_two",
+                               _id="password_two",
+                               _type="password",
+                               _disabled="disabled",
+                               )
+                comment = ""
+                row = s3_formstyle(id, label, widget, comment, hidden=True)
+                if s3.theme == "DRRPP":
+                    form[0].insert(4, row)
+                else:
+                    form[0].insert(8, row)
+                if settings.get_auth_registration_requests_mobile_phone():
+                    id = "auth_user_mobile__row"
+                    label = "%s:" % settings.get_ui_label_mobile_phone()
+                    widget = INPUT(_name="mobile",
+                                   _id="mobile",
+                                   _class="string",
+                                   )
+                    comment = ""
+                    row = s3_formstyle(id, label, widget, comment)
+                    # @ToDo:
+                    #if s3.theme == "DRRPP":
+                    form[0].insert(-8, row)
 
             # Add client-side validation
             s3base.s3_register_validation()
@@ -378,7 +449,7 @@ def acl():
     table.group_id.requires = IS_ONE_OF(db, "auth_group.id", "%(role)s")
     table.group_id.represent = lambda opt: opt and db.auth_group[opt].role or opt
 
-    table.controller.requires = IS_EMPTY_OR(IS_IN_SET(current.deployment_settings.modules.keys(),
+    table.controller.requires = IS_EMPTY_OR(IS_IN_SET(settings.modules.keys(),
                                                       zero="ANY"))
     table.controller.represent = lambda opt: opt and \
         "%s (%s)" % (opt,
@@ -412,7 +483,6 @@ def acl():
 
     output = s3_rest_controller(module, name)
     return output
-
 
 # -----------------------------------------------------------------------------
 def acl_represent(acl, options):
@@ -477,6 +547,30 @@ def errors():
                      reverse=True)
 
     return dict(app=appname, tickets=tickets)
+
+# =============================================================================
+# Management scripts
+# =============================================================================
+@auth.s3_requires_membership(1)
+def clean():
+    """
+        Run an external script to clean this instance & reset to default values
+
+        visudo
+        web2py ALL=(ALL)NOPASSWD:/usr/local/bin/clean
+    """
+
+    from subprocess import check_call
+
+    instance = settings.get_instance_name()
+    try:
+        check_call(["sudo /usr/local/bin/clean %s" % instance], shell=True)
+    except:
+        import sys
+        error = sys.exc_info()[1]
+        status = current.xml.json_message(False, 400,
+                                          "Script cannot be run: %s" % error)
+        raise HTTP(400, body=status)
 
 # =============================================================================
 # Create portable app
@@ -916,7 +1010,9 @@ def translate():
     output = s3_rest_controller("translate", "language")
     return output
 
-# -----------------------------------------------------------------------------
+# =============================================================================
+# Selenium Test Results
+# =============================================================================
 def result():
     """
         Selenium Test Result Reports list
@@ -934,6 +1030,7 @@ def result():
         file_list.append(link)
     return dict(file_list=file_list)
 
+# -----------------------------------------------------------------------------
 def result_automated():
     """
         Selenium Test Result Reports list
@@ -952,6 +1049,7 @@ def result_automated():
         file_list_automated.append(link)
     return dict(file_list_automated=file_list_automated)
 
+# -----------------------------------------------------------------------------
 def result_smoke():
     """
         Selenium Test Result Reports list
@@ -971,6 +1069,7 @@ def result_smoke():
         file_list_smoke.append(link)
     return dict(file_list_smoke=file_list_smoke)
 
+# -----------------------------------------------------------------------------
 def result_roles():
     """
         Selenium Test Result Reports list

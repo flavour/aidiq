@@ -29,8 +29,6 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["S3Report", "S3ContingencyTable"]
-
 import datetime
 
 try:
@@ -43,32 +41,22 @@ except ImportError:
 
 from gluon import current
 from gluon.html import *
+from gluon.languages import lazyT
 from gluon.sqlhtml import OptionsWidget
 from gluon.storage import Storage
-from gluon.languages import lazyT
 from gluon.validators import IS_EMPTY_OR
 
-from s3resource import S3TypeConverter
 from s3crud import S3CRUD
+from s3data import S3PivotTable
 from s3search import S3Search
-from s3utils import s3_truncate, s3_has_foreign_key, s3_unicode
-from s3validators import IS_INT_AMOUNT, IS_FLOAT_AMOUNT, IS_NUMBER, IS_IN_SET
-
+from s3validators import IS_IN_SET
 
 # =============================================================================
 class S3Report(S3CRUD):
     """ RESTful method for pivot table reports """
 
     T = current.T
-    METHODS = {
-        "list": T("List"),
-        "count": T("Count"),
-        "min": T("Minimum"),
-        "max": T("Maximum"),
-        "sum": T("Total"),
-        "avg": T("Average"),
-        #"std": T("Standard Deviation")
-    }
+    METHODS = S3PivotTable.METHODS
     SHOW = T("Show")
     HIDE = T("Hide")
 
@@ -166,8 +154,8 @@ class S3Report(S3CRUD):
                         default_options = Storage()
                     if default_options:
                         form_values = default_options
-                        if not form_values._formname:
-                            form_values._formname = "report"
+                        if "_formname" not in form_values:
+                            form_values["_formname"] = "report"
                     else:
                         form_values = Storage()
 
@@ -276,7 +264,7 @@ class S3Report(S3CRUD):
             try:
                 report = resource.pivottable(rows, cols, layers)
             except ImportError:
-                msg = T("S3Pivottable unresolved dependencies")
+                msg = T("S3PivotTable unresolved dependencies")
                 import sys
                 e = sys.exc_info()[1]
                 if hasattr(e, "message"):
@@ -297,19 +285,23 @@ class S3Report(S3CRUD):
                 msg = "%s: %s" % (msg, e)
                 r.error(400, msg, next=r.url(vars={"clear":1}))
 
-            # Convert the pivot table into a S3ContingencyTable
             if representation in ("html", "iframe"):
-                report_data = None
                 if not report.empty:
-                    items = S3ContingencyTable(report,
-                                               show_totals=show_totals,
-                                               filter_query=query,
-                                               url=r.url(method=""),
-                                               _id="list",
-                                               _class="dataTable display report")
-                    report_data = items.report_data
+                    items = report.html(show_totals=show_totals,
+                                        filter_query=query,
+                                        url=r.url(method=""),
+                                        _id="list",
+                                        _class="dataTable display report")
+                    report_data = report.report_data
+                    json_data = report_data.json_data
                 else:
                     items = self.crud_string(tablename, "msg_no_match")
+                    hide_opts = current.deployment_settings.get_ui_hide_report_options()
+                    report_data = None
+                    json_data = json.dumps({"cols": None,
+                                            "rows": None,
+                                            "h": hide_opts,
+                                            })
 
                 report_options = self._config("report_options", Storage())
 
@@ -350,7 +342,9 @@ class S3Report(S3CRUD):
                 )
                 output = dict(pivot_table=pivot_table,
                               chart_opts=chart_opts,
-                              report_data=report_data)
+                              report_data=report_data,
+                              json_data=json_data,
+                              )
 
                 # Other output options
                 s3 = response.s3
@@ -368,6 +362,7 @@ class S3Report(S3CRUD):
             # Fallback to list view
             current.s3db.configure(tablename, insertable=False)
             output = self.select(r, **attr)
+            output["json_data"] = json.dumps({})
             response.s3.actions = [
                 dict(url = r.url(method="",
                                  id="[id]",
@@ -419,8 +414,9 @@ class S3Report(S3CRUD):
         form = FORM(filter_options,
                     report_options,
                     DIV(INPUT(_value=current.T("Submit"),
-                              _type="submit"
-                             ),
+                              _type="submit",
+                              _class="report-submit-button",
+                              ),
                         clear_opts
                        ),
                     hidden=hidden,
@@ -550,11 +546,10 @@ class S3Report(S3CRUD):
                     BUTTON(self.SHOW,
                            _type="button",
                            _class="toggle-text",
-                           _style="display:none" if not hidden else None),
+                           _style="display:none"),
                     BUTTON(self.HIDE,
                            _type="button",
-                           _class="toggle-text",
-                           _style="display:none" if hidden else None)
+                           _class="toggle-text")
                 ),
                 selectors, _id="report_options")
 
@@ -615,12 +610,13 @@ class S3Report(S3CRUD):
             @param attr: the HTML attributes for the widget
         """
 
-        RECORDS = current.T("Records")
+        T = current.T
+        RECORDS = T("Records")
 
         if "methods" in options:
             all_methods = options["methods"]
         else:
-            all_methods = S3Report.METHODS
+            all_methods = S3PivotTable.METHODS
 
         resource = self.resource
         if options and name in options:
@@ -647,13 +643,11 @@ class S3Report(S3CRUD):
         if value:
             value = prefix(value)
 
-        # Backward-compatiblity: render aggregate if given --------------------
-
+        # Backward-compatiblity: render aggregate if given
         if "aggregate" in form_values and ":" not in value:
             value = "%s:%s" % (form_values["aggregate"], value)
 
-        # Resolve selectors, add method options -------------------------------
-
+        # Resolve selectors, add method options
         opts = []
         for o in methods:
 
@@ -669,6 +663,8 @@ class S3Report(S3CRUD):
                 label, selector = None, s
             selector = prefix(selector)
             rfield = resource.resolve_selector(selector)
+            if not rfield.field and not rfield.virtual:
+                continue
             if label is not None:
                 rfield.label = label
             else:
@@ -708,21 +704,20 @@ class S3Report(S3CRUD):
                 opt.insert(0, rfield)
                 opts.append(opt)
 
-        # Construct missing labels --------------------------------------------
-
+        # Construct missing labels
         _methods = []
+        mname = S3PivotTable._get_method_label
         for opt in opts:
             if len(opt) == 3:
                 # field+method -> construct label
-                mlabel = self.mname(opt[2])
+                mlabel = mname(opt[2])
                 flabel = opt[0].label if opt[0].label != "Id" else RECORDS
-                label = current.T("%s (%s)") % (flabel, mlabel)
+                label = T("%s (%s)") % (flabel, mlabel)
                 _methods.append((opt[0].selector, opt[2], label))
             else:
                 _methods.append((opt[0].selector, opt[2], opt[3]))
 
-        # Build the widget ----------------------------------------------------
-
+        # Build the widget
         opts = [("%s:%s" % (m[1], m[0]), m[2]) for m in _methods]
         if len(opts) == 1:
             opt = opts[0]
@@ -778,432 +773,5 @@ class S3Report(S3CRUD):
 
         errors = form.errors
         return (dq, vq, errors)
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def mname(code):
-        """
-            Get a label for a method
-
-            @param code: the method code
-            @return: the label (lazyT), or None for unsupported methods
-        """
-
-        methods = S3Report.METHODS
-
-        if code is None:
-            code = "list"
-        if code in methods:
-            return current.T(methods[code])
-        else:
-            return None
-
-# =============================================================================
-class S3ContingencyTable(TABLE):
-    """ HTML Helper to generate a contingency table """
-
-    def __init__(self,
-                 report,
-                 show_totals=True,
-                 url=None,
-                 filter_query=None,
-                 **attributes):
-        """
-            Constructor
-
-            @param report: the S3Pivottable instance
-            @param attributes: the HTML attributes for the table
-        """
-
-        T = current.T
-        TOTAL = T("Total")
-
-        TABLE.__init__(self, **attributes)
-        components = self.components = []
-        self.json_data = None
-
-        layers = report.layers
-        resource = report.resource
-        tablename = resource.tablename
-
-        cols = report.cols
-        rows = report.rows
-        numcols = report.numcols
-        numrows = report.numrows
-        rfields = report.rfields
-
-        get_label = self._get_label
-        get_total = self._totals
-        represent = lambda f, v, d="": \
-                    self._represent(rfields, f, v, default=d)
-
-        layer_label = None
-        col_titles = []
-        add_col_title = col_titles.append
-        col_totals = []
-        add_col_total = col_totals.append
-        row_titles = []
-        add_row_title = row_titles.append
-        row_totals = []
-        add_row_total = row_totals.append
-
-        # Layer titles --------------------------------------------------------
-
-        # Get custom labels from report options
-        layer_labels = Storage()
-        report_options = resource.get_config("report_options", None)
-        if report_options and "fact" in report_options:
-            layer_opts = report_options["fact"]
-            for item in layer_opts:
-                if isinstance(item, (tuple, list)) and len(item) == 3:
-                    if not "." in item[0].split("$")[0]:
-                        item = ("%s.%s" % (resource.alias, item[0]),
-                                item[1],
-                                item[2])
-                    layer_labels[(item[0], item[1])] = item[2]
-                    
-        labels = []
-        get_mname = S3Report.mname
-
-        for layer in layers:
-            if layer in layer_labels:
-                # Custom label
-                label = layer_labels[layer]
-                if not labels:
-                    layer_label = label
-                labels.append(s3_unicode(label))
-            else:
-                # Construct label from field-label and method
-                label = get_label(rfields, layer[0], tablename, "fact")
-                mname = get_mname(layer[1])
-                if not labels:
-                    m = layer[1] == "list" and get_mname("count") or mname
-                    layer_label = "%s (%s)" % (label, m)
-                labels.append("%s (%s)" % (label, mname))
-
-        layers_title = TH(" / ".join(labels))
-
-        # Columns field title -------------------------------------------------
-
-        if cols:
-            col_label = get_label(rfields, cols, tablename, "cols")
-            _colspan = numcols + 1
-        else:
-            col_label = ""
-            _colspan = numcols
-        cols_title = TH(col_label, _colspan=_colspan, _scope="col")
-
-        titles = TR(layers_title, cols_title)
-
-        # Rows field title ----------------------------------------------------
-
-        row_label = get_label(rfields, rows, tablename, "rows")
-        rows_title = TH(row_label, _scope="col")
-        headers = TR(rows_title)
-
-        # Column headers ------------------------------------------------------
-
-        add_header = headers.append
-        values = report.col
-        for i in xrange(numcols):
-            value = values[i].value
-            v = represent(cols, value)
-            add_col_title(s3_truncate(unicode(v)))
-            colhdr = TH(v, _scope="col")
-            add_header(colhdr)
-
-        # Row totals header ---------------------------------------------------
-
-        if show_totals and cols is not None:
-            add_header(TH(TOTAL, _class="totals_header rtotal", _scope="col"))
-        thead = THEAD(titles, headers)
-
-        # Table body ----------------------------------------------------------
-
-        tbody = TBODY()
-        add_row = tbody.append
-
-        # lookup table for cell list values
-        cell_lookup_table = {} # {{}, {}}
-
-        cells = report.cell
-        rvals = report.row
-
-        cell_vals = Storage()
-
-        for i in xrange(numrows):
-
-            # Initialize row
-            _class = i % 2 and "odd" or "even"
-            tr = TR(_class=_class)
-            add_cell = tr.append
-
-            # Row header
-            row = rvals[i]
-            v = represent(rows, row.value)
-            add_row_title(s3_truncate(unicode(v)))
-            rowhdr = TD(v)
-            add_cell(rowhdr)
-
-            # Result cells
-            for j in xrange(numcols):
-                cell = cells[i][j]
-                vals = []
-                cell_ids = []
-                add_value = vals.append
-                for layer_idx, layer in enumerate(layers):
-                    f, m = layer
-                    value = cell[layer]
-                    if m == "list":
-                        if isinstance(value, list):
-                            l = [represent(f, v, d="-") for v in value]
-                        elif value is None:
-                            l = ["-"]
-                        else:
-                            if type(value) in (int, float):
-                                l = IS_NUMBER.represent(value)
-                            else:
-                                l = unicode(value)
-                        #add_value(", ".join(l))
-                        add_value(UL([LI(v) for v in l]))
-                    else:
-                        if type(value) in (int, float):
-                            add_value(IS_NUMBER.represent(value))
-                        else:
-                            add_value(unicode(value))
-
-                    # hold the references
-                    layer_ids = []
-                    # get previous lookup values for this layer
-                    layer_values = cell_lookup_table.get(layer_idx, {})
-
-                    if m == "count":
-                        rfield = rfields[f]
-                        field = rfield.field
-                        colname = rfield.colname
-                        has_fk = field is not None and s3_has_foreign_key(field)
-                        for id in cell.records:
-                            # cell.records == [#, #, #]
-
-                            record = report.records[id]
-                            try:
-                                fvalue = record[colname]
-                            except AttributeError:
-                                fvalue = None
-
-                            if fvalue is not None:
-                                if has_fk:
-                                    if type(fvalue) is not list:
-                                        fvalue = [fvalue]
-                                    # list of foreign keys
-                                    for fk in fvalue:
-                                        if fk is not None and fk not in layer_ids:
-                                            layer_ids.append(int(fk))
-                                            layer_values[fk] = s3_unicode(field.represent(fk))
-                                else:
-                                    if type(fvalue) is not list:
-                                        fvalue = [fvalue]
-                                    for val in fvalue:
-                                        if val is not None:
-                                            if val not in cell_vals:
-                                                next_id = len(cell_vals)
-                                                cell_vals[val] = next_id
-                                                layer_ids.append(next_id)
-                                                layer_values[next_id] = s3_unicode(represent(f, val))
-                                            else:
-                                                prev_id = cell_vals[val]
-                                                if prev_id not in layer_ids:
-                                                    layer_ids.append(prev_id)
-
-                                    #if id is not None and id not in layer_ids:
-                                        #layer_ids.append(int(id))
-                                        #layer_values[id] = s3_unicode(represent(f, fvalue))
-
-                    cell_ids.append(layer_ids)
-                    cell_lookup_table[layer_idx] = layer_values
-
-                # @todo: with multiple layers - show the first, hide the rest
-                #        + render layer selector in the layer title corner to
-                #        + switch between layers
-                #        OR: give every layer a title row (probably better method)
-                vals = [DIV(v, _class="report-cell-value") for v in vals]
-
-                if any(cell_ids):
-                    cell_attr = {"_data-records": cell_ids}
-                    vals.append(DIV(_class="report-cell-zoom"))
-                else:
-                    cell_attr = {}
-
-                add_cell(TD(vals, **cell_attr))
-
-            # Row total
-            totals = get_total(row, layers, append=add_row_total)
-            if show_totals and cols is not None:
-                add_cell(TD(totals))
-
-            add_row(tr)
-
-        # Table footer --------------------------------------------------------
-
-        i = numrows
-        _class = i % 2 and "odd" or "even"
-        _class = "%s %s" % (_class, "totals_row")
-        col_total = TR(_class=_class)
-        add_total = col_total.append
-        add_total(TH(TOTAL, _class="totals_header", _scope="row"))
-
-        # Column totals -------------------------------------------------------
-
-        for j in xrange(numcols):
-            col = report.col[j]
-            totals = get_total(col, layers, append=add_col_total)
-            add_total(TD(IS_NUMBER.represent(totals)))
-
-        # Grand total ---------------------------------------------------------
-
-        if cols is not None:
-            grand_totals = get_total(report.totals, layers)
-            add_total(TD(grand_totals))
-        tfoot = TFOOT(col_total)
-
-        # Wrap up -------------------------------------------------------------
-
-        append = components.append
-        append(thead)
-        append(tbody)
-        if show_totals:
-            append(tfoot)
-
-        # Chart data ----------------------------------------------------------
-
-        layer_label = s3_unicode(layer_label)
-        BY = T("by")
-        row_label = "%s %s" % (BY, s3_unicode(row_label))
-        if col_label:
-            col_label = "%s %s" % (BY, s3_unicode(col_label))
-        if filter_query and hasattr(filter_query, "serialize_url"):
-            filter_vars = filter_query.serialize_url(resource=report.resource)
-        else:
-            filter_vars = {}
-        hide_opts = current.deployment_settings.get_ui_hide_report_options()
-        json_data = json.dumps(dict(t=layer_label,
-                                    x=col_label,
-                                    y=row_label,
-                                    r=report.rows,
-                                    c=report.cols,
-                                    d=report.compact(n=50, represent=True),
-                                    u=url,
-                                    f=filter_vars,
-                                    h=hide_opts,
-                                    cell_lookup_table=cell_lookup_table))
-        self.report_data = Storage(row_label=row_label,
-                                   col_label=col_label,
-                                   layer_label=layer_label,
-                                   json_data=json_data)
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def _totals(values, layers, append=None):
-        """
-            Get the totals of a row/column/report
-
-            @param values: the values dictionary
-            @param layers: the layers
-            @param append: callback to collect the totals for JSON data
-                           (currently only collects the first layer)
-        """
-
-        totals = []
-        for layer in layers:
-            f, m = layer
-            value = values[layer]
-
-            if m == "list":
-                value = value and len(value) or 0
-            if not len(totals) and append is not None:
-                append(value)
-            totals.append(IS_NUMBER.represent(value))
-        totals = " / ".join(totals)
-        return totals
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def _represent(rfields, field, value, default="-"):
-        """
-            Represent a field value
-
-            @param rfields: the list fields map
-            @param field: the field
-            @param value: the value
-            @param default: the default representation
-        """
-
-        if field in rfields:
-            lfield = rfields[field]
-            if lfield.field:
-                f = lfield.field
-                ftype = str(f.type)
-                if ftype not in ("string", "text") and \
-                   isinstance(value, basestring):
-                    # pyvttbl converts col/row headers into unicode,
-                    # but represent may need the original data type,
-                    # hence try to convert it back here:
-                    convert = S3TypeConverter.convert
-                    try:
-                        if ftype == "boolean":
-                            value = convert(bool, value)
-                        elif ftype == "integer":
-                            value = convert(int, value)
-                        elif ftype == "float":
-                            value = convert(float, value)
-                        elif ftype == "date":
-                            value = convert(datetime.date, value)
-                        elif ftype == "time":
-                            value = convert(datetime.time, value)
-                        elif ftype == "datetime":
-                            value = convert(datetime.datetime, value)
-                    except TypeError, ValueError:
-                        pass
-                return current.manager.represent(lfield.field, value,
-                                                 strip_markup=True)
-        if value is None:
-            return default
-        else:
-            return unicode(value)
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def _get_label(rfields, field, tablename, key):
-        """
-            Get the label for a field
-
-            @param rfields: the list fields map
-            @param key: the configuration key
-        """
-
-        DEFAULT = ""
-
-        if field in rfields:
-            rfield = rfields[field]
-        else:
-            return DEFAULT
-
-        # @todo: cleanup this:
-        get_config = lambda key, default, tablename=tablename: \
-                     current.s3db.get_config(tablename, key, default)
-        list_fields = get_config("list_fields", None)
-        fields = get_config(key, list_fields)
-
-        if fields:
-            for f in fields:
-                if isinstance(f, (tuple, list)) and f[1] == rfield.selector:
-                    return f[0]
-
-        if rfield:
-            if rfield.ftype == "id":
-                return current.T("Records")
-            return rfield.label
-        else:
-            return DEFAULT
 
 # END =========================================================================

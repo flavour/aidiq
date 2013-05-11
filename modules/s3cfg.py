@@ -316,9 +316,20 @@ class S3Config(Storage):
 
     # -------------------------------------------------------------------------
     # Base settings
+    def get_instance_name(self):
+        """
+            Instance Name - for management scripts. e.g. prod or test
+        """
+        return self.base.get("instance_name", "")
     def get_system_name(self):
+        """
+            System Name - for the UI & Messaging
+        """
         return self.base.get("system_name", current.T("Sahana Eden Humanitarian Management Platform"))
     def get_system_name_short(self):
+        """
+            System Name (Short Version) - for the UI & Messaging
+        """
         return self.base.get("system_name_short", "Sahana Eden")
     def get_base_debug(self):
         return self.base.get("debug", False)
@@ -389,9 +400,11 @@ class S3Config(Storage):
 
     # -------------------------------------------------------------------------
     # GIS (Map) Settings
+    #
     def get_gis_api_bing(self):
         """ API key for Bing """
         return self.gis.get("api_bing", None)
+
     def get_gis_api_google(self):
         """
             API key for Google
@@ -399,25 +412,82 @@ class S3Config(Storage):
             - defaults to localhost
         """
         return self.gis.get("api_google", "ABQIAAAAgB-1pyZu7pKAZrMGv3nksRTpH3CbXHjuCVmaTc5MkkU4wO1RRhQWqp1VGwrG8yPE2KhLCPYhD7itFw")
+
     def get_gis_api_yahoo(self):
-        """ API key for Yahoo """
+        """
+            API key for Yahoo
+            - deprecated
+        """
         return self.gis.get("api_yahoo", None)
-    def get_gis_countries(self):
-        return self.gis.get("countries", [])
+
     def get_gis_building_name(self):
         " Display Building Name when selecting Locations "
         return self.gis.get("building_name", True)
+
     def get_gis_check_within_parent_boundaries(self):
         """
             Whether location Lat/Lons should be within the boundaries of the parent
         """
         return self.gis.get("check_within_parent_boundaries", True)
+
+    def get_gis_countries(self):
+        """
+            Which country codes should be accessible to the location selector?
+        """
+        return self.gis.get("countries", [])
+
+    def get_gis_display_l0(self):
+        return self.gis.get("display_L0", False)
+    def get_gis_display_l1(self):
+        return self.gis.get("display_L1", True)
+
+    def get_gis_duplicate_features(self):
+        """
+            Display duplicate features either side of the International date line?
+        """
+        return self.gis.get("duplicate_features", False)
+
+    def get_gis_edit_group(self):
+        " Edit Location Groups "
+        return self.gis.get("edit_GR", False)
+
+    def get_gis_geoserver_url(self):
+        return self.gis.get("geoserver_url", "")
+    def get_gis_geoserver_username(self):
+        return self.gis.get("geoserver_username", "admin")
+    def get_gis_geoserver_password(self):
+        return self.gis.get("geoserver_password", "")
+        
     def get_gis_latlon_selector(self):
-        " Display a Lat/Lon boxes when selecting Locations "
+        " Display Lat/Lon form fields when selecting Locations "
         return self.gis.get("latlon_selector", True)
+
+    def get_gis_map_height(self):
+        """
+            Height of the Embedded Map
+            Change this if-required for your theme
+            NB API can override this in specific modules
+        """
+        return self.gis.get("map_height", 600)
+
+    def get_gis_map_width(self):
+        """
+            Width of the Embedded Map
+            Change this if-required for your theme
+            NB API can override this in specific modules
+        """
+        return self.gis.get("map_width", 1000)
+
     def get_gis_map_selector(self):
         " Display a Map-based tool to select Locations "
         return self.gis.get("map_selector", True)
+
+    def get_gis_marker_max_height(self):
+        return self.gis.get("marker_max_height", 35)
+
+    def get_gis_marker_max_width(self):
+        return self.gis.get("marker_max_width", 30)
+
     def get_gis_menu(self):
         """
             Should we display a menu of GIS configurations?
@@ -426,35 +496,28 @@ class S3Config(Storage):
             e.g. T("Events") or T("Regions")
         """
         return self.gis.get("menu", False)
-    def get_gis_display_l0(self):
-        return self.gis.get("display_L0", False)
-    def get_gis_display_l1(self):
-        return self.gis.get("display_L1", True)
-    def get_gis_duplicate_features(self):
-        return self.gis.get("duplicate_features", False)
-    def get_gis_edit_group(self):
-        " Edit Location Groups "
-        return self.gis.get("edit_GR", False)
-    def get_gis_map_height(self):
-        """
-            Height of the Embedded Map
-            Change this if-required for your theme
-            NB API can override this in specific modules
-        """
-        return self.gis.get("map_height", 600)
-    def get_gis_map_width(self):
-        """
-            Width of the Embedded Map
-            Change this if-required for your theme
-            NB API can override this in specific modules
-        """
-        return self.gis.get("map_width", 1000)
-    def get_gis_marker_max_height(self):
-        return self.gis.get("marker_max_height", 35)
-    def get_gis_marker_max_width(self):
-        return self.gis.get("marker_max_width", 30)
+
     def get_gis_mouse_position(self):
+        """
+            What style of Coordinates for the current Mouse Position
+            should be shown on the Map?
+
+            'normal', 'mgrs' or False
+        """
         return self.gis.get("mouse_position", "normal")
+
+    def get_gis_overview(self):
+        """
+            Should the Map display an Overview Map?
+        """
+        return self.gis.get("overview", True)
+
+    def get_gis_permalink(self):
+        """
+            Should the Map display a Permalink control?
+        """
+        return self.gis.get("permalink", True)
+
     def get_gis_poi_resources(self):
         """
             List of resources (tablenames) to import/export as PoIs from Admin Locations
@@ -462,15 +525,31 @@ class S3Config(Storage):
         """
         return self.gis.get("poi_resources",
                             ["cr_shelter", "hms_hospital", "org_office"])
+
     def get_gis_print_service(self):
+        """
+            URL for a Print Service
+        """
         return self.gis.get("print_service", "")
-    def get_gis_geoserver_url(self):
-        return self.gis.get("geoserver_url", "")
-    def get_gis_geoserver_username(self):
-        return self.gis.get("geoserver_username", "admin")
-    def get_gis_geoserver_password(self):
-        return self.gis.get("geoserver_password", "")
+
+    def get_gis_simplify_tolerance(self):
+        """
+            Default Tolerance for the Simplification of Polygons
+            - a lower value means less simplification, which is suitable for higher-resolution local activities
+            - a higher value is suitable for global views
+        """
+        return self.gis.get("simplify_tolerance", 0.01)
+
+    def get_gis_scaleline(self):
+        """
+            Should the Map display a ScaleLine control?
+        """
+        return self.gis.get("scaleline", True)
+
     def get_gis_spatialdb(self):
+        """
+            Does the database have Spatial extensions?
+        """
         db_type = self.get_database_type()
         if db_type != "postgres":
             # Only Postgres supported currently
@@ -478,12 +557,20 @@ class S3Config(Storage):
         else:
             return self.gis.get("spatialdb", False)
 
+    def get_gis_zoomcontrol(self):
+        """
+            Should the Map display a Zoom control?
+        """
+        return self.gis.get("zoomcontrol", True)
+
     # -------------------------------------------------------------------------
     # L10N Settings
     def get_L10n_default_language(self):
         return self.L10n.get("default_language", "en")
+
     def get_L10n_display_toolbar(self):
         return self.L10n.get("display_toolbar", True)
+
     def get_L10n_languages(self):
         return self.L10n.get("languages",
                              OrderedDict([
@@ -527,14 +614,16 @@ class S3Config(Storage):
                 "other":T("other")
             })
     def get_L10n_date_format(self):
-        T = current.T
-        return self.L10n.get("date_format", T("%Y-%m-%d"))
+        return self.L10n.get("date_format", current.T("%Y-%m-%d"))
     def get_L10n_time_format(self):
-        T = current.T
-        return self.L10n.get("time_format", T("%H:%M:%S"))
+        return self.L10n.get("time_format", current.T("%H:%M"))
+    def get_L10n_datetime_separator(self):
+        return self.L10n.get("datetime_separator", " ")
     def get_L10n_datetime_format(self):
-        T = current.T
-        return self.L10n.get("datetime_format", T("%Y-%m-%d %H:%M"))
+        return "%s%s%s" % (self.get_L10n_date_format(),
+                           self.get_L10n_datetime_separator(),
+                           self.get_L10n_time_format()
+                           )
     def get_L10n_utc_offset(self):
         return self.L10n.get("utc_offset", "UTC +0000")
     def get_L10n_firstDOW(self):
@@ -626,12 +715,20 @@ class S3Config(Storage):
                       _class=_class))
         return tuple(row)
 
-    # -------------------------------------------------------------------------
     def get_ui_formstyle(self):
         return self.ui.get("formstyle", self.default_formstyle)
 
-    def get_ui_navigate_away_confirm(self):
-        return self.ui.get("navigate_away_confirm", True)
+    # -------------------------------------------------------------------------
+    def get_ui_auth_user_represent(self):
+        """
+            Should the auth_user created_by/modified_by be represented by Name or Email?
+            - defaults to email
+        """
+        return self.ui.get("auth_user_represent", "email")
+
+    def get_ui_autocomplete(self):
+        """ Currently Unused """
+        return self.ui.get("autocomplete", False)
 
     def get_ui_confirm(self):
         """
@@ -641,29 +738,59 @@ class S3Config(Storage):
         """
         return self.ui.get("confirm", True)
 
-    def get_ui_autocomplete(self):
-        """ Currently Unused """
-        return self.ui.get("autocomplete", False)
-
-    def get_ui_read_label(self):
+    def get_ui_crud_form(self, tablename):
         """
-            Label for buttons in list views which lead to a Read-opnly 'Display' view
+            Get custom crud_forms for diffent tables
         """
-        return self.ui.get("read_label", "Open")
+        return self.ui.get("crud_form_%s" % tablename, None)
 
-    def get_ui_update_label(self):
+    def ui_customize(self, tablename, **attr):
         """
-            Label for buttons in list views which lead to a Read-opnly 'Display' view
+            Customize field settings for a table
         """
-        return self.ui.get("update_label", "Open")
+        customize = self.ui.get("customize_%s" % tablename)
+        if customize:
+            return customize(**attr)
+        else:
+            return attr
 
-    def get_ui_cluster(self):
-        """ UN-style deployment? """
-        return self.ui.get("cluster", False)
+    def get_ui_export_formats(self):
+        """
+            Which export formats should we display?
+            - specify a list of export formats to restrict
+        """
+        return self.ui.get("export_formats",
+                           ["have", "kml", "map", "pdf", "rss", "xls", "xml"])
 
-    def get_ui_camp(self):
+    def get_ui_hide_report_filter_options(self):
+        """
+            Show report filter options form by default
+        """
+        return self.ui.get("hide_report_filter_options", False)
+
+    def get_ui_hide_report_options(self):
+        """
+            Hide report options form by default
+        """
+        return self.ui.get("hide_report_options", True)
+
+    def get_ui_interim_save(self):
+        """ Render interim-save button in CRUD forms by default """
+        return self.ui.get("interim_save", False)
+
+    def get_ui_label_attachments(self):
+        """
+            Label for attachments tab
+        """
+        return current.T(self.ui.get("label_attachments", "Attachments"))    
+
+    def get_ui_label_camp(self):
         """ 'Camp' instead of 'Shelter'? """
         return self.ui.get("camp", False)
+
+    def get_ui_label_cluster(self):
+        """ UN-style deployment? """
+        return self.ui.get("cluster", False)
 
     def get_ui_label_mobile_phone(self):
         """
@@ -679,40 +806,33 @@ class S3Config(Storage):
         """
         return current.T(self.ui.get("label_postcode", "Postcode"))
 
+    def get_ui_label_read(self):
+        """
+            Label for buttons in list views which lead to a Read-only 'Display' page
+        """
+        return self.ui.get("read_label", "Open")
+
+    def get_ui_label_update(self):
+        """
+            Label for buttons in list views which lead to an Editable 'Update' page
+        """
+        return self.ui.get("update_label", "Open")
+
+    def get_ui_navigate_away_confirm(self):
+        return self.ui.get("navigate_away_confirm", True)
+
+    def get_ui_search_submit_button(self):
+        """
+            Class for submit buttons in search views
+        """
+        return self.ui.get("search_submit_button", "search-button")
+
     def get_ui_social_buttons(self):
-        """ Display social media Buttons in the footer? """
+        """
+            Display social media Buttons in the footer?
+            - requires support in the Theme
+        """
         return self.ui.get("social_buttons", False)
-
-    def get_ui_auth_user_represent(self):
-        """
-            Should the auth_user created_by/modified_by be represented by Name or Email?
-            - defaults to email
-        """
-        return self.ui.get("auth_user_represent", "email")
-
-    def get_ui_crud_form(self, tablename):
-        """ Get custom crud_forms for diffent tables """
-        return self.ui.get("crud_form_%s" % tablename, None)
-
-    def ui_customize(self, tablename, **attr):
-        """ Customizes field settings on a table"""
-        customize = self.ui.get("customize_%s" % tablename)
-        if customize:
-            return customize(**attr)
-        else:
-            return attr
-
-    def get_ui_hide_report_options(self):
-        """
-            Hide report options form by default
-        """
-        return self.ui.get("hide_report_options", True)
-
-    def get_ui_hide_report_filter_options(self):
-        """
-            Show report filter options form by default
-        """
-        return self.ui.get("hide_report_filter_options", False)
 
     # =========================================================================
     # Messaging
@@ -877,6 +997,7 @@ class S3Config(Storage):
     def get_hrm_staff_label(self):
         """
             Label for 'Staff'
+            e.g. 'Contacts'
         """
         return current.T(self.hrm.get("staff_label", "Staff"))
 
@@ -1224,6 +1345,12 @@ class S3Config(Storage):
             @ToDo: Fix (form fails to submit)
         """
         return self.pr.get("select_existing", True)
+    def get_pr_import_update_requires_email(self):
+        """
+            During imports, records are only updated if the import
+            item contains a (matching) email address
+        """
+        return self.pr.get("import_update_requires_email", True)
 
     # -------------------------------------------------------------------------
     # Proc
@@ -1314,12 +1441,12 @@ class S3Config(Storage):
                 2: T("Partner"), # T("Partner National Society")
                 3: T("Donor"),
                 4: T("Customer"), # T("Beneficiary")?
-                5: T("Supplier"), # T("Beneficiary")?
+                5: T("Supplier")  # T("Beneficiary")?
             })
 
     def get_project_organisation_lead_role(self):
         return self.project.get("organisation_lead_role", 1)
-
+    
     # -------------------------------------------------------------------------
     # Request Settings
     def get_req_type_inv_label(self):
@@ -1408,6 +1535,12 @@ class S3Config(Storage):
         return self.req.get("req_form_name", "Requisition Form")
     def get_req_shortname(self):
         return self.req.get("req_shortname", "REQ")
+    def get_req_restrict_on_complete(self):
+        """
+            To restrict adding new commits to the Completed commits.
+        """
+        return self.req.get("req_restrict_on_complete", False)
+    
 
     # -------------------------------------------------------------------------
     # Supply

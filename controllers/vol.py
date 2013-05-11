@@ -632,8 +632,49 @@ def group():
         Team controller
         - uses the group table from PR
     """
+
     return s3db.hrm_group_controller()
 
+# -----------------------------------------------------------------------------
+def group_membership():
+    """
+        Membership controller
+        - uses the group_membership table from PR
+    """
+
+    # Change Labels
+    s3db.hrm_configure_pr_group_membership()
+    
+    table = db.pr_group_membership
+    # Amend list_fields
+    table.group_id.label = T("Team Name")
+    s3db.configure("pr_group_membership",
+                   list_fields=["id",
+                                "group_id",
+                                "group_id$description",
+                                "group_head",
+                                "person_id$first_name",
+                                "person_id$middle_name",
+                                "person_id$last_name",
+                                (T("Email"), "person_id$email.value"),
+                                (settings.get_ui_label_mobile_phone(), "person_id$phone.value"),
+                                ])
+
+    # Only show Relief Teams
+    # Do not show system groups
+    # Only show Volunteers
+    gtable = db.pr_group
+    htable = s3db.hrm_human_resource
+    s3.filter = (gtable.system == False) & \
+                (gtable.group_type == 3) & \
+                (htable.type == 2) & \
+                (htable.person_id == table.person_id)
+
+    output = s3_rest_controller("pr", "group_membership",
+                                csv_template=("hrm", "group_membership"),
+                                csv_stylesheet=("hrm", "group_membership.xsl"),
+                                )
+    return output 
 
 # =============================================================================
 # Jobs
@@ -668,7 +709,10 @@ def job_role():
     if not auth.s3_has_role(ADMIN):
         s3.filter = auth.filter_by_root_org(s3db.hrm_job_role)
 
-    output = s3_rest_controller("hrm", resourcename)
+    output = s3_rest_controller("hrm", resourcename,
+                                csv_template=("hrm", "job_role"),
+                                csv_stylesheet=("hrm", "job_role.xsl"),
+                                )
     return output
 
 # -----------------------------------------------------------------------------
@@ -685,7 +729,10 @@ def job_title():
     if not auth.s3_has_role(ADMIN):
         s3.filter = auth.filter_by_root_org(s3db.hrm_job_title)
 
-    output = s3_rest_controller("hrm", resourcename)
+    output = s3_rest_controller("hrm", resourcename,
+                                csv_template=("hrm", "job_title"),
+                                csv_stylesheet=("hrm", "job_title.xsl"),
+                                )
     return output
 
 # =============================================================================
@@ -699,7 +746,10 @@ def skill():
         session.error = T("Access denied")
         redirect(URL(f="index"))
 
-    output = s3_rest_controller("hrm", resourcename)
+    output = s3_rest_controller("hrm", resourcename,
+                                csv_template=("hrm", "skill"),
+                                csv_stylesheet=("hrm", "skill.xsl"),
+                                )
     return output
 
 # -----------------------------------------------------------------------------
@@ -723,7 +773,10 @@ def competency_rating():
         session.error = T("Access denied")
         redirect(URL(f="index"))
 
-    output = s3_rest_controller("hrm", resourcename)
+    output = s3_rest_controller("hrm", resourcename,
+                                csv_template=("hrm", "competency_rating"),
+                                csv_stylesheet=("hrm", "competency_rating.xsl"),
+                                )
     return output
 
 # -----------------------------------------------------------------------------
@@ -751,7 +804,10 @@ def course():
         s3.filter = auth.filter_by_root_org(s3db.hrm_course)
 
     output = s3_rest_controller("hrm", resourcename,
-                                rheader=s3db.hrm_rheader)
+                                rheader=s3db.hrm_rheader,
+                                csv_template=("hrm", "course"),
+                                csv_stylesheet=("hrm", "course.xsl"),
+                                )
     return output
 
 # -----------------------------------------------------------------------------
@@ -782,7 +838,10 @@ def certificate():
         s3.filter = auth.filter_by_root_org(s3db.hrm_certificate)
 
     output = s3_rest_controller("hrm", resourcename,
-                                rheader=s3db.hrm_rheader)
+                                rheader=s3db.hrm_rheader,
+                                csv_template=("hrm", "certificate"),
+                                csv_stylesheet=("hrm", "certificate.xsl"),
+                                )
     return output
 
 # -----------------------------------------------------------------------------
@@ -816,6 +875,27 @@ def training_event():
     table.person_id.widget = S3PersonAutocompleteWidget(controller="vol")
 
     return s3db.hrm_training_event_controller()
+
+# -----------------------------------------------------------------------------
+def experience():
+    """ Experience Controller """
+
+    mode = session.s3.hrm.mode
+    if mode is not None:
+        session.error = T("Access denied")
+        redirect(URL(f="index"))
+
+    output = s3_rest_controller()
+    return output
+
+# -----------------------------------------------------------------------------
+def competency():
+    """ RESTful CRUD controller used to allow searching for people by Skill"""
+
+    table = s3db.hrm_human_resource
+    s3.filter = ((table.type == 2) & \
+                 (s3db.hrm_competency.person_id == table.person_id))
+    return s3db.hrm_competency_controller()
 
 # -----------------------------------------------------------------------------
 def person_search():

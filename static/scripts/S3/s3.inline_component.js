@@ -9,6 +9,12 @@ $(function() {
 
     // Utilities --------------------------------------------------------------
 
+    // Mark an inline row as changed
+    var inline_mark_changed = function(element) {
+        var subform = $(element).closest('tr.inline-form');
+        $(subform).addClass('changed');
+    };
+
     // Get the real input name
     var inline_get_field = function(formname) {
         var selector = '#sub-' + formname;
@@ -73,18 +79,18 @@ $(function() {
 
     // Disable the add-row
     var disable_inline_add = function(formname) {
-        $('#add-row-' + formname + ' > td input').attr('disabled', true);
-        $('#add-row-' + formname + ' > td select').attr('disabled', true);
-        $('#add-row-' + formname + ' > td textarea').attr('disabled', true);
+        $('#add-row-' + formname + ' > td input').prop('disabled', true);
+        $('#add-row-' + formname + ' > td select').prop('disabled', true);
+        $('#add-row-' + formname + ' > td textarea').prop('disabled', true);
         $('#add-row-' + formname + ' > td .inline-add').addClass('hide');
         $('#add-row-' + formname + ' > td .action-lnk').addClass('hide');
     };
 
     // Enable the add-row
     var enable_inline_add = function(formname) {
-        $('#add-row-' + formname + ' > td input').removeAttr('disabled');
-        $('#add-row-' + formname + ' > td select').removeAttr('disabled');
-        $('#add-row-' + formname + ' > td textarea').removeAttr('disabled');
+        $('#add-row-' + formname + ' > td input').prop('disabled', false);
+        $('#add-row-' + formname + ' > td select').prop('disabled', false);
+        $('#add-row-' + formname + ' > td textarea').prop('disabled', false);
         $('#add-row-' + formname + ' > td .inline-add').removeClass('hide');
         $('#add-row-' + formname + ' > td .action-lnk').removeClass('hide');
     };
@@ -107,35 +113,44 @@ $(function() {
         var fields = data['fields'];
         var fieldname;
         var element;
+        var input;
         var value;
-        var intvalue;
         var cssclass;
+        var intvalue;
         for (var i=0; i < fields.length; i++) {
             fieldname = fields[i]['name'];
             element = '#sub_' +
                       formname + '_' + formname + '_i_' +
                       fieldname + '_edit_' + rowindex;
-            if ($(element).attr('type') == 'file') {
+            input = $(element);
+            value = input.val();
+            if (input.attr('type') == 'file') {
                 // Store the upload at the end of the form
-                form = $(element).closest('form');
-                upload = $(element).clone();
-                upload_id = 'upload_' + formname + '_' + fieldname + '_' + rowindex;
+                var form = input.closest('form');
+                var cloned = input.clone();
+                var upload_id = 'upload_' + formname + '_' + fieldname + '_' + rowindex;
                 $('#' + upload_id).remove();
-                upload.attr('id', upload_id);
-                upload.attr('name', upload_id);
-                upload.css({display: 'none'});
-                form.append(upload);
-            }
-            value = $(element).val();
-            cssclass = $(element).attr('class');
-            //if ((cssclass == 'anytime') | (cssclass == 'double')) {
-                // pass
-            //} else {
-            if (cssclass == 'generic-widget') {
-                // Reference values need to be ints for S3Represent to find a match in theset
-                intvalue = parseInt(value, 10);
-                if (!isNaN(intvalue)) {
-                    value = intvalue;
+                if (value.match(/fakepath/)) {
+                    // IE, etc: Remove 'fakepath' from filename
+                    value = value.replace(/(c:\\)*fakepath\\/i, '');
+                }
+                // Clone the Input ready for any additional files
+                cloned.insertAfter(input);
+                // We move the original input as it doesn't contain the file otherwise on IE, etc
+                // http://stackoverflow.com/questions/415483/clone-a-file-input-element-in-javascript
+                input.css({display: 'none'});
+                input.attr('id', upload_id);
+                input.attr('name', upload_id);
+                input.appendTo(form);
+            } else {
+                cssclass = input.attr('class');
+                if (cssclass == 'generic-widget') {
+                    // Reference values need to be ints for S3Represent to find a match in theset
+                    // - ensure we don't do this to dates though!
+                    intvalue = parseInt(value, 10);
+                    if (!isNaN(intvalue)) {
+                        value = intvalue;
+                    }
                 }
             }
             row[fieldname] = value;
@@ -209,7 +224,6 @@ $(function() {
         } else {
             return response;
         }
-
     };
 
     // Form actions -----------------------------------------------------------
@@ -228,9 +242,10 @@ $(function() {
         var data = inline_deserialize(formname);
         var fields = data['fields'];
         var row = data['data'][rowindex];
-        var element;
         var fieldname;
         var value;
+        var element;
+        var input;
         for (i=0; i < fields.length; i++) {
             fieldname = fields[i]['name'];
             value = row[fieldname]['value'];
@@ -246,15 +261,16 @@ $(function() {
                     select.append('<option value="' + value + '">-</option>');
                 }
             }
-            if ($(element).attr('type') != 'file') {
-                $(element).val(value);
+            input = $(element);
+            if (input.attr('type') != 'file') {
+                input.val(value);
             } else {
                 // Update the existing upload item, if there is one
                 var upload = $('#upload_' + formname + '_' + fieldname + '_' + rowindex);
                 if (upload.length) {
-                    var id = $(element).attr('id');
-                    var name = $(element).attr('name');
-                    $(element).replaceWith(upload);
+                    var id = input.attr('id');
+                    var name = input.attr('name');
+                    input.replaceWith(upload);
                     upload.attr('id', id);
                     upload.attr('name', name);
                     upload.css({display: ''});
@@ -263,7 +279,7 @@ $(function() {
             // Populate text in autocompletes
             var text = row[fieldname]['text'];
             element = '#dummy_sub_' + formname + '_' + formname + '_i_' + fieldname + '_edit_0';
-            $(element).val(text);
+            input.val(text);
         }
 
         // Insert the edit row after this read row
@@ -286,20 +302,18 @@ $(function() {
 
         inline_remove_errors(formname);
 
-        // Hide the edit-row
-        $('#edit-row-' + formname).addClass('hide');
-
-        // Reset the row index
-        $('#edit-row-' + formname).data('rowindex', null);
-
+        var $edit = $('#edit-row-' + formname);
+        
+        // Hide and reset the edit-row
+        $edit.addClass('hide');
+        $edit.data('rowindex', null);
+        $edit.removeClass('changed');
+        
         // Show the read-row
         $('#read-row-' + rowname).removeClass('hide');
 
         // Enable the add-row
         enable_inline_add(formname);
-
-        // Reset catch-submit
-        inline_catch_submit(false, 'none', 'none');
     };
 
     // Add a new row
@@ -359,6 +373,9 @@ $(function() {
                 default_value = $('#dummy_sub_' + formname + '_' + formname + '_i_' + field + '_edit_default').val();
                 $('#dummy_sub_' + formname + '_' + formname + '_i_' + field + '_edit_none').val(default_value);
             }
+            // Unmark changed
+            $('#add-row-' + formname).removeClass('changed');
+            
             // Add edit-button
             var edit = '#edt-' + formname + '-none';
             if ($(edit).length !== 0) {
@@ -443,6 +460,9 @@ $(function() {
                 default_value = $('#dummy_sub_' + formname + '_' + formname + '_i_' + field + '_edit_default').val();
                 $('#dummy_sub_' + formname + '_' + formname + '_i_' + field + '_edit_0').val(default_value);
             }
+            // Unmark changed
+            $('#edit-row-' + formname).removeClass('changed');
+            
             // Add edit-button
             var edit = '#edt-' + formname + '-none';
             if ($(edit).length !== 0) {
@@ -504,81 +524,80 @@ $(function() {
         inline_serialize(formname, data);
 
         // Remove the read-row for this item
-        $('#read-row-'+rowname).remove();
+        $('#read-row-' + rowname).remove();
 
         // Remove all uploads for this item
         $('input[name^="' + 'upload_' + formname + '_"][name$="_' + rowindex + '"]').remove();
+
+        // Display the add-row (in case hidden because we're multiple=False)
+        $('#add-row-' + formname).show();
 
         return true;
     };
 
     // Event handlers ---------------------------------------------------------
 
-    // Submit the inline form which has currently the focus
-    var inline_row_submit = function() {
-        if ('none' != inline_current_formname) {
-            var success = false;
-            if ('none' == inline_current_rowindex) {
-                success = inline_add(inline_current_formname);
+    // Submit all changed inline-rows, and then the main form
+    var inline_submit_all = function() {
+        var $form = $(this);
+        var success = false;
+        $form.find('tr.inline-form.changed').each(function() {
+            var formname = $(this).attr('id').split('-').pop();
+            if ($(this).hasClass('add-row')) {
+                success = inline_add(formname);
             } else {
-                success = inline_update(inline_current_formname, inline_current_rowindex);
+                var rowindex = $(this).data('rowindex');
+                success = inline_update(formname, rowindex);
             }
-            if (success) {
-                var subform_id = '#sub-' + inline_current_formname;
-                inline_catch_submit(false, 'none', 'none');
-                $(subform_id).closest('form').submit();
-            }
-        } else {
-            return true;
+        });
+        if (success) {
+            $('form').unbind('submit', inline_submit_all);
+            $form.submit();
         }
-        return false;
-    };
-
-    // When an inline-form has focus, then pressing 'enter' should
-    // submit this inline-form, and not the master form
-    var inline_catch_submit = function(toggle, formname, rowindex) {
+    }
+    
+    // Catch form-submit if any inline-row has been changed
+    var inline_catch_submit = function(toggle, element) {
+        var form = $(element).closest('form');
         if (toggle) {
-            inline_current_formname = formname;
-            inline_current_rowindex = rowindex;
-            $('form').unbind('submit', inline_row_submit);
-            $('form').bind('submit', inline_row_submit);
+            $('form').unbind('submit', inline_submit_all);
+            $('form').bind('submit', inline_submit_all);
         } else {
-            inline_current_formname = 'none';
-            inline_current_rowindex = 'none';
-            $('form').unbind('submit', inline_row_submit);
+            $('form').unbind('submit', inline_submit_all);
         }
-    };
+    }
 
     // Events -----------------------------------------------------------------
 
     var inline_form_events = function() {
 
-        // Enforce submission of the inline-row if changed
-        var enforce_inline_submit = function(i, add) {
-            var subform = $(i).parent().closest('tr.inline-form');
-            var names = subform.attr('id').split('-');
-            var rowindex = subform.data('rowindex');
-            if (add) {
-                rowindex = 'none';
-            }
-            inline_catch_submit(true, names.pop(), rowindex);
-        };
+        // Change-events
         $('.edit-row input[type="text"], .edit-row textarea').bind('input', function() {
-            enforce_inline_submit(this, false);
+            inline_mark_changed(this);
+            inline_catch_submit(true, this);
         });
         $('.edit-row input[type!="text"], .edit-row select').bind('focusin', function() {
             $('.edit-row input[type!="text"], .edit-row select').one('change', function() {
-                enforce_inline_submit(this, false);
+                inline_mark_changed(this);
+                inline_catch_submit(true, this);
             });
         });
         $('.add-row input[type="text"], .add-row textarea').bind('input', function() {
-            enforce_inline_submit(this, true);
+            inline_mark_changed(this);
+            inline_catch_submit(true, this);
         });
         $('.add-row input[type!="text"], .add-row select').bind('focusin', function() {
             $('.add-row input[type!="text"], .add-row select').one('change', function() {
-                enforce_inline_submit(this, true);
+                inline_mark_changed(this);
+                inline_catch_submit(true, this);
             });
         });
+        // Chrome doesn't mark row as changed when just file input added
+        $('.add-row input[type="file"]').change(function() {
+            inline_mark_changed(this);
+            inline_catch_submit(true, this);
+        });
+
         // Submit the inline-row instead of the main form if pressing Enter
         $('.edit-row input').keypress(function(e) {
             if (e.which == 13) {
@@ -618,10 +637,7 @@ $(function() {
             var names = $(this).attr('id').split('-');
             var rowindex = names.pop();
             var formname = names.pop();
-            var success = inline_add(formname);
-            if (success) {
-                inline_catch_submit(false, 'none', 'none');
-            }
+            inline_add(formname);
             return false;
         });
         $('.inline-cnc').unbind('click');
@@ -631,7 +647,6 @@ $(function() {
             var formname = names.pop();
             var rowindex = $('#edit-row-' + formname).data('rowindex');
             inline_cancel(formname, rowindex);
-            inline_catch_submit(false, 'none', 'none');
             return false;
         });
         $('.inline-rdy').unbind('click');
@@ -640,10 +655,7 @@ $(function() {
             var zero = names.pop();
             var formname = names.pop();
             var rowindex = $('#edit-row-' + formname).data('rowindex');
-            var success = inline_update(formname, rowindex);
-            if (success) {
-                inline_catch_submit(false, 'none', 'none');
-            }
+            inline_update(formname, rowindex);
             return false;
         });
         $('.inline-edt').unbind('click');
@@ -652,7 +664,6 @@ $(function() {
             var rowindex = names.pop();
             var formname = names.pop();
             inline_edit(formname, rowindex);
-            inline_catch_submit(false, 'none', 'none');
             return false;
         });
         $('.inline-rmv').unbind('click');
@@ -661,18 +672,49 @@ $(function() {
             var rowindex = names.pop();
             var formname = names.pop();
             inline_remove(formname, rowindex);
-            inline_catch_submit(false, 'none', 'none');
             return false;
         });
     };
     inline_button_events();
 
     // Used by S3SQLInlineComponentCheckbox
+    if ($('.error_wrapper').length) {
+        // Errors in form, so ensure we show correct checkbox status
+        var checkboxes = $('.inline-checkbox :checkbox');
+        var that, value, names, formname, fieldname, data, _data, item, i;
+        for (var c = 0; c < checkboxes.length; c++) {
+            that = $(checkboxes[c]);
+            value = that.val();
+            names = that.attr('id').split('-');
+            formname = names[1];
+            fieldname = names[2];
+            // Read current data from real input
+            data = inline_deserialize(formname);
+            _data = data['data'];
+            item = 0;
+            for (var prop in _data) {
+                i = _data[prop];
+                if (i.hasOwnProperty(fieldname) && i[fieldname]['value'] == value) {
+                    item = i;
+                    break;
+                }
+            }
+            // Modify checkbox state, as-required
+            if (item) {
+                if (item['_changed']) {
+                    that.prop('checked', true);
+                } else if (item['_delete']) {
+                    that.prop('checked', false);
+                }
+            }
+        }
+    }
     var inline_checkbox_events = function() {
         // Listen for changes on all Inline Checkboxes
         $('.inline-checkbox :checkbox').click(function() {
-            var value = $(this).val();
-            var names = $(this).attr('id').split('-');
+            var that = $(this);
+            var value = that.val();
+            var names = that.attr('id').split('-');
             var formname = names[1];
             var fieldname = names[2];
             // Read current data from real input
@@ -687,10 +729,10 @@ $(function() {
                 }
             }
             // Modify data
-            if ($(this).prop('checked')) {
+            if (that.prop('checked')) {
                 if (!item) {
                     // Not yet found, so initialise
-                    var label = $(this).next().html(); // May be fragile to different formstyles :/
+                    var label = that.next().html(); // May be fragile to different formstyles :/
                     item = {};
                     item[fieldname] = {'text': label, 'value': value};
                     _data.push(item);

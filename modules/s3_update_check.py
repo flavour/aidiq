@@ -19,9 +19,6 @@ VERSION = 1
 def update_check():
     """
         Check whether the dependencies are sufficient to run Eden
-
-        @ToDo: Integrate into WebSetup:
-               http://eden.sahanafoundation.org/wiki/DeveloperGuidelines/WebSetup
     """
 
     # Get Web2py environment into our globals.
@@ -69,12 +66,11 @@ def update_check():
     try:
         import matplotlib
     except(ImportError):
-        warnings.append("S3Chart unresolved dependency: matplotlib required for charting")
-    # Not currently needed
-    #try:
-        #import numpy
-    #except(ImportError):
-        #warnings.append("S3Resource unresolved dependency: numpy required for pivot table reports")
+        warnings.append("S3Chart unresolved dependency: matplotlib required for charting in Survey module")
+    try:
+        import numpy
+    except(ImportError):
+        warnings.append("Stats unresolved dependency: numpy required for Stats module support")
     try:
         import tweepy
     except(ImportError):
@@ -100,8 +96,15 @@ def update_check():
     if web2py_version_ok:
         web2py_minimum_parsed = parse_version(web2py_minimum_version)
         web2py_minimum_datetime = web2py_minimum_parsed[datetime_index]
+        # 2.4.2 & earlier style
         web2py_installed_datetime = request.global_settings.web2py_version[datetime_index]
-        web2py_version_ok = web2py_installed_datetime >= web2py_minimum_datetime
+        try:
+            web2py_version_ok = web2py_installed_datetime >= web2py_minimum_datetime
+        except:
+            # Post 2.4.2
+            web2py_installed_parsed = parse_version(request.global_settings.web2py_version)
+            web2py_installed_datetime = web2py_installed_parsed[datetime_index]
+            web2py_version_ok = web2py_installed_datetime >= web2py_minimum_datetime
     if not web2py_version_ok:
         warnings.append(
             "The installed version of Web2py is too old to provide the Scheduler,"
@@ -157,6 +160,17 @@ def update_check():
                 import shutil
                 shutil.copy(src_path, dst_path)
             copied_from_template.append(template_files[t])
+
+            # @ToDo: WebSetup
+            #  http://eden.sahanafoundation.org/wiki/DeveloperGuidelines/WebSetup
+            #if not os.path.exists("%s/applications/websetup" % os.getcwd()):
+            #    # @ToDo: Check Permissions
+            #    # Copy files into this folder (@ToDo: Pythonise)
+            #    cp -r private/websetup "%s/applications" % os.getcwd()
+            # Launch WebSetup
+            #redirect(URL(a="websetup", c="default", f="index",
+            #             vars=dict(appname=request.application,
+            #                       firstTime="True")))
         else:
             # Found the file in the destination
             # Check if it has been edited

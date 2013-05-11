@@ -60,8 +60,7 @@ def human_resource():
                 field.widget = OptionsWidget.widget
             elif r.id:
                 # Redirect to person controller
-                vars = {
-                        "human_resource.id" : r.id,
+                vars = {"human_resource.id" : r.id,
                         "group" : "staff"
                         }
                 redirect(URL(f="person",
@@ -86,7 +85,7 @@ def human_resource():
                         "_class": "action-btn",
                         "label": str(T("Send Message"))})
         elif r.representation == "plain" and \
-             r.method !="search":
+             r.method != "search":
             # Map Popups
             output = s3db.hrm_map_popup(r)
         return output
@@ -108,8 +107,6 @@ def staff():
     _type = table.type
     _type.default = 1
     s3.filter = (_type == 1)
-    table.site_id.writable = True
-    table.site_id.readable = True
     s3.crud_strings[tablename] = s3.crud_strings["hrm_staff"]
     if "expiring" in get_vars:
         s3.filter = s3.filter & \
@@ -170,9 +167,10 @@ def staff():
                 s3db.pr_person.date_of_birth.widget = S3DateWidget(past=972, future=-192)
 
                 table.site_id.comment = DIV(DIV(_class="tooltip",
-                                                _title="%s|%s|%s" % (settings.get_org_site_label(),
-                                                                     T("The facility where this position is based."),
-                                                                     T("Enter some characters to bring up a list of possible matches."))))
+                                                _title="%s|%s" % (settings.get_org_site_label(),
+                                                                  T("The facility where this position is based."),
+                                                                  #T("Enter some characters to bring up a list of possible matches.")
+                                                                  )))
                 table.status.writable = table.status.readable = False
 
             elif r.method == "delete":
@@ -611,7 +609,35 @@ def group():
         Team controller
         - uses the group table from PR
     """
+
     return s3db.hrm_group_controller()
+
+# -----------------------------------------------------------------------------
+def group_membership():
+    """
+        Membership controller
+        - uses the group_membership table from PR
+    """
+
+    # Change Labels & list_fields
+    s3db.hrm_configure_pr_group_membership()
+
+    # Only show Relief Teams
+    # Do not show system groups
+    # Only show Staff
+    table = db.pr_group_membership
+    gtable = db.pr_group
+    htable = s3db.hrm_human_resource
+    s3.filter = (gtable.system == False) & \
+                (gtable.group_type == 3) & \
+                (htable.type == 1) & \
+                (htable.person_id == table.person_id)
+
+    output = s3_rest_controller("pr", "group_membership",
+                                csv_template="group_membership",
+                                csv_stylesheet=("hrm", "group_membership.xsl"),
+                                )
+    return output 
 
 # =============================================================================
 # Jobs
@@ -787,6 +813,27 @@ def training_event():
     """ Training Events Controller """
 
     return s3db.hrm_training_event_controller()
+
+# -----------------------------------------------------------------------------
+def experience():
+    """ Experience Controller """
+
+    mode = session.s3.hrm.mode
+    if mode is not None:
+        session.error = T("Access denied")
+        redirect(URL(f="index"))
+
+    output = s3_rest_controller()
+    return output
+
+# -----------------------------------------------------------------------------
+def competency():
+    """ RESTful CRUD controller used to allow searching for people by Skill"""
+
+    table = s3db.hrm_human_resource
+    s3.filter = ((table.type == 1) & \
+                 (s3db.hrm_competency.person_id == table.person_id))
+    return s3db.hrm_competency_controller()
 
 # =============================================================================
 def skill_competencies():

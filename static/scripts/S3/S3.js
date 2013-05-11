@@ -80,6 +80,7 @@ function openPopup(url, center) {
         popupWin = window.open(url, 'popupWin', params);
     } else popupWin.focus();
 }
+
 S3.addTooltips = function() {
     // Help Tooltips
     $.cluetip.defaults.cluezIndex = 9999; // Need to be able to show on top of Ext Windows
@@ -110,6 +111,58 @@ S3.addTooltips = function() {
     });
 };
 
+S3.addModals = function() {
+    // jQueryUI Modal Popups
+    $('a.s3_add_resource_link').attr('href', function(index, attr) {
+        // Add the caller to the URL vars so that the popup knows which field to refresh/set
+        var caller = $(this).parents('tr').attr('id');
+        if (!caller) {
+            // DIV-based formstyle
+            caller = $(this).parent().parent().attr('id');
+        }
+        if (!caller) {
+            // Bootstrap formstyle
+            caller = $(this).parent().parent().prev().attr('id');
+        }
+        caller = caller.replace(/__row_comment/, ''); // DRRPP formstyle
+        caller = caller.replace(/__row/, '');
+        // Avoid Duplicate callers
+        var url_out = attr;
+        if (attr.indexOf('caller=') == -1) {
+            url_out = attr + '&caller=' + caller;
+        }
+        return url_out;
+    });
+    $('.s3_add_resource_link, .s3_modal').unbind('click');
+    $('.s3_add_resource_link, .s3_modal').click(function() {
+        var title = this.title;
+        var url = this.href;
+        S3.popup_loaded = function() {
+            // Resize the iframe to fit the Dialog
+            var width = $('.ui-dialog').width() - 10;
+            dialog.css({width: width});
+        }
+        // Open a jQueryUI Dialog showing a spinner until iframe is loaded
+        var dialog = $('<iframe class="loading" src=' + url + ' marginWidth="0" marginHeight="0" frameBorder="0" scrolling="auto" onload="S3.popup_loaded()" style = "width:740px;"></iframe>')
+                      .appendTo('body');
+        dialog.dialog({
+            // add a close listener to prevent adding multiple divs to the document
+            close: function(event, ui) {
+                // remove div with all data and events
+                dialog.remove();
+            },
+            minHeight: 500,
+            modal: true,
+            open: function(event, ui) {$('.ui-widget-overlay').bind('click', function(){ dialog.dialog('close'); });},
+            title: title,
+            width: 750,
+            closeText: ""
+        });
+        // Prevent browser from following link
+        return false;
+    })
+};
+
 $(document).ready(function() {
     // Web2Py Layer
     $('.error').hide().slideDown('slow');
@@ -122,7 +175,7 @@ $(document).ready(function() {
     $('.confirmation').click(function() { $(this).fadeOut('slow'); return false; });
     $("input[type='checkbox'].delete").click(function() {
         if ((this.checked) && (!confirm(i18n.delete_confirmation))) {
-                this.checked=false;
+                this.checked = false;
         }
     });
 
@@ -147,7 +200,7 @@ $(document).ready(function() {
     // dataTables' delete button
     // (can't use S3ConfirmClick as the buttons haven't yet rendered)
     if (S3.interactive) {
-        $('a.delete-btn').live('click', function(event) {
+        $(document).on('click', 'a.delete-btn', function(event) {
             if (confirm(i18n.delete_confirmation)) {
                 return true;
             } else {
@@ -155,7 +208,11 @@ $(document).ready(function() {
                 return false;
             }
         });
-        $('input:text:visible:first').focus();
+
+        if (S3.FocusOnFirstField != false) {
+            // Focus On First Field
+            $('input:text:visible:first').focus();
+        };
     }
 
     // Accept comma as thousands separator
@@ -163,11 +220,6 @@ $(document).ready(function() {
     $('input.float_amount').keyup(function(){this.value=this.value.reverse().replace(/[^0-9\-\.,]|[\-](?=.)|[\.](?=[0-9]*[\.])/g,'').reverse();});
     // Auto-capitalize first names
     $('input[name="first_name"]').focusout(function() {this.value = this.value.charAt(0).toLocaleUpperCase() + this.value.substring(1);});
-    // Hide password verification field in admin/user until changed
-    $('input[name="password"]').keyup(function() {
-        $('.verify-password').removeClass('hide');
-        $('#password_two').removeAttr('disabled');
-    });
 
     // Resizable textareas
     $('textarea.resizable:not(.textarea-processed)').each(function() {
@@ -223,32 +275,8 @@ $(document).ready(function() {
         function() { $('ul', this).css('display', 'none');  }
     );
 
-    // Colorbox Popups
-    $('a.colorbox').attr('href', function(index, attr) {
-        // Add the caller to the URL vars so that the popup knows which field to refresh/set
-        var caller = $(this).parents('tr').attr('id');
-        if (!caller) {
-            // DIV-based formstyle
-            caller = $(this).parent().parent().attr('id');
-        }
-        caller = caller.replace(/__row/, '');
-        // Avoid Duplicate callers
-        var url_out = attr;
-        if (attr.indexOf('caller=') == -1) {
-            url_out = attr + '&caller=' + caller;
-        }
-        return url_out;
-    });
-    $('.colorbox').click(function() {
-        $.fn.colorbox({
-            iframe: true,
-            width: '99%',
-            height: '99%',
-            href: this.href,
-            title: this.title
-        });
-        return false;
-    });
+    // jQueryUI Dialog Modal Popups
+    S3.addModals();
 
     // Help Tooltips
     S3.addTooltips();
@@ -275,9 +303,9 @@ $(document).ready(function() {
 
 });
 
-function s3_tb_remove(){
-    // Colorbox Popup
-    $.fn.colorbox.close();
+function s3_popup_remove() {
+    // Close jQueryUI Dialog Modal Popup
+    $('iframe.ui-dialog-content').dialog('close');
 }
 
 function s3_get_client_location(targetfield) {
@@ -399,8 +427,12 @@ function S3EnableNavigateAwayConfirm() {
             // If there are errors, ensure the unsaved form is still protected
             S3SetNavigateAwayConfirm();
         }
-        $(':input:not(input[id=gis_location_advanced_checkbox])').keypress( S3SetNavigateAwayConfirm );
-        $(':input:not(input[id=gis_location_advanced_checkbox])').change( S3SetNavigateAwayConfirm );
+        var form = 'form:not(form.filter-form)',
+            input = 'input:not(input[id=gis_location_advanced_checkbox])',
+            select = 'select';
+        $(form + ' ' + input).keypress( S3SetNavigateAwayConfirm );
+        $(form + ' ' + input).change( S3SetNavigateAwayConfirm );
+        $(form + ' ' + select).change( S3SetNavigateAwayConfirm );
         $('form').submit( S3ClearNavigateAwayConfirm );
     });
 }
@@ -764,7 +796,7 @@ function S3OptionsFilter(settings) {
 
         // Disable the target field if no value selected
         if (lookupValue === '' || lookupValue === undefined) {
-            targetField.attr('disabled', 'disabled');
+            targetField.prop('disabled', true);
             return;
         }
 
@@ -942,11 +974,11 @@ function S3OptionsFilter(settings) {
                                    // Set the current field value
                                    .val(currentValue)
                                    .change()
-                                   .removeAttr('disabled')
+                                   .prop('disabled', false)
                                    .show();
                     } else {
                         // No options available => disable the target field
-                        targetField.attr('disabled', 'disabled')
+                        targetField.prop('disabled', true)
                                    .show();
                     }
 
@@ -989,11 +1021,11 @@ function S3OptionsFilter(settings) {
                         // Replace the target field with the HTML returned
                         targetWidget.html(data)
                                     .change()
-                                    .removeAttr('disabled')
+                                    .prop('disabled', false)
                                     .show();
                     } else {
                         // Disable the target field
-                        targetWidget.attr('disabled', 'disabled');
+                        targetWidget.prop('disabled', true);
                     }
                     // Remove Throbber
                     $('#' + this.lookupResource + '_ajax_throbber').remove();
@@ -1075,8 +1107,8 @@ S3.autocomplete = function(fieldname, module, resourcename, input, filter, link,
             return false;
         }
     })
-    .data( 'autocomplete' )._renderItem = function( ul, item ) {
-        return $( '<li></li>' )
+    .data( 'ui-autocomplete' )._renderItem = function( ul, item ) {
+        return $( '<li>' )
             .data( 'item.autocomplete', item )
             .append( '<a>' + item[fieldname] + '</a>' )
             .appendTo( ul );

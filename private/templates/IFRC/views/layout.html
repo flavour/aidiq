@@ -7,7 +7,7 @@
 {{if response.refresh:}}{{=XML(response.refresh)}}{{pass}}
 <meta name="application-name" content="{{=appname}}" />
 <meta name="viewport" content="width=device-width; initial-scale=1.0; maximum-scale=1.0;" />
-<link rel="shortcut icon" href="/{{=appname}}/static/themes/IFRC/favicon.ico" type="image/x-icon" />
+<link rel="shortcut icon" href="/{{=appname}}/static/themes/{{=response.s3.theme}}/favicon.ico" type="image/x-icon" />
 <style type="text/css">
 {{if s3.rtl:}}
  div{direction:rtl;}
@@ -19,7 +19,7 @@
  {{=s3base.s3_include_debug_css()}}
 {{else:}}
  {{# Built by /static/scripts/tools/build.sahana.py }}
- <link href="/{{=appname}}/static/themes/IFRC/eden.min.css" rel="stylesheet" type="text/css" />
+ <link href="/{{=appname}}/static/themes/{{=response.s3.theme}}/eden.min.css" rel="stylesheet" type="text/css" />
 {{pass}}
 {{for sheet in s3.external_stylesheets:}}
  <link href="{{=sheet}}" rel="stylesheet" type="text/css" media="screen" charset="utf-8" />
@@ -35,12 +35,11 @@
  {{else:}}{{representation = ""}}{{pass}}
 {{except:}}{{representation = ""}}{{pass}}
 {{if representation == "popup":}}
- <body>
+ <body class='popup'>
+ {{if response.flash or response.confirmation:}}{{include "layout_popup.html"}}
+ {{else:}}{{include}}{{pass}}
  {{if s3.debug:}}{{s3.scripts.append(URL(c="static", f="scripts", args=["S3", "s3.popup.js"]))}}
  {{else:}}{{s3.scripts.append(URL(c="static", f="scripts", args=["S3", "s3.popup.min.js"]))}}{{pass}}
- {{if response.flash or response.confirmation:}}
-  {{include "layout_popup.html"}}
- {{else:}}{{include}}{{pass}}
 {{elif representation == "iframe":}}
  {{include "layout_iframe.html"}}
  {{include}}
@@ -60,11 +59,6 @@
    </div>
    <a href='#main-content' class='skipnavigation'>Skip to Content</a>
    {{=current.menu.main}}
-   <!--<div id='searchbox'><form><div><input type='text' name='search' title='Search' class='text-search'></div>
-   <div><select name='category' class='catsearch'>
-   <option value='' selected>Option1</option>
-   <option value=''>Option2</option>
-   </select></div><a href='' class='submit-search'>Submit</a></form></div>-->
   </div>
   <div id='wrapper'>
    {{if response.error:}}<div class='error'>{{=response.error}}</div>{{pass}}
@@ -88,19 +82,12 @@
     </div>
   </div>
   <div id='footer'>
-   {{include "../private/templates/IFRC/views/footer.html"}}
+   {{include "../private/templates/%s/views/footer.html" % response.s3.theme}}
    {{if s3.debug:}}{{=s3.toolbar()}}{{pass}}
   </div>
  </div>
-{{s3.jquery_ready.append(
-"""
-$('#nav').children('li').mouseover(function(){
- $(this).children('.sub-menu').show()
-})
-$('#nav').children('li').mouseout(function(){
- $(this).children('.sub-menu').hide()
-})""")}}
 {{pass}}
 {{include "scripts.html"}}
+<script src="/{{=appname}}/static/themes/IFRC/js/nav.js" type="text/javascript"></script>
 </body>
 </html>

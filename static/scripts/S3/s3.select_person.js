@@ -3,6 +3,7 @@
  * Currently hardcoded for the hrm_human_resource/create context
  */
 
+// Global, so can only have 1 per page
 var addPerson_real_input;
  
 function addPersonWidget() {
@@ -110,24 +111,31 @@ function select_person(person_id) {
                     if (person.hasOwnProperty('occupation')) {
                         $('#pr_person_occupation').val(person['occupation']);
                     }
+                    var contacts, contact, method, value;
                     try {
-                        var contacts = person['$_pr_contact'], contact, method, value;
+                        contacts = person['$_pr_email_contact'];
                         if (contacts !== undefined) {
-                            for (var i = 0; i <= contacts.length; i++) {
-                                contact = contacts[i];
-                                method = contact['contact_method']['@value'];
-                                value = contact['value'];
-                                if (value.hasOwnProperty('@value')) {
-                                    value = value['@value'];
-                                }
-                                if (value !== undefined) {
-                                    if (method == "EMAIL") {
-                                        $('#pr_person_email').val(value);
-                                    }
-                                    else if (method == "SMS") {
-                                        $('#pr_person_mobile_phone').val(value);
-                                    }
-                                }
+                            value = contacts[0]['value'];
+                            if (value.hasOwnProperty('@value')) {
+                                value = value['@value'];
+                            }
+                            if (value !== undefined) {
+                                $('#pr_person_email').val(value);
+                            }
+                        }
+                    }
+                    catch(e) {
+                        // continue
+                    }
+                    try {
+                        contacts = person['$_pr_phone_contact'];
+                        if (contacts !== undefined) {
+                            value = contacts[0]['value'];
+                            if (value.hasOwnProperty('@value')) {
+                                value = value['@value'];
+                            }
+                            if (value !== undefined) {
+                                $('#pr_person_mobile_phone').val(value);
                             }
                         }
                     }
@@ -150,23 +158,23 @@ function select_person(person_id) {
 }
 
 function enable_person_fields() {
-    $('#pr_person_first_name').removeAttr('disabled');
-    $('#pr_person_middle_name').removeAttr('disabled');
-    $('#pr_person_last_name').removeAttr('disabled');
-    $('#pr_person_gender').removeAttr('disabled');
-    $('#pr_person_date_of_birth').removeAttr('disabled');
-    $('#pr_person_occupation').removeAttr('disabled');
-    $('#pr_person_email').removeAttr('disabled');
-    $('#pr_person_mobile_phone').removeAttr('disabled');
+    $('#pr_person_first_name').prop('disabled', false);
+    $('#pr_person_middle_name').prop('disabled', false);
+    $('#pr_person_last_name').prop('disabled', false);
+    $('#pr_person_gender').prop('disabled', false);
+    $('#pr_person_date_of_birth').prop('disabled', false);
+    $('#pr_person_occupation').prop('disabled', false);
+    $('#pr_person_email').prop('disabled', false);
+    $('#pr_person_mobile_phone').prop('disabled', false);
 }
 
 function disable_person_fields() {
-    $('#pr_person_first_name').attr('disabled', true);
-    $('#pr_person_middle_name').attr('disabled', true);
-    $('#pr_person_last_name').attr('disabled', true);
-    $('#pr_person_gender').attr('disabled', true);
-    $('#pr_person_date_of_birth').attr('disabled', true);
-    $('#pr_person_occupation').attr('disabled', true);
-    $('#pr_person_email').attr('disabled', true);
-    $('#pr_person_mobile_phone').attr('disabled', true);
+    $('#pr_person_first_name').prop('disabled', true);
+    $('#pr_person_middle_name').prop('disabled', true);
+    $('#pr_person_last_name').prop('disabled', true);
+    $('#pr_person_gender').prop('disabled', true);
+    $('#pr_person_date_of_birth').prop('disabled', true);
+    $('#pr_person_occupation').prop('disabled', true);
+    $('#pr_person_email').prop('disabled', true);
+    $('#pr_person_mobile_phone').prop('disabled', true);
 }

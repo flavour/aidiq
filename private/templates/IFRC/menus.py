@@ -2,12 +2,12 @@
 
 from gluon import current
 from s3 import *
-from eden.layouts import *
+from s3layouts import *
 try:
     from .layouts import *
 except ImportError:
     pass
-import eden.menus as default
+import s3menus as default
 
 red_cross_filter = {"organisation.organisation_type_id$name" : "Red Cross / Red Crescent"}
 
@@ -254,7 +254,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
         hrm_vars = session.s3.hrm
 
         ADMIN = current.auth.get_system_roles().ADMIN
-        SECTORS = "Clusters" if current.deployment_settings.get_ui_cluster() \
+        SECTORS = "Clusters" if current.deployment_settings.get_ui_label_cluster() \
                              else "Sectors"
 
         manager_mode = lambda i: hrm_vars.mode is None
@@ -275,8 +275,10 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     ),
                     M("Teams", c="hrm", f="group",
                       check=manager_mode)(
-                        M("New Team", m="create"),
+                        M("New", m="create"),
                         M("List All"),
+                        M("Search Members", f="group_membership", m="search"),
+                        M("Import", f="group_membership", m="import"),
                     ),
                     M("National Societies", c="org", 
                                             f="organisation",
@@ -307,19 +309,19 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     ),
                     M("Job Title Catalog", c="hrm", f="job_title",
                       check=manager_mode)(
-                        M("New Job Title", m="create"),
+                        M("New", m="create"),
                         M("List All"),
                         M("Import", m="import", p="create", check=is_org_admin),
                     ),
                     #M("Skill Catalog", f="skill",
                       #check=manager_mode)(
-                        #M("New Skill", m="create"),
+                        #M("New", m="create"),
                         #M("List All"),
                         ##M("Skill Provisions", f="skill_provision"),
                     #),
                     M("Training Events", c="hrm", f="training_event",
                       check=manager_mode)(
-                        M("New Training Event", m="create"),
+                        M("New", m="create"),
                         M("List All"),
                         M("Search", m="search"),
                         M("Search Training Participants", f="training",
@@ -335,14 +337,14 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     ),
                     M("Training Course Catalog", c="hrm", f="course",
                       check=manager_mode)(
-                        M("New Training Course", m="create"),
+                        M("New", m="create"),
                         M("List All"),
                         M("Import", m="import", p="create", check=is_org_admin),
                         M("Course Certificates", f="course_certificate"),
                     ),
                     M("Certificate Catalog", c="hrm", f="certificate",
                       check=manager_mode)(
-                        M("New Certificate", m="create"),
+                        M("New", m="create"),
                         M("List All"),
                         M("Import", m="import", p="create", check=is_org_admin),
                         #M("Skill Equivalence", f="certificate_skill"),
@@ -423,6 +425,8 @@ class S3OptionsMenu(default.S3OptionsMenu):
                       check=[manager_mode, use_teams])(
                         M("New", m="create"),
                         M("List All"),
+                        M("Search Members", f="group_membership", m="search"),
+                        M("Import", f="group_membership", m="import"),
                     ),
                     M("Department Catalog", f="department",
                       check=manager_mode)(
@@ -438,6 +442,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                       check=manager_mode)(
                         M("New", m="create"),
                         M("List All"),
+                        M("Import", m="import", p="create", check=is_org_admin),
                     ),
                     #M("Skill Catalog", f="skill",
                     #  check=manager_mode)(
@@ -510,6 +515,115 @@ class S3OptionsMenu(default.S3OptionsMenu):
                 )
 
     # -------------------------------------------------------------------------
+    def inv(self):
+        """ INV / Inventory """
+
+        ADMIN = current.session.s3.system_roles.ADMIN
+
+        current.s3db.inv_recv_crud_strings()
+        crud_strings = current.response.s3.crud_strings
+        inv_recv_list = crud_strings.inv_recv.title_list
+        inv_recv_search = crud_strings.inv_recv.title_search
+
+        use_commit = lambda i: current.deployment_settings.get_req_use_commit()
+
+        return M()(
+                    #M("Home", f="index"),
+                    M("Warehouses", c="inv", f="warehouse")(
+                        M("New", m="create"),
+                        M("List All"),
+                        M("Search", m="search"),
+                        M("Import", m="import", p="create"),
+                    ),
+                    M("Warehouse Stock", c="inv", f="inv_item")(
+                        M("Search", f="inv_item", m="search"),
+                        M("Search Shipped Items", f="track_item", m="search"),
+                        M("Adjust Stock Levels", f="adj"),
+                        #M("Kitting", f="kit"),
+                        M("Import", f="inv_item", m="import", p="create"),
+                    ),
+                    M("Reports", c="inv", f="inv_item")(
+                        M("Warehouse Stock", f="inv_item",m="report"),
+                        #M("Expiration Report", c="inv", f="track_item",
+                        #  m="search", vars=dict(report="exp")),
+                        #M("Monetization Report", c="inv", f="inv_item",
+                        #  m="search", vars=dict(report="mon")),
+                        #M("Utilization Report", c="inv", f="track_item",
+                        #  m="search", vars=dict(report="util")),
+                        #M("Summary of Incoming Supplies", c="inv", f="track_item",
+                        #  m="search", vars=dict(report="inc")),
+                        # M("Summary of Releases", c="inv", f="track_item",
+                        #  m="search", vars=dict(report="rel")),
+                    ),
+                    M(inv_recv_list, c="inv", f="recv")(
+                        M("New", m="create"),
+                        M("List All"),
+                        M("Search", m="search"),
+                    ),
+                    M("Sent Shipments", c="inv", f="send")(
+                        M("New", m="create"),
+                        M("List All"),
+                        M("Search", m="search"),
+                        M("Search Shipped Items", f="track_item", m="search"),
+                    ),
+                    M("Items", c="supply", f="item")(
+                        M("New", m="create"),
+                        M("List All"),
+                        M("Search", m="search"),
+                        M("Report", m="report"),
+                        M("Import", f="catalog_item", m="import", p="create"),
+                    ),
+                    # Catalog Items moved to be next to the Item Categories
+                    #M("Catalog Items", c="supply", f="catalog_item")(
+                       #M("New", m="create"),
+                       #M("List All"),
+                       #M("Search", m="search"),
+                    #),
+                    #M("Brands", c="supply", f="brand",
+                    #  restrict=[ADMIN])(
+                    #    M("New", m="create"),
+                    #    M("List All"),
+                    #),
+                    M("Catalogs", c="supply", f="catalog")(
+                        M("New", m="create"),
+                        M("List All"),
+                        #M("Search", m="search"),
+                    ),
+                    M("Item Categories", c="supply", f="item_category",
+                      restrict=[ADMIN])(
+                        M("New", m="create"),
+                        M("List All"),
+                    ),
+                    M("Suppliers", c="inv", f="supplier")(
+                        M("New", m="create"),
+                        M("List All"),
+                        M("Search", m="search"),
+                        M("Import", m="import", p="create"),
+                    ),
+                    M("Facilities", c="inv", f="facility")(
+                        M("New", m="create", t="org_facility"),
+                        M("List All"),
+                        #M("Search", m="search"),
+                    ),
+                    M("Facility Types", c="inv", f="facility_type",
+                      restrict=[ADMIN])(
+                        M("New", m="create"),
+                        M("List All"),
+                        #M("Search", m="search"),
+                    ),
+                    M("Requests", c="req", f="req")(
+                        M("New", m="create"),
+                        M("List All"),
+                        M("Requested Items", f="req_item"),
+                        #M("Search Requested Items", f="req_item", m="search"),
+                    ),
+                    M("Commitments", c="req", f="commit", check=use_commit)(
+                        M("List All"),
+                        M("Search", m="search"),
+                    ),
+                )
+
+    # -------------------------------------------------------------------------
     def irs(self):
         """ IRS Incident Reporting """
 
@@ -531,7 +645,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         M("List All"),
                     ),
                     M("Reports", c="irs", f="ireport",  m="report")(
-                        M("Incidents"),
+                        M("Incidents", m="report"),
                     ),
                 )
 

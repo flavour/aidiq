@@ -200,10 +200,8 @@ class TranslateGetFiles:
             self.modlist = modlist
 
             # Directories which are not required to be searched
-            self.rest_dirs = ["languages", "deployment-templates", "docs",
-                              "tests", "test", ".git",
-                              "TranslationFunctionality", "uploads"
-                              ]
+            self.rest_dirs = ["languages", "docs", "tests",
+                              "test", ".git", "uploads"]
 
         # ---------------------------------------------------------------------
         def get_module_list(self):
@@ -260,13 +258,13 @@ class TranslateGetFiles:
                 elif (baseFile == "test.py" or \
                       baseFile == "tests.py") == False:
 
-                    # If in /eden/views, categorize by parent directory name
+                    # If in /appname/views, categorize by parent directory name
                     if vflag == 1:
                         base = curmod
 
                     # Categorize file as "special" as it contains strings
                     # belonging to various modules
-                    elif curFile.endswith("/%s/modules/eden/menus.py" % appname) or \
+                    elif curFile.endswith("/%s/modules/s3menus.py" % appname) or \
                          curFile.endswith("/%s/modules/s3cfg.py" % appname) or \
                          baseFile == "000_config.py" or \
                          baseFile == "config.py":
@@ -671,7 +669,7 @@ class TranslateReadFiles:
                 # Handle cases for special files which contain
                 # strings belonging to different modules
                 appname = current.request.application
-                if fileName.endswith("/%s/modules/eden/menus.py" % appname) == True:
+                if fileName.endswith("/%s/modules/s3menus.py" % appname) == True:
                     parseMenu = P.parseMenu
                     for element in stList:
                         parseMenu(spmod, strings, element, 0)
@@ -692,19 +690,28 @@ class TranslateReadFiles:
             fsappend = final_strings.append
             settings = current.deployment_settings
             for (loc, s) in strings:
-                if s[0] != '"' and s[0] != "'" and "settings." in s:
 
-                    # Convert the call to a standard form
-                    s = s.replace("current.deployment_settings", "settings")
-                    s = s.replace("()", "")
-                    l = s.split(".")
-                    obj = settings
+                if s[0] != '"' and s[0] != "'":
 
-                    # Get the actual value
-                    for atr in l[1:]:
-                        obj = getattr(obj, atr)()
-                    s = obj
-                fsappend((loc, s))
+                    # This is a variable
+                    if "settings." in s:
+                        # Convert the call to a standard form
+                        s = s.replace("current.deployment_settings", "settings")
+                        s = s.replace("()", "")
+                        l = s.split(".")
+                        obj = settings
+
+                        # Get the actual value
+                        for atr in l[1:]:
+                            obj = getattr(obj, atr)()
+                        s = obj
+                        fsappend((loc, s))
+                    else:
+                        #@ToDo : Get the value of non-settings variables
+                        pass
+
+                else:
+                    fsappend((loc, s))
 
             return final_strings
 
@@ -968,7 +975,7 @@ class TranslateReportStatus:
             modlist.append("core")
 
             query = (utable.code == lang_code)
-            row = db(query).select()
+            row = db(query).select(utable.sbit, limitby=(0, 1)).first()
 
             # If the translation percentages for the given language hasn't been
             # calculated earlier, add the row corresponding to that language
@@ -983,12 +990,11 @@ class TranslateReportStatus:
                                   untranslated = 0)
                 self.update_percentages(lang_code)
             else:
-                for r in row:
-                    # If the update bit for the language is set,
-                    # then update the percentages
-                    if r.sbit == True:
-                        self.update_percentages(lang_code)
-                        db(query).update(sbit = False)
+                # If the update bit for the language is set,
+                # then update the percentages
+                if row.sbit == True:
+                    self.update_percentages(lang_code)
+                    db(query).update(sbit = False)
 
             # Dictionary keyed on modules to store percentage for each module
             percent_dict = {}
@@ -996,8 +1002,10 @@ class TranslateReportStatus:
             total_translated = 0
             # Total number of untranslated strings for the given language
             total_untranslated = 0
-            query = (ptable.code == lang_code)
-            rows = db(query).select()
+            rows = db(ptable.code == lang_code).select(ptable.translated,
+                                                       ptable.untranslated,
+                                                       ptable.module,
+                                                       )
             # Display the translation percentage for each module
             # by fetching the data from the table
             for row in rows:
@@ -1047,12 +1055,15 @@ class StringsToExcel:
             """
 
             uniq = {}
+            appname = request.application
 
             for (loc, data) in Strings:
                 uniq[data] = ""
 
             for (loc, data) in Strings:
 
+                # Remove the prefix from the filename
+                loc = loc.split(appname, 1)[1]
                 if uniq[data] != "":
                     uniq[data] = uniq[data] + ";" + loc
                 else:
@@ -1177,8 +1188,6 @@ class StringsToExcel:
                 while i < lim and OldStrings[i][0] < s:
                     i += 1
 
-                # Remove the prefix from the filename
-                l = l.split(appname, 1)[1]
                 if i != lim and OldStrings[i][0] == s and \
                    OldStrings[i][1].startswith("*** ") == False:
                     Strings.append((l, s, OldStrings[i][1]))
@@ -1254,7 +1263,8 @@ class CsvToWeb2py:
             from subprocess import call
             from tempfile import NamedTemporaryFile
 
-            w2pfilename = os.path.join(current.request.folder, "languages", w2pfilename)
+            w2pfilename = os.path.join(current.request.folder, "languages",
+                                       w2pfilename)
 
             # Dictionary to store (location,translated string)
             # with untranslated string as the key
@@ -1299,6 +1309,7 @@ class CsvToWeb2py:
             call(["csv2po", "-i", csvfilename, "-o", pofilename], shell=True)
 
             # Convert the po file to w2p language file
+            # @ToDo: Catch errors, otherwise we lose output file!
             call(["po2web2py", "-i", pofilename, "-o", w2pfilename], shell=True)
 
             # Remove intermediate files

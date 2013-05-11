@@ -110,6 +110,7 @@ class TestS3SearchOptionsWidget(unittest.TestCase):
                                          )
                                       ),
                                    _class="s3-checkboxes-widget",
+                                   _id="human_resource_search_select_virtual_field",
                                    _name="human_resource_search_select_virtual_field_widget")))
 
 # =============================================================================
@@ -189,7 +190,8 @@ class S3FilterWidgetTests(unittest.TestCase):
         self.assertTrue("%s-data" % widget._class in c)
 
         i = attr["_id"]
-        self.assertEqual(i, "%s-%s-data" % (resource.alias, widget._class))
+        self.assertEqual(i, "%s-org_office_name-org_organisation_name-%s-data" %
+                        (resource.alias, widget._class))
 
         v = attr["_value"]
         self.assertEqual(v, "~.name|~.organisation_id$name")

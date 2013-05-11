@@ -21,7 +21,7 @@ if not settings.has_module(module):
 
 # -----------------------------------------------------------------------------
 # Define the Model
-# @ToDo: Move to modules/eden/budget.py
+# @ToDo: Move to modules/s3db/budget.py
 # - here it isn't visible to s3db.load_all_models() or Sync
 # -----------------------------------------------------------------------------
 # Load the models we depend on
@@ -527,7 +527,7 @@ table.months.label = T("Months")
 def index():
     """ Module's Home Page """
 
-    module_name = deployment_settings.modules[module].name_nice
+    module_name = settings.modules[module].name_nice
     response.title = module_name
     return dict(module_name=module_name)
 

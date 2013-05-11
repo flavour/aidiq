@@ -31,6 +31,7 @@ import datetime
 import os
 import sys
 import time
+import types
 try:
     from cStringIO import StringIO    # Faster, where available
 except:
@@ -432,7 +433,7 @@ class S3Request(object):
         Class to handle RESTful requests
     """
 
-    INTERACTIVE_FORMATS = ("html", "iframe", "popup")
+    INTERACTIVE_FORMATS = ("html", "iframe", "popup", "dl")
     DEFAULT_REPRESENTATION = "html"
 
     # -------------------------------------------------------------------------
@@ -582,7 +583,9 @@ class S3Request(object):
                                    components=components,
                                    approved=approved,
                                    unapproved=unapproved,
-                                   include_deleted=include_deleted)
+                                   include_deleted=include_deleted,
+                                   context=True,
+                                   )
 
         self.tablename = self.resource.tablename
         table = self.table = self.resource.table
@@ -756,7 +759,11 @@ class S3Request(object):
         if method not in method_hooks:
             return None
         else:
-            return method_hooks[method]
+            handler = method_hooks[method]
+            if isinstance(handler, (type, types.ClassType)):
+                return handler()
+            else:
+                return handler
 
     # -------------------------------------------------------------------------
     # Request Parser
@@ -864,10 +871,6 @@ class S3Request(object):
                     else:
                         current.session.error = self.ERROR.BAD_RECORD
                         redirect(URL(r=self, c=self.prefix, f=self.name))
-
-        if self.interactive and self.representation == "html":
-            settings = current.deployment_settings
-            attr = settings.ui_customize(self.tablename, **attr)
 
         # Pre-process
         if hooks is not None:
@@ -1970,7 +1973,7 @@ class S3Method(object):
 
         if not method:
             method = self.method
-        if method == "list":
+        if method in ("list", "search", "datatable", "datalist"):
             # Rest handled in S3Permission.METHODS
             method = "read"
 

@@ -14,45 +14,18 @@ if not settings.has_module(module):
 
 # =============================================================================
 def index():
-    """ Dashboard """
+    """ Module homepage """
 
-    module_name = settings.modules[module].name_nice
-    response.title = module_name
+    return s3db.cms_index(module, alt_function="index_alt")
 
-    item = None
-    if settings.has_module("cms"):
-        table = s3db.cms_post
-        _item = db(table.module == module).select(table.id,
-                                                  table.body,
-                                                  limitby=(0, 1)).first()
-        if _item:
-            if s3_has_role(ADMIN):
-                item = DIV(XML(_item.body),
-                           BR(),
-                           A(T("Edit"),
-                             _href=URL(c="cms", f="post",
-                                       args=[_item.id, "update"],
-                                       vars={"module":module}),
-                             _class="action-btn"))
-            else:
-                item = XML(_item.body)
-        elif s3_has_role(ADMIN):
-            item = DIV(H2(module_name),
-                       A(T("Edit"),
-                         _href=URL(c="cms", f="post", args="create",
-                                   vars={"module":module}),
-                         _class="action-btn"))
+# -----------------------------------------------------------------------------
+def index_alt():
+    """
+        Module homepage for non-Admin users when no CMS content found
+    """
 
-    if not item:
-        #item = H2(module_name)
-        # Just redirect to the list of Posts
-        redirect(URL(f="post"))
-
-    # tbc
-    report = ""
-
-    response.view = "index.html"
-    return dict(item=item, report=report)
+    # Just redirect to the list of Posts
+    redirect(URL(f="post"))
 
 # -----------------------------------------------------------------------------
 def series():
@@ -63,17 +36,20 @@ def series():
         if r.component:
             # Settings are defined at the series level
             table = s3db.cms_post
-            _module = table.module
-            _module.readable = _module.writable = False
             _avatar = table.avatar
             _avatar.readable = _avatar.writable = False
             _avatar.default = r.record.avatar
+            _location = table.location_id
+            if not r.record.location:
+                _location.readable = _location.writable = False
             _replies = table.replies
             _replies.readable = _replies.writable = False
             _replies.default = r.record.replies
             _roles_permitted = table.roles_permitted
             _roles_permitted.readable = _roles_permitted.writable = False
             _roles_permitted.default = r.record.roles_permitted
+            if not r.record.richtext:
+                table.body.widget = None
             # Titles do show up
             table.name.comment = ""
         return True
@@ -86,6 +62,8 @@ def blog():
     """
         RESTful CRUD controller for display of a series of posts as a full-page
         read-only showing last 5 items in reverse time order
+
+        @ToDo: Convert to dataList
     """
 
     # Pre-process
@@ -108,43 +86,66 @@ def blog():
 def post():
     """ RESTful CRUD controller """
 
-    tablename = "%s_%s" % (module, resourcename)
-    table = s3db[tablename]
-
-    # Filter out those posts which are parts of a series
-    s3.filter = (table.series_id == None)
-
-    _module = request.get_vars.get("module", None)
-    if _module:
-        table.module.default = _module
-        table.module.readable = table.module.writable = False
-        table.name.default = "%s Home Page" % _module
-        _crud = s3.crud_strings[tablename]
-        _crud.title_create = T("New Page")
-        _crud.title_update = T("Edit Page")
-        url = URL(c=_module, f="index")
-        s3db.configure(tablename,
-                        create_next = url,
-                        update_next = url)
-    else:
-        page = request.get_vars.get("page", None)
-        if page:
-            table.module.readable = table.module.writable = False
-            table.name.default = page
-            table.name.readable = table.name.writable = False
-            _crud = s3.crud_strings[tablename]
-            _crud.title_create = T("New Page")
-            _crud.title_update = T("Edit Page")
-            url = URL(c="default", f="index", vars={"page":page})
-            s3db.configure(tablename,
-                            create_next = url,
-                            update_next = url)
+    tablename = "cms_post"
+    # Filter out those posts which are part of a series
+    #table = s3db[tablename]
+    #s3.filter = (table.series_id == None)
 
     # Custom Method to add Comments
     s3db.set_method(module, resourcename,
                     method="discuss",
                     action=discuss)
 
+    def prep(r):
+        if r.interactive:
+            table = r.table
+            if r.method in ("create", "update"):
+                # Filter from a Profile page?"
+                series = request.get_vars.get("~.series_id$name", None)
+                if series:
+                    # Lookup ID
+                    stable = db.cms_series
+                    row = db(stable.name == series).select(stable.id,
+                                                           limitby=(0, 1)
+                                                           ).first()
+                    if row:
+                        field = table.series_id
+                        field.default = row.id
+                        field.readable = field.writable = False
+                # Context from a Profile page?"
+                location_id = request.get_vars.get("(location)", None)
+                if location_id:
+                    field = table.location_id
+                    field.default = location_id
+                    field.readable = field.writable = False
+
+            _module = request.get_vars.get("module", None)
+            if _module:
+                table.name.default = "%s Home Page" % _module
+                table.location_id.readable = table.location_id.writable = False
+                _crud = s3.crud_strings[tablename]
+                _crud.title_create = T("New Page")
+                _crud.title_update = T("Edit Page")
+                url = URL(c=_module, f="index")
+                s3db.configure(tablename,
+                               create_next = url,
+                               update_next = url)
+            else:
+                page = request.get_vars.get("page", None)
+                if page:
+                    table.name.default = page
+                    table.name.readable = table.name.writable = False
+                    _crud = s3.crud_strings[tablename]
+                    _crud.title_create = T("New Page")
+                    _crud.title_update = T("Edit Page")
+                    url = URL(c="default", f="index", vars={"page": page})
+                    s3db.configure(tablename,
+                                   create_next = url,
+                                   update_next = url)
+
+        return True
+    s3.prep = prep
+    
     return s3_rest_controller(rheader=s3db.cms_rheader)
 
 # -----------------------------------------------------------------------------
@@ -362,7 +363,6 @@ $('#submit_record__row input').click(function(){
                  SCRIPT(script))
 
     return XML(output)
-
 
 # -----------------------------------------------------------------------------
 def posts():

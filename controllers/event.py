@@ -59,6 +59,14 @@ def event():
     return output
 
 # -----------------------------------------------------------------------------
+def event_type():
+    """
+        RESTful CRUD controller
+    """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
 def incident_type():
     """
         RESTful CRUD controller
@@ -138,8 +146,8 @@ def event_rheader(r):
         if r.name == "event":
             # Event Controller
             tabs = [(T("Event Details"), None)]
-            if settings.has_module("req"):
-                tabs.append((T("Requests"), "req"))
+            #if settings.has_module("req"):
+            #    tabs.append((T("Requests"), "req"))
             rheader_tabs = s3_rheader_tabs(r, tabs)
 
             event = r.record
@@ -165,11 +173,11 @@ def event_rheader(r):
         if r.name == "incident":
             # Incident Controller
             tabs = [(T("Incident Details"), None)]
-            if deployment_settings.has_module("project"):
+            if settings.has_module("project"):
                 tabs.append((T("Tasks"), "task"))
-            if deployment_settings.has_module("hrm"):
+            if settings.has_module("hrm"):
                 tabs.append((T("Human Resources"), "human_resource"))
-            if deployment_settings.has_module("asset"):
+            if settings.has_module("asset"):
                 tabs.append((T("Assets"), "asset"))
             tabs.append((T("Facilities"), "site"))
             tabs.append((T("Map Configuration"), "config"))

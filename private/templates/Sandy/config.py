@@ -20,11 +20,9 @@ settings.base.prepopulate = ["Sandy"]
 # Uncomment to Hide the language toolbar
 settings.L10n.display_toolbar = False
 # Default timezone for users
-settings.L10n.utc_offset = "UTC +0500"
+settings.L10n.utc_offset = "UTC -0500"
 # Uncomment these to use US-style dates in English (localisations can still convert to local format)
 settings.L10n.date_format = T("%m-%d-%Y")
-settings.L10n.time_format = T("%H:%M:%S")
-settings.L10n.datetime_format = T("%m-%d-%Y %H:%M")
 # Number formats (defaults to ISO 31-0)
 # Decimal separator for numbers (defaults to ,)
 settings.L10n.decimal_separator = "."
@@ -36,6 +34,8 @@ settings.L10n.default_country_code = 1
 settings.ui.label_mobile_phone = "Cell Phone"
 # Enable this to change the label for 'Postcode'
 settings.ui.label_postcode = "ZIP Code"
+# PDF to Letter
+settings.base.paper_size = T("Letter")
 
 settings.fin.currencies = {
     "USD" : T("United States Dollars"),

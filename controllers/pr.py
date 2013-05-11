@@ -132,10 +132,9 @@ def person():
         elif r.interactive:
             if r.representation == "popup":
                 # Hide "pe_label" and "missing" fields in person popups
-                r.table.pe_label.readable = False
-                r.table.pe_label.writable = False
-                r.table.missing.readable = False
-                r.table.missing.writable = False
+                table = r.table
+                table.pe_label.readable = table.pe_label.writable = False
+                table.missing.readable = table.missing.writable = False
 
                 # S3SQLCustomForm breaks popup return, so disable
                 s3db.clear_config("pr_person", "crud_form")
@@ -166,28 +165,27 @@ def person():
                             raise HTTP(404)
 
             elif r.id:
-                r.table.volunteer.readable = True
-                r.table.volunteer.writable = True
+                r.table.volunteer.readable = r.table.volunteer.writable = True
 
         return True
     s3.prep = prep
 
-    def postp(r, output):
-        if r.component_name == "saved_search" and r.method in (None, "search"):
-            s3_action_buttons(r)
-            s3.actions.append(
-                dict(url=URL(args=r.args + ["[id]", "load"]),
-                     label=str(T("Load")),
-                     _class="action-btn")
-            )
-        return output
-    s3.postp = postp
+    # def postp(r, output):
+        # if r.component_name == "saved_search" and r.method in (None, "search"):
+            # s3_action_buttons(r)
+            # s3.actions.append(
+                # dict(url=URL(args=r.args + ["[id]", "load"]),
+                     # label=str(T("Load")),
+                     # _class="action-btn")
+            # )
+        # return output
+    # s3.postp = postp
 
     s3db.configure("pr_group_membership",
                    list_fields=["id",
                                 "group_id",
                                 "group_head",
-                                "description"
+                                "description",
                                 ])
 
     # Basic tabs
@@ -203,7 +201,7 @@ def person():
             (T("Skills"), "competency"),
             (T("Training"), "training"),
             (T("Saved Searches"), "saved_search"),
-        ]
+            ]
 
     # Configuration tabs
     tabs.append((T("Map Settings"), "config"))

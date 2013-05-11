@@ -25,10 +25,10 @@
     WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
     OTHER DEALINGS IN THE SOFTWARE.
-
 """
 
 import os
+from itertools import chain
 
 try:
     import json # try stdlib (Python 2.6+)
@@ -40,8 +40,8 @@ except ImportError:
 
 from gluon import *
 from gluon.storage import Storage
-from gluon.tools import callback
 from gluon.sqlhtml import StringWidget
+from gluon.tools import callback
 from gluon.validators import Validator
 
 from gluon.contrib.simplejson.ordered_dict import OrderedDict
@@ -127,6 +127,105 @@ class S3SQLForm(object):
             return current.s3db.get_config(tablename, key, default)
         else:
             return default
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _submit_buttons(items):
+        """
+            Render custom submit buttons
+
+            @param items: list of tuples (<HTML name>, label, <HTML class>)
+            @return: list of additional submit buttons
+        """
+
+        buttons = []
+        for name, label, _class in items:
+            if isinstance(label, basestring):
+                label = current.T(label)
+            button = INPUT(_type="submit",
+                           _class="crud-submit-button",
+                           _name=name,
+                           _value=label)
+            if _class:
+                button.add_class(_class)
+            buttons.append(button)
+        return buttons
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _insert_subheadings(form, tablename, subheadings):
+        """
+            Insert subheadings into forms
+
+            @param form: the form
+            @param tablename: the tablename
+            @param subheadings: a dict of {"Headline": Fieldnames}, where
+                Fieldname can be either a single field name or a list/tuple
+                of field names belonging under that headline
+        """
+
+        if subheadings:
+            if tablename in subheadings:
+                subheadings = subheadings.get(tablename)
+            form_rows = iter(form[0])
+            tr = form_rows.next()
+            i = 0
+            done = []
+            while tr:
+                # @ToDo: We need a better way of working than this!
+                f = tr.attributes.get("_id", None)
+                if not f:
+                    try:
+                        # DIV-based form-style
+                        f = tr[0][0].attributes.get("_id", None)
+                        if not f:
+                            # DRRPP formstyle
+                            f = tr[0][0][1][0].attributes.get("_id", None)
+                            if not f:
+                                # Date fields are inside an extra TAG()
+                                f = tr[0][0][1][0][0].attributes.get("_id", None)
+                    except:
+                        # Something else
+                        f = None
+                if f:
+                    if f.startswith(tablename):
+                        f = f[len(tablename) + 1:] # : -6
+                        if f.startswith("sub_"):
+                            # Component
+                            f = f[4:]
+                    elif f.startswith("sub-default"):
+                        # S3SQLInlineComponent[CheckBox]
+                        f = f[11:]
+                    elif f.startswith("sub_"):
+                        # s3_checkboxes_widget
+                        f = f[4:]
+                    for k in subheadings.keys():
+                        if k in done:
+                            continue
+                        fields = subheadings[k]
+                        if not isinstance(fields, (list, tuple)):
+                            fields = [fields]
+                        if f in fields:
+                            done.append(k)
+                            if isinstance(k, int):
+                                # Don't display a section title
+                                repr = ""
+                            else:
+                                repr = k 
+                            form[0].insert(i, TR(TD(repr, _colspan=3,
+                                                    _class="subheading"),
+                                                 _class = "subheading",
+                                                 _id = "%s_%s__subheading" %
+                                                       (tablename, f)))
+                            tr.attributes.update(_class="after_subheading")
+                            tr = form_rows.next()
+                            i += 1
+                try:
+                    tr = form_rows.next()
+                except StopIteration:
+                    break
+                else:
+                    i += 1
 
 # =============================================================================
 class S3SQLDefaultForm(S3SQLForm):
@@ -224,6 +323,22 @@ class S3SQLDefaultForm(S3SQLForm):
         else:
             formstyle = settings.formstyle
 
+        # Submit buttons
+        if settings.custom_submit:
+            submit = [(None,
+                       settings.submit_button,
+                       settings.submit_style)]
+            submit.extend(settings.custom_submit)
+            buttons = self._submit_buttons(submit)
+        else:
+            buttons = ["submit"]
+
+        # Cancel button
+        if not readonly and s3.cancel:
+            buttons.append(A(current.T("Cancel"),
+                             _href=response.s3.cancel,
+                             _class="action-lnk"))
+
         # Generate the form
         if record is None:
             record = record_id
@@ -238,26 +353,22 @@ class S3SQLDefaultForm(S3SQLForm):
                        labels = labels,
                        formstyle = formstyle,
                        separator = "",
-                       submit_button = settings.submit_button)
+                       submit_button = settings.submit_button,
+                       buttons = buttons)
 
         # Style the Submit button, if-requested
-        if settings.submit_style:
+        if settings.submit_style and not settings.custom_submit:
             try:
                 form[0][-1][0][0]["_class"] = settings.submit_style
-            except TypeError:
-                # Submit button has been removed
+            except:
+                # Submit button has been removed or a different formstyle,
+                # such as Bootstrap (which is already styled anyway)
                 pass
 
         # Subheadings
         subheadings = options.get("subheadings", None)
         if subheadings:
-            self.insert_subheadings(form, tablename, subheadings)
-
-        # Cancel button
-        if not readonly and response.s3.cancel:
-            form[0][-1][0].append(A(current.T("Cancel"),
-                                    _href=response.s3.cancel,
-                                    _class="action-lnk"))
+            self._insert_subheadings(form, tablename, subheadings)
 
         # Process the form
         logged = False
@@ -496,10 +607,12 @@ class S3SQLDefaultForm(S3SQLForm):
                 errors = []
                 table = self.table
                 for fieldname in form.errors:
-                    if fieldname in table and \
-                       isinstance(table[fieldname].requires, IS_LIST_OF):
-                        errors.append("%s: %s" % (fieldname,
-                                                  form.errors[fieldname]))
+                    if fieldname in table:
+                        if isinstance(table[fieldname].requires, IS_LIST_OF):
+                            errors.append("%s: %s" % (fieldname,
+                                                      form.errors[fieldname]))
+                        else:
+                            errors.append(str(form.errors[fieldname]))
                 if errors:
                     error = "\n".join(errors)
 
@@ -509,63 +622,6 @@ class S3SQLDefaultForm(S3SQLForm):
                 error = current.T("Invalid form (re-opened in another window?)")
 
         return success, error
-
-    # -------------------------------------------------------------------------
-    # Utility functions
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def insert_subheadings(form, tablename, subheadings):
-        """
-            Insert subheadings into forms
-
-            @param form: the form
-            @param tablename: the tablename
-            @param subheadings: a dict of {"Headline": Fieldnames}, where
-                Fieldname can be either a single field name or a list/tuple
-                of field names belonging under that headline
-        """
-
-        if subheadings:
-            if tablename in subheadings:
-                subheadings = subheadings.get(tablename)
-            form_rows = iter(form[0])
-            tr = form_rows.next()
-            i = 0
-            done = []
-            while tr:
-                f = tr.attributes.get("_id", None)
-                if not f:
-                    try:
-                        # DIV-based form-style
-                        f = tr[0][0].attributes.get("_id", None)
-                    except:
-                        # Something else
-                        # @ToDo: Support DRRPP formstyle
-                        f = None
-                if f and f.startswith(tablename):
-                    f = f[len(tablename) + 1 : -6]
-                    for k in subheadings.keys():
-                        if k in done:
-                            continue
-                        fields = subheadings[k]
-                        if not isinstance(fields, (list, tuple)):
-                            fields = [fields]
-                        if f in fields:
-                            done.append(k)
-                            form[0].insert(i, TR(TD(k, _colspan=3,
-                                                    _class="subheading"),
-                                                 _class = "subheading",
-                                                 _id = "%s_%s__subheading" %
-                                                       (tablename, f)))
-                            tr.attributes.update(_class="after_subheading")
-                            tr = form_rows.next()
-                            i += 1
-                try:
-                    tr = form_rows.next()
-                except StopIteration:
-                    break
-                else:
-                    i += 1
 
 # =============================================================================
 class S3SQLCustomForm(S3SQLForm):
@@ -739,27 +795,79 @@ class S3SQLCustomForm(S3SQLForm):
             if a:
                 if a in noupdate:
                     f.writable = False
-                if not labels is None and f.name not in labels:
+                if labels is not None and f.name not in labels:
                     labels[f.name] = "%s:" % f.label
+
+        # Mark required subtable-fields (retaining override-labels)
+        if not readonly:
+            for alias in subtables:
+                if alias in rcomponents:
+                    component = rcomponents[alias]
+                    mark_required = component.get_config("mark_required", [])
+                    ctable = component.table
+                    sfields = dict([(n, (f.name, f.label))
+                                    for a, n, f in fields
+                                    if a == alias and n in ctable])
+                    slabels, h = s3_mark_required(
+                                    [ctable[n] for n in sfields],
+                                    mark_required=mark_required,
+                                    map_names=sfields)
+                    if labels:
+                        labels.update(slabels)
+                    else:
+                        labels = slabels
+
         self.subtables = [s for s in self.subtables if s not in forbidden]
 
         # Aggregate the form fields
         formfields = [f[-1] for f in fields]
 
+        # Submit buttons
+        if settings.custom_submit:
+            submit = [(None,
+                       settings.submit_button,
+                       settings.submit_style)]
+            submit.extend(settings.custom_submit)
+            buttons = self._submit_buttons(submit)
+        else:
+            buttons = ["submit"]
+
+        # Cancel button
+        if not readonly and s3.cancel:
+            buttons.append(A(current.T("Cancel"),
+                             _href=response.s3.cancel,
+                             _class="action-lnk"))
+
         # Render the form
+        tablename = self.tablename
         form = SQLFORM.factory(*formfields,
                                record = data,
                                showid = False,
                                labels = labels,
                                formstyle = formstyle,
-                               table_name = self.tablename,
+                               table_name = tablename,
                                upload = "default/download",
                                readonly = readonly,
                                separator = "",
-                               submit_button = settings.submit_button)
+                               submit_button = settings.submit_button,
+                               buttons = buttons)
+
+        # Style the Submit button, if-requested
+        if settings.submit_style and not settings.custom_submit:
+            try:
+                form[0][-1][0][0]["_class"] = settings.submit_style
+            except:
+                # Submit button has been removed or a different formstyle,
+                # such as Bootstrap (which is already styled anyway)
+                pass
+
+        # Subheadings
+        subheadings = options.get("subheadings", None)
+        if subheadings:
+            self._insert_subheadings(form, tablename, subheadings)
 
         # Process the form
-        formname = "%s/%s" % (self.tablename, record_id)
+        formname = "%s/%s" % (tablename, record_id)
         if form.accepts(request.post_vars,
                         current.session,
                         onvalidation=self.validate,
@@ -1419,6 +1527,38 @@ class S3SQLInlineComponent(S3SQLSubForm):
                 qfields.insert(0, pkey)
             qfields = [table[f] for f in qfields]
 
+            # Sort the component items
+            # @note: this is using a left join which can result in the same
+            # component record appearing multiple times if the orderby-selector
+            # gives multiple values per row, so make sure that the orderby-selector
+            # gives only one possible value per row, or otherwise rewrite this
+            # function to use S3Resource.select+extract with its more powerful
+            # orderby-logic!
+            orderby_rfield = None
+            orderby_dir = None
+            if "orderby" in self.options:
+                orderby = self.options["orderby"]
+                if isinstance(orderby, (list, tuple)):
+                    orderby, orderby_dir = orderby[:2]
+                else:
+                    orderby, orderby_dir = orderby, "asc"
+                try:
+                    orderby_rfield = component.resolve_selector(orderby)
+                except:
+                    orderby_rfield = None
+            left = None
+            if orderby_rfield is not None:
+                orderby = orderby_rfield.field
+                left = []
+                if orderby is not None:
+                    for joins in orderby_rfield.left.values():
+                        left.extend(joins)
+                    left = component.sortleft(left)
+                    if orderby_dir[:3].lower() == "des":
+                        orderby = ~orderby
+            else:
+                orderby = None
+
             items = []
             if record_id:
                 # Build the query
@@ -1431,7 +1571,9 @@ class S3SQLInlineComponent(S3SQLSubForm):
                     query &= f
 
                 # Get the rows:
-                rows = current.db(query).select(*qfields)
+                rows = current.db(query).select(*qfields,
+                                                left=left,
+                                                orderby=orderby)
 
                 permit = resource.permit
                 represent = current.manager.represent
@@ -1477,7 +1619,8 @@ class S3SQLInlineComponent(S3SQLSubForm):
                     "component": component_name,
                     "fields": headers,
                     "defaults": self._filterby_defaults(),
-                    "data": items}
+                    "data": items
+                    }
         else:
             raise AttributeError("Undefined component")
 
@@ -1526,8 +1669,6 @@ class S3SQLInlineComponent(S3SQLSubForm):
             @param attributes: keyword attributes for this widget
         """
 
-        self.upload = Storage()
-
         if value is None:
             value = field.default
         if isinstance(value, basestring):
@@ -1537,6 +1678,13 @@ class S3SQLInlineComponent(S3SQLSubForm):
             value = json.dumps(value)
         if data is None:
             raise SyntaxError("No resource structure information")
+
+        self.upload = Storage()
+
+        if self.options.multiple is False:
+            multiple = False
+        else:
+            multiple = True
 
         # Get the table
         resource = self.resource
@@ -1569,6 +1717,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
         audit = component.audit
         permit = component.permit
         tablename = component.tablename
+
         for i in xrange(len(items)):
             has_rows = True
             item = items[i]
@@ -1588,6 +1737,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
                                          editable=editable,
                                          deletable=deletable,
                                          readonly=True,
+                                         multiple=multiple,
                                          index=i,
                                          _id="read-row-%s" % rowname,
                                          _class="read-row inline-form")
@@ -1604,6 +1754,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
                                      editable=True,
                                      deletable=True,
                                      readonly=False,
+                                     multiple=multiple,
                                      index=0,
                                      _id="edit-row-%s" % formname,
                                      _class="edit-row inline-form hide")
@@ -1612,13 +1763,18 @@ class S3SQLInlineComponent(S3SQLSubForm):
         # Add-row
         permitted = permit("create", tablename)
         if permitted:
+            _class = "add-row inline-form"
+            if not multiple and has_rows:
+                _class = "%s hide" % _class
             has_rows = True
             add_row = self._render_item(table, None, fields,
                                         editable=True,
                                         deletable=True,
                                         readonly=False,
+                                        multiple=multiple,
                                         _id="add-row-%s" % formname,
-                                        _class="add-row inline-form")
+                                        _class=_class
+                                        )
             action_rows.append(add_row)
 
         # Empty edit row
@@ -1626,6 +1782,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
                                       editable=True,
                                       deletable=True,
                                       readonly=False,
+                                      multiple=multiple,
                                       index="default",
                                       _id="empty-edit-row-%s" % formname,
                                       _class="empty-row inline-form hide")
@@ -1636,6 +1793,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
                                       editable=True,
                                       deletable=True,
                                       readonly=True,
+                                      multiple=multiple,
                                       index="none",
                                       _id="empty-read-row-%s" % formname,
                                       _class="empty-row inline-form hide")
@@ -1647,7 +1805,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
                        _value = value,
                        requires=lambda v: (v, None))
         attr = StringWidget._attributes(field, default, **attributes)
-        attr["_class"] = attr["_class"] + " hide"
+        attr["_class"] = "%s hide" % attr["_class"]
         attr["_id"] = real_input
 
         if has_rows:
@@ -1698,12 +1856,6 @@ class S3SQLInlineComponent(S3SQLSubForm):
             # Don't render a subform for NONE
             return NONE
 
-        thead = self._render_headers(data,
-                                     readonly=True,
-                                     _class="label-row")
-
-        trs = []
-
         fields = data["fields"]
         items = data["data"]
 
@@ -1713,23 +1865,50 @@ class S3SQLInlineComponent(S3SQLSubForm):
         prefix, name = component.prefix, component.name
 
         xml_decode = current.xml.xml_decode
-        for item in items:
-            if "_id" in item:
-                record_id = item["_id"]
-            else:
-                continue
-            audit("read", prefix, name,
-                  record=record_id, representation="html")
-            trow = TR(_class="read-row")
-            for f in fields:
-                text = xml_decode(item[f["name"]]["text"])
-                trow.append(XML(xml_decode(text)))
-            trs.append(trow)
+        
+        if len(fields) == 1 and self.options.get("render_list", False):
 
-        return TABLE(thead,
-                     TBODY(trs),
-                     TFOOT(),
-                     _class="embeddedComponent")
+            # Render as comma-separated list of values (no header)
+            elements = []
+            for item in items:
+                if "_id" in item:
+                    record_id = item["_id"]
+                else:
+                    continue
+                audit("read", prefix, name,
+                      record=record_id, representation="html")
+                t = []
+                for f in fields:
+                    t.append([XML(xml_decode(item[f["name"]]["text"])), " "])
+                elements.append([TAG[""](list(chain.from_iterable(t))[:-1]), ", "])
+                
+            return DIV(list(chain.from_iterable(elements))[:-1],
+                       _class="embeddedComponent")
+
+        else:
+
+            # Render as table with each item in an individual row (+headers)
+            thead = self._render_headers(data,
+                                         readonly=True,
+                                         _class="label-row")
+            trs = []
+            for item in items:
+                if "_id" in item:
+                    record_id = item["_id"]
+                else:
+                    continue
+                audit("read", prefix, name,
+                    record=record_id, representation="html")
+                trow = TR(_class="read-row")
+                for f in fields:
+                    text = xml_decode(item[f["name"]]["text"])
+                    trow.append(XML(xml_decode(text)))
+                trs.append(trow)
+
+            return TABLE(thead,
+                         TBODY(trs),
+                         TFOOT(),
+                         _class="embeddedComponent")
 
     # -------------------------------------------------------------------------
     def accept(self, form, master_id=None, format=None):
@@ -1980,6 +2159,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
                      readonly=True,
                      editable=False,
                      deletable=False,
+                     multiple=True,
                      index="none",
                      **attributes):
         """
@@ -1991,6 +2171,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
             @param readonly: render a read-row (otherwise edit-row)
             @param editable: whether the record can be edited
             @param deletable: whether the record can be deleted
+            @param multiple: whether multiple records can be added
             @param index: the row index
             @param attributes: HTML attributes for the row
         """
@@ -2092,7 +2273,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
                 cnc = action(T("Cancel editing"),
                              "cancel.png", "cnc", index)
                 columns.append(cnc)
-            else:
+            elif multiple:
                 columns.append(TD())
                 add = action(T("Add this entry"),
                              "add.png", "add", index, throbber=True)
@@ -2458,16 +2639,15 @@ class S3SQLInlineComponentCheckbox(S3SQLInlineComponent):
         if data is None:
             raise SyntaxError("No resource structure information")
 
-        if "script" in self.options:
-            current.response.s3.jquery_ready.append(self.options.script)
-
         T = current.T
+        opts = self.options
 
-        if "cols" in self.options:
-            cols = self.options.cols
-        else:
-            cols = 1
+        cols = opts.get("cols", 1)
 
+        script = opts.get("script", None)
+        if script:
+            current.response.s3.jquery_ready.append(script)
+        
         field_name = field.name
 
         # Get the component resource
@@ -2486,8 +2666,14 @@ class S3SQLInlineComponentCheckbox(S3SQLInlineComponent):
         query = (table.deleted == False) & \
                 current.auth.s3_accessible_query("read", table)
 
-        if "filter" in self.options:
-            filter = self.options.filter
+        option_help = opts.get("option_help", None)
+        if option_help:
+            fields = [table.id, table.name, table[option_help]]
+        else:
+            fields = [table.id, table.name]
+
+        filter = opts.get("filter", None)
+        if filter:
             s3db = current.s3db
             linktable = s3db[filter["linktable"]]
             lkey = filter["lkey"]
@@ -2497,29 +2683,39 @@ class S3SQLInlineComponentCheckbox(S3SQLInlineComponent):
                 values = filter["values"]
             else:
                 # Option B - from record
-                parent = resource.parent
-                if parent:
+                lookuptable = filter.get("lookuptable", None)
+                if lookuptable:
                     # e.g. Project Community Activity Types filtered by Sector of parent Project
-                    _resource = parent
+                    lookupkey = filter.get("lookupkey", None)
+                    if not lookupkey:
+                        raise
+                    if resource._rows:
+                        id = resource._rows[0][lookupkey]
+                        _resource = s3db.resource(lookuptable, id=id)
+                    else:
+                        id = None
                 else:
                     # e.g. Project Themes filtered by Sector
-                    _resource = resource
-                if _resource._ids:
-                    id = _resource._ids[0]
+                    if resource._ids:
+                        id = resource._ids[0]
+                        _resource = resource
+                    else:
+                        id = None
+                if id:
                     _table = _resource.table
                     if rkey in _table.fields:
                         values = [_table[rkey]]
                     else:
                         found = False
-                        if parent:
-                            # Need to load component
-                            hooks = s3db.get_components(_table)
-                            for alias in hooks:
-                                if hooks[alias].rkey == rkey:
-                                    found = True
-                                    _resource._attach(alias, hooks[alias])
-                                    _component = _resource.components[alias]
-                                    break
+                        if lookuptable:
+                           # Need to load component
+                           hooks = s3db.get_components(_table)
+                           for alias in hooks:
+                               if hooks[alias].rkey == rkey:
+                                   found = True
+                                   _resource._attach(alias, hooks[alias])
+                                   _component = _resource.components[alias]
+                                   break
                         else:
                             # Components are already loaded
                             components = _resource.components
@@ -2540,11 +2736,10 @@ class S3SQLInlineComponentCheckbox(S3SQLInlineComponent):
             rows = []
             rappend = rows.append
             # All rows, whether or not in the link table
-            srows = current.db(query).select(table.id,
-                                             table.name,
-                                             linktable[rkey],
-                                             left=linktable.on(linktable[lkey] == table.id),
-                                             orderby=table.name)
+            fields.append(linktable[rkey])
+            srows = current.db(query).select(left=linktable.on(linktable[lkey] == table.id),
+                                             orderby=table.name,
+                                             *fields)
             for r in srows:
                 v = r[linktable][rkey]
                 # We want all all rows which have no entry in the linktable (no restrictions)
@@ -2553,22 +2748,27 @@ class S3SQLInlineComponentCheckbox(S3SQLInlineComponent):
                     _r = r[table]
                     record = Storage(id = _r.id,
                                      name = _r.name)
+                    if option_help:
+                        record[option_help] = _r[option_help]
                     rappend(record)
         else:
-            rows = current.db(query).select(table.id,
-                                            table.name,
-                                            orderby=table.name)
+            rows = current.db(query).select(orderby=table.name,
+                                            *fields)
         if not rows:
             widget = T("No options currently available")
         else:
-            tablename = component.tablename
-            permit = component.permit
-            creatable = permit("create", tablename)
+            if component.link:
+                # For link-table components, check the link table permissions
+                # rather than the component
+                component = component.link
+            creatable = component.permit("create", component.tablename)
             options = OrderedDict()
             for r in rows:
                 options[r.id] = dict(name=r.name,
                                      selected=False,
                                      editable=creatable)
+                if option_help:
+                    options[r.id]["help"] = r[option_help]
 
             # Which ones are currently selected?
             items = data["data"]
@@ -2603,11 +2803,17 @@ class S3SQLInlineComponentCheckbox(S3SQLInlineComponent):
 
             row_index = 0
             col_index = 0
-            
+
             for id in options:
-                option = options[id]
-                label = T(option["name"])
                 input_id = "id-%s-%s-%s" % (field_name, row_index, col_index)
+                option = options[id]
+                label = LABEL(T(option["name"]),
+                              _for=input_id,
+                              )
+                title = option.get("help", None)
+                if title:
+                    # Add help tooltip
+                    label["_title"] = title
                 widget = TD(INPUT(_disabled= not option["editable"],
                                   _id=input_id,
                                   _name=field_name,
@@ -2616,9 +2822,7 @@ class S3SQLInlineComponentCheckbox(S3SQLInlineComponent):
                                   hideerror=True,
                                   value=option["selected"],
                                   ),
-                            LABEL(label,
-                                  _for=input_id,
-                                  )
+                            label,
                             )
                 table[row_index].append(widget)
                 row_index += 1
@@ -2684,6 +2888,7 @@ class S3SQLInlineComponentCheckbox(S3SQLInlineComponent):
         audit = component.audit
         prefix, name = component.prefix, component.name
 
+        xml_decode = current.xml.xml_decode
         vals = []
         for item in items:
             if "_id" in item:
@@ -2692,10 +2897,11 @@ class S3SQLInlineComponentCheckbox(S3SQLInlineComponent):
                 continue
             audit("read", prefix, name,
                   record=record_id, representation="html")
-            vals.append(item[fieldname]["text"])
+            vals.append(XML(xml_decode(item[fieldname]["text"])))
 
         vals.sort()
-        represent = ", ".join(vals)
+        represent = TAG[""](list(chain.from_iterable(
+                                [[v, ", "] for v in vals]))[:-1])
         return TABLE(TBODY(TR(TD(represent),
                               #_class="read-row"
                               )),

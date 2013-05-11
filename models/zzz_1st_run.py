@@ -187,21 +187,21 @@ if len(pop_list) > 0:
     if has_module("msg"):
         # To read inbound email, set username (email address), password, etc.
         # here. Insert multiple records for multiple email sources.
-        db.msg_inbound_email_settings.insert(server = "imap.gmail.com",
-                                             protocol = "imap",
-                                             use_ssl = True,
-                                             port = 993,
-                                             username = "example-username",
-                                             password = "password",
-                                             delete_from_server = False
-                                             )
+        db.msg_email_inbound_channel.insert(server = "imap.gmail.com",
+                                            protocol = "imap",
+                                            use_ssl = True,
+                                            port = 993,
+                                            username = "example-username",
+                                            password = "password",
+                                            delete_from_server = False
+                                            )
         # Need entries for the Settings/1/Update URLs to work
-        db.msg_setting.insert( outgoing_sms_handler = "WEB_API" )
-        db.msg_modem_settings.insert( modem_baud = 115200 )
-        db.msg_api_settings.insert( to_variable = "to" )
-        db.msg_smtp_to_sms_settings.insert( address="changeme" )
-        db.msg_tropo_settings.insert( token_messaging = "" )
-        db.msg_twitter_settings.insert( pin = "" )
+        db.msg_sms_outbound_gateway.insert( outgoing_sms_handler = "WEB_API" )
+        db.msg_sms_modem_channel.insert( modem_baud = 115200 )
+        db.msg_sms_webapi_channel.insert( to_variable = "to" )
+        db.msg_sms_smtp_channel.insert( address="changeme" )
+        db.msg_tropo_channel.insert( token_messaging = "" )
+        db.msg_twitter_channel.insert( pin = "" )
 
     # Budget Module
     if has_module("budget"):
@@ -242,10 +242,15 @@ if len(pop_list) > 0:
     bi = s3base.S3BulkImporter()
 
     s3.import_role = bi.import_role
+    s3.import_image = bi.import_image
 
     # Disable table protection
     protected = s3mgr.PROTECTED
     s3mgr.PROTECTED = []
+
+    # Relax strict email-matching rule for import updates of person records
+    email_required = settings.get_pr_import_update_requires_email()
+    settings.pr.import_update_requires_email = False
 
     # Additional settings for user table imports:
     s3db.configure("auth_user",
@@ -261,7 +266,8 @@ if len(pop_list) > 0:
     grandTotalStart = datetime.datetime.now()
     for pop_setting in pop_list:
         start = datetime.datetime.now()
-        bi.clear_tasks()
+        # Clear Tasklist
+        bi.tasks = []
         # Import data specific to the prepopulate setting
         if isinstance(pop_setting, str):
             path = os.path.join(request.folder,
@@ -394,6 +400,9 @@ if len(pop_list) > 0:
 
     # Restore table protection
     s3mgr.PROTECTED = protected
+
+    # Restore setting for strict email-matching
+    settings.pr.import_update_requires_email = email_required
 
     # Restore Auth
     auth.override = False

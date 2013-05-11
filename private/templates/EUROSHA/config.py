@@ -2,7 +2,11 @@
 
 from gluon import current
 from gluon.storage import Storage
+
 from gluon.contrib.simplejson.ordered_dict import OrderedDict
+
+from s3 import s3forms
+
 settings = current.deployment_settings
 T = current.T
 
@@ -60,7 +64,7 @@ settings.fin.currencies = {
 }
 
 # Security Policy
-settings.security.policy = 7 # Realm w Hierarchy
+settings.security.policy = 8 # Delegations
 settings.security.map = True
 
 # Realm Entity (old)
@@ -72,6 +76,123 @@ settings.security.map = True
 #    else:
 #        return None
 #settings.auth.realm_entity = eurosha_realm_entity
+
+def eurosha_realm_entity(table, row):
+    """
+        Assign a Realm Entity to records
+    """
+
+    tablename = table._tablename
+
+    # Do not apply realms for Master Data
+    # @ToDo: Restore Realms and add a role/functionality support for Master Data  
+    if tablename in [#"hrm_certificate",
+                     "hrm_department",
+                     "hrm_job_role",
+                     "hrm_job_title",
+                     "hrm_course",
+                     "hrm_programme",
+                     ]:
+        return None
+
+    db = current.db
+    s3db = current.s3db
+
+    # Entity reference fields
+    EID = "pe_id"
+    #OID = "organisation_id"
+    SID = "site_id"
+    #GID = "group_id"
+    PID = "person_id"
+
+    # Owner Entity Foreign Key
+    realm_entity_fks = dict(pr_contact = EID,
+                            pr_physical_description = EID,
+                            pr_address = EID,
+                            pr_image = EID,
+                            pr_identity = PID,
+                            pr_education = PID,
+                            pr_note = PID,
+                            hrm_human_resource = SID,
+                            inv_recv = SID,
+                            inv_recv_item = "req_id",
+                            inv_send = SID,
+                            inv_track_item = "track_org_id",
+                            inv_adj_item = "adj_id",
+                            req_req_item = "req_id"
+                            )
+
+    # Default Foreign Keys (ordered by priority)
+    default_fks = ["catalog_id",
+                   "project_id",
+                   "project_location_id"
+                   ]
+
+    # Link Tables
+    realm_entity_link_table = dict(
+        project_task = Storage(tablename = "project_task_project",
+                               link_key = "task_id"
+                               )
+        )
+    if tablename in realm_entity_link_table:
+        # Replace row with the record from the link table
+        link_table = realm_entity_link_table[tablename]
+        table = s3db[link_table.tablename]
+        rows = db(table[link_table.link_key] == row.id).select(table.id,
+                                                               limitby=(0, 1))
+        if rows:
+            # Update not Create
+            row = rows.first()
+
+    # Check if there is a FK to inherit the realm_entity
+    realm_entity = 0
+    fk = realm_entity_fks.get(tablename, None)
+    for default_fk in [fk] + default_fks:
+        if default_fk in table.fields:
+            fk = default_fk
+            # Inherit realm_entity from parent record
+            if fk == EID:
+                ftable = s3db.pr_person
+                query = ftable[EID] == row[EID]
+            else:
+                ftablename = table[fk].type[10:] # reference tablename
+                ftable = s3db[ftablename]
+                query = (table.id == row.id) & \
+                        (table[fk] == ftable.id)
+            record = db(query).select(ftable.realm_entity,
+                                      limitby=(0, 1)).first()
+            if record:
+                realm_entity = record.realm_entity
+                break
+            #else:
+            # Continue to loop through the rest of the default_fks
+            # Fall back to default get_realm_entity function
+
+    # EUROSHA should never use User organsiation (since volunteers editing on behalf of other Orgs)
+    #use_user_organisation = False
+    ## Suppliers & Partners are owned by the user's organisation
+    #if realm_entity == 0 and tablename == "org_organisation":
+    #    ott = s3db.org_organisation_type
+    #    row = table[row.id]
+    #    row = db(table.organisation_type_id == ott.id).select(ott.name,
+    #                                                          limitby=(0, 1)
+    #                                                          ).first()
+    #    
+    #    if row and row.name != "Red Cross / Red Crescent":
+    #        use_user_organisation = True
+
+    ## Groups are owned by the user's organisation
+    #elif tablename in ["pr_group"]:
+    #    use_user_organisation = True
+
+    #user = current.auth.user
+    #if use_user_organisation and user:
+    #    # @ToDo - this might cause issues if the user's org is different from the realm that gave them permissions to create the Org 
+    #    realm_entity = s3db.pr_get_pe_id("org_organisation",
+    #                                     user.organisation_id)
+
+    return realm_entity
+settings.auth.realm_entity = eurosha_realm_entity
 
 # Set this if there will be multiple areas in which work is being done,
 # and a menu to select among them is wanted.
@@ -133,6 +254,104 @@ settings.project.multiple_organisations = True
 #    #4: T("Customer"), # T("Beneficiary")?
 #    5: T("Partner")
 #}
+
+settings.ui.crud_form_project_project = s3forms.S3SQLCustomForm(
+        "organisation_id",
+        "name",
+        "code",
+        "description",
+        "status_id",
+        "start_date",
+        "end_date",
+        #s3forms.S3SQLInlineComponentCheckbox(
+        #    "hazard",
+        #    label = T("Hazards"),
+        #    field = "hazard_id",
+        #    cols = 4,
+        #),
+        s3forms.S3SQLInlineComponentCheckbox(
+            "sector",
+            label = T("Sectors"),
+            field = "sector_id",
+            cols = 4,
+        ),
+        #s3forms.S3SQLInlineComponent(
+        #    "location",
+        #    label = T("Locations"),
+        #    fields = ["location_id"],
+        #),
+        s3forms.S3SQLInlineComponentCheckbox(
+            "theme",
+            label = T("Themes"),
+            field = "theme_id",
+            cols = 4,
+            # Filter Theme by Sector
+#            filter = {"linktable": "project_theme_sector",
+#                      "lkey": "theme_id",
+#                      "rkey": "sector_id",
+#                      },
+#            script = '''
+#S3OptionsFilter({
+# 'triggerName':'defaultsector-sector_id',
+# 'targetName':'defaulttheme-theme_id',
+# 'targetWidget':'defaulttheme-theme_id_widget',
+# 'lookupResource':'theme',
+# 'lookupURL':S3.Ap.concat('/project/theme_sector_widget?sector_ids='),
+# 'getWidgetHTML':true,
+# 'showEmptyField':false
+#})'''
+        ),
+        #"drr.hfa",
+        "objectives",
+        "human_resource_id",
+        # Partner Orgs
+        #s3forms.S3SQLInlineComponent(
+        #    "organisation",
+        #    name = "partner",
+        #    label = T("Partner Organizations"),
+        #    fields = ["organisation_id",
+        #              "comments",
+        #              ],
+        #    filterby = dict(field = "role",
+        #                    options = "2"
+        #                    )
+        #),
+        # Donors
+        #s3forms.S3SQLInlineComponent(
+        #    "organisation",
+        #    name = "donor",
+        #    label = T("Donor(s)"),
+        #    fields = ["organisation_id",
+        #              "amount",
+        #              "currency"],
+        #    filterby = dict(field = "role",
+        #                    options = "3"
+        #                    )
+        #),
+        #"budget",
+        #"currency",
+        "comments",
+    )
+
+settings.ui.crud_form_project_location = s3forms.S3SQLCustomForm(
+        "project_id",
+        "location_id",
+        # @ToDo: Grouped Checkboxes
+        s3forms.S3SQLInlineComponentCheckbox(
+            "activity_type",
+            label = T("Activity Types"),
+            field = "activity_type_id",
+            cols = 3,
+            # Filter Activity Type by Sector
+            #filter = {"linktable": "project_activity_type_sector",
+            #          "lkey": "activity_type_id",
+            #          "rkey": "sector_id",
+            #          "lookuptable": "project_project",
+            #          "lookupkey": "project_id",
+            #          },
+        ),
+        "comments",
+    )
 
 # Comment/uncomment modules here to disable/enable them
 settings.modules = OrderedDict([
@@ -267,5 +486,10 @@ settings.modules = OrderedDict([
            restricted = True,
            module_type = 10,
        )),
-
+    ("stats", Storage(
+            name_nice = "Stats",
+            #description = "Needed for Project Benficiaries",
+            restricted = True,
+            module_type = None
+        )),
 ])

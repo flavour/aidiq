@@ -2,12 +2,14 @@
  * Used by the Map (modules/s3gis.py)
  * This script is in Static to allow caching
  * Dynamic constants (e.g. Internationalised strings) are set in server-generated script
+ *
+ * @ToDo: Restructure as more of a class so less methods are visible to the global scope
+ *
  */
 
 /* Global vars */
+// @ToDo: Allow more than 1 map/page by not having this be a global
 var map;
-// @ToDo: move this to S3.gis when restoring this
-//var printProvider;
 S3.gis.layers_all = new Array();
 S3.gis.format_geojson = new OpenLayers.Format.GeoJSON();
 S3.gis.dirs = new Array();
@@ -21,8 +23,11 @@ OpenLayers.Util.onImageLoadErrorColor = 'transparent';
 OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
 // See http://crschmidt.net/~crschmidt/spherical_mercator.html#reprojecting-points
 S3.gis.proj4326 = new OpenLayers.Projection('EPSG:4326');
+// This global only used in this file (to do transforms before the map is instantiated)
 S3.gis.projection_current = new OpenLayers.Projection('EPSG:' + S3.gis.projection);
 S3.gis.options = {
+    // We will add these ourselves later for better control
+    controls: [],
     displayProjection: S3.gis.proj4326,
     projection: S3.gis.projection_current,
     // Use Manual stylesheet download (means can be done in HEAD to not delay pageload)
@@ -49,7 +54,7 @@ function registerPlugin(plugin) {
 }
 
 /* Main Start Function
-   - called by yepnope callback */
+   - called by yepnope callback in s3.gis.loader */
 //Ext.onReady(function() {
 //    S3.gis.show_map();
 //}
@@ -62,21 +67,22 @@ S3.gis.show_map = function() {
         s3_gis_setCenter(S3.gis.bottom_left, S3.gis.top_right);
     }
 
-    //Ext.onReady(function() {
-        // Build the OpenLayers map
-        addMap();
+    // Build the OpenLayers map
+    addMap();
 
-        // Add the GeoExt UI
-        addMapUI();
+    // Add the GeoExt UI
+    addMapUI();
 
-        // If we were instantiated with bounds, use these now
-        if ( S3.gis.bounds ) {
-            map.zoomToExtent(S3.gis.bounds);
-        }
+    // If we were instantiated with bounds, use these now
+    if ( S3.gis.bounds ) {
+        map.zoomToExtent(S3.gis.bounds);
+    }
 
-        // Toolbar Tooltips
-        Ext.QuickTips.init();
-    //}
+    // Toolbar Tooltips
+    Ext.QuickTips.init();
+    
+    // Return the map object (ready to be able to have this not be a global)
+    return map;
 };
 
 // Configure the Viewport
@@ -109,9 +115,9 @@ function addMap() {
 // Add the GeoExt UI
 function addMapUI() {
     S3.gis.mapPanel = new GeoExt.MapPanel({
+        //cls: 'mappanel',
         height: S3.gis.map_height,
         width: S3.gis.map_width,
-        id: 'mappanel',
         xtype: 'gx_mappanel',
         map: map,
         center: S3.gis.center,
@@ -151,15 +157,10 @@ function addMapUI() {
         }
     }
 
-    // Print Panel (currently still defined in modules/s3/s3gis.py)
-    if (S3.gis.printFormPanel) {
-        items.push(S3.gis.printFormPanel);
-    }
-
     // Legend Panel
     if (i18n.gis_legend) {
        S3.gis.legendPanel = new GeoExt.LegendPanel({
-            id: 'legendpanel',
+            //cls: 'legendpanel',
             title: i18n.gis_legend,
             defaults: {
                 labelCls: 'mylabel',
@@ -175,14 +176,14 @@ function addMapUI() {
     }
 
     // Plugins
-    for ( var j = 0; j < S3.gis.plugins.length; ++j ) {
+    for (var j = 0, len = S3.gis.plugins.length; j < len; ++j) {
         S3.gis.plugins[j].setup(map);
         S3.gis.plugins[j].addToMapWindow(items);
     }
 
     // West Panel
     S3.gis.mapWestPanel = new Ext.Panel({
-        id: 'tools',
+        cls: 'map_tools',
         header: false,
         border: false,
         split: true,
@@ -223,7 +224,6 @@ function addMapUI() {
             }
         });
     });
-
 }
 
 // Put into a Container to allow going fullscreen from a BorderLayout
@@ -251,11 +251,21 @@ function addWestPanel() {
 function addMapPanelContainer() {
     if (S3.gis.toolbar) {
         addToolbar();
+    } else {
+        // Enable Controls which we may want independent of the Toolbar
+        if (S3.gis.draw_feature) {
+            if (S3.gis.draw_feature == 'active') {
+                var active = true;
+            } else {
+                var active = false;
+            }
+            addPointControl(null, active);
+        }
     }
     S3.gis.mapPanelContainer = new Ext.Panel({
         layout: 'card',
         region: 'center',
-        id: 'mappnlcntr',
+        cls: 'mappnlcntr',
         defaults: {
             // applied to each contained panel
             border: false
@@ -284,9 +294,13 @@ function addMapPanel() {
     addMapPanelContainer();
 
     S3.gis.mapWin = new Ext.Panel({
-        id: 'gis-map-panel',
+        // Render to an ID => max 1 map/page
+        // Alternative is fragile to make generic:
+        // var parent = Ext.get('IdOfParent'); e.g. 'container' or 'home'
+        // var elems = parent.select('div.map_panel').elements;
         renderTo: 'map_panel',
         autoScroll: true,
+        //cls: 'gis-map-panel',
         //maximizable: true,
         titleCollapse: true,
         height: S3.gis.map_height,
@@ -306,7 +320,7 @@ function addMapWindow() {
     addMapPanelContainer();
 
     var mapWin = new Ext.Window({
-        id: 'gis-map-window',
+        cls: 'gis-map-window',
         collapsible: false,
         constrain: true,
         closable: !S3.gis.windowNotClosable,
@@ -414,7 +428,7 @@ function addLayerTree() {
     }
 
     S3.gis.layerTree = new Ext.tree.TreePanel({
-        id: 'treepanel',
+        //cls: 'treepanel',
         title: i18n.gis_layers,
         loader: new Ext.tree.TreeLoader({applyLoader: false}),
         root: treeRoot,
@@ -454,7 +468,7 @@ function addWMSBrowser() {
         })
     });
     S3.gis.wmsBrowser = new Ext.tree.TreePanel({
-        id: 'wmsbrowser',
+        //cls: 'wmsbrowser',
         title: S3.gis.wms_browser_name,
         root: root,
         rootVisible: false,
@@ -484,7 +498,7 @@ function addToolbar() {
 
     //var toolbar = S3.gis.mapPanelContainer.getTopToolbar();
     var toolbar = new Ext.Toolbar({
-        id: 'gis_toolbar',
+        //cls: 'gis_toolbar',
         // Height needed for the Throbber
         height: 34
     });
@@ -518,11 +532,11 @@ function addToolbar() {
     var polygon_pressed;
     var pan_pressed;
     var point_pressed;
-    if (S3.gis.draw_polygon == "active") {
+    if (S3.gis.draw_polygon == 'active') {
         polygon_pressed = true;
         pan_pressed = false;
         point_pressed = false;
-    } else if (S3.gis.draw_feature == "active") {
+    } else if (S3.gis.draw_feature == 'active') {
         point_pressed = true;
         pan_pressed = false;
         polygon_pressed = false;
@@ -721,8 +735,7 @@ function addToolbar() {
             tag: 'img',
             src: S3.gis.ajax_loader
         },
-        cls: 'hide',
-        id: 'layer_throbber'
+        cls: 'layer_throbber hide'
     });
     toolbar.add(throbber);
     

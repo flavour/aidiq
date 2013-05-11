@@ -40,8 +40,8 @@ if not auth.permission.has_permission("read"):
 # =============================================================================
 # Menus
 #
-from eden.layouts import *
-import eden.menus as default_menus
+from s3layouts import *
+import s3menus as default_menus
 
 S3MainMenu = default_menus.S3MainMenu
 S3OptionsMenu = default_menus.S3OptionsMenu
@@ -254,25 +254,32 @@ def s3_rest_controller(prefix=None, resourcename=None, **attr):
         ondelete                Function after record deletion
     """
 
+    # Customise Controller from Template
+    attr = settings.ui_customize("%s_%s" % (prefix or request.controller,
+                                            resourcename or request.function),
+                                 **attr)
+
     # Parse the request
     r = s3_request(prefix, resourcename)
 
-    # Set method handlers
-    method = r.method
+    # Configure standard method handlers
     set_handler = r.set_handler
     set_handler("barchart", s3_barchart)
-    set_handler("compose", s3base.S3Compose())
+    set_handler("compose", s3base.S3Compose)
+    # @ToDo: Make work in Component Tabs:
     set_handler("copy", lambda r, **attr: \
-                        redirect(URL(args="create",
-                                     vars={"from_record":r.id})))
-    set_handler("import", s3base.S3Importer())
-    set_handler("map", lambda r, **attr: s3base.S3Map()(r, **attr))
-    set_handler("report", s3base.S3Report())
-    set_handler("deduplicate", s3base.S3Merge())
-
-    if method == "import" and \
-       r.representation == "pdf":
-        # Don't load S3PDF unless needed (very slow import with Reportlab)
+                               redirect(URL(args="create",
+                                            vars={"from_record":r.id})))
+    set_handler("deduplicate", s3base.S3Merge)
+    set_handler("filter", s3base.S3Filter)
+    set_handler("import", s3base.S3Importer)
+    set_handler("map", s3base.S3Map)
+    set_handler("profile", s3base.S3Profile)
+    set_handler("report", s3base.S3Report)
+    
+    # Don't load S3PDF unless needed (very slow import with Reportlab)
+    method = r.method
+    if method == "import" and r.representation == "pdf":
         from s3.s3pdf import S3PDF
         set_handler("import", S3PDF(),
                     http = ["GET", "POST"],
@@ -294,7 +301,7 @@ def s3_rest_controller(prefix=None, resourcename=None, **attr):
     output = r(**attr)
 
     if isinstance(output, dict) and \
-       (not method or method in ("report", "search")):
+       (not method or method in ("report", "search", "datatable")):
         if s3.actions is None:
 
             # Add default action buttons
@@ -328,7 +335,10 @@ def s3_rest_controller(prefix=None, resourcename=None, **attr):
                               copyable=copyable,
                               editable=editable,
                               read_url=open_url,
-                              update_url=open_url)
+                              update_url=open_url
+                              # To use modals
+                              #update_url="%s.popup?refresh=list" % open_url
+                              )
 
             # Override Add-button, link to native controller and put
             # the primary key into vars for automatic linking

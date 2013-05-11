@@ -47,6 +47,7 @@ __all__ = ["single_phone_number_pattern",
            "IS_NOT_ONE_OF",
            "IS_LOCATION",
            "IS_LOCATION_SELECTOR",
+           "IS_LOCATION_SELECTOR2",
            "IS_SITE_SELECTOR",
            "IS_ACL",
            "IS_ADD_PERSON_WIDGET",
@@ -60,14 +61,24 @@ import re
 import time
 from datetime import datetime, timedelta
 
+try:
+    import json # try stdlib (Python 2.6)
+except ImportError:
+    try:
+        import simplejson as json # try external module
+    except:
+        import gluon.contrib.simplejson as json # fallback to pure-Python module
+
 from gluon import *
 #from gluon import current
 #from gluon.dal import Field
 #from gluon.validators import IS_DATE_IN_RANGE, IS_MATCH, IS_NOT_IN_DB, IS_IN_SET, IS_INT_IN_RANGE, IS_FLOAT_IN_RANGE, IS_EMAIL
 from gluon.languages import lazyT
-from gluon.validators import Validator
 from gluon.storage import Storage
+from gluon.validators import Validator
 
+from s3utils import S3DateTime, s3_unicode
+    
 def translate(text):
     if text is None:
         return None
@@ -77,8 +88,6 @@ def translate(text):
             return str(current.T(text))
     return str(text)
 
-from s3utils import S3DateTime, s3_unicode
-    
 def options_sorter(x, y):
     return (s3_unicode(x[1]).upper() > s3_unicode(y[1]).upper() and 1) or -1
 
@@ -431,6 +440,7 @@ class IS_ONE_OF_EMPTY(Validator):
                  filter_opts=None,
                  not_filterby=None,
                  not_filter_opts=None,
+                 realms=None,
                  updateable=False,
                  instance_types=None,
                  error_message="invalid value!",
@@ -441,7 +451,7 @@ class IS_ONE_OF_EMPTY(Validator):
                  zero="",
                  sort=True,
                  _and=None,
-                ):
+                 ):
         """
             Validator for foreign keys.
 
@@ -456,6 +466,8 @@ class IS_ONE_OF_EMPTY(Validator):
             @param not_filterby: a field in the referenced table to filter by
             @param not_filter_opts: values for not_filterby field which indicate
                                     records to exclude
+            @param realms: only include records belonging to the listed realms
+                           (if None, all readable records will be included)
             @param updateable: only include records in the referenced table which
                                can be updated by the user (if False, all readable
                                records will be included)
@@ -542,6 +554,7 @@ class IS_ONE_OF_EMPTY(Validator):
         self.not_filterby = not_filterby
         self.not_filter_opts = not_filter_opts
 
+        self.realms = realms
         self.updateable = updateable
         self.instance_types = instance_types
 
@@ -595,7 +608,17 @@ class IS_ONE_OF_EMPTY(Validator):
                                                     instance_types=self.instance_types)
 
                 if "deleted" in table:
-                    query = ((table["deleted"] == False) & query)
+                    query &= (table["deleted"] == False)
+
+                # Realms filter?
+                if self.realms:
+                    auth = current.auth
+                    if auth.is_logged_in() and \
+                       auth.get_system_roles().ADMIN in auth.user.realms:
+                        # Admin doesn't filter
+                        pass
+                    else:
+                        query &= auth.permission.realm_query(table, self.realms)
 
                 all_fields = [str(f) for f in fields]
 
@@ -668,7 +691,7 @@ class IS_ONE_OF_EMPTY(Validator):
                     labels = [d.get(r[self.kfield], d[None]) for r in records]
                 else:
                     # Standard representation function
-                    labels = map(label, [], records)
+                    labels = map(label, records)
             except TypeError:
                 if isinstance(label, str):
                     labels = map(lambda r: label % dict(r), records)
@@ -848,11 +871,11 @@ class IS_ONE_OF(IS_ONE_OF_EMPTY):
         Extends IS_ONE_OF_EMPTY by restoring the 'options' method.
     """
 
-    def options(self):
+    def options(self, zero=True):
 
         self.build_set()
         items = zip(self.theset, self.labels)
-        if self.zero != None and not self.multiple:
+        if zero and self.zero is not None and not self.multiple:
             items.insert(0, ("", self.zero))
         return items
 
@@ -863,7 +886,7 @@ class IS_ONE_OF_EMPTY_SELECT(IS_ONE_OF_EMPTY):
         Extends IS_ONE_OF_EMPTY by displaying an empty SELECT (instead of INPUT)
     """
 
-    def options(self):
+    def options(self, zero=True):
         return [("", "")]
 
 # =============================================================================
@@ -905,40 +928,36 @@ class IS_NOT_ONE_OF(IS_NOT_IN_DB):
 class IS_LOCATION(Validator):
     """
         Allow all locations, or locations by level.
-
-        Optimized for use within the S3LocationSelectorWidget's L0 Dropdown.
     """
 
     def __init__(self,
                  level = None,
                  error_message = None
-                ):
-        T = current.T
+                 ):
         self.level = level # can be a List or a single element
-        self.error_message = error_message or T("Invalid Location!")
+        self.error_message = error_message
 
     # -------------------------------------------------------------------------
     def __call__(self, value):
-        db = current.db
-        table = db.gis_location
-        level = self.level
 
-        if level and level == "L0":
+        level = self.level
+        if level == "L0":
             # Use cached countries. This returns name if id is for a country.
-            have_location = gis.get_country(value)
+            ok = current.gis.get_country(value)
         else:
+            db = current.db
+            table = db.gis_location
             query = (table.id == value) & (table.deleted == False)
             if level:
                 if isinstance(level, list):
                     query = query & (table.level.belongs(level))
                 else:
                     query = query & (table.level == level)
-            have_location = db(query).select(table.id,
-                                             limitby=(0, 1)).first()
-        if have_location:
+            ok = db(query).select(table.id, limitby=(0, 1))
+        if ok:
             return (value, None)
         else:
-            return (value, self.error_message)
+            return (value, self.error_message or current.T("Invalid Location!"))
 
 # =============================================================================
 class IS_LOCATION_SELECTOR(Validator):
@@ -952,7 +971,7 @@ class IS_LOCATION_SELECTOR(Validator):
 
     def __init__(self,
                  error_message = None,
-                ):
+                 ):
         self.error_message = error_message
         self.errors = Storage()
         self.id = None
@@ -1484,23 +1503,136 @@ class IS_LOCATION_SELECTOR(Validator):
         if form.errors:
             self.errors = form.errors
             return None
-        location = Storage(
-                        name=name,
-                        lat=vars.lat,
-                        lon=vars.lon,
-                        inherited=vars.inherited,
-                        street=street,
-                        postcode=postcode,
-                        parent=parent,
-                        wkt = vars.wkt,
-                        gis_feature_type = vars.gis_feature_type,
-                        lon_min = vars.lon_min,
-                        lon_max = vars.lon_max,
-                        lat_min = vars.lat_min,
-                        lat_max = vars.lat_max
-                      )
+        location = Storage(name=name,
+                           lat=vars.lat,
+                           lon=vars.lon,
+                           inherited=vars.inherited,
+                           street=street,
+                           postcode=postcode,
+                           parent=parent,
+                           wkt = vars.wkt,
+                           gis_feature_type = vars.gis_feature_type,
+                           lon_min = vars.lon_min,
+                           lon_max = vars.lon_max,
+                           lat_min = vars.lat_min,
+                           lat_max = vars.lat_max
+                           )
 
         return location
+
+# =============================================================================
+class IS_LOCATION_SELECTOR2(Validator):
+    """
+        Designed for use within the S3LocationSelectorWidget2.
+        For Create forms, this will create a new location if there is a Lat/Lon submitted
+        For Update forms, this will check that we have a valid location_id FK and update any changes
+
+        @ToDo: Audit
+    """
+
+    def __init__(self,
+                 levels=["L1", "L2", "L3"],
+                 error_message = None,
+                 ):
+        self.levels = levels
+        self.error_message = error_message
+
+    # -------------------------------------------------------------------------
+    def __call__(self, value):
+
+        vars = current.request.post_vars
+        lat = vars.get("lat", None)
+        lon = vars.get("lon", None)
+        parent = vars.get("parent", None)
+        # Rough check for valid Lat/Lon
+        # @ToDo: Detailed bounds-check later
+        errors = Storage()
+        if lat:
+            try:
+                lat = float(lat)
+            except ValueError:
+                errors["lat"] = current.T("Latitude is Invalid!")
+        if lon:
+            try:
+                lon = float(lon)
+            except ValueError:
+                errors["lon"] = current.T("Longitude is Invalid!")
+        if errors:
+            return (value, errors)
+
+        if lat and lon:
+            # Specific Location
+            db = current.db
+            table = db.gis_location
+            if value == "dummy":
+                # Create form
+                if not current.auth.s3_has_permission("create", table):
+                    return (None, current.auth.messages.access_denied)
+                vars = Storage(lat=lat,
+                               lon=lon,
+                               parent=parent,
+                               )
+                # onvalidation
+                form = Storage()
+                form.errors = errors
+                form.vars = vars
+                current.s3db.gis_location_onvalidation(form)
+                if form.errors:
+                    errors = form.errors
+                    error = ""
+                    for e in errors:
+                        error = "%s\n%s" % (error, errors[e]) if error else errors[e]
+                    return (None, error)
+                id = table.insert(**vars)
+                vars.id = id
+                # onaccept
+                current.gis.update_location_tree(vars)
+                return (id, None)
+            else:
+                # This must be an Update form
+                if not current.auth.s3_has_permission("update", table, record_id=value):
+                    return (value, current.auth.messages.access_denied)
+                # Check that this is a valid location_id
+                query = (table.id == value) & \
+                        (table.deleted == False) & \
+                        (table.level == None) # NB Specific Locations only
+                location = db(query).select(table.lat,
+                                            table.lon,
+                                            table.parent,
+                                            limitby=(0, 1)).first()
+                if location:
+                    # @ToDo: Allow amending the Parent
+                    if lat != location.lat or \
+                       lon != location.lon or \
+                       parent != location.parent:
+                        vars = Storage(lat=lat,
+                                       lon=lon,
+                                       parent=parent,
+                                       )
+                        # onvalidation
+                        form = Storage()
+                        form.errors = errors
+                        form.vars = vars
+                        current.s3db.gis_location_onvalidation(form)
+                        if form.errors:
+                            errors = form.errors
+                            error = ""
+                            for e in errors:
+                                error = "%s\n%s" % (error, errors[e]) if error else errors[e]
+                            return (None, error)
+                        # Update the record
+                        db(table.id == value).update(**vars)
+                        # Update location tree in case parent has changed
+                        vars.id = value
+                        # onaccept
+                        current.gis.update_location_tree(vars)
+                    return (value, None)
+                else:
+                    return (value, self.error_message or current.T("Invalid Location!"))
+        else:
+            # Lx
+            # - do a simple Location check
+            return IS_LOCATION(level=self.levels)(value)
 
 # =============================================================================
 class IS_SITE_SELECTOR(IS_LOCATION_SELECTOR):
@@ -1631,12 +1763,13 @@ class IS_ADD_PERSON_WIDGET(Validator):
         db = current.db
         s3db = current.s3db
         request = current.request
-        settings = current.deployment_settings
 
-        try:
-            person_id = int(value)
-        except:
-            person_id = None
+        person_id = None
+        if value:
+            try:
+                person_id = int(value)
+            except:
+                pass
 
         ptable = db.pr_person
         ctable = db.pr_contact
@@ -1651,7 +1784,8 @@ class IS_ADD_PERSON_WIDGET(Validator):
 
             # No email?
             if not value:
-                email_required = settings.get_hrm_email_required()
+                email_required = \
+                    current.deployment_settings.get_hrm_email_required()
                 if email_required:
                     return (value, error_message)
                 return (value, None)
@@ -1678,6 +1812,9 @@ class IS_ADD_PERSON_WIDGET(Validator):
             return value, None
 
         if request.env.request_method == "POST":
+            if "import" in request.args:
+                # Widget Validator not appropriate for this context
+                return (person_id, None)
             _vars = request.post_vars
             mobile = _vars["mobile_phone"]
             if mobile:
@@ -1703,7 +1840,8 @@ class IS_ADD_PERSON_WIDGET(Validator):
                     db(query).update(**data)
 
                 # Update the contact information & details
-                record = db(query).select(ptable.pe_id, limitby=(0, 1)).first()
+                record = db(query).select(ptable.pe_id,
+                                          limitby=(0, 1)).first()
                 if record:
                     pe_id = record.pe_id
 
@@ -1835,6 +1973,11 @@ class IS_PROCESSED_IMAGE(Validator):
         self.upload_path = upload_path
 
     def __call__(self, value):
+
+        if current.response.s3.bulk:
+            # Pointless in imports
+            return value, None
+        
         r = current.request
         vars = r.post_vars
 
@@ -2289,7 +2432,7 @@ class IS_IN_SET_LAZY(Validator):
             self.theset = []
 
     # -------------------------------------------------------------------------
-    def options(self):
+    def options(self, zero=True):
         if not self.theset:
             self._make_theset()
         if not self.labels:
@@ -2298,7 +2441,7 @@ class IS_IN_SET_LAZY(Validator):
             items = [(k, self.labels[i]) for (i, k) in enumerate(self.theset)]
         if self.sort:
             items.sort(options_sorter)
-        if self.zero != None and not self.multiple:
+        if zero and not self.zero is None and not self.multiple:
             items.insert(0, ("", self.zero))
         return items
 

@@ -29,6 +29,7 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
+import collections
 import datetime
 import os
 import re
@@ -45,10 +46,12 @@ except ImportError:
         import gluon.contrib.simplejson as json # fallback to pure-Python module
 
 from gluon import *
-from gluon.storage import Storage
 from gluon.dal import Row
 from gluon.sqlhtml import SQLTABLE
+from gluon.storage import Storage
 from gluon.tools import Crud
+from gluon.languages import lazyT
+
 from gluon.contrib.simplejson.ordered_dict import OrderedDict
 
 DEBUG = False
@@ -123,7 +126,8 @@ def s3_mark_required(fields,
                      mark_required=[],
                      label_html=(lambda field_label:
                                  DIV("%s:" % field_label,
-                                     SPAN(" *", _class="req")))):
+                                     SPAN(" *", _class="req"))),
+                     map_names=None):
     """
         Add asterisk to field label if a field is required
 
@@ -140,18 +144,22 @@ def s3_mark_required(fields,
     # Do we have any required fields?
     _required = False
     for field in fields:
+        if map_names:
+            fname, flabel = map_names[field.name]
+        else:
+            fname, flabel = field.name, field.label
         if field.writable:
             validators = field.requires
             if isinstance(validators, IS_EMPTY_OR) and field.name not in mark_required:
                 # Allow notnull fields to be marked as not required
                 # if we populate them onvalidation
-                labels[field.name] = "%s:" % field.label
+                labels[fname] = "%s:" % flabel
                 continue
             else:
                 required = field.required or field.notnull or \
                             field.name in mark_required
             if not validators and not required:
-                labels[field.name] = "%s:" % field.label
+                labels[fname] = "%s:" % flabel
                 continue
             if not required:
                 if not isinstance(validators, (list, tuple)):
@@ -177,11 +185,11 @@ def s3_mark_required(fields,
                             break
             if required:
                 _required = True
-                labels[field.name] = label_html(field.label)
+                labels[fname] = label_html(flabel)
             else:
-                labels[field.name] = "%s:" % field.label
+                labels[fname] = "%s:" % flabel
         else:
-            labels[field.name] = "%s:" % field.label
+            labels[fname] = "%s:" % flabel
 
     if labels:
         return (labels, _required)
@@ -448,7 +456,7 @@ def s3_comments_represent(text, show_link=True):
         represent = DIV(
                         DIV(text,
                             _id=unique,
-                            _class="hide popup",
+                            _class="hide showall",
                             _onmouseout="$('#%s').hide();" % unique
                            ),
                         A("%s..." % text[:76],
@@ -468,11 +476,13 @@ def s3_url_represent(url):
     return A(url, _href=url, _target="blank")
 
 # =============================================================================
-def s3_avatar_represent(id, tablename="auth_user", _class="avatar"):
+def s3_avatar_represent(id, tablename="auth_user", **attr):
     """
         Represent a User as their profile picture or Gravatar
 
-        @todo: parameter description?
+        @param tablename: either "auth_user" or "pr_person" depending on which
+                          table the 'id' refers to
+        @param attr: additional HTML attributes for the IMG(), such as _class
     """
 
     db = current.db
@@ -534,11 +544,13 @@ def s3_avatar_represent(id, tablename="auth_user", _class="avatar"):
     else:
         url = "http://www.gravatar.com/avatar/00000000000000000000000000000000?d=mm"
 
-    return IMG(_src=url,
-               _class=_class,
-               _width=size[0],
-               _height=size[1],
-              )
+    if "_class" not in attr:
+        attr["_class"] = "avatar"
+    if "_width" not in attr:
+        attr["_width"] = size[0]
+    if "_height" not in attr:
+        attr["_height"] = size[1]
+    return IMG(_src=url, **attr)
 
 # =============================================================================
 def s3_auth_user_represent(id, row=None):
@@ -562,23 +574,23 @@ def s3_auth_user_represent(id, row=None):
         return current.messages.UNKNOWN_OPT
 
 # =============================================================================
-def s3_auth_user_represent_name(id):
+def s3_auth_user_represent_name(id, row=None):
     """
         Represent users by their names
     """
 
-    if not id:
-        return current.messages["NONE"]
-
-    db = current.db
-    table = db.auth_user
-    user = db(table.id == id).select(table.first_name,
-                                     table.last_name,
-                                     limitby=(0, 1)).first()
+    if not row:
+        if not id:
+            return current.messages["NONE"]
+        db = current.db
+        table = db.auth_user
+        row = db(table.id == id).select(table.first_name,
+                                        table.last_name,
+                                        limitby=(0, 1)).first()
     try:
-        return s3_format_fullname(user.first_name.strip(),
+        return s3_format_fullname(row.first_name.strip(),
                                   None,
-                                  user.last_name.strip())
+                                  row.last_name.strip())
     except:
         return current.messages.UNKNOWN_OPT
 
@@ -611,33 +623,6 @@ def s3_auth_group_represent(opt):
     if not roles:
         return current.messages["NONE"]
     return ", ".join(roles)
-
-# =============================================================================
-def s3_represent_multi_id(table):
-    """
-        Returns a represent function for a list:reference field.
-        @param: table - the table within which to lookup the values
-    """
-
-    def represent(ids):
-        if not ids:
-            return current.messages["NONE"]
-
-        ids = [ids] if type(ids) is not list else ids
-
-        rows = current.db(table.id.belongs(ids)).select(table.name)
-
-        try:
-            strings = [str(row.name) for row in rows]
-        except:
-            return current.messages["NONE"]
-
-        if strings:
-            return ", ".join(strings)
-        else:
-            return current.messages["NONE"]
-
-    return represent
 
 # =============================================================================
 def s3_yes_no_represent(value):
@@ -815,9 +800,7 @@ def s3_populate_browser_compatibility(request):
 def s3_register_validation():
     """
         JavaScript client-side validation for Register form
-        - needed to check for passwords being same
-        @ToDo: Move this to JS. Internationalisation (T()) can be provided in
-               views/l10n.js
+        - needed to check for passwords being same, etc
     """
 
     T = current.T
@@ -827,118 +810,67 @@ def s3_register_validation():
     appname = current.request.application
     auth = current.auth
 
+    # Static Scripts
+    scripts_append = s3.scripts.append
     if s3.debug:
-        s3.scripts.append("/%s/static/scripts/jquery.validate.js" % appname)
-        s3.scripts.append("/%s/static/scripts/jquery.pstrength.2.1.0.js" % appname)
+        scripts_append("/%s/static/scripts/jquery.validate.js" % appname)
+        scripts_append("/%s/static/scripts/jquery.pstrength.2.1.0.js" % appname)
+        scripts_append("/%s/static/scripts/S3/s3.register_validation.js" % appname)
     else:
-        s3.scripts.append("/%s/static/scripts/jquery.validate.min.js" % appname)
-        s3.scripts.append("/%s/static/scripts/jquery.pstrength.2.1.0.min.js" % appname)
+        scripts_append("/%s/static/scripts/jquery.validate.min.js" % appname)
+        scripts_append("/%s/static/scripts/jquery.pstrength.2.1.0.min.js" % appname)
+        scripts_append("/%s/static/scripts/S3/s3.register_validation.min.js" % appname)
 
+    # Configuration
+    js_global = []
+    js_append = js_global.append
     if request.cookies.has_key("registered"):
-        password_position = '''last'''
+        # .password:first
+        js_append('''S3.password_position=1''')
     else:
-        password_position = '''first'''
+        # .password:last
+        js_append('''S3.password_position=2''')
 
     if settings.get_auth_registration_mobile_phone_mandatory():
-        mobile = '''
-  mobile:{
-   required:true
-  },'''
-    else:
-        mobile = ""
+        js_append('''S3.auth_registration_mobile_phone_mandatory=1''')
 
     if settings.get_auth_registration_organisation_required():
-        org1 = '''
-  organisation_id:{
-   required: true
-  },'''
-        org2 = "".join((''',
-  organisation_id:"''', str(T("Enter your organization")), '''"'''))
-    else:
-        org1 = ""
-        org2 = ""
+        js_append('''S3.get_auth_registration_organisation_required=1''')
+        js_append('''i18n.enter_your_organisation="%s"''' % T("Enter your organization"))
 
-    domains = ""
-    if settings.get_auth_registration_organisation_hidden() and \
-       request.controller != "admin":
-        table = current.auth.settings.table_user
-        table.organisation_id
+    if request.controller != "admin":
+        if settings.get_auth_registration_organisation_hidden():
+            js_append('''S3.get_auth_registration_hide_organisation=1''')
 
+        # Check for Whitelists
         table = current.s3db.auth_organisation
         query = (table.organisation_id != None) & \
                 (table.domain != None)
         whitelists = current.db(query).select(table.organisation_id,
                                               table.domain)
         if whitelists:
-            domains = '''$('#auth_user_organisation_id__row').hide()
-S3.whitelists={
-'''
-            count = 0
+            domains = []
+            domains_append = domains.append
             for whitelist in whitelists:
-                count += 1
-                domains += "'%s':%s" % (whitelist.domain,
-                                         whitelist.organisation_id)
-                if count < len(whitelists):
-                    domains += ",\n"
-                else:
-                    domains += "\n"
-            domains += '''}
-$('#regform #auth_user_email').blur(function(){
- var email=$('#regform #auth_user_email').val()
- var domain=email.split('@')[1]
- if(undefined!=S3.whitelists[domain]){
-  $('#auth_user_organisation_id').val(S3.whitelists[domain])
- }else{
-  $('#auth_user_organisation_id__row').show()
- }
-})'''
+                domains_append("'%s':%s" % (whitelist.domain,
+                                            whitelist.organisation_id))
+            domains = ''','''.join(domains)
+            domains = '''S3.whitelists={%s}''' % domains
+            js_append(domains)
 
-    # validate signup form on keyup and submit
-    # @ToDo: //remote:'emailsurl'
-    script = "".join(( domains, '''
-$('#regform').validate({
- errorClass:'req',
- rules:{
-  first_name:{
-   required:true
-  },''', mobile, '''
-  email:{
-   required:true,
-   email:true
-  },''', org1, '''
-  password:{
-   required:true
-  },
-  password_two:{
-   required:true,
-   equalTo:".password:''', password_position, '''"
-  }
- },
- messages:{
-  first_name:"''', str(T("Enter your first name")), '''",
-  password:{
-   required:"''', str(T("Provide a password")), '''"
-  },
-  password_two:{
-   required:"''', str(T("Repeat your password")), '''",
-   equalTo:"''', str(T("Enter the same password as above")), '''"
-  },
-  email:{
-   required:"''', str(T("Please enter a valid email address")), '''",
-   email:"''', str(T("Please enter a valid email address")), '''"
-  }''', org2, '''
- },
- errorPlacement:function(error,element){
-  error.appendTo(element.parent().next())
- },
- submitHandler:function(form){
-  form.submit()
- }
-})
-var MinPasswordChar=''', str(settings.get_auth_password_min_length()), ''';
- $('.password:''', password_position, '''').pstrength({minchar:MinPasswordChar,minchar_label:null});
-''' ))
-    s3.jquery_ready.append(script)
+    js_append('''i18n.enter_first_name="%s"''' % T("Enter your first name"))
+    js_append('''i18n.provide_password="%s"''' % T("Provide a password"))
+    js_append('''i18n.repeat_your_password="%s"''' % T("Repeat your password"))
+    js_append('''i18n.enter_same_password="%s"''' % T("Enter the same password as above"))
+    js_append('''i18n.please_enter_valid_email="%s"''' % T("Please enter a valid email address"))
+
+    js_append('''S3.password_min_length=%i''' % settings.get_auth_password_min_length())
+
+    script = '''\n'''.join(js_global)
+    s3.js_global.append(script)
+
+    # Call script after Global config done
+    s3.jquery_ready.append('''s3_register_validation()''')
 
 # =============================================================================
 def s3_filename(filename):
@@ -1057,6 +989,17 @@ def s3_unicode(s, encoding="utf-8"):
     return s
 
 # =============================================================================
+def s3_flatlist(nested):
+    """ Iterator to flatten mixed iterables of arbitrary depth """
+    for item in nested:
+        if isinstance(item, collections.Iterable) and \
+           not isinstance(item, basestring):
+            for sub in s3_flatlist(item):
+                yield sub
+        else:
+            yield item
+
+# =============================================================================
 def search_vars_represent(search_vars):
     """
         Unpickle and convert saved search form variables into
@@ -1120,6 +1063,7 @@ def s3_jaro_winkler(str1, str2):
 
         @param str1: the first string
         @param str2: the second string
+        @status: currently unused
     """
 
     jaro_winkler_marker_char = chr(1)
@@ -1262,6 +1206,7 @@ def s3_jaro_winkler_distance_row(row1, row2):
         Calculate the percentage match for two db records
 
         @todo: parameter description?
+        @status: currently unused
     """
 
     dw = 0
@@ -1544,388 +1489,106 @@ class SQLTABLES3(SQLTABLE):
         components.append(TBODY(*tbody))
 
 # =============================================================================
-class S3BulkImporter(object):
+class Traceback(object):
+    """ Generate the traceback for viewing error Tickets """
+
+    def __init__(self, text):
+        """ Traceback constructor """
+
+        self.text = text
+
+    # -------------------------------------------------------------------------
+    def xml(self):
+        """ Returns the xml """
+
+        output = self.make_links(CODE(self.text).xml())
+        return output
+
+    # -------------------------------------------------------------------------
+    def make_link(self, path):
+        """ Create a link from a path """
+
+        tryFile = path.replace("\\", "/")
+
+        if os.path.isabs(tryFile) and os.path.isfile(tryFile):
+            (folder, filename) = os.path.split(tryFile)
+            (base, ext) = os.path.splitext(filename)
+            app = current.request.args[0]
+
+            editable = {"controllers": ".py", "models": ".py", "views": ".html"}
+            l_ext = ext.lower()
+            f_endswith = folder.endswith
+            for key in editable.keys():
+                check_extension = f_endswith("%s/%s" % (app, key))
+                if l_ext == editable[key] and check_extension:
+                    return A('"' + tryFile + '"',
+                             _href=URL("edit/%s/%s/%s" % \
+                                           (app, key, filename))).xml()
+        return ""
+
+    # -------------------------------------------------------------------------
+    def make_links(self, traceback):
+        """ Make links using the given traceback """
+
+        lwords = traceback.split('"')
+
+        # Make the short circuit compatible with <= python2.4
+        result = (len(lwords) != 0) and lwords[0] or ""
+
+        i = 1
+
+        while i < len(lwords):
+            link = self.make_link(lwords[i])
+
+            if link == "":
+                result += '"' + lwords[i]
+            else:
+                result += link
+
+                if i + 1 < len(lwords):
+                    result += lwords[i + 1]
+                    i = i + 1
+
+            i = i + 1
+
+        return result
+
+# =============================================================================
+def URL2(a=None, c=None, r=None):
     """
-        Import CSV files of data to pre-populate the database.
-        Suitable for use in Testing, Demos & Simulations
+        Modified version of URL from gluon/html.py
+            - used by views/layout_iframe.html for our jquery function
+
+        @example:
+
+        >>> URL(a="a",c="c")
+        "/a/c"
+
+        generates a url "/a/c" corresponding to application a & controller c
+        If r=request is passed, a & c are set, respectively,
+        to r.application, r.controller
+
+        The more typical usage is:
+
+        URL(r=request) that generates a base url with the present
+        application and controller.
+
+        The function (& optionally args/vars) are expected to be added
+        via jquery based on attributes of the item.
     """
-
-    def __init__(self):
-        """ Constructor """
-
-        import csv
-        from xml.sax.saxutils import unescape
-
-        self.csv = csv
-        self.unescape = unescape
-        self.importTasks = []
-        self.specialTasks = []
-        self.tasks = []
-        self.alternateTables = {"hrm_person": {"tablename":"pr_person",
-                                               "prefix":"pr",
-                                               "name":"person"},
-                                "member_person": {"tablename":"pr_person",
-                                                  "prefix":"pr",
-                                                  "name":"person"},
-                               }
-        self.errorList = []
-        self.resultList = []
-
-    # -------------------------------------------------------------------------
-    def load_descriptor(self, path):
-        """ Method that will load the descriptor file and then all the
-            import tasks in that file into the importTasks property.
-            The descriptor file is the file called tasks.txt in path.
-            The file consists of a comma separated list of:
-            application, resource name, csv filename, xsl filename.
-        """
-
-        source = open(os.path.join(path, "tasks.cfg"), "r")
-        values = self.csv.reader(source)
-        for details in values:
-            if details == []:
-                continue
-            prefix = details[0][0].strip('" ')
-            if prefix == "#": # comment
-                continue
-            if prefix == "*": # specialist function
-                self.extractSpecialistLine(path, details)
-            else: # standard importer
-                self.extractImporterLine(path, details)
-
-    # -------------------------------------------------------------------------
-    def extractImporterLine(self, path, details):
-        """
-            Method that extract the details for an import Task
-        """
-        argCnt = len(details)
-        if argCnt == 4 or argCnt == 5:
-             # remove any spaces and enclosing double quote
-            app = details[0].strip('" ')
-            res = details[1].strip('" ')
-            request = current.request
-
-            csvFileName = details[2].strip('" ')
-            if csvFileName[:7] == "http://":
-                csv = csvFileName
-            else:
-                (csvPath, csvFile) = os.path.split(csvFileName)
-                if csvPath != "":
-                    path = os.path.join(request.folder,
-                                        "private",
-                                        "templates",
-                                        csvPath)
-                csv = os.path.join(path, csvFile)
-
-            xslFileName = details[3].strip('" ')
-            templateDir = os.path.join(request.folder,
-                                       "static",
-                                       "formats",
-                                       "s3csv",
-                                      )
-            # try the app directory in the templates directory first
-            xsl = os.path.join(templateDir, app, xslFileName)
-            _debug("%s %s" % (xslFileName, xsl))
-            if os.path.exists(xsl) == False:
-                # now try the templates directory
-                xsl = os.path.join(templateDir, xslFileName)
-                _debug ("%s %s" % (xslFileName, xsl))
-                if os.path.exists(xsl) == False:
-                    # use the same directory as the csv file
-                    xsl = os.path.join(path, xslFileName)
-                    _debug ("%s %s" % (xslFileName, xsl))
-                    if os.path.exists(xsl) == False:
-                        self.errorList.append(
-                        "Failed to find a transform file %s, Giving up." % xslFileName)
-                        return
-            vars = None
-            if argCnt == 5:
-                vars = details[4]
-            self.tasks.append([1, app, res, csv, xsl, vars])
-            self.importTasks.append([app, res, csv, xsl, vars])
-        else:
-            self.errorList.append(
-            "prepopulate error: job not of length 4. %s job ignored" % task)
-
-    # -------------------------------------------------------------------------
-    def extractSpecialistLine(self, path, details):
-        """ Method that will store a single import job into
-            the importTasks property.
-        """
-        function = details[1].strip('" ')
-        csv = None
-        if len(details) == 3:
-            fileName = details[2].strip('" ')
-            (csvPath, csvFile) = os.path.split(fileName)
-            if csvPath != "":
-                path = os.path.join(current.request.folder,
-                                    "private",
-                                    "templates",
-                                    csvPath)
-            csv = os.path.join(path, csvFile)
-        extraArgs = None
-        if len(details) == 4:
-            extraArgs = details[3].strip('" ')
-        self.tasks.append([2, function, csv, extraArgs])
-        self.specialTasks.append([function, csv, extraArgs])
-
-    # -------------------------------------------------------------------------
-    def load_import(self, controller, csv, xsl):
-        """ Method that will store a single import job into
-            the importTasks property.
-        """
-        self.importTasks.append([controller, csv, xsl])
-
-    # -------------------------------------------------------------------------
-    def execute_import_task(self, task):
-        """ Method that will execute each import job, in order """
-        start = datetime.datetime.now()
-        if task[0] == 1:
-            db = current.db
-            request = current.request
-            response = current.response
-            errorString = "prepopulate error: file %s missing"
-            # Store the view
-            view = response.view
-
-            _debug ("Running job %s %s (filename=%s transform=%s)" % (task[1], task[2], task[3], task[4]))
-            prefix = task[1]
-            name = task[2]
-            tablename = "%s_%s" % (prefix, name)
-            if tablename in self.alternateTables:
-                details = self.alternateTables[tablename]
-                if "tablename" in details:
-                    tablename = details["tablename"]
-                current.s3db.table(tablename)
-                if "loader" in details:
-                    loader = details["loader"]
-                    if loader is not None:
-                        loader()
-                if "prefix" in details:
-                    prefix = details["prefix"]
-                if "name" in details:
-                    name = details["name"]
-
-            try:
-                resource = current.s3db.resource(tablename)
-            except AttributeError:
-                # Table cannot be loaded
-                self.errorList.append("WARNING: Unable to find table %s import job skipped" % tablename)
-                return
-
-            # Check if the source file is accessible
-            filename = task[3]
-            if filename[:7] == "http://":
-                import urllib2
-                req = urllib2.Request(url=filename)
-                try:
-                    f = urllib2.urlopen(req)
-                except urllib2.HTTPError, e:
-                    self.errorList.append("Could not access %s: %s" % (filename, e.read()))
-
-                    return
-                except:
-                    self.errorList.append(errorString % filename)
-                    return
-                else:
-                    csv = f
-            else:
-                try:
-                    csv = open(filename, "r")
-                except IOError:
-                    self.errorList.append(errorString % filename)
-                    return
-
-            # Check if the stylesheet is accessible
-            try:
-                open(task[4], "r")
-            except IOError:
-                self.errorList.append(errorString % task[4])
-                return
-
-            extra_data = None
-            if task[5]:
-                try:
-                    extradata = self.unescape(task[5], {"'": '"'})
-                    extradata = json.loads(extradata)
-                    extra_data = extradata
-                except:
-                    self.errorList.append("WARNING:5th parameter invalid, parameter %s ignored" % task[5])
-            try:
-                # @todo: add extra_data and file attachments
-                result = resource.import_xml(csv,
-                                             format="csv",
-                                             stylesheet=task[4],
-                                             extra_data=extra_data)
-            except SyntaxError, e:
-                self.errorList.append("WARNING: import error - %s (file: %s, stylesheet: %s)" %
-                                     (e, filename, task[4]))
-                return
-
-            if not resource.error:
-                db.commit()
-            else:
-                # Must roll back if there was an error!
-                error = resource.error
-                self.errorList.append("%s - %s: %s" % (
-                                      task[3], resource.tablename, error))
-                errors = current.xml.collect_errors(resource)
-                if errors:
-                    self.errorList.extend(errors)
-                db.rollback()
-
-            # Restore the view
-            response.view = view
-            end = datetime.datetime.now()
-            duration = end - start
-            csvName = task[3][task[3].rfind("/")+1:]
-            try:
-                # Python-2.7
-                duration = '{:.2f}'.format(duration.total_seconds()/60)
-                msg = "%s import job completed in %s mins" % (csvName, duration)
-            except AttributeError:
-                # older Python
-                msg = "%s import job completed in %s" % (csvName, duration)
-            self.resultList.append(msg)
-            if response.s3.debug:
-                s3_debug(msg)
-
-    # -------------------------------------------------------------------------
-    def execute_special_task(self, task):
-        """
-        """
-
-        start = datetime.datetime.now()
-        s3 = current.response.s3
-        if task[0] == 2:
-            fun = task[1]
-            csv = task[2]
-            extraArgs = task[3]
-            if csv is None:
-                if extraArgs is None:
-                    error = s3[fun]()
-                else:
-                    error = s3[fun](extraArgs)
-            elif extraArgs is None:
-                error = s3[fun](csv)
-            else:
-                error = s3[fun](csv, extraArgs)
-            if error:
-                self.errorList.append(error)
-            end = datetime.datetime.now()
-            duration = end - start
-            try:
-                # Python-2.7
-                duration = '{:.2f}'.format(duration.total_seconds()/60)
-                msg = "%s import job completed in %s mins" % (fun, duration)
-            except AttributeError:
-                # older Python
-                msg = "%s import job completed in %s" % (fun, duration)
-            self.resultList.append(msg)
-            if s3.debug:
-                s3_debug(msg)
-
-    # -------------------------------------------------------------------------
-    def import_role(self, filename):
-        """ Import Roles from CSV """
-
-        # Check if the source file is accessible
-        try:
-            openFile = open(filename, "r")
-        except IOError:
-            return "Unable to open file %s" % filename
-
-        auth = current.auth
-        acl = auth.permission
-        create_role = auth.s3_create_role
-
-        def parseACL(_acl):
-            permissions = _acl.split("|")
-            aclValue = 0
-            for permission in permissions:
-                if permission == "READ":
-                    aclValue = aclValue | acl.READ
-                if permission == "CREATE":
-                    aclValue = aclValue | acl.CREATE
-                if permission == "UPDATE":
-                    aclValue = aclValue | acl.UPDATE
-                if permission == "DELETE":
-                    aclValue = aclValue | acl.DELETE
-                if permission == "ALL":
-                    aclValue = aclValue | acl.ALL
-            return aclValue
-
-        reader = self.csv.DictReader(openFile)
-        roles = {}
-        acls = {}
-        args = {}
-        for row in reader:
-            if row != None:
-                role = row["role"]
-                if "description" in row:
-                    desc = row["description"]
-                else:
-                    desc = ""
-                rules = {}
-                extra_param = {}
-                if "controller" in row and row["controller"]:
-                    rules["c"] = row["controller"]
-                if "function" in row and row["function"]:
-                    rules["f"] = row["function"]
-                if "table" in row and row["table"]:
-                    rules["t"] = row["table"]
-                if row["oacl"]:
-                    rules["oacl"] = parseACL(row["oacl"])
-                if row["uacl"]:
-                    rules["uacl"] = parseACL(row["uacl"])
-                #if "org" in row and row["org"]:
-                    #rules["organisation"] = row["org"]
-                #if "facility" in row and row["facility"]:
-                    #rules["facility"] = row["facility"]
-                if "entity" in row and row["entity"]:
-                    rules["entity"] = row["entity"]
-                if "hidden" in row and row["hidden"]:
-                    extra_param["hidden"] = row["hidden"]
-                if "system" in row and row["system"]:
-                    extra_param["system"] = row["system"]
-                if "protected" in row and row["protected"]:
-                    extra_param["protected"] = row["protected"]
-                if "uid" in row and row["uid"]:
-                    extra_param["uid"] = row["uid"]
-            if role in roles:
-                acls[role].append(rules)
-            else:
-                roles[role] = [role,desc]
-                acls[role] = [rules]
-            if len(extra_param) > 0 and role not in args:
-                args[role] = extra_param
-        for rulelist in roles.values():
-            if rulelist[0] in args:
-                create_role(rulelist[0],
-                            rulelist[1],
-                            *acls[rulelist[0]],
-                            **args[rulelist[0]])
-            else:
-                create_role(rulelist[0],
-                            rulelist[1],
-                            *acls[rulelist[0]])
-
-    # -------------------------------------------------------------------------
-    def clear_tasks(self):
-        """ Clear the importTask list """
-        self.tasks = []
-
-    # -------------------------------------------------------------------------
-    def perform_tasks(self, path):
-        """ convenience method that will load and then execute the import jobs
-            that are listed in the descriptor file
-        """
-        self.load_descriptor(path)
-        for task in self.tasks:
-            if task[0] == 1:
-                self.execute_import_task(task)
-            elif task[0] == 2:
-                self.execute_special_task(task)
+    application = controller = None
+    if r:
+        application = r.application
+        controller = r.controller
+    if a:
+        application = a
+    if c:
+        controller = c
+    if not (application and controller):
+        raise SyntaxError, "not enough information to build the url"
+    #other = ""
+    url = "/%s/%s" % (application, controller)
+    return url
 
 # =============================================================================
 class S3DateTime(object):
@@ -2025,6 +1688,204 @@ class S3DateTime(object):
             return offset
         else:
             return None
+
+# =============================================================================
+class S3TypeConverter(object):
+    """ Universal data type converter """
+
+    @classmethod
+    def convert(cls, a, b):
+        """
+            Convert b into the data type of a
+
+            @raise TypeError: if any of the data types are not supported
+                              or the types are incompatible
+            @raise ValueError: if the value conversion fails
+        """
+
+        if isinstance(a, lazyT):
+            a = str(a)
+        if b is None:
+            return None
+        if type(a) is type:
+            if a in (str, unicode):
+                return cls._str(b)
+            if a is int:
+                return cls._int(b)
+            if a is bool:
+                return cls._bool(b)
+            if a is long:
+                return cls._long(b)
+            if a is float:
+                return cls._float(b)
+            if a is datetime.datetime:
+                return cls._datetime(b)
+            if a is datetime.date:
+                return cls._date(b)
+            if a is datetime.time:
+                return cls._time(b)
+            raise TypeError
+        if type(b) is type(a) or isinstance(b, type(a)):
+            return b
+        if isinstance(a, (list, tuple)):
+            if isinstance(b, (list, tuple)):
+                return b
+            elif isinstance(b, basestring):
+                if "," in b:
+                    b = b.split(",")
+                else:
+                    b = [b]
+            else:
+                b = [b]
+            if len(a):
+                cnv = cls.convert
+                return [cnv(a[0], item) for item in b]
+            else:
+                return b
+        if isinstance(b, (list, tuple)):
+            cnv = cls.convert
+            return [cnv(a, item) for item in b]
+        if isinstance(a, basestring):
+            return cls._str(b)
+        if isinstance(a, bool):
+            return cls._bool(b)
+        if isinstance(a, int):
+            return cls._int(b)
+        if isinstance(a, long):
+            return cls._long(b)
+        if isinstance(a, float):
+            return cls._float(b)
+        if isinstance(a, datetime.datetime):
+            return cls._datetime(b)
+        if isinstance(a, datetime.date):
+            return cls._date(b)
+        if isinstance(a, datetime.time):
+            return cls._time(b)
+        raise TypeError
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _bool(b):
+        """ Convert into bool """
+
+        if isinstance(b, bool):
+            return b
+        if isinstance(b, basestring):
+            if b.lower() in ("true", "1"):
+                return True
+            elif b.lower() in ("false", "0"):
+                return False
+        if isinstance(b, (int, long)):
+            if b == 0:
+                return False
+            else:
+                return True
+        raise TypeError
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _str(b):
+        """ Convert into string """
+
+        if isinstance(b, basestring):
+            return b
+        if isinstance(b, datetime.date):
+            raise TypeError # @todo: implement
+        if isinstance(b, datetime.datetime):
+            raise TypeError # @todo: implement
+        if isinstance(b, datetime.time):
+            raise TypeError # @todo: implement
+        return str(b)
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _int(b):
+        """ Convert into int """
+
+        if isinstance(b, int):
+            return b
+        return int(b)
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _long(b):
+        """ Convert into long """
+
+        if isinstance(b, long):
+            return b
+        return long(b)
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _float(b):
+        """ Convert into float """
+
+        if isinstance(b, long):
+            return b
+        return float(b)
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _datetime(b):
+        """ Convert into datetime.datetime """
+
+        if isinstance(b, datetime.datetime):
+            return b
+        elif isinstance(b, basestring):
+            try:
+                # ISO Format is standard (e.g. in URLs)
+                tfmt = current.xml.ISOFORMAT
+                (y, m, d, hh, mm, ss, t0, t1, t2) = time.strptime(b, tfmt)
+            except ValueError:
+                try:
+                    # Try localized datetime format
+                    tfmt = str(current.deployment_settings.get_L10n_datetime_format())
+                    (y, m, d, hh, mm, ss, t0, t1, t2) = time.strptime(b, tfmt)
+                except ValueError:
+                    # dateutil as last resort
+                    try:
+                        dt = current.xml.decode_iso_datetime(b)
+                    except:
+                        raise ValueError
+                    else:
+                        return dt
+            return datetime.datetime(y, m, d, hh, mm, ss)
+        else:
+            raise TypeError
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def _date(cls, b):
+        """ Convert into datetime.date """
+
+        if isinstance(b, datetime.date):
+            return b
+        elif isinstance(b, basestring):
+            format = current.deployment_settings.get_L10n_date_format()
+            validator = IS_DATE(format=format)
+            value, error = validator(b)
+            if error:
+                # May be specified as datetime-string?
+                value = cls._datetime(b).date()
+            return value
+        else:
+            raise TypeError
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _time(b):
+        """ Convert into datetime.time """
+
+        if isinstance(b, datetime.time):
+            return b
+        elif isinstance(b, basestring):
+            validator = IS_TIME()
+            value, error = validator(v)
+            if error:
+                raise ValueError
+            return value
+        else:
+            raise TypeError
 
 # =============================================================================
 class S3MultiPath:
@@ -2507,108 +2368,6 @@ class S3MultiPath:
                 return True
             else:
                 return False
-
-# =============================================================================
-class Traceback(object):
-    """ Generate the traceback for viewing error Tickets """
-
-    def __init__(self, text):
-        """ Traceback constructor """
-
-        self.text = text
-
-    # -------------------------------------------------------------------------
-    def xml(self):
-        """ Returns the xml """
-
-        output = self.make_links(CODE(self.text).xml())
-        return output
-
-    # -------------------------------------------------------------------------
-    def make_link(self, path):
-        """ Create a link from a path """
-
-        tryFile = path.replace("\\", "/")
-
-        if os.path.isabs(tryFile) and os.path.isfile(tryFile):
-            (folder, filename) = os.path.split(tryFile)
-            (base, ext) = os.path.splitext(filename)
-            app = current.request.args[0]
-
-            editable = {"controllers": ".py", "models": ".py", "views": ".html"}
-            l_ext = ext.lower()
-            f_endswith = folder.endswith
-            for key in editable.keys():
-                check_extension = f_endswith("%s/%s" % (app, key))
-                if l_ext == editable[key] and check_extension:
-                    return A('"' + tryFile + '"',
-                             _href=URL("edit/%s/%s/%s" % \
-                                           (app, key, filename))).xml()
-        return ""
-
-    # -------------------------------------------------------------------------
-    def make_links(self, traceback):
-        """ Make links using the given traceback """
-
-        lwords = traceback.split('"')
-
-        # Make the short circuit compatible with <= python2.4
-        result = (len(lwords) != 0) and lwords[0] or ""
-
-        i = 1
-
-        while i < len(lwords):
-            link = self.make_link(lwords[i])
-
-            if link == "":
-                result += '"' + lwords[i]
-            else:
-                result += link
-
-                if i + 1 < len(lwords):
-                    result += lwords[i + 1]
-                    i = i + 1
-
-            i = i + 1
-
-        return result
-
-# =============================================================================
-def URL2(a=None, c=None, r=None):
-    """
-        Modified version of URL from gluon/html.py
-            - used by views/layout_iframe.html for our jquery function
-
-        @example:
-
-        >>> URL(a="a",c="c")
-        "/a/c"
-
-        generates a url "/a/c" corresponding to application a & controller c
-        If r=request is passed, a & c are set, respectively,
-        to r.application, r.controller
-
-        The more typical usage is:
-
-        URL(r=request) that generates a base url with the present
-        application and controller.
-
-        The function (& optionally args/vars) are expected to be added
-        via jquery based on attributes of the item.
-    """
-    application = controller = None
-    if r:
-        application = r.application
-        controller = r.controller
-    if a:
-        application = a
-    if c:
-        controller = c
-    if not (application and controller):
-        raise SyntaxError, "not enough information to build the url"
-    #other = ""
-    url = "/%s/%s" % (application, controller)
-    return url
 
 # =============================================================================
 class S3MarkupStripper(HTMLParser.HTMLParser):

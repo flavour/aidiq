@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 
-from gluon import current
+from gluon import current, IS_EMPTY_OR
 from gluon.storage import Storage
 from gluon.contrib.simplejson.ordered_dict import OrderedDict
-settings = current.deployment_settings
+from s3 import IS_ONE_OF, s3forms
+
 T = current.T
+settings = current.deployment_settings
 
 """
     Template settings for IFRC
@@ -19,9 +21,10 @@ settings.auth.registration_requests_organisation = True
 settings.auth.registration_organisation_required = True
 settings.auth.registration_requests_site = True
 
-settings.auth.registration_link_user_to = {"staff":T("Staff"),
-                                           "volunteer":T("Volunteer"),
-                                           "member":T("Member")}
+settings.auth.registration_link_user_to = {"staff": T("Staff"),
+                                           "volunteer": T("Volunteer"),
+                                           "member": T("Member")
+                                           }
 
 settings.auth.record_approval = True
 
@@ -47,11 +50,13 @@ def ifrc_realm_entity(table, row):
 
     # Do not apply realms for Master Data
     # @ToDo: Restore Realms and add a role/functionality support for Master Data  
-    if tablename in ["hrm_department",
+    if tablename in ["hrm_certificate",
+                     "hrm_department",
                      "hrm_job_role",
                      "hrm_job_title",
                      "hrm_course",
-                     "hrm_programme"]:
+                     "hrm_programme",
+                     ]:
         return None
 
     db = current.db
@@ -173,6 +178,7 @@ settings.gis.display_L0 = True
 settings.L10n.languages = OrderedDict([
     ("en-gb", "English"),
     ("es", "Español"),
+    ("vi", "Tiếng Việt"),
 ])
 # Default Language
 settings.L10n.default_language = "en-gb"
@@ -185,7 +191,6 @@ settings.L10n.decimal_separator = "."
 settings.L10n.thousands_separator = ","
 # Unsortable 'pretty' date format
 settings.L10n.date_format = T("%d-%b-%y")
-settings.L10n.datetime_format = T("%d-%b-%Y %H:%M")
 # Make last name in person/user records mandatory
 settings.L10n.mandatory_lastname = True
 
@@ -255,6 +260,239 @@ settings.hrm.use_skills = False
 settings.hrm.organisation_label = "National Society / Branch"
 
 # -----------------------------------------------------------------------------
+def ns_only(f, required=True, branches=True):
+    """
+        Function to configure an organisation_id field to be restricted to just NS/Branch
+    """
+
+    # Label
+    if branches:
+        f.label = T("National Society / Branch")
+    else:
+        f.label = T("National Society")
+    # Requires
+    db = current.db
+    ttable = db.org_organisation_type
+    type_id = db(ttable.name == "Red Cross / Red Crescent").select(ttable.id,
+                                                                   limitby=(0, 1)
+                                                                   ).first().id
+    if branches:
+        not_filterby = None
+        not_filter_opts = []
+    else:
+        btable = db.org_organisation_branch
+        rows = db(btable.deleted != True).select(btable.branch_id)
+        branches = [row.branch_id for row in rows]
+        not_filterby = "id"
+        not_filter_opts = branches
+
+    requires = IS_ONE_OF(db, "org_organisation.id",
+                         current.s3db.org_OrganisationRepresent(),
+                         filterby="organisation_type_id",
+                         filter_opts=[type_id],
+                         not_filterby=not_filterby,
+                         not_filter_opts=not_filter_opts,
+                         updateable = True,
+                         orderby = "org_organisation.name",
+                         sort = True)
+    if not required:
+        requires = IS_EMPTY_OR(requires)
+    f.requires = requires
+    # Dropdown not Autocomplete
+    f.widget = None
+    # Comment
+    s3_has_role = current.auth.s3_has_role
+    if s3_has_role("ADMIN") or \
+       s3_has_role("ORG_ADMIN"):
+        # Need to do import after setting Theme
+        from s3layouts import S3AddResourceLink
+        f.comment = S3AddResourceLink(c="org",
+                                      f="organisation",
+                                      vars={"organisation.organisation_type_id$name":"Red Cross / Red Crescent"},
+                                      label=T("Add National Society"),
+                                      title=T("National Society"),
+                                      )
+    else:
+        # Not allowed to add NS
+        f.comment = ""
+
+# -----------------------------------------------------------------------------
+def customize_asset_asset(**attr):
+    """
+        Customize asset_asset controller
+    """
+
+    # Organisation needs to be an NS/Branch
+    ns_only(current.s3db.asset_asset.organisation_id,
+            required=True,
+            branches=True,
+            )
+
+    return attr
+
+settings.ui.customize_asset_asset = customize_asset_asset
+
+# -----------------------------------------------------------------------------
+def customize_hrm_certificate(**attr):
+    """
+        Customize hrm_certificate controller
+    """
+
+    # Organisation needs to be an NS/Branch
+    ns_only(current.s3db.hrm_certificate.organisation_id,
+            required=False,
+            branches=False,
+            )
+
+    return attr
+
+settings.ui.customize_hrm_certificate = customize_hrm_certificate
+
+# -----------------------------------------------------------------------------
+def customize_hrm_course(**attr):
+    """
+        Customize hrm_course controller
+    """
+
+    # Organisation needs to be an NS/Branch
+    ns_only(current.s3db.hrm_course.organisation_id,
+            required=False,
+            branches=False,
+            )
+
+    return attr
+
+settings.ui.customize_hrm_course = customize_hrm_course
+
+# -----------------------------------------------------------------------------
+def customize_hrm_department(**attr):
+    """
+        Customize hrm_department controller
+    """
+
+    # Organisation needs to be an NS/Branch
+    ns_only(current.s3db.hrm_department.organisation_id,
+            required=False,
+            branches=False,
+            )
+
+    return attr
+
+settings.ui.customize_hrm_department = customize_hrm_department
+
+# -----------------------------------------------------------------------------
+def customize_hrm_human_resource(**attr):
+    """
+        Customize hrm_human_resource controller
+    """
+
+    # Organisation needs to be an NS/Branch
+    ns_only(current.s3db.hrm_human_resource.organisation_id,
+            required=True,
+            branches=True,
+            )
+
+    return attr
+
+settings.ui.customize_hrm_human_resource = customize_hrm_human_resource
+
+# -----------------------------------------------------------------------------
+def customize_hrm_job_title(**attr):
+    """
+        Customize hrm_job_title controller
+    """
+
+    # Organisation needs to be an NS/Branch
+    ns_only(current.s3db.hrm_job_title.organisation_id,
+            required=False,
+            branches=False,
+            )
+
+    return attr
+
+settings.ui.customize_hrm_job_title = customize_hrm_job_title
+
+# -----------------------------------------------------------------------------
+def customize_hrm_programme(**attr):
+    """
+        Customize hrm_programme controller
+    """
+
+    # Organisation needs to be an NS/Branch
+    ns_only(current.s3db.hrm_programme.organisation_id,
+            required=False,
+            branches=False,
+            )
+
+    return attr
+
+settings.ui.customize_hrm_programme = customize_hrm_programme
+
+# -----------------------------------------------------------------------------
+def customize_member_membership(**attr):
+    """
+        Customize member_membership controller
+    """
+
+    # Organisation needs to be an NS/Branch
+    ns_only(current.s3db.member_membership.organisation_id,
+            required=True,
+            branches=True,
+            )
+
+    return attr
+
+settings.ui.customize_member_membership = customize_member_membership
+
+# -----------------------------------------------------------------------------
+def customize_member_membership_type(**attr):
+    """
+        Customize member_membership_type controller
+    """
+
+    # Organisation needs to be an NS/Branch
+    ns_only(current.s3db.member_membership_type.organisation_id,
+            required=False,
+            branches=False,
+            )
+
+    return attr
+
+settings.ui.customize_member_membership_type = customize_member_membership_type
+
+# -----------------------------------------------------------------------------
+def customize_org_office(**attr):
+    """
+        Customize org_office controller
+    """
+
+    # Organisation needs to be an NS/Branch
+    ns_only(current.s3db.org_office.organisation_id,
+            required=True,
+            branches=True,
+            )
+
+    return attr
+
+settings.ui.customize_org_office = customize_org_office
+
+# -----------------------------------------------------------------------------
+def customize_survey_series(**attr):
+    """
+        Customize survey_series controller
+    """
+
+    # Organisation needs to be an NS/Branch
+    ns_only(current.s3db.survey_series.organisation_id,
+            required=False,
+            branches=True,
+            )
+
+    return attr
+
+settings.ui.customize_survey_series = customize_survey_series
+
+# -----------------------------------------------------------------------------
 # Projects
 # Uncomment this to use settings suitable for a global/regional organisation (e.g. DRR)
 settings.project.mode_3w = True
@@ -276,8 +514,28 @@ settings.project.organisation_roles = {
     5: T("Partner")
 }
 
-from s3 import s3forms
-settings.ui.crud_form_project_project = s3forms.S3SQLCustomForm(
+# -----------------------------------------------------------------------------
+def customize_project_project(**attr):
+    """
+        Customize project_project controller
+    """
+
+    s3db = current.s3db
+    tablename = "project_project"
+    # Load normal model
+    table = s3db[tablename]
+
+    # Custom Fields
+    # Organisation needs to be an NS (not a branch)
+    f = table.organisation_id
+    ns_only(f,
+            required=True,
+            branches=False,
+            )
+    f.label = T("Host National Society")
+
+    # Custom Crud Form
+    crud_form = s3forms.S3SQLCustomForm(
         "organisation_id",
         "name",
         #"code",
@@ -332,7 +590,7 @@ S3OptionsFilter({
         #    name = "partner",
         #    label = T("Partner Organizations"),
         #    fields = ["organisation_id",
-        #              "comments", # NB This is labelled 'Role' in DRRPP
+        #              "comments",
         #              ],
         #    filterby = dict(field = "role",
         #                    options = "2"
@@ -354,6 +612,14 @@ S3OptionsFilter({
         #"currency",
         "comments",
     )
+
+    s3db.configure(tablename,
+                   crud_form = crud_form)
+
+    return attr
+
+settings.ui.customize_project_project = customize_project_project
+
 settings.ui.crud_form_project_location = s3forms.S3SQLCustomForm(
         "project_id",
         "location_id",
@@ -367,6 +633,8 @@ settings.ui.crud_form_project_location = s3forms.S3SQLCustomForm(
             filter = {"linktable": "project_activity_type_sector",
                       "lkey": "activity_type_id",
                       "rkey": "sector_id",
+                      "lookuptable": "project_project",
+                      "lookupkey": "project_id",
                       },
         ),
         "comments",

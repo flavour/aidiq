@@ -1,10 +1,11 @@
-/* Copyright (c) 2006-2012 by OpenLayers Contributors (see authors.txt for 
+/* Copyright (c) 2006-2013 by OpenLayers Contributors (see authors.txt for
  * full list of contributors). Published under the 2-clause BSD license.
  * See license.txt in the OpenLayers distribution or repository for the
  * full text of the license. */
 
 /**
  * @requires OpenLayers/Renderer/Elements.js
+ * @requires OpenLayers/Console.js
  */
 
 /**
@@ -239,6 +240,22 @@ OpenLayers.Renderer.SVG = OpenLayers.Class(OpenLayers.Renderer.Elements, {
     setStyle: function(node, style, options) {
         style = style  || node._style;
         options = options || node._options;
+
+        var title = style.title || style.graphicTitle;
+        if (title) {
+            node.setAttributeNS(null, "title", title);
+            //Standards-conformant SVG
+            // Prevent duplicate nodes. See issue https://github.com/openlayers/openlayers/issues/92 
+            var titleNode = node.getElementsByTagName("title");
+            if (titleNode.length > 0) {
+                titleNode[0].firstChild.textContent = title;
+            } else {
+                var label = this.nodeFactory(null, "title");
+                label.textContent = title;
+                node.appendChild(label);
+            }
+        }
+
         var r = parseFloat(node.getAttributeNS(null, "r"));
         var widthFactor = 1;
         var pos;
@@ -248,20 +265,6 @@ OpenLayers.Renderer.SVG = OpenLayers.Class(OpenLayers.Renderer.Elements, {
                 node.style.visibility = "hidden";
             } else if (style.externalGraphic) {
                 pos = this.getPosition(node);
-                
-                if (style.graphicTitle) {
-                    node.setAttributeNS(null, "title", style.graphicTitle);
-                    //Standards-conformant SVG
-                    // Prevent duplicate nodes. See issue https://github.com/openlayers/openlayers/issues/92 
-                    var titleNode = node.getElementsByTagName("title");
-                    if (titleNode.length > 0) {
-                        titleNode[0].firstChild.textContent = style.graphicTitle;
-                    } else {
-                        var label = this.nodeFactory(null, "title");
-                        label.textContent = style.graphicTitle;
-                        node.appendChild(label);
-                    }
-                }
                 if (style.graphicWidth && style.graphicHeight) {
                   node.setAttributeNS(null, "preserveAspectRatio", "none");
                 }
@@ -280,9 +283,9 @@ OpenLayers.Renderer.SVG = OpenLayers.Class(OpenLayers.Renderer.Elements, {
                 node.setAttributeNS(null, "y", (pos.y + yOffset).toFixed());
                 node.setAttributeNS(null, "width", width);
                 node.setAttributeNS(null, "height", height);
-                node.setAttributeNS(this.xlinkns, "href", style.externalGraphic);
+                node.setAttributeNS(this.xlinkns, "xlink:href", style.externalGraphic);
                 node.setAttributeNS(null, "style", "opacity: "+opacity);
-                node.onclick = OpenLayers.Renderer.SVG.preventDefault;
+                node.onclick = OpenLayers.Event.preventDefault;
             } else if (this.isComplexSymbol(style.graphicName)) {
                 // the symbol viewBox is three times as large as the symbol
                 var offset = style.pointRadius * 3;
@@ -345,8 +348,20 @@ OpenLayers.Renderer.SVG = OpenLayers.Class(OpenLayers.Renderer.Elements, {
         }
         
         if (options.isFilled) {
-            node.setAttributeNS(null, "fill", style.fillColor);
-            node.setAttributeNS(null, "fill-opacity", style.fillOpacity);
+            if (style.externalGraphic) {
+				var pid = this.createImagePattern(style);
+				node.setAttributeNS(null, "fill", "url(#" + pid + ")");
+				node.setAttributeNS(null, "fill-opacity", 1);
+			//} else if (style.graphicName && node._geometryClass !== "OpenLayers.Geometry.Point") {
+				//this can also happen if a rule based style applies to both points and other types of geometries. TODO: better handling of rule based styles!
+			//	OpenLayers.Console.error('WellKnownName is not yet supported as GraphicFill by the SVG renderer!');
+				//var pid = this.createMarkPattern(style);
+				//node.setAttributeNS(null, "fill", "url(#" + pid + ")");
+				//node.setAttributeNS(null, "fill-opacity", 1);
+			} else {
+				node.setAttributeNS(null, "fill", style.fillColor);
+				node.setAttributeNS(null, "fill-opacity", style.fillOpacity);
+			}
         } else {
             node.setAttributeNS(null, "fill", "none");
         }
@@ -475,6 +490,68 @@ OpenLayers.Renderer.SVG = OpenLayers.Class(OpenLayers.Renderer.Elements, {
         this.rendererRoot.appendChild(defs);
         return defs;
     },
+	
+	/**
+     * Method: createImagePattern
+     *
+     * Returns:
+     * {String} The id of the created pattern
+     */
+	createImagePattern: function(style) {
+		// reuse the pattern if the same externalGraphic with the same size has already been used
+		var id = this.container.id + "-" + style.externalGraphic + ((style.pointRadius) ? "-" + style.pointRadius : "");
+		var patternNode = OpenLayers.Util.getElement(id);
+
+		if (!patternNode) {
+			// to follow SLD spec we need to know image size
+			// to get the image size we must load the image
+			var img = new Image();
+
+			img.onload = OpenLayers.Function.bind(function() {
+				if (!this.defs) {
+					// create svg defs tag
+					this.defs = this.createDefs();
+				}
+				
+				// according to SLD specification image should be scaled by its inherent dimensions if no Size is given
+				var height = img.height * 72 / 96;
+				var width = img.width * 72 / 96;
+				
+				// if Size is given, it is used as height and width is scaled to original aspect
+				if (style.pointRadius) {
+					var aspect = width / height;
+					height = (style.pointRadius * 2) * 72 / 96;
+					width = height * aspect;
+				}
+				
+				height = height + "pt";
+				width = width + "pt";
+				
+				patternNode = this.nodeFactory(id, "pattern");
+				patternNode.setAttributeNS(null, "x", "0");
+				patternNode.setAttributeNS(null, "y", "0");
+				patternNode.setAttributeNS(null, "height", height);
+				patternNode.setAttributeNS(null, "width", width);
+				patternNode.setAttributeNS(null, "patternUnits", "userSpaceOnUse");
+				
+				var imageNode = this.nodeFactory(null, "image");
+				patternNode.appendChild(imageNode);
+				imageNode.setAttributeNS(this.xlinkns, "href", style.externalGraphic);
+				imageNode.setAttributeNS(null, "height", height);
+				imageNode.setAttributeNS(null, "width", width);
+				imageNode.setAttributeNS(null, "style", "opacity: " + (style.graphicOpacity || style.fillOpacity || 1));
+				if (typeof style.rotation != "undefined") {
+					var rotation = OpenLayers.String.format("rotate(${0})", [style.rotation]);
+					imageNode.setAttributeNS(null, "transform", rotation);
+				}
+				this.defs.appendChild(patternNode);
+			}, this);
+
+			img.src = style.externalGraphic;
+		}
+
+		return id;
+	},
 
     /**************************************
      *                                    *
@@ -998,9 +1075,10 @@ OpenLayers.Renderer.SVG.LABEL_VFACTOR = {
 
 /**
  * Function: OpenLayers.Renderer.SVG.preventDefault
+ * *Deprecated*.  Use <OpenLayers.Event.preventDefault> method instead.
  * Used to prevent default events (especially opening images in a new tab on
  * ctrl-click) from being executed for externalGraphic symbols
  */
 OpenLayers.Renderer.SVG.preventDefault = function(e) {
-    e.preventDefault && e.preventDefault();
+    OpenLayers.Event.preventDefault(e);
 };

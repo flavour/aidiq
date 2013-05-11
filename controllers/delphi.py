@@ -20,6 +20,7 @@ def index():
     # Simply redirect to the Problems REST controller
     redirect(URL(f="problem"))
 
+    # Alternative dashboard
     module_name = settings.modules[module].name_nice
 
     table = s3db.delphi_group
@@ -27,7 +28,7 @@ def index():
     result = []
     for group in groups:
         actions = []
-        duser = eden.delphi.S3DelphiUser(group)
+        duser = s3db.delphi_DelphiUser(group)
         if duser.authorised:
             actions.append(("group/%d/update" % group.id, T("Edit")))
             actions.append(("new_problem/create/?group=%s&next=%s" % \
@@ -62,34 +63,33 @@ def group_rheader(r, tabs = []):
             # List or Create form: rheader makes no sense here
             return None
 
-        tabs = [
-                (T("Basic Details"), None),
+        tabs = [(T("Basic Details"), None),
                 (T("Problems"), "problem"),
-               ]
-        # @ToDo: Check for Group Moderators too
-        if s3_has_role("DelphiAdmin"):
+                ]
+
+        group = r.record
+
+        # Get this User's permissions for this Group
+        duser = s3db.delphi_DelphiUser(group.id)
+        if duser.authorised:
             tabs.append((T("Membership"), "membership"))
 
         rheader_tabs = s3_rheader_tabs(r, tabs)
 
-        group = r.record
-
-        rheader = DIV(TABLE(
-            TR(
-                TH("%s: " % T("Group")),
-                group.name,
-                ),
-            TR(
-                TH("%s: " % T("Description")),
-                group.description,
-                ),
-            TR(
-                TH("%s: " % T("Active")),
-                group.active,
-                ),
-            ),
-            rheader_tabs
-        )
+        rheader = DIV(
+                    TABLE(
+                        TR(TH("%s: " % T("Group")),
+                           group.name,
+                           ),
+                        TR(TH("%s: " % T("Description")),
+                           group.description,
+                           ),
+                        TR(TH("%s: " % T("Active")),
+                           group.active,
+                           ),
+                        ),
+                        rheader_tabs
+                    )
         return rheader
     return None
 
@@ -97,8 +97,16 @@ def group_rheader(r, tabs = []):
 def group():
     """ Problem Group REST Controller """
 
+    if not s3_has_role("DelphiAdmin"):
+        s3db.configure("delphi_group",
+                       deletable=False,
+                       # Remove ability to create new Groups
+                       #insertable=False
+                       )
+
     def prep(r):
         if r.interactive:
+
             if r.component:
                 tablename = r.component.tablename
                 list_fields = s3db.get_config(tablename,
@@ -108,12 +116,16 @@ def group():
                 except:
                     pass
                 s3db.configure(tablename,
-                                list_fields=list_fields)
+                               deletable = s3_has_role("DelphiAdmin"),
+                               list_fields = list_fields)
         return True
     s3.prep = prep
 
     rheader = group_rheader
-    return s3_rest_controller(rheader=rheader)
+    return s3_rest_controller(rheader=rheader,
+                              # Allow components with components (such as problem) to breakout from tabs
+                              native=True,
+                              )
 
 # =============================================================================
 # Problems
@@ -128,35 +140,33 @@ def problem_rheader(r, tabs = []):
 
         problem = r.record
 
-        tabs = [
-                # Components & Custom Methods
+        tabs = [# Components & Custom Methods
+                (T("Problems"), "problems"),
                 (T("Solutions"), "solution"),
                 (T("Discuss"), "discuss"),
                 (T("Vote"), "vote"),
                 (T("Scale of Results"), "results"),
-               ]
-        # @ToDo: Replace this by Group Moderator
-        #if s3_has_role("DelphiAdmin"):
-        tabs.append((T("Edit"), None))
+                ]
+
+        # Get this User's permissions for this Group
+        duser = s3db.delphi_DelphiUser(problem.group_id)
+        if duser.authorised:
+            tabs.append((T("Edit"), None))
 
         rheader_tabs = s3_rheader_tabs(r, tabs)
 
-        rtable = TABLE(
-            TR(
-                TH("%s: " % T("Problem")),
-                problem.name,
-                TH("%s: " % T("Active")),
-                problem.active,
-                ),
-            TR(
-                TH("%s: " % T("Description")),
-                problem.description,
-                ),
-            TR(
-                TH("%s: " % T("Criteria")),
-                problem.criteria,
-                ),
-            )
+        rtable = TABLE(TR(TH("%s: " % T("Problem")),
+                          problem.name,
+                          TH("%s: " % T("Active")),
+                          problem.active,
+                          ),
+                       TR(TH("%s: " % T("Description")),
+                          problem.description,
+                          ),
+                       TR(TH("%s: " % T("Criteria")),
+                          problem.criteria,
+                          ),
+                       )
 
         if r.component and \
            r.component_name == "solution" and \
@@ -166,16 +176,13 @@ def problem_rheader(r, tabs = []):
             solution = db(query).select(stable.name,
                                         stable.description,
                                         limitby=(0, 1)).first()
-            rtable.append(DIV(
-                TR(
-                    TH("%s: " % T("Solution")),
-                    solution.name,
-                    ),
-                TR(
-                    TH("%s: " % T("Description")),
-                    solution.description,
-                    ),
-                ))
+            rtable.append(DIV(TR(TH("%s: " % T("Solution")),
+                                 solution.name,
+                                 ),
+                              TR(TH("%s: " % T("Description")),
+                                 solution.description,
+                                 ),
+                              ))
 
         rheader = DIV(rtable,
                       rheader_tabs)
@@ -191,6 +198,10 @@ def problem():
 
     # Custom Methods
     set_method = s3db.set_method
+    set_method(module, resourcename,
+               method="problems",
+               action=problems)
+
     set_method(module, resourcename,
                method="discuss",
                action=discuss)
@@ -212,16 +223,26 @@ def problem():
     # Filter to just Active Problems
     s3.filter = (table.active == True)
 
-    # @ToDo: Check for Group Moderators too
-    #if not s3_has_role("DelphiAdmin"):
-        # Remove ability to create new Problems
-        #s3db.configure(tablename,
-        #                insertable=False)
+    if not s3_has_role("DelphiAdmin"):
+        s3db.configure(tablename,
+                       deletable=False,
+                       # Remove ability to create new Problems
+                       #insertable=False
+                       )
 
     def prep(r):
         if r.interactive:
-            if r.component and r.component_name == "solution":
+            if r.record:
+                duser = s3db.delphi_DelphiUser(r.record.group_id)
+                if duser.authorised:
+                    s3db.configure(tablename,
+                                   deletable=True,
+                                   )
+            if r.component_name == "solution":
                 r.component.table.modified_on.label = T("Last Updated")
+                s3db.configure(r.component.tablename,
+                               deletable = duser.authorised,
+                               )
         return True
     s3.prep = prep
 
@@ -248,6 +269,20 @@ def problem():
     rheader = problem_rheader
     return s3_rest_controller(rheader=rheader)
 
+# -----------------------------------------------------------------------------
+def problems(r, **attr):
+    """
+        Redirect to the list of Problems for the Group
+        - used for a Tab
+    """
+
+    try:
+        group_id = r.record.group_id
+    except:
+        raise HTTP(400)
+    else:
+        redirect(URL(f="group", args=[group_id, "problem"]))
+
 # =============================================================================
 # Voting
 # =============================================================================
@@ -259,7 +294,7 @@ def vote(r, **attr):
     problem = r.record
 
     # Get this User's permissions for this Group
-    duser = eden.delphi.S3DelphiUser(problem.group_id)
+    duser = s3db.delphi_DelphiUser(problem.group_id)
 
     # Add the RHeader to maintain consistency with the other pages
     rheader = problem_rheader(r)
@@ -332,7 +367,7 @@ def save_vote():
         raise HTTP(404)
 
     # Get this User's permissions for this Group
-    duser = eden.delphi.S3DelphiUser(problem.group_id)
+    duser = s3db.delphi_DelphiUser(problem.group_id)
 
     if not duser.can_vote:
         auth.permission.fail()

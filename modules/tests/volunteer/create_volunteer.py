@@ -43,11 +43,9 @@ class CreateVolunteer(SeleniumUnitTest):
 
         self.create("hrm_human_resource", 
                    [( "organisation_id",
-                       "International Federation of Red Cross and Red Crescent Societies",
-                       "autocomplete",
-                       0,
                        "International Federation of Red Cross and Red Crescent Societies (IFRC)",
-                       ),
+                       "option",
+                       0),
                      ( "first_name",
                        "John",
                        "pr_person"),
@@ -63,4 +61,40 @@ class CreateVolunteer(SeleniumUnitTest):
                      ]
                      )
 
+#===============================================================================
 
+    def test_mem001_create_volunteer_registry(self):
+        """
+            @case: HRM002
+            @description: Create Volunteer from registery
+
+            @TestDoc: https://docs.google.com/spreadsheet/ccc?key=0AmB3hMcgB-3idG1XNGhhRG9QWF81dUlKLXpJaFlCMFE
+            @Test Wiki: http://eden.sahanafoundation.org/wiki/DeveloperGuidelines/Testing
+        """
+        print "\n"   
+                    
+        self.login(account="admin", nexturl="vol/volunteer/create")
+
+        # If a confirmation is shown then clear it so that it doesn't give a false positive later
+        # This makes sure that there is no click between clicking 'Select from registry' and filling in name of person
+        try:
+            elem = self.browser.find_element_by_xpath("//div[@class='confirmation']")
+            elem.click()
+            time.sleep(2) # Give it time to dissolve
+        except:
+            pass
+
+        self.browser.find_element_by_id("select_from_registry").click()
+        
+        self.create("hrm_human_resource", 
+                    [( "person_id",
+                       "Duarte Botelheiro",
+                       "autocomplete"),
+                     ( "organisation_id",
+                       "Timor-Leste Red Cross Society (CVTL)",
+                       "option"),
+                     ( "job_title_id",
+                       "Coordinator",
+                       "option"),
+                    ]
+                    )

@@ -17,43 +17,16 @@ if not settings.has_module(module):
 def index():
     """ Module's Home Page """
 
-    module_name = settings.modules[module].name_nice
-    response.title = module_name
+    return s3db.cms_index(module, alt_function="index_alt")
 
-    item = None
-    if settings.has_module("cms"):
-        table = s3db.cms_post
-        _item = db(table.module == module).select(table.id,
-                                                  table.body,
-                                                  limitby=(0, 1)).first()
-        if _item:
-            if s3_has_role(ADMIN):
-                item = DIV(XML(_item.body),
-                           BR(),
-                           A(T("Edit"),
-                             _href=URL(c="cms", f="post",
-                                       args=[_item.id, "update"],
-                                       vars={"module":module}),
-                             _class="action-btn"))
-            else:
-                item = XML(_item.body)
-        elif s3_has_role(ADMIN):
-            item = DIV(H2(module_name),
-                       A(T("Edit"),
-                         _href=URL(c="cms", f="post", args="create",
-                                   vars={"module":module}),
-                         _class="action-btn"))
+# -----------------------------------------------------------------------------
+def index_alt():
+    """
+        Module homepage for non-Admin users when no CMS content found
+    """
 
-    if not item:
-        #item = H2(module_name)
-        # Just redirect to the list of Warehouses
-        redirect(URL(f="warehouse"))
-
-    # tbc
-    report = ""
-
-    response.view = "index.html"
-    return dict(item=item, report=report)
+    # Just redirect to the list of Warehouses
+    redirect(URL(f="warehouse"))
 
 # -----------------------------------------------------------------------------
 def index2():
@@ -1314,8 +1287,7 @@ def track_item():
     vars = request.get_vars
     if "report" in vars:
         if vars.report == "rel":
-            s3.crud_strings["inv_track_item"] = Storage(
-                                                        title_list = T("Summary of Releases"),
+            s3.crud_strings["inv_track_item"] = Storage(title_list = T("Summary of Releases"),
                                                         subtitle_list = T("Summary Details"),
                                                         title_search = T("Summary of Releases"),
                                                         )
@@ -1340,8 +1312,7 @@ def track_item():
             s3.filter = (table.send_id != None)
 
         elif vars.report == "inc":
-            s3.crud_strings["inv_track_item"] = Storage(
-                                                        title_list = T("Summary of Incoming Supplies"),
+            s3.crud_strings["inv_track_item"] = Storage(title_list = T("Summary of Incoming Supplies"),
                                                         subtitle_list = T("Summary Details"),
                                                         title_search = T("Summary of Incoming Supplies"),
                                                         )
@@ -1366,8 +1337,7 @@ def track_item():
             s3.filter = (table.recv_id != None)
 
         elif vars.report == "util":
-            s3.crud_strings["inv_track_item"] = Storage(
-                                                        title_list = T("Utilization Report"),
+            s3.crud_strings["inv_track_item"] = Storage(title_list = T("Utilization Report"),
                                                         subtitle_list = T("Utilization Details"),
                                                         title_search = T("Utilization Report"),
                                                         )
@@ -1390,8 +1360,7 @@ def track_item():
             s3.filter = (table.item_id != None)
 
         elif vars.report == "exp":
-            s3.crud_strings["inv_track_item"] = Storage(
-                                                        title_list = T("Expiration Report"),
+            s3.crud_strings["inv_track_item"] = Storage(title_list = T("Expiration Report"),
                                                         subtitle_list = T("Expiration Details"),
                                                         title_search = T("Expiration Report"),
                                                         )

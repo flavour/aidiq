@@ -38,7 +38,7 @@ __all__ = ["AuthS3",
            ]
 
 import datetime
-import re
+#import re
 from uuid import uuid4
 
 try:
@@ -59,13 +59,13 @@ from gluon.utils import web2py_uuid
 from gluon.contrib.simplejson.ordered_dict import OrderedDict
 
 from s3error import S3PermissionError
-from s3fields import s3_uid, s3_timestamp, s3_deletion_status, s3_comments
+from s3fields import S3Represent, s3_uid, s3_timestamp, s3_deletion_status, s3_comments
 from s3rest import S3Method
 from s3track import S3Tracker
 from s3utils import s3_mark_required
 
 DEFAULT = lambda: None
-table_field = re.compile("[\w_]+\.[\w_]+")
+#table_field = re.compile("[\w_]+\.[\w_]+")
 
 DEBUG = False
 if DEBUG:
@@ -211,13 +211,11 @@ Thank you
 
         # Site types (for OrgAuth)
         T = current.T
-        if deployment_settings.get_ui_camp():
+        if deployment_settings.get_ui_label_camp():
             shelter = T("Camp")
         else:
             shelter = T("Shelter")
-        self.org_site_types = Storage(
-
-                                      transport_airport = T("Airport"),
+        self.org_site_types = Storage(transport_airport = T("Airport"),
                                       cr_shelter = shelter,
                                       org_facility = T("Facility"),
                                       #org_facility = T("Site"),
@@ -384,6 +382,7 @@ Thank you
                 Field("group_id", gtable,
                       requires = IS_IN_DB(db, "%s.id" % gname,
                                           "%(id)s: %(role)s"),
+                      represent = S3Represent(lookup=gname, fields=["role"]),
                       label=label_group_id),
                 # Realm
                 Field("pe_id", "integer"),
@@ -1214,14 +1213,14 @@ Thank you
             Configure User Fields - for registration & user administration
         """
 
+        T = current.T
+        db = current.db
+        s3db = current.s3db
         request = current.request
         messages = self.messages
         cmessages = current.messages
         settings = self.settings
         deployment_settings = current.deployment_settings
-        T = current.T
-        db = current.db
-        s3db = current.s3db
 
         utable = self.settings.table_user
 
@@ -2416,7 +2415,7 @@ S3OptionsFilter({
                                             if e not in realm])
                         if not realm:
                             del realms[group_id]
-                    elif pe_id is 0:
+                    elif pe_id == 0:
                         # Site-wide
                         realms[group_id] = None
                     elif pe_id not in realm:
@@ -4285,14 +4284,12 @@ class S3Permission(object):
             Define permissions table, invoked by AuthS3.define_tables()
         """
 
-        db = current.db
-
         table_group = self.auth.settings.table_group
         if table_group is None:
             table_group = "integer" # fallback (doesn't work with requires)
 
         if not self.table:
-            self.table = db.define_table(self.tablename,
+            self.table = current.db.define_table(self.tablename,
                             Field("group_id", table_group),
                             Field("controller", length=64),
                             Field("function", length=512),
@@ -4594,8 +4591,8 @@ class S3Permission(object):
             @param user: the current auth.user (None for not authenticated)
             @param use_realm: use realms
             @param no_realm: don't include these entities in role realms
-            @returns: a web2py Query instance, or None if no query
-                      can be constructed
+            @returns: a web2py Query instance, or None if no query can be
+                      constructed
         """
 
         OUSR = "owned_by_user"
@@ -4677,13 +4674,12 @@ class S3Permission(object):
     # -------------------------------------------------------------------------
     def realm_query(self, table, entities):
         """
-            Returns a query to select the records owned by one of the
-            entities.
+            Returns a query to select the records owned by one of the entities.
 
             @param table: the table
             @param entities: list of entities
-            @returns: a web2py Query instance, or None if no query
-                      can be constructed
+            @returns: a web2py Query instance, or None if no query can be
+                      constructed
         """
 
         ANY = "ANY"
@@ -4700,6 +4696,54 @@ class S3Permission(object):
             else:
                 return (table[OENT].belongs(entities)) | public
         return None
+
+    # -------------------------------------------------------------------------
+    def permitted_realms(self, tablename, method="read"):
+        """
+            Returns a list of the realm entities which a user can access for
+            the given table.
+
+            @param tablename: the tablename
+            @param method: the method
+            @returns: a list of pe_ids or None (for no restriction)
+        """
+
+        if not self.entity_realm:
+            # Security Policy doesn't use Realms, so unrestricted
+            return None
+
+        auth = self.auth
+        sr = auth.get_system_roles()
+        user = auth.user
+        if auth.is_logged_in():
+            realms = user.realms
+            if sr.ADMIN in realms:
+                # ADMIN can see all Realms
+                return None
+            delegations = user.delegations
+        else:
+            realms = Storage({sr.ANONYMOUS:None})
+            delegations = Storage()
+
+        racl = self.required_acl([method])
+        request = current.request
+        acls = self.applicable_acls(racl,
+                                    realms=realms,
+                                    delegations=delegations,
+                                    c=request.controller,
+                                    f=request.function,
+                                    t=tablename)
+        if "ANY" in acls:
+            # User is permitted access for all Realms
+            return None
+        
+        entities = []
+        for entity in acls:
+            acl = acls[entity]
+            if acl[0] & racl == racl:
+                entities.append(entity)
+
+        return entities
 
     # -------------------------------------------------------------------------
     # Record approval
@@ -5204,6 +5248,7 @@ class S3Permission(object):
                        env=None):
         """
             Return a URL only if accessible by the user, otherwise False
+            - used for Navigation Items
 
             @param c: the controller
             @param f: the function
@@ -5501,7 +5546,6 @@ class S3Permission(object):
         if not acls and not (t and self.use_tacls):
             acls[ANY] = Storage(c=default_page_acl)
 
-
         # Order by precedence
         result = Storage()
         for e in acls:
@@ -5576,7 +5620,6 @@ class S3Permission(object):
         s3 = current.response.s3
 
         if not "restricted_tables" in s3:
-
             table = self.table
             query = (table.deleted != True) & \
                     (table.controller == None) & \
@@ -7183,7 +7226,8 @@ class S3EntityRoleManager(S3Method):
                     "org_office",
                     "inv_warehouse",
                     "hms_hospital",
-                    "pr_group"]
+                    "pr_group",
+                    ]
 
     def __init__(self, *args, **kwargs):
         """ Constructor """
@@ -7324,7 +7368,8 @@ class S3EntityRoleManager(S3Method):
         context = {"roles": self.roles,
                    "foreign_object": self.foreign_object,
                    "form": form,
-                   "title": T("Roles")}
+                   "title": T("Roles"),
+                   }
 
         if not self.foreign_object:
             # how many assigned roles to show per page
@@ -7342,7 +7387,8 @@ class S3EntityRoleManager(S3Method):
                             "pagination_size": pagination_size,
                             "pagination_offset": pagination_offset,
                             "pagination_list": pagination_list,
-                            "pagination_pages": pagination_pages})
+                            "pagination_pages": pagination_pages,
+                            })
 
         return context
 

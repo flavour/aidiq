@@ -53,11 +53,8 @@
 {{if s3.rfooter:}}<div id='rfooter'>{{=XML(s3.rfooter)}}</div>{{pass}}
 {{include "dataTables.html"}}
 <script type='text/javascript'>//<![CDATA[
-{{try:}}{{if chart_opts:}}{{=XML(chart_opts)}}{{pass}}{{except:}}{{pass}}
-{{try:}}
-{{if report_data:}}var json_data={{=XML(report_data.json_data)}}
-{{else:}}var json_data={cols:null, rows:null}{{pass}}
-{{except:}}var json_data={cols:null, rows:null}{{pass}}
+{{try:}}{{=XML(chart_opts)}}{{except:}}var chart_opts{{pass}}
+var json_data={{=XML(json_data)}}
 //]]></script>
 {{if s3.debug:}}
 <script language='javascript' type='text/javascript' src='/{{=appname}}/static/scripts/flot/jquery.flot.js'></script>

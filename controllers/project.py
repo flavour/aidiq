@@ -77,6 +77,11 @@ def project():
         # Location Filter
         s3db.gis_location_filter(r)
         
+        if r.component and r.component.name == "project_task":
+            list_fields = s3db.get_config("project_task",
+                                          "list_fields")
+            list_fields.insert(3, (T("Activity"), "activity.name"))
+        
         if r.interactive:
             if not r.component or r.component_name == "activity":
                 # Filter Themes/Activity Types based on Sector
@@ -130,10 +135,6 @@ def project():
 
                 elif r.component_name == "task":
                     table = r.component.table
-                    tablename = r.component.tablename
-                    list_fields = s3db.get_config(tablename,
-                                                  "list_fields")
-                    list_fields.insert(3, (T("Activity"), "activity.name"))
                     if not auth.s3_has_role("STAFF"):
                         # Hide fields to avoid confusion (both of inputters & recipients)
                         field = table.source
@@ -534,9 +535,7 @@ def activity():
 
 # -----------------------------------------------------------------------------
 def location():
-    """
-        RESTful CRUD controller to display project location information
-    """
+    """ RESTful CRUD controller """
 
     table = s3db.project_location
 
@@ -552,16 +551,12 @@ def location():
             else:
                 sector_ids = []
             set_activity_type_requires("project_activity_type_location", sector_ids)
-                    
-            if r.component:
-                if r.component_name == "document":
-                    doc_table = s3db.doc_document
-                    doc_table.organisation_id.readable = False
-                    doc_table.person_id.readable = False
-                    doc_table.location_id.readable = False
-                    doc_table.organisation_id.writable = False
-                    doc_table.person_id.writable = False
-                    doc_table.location_id.writable = False
+
+            if r.component_name == "document":
+                table = db.doc_document
+                table.organisation_id.readable = table.organisation_id.writable = False
+                table.person_id.readable = table.person_id.writable = False
+                table.location_id.readable = table.location_id.writable = False
 
         return True
     s3.prep = prep
@@ -641,6 +636,12 @@ def location():
                               csv_template="location")
 
 # -----------------------------------------------------------------------------
+def demographic():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller("stats", "demographic")
+
+# -----------------------------------------------------------------------------
 def demographic_data():
     """ RESTful CRUD controller """
 
@@ -648,7 +649,7 @@ def demographic_data():
 
 # -----------------------------------------------------------------------------
 def location_contact():
-    """ Show a list of all community contacts """
+    """ RESTful CRUD controller for Community Contacts """
 
     return s3_rest_controller()
 
@@ -665,11 +666,13 @@ def report():
 # -----------------------------------------------------------------------------
 def partners():
     """
-        A REST controller for Organisations filtered by Type
-        @ToDo: This could need to be a deployment setting
+        RESTful CRUD controller for Organisations filtered by Type
     """
 
-    current.request.get_vars["organisation.organisation_type_id$name"] = "Bilateral,Government,Intergovernmental,NGO,UN agency"
+    # @ToDo: This could need to be a deployment setting
+    request.get_vars["organisation.organisation_type_id$name"] = \
+        "Bilateral,Government,Intergovernmental,NGO,UN agency"
+
     return s3db.org_organisation_controller()
 
 # =============================================================================
@@ -896,5 +899,37 @@ $('#submit_record__row input').click(function(){
                  SCRIPT(script))
 
     return XML(output)
+
+# =============================================================================
+# Campaigns
+# =============================================================================
+def campaign():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def campaign_keyword():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def campaign_message():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def campaign_response():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def campaign_response_summary():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller()
 
 # END =========================================================================

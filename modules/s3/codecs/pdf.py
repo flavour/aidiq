@@ -299,50 +299,39 @@ class S3RL_PDF(S3Codec):
 
         from s3.s3data import S3DataTable
 
-        list_fields = self.list_fields
-        if list_fields:
-            try:
-                # Remove the ID field as we're not using this for the Action Buttons
-                list_fields.remove("id")
-            except:
-                pass
+        fields = self.list_fields
+        if fields:
+            list_fields = [f for f in fields if f != "id"]
         else:
-            list_fields = []
-            fields = resource.readable_fields()
-            for field in fields:
-                if field.type == "id":
-                    continue
-                if self.pdf_hide_comments and field.name == "comments":
-                    continue
-                list_fields.append(field.name)
-
-        rfields = resource.resolve_selectors(list_fields,
-                                             extra_fields=False)[0]
+            list_fields = [f.name for f in resource.readable_fields()
+                                  if f.type != "id" and
+                                     f.name != "comments" or
+                                     not self.pdf_hide_comments]
 
         vars = Storage(current.request.vars)
-        vars["iColumns"] = len(rfields)
+        vars["iColumns"] = len(list_fields)
         filter, orderby, left = resource.datatable_filter(list_fields, vars)
         resource.add_filter(filter)
 
-        current.manager.ROWSPERPAGE = None # needed to get all the data
-        rows = resource.select(list_fields,
-                               left=left,
-                               start=None,
-                               limit=None,
-                               orderby=orderby)
-        data = resource.extract(rows,
-                                list_fields,
-                                represent=True,
-                                show_links=False)
+        result = resource.fast_select(list_fields,
+                                      left=left,
+                                      start=None,
+                                      limit=None,
+                                      count=True,
+                                      getids=True,
+                                      orderby=orderby,
+                                      represent=True,
+                                      show_links=False)
 
         # Now generate the PDF table
         pdf_table = S3PDFTable(doc,
-                               rfields,
-                               data,
+                               result["rfields"],
+                               result["data"],
                                groupby = self.pdf_groupby,
                                autogrow = self.table_autogrow,
                                body_height = doc.body_height,
                                ).build()
+
         return pdf_table
 
 # =============================================================================
@@ -647,7 +636,6 @@ class S3PDFTable(object):
         self.pdf = document
         # @todo: Change the code to use raw_data directly rather than this
         #        conversion to an ordered list of values
-        # @ToDo: We don't want to include in the output the selectors added as extra_fields
         self.rfields = rfields
         rdata = []
         rappend = rdata.append
@@ -663,7 +651,9 @@ class S3PDFTable(object):
                     if isinstance(value, (basestring, lazyT)):
                         dvalue = value
                     elif isinstance(value, IMG):
-                        dvalue = S3html2pdf.parse_img(value)[0]
+                        dvalue = S3html2pdf.parse_img(value, selector.field.uploadfolder)
+                        if dvalue:
+                            dvalue = dvalue[0]
                     elif isinstance(value, DIV):
                         if len(value.components) > 0:
                             value = value.components[0]
@@ -719,6 +709,7 @@ class S3PDFTable(object):
             data = [self.labels] + data
         elif self.raw_data != None:
             data = [self.labels] + self.raw_data
+
         # Only build the table if we have some data
         if not data or not (data[0]):
             return None
@@ -855,8 +846,9 @@ class S3PDFTable(object):
             p = Table(page, repeatRows=1,
                       style=self.style,
                       hAlign="LEFT",
-                      colWidths=colWidths
-                     )
+                      colWidths=colWidths,
+                      emptyTableAction="indicate"
+                      )
             content.append(p)
             # Add a page break, except for the last page.
             if currentPage + 1 < len(self.pages):
@@ -994,12 +986,15 @@ class S3PDFTable(object):
         newColWidth = []
         pageColWidth = []
         for colW in colWidths:
-            if total + colW > self.tempDoc.printable_width:
+            if colNo > 0 and total + colW > self.tempDoc.printable_width:
+                # Split before this column...
                 colSplit.append(colNo)
                 newColWidth.append(pageColWidth)
+                # ...and put it on a new page
                 pageColWidth = [colW]
                 total = colW
             else:
+                # Append this column to the current page
                 pageColWidth.append(colW)
                 total += colW
             colNo += 1
@@ -1199,6 +1194,10 @@ class S3html2pdf():
     # -------------------------------------------------------------------------
     def parse_div(self, html):
         """
+            Parses a DIV element and converts it into a format for ReportLab
+
+            @param html: the DIV element  to convert
+            @returns: a list containing text that ReportLab can use
         """
 
         content = []
@@ -1214,6 +1213,10 @@ class S3html2pdf():
     # -------------------------------------------------------------------------
     def parse_a(self, html):
         """
+            Parses an A element and converts it into a format for ReportLab
+
+            @param html: the A element  to convert
+            @returns: a list containing text that ReportLab can use
         """
 
         content = []
@@ -1228,33 +1231,36 @@ class S3html2pdf():
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def parse_img(html):
+    def parse_img(html, uploadfolder=None):
         """
-        Parses an IMG element from Web2py and converts it into an Image
-        that ReportLab can use.
+            Parses an IMG element and converts it into an Image for ReportLab
 
-        @param html: the IMG element  to convert
-        @return: a list containing an Image that ReportLab can use
+            @param html: the IMG element  to convert
+            @param uploadfolder: an optional uploadfolder in which to find the file
+            @returns: a list containing an Image that ReportLab can use
 
 
-        @note: The `src` attribute of the image must either
-        point to a static resource, directly to a file, or to an upload.
+            @note: The `src` attribute of the image must either
+            point to a static resource, directly to a file, or to an upload.
         """
-        I = None
+
         from reportlab.platypus import Image
 
+        I = None
         if "_src" in html.attributes:
             src = html.attributes["_src"]
-            if src.startswith("/%s/static" % current.request.application):
+            if uploadfolder:
+                src = src.rsplit("/", 1)
+                src = os.path.join(uploadfolder, src[1])
+            elif src.startswith("/%s/static" % current.request.application):
                 src = src.split("/%s/" % current.request.application)[-1]
                 src = os.path.join(current.request.folder, src)
-            if os.path.exists(src):
-                I = Image(src)
             else:
                 src = src.rsplit("/", 1)
                 src = os.path.join(current.request.folder, "uploads/", src[1])
-                if os.path.exists(src):
-                    I = Image(src)
+            if os.path.exists(src):
+                I = Image(src)
+
         if not I:
             return None
 
@@ -1278,6 +1284,10 @@ class S3html2pdf():
 
     def parse_p(self, html):
         """
+            Parses a P element and converts it into a format for ReportLab
+
+            @param html: the P element  to convert
+            @returns: a list containing text that ReportLab can use
         """
 
         content = []
@@ -1293,13 +1303,17 @@ class S3html2pdf():
     # -------------------------------------------------------------------------
     def parse_table(self, html):
         """
+            Parses a TABLE element and converts it into a format for ReportLab
+
+            @param html: the TABLE element  to convert
+            @returns: a list containing text that ReportLab can use
         """
 
         style = [("FONTSIZE", (0, 0), (-1, -1), self.fontsize),
                  ("VALIGN", (0, 0), (-1, -1), "TOP"),
                  ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-                 ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
-                ]
+                 ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                 ]
         content = []
         cappend = content.append
         rowCnt = 0
@@ -1327,6 +1341,10 @@ class S3html2pdf():
     # -------------------------------------------------------------------------
     def parse_tr (self, html, style, rowCnt):
         """
+            Parses a TR element and converts it into a format for ReportLab
+
+            @param html: the TR element  to convert
+            @returns: a list containing text that ReportLab can use
         """
 
         row = []

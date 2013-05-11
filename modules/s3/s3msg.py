@@ -64,6 +64,7 @@ from gluon.html import *
 
 from s3codec import S3Codec
 from s3crud import S3CRUD
+from s3forms import S3SQLDefaultForm
 from s3utils import s3_debug
 from s3validators import IS_IN_SET, IS_ONE_OF, IS_ONE_OF_EMPTY
 
@@ -107,10 +108,13 @@ class S3Msg(object):
         #  <xs:enumeration value="XRI"/>
         #  <xs:enumeration value="YAHOO"/>
 
+        # @ToDo: Remove the T from the init() & T upon usage instead
+
+        MOBILE = current.deployment_settings.get_ui_label_mobile_phone()
         # Full range of contact options
         self.CONTACT_OPTS = {
                 "EMAIL":       T("Email"),
-                "SMS":         current.deployment_settings.get_ui_label_mobile_phone(),
+                "SMS":         MOBILE,
                 "HOME_PHONE":  T("Home phone"),
                 "WORK_PHONE":  T("Work phone"),
                 "FAX":         T("Fax"),
@@ -126,7 +130,7 @@ class S3Msg(object):
         # NB Coded into hrm_map_popup & s3.msg.js
         self.MSG_CONTACT_OPTS = {
                 "EMAIL":   T("Email"),
-                "SMS":     current.deployment_settings.get_ui_label_mobile_phone(),
+                "SMS":     MOBILE,
                 "TWITTER": T("Twitter"),
                 #"XMPP":   "XMPP",
             }
@@ -317,7 +321,8 @@ class S3Msg(object):
         """
 
         T = current.T
-        vars = current.request.vars
+        request = current.request
+        vars = request.vars
         db = current.db
         s3db = current.s3db
         ltable = s3db.msg_log
@@ -391,7 +396,6 @@ class S3Msg(object):
                         contact_method_opts[row.contact_method] = all_contact_opts[row.contact_method]
                 if not contact_method_opts:
                     current.session.error = T("There are no contacts available for this person!")
-                    request = current.request
                     controller = request.controller
                     vars = request.get_vars
                     if controller == "hrm":
@@ -420,13 +424,14 @@ class S3Msg(object):
                 # Filter by Recipient Type
                 otable.pe_id.requires = IS_ONE_OF(db,
                                                   "pr_pentity.pe_id",
-                                                  orderby="instance_type",
+                                                  # Breaks PG
+                                                  #orderby="instance_type",
                                                   filterby="instance_type",
                                                   filter_opts=(recipient_type,))
             otable.pe_id.comment = DIV(_class="tooltip",
                                        _title="%s|%s" % \
-                                        (T("Recipients"),
-                                         T("Please enter the first few letters of the Person/Group for the autocomplete.")))
+                (T("Recipients"),
+                 T("Please enter the first few letters of the Person/Group for the autocomplete.")))
         otable.pe_id.writable = True
         otable.pe_id.label = T("Recipient(s)")
 
@@ -451,23 +456,27 @@ class S3Msg(object):
                 current.session.confirmation = T("Check outbox for the message status")
                 redirect(url)
             else:
-                current.session.error = T("Error in message:%s")\
-                                            % current.session.error
+                current.session.error = T("Error in message:%s") % \
+                                            current.session.error
                 redirect(url)
 
         # Source forms
-        crud = current.crud
-        logform = crud.create(ltable,
-                              onvalidation = compose_onvalidation,
-                              formname = "msg_log/%s" % formid)
-        outboxform = crud.create(otable,
-                                 formname = "msg_outbox/%s" % formid)
+        sqlform = S3SQLDefaultForm()
+        logform = sqlform(request=request,
+                          resource=s3db.resource("msg_log"),
+                          onvalidation=compose_onvalidation,
+                          message="Message Sent",
+                          format="html")
+        outboxform = sqlform(request=request,
+                             resource=s3db.resource("msg_outbox"),
+                             message="Message Sent",
+                             format="html")
 
         # Shortcuts
         lcustom = logform.custom
         ocustom = outboxform.custom
 
-        pe_row = TR(TD(LABEL("%s:" % ocustom.label.pe_id)),
+        pe_row = TR(TD(LABEL(ocustom.label.pe_id)),
                     _id="msg_outbox_pe_id__row")
         if recipient:
             ocustom.widget.pe_id["_class"] = "hide"
@@ -483,24 +492,23 @@ class S3Msg(object):
         form = DIV( lcustom.begin,
                     TABLE(
                         TBODY(
-                            TR(TD(LABEL("%s:" % \
-                                ocustom.label.pr_message_method)),
+                            TR(TD(LABEL(ocustom.label.pr_message_method)),
                                TD(ocustom.widget.pr_message_method),
                                TD(ocustom.comment.pr_message_method),
                                _id="msg_outbox_pr_message_method__row"
                             ),
                             pe_row,
-                            TR(TD(LABEL("%s:" % lcustom.label.subject)),
+                            TR(TD(LABEL(lcustom.label.subject)),
                                TD(lcustom.widget.subject),
                                TD(lcustom.comment.subject),
                                _id="msg_log_subject__row"
                             ),
-                            TR(TD(LABEL("%s:" % lcustom.label.message)),
+                            TR(TD(LABEL(lcustom.label.message)),
                                TD(lcustom.widget.message),
                                TD(lcustom.comment.message),
                                _id="msg_log_message__row"
                             ),
-                            # TR(TD(LABEL("%s:" % lcustom.label.priority)),
+                            # TR(TD(LABEL(lcustom.label.priority)),
                                # TD(lcustom.widget.priority),
                                # TD(lcustom.comment.priority),
                                # _id="msg_log_priority__row"
@@ -615,7 +623,7 @@ class S3Msg(object):
         s3db = current.s3db
 
         if contact_method == "SMS":
-            table = s3db.msg_setting
+            table = s3db.msg_sms_outbound_gateway
             settings = db(table.id > 0).select(table.outgoing_sms_handler,
                                                limitby=(0, 1)).first()
             if not settings:
@@ -946,7 +954,7 @@ class S3Msg(object):
 
         db = current.db
         s3db = current.s3db
-        table = s3db.msg_api_settings
+        table = s3db.msg_sms_webapi_channel
 
         # Get Configuration
         query = (table.enabled == True)
@@ -995,7 +1003,7 @@ class S3Msg(object):
             http://www.obviously.com/tech_tips/SMS_Text_Email_Gateway.html
         """
 
-        table = current.s3db.msg_smtp_to_sms_settings
+        table = current.s3db.msg_sms_smtp_channel
         query = (table.enabled == True)
         settings = current.db(query).select(limitby=(0, 1)
                                             ).first()
@@ -1028,7 +1036,7 @@ class S3Msg(object):
 
         db = current.db
         s3db = current.s3db
-        table = s3db.msg_tropo_settings
+        table = s3db.msg_tropo_channel
 
         base_url = "http://api.tropo.com/1.0/sessions"
         action = "create"
@@ -1145,7 +1153,8 @@ class S3Msg(object):
         else:
             self.tweepy = tweepy
 
-        table = current.s3db.msg_twitter_settings
+        table = current.s3db.msg_twitter_channel
+        # @ToDo: Don't assume that we only have a single record
         twitter_settings = current.db(table.id > 0).select(table.oauth_key,
                                                            table.oauth_secret,
                                                            table.twitter_account,
@@ -1349,13 +1358,13 @@ class S3Msg(object):
         db = current.db
         s3db = current.s3db
 
-        inbound_status_table = s3db.msg_inbound_email_status
+        inbound_status_table = s3db.msg_email_inbound_status
         inbox_table = s3db.msg_email_inbox
         log_table = s3db.msg_log
         source_task_id = username
 
         # Read-in configuration from Database
-        settings = db(s3db.msg_inbound_email_settings.username == username).select(limitby=(0, 1)).first()
+        settings = db(s3db.msg_email_inbound_channel.username == username).select(limitby=(0, 1)).first()
         if not settings:
             return "Username %s not scheduled." % username
         host = settings.server
@@ -1530,7 +1539,7 @@ class S3Msg(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def mcommons_inbound_sms(campaign_id):
+    def mcommons_poll(campaign_id):
         """
             Fetches the inbound SMS from Mobile Commons API
             http://www.mobilecommons.com/mobile-commons-api/rest/#ListIncomingMessages
@@ -1538,7 +1547,7 @@ class S3Msg(object):
 
         db = current.db
         s3db = current.s3db
-        table = s3db.msg_mcommons_inbound_settings
+        table = s3db.msg_mcommons_channel
         query = (table.campaign_id == campaign_id)
         account = db(query).select(limitby=(0, 1)).first()
         if account:
@@ -1591,12 +1600,12 @@ class S3Msg(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def twilio_inbound_sms(account_name):
-        """ Fetches the inbound sms from twilio API."""
+    def twilio_poll(account_name):
+        """ Fetches the inbound SMS from Twilio API."""
 
         db = current.db
         s3db = current.s3db
-        ttable = s3db.msg_twilio_inbound_settings
+        ttable = s3db.msg_twilio_inbound_channel
         query = (ttable.account_name == account_name) & \
                 (ttable.deleted == False)
         account = db(query).select(limitby=(0, 1)).first()
@@ -1830,10 +1839,8 @@ class S3Compose(S3CRUD):
 
         if field:
             records = resource.select([field])
-            if records:
-                rfield = resource.resolve_selector(field)
-                items = resource.extract(records, [field])
-                recipients = [item[rfield.colname] for item in items]
+            items = resource.extract(records, [field])
+            recipients = [item.values()[0] for item in items]
 
         if recipients:
             self.recipients = recipients
@@ -1868,8 +1875,8 @@ class S3Compose(S3CRUD):
         if recipients:
             if len(recipients) == 1:
                 recipient = recipients[0]
-                represent = s3.pr_pentity_represent(recipient,
-                                                    show_label=False)
+                represent = s3db.pr_pentity_represent(recipient,
+                                                      show_label=False)
                 # Restrict message options to those available for the entity
                 # @ToDo: Support Groups, etc by looking up Entity Type
                 ctable = s3db.pr_contact

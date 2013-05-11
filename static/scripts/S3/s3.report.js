@@ -1,7 +1,7 @@
 /**
  * S3 Reporting Framework, Static JavaScript
  *
- * copyright: 2012 (c) Sahana Software Foundation
+ * copyright: 2012-13 (c) Sahana Software Foundation
  * license: MIT
  *
  * requires: jQuery
@@ -160,6 +160,9 @@ function reportRenderBarChart(json, dim) {
     var layer = json['t'];
 
     var url = json['u'], concat = '?';
+    if (url.split('?').length > 1) {
+        concat = '&';
+    }
     for (var f in json['f']) {
         url += concat + f + '=' + json['f'][f];
         concat = '&';
@@ -269,20 +272,21 @@ function reportRenderBreakdown(json, dim) {
     var layer = json['t'];
 
     var url = json['u'], concat = '?';
+    if (url.split('?').length > 1) {
+        concat = '&';
+    }
     for (var f in json['f']) {
         url += concat + f + '=' + json['f'][f];
         concat = '&';
     }
 
-    var odata = [];
-    var xmax = 0;
-    for (var c=0; c<cols.length; c++) {
+    var odata = [], xmax = 0;
+    for (var c=0; c < cols.length; c++) {
         // every col gives a series
-        var series = {label: cols[c][2]};
-        var values = [];
+        var series = {label: cols[c][2]}, values = [], index, value;
         for (var r=0; r < rows.length; r++) {
-            var index = (r + 1) * (cols.length + 1) - c;
-            var value = get_data(r, c);
+            index = (rows.length - r) * (cols.length + 1) - c;
+            value = get_data(r, c);
             if (value > xmax) {
                 xmax = value;
             }
@@ -292,10 +296,10 @@ function reportRenderBreakdown(json, dim) {
         odata.push(series);
     }
 
-    var yaxis_ticks = [];
+    var yaxis_ticks = [], label;
     for (r=0; r < rows.length; r++) {
-        var label = rows[r][2];
-        index = (r + 1) * (cols.length + 1) + 1;
+        label = rows[r][2];
+        index = (rows.length - r) * (cols.length + 1) + 1;
         yaxis_ticks.push([index, label]);
     }
 
@@ -458,11 +462,11 @@ $(document).ready(function() {
             if (layers) {
                 lists = $('<div/>').addClass('report-cell-records');
 
-                for (var layer=0, ln=layers.length; layer<ln; layer++) {
+                for (var layer=0, ln=layers.length; layer < ln; layer++) {
                     var list = $('<ul/>');
                     var records = layers[layer];
 
-                    for (var record=0, rn=records.length; record<rn; record++) {
+                    for (var record=0, rn=records.length; record < rn; record++) {
                         list.append('<li>' + json_data.cell_lookup_table[layer][records[record]] + '</li>');
                     }
                     lists.append(list);
@@ -479,8 +483,8 @@ $(document).ready(function() {
         $('#report_options legend').children().toggle();
     }
 
-    // Render default chart
     if (undefined !== chart_opts) {
+        // Render default chart
         var t = chart_opts.type, d = chart_opts.dim;
         if (d == 'cols') {
             d = 1;

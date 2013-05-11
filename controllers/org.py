@@ -14,43 +14,22 @@ if not settings.has_module(module):
 def index():
     """ Module's Home Page """
 
-    module_name = settings.modules[module].name_nice
-    response.title = module_name
+    return s3db.cms_index(module, alt_function="index_alt")
 
-    item = None
-    if settings.has_module("cms"):
-        table = s3db.cms_post
-        _item = db(table.module == module).select(table.id,
-                                                  table.body,
-                                                  limitby=(0, 1)).first()
-        if _item:
-            if s3_has_role(ADMIN):
-                item = DIV(XML(_item.body),
-                           BR(),
-                           A(T("Edit"),
-                             _href=URL(c="cms", f="post",
-                                       args=[_item.id, "update"],
-                                       vars={"module":module}),
-                             _class="action-btn"))
-            else:
-                item = XML(_item.body)
-        elif s3_has_role(ADMIN):
-            item = DIV(H2(module_name),
-                       A(T("Edit"),
-                         _href=URL(c="cms", f="post", args="create",
-                                   vars={"module":module}),
-                         _class="action-btn"))
+# -----------------------------------------------------------------------------
+def index_alt():
+    """
+        Module homepage for non-Admin users when no CMS content found
+    """
 
-    if not item:
-        #item = H2(module_name)
+    # @ToDo: Move this to the Template (separate deployment_setting or else a customize for non-REST controllers)
+    template = settings.get_template()
+    if template == "SandyRelief":
         # Just redirect to the Facilities
         redirect(URL(f="facility", args=["search"]))
-
-    # tbc
-    report = ""
-
-    response.view = "index.html"
-    return dict(item=item, report=report)
+    else:
+        # Just redirect to the list of Organisations
+        redirect(URL(f="organisation"))
 
 # -----------------------------------------------------------------------------
 def sector():
@@ -109,11 +88,13 @@ def sites_for_org():
     else:
         # Find all branches for this Organisation
         btable = s3db.org_organisation_branch
-        query = (btable.organisation_id == org)
+        query = (btable.organisation_id == org) & \
+                (btable.deleted != True)
         rows = db(query).select(btable.branch_id)
         org_ids = [row.branch_id for row in rows] + [org]
         stable = s3db.org_site
-        query = (stable.organisation_id.belongs(org_ids))
+        query = (stable.organisation_id.belongs(org_ids)) & \
+                (stable.deleted != True)
         rows = db(query).select(stable.site_id,
                                 stable.name,
                                 orderby=stable.name)
@@ -189,6 +170,9 @@ def facility_marker_fn(record):
 def facility():
     """ RESTful CRUD controller """
 
+    # Tell the client to request per-feature markers
+    s3db.configure("org_facility", marker_fn=facility_marker_fn)
+
     # Pre-processor
     def prep(r):
         # Location Filter
@@ -259,14 +243,9 @@ def facility():
                 field = r.table.obsolete
                 field.readable = field.writable = True
 
-            elif r.method == "map":
-                # Tell the client to request per-feature markers
-                s3db.configure("org_facility", marker_fn=facility_marker_fn)
-
         elif r.representation == "geojson":
             # Load these models now as they'll be needed when we encode
             mtable = s3db.gis_marker
-            s3db.configure("org_facility", marker_fn=facility_marker_fn)
         
         return True
     s3.prep = prep
@@ -526,6 +505,18 @@ def donor():
     output = s3_rest_controller()
 
     return output
+
+# -----------------------------------------------------------------------------
+def resource():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def resource_type():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def req_match():

@@ -1,0 +1,152 @@
+body {
+    font: 14px/21px 'Open Sans', sans-serif;
+    color: #666;
+    overflow-x: hidden;
+    background: url(img/bg_patch.jpg) #ebebeb;
+}
+
+body.popup {
+    background: #fff;
+    padding-top: 0;
+}
+
+/* Over-ride ext */
+h1, h2, h3, h4, h5, h6 {
+    margin: 10px 0;
+}
+h4 {
+    font-size: 17.5px;
+}
+form {
+    margin: 0 0 20px;
+}
+
+/* Over-ride Footer */
+#footer {
+    border-top: 0;
+}
+
+/* Over-ride Bootstrap */
+.gis-map-window img,
+.map_wrapper img {
+    max-width: none;
+}
+
+.form-horizontal .map_wrapper {
+    margin-left: 20px;
+}
+
+.tooltip {
+    opacity: 1;
+}
+
+/* Over-ride widgets */
+/*
+#dl-container {
+    clear: none;
+}*/
+div.dl {
+    border-bottom: 0;
+}
+.dl-item {
+    border-top: 0;
+    clear: none;
+}
+.dl-header {
+    display: none;
+}
+
+#cms_post_body.text.input-xlarge {
+    height: 100px;
+}
+
+#delete-btn {
+    margin-bottom: 0;
+}
+
+/* Match .btn.btn-primary */
+.delete-btn {
+    background-color: #006DCC;
+    border-color: rgba(0, 0, 0, 0.1) rgba(0, 0, 0, 0.1) rgba(0, 0, 0, 0.25);
+    border-width: 1px;
+    border-radius: 4px 4px 4px 4px;
+    color: #FFFFFF;
+    text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25);
+    line-height: 20px;
+    padding: 4px 12px;
+}
+
+/* Push down below Nav */
+#alert-space {
+    padding-top: 50px;
+}
+.alert.alert-success {
+    border: 1px solid #b2b2b2;
+}
+
+a.btn.btn-primary.main-add {
+    font-size: 15px;
+    float: right;
+    position: relative;
+    right: 13px;
+    top: 24px;
+}
+
+/* Add button on Updates page & Disaster selection screen */
+a i.icon.icon-plus-sign.big-add:hover {
+    text-decoration: none;
+}
+
+/* Modals */
+/* Imitate Bootstrap in jQueryUI Modal */
+#popup #submit_record__row {
+    text-align: right;
+}
+.ui-dialog-titlebar-close:after {
+    content: "x";
+}
+
+.ui-dialog-titlebar {
+    text-align: center;
+    background-image: -webkit-gradient(linear,50% 0,50% 100%,color-stop(0%,#f9f9fa),color-stop(100%,#e0e2e8)) !important;
+    background-image: -webkit-linear-gradient(top,#f9f9fa,#e0e2e8) !important;
+    background-image: -moz-linear-gradient(top,#f9f9fa,#e0e2e8) !important;
+    background-image: -o-linear-gradient(top,#f9f9fa,#e0e2e8) !important;
+    background-image: -ms-linear-gradient(top,#f9f9fa,#e0e2e8) !important;
+    background-image: linear-gradient(top,#f9f9fa,#e0e2e8) !important;
+}
+
+table.embeddedComponent {
+    border: 0;
+    display: inline-block;
+    margin-bottom: 10px;
+    margin-top: 1px;
+    border-radius: 4px;
+    -webkit-border-radius: 4px;
+    -moz-border-radius: 4px;
+}
+
+#add-row-defaultevent_post td, 
+#add-row-filedocument td {
+    border: 0;
+    padding-left: 0;
+}
+
+#sub_defaultevent_post_defaultevent_post_i_event_id_edit_none,
+#sub_filedocument_filedocument_i_file_edit_none.upload {
+    padding-top: 6px;
+    padding-left: 4px;
+}
+
+#cms_post_body__row.control-group, 
+#cms_post_series_id__row.control-group,
+#cms_post_location_id__row.control-group,
+#cms_post_sub_filedocument__row.control-group {
+    margin-bottom: 5px;
+}
+
+#sub-filedocument table.embeddedComponent thead tr.label-row,
+#sub-defaultevent_post table.embeddedComponent thead tr.label-row {
+    display: none;	
+}
+

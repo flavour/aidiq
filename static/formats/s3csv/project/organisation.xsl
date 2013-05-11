@@ -10,6 +10,7 @@
 
          Project..............string..........Project Name
          Organisation.........string..........Organisation Name
+         Organisation Type....string..........Organisation Type
          Role.................code............Organisation Role
          Amount...............float...........Funding Amount
          Currency.............code............Currency of the Funding Amount
@@ -23,13 +24,21 @@
     <project:organisation-role code="1">Host National Society</project:organisation-role>
     <project:organisation-role code="2">Partner National Society</project:organisation-role>
     <project:organisation-role code="3">Donor</project:organisation-role>
+    <project:organisation-role code="5">Partner</project:organisation-role>
 
     <xsl:key name="organisations" match="row" use="col[@field='Organisation']"/>
+    <xsl:key name="org_types" match="row" use="col[@field='Organisation Type']"/>
     <xsl:key name="projects" match="row" use="col[@field='Project']"/>
 
     <!-- ****************************************************************** -->
     <xsl:template match="/">
         <s3xml>
+            <!-- Organisation Types -->
+            <xsl:for-each select="//row[generate-id(.)=generate-id(key('org_types',
+                                                                   col[@field='Organisation Type'])[1])]">
+                <xsl:call-template name="OrganisationType"/>
+            </xsl:for-each>
+
             <!-- Organisations -->
             <xsl:for-each select="//row[generate-id(.)=generate-id(key('organisations',
                                                                    col[@field='Organisation'])[1])]">
@@ -99,14 +108,44 @@
     </xsl:template>
 
     <!-- ****************************************************************** -->
+    <xsl:template name="OrganisationType">
+        <xsl:variable name="Type" select="col[@field='Organisation Type']/text()"/>
+
+        <resource name="org_organisation_type">
+            <xsl:attribute name="tuid">
+                <xsl:value-of select="concat('OrgType:', $Type)"/>
+            </xsl:attribute>
+            <data field="name"><xsl:value-of select="$Type"/></data>
+        </resource>
+
+    </xsl:template>
+
+    <!-- ****************************************************************** -->
     <xsl:template name="Organisation">
         <xsl:variable name="OrgName" select="col[@field='Organisation']/text()"/>
+        <xsl:variable name="Type" select="col[@field='Organisation Type']/text()"/>
+        <xsl:variable name="Role" select="col[@field='Role']/text()"/>
 
         <resource name="org_organisation">
             <xsl:attribute name="tuid">
                 <xsl:value-of select="concat('Organisation:', $OrgName)"/>
             </xsl:attribute>
             <data field="name"><xsl:value-of select="$OrgName"/></data>
+            <xsl:choose>
+                <!-- Use Type if-specified -->
+                <xsl:when test="$Type!=''">
+                    <reference field="organisation_type_id" resource="org_organisation_type">
+                        <xsl:attribute name="tuid">
+                            <xsl:value-of select="concat('OrgType:', $Type)"/>
+                        </xsl:attribute>
+                    </reference>
+                </xsl:when>
+                <!-- If not-specified, then provide a default via a dummy field
+                     to be caught in xml_post_parse -->
+                <xsl:otherwise>
+                    <data field="_organisation_type_id"><xsl:value-of select="$Role"/></data>
+                </xsl:otherwise>
+            </xsl:choose>
         </resource>
 
     </xsl:template>

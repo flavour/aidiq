@@ -15,7 +15,7 @@ def index():
     module_name = settings.modules[module].name_nice
     response.title = module_name
 
-    # Note that this requires setting the Porto Incident Types in modules/eden.irs.py
+    # Note that this requires setting the Porto Incident Types in modules/s3db/irs.py
     incidents = DIV(A(DIV(T("Fire"),
                           _style="background-color:red;",
                           _class="question-container fleft"),
@@ -34,6 +34,18 @@ def index():
 
     return dict(module_name=module_name,
                 incidents=incidents)
+
+# -----------------------------------------------------------------------------
+def zone():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def zone_type():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def station():

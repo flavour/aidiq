@@ -2,12 +2,12 @@
 
 from gluon import current
 from s3 import *
-from eden.layouts import *
+from s3layouts import *
 try:
     from .layouts import *
 except ImportError:
     pass
-import eden.menus as default
+import s3menus as default
 
 # =============================================================================
 class S3MainMenu(default.S3MainMenu):
@@ -38,7 +38,7 @@ class S3MainMenu(default.S3MainMenu):
             MM("Project List", c="project", f="project", m="search"),
             MM("Project Analysis", c="default", f="index", args="analysis"),
             MM("Regional Organizations", c="default", f="index", args="organisations"),
-            MM("DRR Frameworks", c="project", f="framework"),
+            MM("Policies & Strategies", c="project", f="framework"),
             MM("My Page", c="default", f="index", args="mypage"),
         ]
 
@@ -64,7 +64,8 @@ class S3MainMenu(default.S3MainMenu):
                        vars=dict(_next=login_next), **attr),
                     MT("Register", c="default", f="index", args="register"),
                     MT("About", c="default", f="index", args="about"),
-                    MT("User Manual", c="static", f="DRR_Portal_User_Manual.pdf"),
+                    MT("User Manual",
+                       url=("static", "themes", "DRRPP", "DRR_Portal_User_Manual.pdf")),
                     MT("Contact", c="default", f="index", args="contact"),
                 )
         else:
@@ -84,7 +85,8 @@ class S3MainMenu(default.S3MainMenu):
                        check=s3_has_role(ADMIN) | s3_has_role(ORG_ADMIN)),
                     MT("Logout", c="default", f="user", args="logout", _id="auth_menu_logout"),
                     MT("About", c="default", f="index", args="about"),
-                    MT("User Manual", c="static", f="DRR_Portal_User_Manual.pdf"),
+                    MT("User Manual",
+                       url=("static", "themes", "DRRPP", "DRR_Portal_User_Manual.pdf")),
                     MT("Contact", c="default", f="index", args="contact"),
                 )
 

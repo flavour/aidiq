@@ -189,9 +189,11 @@ settings.L10n.decimal_separator = "."
 settings.L10n.thousands_separator = ","
 # Unsortable 'pretty' date format
 settings.L10n.date_format = T("%d-%b-%y")
-settings.L10n.datetime_format = T("%d-%b-%Y %H:%M")
 # Start week on Sunday
 settings.L10n.firstDOW = 0
+# PDF to Letter
+settings.base.paper_size = T("Letter")
+
 # Make last name in person/user records mandatory
 settings.L10n.mandatory_lastname = True
 

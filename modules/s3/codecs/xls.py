@@ -36,14 +36,8 @@ except:
     from StringIO import StringIO
 
 from gluon import *
-from gluon.storage import Storage
 from gluon.contenttype import contenttype
-try:
-    from lxml import etree
-except ImportError:
-    import sys
-    print >> sys.stderr, "ERROR: lxml module needed for XML handling"
-    raise
+from gluon.storage import Storage
 
 from ..s3codec import S3Codec
 from ..s3utils import s3_unicode, s3_strip_markup
@@ -55,7 +49,7 @@ class S3XLS(S3Codec):
     """
 
     # Customizable styles
-    COL_WIDTH_MULTIPLIER = 360
+    COL_WIDTH_MULTIPLIER = 310
     LARGE_HEADER_COLOUR = 0x2C
     HEADER_COLOUR = 0x2C
     SUB_HEADER_COLOUR = 0x18
@@ -74,7 +68,6 @@ class S3XLS(S3Codec):
             XLWT_ERROR = T("ERROR: Running Python needs the xlwt module installed for XLS export")
         )
 
-
     # -------------------------------------------------------------------------
     def extractResource(self, resource, list_fields):
         """
@@ -85,9 +78,25 @@ class S3XLS(S3Codec):
         """
 
         title = self.crud_string(resource.tablename, "title_list")
+        
+        vars = Storage(current.request.vars)
+        vars["iColumns"] = len(list_fields)
+        filter, orderby, left = resource.datatable_filter(list_fields, vars)
+        resource.add_filter(filter)
+        
+        result = resource.fast_select(list_fields,
+                                      left=left,
+                                      start=None,
+                                      limit=None,
+                                      count=True,
+                                      getids=True,
+                                      orderby=orderby,
+                                      represent=True,
+                                      show_links=False)
 
-        rfields = resource.resolve_selectors(list_fields)[0]
-
+        rfields = result["rfields"]
+        items = result["data"]
+        
         types = []
         lfields = []
         heading = {}
@@ -99,20 +108,6 @@ class S3XLS(S3Codec):
                     types.append("string")
                 else:
                     types.append(rfield.ftype)
-
-        vars = Storage(current.request.vars)
-        vars["iColumns"] = len(rfields)
-        filter, orderby, left = resource.datatable_filter(list_fields, vars)
-        resource.add_filter(filter)
-
-        rows = resource.select(list_fields,
-                               left=left,
-                               start=None,
-                               limit=None,
-                               orderby=orderby)
-
-        items = resource.extract(rows, list_fields,
-                                 represent=True, show_links=False)
 
         return (title, types, lfields, heading, items)
 
@@ -152,7 +147,7 @@ class S3XLS(S3Codec):
 
         request = current.request
 
-        # The xlwt library supports a maximum of 182 character in a single cell
+        # The xlwt library supports a maximum of 182 characters in a single cell
         max_cell_size = 182
 
         COL_WIDTH_MULTIPLIER = S3XLS.COL_WIDTH_MULTIPLIER
@@ -160,9 +155,11 @@ class S3XLS(S3Codec):
         # Get the attributes
         title = attr.get("title")
         list_fields = attr.get("list_fields")
+        if not list_fields:
+            list_fields = data_source.list_fields()
         group = attr.get("dt_group")
-        report_groupby = list_fields[group] if group else None
         use_colour = attr.get("use_colour", False)
+
         # Extract the data from the data_source
         if isinstance(data_source, (list, tuple)):
             headers = data_source[0]
@@ -187,9 +184,6 @@ List Fields %s""" % (request.url, len(headers), len(items[0]), headers, list_fie
         date_format = S3XLS.dt_format_translate(settings.get_L10n_date_format())
         time_format = S3XLS.dt_format_translate(settings.get_L10n_time_format())
         datetime_format = S3XLS.dt_format_translate(settings.get_L10n_datetime_format())
-
-        # Initialize output
-        output = StringIO()
 
         # Create the workbook
         book = xlwt.Workbook(encoding="utf-8")
@@ -240,39 +234,53 @@ List Fields %s""" % (request.url, len(headers), len(items[0]), headers, list_fie
             styleEven.pattern.pattern_fore_colour = S3XLS.ROW_ALTERNATING_COLOURS[1]
 
         # Header row
-        colCnt = -1
-        headerRow = sheet1.row(2)
-        fieldWidth = []
+        colCnt = 0
+        #headerRow = sheet1.row(2)
+        headerRow = sheet1.row(0)
+        fieldWidths = []
+        id = False
         for selector in lfields:
             if selector == report_groupby:
                 continue
             label = headers[selector]
             if label == "Id":
-                fieldWidth.append(0)
+                # Indicate to adjust colCnt when writing out
+                id = True
+                fieldWidths.append(0)
+                colCnt += 1
                 continue
             if label == "Sort":
                 continue
+            if id:
+                # Adjust for the skipped column
+                writeCol = colCnt - 1
+            else:
+                writeCol = colCnt
+            headerRow.write(writeCol, str(label), styleHeader)
+            width = max(len(label) * COL_WIDTH_MULTIPLIER, 2000)
+            #width = len(label) * COL_WIDTH_MULTIPLIER
+            fieldWidths.append(width)
+            sheet1.col(writeCol).width = width
             colCnt += 1
-            headerRow.write(colCnt, str(label), styleHeader)
-            width = len(label) * COL_WIDTH_MULTIPLIER
-            fieldWidth.append(width)
-            sheet1.col(colCnt).width = width
         # Title row
-        currentRow = sheet1.row(0)
-        if colCnt > 0:
-            sheet1.write_merge(0, 0, 0, colCnt, str(title),
-                               styleLargeHeader)
-        currentRow.height = 500
-        currentRow = sheet1.row(1)
-        currentRow.write(colCnt, request.now, styleNotes)
-        # fix the size of the last column to display the date
-        if 16 * COL_WIDTH_MULTIPLIER > width:
-            sheet1.col(colCnt).width = 16 * COL_WIDTH_MULTIPLIER
+        # - has been removed to allow columns to be easily sorted post-export.
+        # - add deployment_setting if an Org wishes a Title Row
+        # currentRow = sheet1.row(0)
+        # if colCnt > 0:
+            # sheet1.write_merge(0, 0, 0, colCnt, str(title),
+                               # styleLargeHeader)
+        # currentRow.height = 500
+        # currentRow = sheet1.row(1)
+        # currentRow.write(0, str(current.T("Date Exported:")), styleNotes)
+        # currentRow.write(1, request.now, styleNotes)
+        # Fix the size of the last column to display the date
+        #if 16 * COL_WIDTH_MULTIPLIER > width:
+        #    sheet1.col(colCnt).width = 16 * COL_WIDTH_MULTIPLIER
 
         # Initialize counters
         totalCols = colCnt
-        rowCnt = 3
-        colCnt = 0
+        #rowCnt = 2
+        rowCnt = 0
 
         subheading = None
         for item in items:
@@ -302,6 +310,7 @@ List Fields %s""" % (request.url, len(headers), len(items[0]), headers, list_fie
                 if label == groupby_label:
                     continue
                 if label == "Id":
+                    # Skip the ID column from XLS exports
                     colCnt += 1
                     continue
                 represent = s3_strip_markup(s3_unicode(item[field]))
@@ -362,14 +371,22 @@ List Fields %s""" % (request.url, len(headers), len(items[0]), headers, list_fie
                         style.num_format_str = "0.00"
                     except:
                         pass
-                currentRow.write(colCnt - 1, value, style)
+                if id:
+                    # Adjust for the skipped column
+                    writeCol = colCnt - 1
+                else:
+                    writeCol = colCnt
+                currentRow.write(writeCol, value, style)
                 width = len(represent) * COL_WIDTH_MULTIPLIER
-                if width > fieldWidth[colCnt]:
-                    fieldWidth[colCnt] = width
-                    sheet1.col(colCnt).width = width
+                if width > fieldWidths[colCnt]:
+                    fieldWidths[colCnt] = width
+                    sheet1.col(writeCol).width = width
                 colCnt += 1
         sheet1.panes_frozen = True
-        sheet1.horz_split_pos = 3
+        #sheet1.horz_split_pos = 3
+        sheet1.horz_split_pos = 1
+
+        output = StringIO()
         book.save(output)
 
         # Response headers
@@ -415,7 +432,8 @@ List Fields %s""" % (request.url, len(headers), len(items[0]), headers, list_fie
                      "%Y": "yyyy",
                      "%z": "",
                      "%Z": "",
-                     "%%": "%"}
+                     "%%": "%",
+                     }
 
         xlfmt = str(pyfmt)
 

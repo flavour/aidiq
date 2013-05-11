@@ -144,10 +144,11 @@ function addLayers() {
     }
     // Simple Features
     if (S3.gis.features) {
+        var current_projection = map.getProjectionObject();
         for (i = 0; i < S3.gis.features.length; i++) {
             var feature = S3.gis.format_geojson.parseFeature(S3.gis.features[i]);
             feature.geometry.transform(S3.gis.proj4326,
-                                       S3.gis.projection_current);
+                                       current_projection);
             S3.gis.draftLayer.addFeatures([feature]);
         }
     }
@@ -168,7 +169,7 @@ function addArcRESTLayer(layer) {
     var url = [layer.url];
     var layers;
     if (undefined != layer.layers) {
-        layers = layer.layers;
+        layers = layer.layers.join();
     } else {
         // Default layer
         layers = 0;
@@ -423,12 +424,7 @@ function addGeoJSONLayer(layer) {
         // Feature Layers
         layer_type = 'feature';
     }
-    var style;
-    if (undefined != layer.style) {
-        style = layer.style;
-    } else {
-        style = [];
-    }
+    var style = layer.style;
 
     // Style Rule For Clusters
     var cluster_style = {
@@ -438,7 +434,7 @@ function addGeoJSONLayer(layer) {
         fillColor: '${fill}',
         fillOpacity: '${fillOpacity}',
         strokeColor: '${stroke}',
-        strokeWidth: 2,
+        strokeWidth: '${strokeWidth}',
         strokeOpacity: opacity,
         graphicWidth: '${graphicWidth}',
         graphicHeight: '${graphicHeight}',
@@ -528,6 +524,18 @@ function addGeoJSONLayer(layer) {
                 } else if (feature.attributes.marker_url) {
                     // Use marker from feature
                     url = feature.attributes.marker_url;
+                } else if (feature.layer && (undefined != feature.layer.s3_style)) {
+                    var style = feature.layer.s3_style;
+                    if (Object.prototype.toString.call(style) !== '[object Array]') {
+                        // Polygon Layer
+                        if (undefined != style.external_graphic) {
+                            url = S3.Ap.concat('/static/img/' + style.external_graphic);
+                        }
+                    }
+                    if (undefined == url) {
+                        // default
+                        url = marker_url;
+                    }
                 } else {
                     // per-Layer Marker for Unclustered Point
                     url = marker_url;
@@ -538,7 +546,7 @@ function addGeoJSONLayer(layer) {
             	var pix;
                 if (feature.cluster) {
                     // Size for Clustered Point
-                    pix = Math.min(feature.attributes.count/2, 8) + 10;
+                    pix = Math.min(feature.attributes.count / 2, 8) + 10;
                 } else if (feature.attributes.size) {
                     // Use size from feature
                     pix = feature.attributes.size;
@@ -561,15 +569,21 @@ function addGeoJSONLayer(layer) {
                 } else if (feature.attributes.colour) {
                     // Feature Query: Use colour from feature
                     color = feature.attributes.colour;
-                } else if (style.length) {
-                    // Theme Layer: Lookup colour from style rule
-                    var value = feature.attributes.value;
-                    $.each(style, function(index, elem) { 
-                        if ((value >= elem.low) && (value < elem.high)) {
-                            color = elem.fill;
-                            return false;
-                        }
-                    });
+                } else if (feature.layer && (undefined != feature.layer.s3_style)) {
+                    var style = feature.layer.s3_style;
+                    if (Object.prototype.toString.call(style) !== '[object Array]') {
+                        // Polygon Layer
+                        color = style.fill;
+                    } else {
+                        // Polygon Layer: Lookup colour from style rule
+                        var value = feature.attributes.value;
+                        $.each(style, function(index, elem) { 
+                            if ((value >= elem.low) && (value < elem.high)) {
+                                color = elem.fill;
+                                return false;
+                            }
+                        });
+                    }
                     if (undefined != color) {
                         color = '#' + color;
                     } else {
@@ -595,6 +609,25 @@ function addGeoJSONLayer(layer) {
                 } else if (feature.attributes.opacity) {
                     // Use opacity from feature
                     fill_opacity = feature.attributes.opacity;
+                } else if (feature.layer && (undefined != feature.layer.s3_style)) {
+                    var style = feature.layer.s3_style;
+                    if (Object.prototype.toString.call(style) !== '[object Array]') {
+                        // Polygon Layer
+                        fill_opacity = style.fill_opacity;
+                    } else {
+                        // Theme Layer: Lookup opacity from style rule
+                        var value = feature.attributes.value;
+                        $.each(style, function(index, elem) { 
+                            if ((value >= elem.low) && (value < elem.high)) {
+                                fill_opacity = elem.fill_opacity;
+                                return false;
+                            }
+                        });
+                    }
+                    if (undefined == fill_opacity) {
+                        // default fillOpacity
+                        fill_opacity = opacity;
+                    }
                 } else {
                     // default fillOpacity for Unclustered Point
                     fill_opacity = opacity;
@@ -614,15 +647,21 @@ function addGeoJSONLayer(layer) {
                 } else if (feature.attributes.colour) {
                     // Feature Query: Use colour from feature
                     color = feature.attributes.colour;
-                } else if (style.length) {
-                    // Theme Layer: Lookup colour from style rule
-                    var value = feature.attributes.value;
-                    $.each(style, function(index, elem) { 
-                        if ((value >= elem.low) && (value < elem.high)) {
-                            color = elem.fill;
-                            return false;
-                        }
-                    });
+                } else if (feature.layer && (undefined != feature.layer.s3_style)) {
+                    var style = feature.layer.s3_style;
+                    if (Object.prototype.toString.call(style) !== '[object Array]') {
+                        // Polygon Layer
+                        color = style.stroke || style.fill;
+                    } else {
+                        // Theme Layer: Lookup colour from style rule
+                        var value = feature.attributes.value;
+                        $.each(style, function(index, elem) { 
+                            if ((value >= elem.low) && (value < elem.high)) {
+                                color = elem.stroke || elem.fill;
+                                return false;
+                            }
+                        });
+                    }
                     if (undefined != color) {
                         color = '#' + color;
                     } else {
@@ -634,6 +673,44 @@ function addGeoJSONLayer(layer) {
                     color = '#f5902e';
                 }
                 return color;
+            },
+            strokeWidth: function(feature) {
+            	var width;
+                if (feature.cluster) {
+                    if (feature.cluster[0].attributes.stroke_width) {
+                        // Use colour from features
+                        width = feature.cluster[0].attributes.stroke_width;
+                    } else {
+                        // default strokeWidth
+                        width = 2;
+                    }
+                //} else if (feature.attributes.stroke_width) {
+                //    // Feature Query: Use stroke_width from feature
+                //    width = feature.attributes.stroke_width;
+                } else if (feature.layer && (undefined != feature.layer.s3_style)) {
+                    var style = feature.layer.s3_style;
+                    if (Object.prototype.toString.call(style) !== '[object Array]') {
+                        // Polygon Layer
+                        width = style.stroke_width;
+                    } else {
+                        // Theme Layer: Lookup colour from style rule
+                        var value = feature.attributes.value;
+                        $.each(style, function(index, elem) { 
+                            if ((value >= elem.low) && (value < elem.high)) {
+                                width = elem.stroke_width;
+                                return false;
+                            }
+                        });
+                    }
+                    if (undefined == width) {
+                        // default strokeWidth
+                        width = 2;
+                    }
+                } else {
+                    // default strokeWidth
+                    width = 2;
+                }
+                return width;
             },
             label: function(feature) {
                 // Label For Unclustered Point
@@ -651,7 +728,8 @@ function addGeoJSONLayer(layer) {
         cluster_style,
         cluster_options
     );
-    if (style.length) {
+    if (Object.prototype.toString.call(style) === '[object Array]') {
+        // Theme Layer
         var rules = [];
         var fill;
         $.each(style, function(index, elem) {
@@ -1848,13 +1926,13 @@ function addWMSLayer(layer) {
 
     var wmsLayer = new OpenLayers.Layer.WMS(
         name, url, {
-            layers: layers
+            layers: layers,
+            transparent: transparent
         },
         {
             dir: dir,
             wrapDateLine: true,
             isBaseLayer: isBaseLayer,
-            transparent: transparent,
             // This is used to Save State
             s3_layer_id: layer.id,
             s3_layer_type: 'wms',
@@ -1958,7 +2036,7 @@ function addXYZLayer(layer) {
 
 // Support Vector Layers
 function showThrobber(id) {
-    $('#layer_throbber').show().removeClass('hide');
+    $('.layer_throbber').show().removeClass('hide');
     S3.gis.layers_loading.pop(id); // we never want 2 pushed
     S3.gis.layers_loading.push(id);
 }
@@ -1966,7 +2044,7 @@ function showThrobber(id) {
 function hideThrobber(id) {
     S3.gis.layers_loading.pop(id);
     if (S3.gis.layers_loading.length === 0) {
-        $('#layer_throbber').hide().addClass('hide');
+        $('.layer_throbber').hide().addClass('hide');
     }
 }
 
