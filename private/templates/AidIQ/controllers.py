@@ -37,10 +37,15 @@ class index():
             module = "default"
             vars = {"module":module}
             table = current.s3db.cms_post
-            row = current.db(table.module == module).select(table.id,
-                                                            table.title,
-                                                            table.body,
-                                                            limitby=(0, 1)).first()
+            db = current.db
+            ltable = db.cms_post_module
+            query = (ltable.module == module) & \
+                    (ltable.post_id == table.id) & \
+                    (table.deleted != True)
+            row = db(query).select(table.id,
+                                   table.title,
+                                   table.body,
+                                   limitby=(0, 1)).first()
         title = None
         if row:
             title = row.title
@@ -126,84 +131,24 @@ class contact():
                     _id="mailform"
                     )
                 )
+        appname = request.application
         s3 = response.s3
+        sappend = s3.scripts.append
         if s3.cdn:
             if s3.debug:
-                s3.scripts.append("http://ajax.aspnetcdn.com/ajax/jquery.validate/1.9/jquery.validate.js")
+                sappend("http://ajax.aspnetcdn.com/ajax/jquery.validate/1.11.1/jquery.validate.js")
             else:
-                s3.scripts.append("http://ajax.aspnetcdn.com/ajax/jquery.validate/1.9/jquery.validate.min.js")
+                sappend("http://ajax.aspnetcdn.com/ajax/jquery.validate/1.11.1/jquery.validate.min.js")
                
         else:
             if s3.debug:
-                s3.scripts.append("/%s/static/scripts/jquery.validate.js" % request.application)
+                sappend("/%s/static/scripts/jquery.validate.js" % appname)
             else:
-                s3.scripts.append("/%s/static/scripts/jquery.validate.min.js" % request.application)
-        s3.jquery_ready.append(
-'''$('#mailform').validate({
- errorClass:'req',
- rules:{
-  name:{
-   required:true
-  },
-  subject:{
-   required:true
-  },
-  message:{
-   required:true
-  },
-  name:{
-   required:true
-  },
-  address: {
-   required:true,
-   email:true
-  }
- },
- messages:{
-  name:"Enter your name",
-  subject:"Enter a subject",
-  message:"Enter a message",
-  address:{
-   required:"Please enter a valid email address",
-   email:"Please enter a valid email address"
-  }
- },
- errorPlacement:function(error,element){
-  error.appendTo(element.parents('tr').prev().children())
- },
- submitHandler:function(form){
-  form.submit()
- }
-})''')
-        # @ToDo: Move to static
-        s3.jquery_ready.append(
-'''$('textarea.resizable:not(.textarea-processed)').each(function() {
-    // Avoid non-processed teasers.
-    if ($(this).is(('textarea.teaser:not(.teaser-processed)'))) {
-        return false;
-    }
-    var textarea = $(this).addClass('textarea-processed'), staticOffset = null;
-    // When wrapping the text area, work around an IE margin bug. See:
-    // http://jaspan.com/ie-inherited-margin-bug-form-elements-and-haslayout
-    $(this).wrap('<div class="resizable-textarea"><span></span></div>')
-    .parent().append($('<div class="grippie"></div>').mousedown(startDrag));
-    var grippie = $('div.grippie', $(this).parent())[0];
-    grippie.style.marginRight = (grippie.offsetWidth - $(this)[0].offsetWidth) +'px';
-    function startDrag(e) {
-        staticOffset = textarea.height() - e.pageY;
-        textarea.css('opacity', 0.25);
-        $(document).mousemove(performDrag).mouseup(endDrag);
-        return false;
-    }
-    function performDrag(e) {
-        textarea.height(Math.max(32, staticOffset + e.pageY) + 'px');
-        return false;
-    }
-    function endDrag(e) {
-        $(document).unbind("mousemove", performDrag).unbind("mouseup", endDrag);
-        textarea.css('opacity', 1);
-    }
-});''')
+                sappend("/%s/static/scripts/jquery.validate.min.js" % appname)
+        if s3.debug:
+            sappend("/%s/static/themes/AidIQ/js/contact.js" % appname)
+        else:
+            sappend("/%s/static/themes/AidIQ/js/contact.min.js" % appname)
 
         response.title = "Contact | AidIQ.com"
         return dict(content=form)
