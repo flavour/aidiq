@@ -177,7 +177,7 @@ def _updates():
     """
 
     if not current.auth.is_logged_in():
-        return _login()
+        current.auth.permission.fail()
 
     T = current.T
     s3db = current.s3db
@@ -328,34 +328,6 @@ def _updates():
         output["disasters"] = data
 
     return output
-
-# -----------------------------------------------------------------------------
-def _login():
-    """
-        Custom Login page
-    """
-
-    response = current.response
-    request = current.request
-
-    view = path.join(request.folder, "private", "templates",
-                     THEME, "views", "login.html")
-    try:
-        # Pass view as file not str to work in compiled mode
-        response.view = open(view, "rb")
-    except IOError:
-        from gluon.http import HTTP
-        raise HTTP("404", "Unable to open Custom View: %s" % view)
-
-    response.title = current.T("Login")
-
-    request.args = ["login"]
-    auth = current.auth
-    auth.settings.formstyle = "bootstrap"
-    login = auth()
-
-    return dict(form = login,
-                )
 
 # -----------------------------------------------------------------------------
 def filter_formstyle(row_id, label, widget, comment, hidden=False):
@@ -526,11 +498,11 @@ def render_posts(listid, resource, rfields, record, **attr):
         item_class = "%s disaster" % item_class
 
     # Render the item
-    item = DIV(DIV(I(SPAN(" %s" % current.T(series),
-                          _class="card-title",
-                          ),
-                     _class="icon icon-%s" % series.lower().replace(" ", "_"),
+    item = DIV(DIV(I(_class="icon icon-%s" % series.lower().replace(" ", "_"),
                      ),
+                   SPAN(" %s" % current.T(series),
+                        _class="card-title"
+                        ),
                    SPAN(A(location,
                           _href=location_url,
                           ),

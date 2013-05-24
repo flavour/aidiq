@@ -22,7 +22,7 @@
          Site.................boolean.........Layer Site (use Site for location)
          Trackable............boolean.........Layer Trackable
          Polygons.............boolean.........Layer Polygons
-         Style................string..........Layer Style
+         Style................string..........Layer Style (@ToDo: Move to layer_config)
          Folder...............string..........Layer Folder
          Config...............string..........Configuration Name
          Enabled..............boolean.........Layer Enabled in config? (SITE_DEFAULT if not-specified)
@@ -53,7 +53,7 @@
                 <xsl:call-template name="Config"/>
             </xsl:for-each>
 
-            <!-- Feature Layers -->
+            <!-- Layers -->
             <xsl:for-each select="//row[generate-id(.)=generate-id(key('layers',
                                                                    col[@field='Name'])[1])]">
                 <xsl:call-template name="Layer"/>
@@ -99,7 +99,6 @@
     </xsl:template>
 
     <!-- ****************************************************************** -->
-
     <xsl:template name="Config">
 
         <xsl:variable name="Config" select="col[@field='Config']/text()"/>
@@ -115,7 +114,6 @@
     </xsl:template>
 
     <!-- ****************************************************************** -->
-
     <xsl:template name="Layer">
 
         <xsl:variable name="Layer" select="col[@field='Name']/text()"/>
@@ -143,6 +141,7 @@
             <data field="filter_value"><xsl:value-of select="col[@field='Filter Value']"/></data>
             <data field="popup_label"><xsl:value-of select="col[@field='Popup Label']"/></data>
             <data field="popup_fields"><xsl:value-of select="col[@field='Popup Fields']"/></data>
+            <!-- @ToDo: This should move to layer_config -->
             <data field="style"><xsl:value-of select="col[@field='Style']"/></data>
             <data field="dir"><xsl:value-of select="col[@field='Folder']"/></data>
             <xsl:if test="col[@field='Cluster Distance']!=''">
@@ -180,7 +179,6 @@
     </xsl:template>
 
     <!-- ****************************************************************** -->
-
     <xsl:template name="Marker">
 
         <xsl:variable name="Marker" select="col[@field='Marker']/text()"/>
@@ -194,7 +192,6 @@
     </xsl:template>
 
     <!-- ****************************************************************** -->
-
     <xsl:template name="Symbology">
 
         <xsl:variable name="Symbology" select="col[@field='Symbology']/text()"/>

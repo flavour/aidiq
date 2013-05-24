@@ -70,8 +70,6 @@ var s3_gis_loadjs = function(debug, projection, callback, scripts) {
             'gis/openlayers/lib/OpenLayers/Console.js',
             'gis/openlayers/lib/OpenLayers/Tween.js',
             'gis/openlayers/lib/OpenLayers/Kinetic.js',
-            //'gis/openlayers/lib/Rico/Corner.js',
-            //'gis/openlayers/lib/Rico/Color.js',
             'gis/openlayers/lib/OpenLayers/Events.js',
             'gis/openlayers/lib/OpenLayers/Events/buttonclick.js',
             'gis/openlayers/lib/OpenLayers/Request.js',
@@ -123,8 +121,6 @@ var s3_gis_loadjs = function(debug, projection, callback, scripts) {
             //'gis/openlayers/lib/OpenLayers/Layer/Zoomify.js',
             //'gis/openlayers/lib/OpenLayers/Layer/ArcGISCache.js',
             'gis/openlayers/lib/OpenLayers/Popup/Anchored.js',
-            // Requires Rico
-            //'gis/openlayers/lib/OpenLayers/Popup/AnchoredBubble.js',
             'gis/openlayers/lib/OpenLayers/Popup/Framed.js',
             'gis/openlayers/lib/OpenLayers/Popup/FramedCloud.js',
             'gis/openlayers/lib/OpenLayers/Feature.js',
@@ -206,11 +202,12 @@ var s3_gis_loadjs = function(debug, projection, callback, scripts) {
             //'gis/openlayers/lib/OpenLayers/Strategy/Save.js',
             'gis/openlayers/lib/OpenLayers/Strategy/Refresh.js',
             'gis/openlayers/lib/OpenLayers/Filter.js',
-            'gis/openlayers/lib/OpenLayers/Filter/FeatureId.js',
-            'gis/openlayers/lib/OpenLayers/Filter/Logical.js',
+            //'gis/openlayers/lib/OpenLayers/Filter/FeatureId.js',
+            //'gis/openlayers/lib/OpenLayers/Filter/Logical.js',
             'gis/openlayers/lib/OpenLayers/Filter/Comparison.js',
+            // Used by GetFeature
             'gis/openlayers/lib/OpenLayers/Filter/Spatial.js',
-            'gis/openlayers/lib/OpenLayers/Filter/Function.js',                
+            //'gis/openlayers/lib/OpenLayers/Filter/Function.js',                
             'gis/openlayers/lib/OpenLayers/Protocol.js',
             'gis/openlayers/lib/OpenLayers/Protocol/HTTP.js',
             'gis/openlayers/lib/OpenLayers/Protocol/WFS.js',
@@ -336,6 +333,7 @@ var s3_gis_loadjs = function(debug, projection, callback, scripts) {
             'gis/openlayers/lib/OpenLayers/TileManager.js',
             //'gis/openlayers/lib/OpenLayers/WPSClient.js',
             //'gis/openlayers/lib/OpenLayers/WPSProcess.js',
+            'gis/openlayers/lib/OpenLayers/Strategy/AttributeCluster.js'
         ]
         jsFiles = jsFiles.concat(ol_files)
 
@@ -426,8 +424,6 @@ var s3_gis_loadjs = function(debug, projection, callback, scripts) {
         }
 
         // S3
-        jsFiles.push('S3/s3.gis.layers.js');
-        jsFiles.push('S3/s3.gis.controls.js');
         jsFiles.push('S3/s3.gis.js');
 
     } else {

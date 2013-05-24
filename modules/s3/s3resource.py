@@ -3387,13 +3387,13 @@ class S3Resource(object):
             tree = None
 
         import_info = {"records":self.import_count}
-        created=self.import_created
+        created = self.import_created
         if created:
             import_info["created"] = created
-        updated=self.import_updated
+        updated = self.import_updated
         if updated:
             import_info["updated"] = updated
-        deleted=self.import_deleted
+        deleted = self.import_deleted
         if deleted:
             import_info["deleted"] = deleted
 
@@ -5325,7 +5325,7 @@ class S3FieldPath(object):
 
         field_not_found = lambda f: AttributeError("Field not found: %s" % f)
 
-        if head[0] == "(" and head[-1] == ")":
+        if head and head[0] == "(" and head[-1] == ")":
 
             # Context expression
             head = head.strip("()")

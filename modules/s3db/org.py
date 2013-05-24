@@ -415,8 +415,8 @@ class S3OrganisationModel(S3Model):
                                                                  T("Twitter ID or #hashtag")))),
                              Field("donation_phone",
                                    label=T("Donation Phone #"),
-                                   #readable = False,
-                                   #writable = False,
+                                   readable = False,
+                                   writable = False,
                                    requires=IS_NULL_OR(s3_phone_requires),
                                    represent=lambda v: v or NONE,
                                    comment=DIV(_class="tooltip",
@@ -1299,6 +1299,12 @@ class S3OrganisationResourceModel(S3Model):
             msg_record_modified=T("Resource updated"),
             msg_record_deleted=T("Resource deleted"),
             msg_list_empty=T("No Resources in Inventory"))
+
+        self.configure(tablename,
+                       context = {"location": "location_id",
+                                  "organisation": "organisation_id",
+                                  },
+                       )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
@@ -2512,15 +2518,18 @@ class S3OfficeModel(S3Model):
                                "name",
                                "organisation_id", # Filtered in Component views
                                "office_type_id",
-                               #(T("Address"), "location_id$addr_street"),
                                (messages.COUNTRY, "location_id$L0"),
                                "location_id$L1",
                                "location_id$L2",
                                "location_id$L3",
                                #"location_id$L4",
+                               (T("Address"), "location_id$addr_street"),
                                "phone1",
                                "email"
                                ],
+                  context = {"location": "location_id",
+                             "organisation": "organisation_id",
+                             },
                   realm_components=["contact_emergency",
                                     "config",
                                     "image",
@@ -2615,7 +2624,7 @@ class S3OfficeModel(S3Model):
     @staticmethod
     def org_office_duplicate(item):
         """
-            Import item deduplication, match by name
+            Import item deduplication: simple match by name
                 (Adding location_id doesn't seem to be a good idea)
 
             @param item: the S3ImportItem instance
@@ -2623,29 +2632,30 @@ class S3OfficeModel(S3Model):
 
         if item.tablename == "org_office":
             table = item.table
-            name = "name" in item.data and item.data.name
-            query = (table.name.lower() == name.lower())
-            #location_id = None
-            # if "location_id" in item.data:
-                # location_id = item.data.location_id
-                ## This doesn't find deleted records:
-                # query = query & (table.location_id == location_id)
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            # if duplicate is None and location_id:
-                ## Search for deleted offices with this name
-                # query = (table.name.lower() == name.lower()) & \
-                        # (table.deleted == True)
-                # row = db(query).select(table.id, table.deleted_fk,
-                                       # limitby=(0, 1)).first()
-                # if row:
-                    # fkeys = json.loads(row.deleted_fk)
-                    # if "location_id" in fkeys and \
-                       # str(fkeys["location_id"]) == str(location_id):
-                        # duplicate = row
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
+            name = "name" in item.data and item.data.name or None
+            if name:
+                query = (table.name.lower() == name.lower())
+                #location_id = None
+                # if "location_id" in item.data:
+                    # location_id = item.data.location_id
+                    ## This doesn't find deleted records:
+                    # query = query & (table.location_id == location_id)
+                duplicate = current.db(query).select(table.id,
+                                                    limitby=(0, 1)).first()
+                # if duplicate is None and location_id:
+                    ## Search for deleted offices with this name
+                    # query = (table.name.lower() == name.lower()) & \
+                            # (table.deleted == True)
+                    # row = db(query).select(table.id, table.deleted_fk,
+                                        # limitby=(0, 1)).first()
+                    # if row:
+                        # fkeys = json.loads(row.deleted_fk)
+                        # if "location_id" in fkeys and \
+                        # str(fkeys["location_id"]) == str(location_id):
+                            # duplicate = row
+                if duplicate:
+                    item.id = duplicate.id
+                    item.method = item.METHOD.UPDATE
 
 # =============================================================================
 class S3OfficeSummaryModel(S3Model):
@@ -3257,7 +3267,7 @@ def org_organisation_controller():
                     # Hide/show host role after project selection in embed-widget
                     tn = r.link.tablename
                     s3db.configure(tn,
-                                   post_process='''hide_host_role($('#%s').val())''')
+                                   post_process='''S3.hide_host_role($('#%s').val())''')
                     s3.scripts.append("/%s/static/scripts/S3/s3.hide_host_role.js" % \
                         request.application)
 
@@ -3540,6 +3550,15 @@ def org_office_controller():
                     s3db.configure("asset_asset",
                                    create_next = None)
 
+            elif r.method in ("create", "update"):
+                if r.method == "update":
+                    table.obsolete.readable = table.obsolete.writable = True
+                # Context from a Profile page?"
+                org_id = request.get_vars.get("(organisation)", None)
+                if org_id:
+                    field = table.organisation_id
+                    field.default = org_id
+                    field.readable = field.writable = False
             elif r.id:
                 table.obsolete.readable = table.obsolete.writable = True
             elif r.representation == "geojson":

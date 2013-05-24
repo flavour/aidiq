@@ -73,7 +73,6 @@ def project():
 
     # Pre-process
     def prep(r):
-        
         # Location Filter
         s3db.gis_location_filter(r)
         
@@ -97,6 +96,19 @@ def project():
 
             if not r.component:
                 set_theme_requires(sector_ids)
+
+                if r.method in ("create", "update"):
+                    # Context from a Profile page?"
+                    location_id = request.get_vars.get("(location)", None)
+                    if location_id:
+                        field = s3db.project_location.location_id
+                        field.default = location_id
+                        field.readable = field.writable = False
+                    organisation_id = request.get_vars.get("(organisation)", None)
+                    if organisation_id:
+                        field = r.table.organisation_id
+                        field.default = organisation_id
+                        field.readable = field.writable = False
 
                 if r.id:
                     r.table.human_resource_id.represent = lambda id: \
@@ -768,16 +780,27 @@ def milestone():
 def time():
     """ RESTful CRUD controller """
 
+    # Load model to get normal CRUD strings
     table = s3db.project_time
     vars = request.get_vars
     if "mine" in vars:
-        # Filter to just this User
+        # Display this user's Logged Hours in reverse-order
         s3.crud_strings["project_time"].title_list = T("My Logged Hours")
         person_id = auth.s3_logged_in_person()
         if person_id:
             # @ToDo: Use URL filter instead, but the Search page will have 
             # to populate it's widgets based on the URL filter  
             s3.filter = (table.person_id == person_id)
+            # Log time with just this user's open tasks visible
+            ttable = db.project_task
+            query = (ttable.pe_id == auth.user.pe_id) & \
+                    (ttable.deleted == False) & \
+                    (ttable.status.belongs(s3db.project_task_active_statuses))
+            dbset = db(query)
+            table.task_id.requires = IS_ONE_OF(dbset, "project_task.id",
+                                               lambda id, row: \
+                                                s3db.project_task_represent(id, row, show_project=True),
+                                               )
         list_fields = ["id",
                        "date",
                        "hours",
@@ -788,7 +811,6 @@ def time():
                        ]
         s3db.configure("project_time",
                        orderby="project_time.date desc",
-                       listadd=False,
                        list_fields=list_fields)
 
     elif "week" in vars:

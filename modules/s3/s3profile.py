@@ -212,11 +212,10 @@ class S3Profile(S3CRUD):
         # Use the widget-index to create a unique ID
         listid = "profile-list-%s-%s" % (tablename, widget["index"])
 
-        c, f = tablename.split("_", 1)
-
         # Permission to create new items?
         # @ToDo: Special check for creating resources on Organisation profile
-        if current.auth.s3_has_permission("create", table):
+        insert = widget.get("insert", True)
+        if insert and current.auth.s3_has_permission("create", table):
             if filter:
                 vars = filter.serialize_url(filter)
             else:
@@ -229,13 +228,16 @@ class S3Profile(S3CRUD):
                 title_create = T(title_create)
             else:
                 title_create = S3CRUD.crud_string(tablename, "title_create")
+            c, f = tablename.split("_", 1)
+            c = widget.get("create_controller", c)
+            f = widget.get("create_function", f)
             create = A(I(_class="icon icon-plus-sign small-add"),
                        _href=URL(c=c, f=f, args=["create.popup"], vars=vars),
                        _class="s3_modal",
                        _title=title_create,
                        )
         else:
-            create = "" 
+            create = ""
 
         # Page size
         pagesize = 4
@@ -257,12 +259,12 @@ class S3Profile(S3CRUD):
                         start = int(start)
                         limit = int(limit)
                     except ValueError:
-                        start, limit = 0, 4
+                        start, limit = 0, pagesize
                 else:
                     start = None
         else:
             # Page-load
-            start, limit = 0, 4
+            start, limit = 0, pagesize
 
         # Ajax-delete items?
         if representation == "dl" and r.http in ("DELETE", "POST"):
@@ -302,12 +304,24 @@ class S3Profile(S3CRUD):
         if icon:
             icon = TAG[""](I(_class=icon), " ")
 
+        if resource.count() > pagesize:
+            # Button to display the rest of the records in a Modal
+            more = DIV(A(BUTTON(T("see more"),
+                                _class="btn btn-mini",
+                                _type="button",
+                                ),
+                         _href="#"),
+                       _class="more_profile")
+        else:
+            more = ""
+
         # Render the widget
         output = DIV(create,
                      H4(icon,
                         label,
                         _class="profile-sub-header"),
                      DIV(data,
+                         more,
                          _class="card-holder"),
                      _class="span6")
 
@@ -323,6 +337,8 @@ class S3Profile(S3CRUD):
             @param attr: controller attributes for the request
         """
 
+        from s3gis import Marker
+
         T = current.T
         db = current.db
         s3db = current.s3db
@@ -337,12 +353,17 @@ class S3Profile(S3CRUD):
         if context:
             context = "(%s)=%s" % (context, r.id)
 
+        height = widget.get("height", 383)
+        width = widget.get("width", 568) # span6 * 99.7%
+        bbox = widget.get("bbox", {})
+
         # Default to showing all the resources in datalist widgets as separate layers
+        ftable = s3db.gis_layer_feature
+        mtable = s3db.gis_marker
         feature_resources = []
         fappend = feature_resources.append
         widgets = s3db.get_config(r.tablename, "profile_widgets")
         s3dbresource = s3db.resource
-        mtable = s3db.gis_marker
         for widget in widgets:
             if widget["type"] != "datalist":
                 continue
@@ -350,52 +371,89 @@ class S3Profile(S3CRUD):
             if not show_on_map:
                 continue
             tablename = widget["tablename"]
-            resource = s3dbresource(tablename)
+            listid = "profile-list-%s-%s" % (tablename, widget["index"])
+            layer = dict(name = T(widget["label"]),
+                         id = listid,
+                         active = True,
+                         )
             filter = widget.get("filter", None)
-            map_url = widget.get("map_url", None)
-            if not map_url:
-                # Build one
-                c, f = tablename.split("_", 1)
-                map_url = URL(c=c, f=f, extension="geojson")
-                if filter:
-                    map_url = "%s?" % map_url
-                    filter_url = filter.serialize_url(resource)
-                    for f in filter_url:
-                        map_url = "%s%s=%s" % (map_url, f, filter_url[f])
-                    if context:
-                        map_url = "%s&%s" % (map_url, context)
-                elif context:
-                    map_url = "%s?%s" % (map_url, context)
-
             marker = widget.get("marker", None)
             if marker:
                 marker = db(mtable.name == marker).select(mtable.image,
                                                           mtable.height,
                                                           mtable.width,
                                                           limitby=(0, 1)).first()
+            layer_id = None
+            layer_name = widget.get("layer", None)
+            if layer_name:
+                row = db(ftable.name == layer_name).select(ftable.layer_id,
+                                                           limitby=(0, 1)).first()
+                if row:
+                    layer_id = row.layer_id
+            if layer_id:
+                layer["layer_id"] = layer_id
+                if not marker:
+                    marker = Marker(layer_id=layer_id).as_dict()
+                if context:
+                    filter_url = context
+                else:
+                    filter_url = ""
+                if filter:
+                    resource = s3dbresource(tablename)
+                    filters = filter.serialize_url(resource)
+                    for f in filters:
+                        filter_url = "%s&%s=%s" % (filter_url, f, filters[f])
+                if filter_url:
+                    layer["filter"] = filter_url
+            else:
+                layer["tablename"] = tablename
+                map_url = widget.get("map_url", None)
+                if not map_url:
+                    # Build one
+                    c, f = tablename.split("_", 1)
+                    map_url = URL(c=c, f=f, extension="geojson")
+                    if filter:
+                        map_url = "%s?" % map_url
+                        resource = s3dbresource(tablename)
+                        filters = filter.serialize_url(resource)
+                        for f in filters:
+                            map_url = "%s%s=%s" % (map_url, f, filters[f])
+                        if context:
+                            map_url = "%s&%s" % (map_url, context)
+                    elif context:
+                        map_url = "%s?%s" % (map_url, context)
+                layer["url"] = map_url
 
-            listid = "profile-list-%s-%s" % (tablename, widget["index"])
-            fappend({"name"      : T(widget["label"]),
-                     "id"        : listid,
-                     "tablename" : tablename,
-                     "url"       : map_url,
-                     "active"    : True,          # Is the feed displayed upon load or needs ticking to load afterwards?
-                     "marker"    : marker,        # Optional: A per-Layer marker dict for the icon used to display the feature
-                     #"opacity"   : 1,            # Optional
-                     "cluster_distance" : 150,
-                     #"cluster_threshold"         # Optional
-                     })
+            if marker:
+                layer["marker"] = marker
 
-        height = widget.get("height", 383)
-        width = widget.get("width", 568) # span6 * 99.7%
+            fappend(layer)
+
         map = current.gis.show_map(height=height,
                                    width=width,
+                                   bbox=bbox,
                                    collapsed=True,
                                    feature_resources=feature_resources,
                                    )
 
+        # Button to go full-screen
+        fullscreen = A(I(_class="icon icon-fullscreen"),
+                       _href=URL(c="gis", f="map_viewing_client"),
+                       _class="gis_fullscreen_map-btn",
+                       # If we need to support multiple maps on a page
+                       #_map="default",
+                       _title=T("View full screen"),
+                       )
+        s3 = current.response.s3
+        if s3.debug:
+            script = "/%s/static/scripts/S3/s3.gis.fullscreen.js" % current.request.application
+        else:
+            script = "/%s/static/scripts/S3/s3.gis.fullscreen.min.js" % current.request.application
+        s3.scripts.append(script)
+
         # Render the widget
-        output = DIV(H4(icon,
+        output = DIV(fullscreen,
+                     H4(icon,
                         label,
                         _class="profile-sub-header"),
                      DIV(map,
