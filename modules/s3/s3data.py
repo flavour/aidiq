@@ -1090,7 +1090,7 @@ class S3PivotTable(object):
                #"std": "Standard Deviation"
                }
 
-    def __init__(self, resource, rows, cols, layers):
+    def __init__(self, resource, rows, cols, layers, strict=True):
         """
             Constructor - extracts all unique records, generates a
             pivot table from them with the given dimensions and
@@ -1101,6 +1101,8 @@ class S3PivotTable(object):
             @param cols: field selector for the columns dimension
             @param layers: list of tuples of (field selector, method)
                            for the value aggregation(s)
+            @param strict: filter out dimension values which don't match
+                           the resource filter
         """
 
         # Initialize ----------------------------------------------------------
@@ -1176,6 +1178,8 @@ class S3PivotTable(object):
         fields = current.s3db.get_config(tablename, "report_fields", [])
 
         self._get_fields(fields=fields)
+        rows = self.rows
+        cols = self.cols
 
         if DEBUG:
             _start = datetime.datetime.now()
@@ -1195,9 +1199,16 @@ class S3PivotTable(object):
             #
             gfields = self.gfields
             pkey_colname = gfields[self.pkey]
-            rows_colname = gfields[self.rows]
-            cols_colname = gfields[self.cols]
-            
+            rows_colname = gfields[rows]
+            cols_colname = gfields[cols]
+
+            if strict:
+                rfields = self.rfields
+                axes = (rfields[self.rows], rfields[self.cols])
+                axisfilter = resource.axisfilter(axes)
+            else:
+                axisfilter = None
+                
             dataframe = []
             insert = dataframe.append
             expand = self._expand
@@ -1209,7 +1220,7 @@ class S3PivotTable(object):
                     item[rows_colname] = row[rows_colname]
                 if cols_colname:
                     item[cols_colname] = row[cols_colname]
-                dataframe.extend(expand(item))
+                dataframe.extend(expand(item, axisfilter=axisfilter))
                 
             self.records = records
 
@@ -1442,7 +1453,6 @@ class S3PivotTable(object):
         thead = THEAD(titles, headers)
 
         # Render the table body:
-
         tbody = TBODY()
         add_row = tbody.append
 
@@ -1559,7 +1569,6 @@ class S3PivotTable(object):
             add_row(tr)
 
         # Table footer:
-
         i = numrows
         _class = i % 2 and "odd" or "even"
         _class = "%s %s" % (_class, "totals_row")
@@ -1581,7 +1590,6 @@ class S3PivotTable(object):
         tfoot = TFOOT(col_total)
 
         # Wrap up:
-
         append = components.append
         append(thead)
         append(tbody)
@@ -1589,9 +1597,8 @@ class S3PivotTable(object):
             append(tfoot)
 
         # Chart data:
-
         layer_label = s3_unicode(layer_label)
-        BY = T("by")
+        BY = s3_unicode(T("by"))
         row_label = "%s %s" % (BY, s3_unicode(row_label))
         if col_label:
             col_label = "%s %s" % (BY, s3_unicode(col_label))
@@ -2174,25 +2181,36 @@ class S3PivotTable(object):
             return None
 
     # -------------------------------------------------------------------------
-    def _expand(self, row): #, field=None):
+    def _expand(self, row, axisfilter=None):
         """
             Expand a data frame row into a list of rows for list:type values
 
             @param row: the row
             @param field: the field to expand (None for all fields)
+            @param axisfilter: dict of filtered field values by column names
         """
-
-        item = [(colname, row[colname])
-                for selector, colname in self.gfields.items() if colname]
 
         pairs = []
         append = pairs.append
-        for colname, value in item:
+        for colname in self.gfields.values():
+            if not colname:
+                continue
+            else:
+                value = row[colname]
             if type(value) is list:
-                append([(colname, v) for v in value])
+                if axisfilter and colname in axisfilter:
+                    p = [(colname, v) for v in value
+                                       if v in axisfilter[colname]]
+                    if not p:
+                        raise RuntimeError("record does not match query")
+                    else:
+                        append(p)
+                else:
+                    append([(colname, v) for v in value])
             else:
                 append([(colname, value)])
-        return [dict(i) for i in product(*pairs)]
+        result = [dict(i) for i in product(*pairs)]
+        return result
 
     # -------------------------------------------------------------------------
     @staticmethod

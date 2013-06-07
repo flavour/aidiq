@@ -5,18 +5,6 @@
  */
 
 /**
- * The startsWith string function is introduced in JS 1.8.6 -- it's not even
- * accepted in ECMAScript yet, so don't expect all browsers to have it.
- * Thx to http://www.moreofless.co.uk/javascript-string-startswith-endswith/
- * for showing how to add it to string if not present.
- */
-if (typeof String.prototype.startsWith != 'function') {
-    String.prototype.startsWith = function(str) {
-        return this.substring(0, str.length) === str;
-    };
-}
-
-/**
  * Global vars
  * - usage minimised
  * - documentation useful on what these are for
@@ -31,13 +19,19 @@ if (typeof String.prototype.startsWith != 'function') {
     var bServerSide;
     var myList = [];
     var oDataTable = [];
+    var selected;
+    var selectedRows = [];
+    var selectionMode = [];
     var tableCnt = 1;
     var tableId = [];
 
     // The configuration details for each table
+    // - if 'each table' then why do these need to be module-scope, they should be per-table options, no?
+    var aHiddenFieldsID = [];
     var aoTableConfig = []; // Passed in from the server
     // Create an array for the column settings (this is required, otherwise the column widths don't autosize)
     var aoColumns = [];
+    var bulk_action_controls;
     var fnAjaxCallback = [];
     var fnActionCallBacks = [];
     var oGroupColumns = [];
@@ -281,18 +275,6 @@ if (typeof String.prototype.startsWith != 'function') {
     }
 
     /* Helper functions */
-    var createSubmitBtn = function(t) {
-        if (aoTableConfig[t]['bulkActions']) {
-            // Make sure that the details of the selected records are stored in the hidden fields
-            $(aHiddenFieldsID[t][0]).val(selectionMode[t]);
-            $(aHiddenFieldsID[t][1]).val(selectedRows[t].join(','));
-            // Add the bulk action controls to the dataTable
-            $('.dataTable-action').remove();
-            $(bulk_action_controls).insertBefore('#bulk_select_options');
-            togglePairActions(t);
-        }
-    }
-
     var togglePairActions = function(t) {
         var s = selectedRows[t].length;
         if (selectionMode[t] == 'Exclusive') {
@@ -321,13 +303,13 @@ if (typeof String.prototype.startsWith != 'function') {
         if (aoTableConfig[t]['rowActions'].length > 0) {
             for (var i=0; i < fnActionCallBacks[t].length; i++){
                 var currentID = '#' + fnActionCallBacks[t][i][0];
-                $(currentID).unbind('click');
-                $(currentID).bind('click', fnActionCallBacks[t][i][1]);
+                $(currentID).unbind('click')
+                            .bind('click', fnActionCallBacks[t][i][1]);
             }
         }
         if (aoTableConfig[t]['bulkActions']) {
-            $('.bulkcheckbox').unbind('change');
-            $('.bulkcheckbox').change( function(event){
+            $('.bulkcheckbox').unbind('change')
+                              .change( function(event){
                 var id = this.id.substr(6);
                 var posn = inList(id, selectedRows[t]);
                 if (posn == -1) {
@@ -347,26 +329,35 @@ if (typeof String.prototype.startsWith != 'function') {
     var setSelectionClass = function(t, row, index) {
         /* This function is used to show which rows have been selected for a bulk select action */
         if (selectionMode[t] == 'Inclusive') {
+            // @ToDo: can 'selected' be pulled in from a parameter rather than module-scope?
             $('#totalSelected').text(selected.length);
             if (index == -1) {
                 $(row).removeClass('row_selected');
-                $('.bulkcheckbox', row).attr('checked', false);
+                $('.bulkcheckbox', row).prop('checked', false);
             } else {
                 $(row).addClass('row_selected');
-                $('.bulkcheckbox', row).attr('checked', true);
+                $('.bulkcheckbox', row).prop('checked', true);
             }
         }
         if (selectionMode[t] == 'Exclusive') {
             $('#totalSelected').text(parseInt($('#totalAvailable').text(), 10) - selected.length);
             if (index == -1) {
                 $(row).addClass('row_selected');
-                $('.bulkcheckbox', row).attr('checked', true);
+                $('.bulkcheckbox', row).prop('checked', true);
             } else {
                 $(row).removeClass('row_selected');
-                $('.bulkcheckbox', row).attr('checked', false);
+                $('.bulkcheckbox', row).prop('checked', false);
             }
         }
-        createSubmitBtn(t);
+        if (aoTableConfig[t]['bulkActions']) {
+            // Make sure that the details of the selected records are stored in the hidden fields
+            $(aHiddenFieldsID[t][0]).val(selectionMode[t]);
+            $(aHiddenFieldsID[t][1]).val(selectedRows[t].join(','));
+            // Add the bulk action controls to the dataTable
+            $('.dataTable-action').remove();
+            $(bulk_action_controls).insertBefore('#bulk_select_options');
+            togglePairActions(t);
+        };
     }
 
     var setModeSelectionAll = function(event) {
@@ -826,9 +817,6 @@ if (typeof String.prototype.startsWith != 'function') {
 
         // The configuration details for each table
         var sPagination = [];
-        var aHiddenFieldsID = [];
-        var selectedRows = [];
-        var selectionMode = [];
         var cache = [];
         var totalRecords = [];
 
@@ -921,10 +909,11 @@ if (typeof String.prototype.startsWith != 'function') {
                     }
                     bulk_submit += '<input type="submit" id="submitSelection" class="' + cls + '" name="' + name + '" value="' + value + '">&nbsp;';
                 }
-                var bulk_action_controls = '<div class="dataTable-action">' + bulk_submit + '</div>';
+                // Module-scope currently as read by other functions
+                bulk_action_controls = '<div class="dataTable-action">' + bulk_submit + '</div>';
                 // Add hidden fields to the form to record what has been selected
                 var bulkSelectionID = tableId[t] + '_dataTable_bulkSelection';
-                // global
+                // module-scope as read by setSelectionClass()
                 selected = jQuery.parseJSON($(bulkSelectionID).val());
                 if (selected === null)
                     selected = [];
@@ -1132,33 +1121,8 @@ if (typeof String.prototype.startsWith != 'function') {
 $(document).ready(function() {
     // Initialise all dataTables on the page
     S3.dataTables.initAll();
-});
 
-// Add Events to any Map Buttons present
-Ext.onReady(function() {
-    var s3_gis_search_layer_loadend = function(event) {
-        // Search results have Loaded
-        var layer = event.object;
-        // Read Bounds for Zoom
-        var bounds = layer.getDataExtent();
-        // Re-enable Clustering
-        Ext.iterate(layer.strategies, function(key, val, obj) {
-            if (key.CLASS_NAME == 'OpenLayers.Strategy.AttributeCluster') {
-                layer.strategies[val].activate();
-            }
-        });
-        // Zoom Out to Cluster
-        layer.map.zoomTo(0)
-        // Zoom to Bounds
-        if (bounds) {
-            layer.map.zoomToExtent(bounds);
-        }
-        // Disable this event
-        layer.events.un({
-            'loadend': s3_gis_search_layer_loadend
-        });
-    }
-
+    // Add Events to any Map Buttons present
     // S3Search Results
     var s3_dataTables_mapButton = Ext.get('gis_datatables_map-btn');
     if (s3_dataTables_mapButton) {
@@ -1167,26 +1131,30 @@ Ext.onReady(function() {
             var map_button = $('#gis_datatables_map-btn');
             var map_id = map_button.attr('map');
             if (undefined == map_id) {
-                map_id = 'default';
+                map_id = 'default_map';
             }
             var map = S3.gis.maps[map_id];
             // Load the search results layer
-            Ext.iterate(map.layers, function(key, val, obj) {
-                if (key.s3_layer_id == 'search_results') {
-                    var layer = map.layers[val];
+            var layers = map.layers;
+            var layer, j, jlen, strategies, strategy;
+            for (var i=0, len=layers.length; i < len; i++) {
+                layer = layers[i];
+                if (layer.s3_layer_id == 'search_results') {
                     // Set a new event when the layer is loaded
                     layer.events.on({
-                        'loadend': s3_gis_search_layer_loadend
+                        'loadend': S3.gis.search_layer_loadend
                     });
                     // Disable Clustering to get correct bounds
-                    Ext.iterate(layer.strategies, function(key, val, obj) {
-                        if (key.CLASS_NAME == 'OpenLayers.Strategy.AttributeCluster') {
-                            layer.strategies[val].deactivate();
+                    strategies = layer.strategies;
+                    for (j=0, jlen=strategies.length; j < jlen; j++) {
+                        strategy = strategies[j];
+                        if (strategy.CLASS_NAME == 'OpenLayers.Strategy.AttributeCluster') {
+                            strategy.deactivate();
                         }
-                    });
+                    }
                     layer.setVisibility(true);
                 }
-            });
+            };
             if (map.s3.polygonButton) {
                 // Disable the polygon control
                 map.s3.polygonButton.disable();
@@ -1226,7 +1194,7 @@ Ext.onReady(function() {
             var map_button = $('#gis_search_map-btn');
             var map_id = map_button.attr('map');
             if (undefined == map_id) {
-                map_id = 'default';
+                map_id = 'default_map';
             }
             var map = S3.gis.maps[map_id];
             // Enable the polygon control

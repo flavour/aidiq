@@ -30,6 +30,7 @@
 __all__ = ["S3ProjectModel",
            "S3ProjectActivityModel",
            "S3ProjectActivityTypeModel",
+           "S3ProjectActivityOrganisationModel",
            "S3ProjectAnnualBudgetModel",
            "S3ProjectBeneficiaryModel",
            "S3ProjectCampaignModel",
@@ -514,7 +515,7 @@ class S3ProjectModel(S3Model):
                       project_project=Storage(link="project_activity_type_project",
                                               joinby="project_id",
                                               key="activity_type_id",
-                                              actuate="link"))        
+                                              actuate="link"))
 
         # Milestones
         add_component("project_milestone", project_project="project_id")
@@ -1109,14 +1110,21 @@ class S3ProjectActivityModel(S3Model):
         tablename = "project_activity"
         table = define_table(tablename,
                              self.super_link("doc_id", "doc_entity"),
+                             s3_datetime(),
                              self.project_project_id(),
                              Field("name",
-                                   label = T("Short Description"),
+                                   label = T("Name"),
                                    requires = IS_NOT_EMPTY()
                                    ),
+                             self.project_activity_type_id(),
                              self.gis_location_id(
                                 widget = S3LocationSelectorWidget(hide_address=True)
                                 ),
+                             # Which contact is this?
+                             # Implementing Org should be a human_resource_id
+                             # Beneficiary could be a person_id
+                             # Either way label should be clear
+                             self.pr_person_id(label=T("Contact Person")),
                              Field("time_estimated", "double",
                                    readable = mode_task,
                                    writable = mode_task,
@@ -1183,6 +1191,13 @@ class S3ProjectActivityModel(S3Model):
         else:
             create_next = URL(c="project", f="activity", args=["[id]"])
 
+        filter_widgets = [S3OptionsFilter("activity_type_id",
+                                          label=T("Type"),
+                                          represent="%(name)s",
+                                          widget="multiselect",
+                                          )
+                          ]
+
         self.configure(tablename,
                        super_entity="doc_entity",
                        create_next=create_next,
@@ -1200,6 +1215,7 @@ class S3ProjectActivityModel(S3Model):
                                     totals=True
                                 )
                             ),
+                       filter_widgets = filter_widgets,
                        list_fields = list_fields,
                        )
 
@@ -1268,6 +1284,10 @@ class S3ProjectActivityModel(S3Model):
             msg_record_deleted = T("Activity Type removed from Activity"),
             msg_list_empty = T("No Activity Types found for this Activity")
         )
+        
+        # Activity Organization
+        add_component("project_activity_organisation", 
+                      project_activity="activity_id")
 
         # Pass names back to global scope (s3.*)
         return dict(
@@ -1483,6 +1503,51 @@ class S3ProjectActivityTypeModel(S3Model):
         return dict(
             project_activity_type_id = activity_type_id,
         )
+# =============================================================================
+class S3ProjectActivityOrganisationModel(S3Model):
+    """
+        Project Activity Organisation Model
+
+        This model holds the Activity Organisations for Projects
+        - it is useful where we don't have the details on the actual Activities,
+          but just this summary of Organisations
+    """
+
+    names = ["project_activity_organisation"]
+
+    def model(self):
+
+        T = current.T
+
+        # ---------------------------------------------------------------------
+        # Activity Organisations - Link table
+        #
+        tablename = "project_activity_organisation"
+        table = self.define_table(tablename,
+                                  self.project_activity_id(),
+                                  self.org_organisation_id(),
+                                  *s3_meta_fields())
+
+        # CRUD Strings
+        ADD_ACTIVITY_ORG = T("Add Activity Organisation")
+        current.response.s3.crud_strings[tablename] = Storage(
+            title_create = ADD_ACTIVITY_ORG,
+            title_display = T("Activity Organisation"),
+            title_list = T("Activity Organisations"),
+            title_update = T("Edit Activity Organisation"),
+            title_search = T("Search for Activity Organisation"),
+            subtitle_create = T("Add New Activity Organisation"),
+            label_list_button = T("List Activity Organisations"),
+            label_create_button = ADD_ACTIVITY_ORG,
+            msg_record_created = T("Activity Organisation Added"),
+            msg_record_modified = T("Activity Organisation Updated"),
+            msg_record_deleted = T("Activity Organisation Deleted"),
+            msg_list_empty = T("No Activity Organisations Found")
+        )
+
+        # Pass names back to global scope (s3.*)
+        return dict(
+        )
 
 # =============================================================================
 class S3ProjectAnnualBudgetModel(S3Model):
@@ -1626,7 +1691,6 @@ class S3ProjectBeneficiaryModel(S3Model):
                              self.project_project_id(readable=False,
                                                      writable=False),
                              self.project_location_id(comment=None),
-
                              # Instance
                              super_link("data_id", "stats_data"),
                              # This is a component, so needs to be a super_link
@@ -1667,6 +1731,9 @@ class S3ProjectBeneficiaryModel(S3Model):
                              s3_comments(),
                              *s3_meta_fields())
 
+        # Virtual fields
+        table.year = Field.Lazy(self.project_beneficiary_year)
+
         # CRUD Strings
         ADD_BNF = T("Add Beneficiaries")
         crud_strings[tablename] = Storage(
@@ -1684,8 +1751,6 @@ class S3ProjectBeneficiaryModel(S3Model):
             msg_record_deleted = T("Beneficiaries Deleted"),
             msg_list_empty = T("No Beneficiaries Found")
         )
-
-        table.virtualfields.append(S3ProjectBeneficiaryVirtualFields())
 
         # Resource Configuration
         report_fields = ["project_location_id",
@@ -1904,6 +1969,48 @@ class S3ProjectBeneficiaryModel(S3Model):
                 item.id = duplicate.id
                 item.method = item.METHOD.UPDATE
         return
+
+    # ---------------------------------------------------------------------
+    @staticmethod
+    def project_beneficiary_year(row):
+        """ Virtual field for the project_beneficiary table """
+
+        if hasattr(row, "project_beneficiary"):
+            row = row.project_beneficiary
+
+        try:
+            project_id = row.project_id
+        except AttributeError:
+            return []
+        try:
+            date = row.date
+        except AttributeError:
+            date = None
+        try:
+            end_date = row.end_date
+        except AttributeError:
+            end_date = None
+
+        if not date or not end_date:
+            table = current.s3db.project_project
+            project = current.db(table.id == project_id) \
+                             .select(table.start_date,
+                                     table.end_date,
+                                     limitby=(0, 1)).first()
+            if project:
+                if not date:
+                    date = project.start_date
+                if not end_date:
+                    end_date = project.end_date
+
+        if not date and not end_date:
+            return []
+        elif not end_date:
+            return [date.year]
+        elif not date:
+            return [end_date.year]
+        else:
+            return list(xrange(date.year, end_date.year + 1))
 
 # =============================================================================
 class S3ProjectCampaignModel(S3Model):
@@ -4625,7 +4732,8 @@ class S3ProjectTaskModel(S3Model):
                                        limitby=(0, 1)).first()
             if project:
                 represent = "%s: %s" % (project.name, row.name)
-
+            else:
+                represent = represent = "- %s" % row.name
             return represent
         elif not id:
             return current.messages["NONE"]
@@ -4647,7 +4755,8 @@ class S3ProjectTaskModel(S3Model):
                                        limitby=(0, 1)).first()
             if project:
                 represent = "%s: %s" % (project.name, name)
-
+            else:
+                represent = "- %s" % name
             return represent
 
     # -------------------------------------------------------------------------
@@ -5275,43 +5384,6 @@ def task_notify(form):
                  vars.description or "")
             current.msg.send_by_pe_id(pe_id, subject, message)
     return
-
-# =============================================================================
-class S3ProjectBeneficiaryVirtualFields:
-    """ Virtual fields for the project_beneficiary table """
-
-    def year(self):
-
-        try:
-            project_id = self.project_beneficiary.project_id
-        except AttributeError:
-            return []
-        try:
-            date = self.project_beneficiary.date
-        except AttributeError:
-            date = None
-        try:
-            end_date = self.project_beneficiary.end_date
-        except AttributeError:
-            end_date = None
-
-        if not date or not end_date:
-            table = current.s3db.project_project
-            project = current.db(table.id == project_id).select(table.start_date,
-                                                                table.end_date,
-                                                                limitby=(0, 1)
-                                                                ).first()
-            if project:
-                if not date:
-                    date = project.start_date
-                if not end_date:
-                    end_date = project.end_date
-        if not date and not end_date:
-            return []
-        elif not date or not end_date:
-            return [date.year or end_date.year]
-        else:
-            return [year for year in xrange(date.year, end_date.year + 1)]
 
 # =============================================================================
 class S3ProjectThemeVirtualFields:

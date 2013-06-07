@@ -871,17 +871,10 @@ class S3SearchLocationWidget(S3SearchWidget):
                               BUTTON(CLEAR_MAP,
                                      _id="gis_search_polygon_input_clear"))
 
-        # Settings to be read by static/scripts/S3/s3.gis.js
-        # @ToDo: migrate to options once show_map() does
-        js_location_search = '''S3.gis.draw_polygon=true'''
-
         # The overall layout of the components
-        return TAG[""](
-                        polygon_input,
-                        map_buttons,
-                        #map_popup,
-                        SCRIPT(js_location_search)
-                      )
+        return TAG[""](polygon_input,
+                       map_buttons,
+                       )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1042,20 +1035,21 @@ class S3Search(S3CRUD):
         # and throw an error if a duplicate is found
         names = []
         self.advanced = []
-        append = self.advanced.append
-        if not isinstance(advanced, (list, tuple)):
-            advanced = [advanced]
-        for widget in advanced:
-            if widget is not None:
-                name = widget.attr._name
-                if name in names:
-                    raise SyntaxError("Duplicate widget: %s" % name)
-                # Widgets should be able to have default names
-                # elif not name:
-                #    raise SyntaxError("Widget with no name")
-                else:
-                    append((name, widget))
-                    names.append(name)
+        if advanced:
+            append = self.advanced.append
+            if not isinstance(advanced, (list, tuple)):
+                advanced = [advanced]
+            for widget in advanced:
+                if widget is not None:
+                    name = widget.attr._name
+                    if name in names:
+                        raise SyntaxError("Duplicate widget: %s" % name)
+                    # Widgets should be able to have default names
+                    # elif not name:
+                    #    raise SyntaxError("Widget with no name")
+                    else:
+                        append((name, widget))
+                        names.append(name)
 
         self.__any = any
 
@@ -1592,6 +1586,7 @@ i18n.edit_saved_search="%s"
                                          window=True,
                                          window_hide=True
                                          )
+                # To be read in views/dataTables.html
                 s3.dataTableMap = map_popup
 
             if settings.has_module("msg") and \
@@ -2578,12 +2573,11 @@ class S3PersonSearch(S3Search):
                                    orderby="pr_person.first_name")
 
             if rows:
-                items = [{
-                            "id"     : row.id,
-                            "first"  : row.first_name,
-                            "middle" : row.middle_name or "",
-                            "last"   : row.last_name or "",
-                        } for row in rows ]
+                items = [{"id"     : row.id,
+                          "first"  : row.first_name,
+                          "middle" : row.middle_name or "",
+                          "last"   : row.last_name or "",
+                          } for row in rows ]
             else:
                 items = []
             output = json.dumps(items)
@@ -2666,14 +2660,13 @@ class S3HRSearch(S3Search):
                                    orderby="pr_person.first_name")
 
             if rows:
-                items = [{
-                            "id"     : row["hrm_human_resource"].id,
-                            "first"  : row["pr_person"].first_name,
-                            "middle" : row["pr_person"].middle_name or "",
-                            "last"   : row["pr_person"].last_name or "",
-                            "org"    : row["org_organisation"].name if show_orgs else "",
-                            "job"    : row["hrm_job_title"].name or "",
-                        } for row in rows ]
+                items = [{"id"     : row["hrm_human_resource"].id,
+                          "first"  : row["pr_person"].first_name,
+                          "middle" : row["pr_person"].middle_name or "",
+                          "last"   : row["pr_person"].last_name or "",
+                          "org"    : row["org_organisation"].name if show_orgs else "",
+                          "job"    : row["hrm_job_title"].name or "",
+                          } for row in rows ]
             else:
                 items = []
             output = json.dumps(items)
@@ -2780,10 +2773,10 @@ class S3PentitySearch(S3Search):
                                        orderby=field)
             items += json.loads(output)
 
-        items = [ { "id" : item[u'pe_id'],
-                    "name" : s3db.pr_pentity_represent(item[u'pe_id'],
-                                                       show_label=False) }
-                  for item in items ]
+        items = [{"id" : item[u'pe_id'],
+                  "name" : s3db.pr_pentity_represent(item[u'pe_id'],
+                                                     show_label=False)
+                  } for item in items ]
         output = json.dumps(items)
         response.headers["Content-Type"] = "application/json"
         return output

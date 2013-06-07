@@ -29,6 +29,7 @@
 
 __all__ = ["S3EventModel",
            "S3IncidentModel",
+           "S3IncidentReportModel",
            "S3IncidentTypeModel",
            "S3IncidentTypeTagModel",
            "S3EventAssetModel",
@@ -202,6 +203,8 @@ class S3EventModel(S3Model):
                   list_orderby=~table.zero_hour,
                   update_onaccept=self.event_update_onaccept,
                   deduplicate=self.event_duplicate,
+                  context = {"location": "event_location.location_id",
+                             },
                   list_fields = ["id",
                                  "name",
                                  "event_type_id$name",
@@ -210,7 +213,8 @@ class S3EventModel(S3Model):
                                  "exercise",
                                  "closed",
                                  "comments",
-                                 ])
+                                 ]
+                  )
 
         # Components
         # Incidents
@@ -222,6 +226,8 @@ class S3EventModel(S3Model):
                                           joinby="event_id",
                                           key="location_id",
                                           actuate="hide"))
+        # CustomForms don't work with link tables
+        add_component("event_event_location", event_event="event_id")
 
         # Requests
         add_component("req_req", event_event="event_id")
@@ -697,6 +703,75 @@ class S3IncidentModel(S3Model):
             item.id = _duplicate.id
             item.data.id = _duplicate.id
             item.method = item.METHOD.UPDATE
+
+# =============================================================================
+class S3IncidentReportModel(S3Model):
+    """
+        Incident Reports
+         - reports about incidents
+
+        @ToDo: Deprecate IRS module by porting functionality here
+    """
+
+    names = ["event_incident_report"]
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+        settings = current.deployment_settings
+        super_link = self.super_link
+
+        # ---------------------------------------------------------------------
+        # Incident Reports
+        #
+        tablename = "event_incident_report"
+        table = self.define_table(tablename,
+                                  super_link("doc_id", "doc_entity"),
+                                  # @ToDo: Use link tables?
+                                  #self.event_event_id(),
+                                  #self.event_incident_id(),
+                                  s3_datetime(),
+                                  Field("name", notnull=True,
+                                        label=T("Name")),
+                                  self.event_incident_type_id(),
+                                  self.gis_location_id(),
+                                  self.pr_person_id(label=T("Reported By")),
+                                  s3_comments(),
+                                  *s3_meta_fields())
+
+        current.response.s3.crud_strings[tablename] = Storage(
+            title_create = T("Add Incident Report"),
+            title_display = T("Incident Report Details"),
+            title_list = T("Incident Reports"),
+            title_update = T("Edit Incident Report"),
+            title_search = T("Search Incident Reports"),
+            subtitle_create = T("Add New Incident Report"),
+            label_list_button = T("List Incident Reports"),
+            label_create_button = T("Add Incident Report"),
+            label_delete_button = T("Remove Incident Report from this event"),
+            msg_record_created = T("Incident Report added"),
+            msg_record_modified = T("Incident Report updated"),
+            msg_record_deleted = T("Incident Report removed"),
+            msg_list_empty = T("No Incident Reports currently registered for this event"))
+
+        filter_widgets = [S3OptionsFilter("incident_type_id",
+                                          label=T("Type"),
+                                          represent="%(name)s",
+                                          widget="multiselect",
+                                          ),
+                          ]
+
+        self.configure(tablename,
+                       super_entity="doc_entity",
+                       filter_widgets = filter_widgets,
+                       )
+
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        #
+        return Storage(
+            )
 
 # =============================================================================
 class S3IncidentTypeModel(S3Model):

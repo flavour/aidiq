@@ -276,6 +276,7 @@ def s3_rest_controller(prefix=None, resourcename=None, **attr):
     set_handler("map", s3base.S3Map)
     set_handler("profile", s3base.S3Profile)
     set_handler("report", s3base.S3Report)
+    set_handler("summary", s3base.S3Summary)
     
     # Don't load S3PDF unless needed (very slow import with Reportlab)
     method = r.method
@@ -301,7 +302,7 @@ def s3_rest_controller(prefix=None, resourcename=None, **attr):
     output = r(**attr)
 
     if isinstance(output, dict) and \
-       (not method or method in ("report", "search", "datatable")):
+       (not method or method in ("report", "search", "datatable", "summary")):
         if s3.actions is None:
 
             # Add default action buttons
