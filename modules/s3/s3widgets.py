@@ -762,7 +762,7 @@ class S3AutocompleteWidget(FormWidget):
         dummy_input = "dummy_%s" % real_input
 
         # Script defined in static/scripts/S3/S3.js
-        js_autocomplete = '''S3.autocomplete('%s','%s','%s','%s','%s','%s',\"%s\",%s,%s)''' % \
+        js_autocomplete = '''S3.autocomplete.normal('%s','%s','%s','%s','%s','%s',\"%s\",%s,%s)''' % \
             (self.fieldname, self.module, self.resourcename, real_input, self.filter,
              self.link_filter, self.post_process, self.delay, self.min_length)
 
@@ -782,10 +782,7 @@ class S3AutocompleteWidget(FormWidget):
         return TAG[""](INPUT(_id=dummy_input,
                              _class="string",
                              _value=represent.encode("utf-8")),
-                       IMG(_src="/%s/static/img/ajax-loader.gif" % \
-                                current.request.application,
-                           _height=32, _width=32,
-                           _id="%s_throbber" % dummy_input,
+                       DIV(_id="%s_throbber" % dummy_input,
                            _class="throbber hide"),
                        INPUT(**attr),
                        requires = field.requires
@@ -872,12 +869,12 @@ class S3LocationAutocompleteWidget(FormWidget):
 
         # @ToDo: Something nicer (i.e. server-side formatting within S3LocationSearch)
         name_getter = \
-'''function(item){
-if(item.level=="L0"){return item.name+" (%(country)s)"
-}else if(item.level=="L1"){return item.name+" ("+item.L0+")"
-}else if(item.level=="L2"){return item.name+" ("+item.L1+","+item.L0+")"
-}else if(item.level=="L3"){return item.name+" ("+item.L2+","+item.L1+","+item.L0+")"
-}else if(item.level=="L4"){return item.name+" ("+item.L3+","+item.L2+","+item.L1+","+item.L0+")"
+'''function(item){ \
+if(item.level=='L0'){return item.name+' (%(country)s)' \
+}else if(item.level=='L1'){return item.name+' ('+item.L0+')' \
+}else if(item.level=='L2'){return item.name+' ('+item.L1+','+item.L0+')' \
+}else if(item.level=='L3'){return item.name+' ('+item.L2+','+item.L1+','+item.L0+')' \
+}else if(item.level=='L4'){return item.name+' ('+item.L3+','+item.L2+','+item.L1+','+item.L0+')' \
 }else{return item.name}}''' % dict(country = current.messages.COUNTRY)
 
         return S3GenericAutocompleteTemplate(
@@ -887,7 +884,7 @@ if(item.level=="L0"){return item.name+" (%(country)s)"
             field,
             value,
             attributes,
-            source = repr(url),
+            source = url,
             name_getter = name_getter,
         )
 
@@ -933,11 +930,9 @@ class S3OrganisationAutocompleteWidget(FormWidget):
             transform_value = transform_value,
             new_items = self.new_items,
             tablename = "org_organisation",
-            source = repr(
-                URL(c="org", f="org_search",
+            source = URL(c="org", f="org_search",
                     args="search.json",
                     vars={"filter":"~"})
-            )
         )
 
 # =============================================================================
@@ -1030,79 +1025,8 @@ class S3PersonAutocompleteWidget(FormWidget):
             real_input = attr["_id"]
         else:
             real_input = str(field).replace(".", "_")
-        dummy_input = "dummy_%s" % real_input
-        url = URL(c=self.c,
-                  f=self.f,
-                  args="search.json")
 
-        js_autocomplete = "".join((
-'''var %(real_input)s={val:$('#%(dummy_input)s').val(),accept:false}
-try{
-$('#%(dummy_input)s').autocomplete({
- source:'%(url)s',
- delay:%(delay)d,
- minLength:%(min_length)d,
- search:function(event,ui){
-  $('#%(dummy_input)s_throbber').removeClass('hide').show()
-  return true
- },
- response:function(event,ui,content){
-  $('#%(dummy_input)s_throbber').hide()
-  return content
- },
- focus:function(event,ui){
-  var name=ui.item.first
-  if(ui.item.middle){
-   name+=' '+ui.item.middle
-  }
-  if(ui.item.last){
-   name+=' '+ui.item.last
-  }
-  $('#%(dummy_input)s').val(name)
-  return false
- },
- select:function(event,ui){
-  var name=ui.item.first
-  if(ui.item.middle){
-   name+=' '+ui.item.middle
-  }
-  if(ui.item.last){
-   name+=' '+ui.item.last
-  }
-  $('#%(dummy_input)s').val(name)
-  $('#%(real_input)s').val(ui.item.id).change()
-''' % dict(dummy_input = dummy_input,
-           url = url,
-           delay = self.delay,
-           min_length = self.min_length,
-           real_input = real_input),
-        self.post_process, '''
-  %(real_input)s.accept=true
-  return false
- }
-}).data('ui-autocomplete')._renderItem=function(ul,item){
- var name=item.first
- if(item.middle){
-  name+=' '+item.middle
- }
- if(item.last){
-  name+=' '+item.last
- }
- return $('<li>').data('item.autocomplete',item).append('<a>'+name+'</a>').appendTo(ul)
-}}catch(e){}
-$('#%(dummy_input)s').blur(function(){
- if(!$('#%(dummy_input)s').val()){
-  $('#%(real_input)s').val('').change()
-  %(real_input)s.accept=true
- }
- if(!%(real_input)s.accept){
-  $('#%(dummy_input)s').val(%(real_input)s.val)
- }else{
-  %(real_input)s.val=$('#%(dummy_input)s').val()
- }
- %(real_input)s.accept=false
-})''' % dict(dummy_input = dummy_input,
-              real_input = real_input)))
+        dummy_input = "dummy_%s" % real_input
 
         if value:
             try:
@@ -1113,18 +1037,23 @@ $('#%(dummy_input)s').blur(function(){
             text = s3_unicode(field.represent(value))
             if "<" in text:
                 text = s3_strip_markup(text)
-            represent = text
+            represent = text.encode("utf-8")
         else:
             represent = ""
 
-        current.response.s3.jquery_ready.append(js_autocomplete)
+        script = '''S3.autocomplete.person('%(module)s','%(resourcename)s','%(input)s',"%(postprocess)s",%(delay)s,%(min_length)s)''' % \
+            dict(module = self.c,
+                 resourcename = self.f,
+                 input = real_input,
+                 postprocess = self.post_process,
+                 delay = self.delay,
+                 min_length = self.min_length,
+                 )
+        current.response.s3.jquery_ready.append(script)
         return TAG[""](INPUT(_id=dummy_input,
                              _class="string",
-                             _value=represent.encode("utf-8")),
-                       IMG(_src="/%s/static/img/ajax-loader.gif" % \
-                                current.request.application,
-                           _height=32, _width=32,
-                           _id="%s_throbber" % dummy_input,
+                             _value=represent),
+                       DIV(_id="%s_throbber" % dummy_input,
                            _class="throbber hide"),
                        INPUT(hideerror=self.hideerror, **attr),
                        requires = field.requires
@@ -1146,7 +1075,7 @@ class S3HumanResourceAutocompleteWidget(FormWidget):
                  post_process = "",
                  delay = 450,   # milliseconds
                  min_length=2,  # Increase this for large deployments
-                 group=None,    # Filter to staff/volunteers
+                 group = "",    # Filter to staff/volunteers
                  ):
 
         self.post_process = post_process
@@ -1155,9 +1084,6 @@ class S3HumanResourceAutocompleteWidget(FormWidget):
         self.group = group
 
     def __call__(self, field, value, **attributes):
-
-        request = current.request
-        response = current.response
 
         default = dict(
             _type = "text",
@@ -1173,131 +1099,6 @@ class S3HumanResourceAutocompleteWidget(FormWidget):
         else:
             real_input = str(field).replace(".", "_")
         dummy_input = "dummy_%s" % real_input
-        group = self.group
-        if group == "staff":
-            # Search Staff using S3HRSearch
-            url = URL(c="hrm",
-                      f="person_search",
-                      args="search.json",
-                      vars={"group":"staff"})
-        elif group == "volunteer":
-            # Search Volunteers using S3HRSearch
-            url = URL(c="vol",
-                      f="person_search",
-                      args="search.json")
-        else:
-            # Search all HRs using S3HRSearch
-            url = URL(c="hrm",
-                      f="person_search",
-                      args="search.json")
-
-        js_autocomplete = "".join((
-'''var %(real_input)s={val:$('#%(dummy_input)s').val(),accept:false}
-try{
-$('#%(dummy_input)s').autocomplete({
- source:'%(url)s',
- delay:%(delay)d,
- minLength:%(min_length)d,
- search:function(event,ui){
-  $('#%(dummy_input)s_throbber').removeClass('hide').show()
-  return true
- },
- response:function(event,ui,content){
-  $('#%(dummy_input)s_throbber').hide()
-  return content
- },
- focus:function(event,ui){
-  var name=ui.item.first
-  if(ui.item.middle){
-   name+=' '+ui.item.middle
-  }
-  if(ui.item.last){
-   name+=' '+ui.item.last
-  }
-  var org=ui.item.org
-  var job=ui.item.job
-  if(org||job){
-   if(job){
-    name+=' ('+job
-    if(org){
-     name+=', '+org
-    }
-    name+=')'
-   }else{
-    name+=' ('+org+')'
-   }
-  }
-  $('#%(dummy_input)s').val(name)
-  return false
- },
- select:function(event,ui){
-  var name=ui.item.first
-  if(ui.item.middle){
-   name+=' '+ui.item.middle
-  }
-  if(ui.item.last){
-   name+=' '+ui.item.last
-  }
-  var org=ui.item.org
-  var job=ui.item.job
-  if(org||job){
-   if(job){
-    name+=' ('+job
-    if(org){
-     name+=', '+org
-    }
-    name+=')'
-   }else{
-    name+=' ('+org+')'
-   }
-  }
-  $('#%(dummy_input)s').val(name)
-  $('#%(real_input)s').val(ui.item.id).change()
-''' % dict(dummy_input = dummy_input,
-           url = url,
-           delay = self.delay,
-           min_length = self.min_length,
-           real_input = real_input),
-        self.post_process, '''
-  %(real_input)s.accept=true
-  return false
- }
-}).data('ui-autocomplete')._renderItem=function(ul,item){
- var name=item.first
- if(item.middle){
-  name+=' '+item.middle
- }
- if(item.last){
-  name+=' '+item.last
- }
- var org=item.org
- var job=item.job
- if(org||job){
-  if(job){
-   name+=' ('+job
-   if(org){
-    name+=', '+org
-   }
-   name+=')'
-  }else{
-   name+=' ('+org+')'
-  }
- }
- return $('<li>').data('item.autocomplete',item).append('<a>'+name+'</a>').appendTo(ul)
-}}catch(e){}
-$('#%(dummy_input)s').blur(function(){
- if(!$('#%(dummy_input)s').val()){
-  $('#%(real_input)s').val('').change()
-  %(real_input)s.accept=true
- }
- if(!%(real_input)s.accept){
-  $('#%(dummy_input)s').val(%(real_input)s.val)
- }else{
-  %(real_input)s.val=$('#%(dummy_input)s').val()
- }
- %(real_input)s.accept=false
-})''' % dict(dummy_input = dummy_input,
-              real_input = real_input)))
 
         if value:
             try:
@@ -1312,14 +1113,18 @@ $('#%(dummy_input)s').blur(function(){
         else:
             represent = ""
 
-        response.s3.jquery_ready.append(js_autocomplete)
+        script = '''S3.autocomplete.hrm('%(group)s','%(input)s',"%(postprocess)s",%(delay)s,%(min_length)s)''' % \
+            dict(group = self.group,
+                 input = real_input,
+                 postprocess = self.post_process,
+                 delay = self.delay,
+                 min_length = self.min_length,
+                 )
+        current.response.s3.jquery_ready.append(script)
         return TAG[""](INPUT(_id=dummy_input,
                              _class="string",
                              _value=represent.encode("utf-8")),
-                       IMG(_src="/%s/static/img/ajax-loader.gif" % \
-                                request.application,
-                           _height=32, _width=32,
-                           _id="%s_throbber" % dummy_input,
+                       DIV(_id="%s_throbber" % dummy_input,
                            _class="throbber hide"),
                        INPUT(**attr),
                        requires = field.requires
@@ -1336,7 +1141,8 @@ class S3SiteAutocompleteWidget(FormWidget):
     def __init__(self,
                  post_process = "",
                  delay = 450, # milliseconds
-                 min_length = 2):
+                 min_length = 2,
+                 ):
 
         self.auth = current.auth
         self.post_process = post_process
@@ -1359,93 +1165,6 @@ class S3SiteAutocompleteWidget(FormWidget):
         else:
             real_input = str(field).replace(".", "_")
         dummy_input = "dummy_%s" % real_input
-        url = URL(c="org", f="site",
-                  args="search.json",
-                  vars={"filter":"~",
-                        "field":"name"})
-
-        # Provide a Lookup Table for Site Types
-        cases = ""
-        case = -1
-        org_site_types = current.auth.org_site_types
-        for instance_type in org_site_types.keys():
-            case = case + 1
-            cases += '''case '%s':
-   return '%s'
-  ''' % (instance_type,
-         org_site_types[instance_type])
-
-        js_autocomplete = "".join(('''function s3_site_lookup(instance_type){
- switch(instance_type){
-  %s}
-}''' % cases, '''
-var %(real_input)s={val:$('#%(dummy_input)s').val(),accept:false}
-try{
-$('#%(dummy_input)s').autocomplete({
- source:'%(url)s',
- delay:%(delay)d,
- minLength:%(min_length)d,
- search:function(event,ui){
-  $('#%(dummy_input)s_throbber').removeClass('hide').show()
-  return true
- },
- response:function(event,ui,content){
-  $('#%(dummy_input)s_throbber').hide()
-  return content
- },
- focus:function(event,ui){
-  var name=''
-  if(ui.item.name!=null){
-   name+=ui.item.name
-  }
-  if(ui.item.instance_type!=''){
-   name+=' ('+s3_site_lookup(ui.item.instance_type)+')'
-  }
-  $('#%(dummy_input)s').val(name)
-   return false
-  },
-  select:function(event,ui){
-   var name=''
-   if(ui.item.name!=null){
-    name+=ui.item.name
-   }
-   if(ui.item.instance_type!=''){
-    name+=' ('+s3_site_lookup(ui.item.instance_type)+')'
-   }
-   $('#%(dummy_input)s').val(name)
-   $('#%(real_input)s').val(ui.item.site_id).change()
-''' % dict(dummy_input=dummy_input,
-           real_input=real_input,
-           url=url,
-           delay=self.delay,
-           min_length=self.min_length),
-        self.post_process, '''
-   %(real_input)s.accept=true
-   return false
-  }
-}).data('ui-autocomplete')._renderItem=function(ul,item){
- var name=''
- if(item.name!=null){
-  name+=item.name
- }
- if(item.instance_type!=''){
-  name+=' ('+s3_site_lookup(item.instance_type)+')'
- }
- return $('<li>').data('item.autocomplete',item).append('<a>'+name+'</a>').appendTo(ul)
-}}catch(e){}
-$('#%(dummy_input)s').blur(function(){
- if(!$('#%(dummy_input)s').val()){
-  $('#%(real_input)s').val('').change()
-  %(real_input)s.accept=true
- }
- if(!%(real_input)s.accept){
-  $('#%(dummy_input)s').val(%(real_input)s.val)
- }else{
-  %(real_input)s.val=$('#%(dummy_input)s').val()
- }
- %(real_input)s.accept=false
-})''' % dict(dummy_input=dummy_input,
-             real_input=real_input)))
 
         if value:
             try:
@@ -1456,18 +1175,30 @@ $('#%(dummy_input)s').blur(function(){
             text = s3_unicode(field.represent(value))
             if "<" in text:
                 text = s3_strip_markup(text)
-            represent = text
+            represent = text.encode("utf-8")
         else:
             represent = ""
 
-        current.response.s3.jquery_ready.append(js_autocomplete)
+        s3 = current.response.s3
+        site_types = current.auth.org_site_types
+        for instance_type in site_types:
+            # Change from T()
+            site_types[instance_type] = s3_unicode(site_types[instance_type])
+        site_types = '''S3.org_site_types=%s''' % json.dumps(site_types)
+        js_global = s3.js_global
+        if site_types not in js_global:
+            js_global.append(site_types)
+        script = '''S3.autocomplete.site('%(input)s',"%(postprocess)s",%(delay)s,%(min_length)s)''' % \
+            dict(input = real_input,
+                 postprocess = self.post_process,
+                 delay = self.delay,
+                 min_length = self.min_length,
+                 )
+        s3.jquery_ready.append(script)
         return TAG[""](INPUT(_id=dummy_input,
                              _class="string",
-                             _value=represent.encode("utf-8")),
-                       IMG(_src="/%s/static/img/ajax-loader.gif" % \
-                                current.request.application,
-                           _height=32, _width=32,
-                           _id="%s_throbber" % dummy_input,
+                             _value=represent),
+                       DIV(_id="%s_throbber" % dummy_input,
                            _class="throbber hide"),
                        INPUT(**attr),
                        requires = field.requires
@@ -1478,7 +1209,7 @@ class S3SiteAddressAutocompleteWidget(FormWidget):
     """
         Renders an org_site SELECT as an INPUT field with AJAX Autocomplete.
         Differs from the S3AutocompleteWidget in that it searches both name & address fields
-        & uses these in the represent, along with the type
+        & uses these in the represent
     """
 
     def __init__(self,
@@ -1507,58 +1238,6 @@ class S3SiteAddressAutocompleteWidget(FormWidget):
         else:
             real_input = str(field).replace(".", "_")
         dummy_input = "dummy_%s" % real_input
-        url = URL(c="org", f="site",
-                  args=["search.json", "address"],
-                  vars={"filter":"~"})
-
-        js_autocomplete = "".join(('''
-var %(real_input)s={val:$('#%(dummy_input)s').val(),accept:false}
-$('#%(dummy_input)s').autocomplete({
- source:'%(url)s',
- delay:%(delay)d,
- minLength:%(min_length)d,
- search:function(event,ui){
-  $('#%(dummy_input)s_throbber').removeClass('hide').show()
-  return true
- },
- response:function(event,ui,content){
-  $('#%(dummy_input)s_throbber').hide()
-  return content
- },
- focus:function(event,ui){
-  var name=ui.item.name
-  $('#%(dummy_input)s').val(name)
-  return false
- },
- select:function(event,ui){
-  var name=ui.item.name
-  $('#%(dummy_input)s').val(name)
-  $('#%(real_input)s').val(ui.item.site_id).change()
-''' % dict(dummy_input=dummy_input,
-           real_input=real_input,
-           url=url,
-           delay=self.delay,
-           min_length=self.min_length),
-        self.post_process, '''
-  %(real_input)s.accept=true
-  return false
- }
-}).data('ui-autocomplete')._renderItem=function(ul,item){
- return $('<li>').data('item.autocomplete',item).append('<a>'+item.name+'</a>').appendTo(ul)
-}
-$('#%(dummy_input)s').blur(function(){
- if(!$('#%(dummy_input)s').val()){
-  $('#%(real_input)s').val('').change()
-  %(real_input)s.accept=true
- }
- if(!%(real_input)s.accept){
-  $('#%(dummy_input)s').val(%(real_input)s.val)
- }else{
-  %(real_input)s.val=$('#%(dummy_input)s').val()
- }
- %(real_input)s.accept=false
-})''' % dict(dummy_input=dummy_input,
-             real_input=real_input)))
 
         if value:
             try:
@@ -1569,18 +1248,21 @@ $('#%(dummy_input)s').blur(function(){
             text = s3_unicode(field.represent(value))
             if "<" in text:
                 text = s3_strip_markup(text)
-            represent = text
+            represent = text.encode("utf-8")
         else:
             represent = ""
 
-        current.response.s3.jquery_ready.append(js_autocomplete)
+        script = '''S3.autocomplete.site_address('%(input)s',"%(postprocess)s",%(delay)s,%(min_length)s)''' % \
+            dict(input = real_input,
+                 postprocess = self.post_process,
+                 delay = self.delay,
+                 min_length = self.min_length,
+                 )
+        current.response.s3.jquery_ready.append(script)
         return TAG[""](INPUT(_id=dummy_input,
                              _class="string",
-                             _value=represent.encode("utf-8")),
-                       IMG(_src="/%s/static/img/ajax-loader.gif" % \
-                                current.request.application,
-                           _height=32, _width=32,
-                           _id="%s_throbber" % dummy_input,
+                             _value=represent),
+                       DIV(_id="%s_throbber" % dummy_input,
                            _class="throbber hide"),
                        INPUT(**attr),
                        requires = field.requires
@@ -1594,8 +1276,8 @@ def S3GenericAutocompleteTemplate(post_process,
                                   value,
                                   attributes,
                                   source,
-                                  name_getter = "function(item){return item.name}",
-                                  id_getter = "function(item){return item.id}",
+                                  name_getter = "",
+                                  id_getter = "",
                                   transform_value = lambda value: value,
                                   new_items = False,    # Allow new items
                                   tablename = None,     # Needed if new_items=True
@@ -1619,59 +1301,8 @@ def S3GenericAutocompleteTemplate(post_process,
         real_input = attr["_id"]
     else:
         real_input = str(field).replace(".", "_")
-    dummy_input = "dummy_%s" % real_input
-    js_autocomplete = "".join(('''
-var %(real_input)s={val:$('#%(dummy_input)s').val(),accept:false}
-var get_name=%(name_getter)s
-var get_id=%(id_getter)s
-try{
-$('#%(dummy_input)s').autocomplete({
- source:%(source)s,
- delay:%(delay)d,
- minLength:%(min_length)d,
- search:function(event,ui){
-  $('#%(dummy_input)s_throbber').removeClass('hide').show()
-  return true
- },
- response:function(event,ui,content){
-  $('#%(dummy_input)s_throbber').hide()
-  return content
- },
- focus:function(event,ui){
-  $('#%(dummy_input)s').val(get_name(ui.item))
-  return false
- },
- select:function(event,ui){
-  var item=ui.item
-  $('#%(dummy_input)s').val(get_name(ui.item))
-  $('#%(real_input)s').val(get_id(ui.item)).change()
-  ''' % locals(),
-    post_process or "",
-  '''
-  %(real_input)s.accept=true
-  return false
- }
-}).data('ui-autocomplete')._renderItem=function(ul,item){
- return $('<li>').data('item.autocomplete',item).append('<a>'+get_name(item)+'</a>').appendTo(ul)
-}}catch(e){}''' % locals(),
-'''
-$('#%(dummy_input)s').blur(function(){
- $('#%(real_input)s').val($('#%(dummy_input)s').val())
-})''' % locals() if new_items else
-'''
-$('#%(dummy_input)s').blur(function(){
- if(!$('#%(dummy_input)s').val()){
-  $('#%(real_input)s').val('').change()
-  %(real_input)s.accept=true
- }
- if(!%(real_input)s.accept){
-  $('#%(dummy_input)s').val(%(real_input)s.val)
- }else{
-  %(real_input)s.val=$('#%(dummy_input)s').val()
- }
- %(real_input)s.accept=false
-})''' % locals()))
 
+    dummy_input = "dummy_%s" % real_input
 
     if value:
         try:
@@ -1682,18 +1313,24 @@ $('#%(dummy_input)s').blur(function(){
         text = s3_unicode(field.represent(value))
         if "<" in text:
             text = s3_strip_markup(text)
-        represent = text
+        represent = text.encode("utf-8")
     else:
         represent = ""
 
-    current.response.s3.jquery_ready.append(js_autocomplete)
+    script = '''S3.autocomplete.generic('%(url)s','%(input)s',"%(name_getter)s","%(id_getter)s","%(postprocess)s",%(delay)s,%(min_length)s)''' % \
+            dict(url = source,
+                 input = real_input,
+                 name_getter = name_getter,
+                 id_getter = id_getter,
+                 postprocess = post_process,
+                 delay = delay,
+                 min_length = min_length,
+                 )
+    current.response.s3.jquery_ready.append(script)
     return TAG[""](INPUT(_id=dummy_input,
                          _class="string",
-                         value=represent.encode("utf-8")),
-                   IMG(_src="/%s/static/img/ajax-loader.gif" % \
-                            current.request.application,
-                       _height=32, _width=32,
-                       _id="%s_throbber" % dummy_input,
+                         value=represent),
+                   DIV(_id="%s_throbber" % dummy_input,
                        _class="throbber hide"),
                    INPUT(**attr),
                    requires = field.requires
@@ -2229,7 +1866,6 @@ S3.gis.tab="%s"''' % s3.gis.tab
                        _title="%s|%s|%s" % (label, AUTOCOMPLETE_HELP, NEW_HELP))
 
         hidden = ""
-        throbber = "/%s/static/img/ajax-loader.gif" % appname
         Lx_rows = DIV()
         if value:
             # Display Read-only Fields
@@ -2283,9 +1919,7 @@ S3.gis.tab="%s"''' % s3.gis.tab
                              INPUT(value=name,
                                    _id="gis_location_%s_ac" % level,
                                    _disabled="disabled"),
-                             IMG(_src=throbber,
-                                 _height=32, _width=32,
-                                 _id="gis_location_%s_throbber" % level,
+                             DIV(_id="gis_location_%s_throbber" % level,
                                  _class="throbber hide"))
                 row = TR(TD(widget), TD(),
                          _id="gis_location_%s__row" % level,
@@ -2334,9 +1968,7 @@ S3.gis.tab="%s"''' % s3.gis.tab
                                 INPUT(value=default_name,
                                       _id="gis_location_%s_ac" % level,
                                       _class="%s" % hidden),
-                                IMG(_src=throbber,
-                                    _height=32, _width=32,
-                                    _id="gis_location_%s_throbber" % level,
+                                DIV(_id="gis_location_%s_throbber" % level,
                                     _class="throbber hide"))
                 row = TR(TD(widget),
                          TD(ac_help_widget(level)),
@@ -2470,9 +2102,7 @@ S3.gis.geocoder=true'''
 
         # Search
         widget = DIV(INPUT(_id="gis_location_search_ac"),
-                           IMG(_src=throbber,
-                               _height=32, _width=32,
-                               _id="gis_location_search_throbber",
+                           DIV(_id="gis_location_search_throbber",
                                _class="throbber hide"),
                            _id="gis_location_search_div")
 
@@ -2636,8 +2266,6 @@ class S3LocationSelectorWidget2(FormWidget):
         location_selector_loaded = s3.gis.location_selector_loaded
         formstyle = s3.crud.formstyle # Currently only Bootstrap has been tested
         request = current.request
-        appname = request.application
-        throbber_img = "/%s/static/img/ajax-loader.gif" % appname
 
         default = field.default
         if not default:
@@ -2814,9 +2442,7 @@ class S3LocationSelectorWidget2(FormWidget):
                                    _value=""),
                             _id=id)
             #comment = T("Select this %(location)s") % dict(location = label)
-            throbber = IMG(_src=throbber_img,
-                           _height=32, _width=32,
-                           _id="%s__throbber" % id,
+            throbber = DIV(_id="%s__throbber" % id,
                            _class="throbber hide"
                            )
             if formstyle == "bootstrap":
@@ -2929,7 +2555,7 @@ class S3LocationSelectorWidget2(FormWidget):
         else:
             script = "s3.locationselector.widget2.min.js"
 
-        script = "/%s/static/scripts/S3/%s" % (appname, script)
+        script = "/%s/static/scripts/S3/%s" % (request.application, script)
         scripts = s3.scripts
         if script not in scripts:
             scripts.append(script)
@@ -3547,10 +3173,7 @@ class S3AddPersonWidget(FormWidget):
                                  _id="edit_selected_person_link",
                                  _class="action-btn hide",
                                  _style="padding-left:15px;"),
-                               IMG(_src="/%s/static/img/ajax-loader.gif" % appname,
-                                   _height=32,
-                                   _width=32,
-                                   _id="person_load_throbber",
+                               DIV(_id="person_load_throbber",
                                    _class="throbber hide",
                                    _style="padding-left:85px;"),
                                _class="w2p_fw"),
@@ -3570,10 +3193,7 @@ class S3AddPersonWidget(FormWidget):
                                  _id="edit_selected_person_link",
                                  _class="action-btn hide",
                                  _style="padding-left:15px;"),
-                               IMG(_src="/%s/static/img/ajax-loader.gif" % appname,
-                                   _height=32,
-                                   _width=32,
-                                   _id="person_load_throbber",
+                               DIV(_id="person_load_throbber",
                                    _class="throbber hide",
                                    _style="padding-left:85px;"),
                                _class="w2p_fw"),
@@ -4197,11 +3817,7 @@ class S3EmbedComponentWidget(FormWidget):
                              _id="edit_selected_link",
                              _class="action-btn hide",
                              _style="padding-left:15px;"),
-                           IMG(_src="/%s/static/img/ajax-loader.gif" % \
-                                    appname,
-                               _height=32,
-                               _width=32,
-                               _id="load_throbber",
+                           DIV(_id="load_throbber",
                                _class="throbber hide",
                                _style="padding-left:85px;"),
                            _class="w2p_fw"),

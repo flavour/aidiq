@@ -251,6 +251,10 @@
     var readHierarchy = function(fieldname, level, id) {
         var selector = '#' + fieldname;
 
+        // Hide dropdown
+        var dropdown = $(selector + '_L' + level);
+        dropdown.hide();
+
         // Show Throbber
         var throbber = $(selector + '_L' + level + '__throbber');
         throbber.show();
@@ -260,24 +264,24 @@
         $.ajax({
             'async': false,
             'url': url,
-            'success': function(data) {
-                // Copy the elements across
-                for (var prop in n) {
-                    l[prop] = n[prop];
-                }
-                // Clear the memory
-                n = null;
-                // Hide Throbber
-                throbber.hide();
-            },
-            'error': function(request, status, error) {
-                if (error == 'UNAUTHORIZED') {
-                    msg = i18n.gis_requires_login;
-                } else {
-                    msg = request.responseText;
-                }
-            },
             'dataType': 'script'
+        }).done(function(data) {
+            // Copy the elements across
+            for (var prop in n) {
+                l[prop] = n[prop];
+            }
+            // Clear the memory
+            n = null;
+            // Hide Throbber
+            throbber.hide();
+            // Show dropdown
+            dropdown.show();
+        }).fail(function(request, status, error) {
+            if (error == 'UNAUTHORIZED') {
+                msg = i18n.gis_requires_login;
+            } else {
+                msg = request.responseText;
+            }
         });
     }
 

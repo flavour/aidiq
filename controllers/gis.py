@@ -653,14 +653,10 @@ def config():
                     type = db(query).select(table.instance_type,
                                             limitby=(0, 1)).first().instance_type
                     if type in ("gis_layer_coordinate",
-                                "gis_layer_feature", # @ToDo: Move down once style moved to link table
-                                "gis_layer_geojson",
                                 "gis_layer_georss",
                                 "gis_layer_gpx",
-                                "gis_layer_kml",
                                 "gis_layer_mgrs",
                                 "gis_layer_openweathermap",
-                                "gis_layer_wfs",
                                 ):
                         ltable.base.readable = ltable.base.writable = False
                     elif type in ("gis_layer_bing",
@@ -668,9 +664,12 @@ def config():
                                   "gis_layer_tms",
                                   ):
                         ltable.visible.readable = ltable.visible.writable = False
-                    elif type in (#"gis_layer_feature",
+                    elif type in ("gis_layer_feature"
+                                  "gis_layer_geojson",
+                                  "gis_layer_kml",
                                   "gis_layer_shapefile",
                                   "gis_layer_theme",
+                                  "gis_layer_wfs",
                                   ):
                         ltable.base.readable = ltable.base.writable = False
                         ltable.style.readable = ltable.style.writable = True
@@ -1065,6 +1064,7 @@ def layer_feature():
             if r.component_name == "config":
                 ltable = s3db.gis_layer_config
                 ltable.base.writable = ltable.base.readable = False
+                ltable.style.readable = ltable.style.writable = True
                 # @ToDo: Move style to layer_config
                 #ltable.style.writable = ltable.style.readable = True
                 if r.method != "update":
@@ -1490,6 +1490,7 @@ def layer_geojson():
             if r.component_name == "config":
                 ltable = s3db.gis_layer_config
                 ltable.base.writable = ltable.base.readable = False
+                ltable.style.readable = ltable.style.writable = True
                 if r.method != "update":
                     # Only show Configs with no definition yet for this layer
                     table = r.table
@@ -1729,6 +1730,7 @@ def layer_kml():
             if r.component_name == "config":
                 ltable = s3db.gis_layer_config
                 ltable.base.writable = ltable.base.readable = False
+                ltable.style.readable = ltable.style.writable = True
                 if r.method != "update":
                     # Only show Configs with no definition yet for this layer
                     table = r.table
@@ -1906,7 +1908,9 @@ def layer_shapefile():
                                             limitby=(0, 1)
                                             ).first()
             fields = json.loads(row.data)
-            Fields = [Field("wkt", "text"),
+            Fields = [Field("lat", "float"),
+                      Field("lon", "float"),
+                      Field("wkt", "text"),
                       Field("layer_id", table),
                       ]
             append = Fields.append
@@ -2181,6 +2185,7 @@ def layer_wfs():
             if r.component_name == "config":
                 ltable = s3db.gis_layer_config
                 ltable.base.writable = ltable.base.readable = False
+                ltable.style.readable = ltable.style.writable = True
                 if r.method != "update":
                     # Only show Configs with no definition yet for this layer
                     table = r.table
@@ -3129,23 +3134,37 @@ def proxy():
     import urllib2
     import cgi
 
-    # @ToDo: Link to map_service_catalogue to prevent Open Proxy abuse
-    # (although less-critical since we restrict content type)
-    allowedHosts = []
-    #allowedHosts = ["www.openlayers.org", "demo.opengeo.org"]
+    if auth.is_logged_in():
+        # Authenticated users can use our Proxy
+        allowedHosts = None
+        allowed_content_types = None
+    else:
+        # @ToDo: Link to map_service_catalogue to prevent Open Proxy abuse
+        # (although less-critical since we restrict content type)
+        allowedHosts = []
+        #append = allowedHosts.append
+        #letable = s3db.gis_layer_entity
+        #rows = db(letable.deleted == False).select(letable.layer_id, letable.instance_type)
+        # @ToDo: Better query (single query by instance_type)
+        #for row in rows:
+        #   table = db[row.instance_type]
+        #   @ToDo: Check url2/url3 for relevant instance_types
+        #   r = db(table.layer_id == row.layer_id).select(table.url, limitby=(0, 1)).first()
+        #   if r:
+        #       append(r.url)
 
-    allowed_content_types = (
-        "application/json", "text/json", "text/x-json",
-        "application/xml", "text/xml",
-        "application/vnd.ogc.se_xml",           # OGC Service Exception
-        "application/vnd.ogc.se+xml",           # OGC Service Exception
-        "application/vnd.ogc.success+xml",      # OGC Success (SLD Put)
-        "application/vnd.ogc.wms_xml",          # WMS Capabilities
-        "application/vnd.ogc.context+xml",      # WMC
-        "application/vnd.ogc.gml",              # GML
-        "application/vnd.ogc.sld+xml",          # SLD
-        "application/vnd.google-earth.kml+xml", # KML
-    )
+        allowed_content_types = (
+            "application/json", "text/json", "text/x-json",
+            "application/xml", "text/xml",
+            "application/vnd.ogc.se_xml",           # OGC Service Exception
+            "application/vnd.ogc.se+xml",           # OGC Service Exception
+            "application/vnd.ogc.success+xml",      # OGC Success (SLD Put)
+            "application/vnd.ogc.wms_xml",          # WMS Capabilities
+            "application/vnd.ogc.context+xml",      # WMC
+            "application/vnd.ogc.gml",              # GML
+            "application/vnd.ogc.sld+xml",          # SLD
+            "application/vnd.google-earth.kml+xml", # KML
+        )
 
     method = request["wsgi"].environ["REQUEST_METHOD"]
 
@@ -3190,22 +3209,26 @@ def proxy():
                 except urllib2.URLError:
                     raise(HTTP(504, "Unable to reach host %s" % url))
 
-            # Check for allowed content types
             i = y.info()
             if i.has_key("Content-Type"):
                 ct = i["Content-Type"]
-                if not ct.split(";")[0] in allowed_content_types:
+            else:
+                ct = None
+            if allowed_content_types:
+                # Check for allowed content types
+                if not ct:
+                    raise(HTTP(406, "Unknown Content"))
+                elif not ct.split(";")[0] in allowed_content_types:
                     # @ToDo?: Allow any content type from allowed hosts (any port)
                     #if allowedHosts and not host in allowedHosts:
                     raise(HTTP(403, "Content-Type not permitted"))
-            else:
-                raise(HTTP(406, "Unknown Content"))
 
             msg = y.read()
             y.close()
 
-            # Maintain the incoming Content-Type
-            response.headers["Content-Type"] = ct
+            if ct:
+                # Maintain the incoming Content-Type
+                response.headers["Content-Type"] = ct
             return msg
 
         else:

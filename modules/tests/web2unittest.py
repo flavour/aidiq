@@ -364,28 +364,31 @@ class SeleniumUnitTest(Web2UnitTest):
                     except NoSuchElementException:
                         el = browser.find_element_by_id(el_id)
                         raw_value = False
-                        for option in el.find_elements_by_tag_name("option"):
-                            if option.text == el_value:
-                                option.click()
-                                raw_value = option.get_attribute("value")
-                                try:
-                                    raw_value = int(raw_value)
-                                except:
-                                    pass
-                                break
+                        options_list = el.find_elements_by_tag_name("option")
+                        # Find the Longest Word Trimmed Match that matches with el_value
+                        option = self.find_max_match(options_list, el_value)
+                        option.click()
+                        raw_value = option.get_attribute("value")
+                        try:
+                            raw_value = int(raw_value)
+                        except:
+                            pass
                         
                 elif el_type == "option":
                     el = browser.find_element_by_id(el_id)
                     raw_value = False
-                    for option in el.find_elements_by_tag_name("option"):
-                        if option.text == el_value:
-                            option.click()
-                            raw_value = option.get_attribute("value")
-                            try:
-                                raw_value = int(raw_value)
-                            except:
-                                pass
-                            break
+                    options_list = el.find_elements_by_tag_name("option")
+                    # Find the Longest Word Trimmed Match that matches with el_value
+                    option = self.find_max_match(options_list, el_value)
+                    if option is None:
+                        raise NoSuchElementException("Option could not be found")
+                    option.click()
+                    raw_value = option.get_attribute("value")
+                    try:
+                        raw_value = int(raw_value)
+                    except:
+                        pass
+                    
                     # Test that we have an id that can be used in the database
                     if el_value and el_value != "-":
                         self.assertTrue(raw_value, "%s option cannot be found in %s" % (el_value, el_id))
@@ -497,6 +500,37 @@ class SeleniumUnitTest(Web2UnitTest):
         return result
 
     # -------------------------------------------------------------------------
+    def find_max_match(self, options_list, el_value):
+        """
+        Finds the Longest Word Trimmed Match for selecting text in options field.
+        @param options_list: The list of options in the options field.
+        @param el_value: The text to be matched in the options.
+        """
+        el_value_list = el_value.split()
+        # Remove all words of length = 1 such as hyphens.
+        el_value_list = filter(lambda x : len(x) > 1 , el_value_list)
+        # Initialise max_len as 0 and matchec_option = None.
+        max_len = 0
+        matched_option = None
+
+        for option in options_list:
+            text = option.text
+            text_list = text.split()
+            # Remove all words of length = 1 such as hyphens.
+            text_list = filter(lambda x : len(x) > 1 , text_list)
+            # Find intersection of el_value_list and text_list
+            matched_list = list(set(el_value_list).intersection(text_list))
+            # matched_len is number of matching words for the current option.
+            matched_len = len(matched_list)
+            # Save the maximum matched option in matched_option.
+            if matched_len > max_len:
+                matched_option = option
+                max_len = matched_len
+
+        # Return the maximum matched option.
+        return matched_option
+
+    # -------------------------------------------------------------------------
     def select_option(self, select_elem, option_label):
         if select_elem:
             select = Select(select_elem)
@@ -523,15 +557,20 @@ class SeleniumUnitTest(Web2UnitTest):
 
         browser.find_element_by_xpath("//a[text()='Reset all filters']").click()
 
+        # Open the filter options fieldset, if not done so.
+        filter_options = browser.find_elements_by_css_selector("#filter_options button")
+        if filter_options[0].is_displayed():
+            # Click the 'Show' button
+            filter_options[0].click()
+
         if fields:
             self.fill_fields(fields)
 
-        # Open the report options fieldset:
+        # Open the report options fieldset, if not done so.
         report_options = browser.find_elements_by_css_selector("#report_options button")
         if report_options[0].is_displayed():
+            # Click the 'Show' button
             report_options[0].click()
-        else:
-            report_options[1].click()
 
         # Select the item to make a report of:
         rows_select = browser.find_element_by_id("report-rows")
@@ -755,11 +794,14 @@ class SeleniumUnitTest(Web2UnitTest):
         el_id = "%s_%s" % (tablename, field)
         el = browser.find_element_by_id(el_id)
         raw_value = None
-        for option in el.find_elements_by_tag_name("option"):
-            if option.text == item_repr:
-                option.click()
-                raw_value = int(option.get_attribute("value"))
-                break
+        options_list = el.find_elements_by_tag_name("option")
+        # Find the Longest Word Trimmed Match that matches with item_repr
+        option = self.find_max_match(options_list, item_repr)
+        if option is None:
+            raise NoSuchElementException("Option could not be found")
+        option.click()
+        raw_value = int(option.get_attribute("value"))
+        
         # Now wait for the pack_item to be populated
         el_id = "%s_%s" % (tablename, "item_pack_id")
         _autocomple_finish(el_id, browser)
@@ -778,11 +820,13 @@ class SeleniumUnitTest(Web2UnitTest):
         if field == "L0":
             el_id = "gis_location_%s" % field
             el = browser.find_element_by_id(el_id)
-            for option in el.find_elements_by_tag_name("option"):
-                if option.text == item_repr:
-                    option.click()
-                    raw_value = int(option.get_attribute("value"))
-                    break
+            options_list = el.find_elements_by_tag_name("option")
+            # Find the Longest Word Trimmed Match that matches with item_repr
+            option = self.find_max_match(options_list, item_repr)
+            if option is None:
+                raise NoSuchElementException("Option could not be found")
+            option.click()
+            raw_value = int(option.get_attribute("value"))
         elif field[0] == "L":
             # @todo make this a proper autocomplete widget (select or add)
             el_id = "gis_location_%s_ac" % field

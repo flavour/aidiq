@@ -1218,9 +1218,17 @@ class S3Resource(object):
                 if limit and start is None:
                     start = 0
                 if start is not None and limit is not None:
-                    rows = rows[start:start+limit]
+                    #rows = rows[start:start+limit]
+                    rows = Rows(db,
+                                records=rows.records[start:start+limit],
+                                colnames=rows.colnames,
+                                compact=False)
                 elif start is not None:
-                    rows = rows[start:]
+                    #rows = rows[start:]
+                    rows = Rows(db,
+                                records=rows.records[start:],
+                                colnames=rows.colnames,
+                                compact=False)
                     
             else:
                 rows = rfilter(rows, start=start, limit=limit)
@@ -2797,7 +2805,10 @@ class S3Resource(object):
             if layer_id:
                 # GIS Feature Layer
                 locations = current.gis.get_locations_and_popups(self, layer_id)
-            elif self.tablename == "gis_theme_data":
+            elif tablename == "gis_layer_shapefile":
+                # GIS Shapefile Layer
+                locations = current.gis.get_shapefile_geojson(self)
+            elif tablename == "gis_theme_data":
                 # GIS Theme Layer
                 locations = current.gis.get_theme_geojson(self)
             else:
@@ -3097,7 +3108,8 @@ class S3Resource(object):
                                              lazy=lazy,
                                              url=crecord_url,
                                              msince=msince,
-                                             master=False)
+                                             master=False,
+                                             locations=locations)
                     if celement is not None:
                         add = True # keep the parent record
 
@@ -4921,6 +4933,24 @@ class S3Resource(object):
             return [head] + cls.sortleft(r)
         else:
             raise RuntimeError("circular left-join dependency")
+
+    # -------------------------------------------------------------------------
+    def prefix_selector(self, selector):
+        """
+            Helper method to ensure consistent prefixing of field selectors
+
+            @param selector: the selector
+        """
+
+        head = selector.split("$", 1)[0]
+        if "." in head:
+            prefix = head.split(".", 1)[0]
+            if prefix == self.alias:
+                return selector.replace("%s." % prefix, "~.")
+            else:
+                return selector
+        else:
+            return "~.%s" % selector
 
     # -------------------------------------------------------------------------
     def list_fields(self, key="list_fields"):
@@ -7267,8 +7297,7 @@ class S3ResourceFilter(object):
                     fname = None
                     if k.find(".") != -1:
                         fname = k.split(".")[1]
-                    elif tablename not in ("gis_location",
-                                           "gis_feature_query"):
+                    elif not tablename in ("gis_location", "gis_feature_query", "gis_layer_shapefile"):
                         for f in fields:
                             if str(table[f].type) == "reference gis_location":
                                 fname = f
@@ -7283,9 +7312,10 @@ class S3ResourceFilter(object):
                         continue
                     else:
                         bbox_filter = None
-                        if tablename == "gis_feature_query" or \
-                           tablename == "gis_cache":
+                        if tablename in ("gis_location", "gis_feature_query"):
                             gtable = table
+                        elif tablename == "gis_layer_shapefile":
+                            gtable = resource.components.items()[0][1].table
                         else:
                             gtable = current.s3db.gis_location
                             if current.deployment_settings.get_gis_spatialdb():
@@ -7364,6 +7394,7 @@ class S3ResourceFilter(object):
                 i += 1
         return Rows(rows.db, result,
                     colnames=rows.colnames, compact=False)
+                    
 
     # -------------------------------------------------------------------------
     def count(self, left=None, distinct=False):

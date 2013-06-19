@@ -23,7 +23,8 @@ h1 {
 }
 
 h2 {
-  font-size: 31.5px;
+    font-size: 30px;
+    text-shadow: 1px 0 2px #ffffff;
 }
 
 h3 {
@@ -103,6 +104,24 @@ div.dl {
     margin-bottom: 0;
 }
 
+.export_xls {
+    background-image: url(img/icon-xls.png);
+}
+.loading {
+    background: url(img/ajax-loader.gif) center no-repeat !important;
+} /*
+.throbber {
+    background-image: url(img/ajax-loader.gif);
+    height: 48px;
+    width: 48px;
+} */
+
+/* Need long form to override widgets.css on margin */
+.form-container form button.ui-datepicker-trigger {
+    background-image: url(img/calendar.gif);
+    margin-left: 10px;
+}
+
 /* Match .btn.btn-primary */
 .delete-btn {
     background-color: #006DCC;
@@ -117,10 +136,30 @@ div.dl {
 
 /* Push down below Nav */
 #alert-space {
-    padding-top: 50px;
+    position: fixed;
+    left: 0;
+    right: 0;
+    z-index: 7000;
 }
+
+#home {
+    margin-top: 55px;
+}
+
+.alert.alert-error, 
 .alert.alert-success {
     border: 1px solid #b2b2b2;
+    width: 445px;
+    position: relative;
+    margin-left: auto;
+    margin-right: auto;
+    z-index: 7000;
+    -moz-box-shadow: 0 -1px 3px #d7d7d6;
+    -webkit-box-shadow: 0 -1px 3px #d7d7d6;
+    box-shadow: 0 -1px 3px #d7d7d6;
+    -moz-box-shadow: 0 1px 1px #aaaaa7;
+    -webkit-box-shadow: 0 1px 1px #aaaaa7;
+    box-shadow: 0 1px 1px #aaaaa7;
 }
 
 a.btn.btn-primary.main-add {
@@ -155,70 +194,39 @@ a i.icon.icon-plus-sign.big-add:hover {
     background-image: linear-gradient(top,#f9f9fa,#e0e2e8) !important;
 }
 
-/* S3SQLCustomForm */
-table.embeddedComponent {
-    border: 0;
-    display: inline-block;
-    margin-bottom: 10px;
-    margin-top: 1px;
-    border-radius: 4px;
-    -webkit-border-radius: 4px;
-    -moz-border-radius: 4px;
-}
-
-#add-row-defaultevent_location td, 
-#add-row-defaultevent_post td, 
-#add-row-filedocument td {
-    border: 0;
-    padding-left: 0;
-}
-
-#sub_defaultevent_location_defaultevent_location_i_location_id_edit_none,
-#sub_defaultevent_post_defaultevent_post_i_event_id_edit_none,
-#sub_filedocument_filedocument_i_file_edit_none.upload {
-    padding-top: 6px;
-    padding-left: 4px;
-}
-
-#cms_post_body__row.control-group, 
-#cms_post_series_id__row.control-group,
-#cms_post_location_id__row.control-group,
-#cms_post_sub_filedocument__row.control-group {
-    margin-bottom: 5px;
-}
-
-#sub-filedocument table.embeddedComponent thead tr.label-row,
-#sub-defaultevent_post table.embeddedComponent thead tr.label-row {
-    display: none;
-}
-
-form.pr_person table.embeddedComponent td,
-#read-row-defaultevent_post-0 td {
-    border-style: none;
-}
-
-/* Contacts Page */
-
-#pr_person_sub_human_resourcehuman_resource__label {
-    display: none;
-}
-
-/*===========  Projects & Resources Page =====================*/
-
-#list-add div.form-container form.form-horizontal fieldset {
-    border: none;
-}
-
-/* Add New form */
-
-#list-add div.form-container form.form-horizontal {
+/* Forms */
+.form-horizontal {  /*temporary we need to pass another class to the form so it can be styled without problems*/
     background-color: #fff;
     border: 1px solid #b2b2b2;
-    border-radius: 0 0 5px 5px;
+    border-radius: 5px;
+    box-shadow: none;
     position: relative;
+    top: 11px;
     padding-top: 7px;
     padding-left: 9px;
-    top: 0;
+}
+.form-container form fieldset {
+    border: none;
+	font-size: 13px;
+}
+
+/* Override Bootstrap */
+.form-horizontal .control-group {
+    margin-bottom: 5px;
+}
+.form-horizontal .control-label {
+    font-weight: bold;
+    padding-top: 0;
+}
+
+.form-container .tooltip {
+    margin-top: 4px;
+}
+
+.form-container .help-block div {
+    position: relative;
+    top: -8px;
+    margin-bottom: -12px;
 }
 
 #submit_record__row {
@@ -227,128 +235,8 @@ form.pr_person table.embeddedComponent td,
     margin-right: -15px;
 }
 
-#list-add h3 {
-    text-align: center;
-    border-bottom: solid 1px #c9ccd0;
-    border-radius: 5px 5px 0 0;
-    text-transform: uppercase;
-    font-size: 18px;
-    background: rgba(255,255,255,1);
-    background: -moz-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
-    background: -webkit-gradient(left top, left bottom, color-stop(0%, rgba(255,255,255,1)), color-stop(47%, rgba(246,246,246,1)), color-stop(100%, rgba(237,237,237,1)));
-    background: -webkit-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
-    background: -o-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
-    background: -ms-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
-    background: linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
-    filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#ffffff', endColorstr='#ededed', GradientType=0 );	-moz-box-shadow: 0 -1px 3px #d7d7d6;
-    -webkit-box-shadow: 0 -1px 3px #d7d7d6;
-    box-shadow: 0 -1px 3px #d7d7d6;
-    border: 1px solid #9e9b9b;
-    -moz-box-shadow: 0 1px 1px #aaaaa7;
-    -webkit-box-shadow: 0 1px 1px #aaaaa7;
-    box-shadow: 0 1px 1px #aaaaa7;
-    padding: 7px 6px;
-    margin-bottom: -6px;
-}
-
 #submit_record__row input.btn.btn-primary {
     padding: 5px 20px;
-}
-
-/* Table Styling for Projects and Resources */
-
-table#datatable.dataTable.display {
-    background-color: #fff;
-}
-
-#datatable_wrapper {
-    background: rgba(255,255,255,1);
-    background: -moz-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
-    background: -webkit-gradient(left top, left bottom, color-stop(0%, rgba(255,255,255,1)), color-stop(47%, rgba(246,246,246,1)), color-stop(100%, rgba(237,237,237,1)));
-    background: -webkit-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
-    background: -o-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
-    background: -ms-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
-    background: linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
-    filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#ffffff', endColorstr='#ededed', GradientType=0 );	-moz-box-shadow: 0 -1px 3px #d7d7d6;
-    -webkit-box-shadow: 0 -1px 3px #d7d7d6;
-    box-shadow: 0 -1px 3px #d7d7d6;
-    border: 1px solid #9e9b9b;
-    -moz-box-shadow: 0 1px 1px #aaaaa7;
-    -webkit-box-shadow: 0 1px 1px #aaaaa7;
-    box-shadow: 0 1px 1px #aaaaa7;
-    border: 1px solid #b2b2b2;
-    border-radius: 5px;
-}
-
-#datatable_filter label {
-    position: relative;
-    padding-right: 25px;
-    margin-bottom: -37px;
-    margin-top: 13px;
-    font-weight: bold;
-}
-
-#datatable_length label select {
-    width: 75px;
-}
-
-#datatable_length label {
-    font-size: 12px;
-    margin-bottom: -1px;
-    margin-top: 2px;
-}
-
-#datatable_info.dataTables_info {
-    font-size: 12px;
-    padding-right: 15px;
-    color: #D35400;
-    line-height: 16px;
-}
-
-#datatable thead tr {
-    border: none;
-}
-
-#datatable tbody tr.odd {
-    background-color: #eeeeed;
-    padding-top: 5px;
-}
-
-#datatable tbody tr.odd td.sorting_1 {
-    background-color: rgba(51, 151, 219, 0.35);
-    color: #222220;
-}
-
-#datatable tbody tr.even td.sorting_1 {
-    background-color: rgba(51, 151, 219, 0.17);
-    color: #222220;
-}
-
-#table-container tr.even td,
-#table-container tr.odd td {
-    border: 1px solid #d9d8d8;
-    border-left: none;
-    padding: 10px 10px 10px 7px;
-    font-size: 13px;
-}
-
-#table-container th {
-    border: 1px solid #d9d8d8;
-    border-left: none;
-    font-size: 13px;
-}
-
-h2 {
-    font-size: 30px;
-    text-shadow: 1px 0 2px #ffffff;
-}
-
-#last_update {
-	color: #D35400;
-}
-
-#markDuplicate {
-    padding-bottom: 0;
 }
 
 #delete-btn, 
@@ -436,45 +324,246 @@ a.action-btn:hover {
     *background-color: #a9302a;
 }
 
-/* What was this for?
+/* Required Fields */
 b.red {
-    display: none;
-}*/
+    position: absolute;
+    z-index: 1;
+    margin-top: 10px;
+    margin-left: 7px;
+    font-size: 12px;
+}
 
-/* Project & Resource Read Screen */
-form.form-horizontal {  /*temporary we need to pass another class to the form so it can be styled without problems*/
+#last_update {
+    color: #D35400;
+}
+
+#markDuplicate {
+    padding-bottom: 0;
+}
+
+.s3_add_resource_link {
+    font-size: 11px;
+}
+
+/* Help Tooltips */
+
+.cluetip-default{
+    background-color: #ffffff;
+    border: 1px solid #ccc;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    -webkit-border-radius: 6px;
+       -moz-border-radius: 6px;
+            border-radius: 6px;
+    -webkit-box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+       -moz-box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+    -webkit-background-clip: padding-box;
+       -moz-background-clip: padding;
+            background-clip: padding-box;
+}
+
+.cluetip-default .ui-cluetip-header {
+    padding: 8px 14px;
+    margin: 0;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 18px;
+    background-color: #ededed;
+    border: 1px solid #ccc;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid #ebebeb;
+    -webkit-border-radius: 5px 5px 0 0;
+       -moz-border-radius: 5px 5px 0 0;
+            border-radius: 5px 5px 0 0;
+}
+
+.ui-cluetip-content {
+    font-size: 13px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    border: 1px solid #ccc;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+}
+
+#cluetip.cluetip.ui-widget.ui-widget-content.ui-cluetip.clue-right-default.cluetip-default {
+    border: none;
+}
+
+/* S3SQLCustomForm */
+table.embeddedComponent {
+    border: 0;
+    display: inline-block;
+    margin-bottom: 10px;
+    margin-top: 1px;
+    border-radius: 4px;
+    -webkit-border-radius: 4px;
+    -moz-border-radius: 4px;
+}
+
+table.embeddedComponent tr.label-row td {
+    font-size: 12px;
+    color: #7b7b77;
+}
+
+form table.embeddedComponent td {
+    border: none;
+}
+
+table.embeddedComponent .edit-row td,
+table.embeddedComponent .read-row td {
+    /* Hide the table */
+    border-bottom: none;
+    padding: 0;
+}
+
+table.embeddedComponent .add-row td {
+    /* Hide the table */
+    border-bottom: none;
+    padding: 0 5px 0 0;
+}
+.inline-add {
+    background-image: url(img/add.png);
+}
+.inline-edt {
+    background-image: url(img/edit.png);
+    width: 18px;
+}
+.s3_inline_add_resource_link {
+    margin-top: 5px;
+}
+
+#sub-defaultevent_post .label-row,
+#sub-defaultlocation .label-row,
+#sub-filedocument .label-row,
+#sub-partnerorganisation .label-row {
+    /* Hide the column titles since only 1 column
+        - this should eb done server-side where-possible, but this isn't possible for Partner Orgs as same field as for Donors
+    */
+    display: none;
+}
+
+#list-add form.form-horizontal {
     background-color: #fff;
     border: 1px solid #b2b2b2;
-    border-radius: 5px;
+    border-radius: 0 0 5px 5px;
     position: relative;
-    top: 11px;
     padding-top: 7px;
     padding-left: 9px;
+    top: 0;
 }
 
-#project_project_name__row.control-group {
+#list-add h3 {
+    text-align: center;
+    border-bottom: solid 1px #c9ccd0;
+    border-radius: 5px 5px 0 0;
+    text-transform: uppercase;
+    font-size: 18px;
+    background: rgba(255,255,255,1);
+    background: -moz-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
+    background: -webkit-gradient(left top, left bottom, color-stop(0%, rgba(255,255,255,1)), color-stop(47%, rgba(246,246,246,1)), color-stop(100%, rgba(237,237,237,1)));
+    background: -webkit-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
+    background: -o-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
+    background: -ms-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
+    background: linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
+    filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#ffffff', endColorstr='#ededed', GradientType=0 );	-moz-box-shadow: 0 -1px 3px #d7d7d6;
+    -webkit-box-shadow: 0 -1px 3px #d7d7d6;
+    box-shadow: 0 -1px 3px #d7d7d6;
+    border: 1px solid #9e9b9b;
+    -moz-box-shadow: 0 1px 1px #aaaaa7;
+    -webkit-box-shadow: 0 1px 1px #aaaaa7;
+    box-shadow: 0 1px 1px #aaaaa7;
+    padding: 7px 6px;
+    margin-bottom: -6px;
+}
+
+/* Updates */
+#body__error,
+#name__error,
+#location_id__error {
+    width: 50%;
+    padding: 5px;
+    border-radius: 4px;
+    border: 1px solid #b2b2b2;
+    font-weight: normal;
+    font-style: normal;
+    color: #b84947;
+    background-color: #f2dedd;
+    margin-top: 7px;
+}
+div.defaultlocation_error.error{
+    padding: 5px;
+    border-radius: 4px;
+    border: 1px solid #b2b2b2;
+    font-weight: normal;
+    font-style: normal;
+    color: #b84947;
+    background-color: #f2dedd;
+    margin-top: 7px;
+}
+
+/* Contacts Page */
+#pr_person_sub_human_resourcehuman_resource__label {
+    /* Hide the colon */
+    display: none;
+}
+/* Adjust Field Widths to match Titles/Data */
+#sub_human_resourcehuman_resource_human_resourcehuman_resource_i_organisation_id_edit_none,
+#sub_human_resourcehuman_resource_human_resourcehuman_resource_i_organisation_id_edit_0 {
+    width: 250px;
+}
+#sub_human_resourcehuman_resource_human_resourcehuman_resource_i_job_title_id_edit_none,
+#sub_human_resourcehuman_resource_human_resourcehuman_resource_i_job_title_id_edit_0,
+#sub_human_resourcehuman_resource_human_resourcehuman_resource_i_site_id_edit_none,
+#sub_human_resourcehuman_resource_human_resourcehuman_resource_i_site_id_edit_0 {
+    width: 120px;
+}
+#sub_phonecontact_phonecontact_i_value_edit_none,
+#sub_phonecontact_phonecontact_i_value_edit_0,
+#sub_emailcontact_emailcontact_i_value_edit_none,
+#sub_emailcontact_emailcontact_i_value_edit_0 {
+    width: 240px;
+}
+
+/* Projects Page */
+
+/* Dropdown with AddResourceLink takes up more vertical space than an INPUT so center the INPUTS
+    and the + button and throbber
+ */
+#sub_donororganisation_donororganisation_i_currency_edit_none,
+#sub_donororganisation_donororganisation_i_currency_edit_0,
+#sub_donororganisation_donororganisation_i_amount_edit_none,
+#sub_donororganisation_donororganisation_i_amount_edit_0,
+#add-partnerorganisation-none,
+#add-donororganisation-none,
+#throbber-partnerorganisation-none,
+#throbber-donororganisation-none {
+    position: relative;
+    top: -10px;
+}
+/* Adjust Field Widths to match Titles/Data */
+#sub_partnerorganisation_partnerorganisation_i_organisation_id_edit_none,
+#sub_partnerorganisation_partnerorganisation_i_organisation_id_edit_0,
+#sub_donororganisation_donororganisation_i_organisation_id_edit_none,
+#sub_donororganisation_donororganisation_i_organisation_id_edit_0 {
+    width: 250px;
+}
+#sub_donororganisation_donororganisation_i_amount_edit_none,
+#sub_donororganisation_donororganisation_i_amount_edit_0 {
+    width: 220px;
+}
+#sub_donororganisation_donororganisation_i_currency_edit_none,
+#sub_donororganisation_donororganisation_i_currency_edit_0 {
+    width: 70px;
+}
+
+/* For Read view, make the name into a Title */
+.item-container #project_project_name__row.control-group {
     margin-bottom: 15px;
-    text-align: left;
-    width: 100%;
-    font-size: 24px;
     margin-top: 15px;
 }
-
-.form-horizontal.project_project #project_project_name__row .controls {
-    background: #fff !important;
-    margin: 0px 0px 0px 24px;
-    border: none;
-    box-shadow:none;
-    padding-top: 0px;
-    padding-right: 0px;
-    padding-bottom: 0px;
-}
-
-#project_project_name {
-    margin-left: 20px;
-}
-
-#project_project_name__row .controls {
+.item-container #project_project_name__row .controls {
     text-align: left;
     border-bottom: solid 1px #c9ccd0;
     border-radius: 5px 5px 0 0;
@@ -494,71 +583,136 @@ form.form-horizontal {  /*temporary we need to pass another class to the form so
     margin: -23px -1px 4px -10px;
     padding: 7px 6px 7px 25px;
 }
-
-.form-horizontal.org_office .control-group,
-.form-horizontal.org_resource .control-group,
-.form-horizontal.pr_person .control-group,
-.form-horizontal.project_project .control-group {
-    margin-bottom: 5px;
-}
-
-.form-horizontal.org_office .control-label,
-.form-horizontal.org_resource .control-label,
-.form-horizontal.pr_person .control-label,
-.form-horizontal.project_project .control-label {
-    padding-top: 0;
-    font-weight: bold;
-}
-
-/* Add new Project form styling */
-#sub-partnerorganisation table.embeddedComponent thead,
-#sub-defaultlocation table.embeddedComponent thead tr.label-row td {
+.item-container #project_project_name__label {
     display: none;
 }
 
-#resource_type_add,
-#sub_donororganisation_donororganisation_i_organisation_id_edit_none_organisation_add, 
-#sub_partnerorganisation_partnerorganisation_i_organisation_id_edit_none_organisation_add, 
-#sub_defaultlocation_defaultlocation_i_location_id_edit_none_location_add,
-#organisation_add,
-#staff_add  {
-    padding-left: 0;
-    font-size: 11px;
+/* DataTable Styling */
+
+#datatable.dataTable.display {
+    background-color: #fff;
+    margin-top: 10px;
 }
 
-#add-row-defaultlocation td {
-    border-bottom: none;
-    padding-left: 0;
-}
-#add-row-donororganisation td,
-#add-row-partnerorganisation td,
-#sub-donororganisation table.embeddedComponent thead td {
-    border: none;
-    padding: 0 5px 0 0;
+#datatable_wrapper {
+    background: rgba(255,255,255,1);
+    background: -moz-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
+    background: -webkit-gradient(left top, left bottom, color-stop(0%, rgba(255,255,255,1)), color-stop(47%, rgba(246,246,246,1)), color-stop(100%, rgba(237,237,237,1)));
+    background: -webkit-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
+    background: -o-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
+    background: -ms-linear-gradient(top, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
+    background: linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(246,246,246,1) 47%, rgba(237,237,237,1) 100%);
+    filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#ffffff', endColorstr='#ededed', GradientType=0 );	-moz-box-shadow: 0 -1px 3px #d7d7d6;
+    -webkit-box-shadow: 0 -1px 3px #d7d7d6;
+    box-shadow: 0 -1px 3px #d7d7d6;
+    border: 1px solid #9e9b9b;
+    -moz-box-shadow: 0 1px 1px #aaaaa7;
+    -webkit-box-shadow: 0 1px 1px #aaaaa7;
+    box-shadow: 0 1px 1px #aaaaa7;
+    border: 1px solid #b2b2b2;
+    border-radius: 5px;
 }
 
-#sub_donororganisation_donororganisation_i_currency_edit_none,
-#sub_donororganisation_donororganisation_i_amount_edit_none {
+#datatable_filter label {
     position: relative;
-    top: -5px;
+    padding-right: 25px;
+    margin-bottom: -37px;
+    font-weight: bold;
+    margin-top: 7px;
+    margin-left: 13px;
 }
 
-#sub_donororganisation_donororganisation_i_amount_edit_none {
-    width: 200px;
-}
-#sub_donororganisation_donororganisation_i_currency_edit_none {
-    width: 70px;
+#datatable_length label select {
+    width: 75px;
 }
 
-#sub_donororganisation_donororganisation_i_organisation_id_edit_none {
-    position: relative;
-    top: 5px;
-    margin-bottom: 5px;
-}
-
-#sub-donororganisation table.embeddedComponent thead td label {
+#datatable_length label {
     font-size: 12px;
-    color: #7b7b77;
+    margin-bottom: -1px;
+    position: relative;
+    top: 17px;
+}
+
+#datatable_info.dataTables_info {
+    font-size: 12px;
+    padding-right: 15px;
+    color: #D35400;
+    line-height: 16px;
+    position: relative;
+    padding-top: 5px;
+    top: 11px;
+}
+
+#datatable thead tr {
+    border: none;
+}
+
+#datatable tbody tr.odd {
+    background-color: #eeeeed;
+    padding-top: 5px;
+}
+
+#datatable tbody tr.odd td.sorting_1 {
+    background-color: rgba(51, 151, 219, 0.35);
+    color: #222220;
+}
+
+#datatable tbody tr.even td.sorting_1 {
+    background-color: rgba(51, 151, 219, 0.17);
+    color: #222220;
+}
+
+#table-container tr.even td,
+#table-container tr.odd td {
+    border: 1px solid #d9d8d8;
+    border-left: none;
+    padding: 10px 10px 10px 7px;
+    font-size: 13px;
+}
+
+#table-container th {
+    border: 1px solid #d9d8d8;
+    border-left: none;
+    font-size: 13px;
+}
+
+#datatable_paginate {
+    margin-top: 15px;
+}
+
+#datatable_paginate span a.paginate_button {
+    background-color: #fff;
+    border: 1px solid #b7b7b7;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #666;
+    
+}
+
+#datatable_paginate span a.paginate_active {
+    background: #b0cee6;
+    font-size: 13px;
+    color: #666;
+}
+
+#datatable_previous.previous.paginate_button,
+#datatable_first.first.paginate_button,
+#datatable_last.last.paginate_button,
+#datatable_next.next.paginate_button  {
+    background-color: #fff;
+    border: 1px solid #b7b7b7;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #666;
+}
+
+#datatable_wrapper div.dataTables_info {
+    position: relative;
+    top: 9px;
+    margin-right: 15px;
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 15px;
 }
 
 /* Login & Registration Screens */
@@ -600,6 +754,23 @@ form.form-horizontal {  /*temporary we need to pass another class to the form so
     margin-bottom: 10px;
 }
 
+#email__error,
+#password__error {
+    margin-left: 15px;
+    padding: 5px;
+    border-radius: 4px;
+    border: 1px solid #b2b2b2;
+    font-weight: normal;
+    font-style: normal;
+    color: #b84947;
+    background-color: #f2dedd;
+}
+
+#submit_record__row td.w2p_fw {
+    padding-top: 15px;
+    padding-left: 12px;
+}
+
 /* Registration Screen */
 #auth_user_first_name,
 #auth_user_last_name,
@@ -615,9 +786,4 @@ form.form-horizontal {  /*temporary we need to pass another class to the form so
 
 #auth_user_utc_offset__row td.w2p_fc div.tooltip {
     margin-left: 15px;
-}
-
-#submit_record__row td.w2p_fw {
-    padding-top: 15px;
-    padding-left: 12px;
 }

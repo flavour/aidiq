@@ -148,6 +148,7 @@ def currency_represent(v):
     """
         Custom Representation of Currencies
     """
+
     if v == "USD":
         return "$"
     elif v == "AUD":
@@ -174,17 +175,20 @@ def location_represent(id, row=None):
                                                 table.L3,
                                                 limitby=(0, 1)).first()
 
-    if row.L3:
-        represent = "%s | %s | %s" % (s3_unicode(row.L1) if row.L1 else "",
-                                      s3_unicode(row.L2) if row.L2 else "",
-                                      s3_unicode(row.L3) if row.L3 else "",
+    L1 = row.L2
+    L2 = row.L2
+    L3 = row.L3
+    if L3:
+        represent = "%s | %s | %s" % (s3_unicode(L1) if L1 else "",
+                                      s3_unicode(L2) if L2 else "",
+                                      s3_unicode(L3) if L3 else "",
                                       )
-    elif row.L2:
-        represent = "%s | %s" % (s3_unicode(row.L1) if row.L1 else "",
-                                 s3_unicode(row.L2) if row.L2 else "",
+    elif L2:
+        represent = "%s | %s" % (s3_unicode(L1) if L1 else "",
+                                 s3_unicode(L2) if L2 else "",
                                  )
-    elif row.L1:
-        represent = row.L1
+    elif L1:
+        represent = s3_unicode(L1)
     else:
         represent = current.messages["NONE"]
 
@@ -500,6 +504,21 @@ def render_events(listid, resource, rfields, record, **attr):
     return item
 
 # -----------------------------------------------------------------------------
+def quote_unicode(s):
+    """
+        Quote unicode strings for URLs for Rocket
+    """
+
+    chars = []
+    for char in s:
+        o = ord(char)
+        if o < 128:
+            chars.append(char)
+        else:
+            chars.append(hex(o).replace("0x", "%").upper())
+    return "".join(chars)
+
+# -----------------------------------------------------------------------------
 def render_locations(listid, resource, rfields, record, **attr):
     """
         Custom dataList item renderer for Locations on the Selection Page
@@ -602,12 +621,22 @@ def render_locations(listid, resource, rfields, record, **attr):
             tally_activities += 1
         elif series == "Report":
             tally_reports += 1
-    
+
+    # https://code.google.com/p/web2py/issues/detail?id=1533
+    public_url = current.deployment_settings.get_base_public_url()
+    if public_url.startswith("http://127.0.0.1"):
+        # Assume Rocket
+        image = quote_unicode(s3_unicode(name))
+    else:
+        # Assume Apache or Cherokee
+        image = s3_unicode(name)
+
     # Render the item
     item = DIV(DIV(A(IMG(_class="media-object",
-                         _src=URL(c="static",
-                                  f="themes",
-                                  args=["DRMP", "img", "%s.png" % s3_unicode(name)]),
+                         _src="%s/%s.png" % (URL(c="static",
+                                                 f="themes",
+                                                 args=["DRMP", "img"]),
+                                             image),
                          ),
                      _class="pull-left",
                      _href=location_url,
@@ -1624,8 +1653,12 @@ def customize_cms_post_fields():
     """
 
     s3db = current.s3db
-    table = s3db.cms_post
 
+    # Hide Labels when just 1 column in inline form
+    s3db.doc_document.file.label = ""
+    s3db.event_event_post.event_id.label = ""
+
+    table = s3db.cms_post
     field = table.location_id
     field.label = ""
     field.represent = location_represent
@@ -1656,7 +1689,9 @@ def customize_cms_post_fields():
 # -----------------------------------------------------------------------------
 def cms_post_popup(r):
     """
-        Customized popup for cms_post resource
+        Customized Map popup for cms_post resource
+        - style like the cards
+        - currently unused
     """
 
     T = current.T
@@ -1956,9 +1991,20 @@ def customize_cms_post(**attr):
              r.method != "search":
             # Map Popups
             table = r.table
-            table.created_by.represent = s3_auth_user_represent_name
-            table.created_on.represent = datetime_represent
             table.location_id.represent = location_represent
+            table.created_by.represent = s3_auth_user_represent_name
+            # Used by default popups
+            series = T(table.series_id.represent(r.record.series_id))
+            s3.crud_strings["cms_post"].title_display = "%(series)s Details" % dict(series=series)
+            current.s3db.configure("cms_post", popup_url="")
+            table.avatar.readable = False
+            table.body.label = ""
+            table.expired.readable = False
+            table.replies.readable = False
+            table.created_by.readable = True
+            table.created_by.label = T("Author")
+            # Used by cms_post_popup
+            #table.created_on.represent = datetime_represent
 
         return True
     s3.prep = custom_prep
@@ -1978,7 +2024,8 @@ def customize_cms_post(**attr):
         elif r.representation == "plain" and \
              r.method != "search":
             # Map Popups
-            output = cms_post_popup(r)
+            #output = cms_post_popup(r)
+            pass
 
         return output
     s3.postp = custom_postp
@@ -3293,6 +3340,8 @@ def customize_project_project(**attr):
             # Better in column label & otherwise this construction loses thousands separators
             #table.budget.represent = lambda value: "%d USD" % value
 
+            s3db.doc_document.file.label = ""
+
             # Filter from a Profile page?
             # If so, then default the fields we know
             get_vars = current.request.get_vars
@@ -3481,104 +3530,109 @@ settings.ui.customize_project_project = customize_project_project
 settings.modules = OrderedDict([
     # Core modules which shouldn't be disabled
     ("default", Storage(
-            name_nice = T("Home"),
+            name_nice = "Home",
             restricted = False, # Use ACLs to control access to this module
             access = None,      # All Users (inc Anonymous) can see this module in the default menu & access the controller
             module_type = None  # This item is not shown in the menu
         )),
     ("admin", Storage(
-            name_nice = T("Administration"),
+            name_nice = "Administration",
             #description = "Site Administration",
             restricted = True,
             access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
             module_type = None  # This item is handled separately for the menu
         )),
     ("appadmin", Storage(
-            name_nice = T("Administration"),
+            name_nice = "Administration",
             #description = "Site Administration",
             restricted = True,
             module_type = None  # No Menu
         )),
     ("errors", Storage(
-            name_nice = T("Ticket Viewer"),
+            name_nice = "Ticket Viewer",
             #description = "Needed for Breadcrumbs",
             restricted = False,
             module_type = None  # No Menu
         )),
     ("sync", Storage(
-            name_nice = T("Synchronization"),
+            name_nice = "Synchronization",
             #description = "Synchronization",
             restricted = True,
             access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
             module_type = None  # This item is handled separately for the menu
         )),
     ("translate", Storage(
-            name_nice = T("Translation Functionality"),
+            name_nice = "Translation Functionality",
             #description = "Selective translation of strings based on module.",
             module_type = None,
         )),
     ("gis", Storage(
-            name_nice = T("Map"),
+            name_nice = "Map",
             #description = "Situation Awareness & Geospatial Analysis",
             restricted = True,
             module_type = 1,     # 1st item in the menu
         )),
     ("pr", Storage(
-            name_nice = T("Person Registry"),
+            name_nice = "Persons",
             #description = "Central point to record details on People",
             restricted = True,
             access = "|1|",     # Only Administrators can see this module in the default menu (access to controller is possible to all still)
             module_type = None
         )),
     ("org", Storage(
-            name_nice = T("Organizations"),
+            name_nice = "Organizations",
             #description = 'Lists "who is doing what & where". Allows relief agencies to coordinate their activities',
             restricted = True,
             module_type = None
         )),
     # All modules below here should be possible to disable safely
     ("hrm", Storage(
-            name_nice = T("Staff"),
+            name_nice = "Contacts",
             #description = "Human Resources Management",
             restricted = True,
             module_type = None,
         )),
     ("cms", Storage(
-            name_nice = T("Content Management"),
+            name_nice = "Content Management",
             restricted = True,
             module_type = None,
         )),
     ("doc", Storage(
-            name_nice = T("Documents"),
+            name_nice = "Documents",
             #description = "A library of digital resources, such as photos, documents and reports",
             restricted = True,
             module_type = None,
         )),
     ("msg", Storage(
-            name_nice = T("Messaging"),
+            name_nice = "Messaging",
             #description = "Sends & Receives Alerts via Email & SMS",
             restricted = True,
             # The user-visible functionality of this module isn't normally required. Rather it's main purpose is to be accessed from other modules.
             module_type = None,
         )),
     ("event", Storage(
-            name_nice = T("Disasters"),
+            name_nice = "Disasters",
             #description = "Events",
             restricted = True,
             module_type = None
         )),
     ("project", Storage(
-            name_nice = T("Projects"),
+            name_nice = "Projects",
             restricted = True,
             module_type = None
         )),
     ("stats", Storage(
-            name_nice = T("Statistics"),
+            name_nice = "Statistics",
+            restricted = True,
+            module_type = None
+        )),
+    ("vulnerability", Storage(
+            name_nice = "Vulnerability",
             restricted = True,
             module_type = None
         )),
 #    ("asset", Storage(
-#            name_nice = T("Assets"),
+#            name_nice = "Assets",
 #            restricted = True,
 #            module_type = None
 #        )),
