@@ -548,6 +548,12 @@ body.popup {
 }
 
 /* Message Flash styles */
+#_statusbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    z-index: 7000;
+}
 .confirmation {
     color: #070;
     font-weight: bold;
@@ -1121,7 +1127,7 @@ ul.x-tree-root-ct {
     border-top: 0;
 }
 .filter-form table.s3-checkboxes-widget td,
-.filter-form table.s3-groupopts-widget td,
+.filter-form table.s3-groupedopts-widget td,
 .search_form table.s3-checkboxes-widget td,
 .search_form table.s3searchminmaxwidget td,
 #filter_options table.s3-checkboxes-widget td,

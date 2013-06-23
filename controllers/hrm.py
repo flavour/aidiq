@@ -226,7 +226,7 @@ def staff():
 def person():
     """
         Person Controller
-        - used for Personal Profile & Imports
+        - used for access to component Tabs, Personal Profile & Imports
         - includes components relevant to HRM
     """
 
@@ -261,8 +261,7 @@ def person():
         hr_id = None
 
     # Configure human resource table
-    tablename = "hrm_human_resource"
-    table = s3db[tablename]
+    table = s3db.hrm_human_resource
     table.type.default = 1
     request.get_vars.update(xsltmode="staff")
     if hr_id:
@@ -274,8 +273,8 @@ def person():
             request.get_vars["group"] = group
 
     # Configure person table
+    table = db.pr_person
     tablename = "pr_person"
-    table = s3db[tablename]
     configure(tablename,
               deletable=False)
 
@@ -448,7 +447,10 @@ def person():
                 if hr_id and r.component_name == "human_resource":
                     r.component_id = hr_id
                 configure("hrm_human_resource", insertable = False)
-                
+
+        elif r.component_name == "group_membership" and r.representation == "aadata":
+            s3db.hrm_configure_pr_group_membership()
+
         return True
     s3.prep = prep
 
@@ -594,8 +596,7 @@ def person_search():
         s3.filter = (s3db.hrm_human_resource.type == 2)
 
     s3db.configure("hrm_human_resource",
-                    # S3HRSearch
-                    search_method = s3db.hrm_autocomplete_search,
+                   search_method = s3base.S3HRSearch(),
                    )
     s3.prep = lambda r: r.representation == "json" and \
                         r.method == "search"

@@ -3,7 +3,6 @@
 from gluon import current, IS_NULL_OR
 from gluon.html import *
 from gluon.storage import Storage
-
 from gluon.contrib.simplejson.ordered_dict import OrderedDict
 
 from s3.s3fields import S3Represent
@@ -130,7 +129,8 @@ settings.ui.summary = [{"name": "map",
 # =============================================================================
 # View Settings
 
-current.response.menu = [{"name": T("Residents"),
+current.response.menu = [
+                {"name": T("Residents"),
                  "url": URL(c="stats", f="resident"),
                  "icon": "icon-group"
                  },
@@ -180,7 +180,7 @@ settings.hrm.use_credentials = False
 # Uncomment to disable the use of HR Skills
 settings.hrm.use_skills = False
 # Uncomment to disable the use of HR Teams
-settings.hrm.use_teams = False
+settings.hrm.teams = False
 
 # -----------------------------------------------------------------------------
 # Activity
@@ -244,7 +244,18 @@ def customize_org_organisation(**attr):
     crud_form = S3SQLCustomForm(
         "name",
         "logo",
-        "multi_sector_id",
+        S3SQLInlineComponentCheckbox(
+            "group",
+            label = T("Coalition"),
+            field = "group_id",
+            cols = 3,
+        ),
+        S3SQLInlineComponentCheckbox(
+            "sector",
+            label = T("Sectors"),
+            field = "sector_id",
+            cols = 4,
+        ),
         S3SQLInlineComponentCheckbox(
             "service",
             label = T("Services"),
@@ -281,16 +292,21 @@ def customize_org_organisation(**attr):
         "comments",
     ) 
 
-    filter_widgets = [S3OptionsFilter("multi_sector_id",
+    filter_widgets = [S3OptionsFilter("group_membership.group_id",
+                                      label=T("Coalition"),
+                                      represent="%(name)s",
+                                      widget="multiselect",
+                                      ),
+                      S3OptionsFilter("sector_organisation.sector_id",
                                       label=T("Sector"),
                                       represent="%(name)s",
                                       widget="multiselect",
                                       ),
-                      #S3OptionsFilter("service.service_type_id",
-                      #                label=T("Service Type"),
-                      #                represent="%(name)s",
-                      #                widget="multiselect",
-                      #                ),
+                      S3OptionsFilter("service_organisation.service_id",
+                                      label=T("Service"),
+                                      represent="%(name)s",
+                                      widget="multiselect",
+                                      ),
                       ]
 
     s3db.configure(tablename,
@@ -335,6 +351,12 @@ def customize_org_facility(**attr):
         "facility_type_id",
         "organisation_id",
         "location_id",
+        S3SQLInlineComponentCheckbox(
+            "group",
+            label = T("Coalition"),
+            field = "group_id",
+            cols = 3,
+        ),
         S3SQLInlineComponent(
             "human_resource",
             label = T("Location's Contacts"),
@@ -348,8 +370,27 @@ def customize_org_facility(**attr):
         "comments",
     ) 
 
+    filter_widgets = [S3OptionsFilter("facility_group.group_id",
+                                      label=T("Coalition"),
+                                      represent="%(name)s",
+                                      widget="multiselect",
+                                      ),
+                      S3OptionsFilter("facility_type_id",
+                                      label=T("Type"),
+                                      represent="%(name)s",
+                                      widget="multiselect",
+                                      ),
+                      S3OptionsFilter("organisation_id",
+                                      label=T("Organization"),
+                                      represent="%(name)s",
+                                      widget="multiselect",
+                                      ),
+                      ]
+
     s3db.configure(tablename,
-                   crud_form = crud_form)
+                   crud_form = crud_form,
+                   filter_widgets = filter_widgets,
+                   )
 
     current.response.s3.crud_strings[tablename] = Storage(
                 title_create = T("Add Location"),
@@ -406,6 +447,7 @@ def customize_event_incident_report(**attr):
     return attr
 
 settings.ui.customize_event_incident_report = customize_event_incident_report
+
 # =============================================================================
 # Template Modules
 # Comment/uncomment modules here to disable/enable them

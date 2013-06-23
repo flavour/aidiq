@@ -329,18 +329,26 @@ class S3Resource(object):
         self.crud = manager.crud()
         self.crud.resource = self
 
-        # Search
-        self.search = s3db.get_config(self.tablename, "search_method", None)
-        if not self.search:
+    # -------------------------------------------------------------------------
+    def search_method(self):
+        """
+            Return a Search method
+        """
+
+        tablename = self.tablename
+        search = current.s3db.get_config(tablename, "search_method")
+        if not search:
             if "name" in self.table:
                 T = current.T
-                self.search = manager.search(
-                                name="search_simple",
-                                label=T("Name"),
-                                comment=T("Enter a name to search for. You may use % as wildcard. Press 'Search' without input to list all items."),
-                                field=["name"])
+                search = current.manager.search(
+                    name="%s_search_simple" % tablename,
+                    label=T("Name"),
+                    comment=T("Enter a name to search for. You may use % as wildcard. Press 'Search' without input to list all items."),
+                    field=["name"])
             else:
-                self.search = manager.search()
+                search = current.manager.search()
+
+        return search
 
     # -------------------------------------------------------------------------
     def _attach(self, alias, hook):
@@ -897,10 +905,9 @@ class S3Resource(object):
             @param raw_data: include raw data in the result
         """
 
-        # Init :
-
-        s3db = current.s3db
+        # Init
         db = current.db
+        s3db = current.s3db
         table = self.table
         tablename = table._tablename
         pkey = str(table._id)
@@ -918,13 +925,11 @@ class S3Resource(object):
         # Query to use for filtering
         filter_query = query
 
-        # @todo: remove
-        if DEBUG:
-            _start = datetime.datetime.now()
-            _debug("fast_select of %s starting" % tablename)
+        #if DEBUG:
+        #    _start = datetime.datetime.now()
+        #    _debug("fast_select of %s starting" % tablename)
 
-        # Resolve tables, fields and joins :
-        
+        # Resolve tables, fields and joins
         joins = {}
         left_joins = S3LeftJoins(tablename)
 
@@ -966,8 +971,7 @@ class S3Resource(object):
                                    dfield.ftype[:5] == "list:",
                                    dfield.virtual)
 
-        # Resolve ORDERBY :
-
+        # Resolve ORDERBY
         orderby_aggregate = orderby_fields = None
         
         if orderby:
@@ -1059,7 +1063,7 @@ class S3Resource(object):
 
         if getids or count or left_joins:
             if not groupby and not vfltr and \
-               (limitby or vtables != ftables):
+               (count or limitby or vtables != ftables):
 
                 if getids or left_joins:
                     field = table._id
@@ -1208,7 +1212,6 @@ class S3Resource(object):
             osetattr(table, "virtualfields", vf)
 
         # Apply virtual fields filter :
-
         if rows and vfltr is not None:
 
             if count:
@@ -1325,14 +1328,13 @@ class S3Resource(object):
                                      effort=effort,
                                      represent=represent)
 
-        if DEBUG:
-            end = datetime.datetime.now()
-            duration = end - _start
-            duration = '{:.4f}'.format(duration.total_seconds())
-            _debug("All data retrieved after %s seconds" % duration)
+        #if DEBUG:
+        #    end = datetime.datetime.now()
+        #    duration = end - _start
+        #    duration = '{:.4f}'.format(duration.total_seconds())
+        #    _debug("All data retrieved after %s seconds" % duration)
 
-        # Represent :
-
+        # Represent
         NONE = current.messages["NONE"]
         
         results = {}
@@ -1445,13 +1447,12 @@ class S3Resource(object):
                         data = data[0]
                     result[colname] = data
 
-        if DEBUG:
-            end = datetime.datetime.now()
-            duration = end - _start
-            duration = '{:.4f}'.format(duration.total_seconds())
-            _debug("Representation complete after %s seconds" % duration)
-            
-        _debug("fast_select DONE")
+        #if DEBUG:
+        #    end = datetime.datetime.now()
+        #    duration = end - _start
+        #    duration = '{:.4f}'.format(duration.total_seconds())
+        #    _debug("Representation complete after %s seconds" % duration)
+        #_debug("fast_select DONE")
 
         output["data"] = [results[record_id] for record_id in page]
         return output
@@ -1830,6 +1831,7 @@ class S3Resource(object):
             @param approve: set to approved (False for reset to unapproved)
         """
 
+        db = current.db
         auth = current.auth
 
         if auth.s3_logged_in():
@@ -1840,22 +1842,26 @@ class S3Resource(object):
         tablename = self.tablename
         table = self.table
 
-        for record in self.select():
+        records = self.fast_select([self._id.name])
+        for record in records["data"]:
 
-            record_id = record[table._id]
+            record_id = record[str(self._id)]
 
             # Forget any cached permission for this record
             auth.permission.forget(table, record_id)
 
             if "approved_by" in table.fields:
-                success = record.update_record(approved_by=user_id)
+                dbset = db(table._id == record_id)
+                success = dbset.update(approved_by = user_id)
                 if not success:
                     current.db.rollback()
                     return False
                 else:
                     onapprove = self.get_config("onapprove", None)
                     if onapprove is not None:
-                        callback(onapprove, record, tablename=tablename)
+                        row = dbset.select(limitby=(0, 1)).first()
+                        if row:
+                            callback(onapprove, row, tablename=tablename)
             if components is None:
                 continue
             for alias in self.components:
@@ -2789,45 +2795,32 @@ class S3Resource(object):
         else:
             orderby = None
 
-        # Facility Map search needs VFs for reqs (marker_fn & filter)
-        # @ToDo: Lazy VirtualFields
-        #self.load(start=start, limit=limit, orderby=orderby, virtual=False)
-        self.load(start=start, limit=limit, orderby=orderby, cacheable=True)
+        # @ToDo: Can we avoid this?
+        # - it is loading *all* fields, not just list_fields
+        # - even list_fields would be wrong when using get_location_data
+        self.load(start=start, limit=limit, orderby=orderby, virtual=False, cacheable=True)
 
         format = current.auth.permission.format
-        request = current.request
         if format == "geojson":
-            # Marker will be added in show_map()
-            marker = None
             # Lookups per layer not per record
-            _vars = request.get_vars
-            layer_id = _vars.get("layer", None)
-            if layer_id:
-                # GIS Feature Layer
-                locations = current.gis.get_locations_and_popups(self, layer_id)
-            elif tablename == "gis_layer_shapefile":
+            if tablename == "gis_layer_shapefile":
                 # GIS Shapefile Layer
                 locations = current.gis.get_shapefile_geojson(self)
             elif tablename == "gis_theme_data":
                 # GIS Theme Layer
                 locations = current.gis.get_theme_geojson(self)
             else:
+                # e.g. GIS Feature Layer
                 # e.g. Search results
-                locations = current.gis.get_locations_and_popups(self)
-        elif format == "georss" or \
-             format == "kml":
-            gis = current.gis
-            marker = gis.get_marker(request.controller,
-                                    request.function)
-            locations = gis.get_locations_and_popups(self)
+                locations = current.gis.get_location_data(self)
+        elif format in ("georss", "kml", "gpx"):
+            locations = current.gis.get_location_data(self)
         else:
-            marker = current.gis.get_marker(request.controller,
-                                            request.function)
             locations = None
 
         # Build the tree
-        if DEBUG:
-            _start = datetime.datetime.now()
+        #if DEBUG:
+        #    _start = datetime.datetime.now()
 
         root = etree.Element(xml.TAG.root)
         
@@ -2861,20 +2854,19 @@ class S3Resource(object):
                                       skip=skip,
                                       filters=filters,
                                       msince=msince,
-                                      marker=marker,
                                       locations=locations)
             if element is None:
                 results -= 1
-        if DEBUG:
-            end = datetime.datetime.now()
-            duration = end - _start
-            duration = '{:.2f}'.format(duration.total_seconds())
-            _debug("export_resource of primary resource and components completed in %s seconds" % \
-                duration)
+        #if DEBUG:
+        #    end = datetime.datetime.now()
+        #    duration = end - _start
+        #    duration = '{:.2f}'.format(duration.total_seconds())
+        #    _debug("export_resource of primary resource and components completed in %s seconds" % \
+        #        duration)
 
         # Add referenced resources to the tree
-        if DEBUG:
-            _start = datetime.datetime.now()
+        #if DEBUG:
+        #    _start = datetime.datetime.now()
         depth = dereference and manager.MAX_DEPTH or 0
         while reference_map and depth:
             depth -= 1
@@ -2935,18 +2927,17 @@ class S3Resource(object):
                                               skip=skip,
                                               filters=filters,
                                               master=False,
-                                              marker=marker,
                                               locations=locations)
 
                     # Mark as referenced element (for XSLT)
                     if element is not None:
                         element.set(REF, "True")
-        if DEBUG:
-            end = datetime.datetime.now()
-            duration = end - _start
-            duration = '{:.2f}'.format(duration.total_seconds())
-            _debug("export_resource of referenced resources and their components completed in %s seconds" % \
-                   duration)
+        #if DEBUG:
+        #    end = datetime.datetime.now()
+        #    duration = end - _start
+        #    duration = '{:.2f}'.format(duration.total_seconds())
+        #    _debug("export_resource of referenced resources and their components completed in %s seconds" % \
+        #           duration)
 
         # Render all pending lazy representations
         if lazy:
@@ -2983,7 +2974,6 @@ class S3Resource(object):
                           filters=None,
                           msince=None,
                           master=True,
-                          marker=None,
                           locations=None):
         """
             Add a <resource> to the element tree
@@ -3002,7 +2992,6 @@ class S3Resource(object):
                             {tablename: {url_var: string}}
             @param msince: the minimum update datetime for exported records
             @param master: True of this is the master resource
-            @param marker: the marker for GIS encoding
             @param locations: the locations for GIS encoding
         """
 
@@ -3030,7 +3019,6 @@ class S3Resource(object):
                                url=record_url,
                                msince=msince,
                                master=master,
-                               marker=marker,
                                locations=locations)
         if element is not None:
             add = True
@@ -3143,7 +3131,6 @@ class S3Resource(object):
                        url=None,
                        msince=None,
                        master=True,
-                       marker=None,
                        locations=None):
         """
             Exports a single record to the element tree.
@@ -3156,7 +3143,6 @@ class S3Resource(object):
             @param url: URL of the record
             @param msince: minimum last update time
             @param master: True if this is a record in the master resource
-            @param marker: the marker for GIS encoding
             @param locations: the locations for GIS encoding
         """
 
@@ -3232,7 +3218,7 @@ class S3Resource(object):
 
         # GIS-encode the element
         xml.gis_encode(self, record, element, rmap,
-                       marker=marker, locations=locations, master=master)
+                       locations=locations, master=master)
 
         # Restore user-ID representations
         for fn in auth_user_represent:
@@ -4188,8 +4174,7 @@ class S3Resource(object):
             Resolve a list of field selectors against this resource
 
             @param selectors: the field selectors
-            @param skip_components: skip fields in components (component fields
-                                    are currently not supported by list_fields)
+            @param skip_components: skip fields in components
             @param extra_fields: automatically add extra_fields of all virtual
                                  fields in this table
             @param show: default for S3ResourceField.show

@@ -32,7 +32,7 @@ __all__ = ["S3PersonEntity",
            "S3PersonModel",
            "S3GroupModel",
            "S3ContactModel",
-           "S3PersonAddressModel",
+           "S3AddressModel",
            "S3PersonImageModel",
            "S3PersonIdentityModel",
            "S3PersonEducationModel",
@@ -142,21 +142,22 @@ class S3PersonEntity(S3Model):
         # Person Super-Entity
         #
         if current.deployment_settings.get_ui_label_camp():
-            shelter = T("Camp")
+            SHELTER = T("Camp")
         else:
-            shelter = T("Shelter")
-        pe_types = Storage(pr_person = T("Person"),
-                           pr_group = T("Group"),
-                           org_organisation = messages.ORGANISATION,
-                           org_office = T("Office"),
-                           inv_warehouse = T("Warehouse"),
+            SHELTER = T("Shelter")
+        pe_types = Storage(cr_shelter = SHELTER,
+                           dvi_body = T("Body"),
+                           dvi_morgue = T("Morgue"),
                            # If we want these, then pe_id needs adding to their
                            # tables & configuring as a super-entity
                            #fire_station = T("Fire Station"),
-                           cr_shelter = shelter,
-                           dvi_morgue = T("Morgue"),
                            hms_hospital = T("Hospital"),
-                           dvi_body = T("Body")
+                           inv_warehouse = T("Warehouse"),
+                           org_organisation = messages.ORGANISATION,
+                           org_group = T("Organization group"),
+                           org_office = T("Office"),
+                           pr_person = T("Person"),
+                           pr_group = T("Group"),
                            )
 
         tablename = "pr_pentity"
@@ -433,7 +434,7 @@ class S3PersonEntity(S3Model):
                                         itable.organisation_id,
                                         limitby=(0, 1)).first()
                 if instance:
-                    pr_update_affiliations("org_site", instance)
+                    s3db.org_update_affiliations("org_site", instance)
         return
 
     # -------------------------------------------------------------------------
@@ -475,7 +476,7 @@ class S3PersonEntity(S3Model):
             Clear descendant paths, also called indirectly via
             ondelete-CASCADE when a role gets deleted.
 
-            @param row: the deleted row
+            @param row: the deleted Row
         """
 
         if row and row.id:
@@ -509,7 +510,7 @@ class S3OrgAuthModel(S3Model):
         gtable = current.auth.settings.table_group
         tablename = "pr_delegation"
         table = self.define_table(tablename,
-                                  current.s3db.pr_role_id(),
+                                  self.pr_role_id(),
                                   Field("group_id", gtable,
                                         ondelete="CASCADE"),
                                   *s3_meta_fields())
@@ -753,23 +754,6 @@ class S3PersonModel(S3Model):
         add_component("msg_subscription", pr_person="person_id")
 
         add_component("member_membership", pr_person="person_id")
-
-        # Email
-        add_component("pr_contact",
-                      pr_person=dict(name="email",
-                                    joinby="pe_id",
-                                    pkey="pe_id",
-                                    filterby="contact_method",
-                                    filterfor=["EMAIL"],
-                                    ))
-        # Mobile Phone
-        add_component("pr_contact",
-                      pr_person=dict(name="phone",
-                                     joinby="pe_id",
-                                     pkey="pe_id",
-                                     filterby="contact_method",
-                                     filterfor=["SMS"],
-                                     ))
 
         # HR Record
         add_component("hrm_human_resource", pr_person="person_id")
@@ -1038,7 +1022,6 @@ class S3GroupModel(S3Model):
 
     names = ["pr_group",
              "pr_group_id",
-             "pr_group_represent",
              "pr_group_membership"
              ]
 
@@ -1132,7 +1115,8 @@ class S3GroupModel(S3Model):
                   )
 
         # Reusable field
-        if current.request.controller in ("hrm", "vol"):
+        if current.request.controller in ("hrm", "vol") and \
+           current.deployment_settings.get_hrm_teams() == "Team":
             label = T("Add Team")
             title = T("Create Team")
             tooltip = T("Create a new Team.")
@@ -1140,14 +1124,15 @@ class S3GroupModel(S3Model):
             label = crud_strings.pr_group.label_create_button
             title = T("Create Group")
             tooltip = T("Create a new Group.")
+        represent = S3Represent(lookup=tablename)
         group_id = S3ReusableField("group_id", table,
                                    sortby="name",
                                    requires = IS_NULL_OR(
                                                 IS_ONE_OF(db, "pr_group.id",
-                                                          self.group_represent,
+                                                          represent,
                                                           filterby="system",
                                                           filter_opts=(False,))),
-                                   represent = self.group_represent,
+                                   represent = represent,
                                    comment=S3AddResourceLink(#c="pr",
                                                              f="group",
                                                              label=label,
@@ -1225,7 +1210,6 @@ class S3GroupModel(S3Model):
                    ]
             )
 
-        # Resource configuration
         configure(tablename,
                   onaccept = self.group_membership_onaccept,
                   ondelete = self.group_membership_onaccept,
@@ -1242,28 +1226,8 @@ class S3GroupModel(S3Model):
         #
         return Storage(
             pr_group_id = group_id,
-            pr_group_represent = self.group_represent,
             pr_mailing_list_crud_strings = mailing_list_crud_strings
         )
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def group_represent(id, row=None):
-        """ FK representation """
-
-        if row:
-            return row.name
-        elif not id:
-            return current.messages["NONE"]
-
-        db = current.db
-        table = db.pr_group
-        r = db(table.id == id).select(table.name,
-                                      limitby = (0, 1)).first()
-        try:
-            return r.name
-        except:
-            return current.messages.UNKNOWN_OPT
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1323,7 +1287,7 @@ class S3GroupModel(S3Model):
 
 # =============================================================================
 class S3ContactModel(S3Model):
-    """ Person Contacts """
+    """ Person Entity Contacts - for Persons & Organisations """
 
     names = ["pr_contact",
              "pr_contact_emergency"
@@ -1333,6 +1297,7 @@ class S3ContactModel(S3Model):
 
         T = current.T
 
+        configure = self.configure
         define_table = self.define_table
         messages = current.messages
         super_link = self.super_link
@@ -1375,8 +1340,9 @@ class S3ContactModel(S3Model):
         table.pe_id.requires = IS_ONE_OF(current.db, "pr_pentity.pe_id",
                                          pr_pentity_represent,
                                          orderby="instance_type",
-                                         filterby="instance_type",
-                                         filter_opts=("pr_person", "pr_group"))
+                                         #filterby="instance_type",
+                                         #filter_opts=("pr_person", "pr_group"),
+                                         )
 
         # CRUD Strings
         current.response.s3.crud_strings[tablename] = Storage(
@@ -1394,18 +1360,18 @@ class S3ContactModel(S3Model):
             msg_record_deleted = T("Contact Information Deleted"),
             msg_list_empty = T("No contact information available"))
 
-        # Resource configuration
-        self.configure(tablename,
-                       onvalidation=self.contact_onvalidation,
-                       deduplicate=self.contact_deduplicate,
-                       list_fields=["id",
-                                    "contact_method",
-                                    "value",
-                                    "priority",
-                                    ])
+        configure(tablename,
+                  onvalidation=self.pr_contact_onvalidation,
+                  deduplicate=self.pr_contact_deduplicate,
+                  list_fields=["id",
+                               "contact_method",
+                               "value",
+                               "priority",
+                               ])
 
         # ---------------------------------------------------------------------
         # Emergency Contact Information
+        # - currently only ever 1 of these expected
         #
         tablename = "pr_contact_emergency"
         table = define_table(tablename,
@@ -1420,6 +1386,9 @@ class S3ContactModel(S3Model):
                              s3_comments(),
                              *s3_meta_fields())
 
+        configure(tablename,
+                  deduplicate=self.pr_emergency_deduplicate)
+
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
@@ -1428,37 +1397,43 @@ class S3ContactModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def contact_onvalidation(form):
+    def pr_contact_onvalidation(form):
         """ Contact form validation """
 
-        contact_method = form.vars.contact_method
-        if not contact_method and "id" in form.vars:
+        vars = form.vars
+        contact_method = vars.contact_method
+        if not contact_method and "id" in vars:
             ctable = current.s3db.pr_contact
-            record = current.db(ctable._id == form.vars.id).select(
+            record = current.db(ctable._id == vars.id).select(
                                 ctable.contact_method,
                                 limitby=(0, 1)).first()
             if record:
                 contact_method = record.contact_method
 
         if contact_method == "EMAIL":
-            email, error = IS_EMAIL()(form.vars.value)
+            email, error = IS_EMAIL()(vars.value)
             if error:
                 form.errors.value = current.T("Enter a valid email")
-        return False
+        elif contact_method in ("SMS", "HOME_PHONE", "WORK_PHONE"):
+            phone, error = IS_MATCH(multi_phone_number_pattern)(vars.value)
+            if error:
+                form.errors.value = current.T("Enter a valid phone number")
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def contact_deduplicate(item):
+    def pr_contact_deduplicate(item):
         """ Contact information de-duplication """
 
         if item.tablename == "pr_contact":
-            table = item.table
-            pe_id = item.data.get("pe_id", None)
-            contact_method = item.data.get("contact_method", None)
-            value = item.data.get("value", None)
+            data = item.data
+            pe_id = data.get("pe_id", None)
 
             if pe_id is None:
                 return
+
+            table = item.table
+            contact_method = data.get("contact_method", None)
+            value = data.get("value", None)
 
             query = (table.pe_id == pe_id) & \
                     (table.contact_method == contact_method) & \
@@ -1469,11 +1444,32 @@ class S3ContactModel(S3Model):
             if duplicate:
                 item.id = duplicate.id
                 item.method = item.METHOD.UPDATE
-        return
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def pr_emergency_deduplicate(item):
+        """
+            Emergency Contact information de-duplication
+            - currently only 1 of these expected per person
+        """
+
+        if item.tablename == "pr_contact_emergency":
+            pe_id = item.data.get("pe_id", None)
+            if pe_id is None:
+                return
+
+            table = item.table
+            query = (table.pe_id == pe_id) & \
+                    (table.deleted != True)
+            duplicate = current.db(query).select(table.id,
+                                                 limitby=(0, 1)).first()
+            if duplicate:
+                item.id = duplicate.id
+                item.method = item.METHOD.UPDATE
 
 # =============================================================================
-class S3PersonAddressModel(S3Model):
-    """ Addresses for Persons """
+class S3AddressModel(S3Model):
+    """ Addresses for Person Entities: Persons and Organisations """
 
     names = ["pr_address",
              "pr_address_type_opts"
@@ -1514,8 +1510,9 @@ class S3PersonAddressModel(S3Model):
         table.pe_id.requires = IS_ONE_OF(current.db, "pr_pentity.pe_id",
                                          pr_pentity_represent,
                                          orderby="instance_type",
-                                         filterby="instance_type",
-                                         filter_opts=("pr_person", "pr_group"))
+                                         #filterby="instance_type",
+                                         #filter_opts=("pr_person", "pr_group"),
+                                         )
 
         # CRUD Strings
         ADD_ADDRESS = T("Add Address")
@@ -1535,8 +1532,8 @@ class S3PersonAddressModel(S3Model):
 
         # Resource configuration
         self.configure(tablename,
-                       onaccept=self.address_onaccept,
-                       deduplicate=self.address_deduplicate,
+                       onaccept=self.pr_address_onaccept,
+                       deduplicate=self.pr_address_deduplicate,
                        list_fields = ["id",
                                       "type",
                                       (T("Address"), "location_id$addr_street"),
@@ -1557,7 +1554,7 @@ class S3PersonAddressModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def address_onaccept(form):
+    def pr_address_onaccept(form):
         """
             Updates the Base Location to be the same as the Address
 
@@ -1615,30 +1612,28 @@ class S3PersonAddressModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def address_deduplicate(item):
+    def pr_address_deduplicate(item):
         """ Address de-duplication """
 
         if item.tablename == "pr_address":
             data = item.data
             pe_id = data.get("pe_id", None)
-            address = data.get("address", None)
 
             if pe_id is None:
                 return
 
+            type = data.get("type", None)
+            location_id = data.get("location_id", None)
             table = item.table
-            db = current.db
-            ltable = db.gis_location
             query = (table.pe_id == pe_id) & \
-                    (ltable.id == table.location_id) & \
-                    (ltable.addr_street == address) & \
+                    (table.type == type) & \
+                    (table.location_id == location_id) & \
                     (table.deleted != True)
-            duplicate = db(query).select(table.id,
-                                         limitby=(0, 1)).first()
+            duplicate = current.db(query).select(table.id,
+                                                 limitby=(0, 1)).first()
             if duplicate:
                 item.id = duplicate.id
                 item.method = item.METHOD.UPDATE
-        return
 
 # =============================================================================
 class S3PersonImageModel(S3Model):
@@ -1829,7 +1824,6 @@ class S3PersonImageModel(S3Model):
         if not hasattr(image, "file") and not image and not url:
             form.errors.image = \
             form.errors.url = current.T("Either file upload or image URL required.")
-        return
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2010,9 +2004,8 @@ class S3PersonIdentityModel(S3Model):
             msg_record_deleted = T("Identity deleted"),
             msg_list_empty = T("No Identities currently registered"))
 
-        # Resource configuration
         self.configure(tablename,
-                       deduplicate=self.identity_deduplicate,
+                       deduplicate=self.pr_identity_deduplicate,
                        list_fields=["id",
                                     "type",
                                     "value",
@@ -2027,18 +2020,20 @@ class S3PersonIdentityModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def identity_deduplicate(item):
+    def pr_identity_deduplicate(item):
         """ Identity de-duplication """
 
         if item.tablename == "pr_identity":
-            table = item.table
-            person_id = item.data.get("person_id", None)
-            id_type = item.data.get("type", None)
-            id_value = item.data.get("value", None)
-
+            data = item.data
+            person_id = data.get("person_id", None)
             if person_id is None:
                 return
 
+            id_type = data.get("type", None)
+            # People can have 1 more than 1 'Other', or even Passport
+            # - so this cannot be used to update the Number, only update comments
+            id_value = data.get("value", None)
+            table = item.table
             query = (table.person_id == person_id) & \
                     (table.type == id_type) & \
                     (table.value == id_value) & \
@@ -2048,7 +2043,6 @@ class S3PersonIdentityModel(S3Model):
             if duplicate:
                 item.id = duplicate.id
                 item.method = item.METHOD.UPDATE
-        return
 
 # =============================================================================
 class S3PersonEducationModel(S3Model):
@@ -2106,8 +2100,8 @@ class S3PersonEducationModel(S3Model):
             msg_record_deleted = T("Education details deleted"),
             msg_list_empty = T("No education details currently registered"))
 
-        # Resource configuration
         self.configure("pr_education",
+                       deduplicate=self.pr_education_deduplicate,
                        list_fields=["id",
                                     "person_id",
                                     "year",
@@ -2125,6 +2119,34 @@ class S3PersonEducationModel(S3Model):
         # Return model-global names to response.s3
         #
         return Storage()
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def pr_education_deduplicate(item):
+        """ Education de-duplication """
+
+        if item.tablename == "pr_education":
+            data = item.data
+            person_id = data.get("person_id", None)
+            if person_id is None:
+                return
+
+            level = data.get("level", None)
+            award = data.get("award", None)
+            year = data.get("year", None)
+            institute = data.get("institute", None)
+            table = item.table
+            query = (table.person_id == person_id) & \
+                    (table.level == level) & \
+                    (table.award == award) & \
+                    (table.year == year) & \
+                    (table.institute == institute) & \
+                    (table.deleted != True)
+            duplicate = current.db(query).select(table.id,
+                                                 limitby=(0, 1)).first()
+            if duplicate:
+                item.id = duplicate.id
+                item.method = item.METHOD.UPDATE
 
 # =============================================================================
 class S3PersonDetailsModel(S3Model):
@@ -2219,14 +2241,36 @@ class S3PersonDetailsModel(S3Model):
             msg_record_deleted = T("Person's Details deleted"),
             msg_list_empty = T("There are no details for this person yet. Add Person's Details."))
 
-        # Resource configuration
-        #self.configure(tablename,
-        #               )
+        self.configure(tablename,
+                       deduplicate=self.pr_person_details_deduplicate,
+                       )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
         return Storage()
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def pr_person_details_deduplicate(item):
+        """
+            Person Details de-duplication
+            - only 1 of these expected per person
+        """
+
+        if item.tablename == "pr_person_details":
+            person_id = item.data.get("person_id", None)
+            if person_id is None:
+                return
+
+            table = item.table
+            query = (table.person_id == person_id) & \
+                    (table.deleted != True)
+            duplicate = current.db(query).select(table.id,
+                                                 limitby=(0, 1)).first()
+            if duplicate:
+                item.id = duplicate.id
+                item.method = item.METHOD.UPDATE
 
 # =============================================================================
 class S3SavedSearch(S3Model):
@@ -3475,39 +3519,6 @@ def pr_pentity_represent(id, row=None, show_label=True,
     return pe_str
 
 # =============================================================================
-#def pr_person_represent(id, row=None, show_link=False):
-#    """
-#        Represent a Person in option fields or list views
-#
-#        @param show_link: whether to make the output into a hyperlink
-#    """
-#
-#    if row:
-#        name = s3_fullname(row)
-#        id = row.id
-#    elif not id:
-#        return current.messages["NONE"]
-#    else:
-#        name = current.cache.ram("pr_person_%s" % id,
-#                                 lambda: s3_fullname(id),
-#                                 time_expire=60)
-#    if show_link:
-#        request = current.request
-#        group = request.get_vars.get("group", None)
-#        c = request.controller
-#        if group == "staff" or \
-#           c == "hrm":
-#            controller = "hrm"
-#        elif group == "volunteer" or \
-#             c == "vol":
-#            controller = "vol"
-#        else:
-#            controller = "pr"
-#        name = A(name,
-#                 _href = URL(c=controller, f="person", args=[id]))
-#    return name
-
-# =============================================================================
 class pr_PersonRepresent(S3Represent):
     """
         Extends S3Represent to change the link method to access the person via
@@ -3968,16 +3979,14 @@ def pr_update_affiliations(table, record):
     else:
         rtype = table
 
-    db = current.db
-    s3db = current.s3db
-
     if rtype == "hrm_human_resource":
 
         # Get the HR record
-        htable = s3db.hrm_human_resource
+        htable = current.s3db.hrm_human_resource
         if not isinstance(record, Row):
-            record = db(htable.id == record).select(htable.ALL,
-                                                    limitby=(0, 1)).first()
+            record = current.db(htable.id == record).select(htable.ALL,
+                                                            limitby=(0, 1)
+                                                            ).first()
         if not record:
             return
 
@@ -3998,93 +4007,27 @@ def pr_update_affiliations(table, record):
 
     elif rtype == "pr_group_membership":
 
-        mtable = s3db.pr_group_membership
+        mtable = current.s3db.pr_group_membership
         if not isinstance(record, Row):
-            record = db(mtable.id == record).select(mtable.ALL,
-                                                    limitby=(0, 1)).first()
+            record = current.db(mtable.id == record).select(mtable.ALL,
+                                                            limitby=(0, 1)
+                                                            ).first()
         if not record:
             return
         pr_group_update_affiliations(record)
 
-    elif rtype == "org_organisation_branch":
+    # @ToDo
+    #elif rtype == "member_membership":
 
-        ltable = s3db.org_organisation_branch
-        if not isinstance(record, Row):
-            record = db(ltable.id == record).select(ltable.ALL,
-                                                    limitby=(0, 1)).first()
-        if not record:
-            return
-        pr_organisation_update_affiliations(record)
+    #    mtable = current.s3db.member_membership
+    #    if not isinstance(record, Row):
+    #        record = current.db(mtable.id == record).select(mtable.ALL,
+    #                                                        limitby=(0, 1)
+    #                                                        ).first()
+    #    if not record:
+    #        return
+    #    pr_member_update_affiliations(record)
 
-    elif rtype == "org_site" or rtype in current.auth.org_site_types:
-
-        pr_site_update_affiliations(record)
-
-    return
-
-# =============================================================================
-def pr_organisation_update_affiliations(record):
-    """
-        Update affiliations for a branch organisation
-
-        @param record: the org_organisation_branch record
-    """
-
-    if record.deleted and record.deleted_fk:
-        try:
-            fk = json.loads(record.deleted_fk)
-            branch_id = fk["branch_id"]
-        except:
-            return
-    else:
-        branch_id = record.branch_id
-
-    BRANCHES = "Branches"
-
-    db = current.db
-    s3db = current.s3db
-    otable = s3db.org_organisation
-    btable = otable.with_alias("branch")
-    ltable = s3db.org_organisation_branch
-    rtable = s3db.pr_role
-    atable = s3db.pr_affiliation
-    etable = s3db.pr_pentity
-
-    o = otable._tablename
-    b = btable._tablename
-    r = rtable._tablename
-
-    # Get current memberships
-    query = (ltable.branch_id == branch_id) & \
-            (ltable.deleted != True)
-    left = [otable.on(ltable.organisation_id == otable.id),
-            btable.on(ltable.branch_id == btable.id)]
-    rows = db(query).select(otable.pe_id, btable.pe_id, left=left)
-    current_memberships = [(row[o].pe_id, row[b].pe_id) for row in rows]
-
-    # Get current affiliations
-    query = (rtable.deleted != True) & \
-            (rtable.role == BRANCHES) & \
-            (rtable.pe_id == etable.pe_id) & \
-            (etable.instance_type == o) & \
-            (atable.deleted != True) & \
-            (atable.role_id == rtable.id) & \
-            (atable.pe_id == btable.pe_id) & \
-            (btable.id == branch_id)
-    rows = db(query).select(rtable.pe_id, btable.pe_id)
-    current_affiliations = [(row[r].pe_id, row[b].pe_id) for row in rows]
-
-    # Remove all affiliations which are not current memberships
-    for a in current_affiliations:
-        org, branch = a
-        if a not in current_memberships:
-            pr_remove_affiliation(org, branch, role=BRANCHES)
-        else:
-            current_memberships.remove(a)
-    # Add affiliations for all new memberships
-    for m in current_memberships:
-        org, branch = m
-        pr_add_affiliation(org, branch, role=BRANCHES, role_type=OU)
     return
 
 # =============================================================================
@@ -4093,7 +4036,7 @@ def pr_group_update_affiliations(record):
         Update affiliations for group memberships, currently this makes
         all members of a group organisational units of the group.
 
-        @param record: the pr_membership record
+        @param record: the pr_group_membership record
     """
 
     if record.deleted and record.deleted_fk:
@@ -4109,12 +4052,12 @@ def pr_group_update_affiliations(record):
 
     db = current.db
     s3db = current.s3db
-    ptable = s3db.pr_person
     gtable = s3db.pr_group
-    mtable = s3db.pr_group_membership
-    rtable = s3db.pr_role
-    atable = s3db.pr_affiliation
+    mtable = db.pr_group_membership
+    ptable = db.pr_person
     etable = s3db.pr_pentity
+    rtable = db.pr_role
+    atable = db.pr_affiliation
 
     g = gtable._tablename
     r = rtable._tablename
@@ -4147,57 +4090,11 @@ def pr_group_update_affiliations(record):
             pr_remove_affiliation(group, person, role=MEMBERS)
         else:
             current_memberships.remove(a)
+
     # Add affiliations for all new memberships
     for m in current_memberships:
         group, person = m
         pr_add_affiliation(group, person, role=MEMBERS, role_type=OU)
-    return
-
-# =============================================================================
-def pr_site_update_affiliations(record):
-    """
-        Update the affiliations of an org_site instance
-
-        @param record: the org_site instance record
-    """
-
-    db = current.db
-    s3db = current.s3db
-
-    SITES = "Sites"
-
-    otable = s3db.org_organisation
-    stable = s3db.org_site
-    rtable = s3db.pr_role
-    ptable = s3db.pr_pentity
-    atable = s3db.pr_affiliation
-
-    o_pe_id = None
-    s_pe_id = record.pe_id
-
-    organisation_id = record.organisation_id
-    if organisation_id:
-        org = db(otable.id == organisation_id).select(otable.pe_id,
-                                                      limitby=(0, 1)).first()
-        if org:
-            o_pe_id = org.pe_id
-    if s_pe_id:
-        query = (atable.deleted != True) & \
-                (atable.pe_id == s_pe_id) & \
-                (rtable.deleted != True) & \
-                (rtable.id == atable.role_id) & \
-                (rtable.role == SITES) & \
-                (ptable.pe_id == rtable.pe_id) & \
-                (ptable.instance_type == str(otable))
-        rows = db(query).select(rtable.pe_id)
-        seen = False
-        for row in rows:
-            if o_pe_id == None or o_pe_id != row.pe_id:
-                pr_remove_affiliation(row.pe_id, s_pe_id, role=SITES)
-            elif o_pe_id == row.pe_id:
-                seen = True
-        if o_pe_id and not seen:
-            pr_add_affiliation(o_pe_id, s_pe_id, role=SITES, role_type=OU)
     return
 
 # =============================================================================
@@ -4216,12 +4113,12 @@ def pr_human_resource_update_affiliations(person_id):
     db = current.db
     s3db = current.s3db
     etable = s3db.pr_pentity
-    ptable = s3db.pr_person
-    rtable = s3db.pr_role
-    atable = s3db.pr_affiliation
+    rtable = db.pr_role
+    atable = db.pr_affiliation
     htable = s3db.hrm_human_resource
-    otable = s3db.org_organisation
+    ptable = db.pr_person
     stable = s3db.org_site
+    otable = db.org_organisation
 
     h = htable._tablename
     s = stable._tablename

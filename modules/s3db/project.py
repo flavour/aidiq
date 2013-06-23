@@ -2614,7 +2614,7 @@ class S3ProjectLocationModel(S3Model):
                              self.gis_location_id(
                                 widget = S3LocationAutocompleteWidget(),
                                 requires = IS_LOCATION(),
-                                represent = self.gis_location_lx_represent,
+                                represent = self.gis_LocationRepresent(format=", "),
                                 comment = S3AddResourceLink(c="gis",
                                                             f="location",
                                                             label = T("Add Location"),
@@ -3126,7 +3126,8 @@ class S3ProjectOrganisationModel(S3Model):
             row = db(query).select(otable.id,
                                    limitby=(0, 1)).first()
             if row:
-                form.errors.role = T("Lead Implementer for this project is already set, please choose another role.")
+                form.errors.role = \
+                    current.T("Lead Implementer for this project is already set, please choose another role.")
         return
 
     # -------------------------------------------------------------------------
@@ -3155,11 +3156,11 @@ class S3ProjectOrganisationModel(S3Model):
 
             # Set the Project's organisation_id to the new lead organisation
             organisation_id = vars.organisation_id
-            s3db = current.s3db
             db(ptable.id == project_id).update(
                                         organisation_id = organisation_id,
-                                        realm_entity = s3db.pr_get_pe_id("org_organisation",
-                                                                         organisation_id)
+                                        realm_entity = \
+                                            current.s3db.pr_get_pe_id("org_organisation",
+                                                                      organisation_id)
                                         )
 
     # -------------------------------------------------------------------------
@@ -5349,7 +5350,7 @@ def project_location_represent(id, row=None):
                                         table.project_id,
                                         limitby=(0, 1)).first()
     try:
-        location = current.s3db.gis_location_lx_represent(row.location_id)
+        location = current.s3db.gis_LocationRepresent(format=", ")(row.location_id)
     except:
         return current.messages.UNKNOWN_OPT
 
@@ -5595,7 +5596,7 @@ def project_rheader(r):
                           ]
         rheader = S3ResourceHeader(rheader_fields, tabs)(r)
 
-    elif resourcename in ["location","demographic_data"]:
+    elif resourcename in ["location", "demographic_data"]:
         tabs = [(T("Details"), None),
                 (T("Beneficiaries"), "beneficiary"),
                 (T("Demographics"), "demographic_data/"),

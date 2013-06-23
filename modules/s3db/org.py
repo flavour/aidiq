@@ -28,7 +28,10 @@
 """
 
 __all__ = ["S3OrganisationModel",
+           "S3OrganisationGroupModel",
+           "S3OrganisationLocationModel",
            "S3OrganisationResourceModel",
+           "S3OrganisationSectorModel",
            "S3OrganisationServiceModel",
            "S3OrganisationSummaryModel",
            "S3OrganisationTypeTagModel",
@@ -48,6 +51,7 @@ __all__ = ["S3OrganisationModel",
            "org_rheader",
            "org_organisation_controller",
            "org_office_controller",
+           "org_update_affiliations",
            "org_OrganisationRepresent"
            ]
 
@@ -69,15 +73,10 @@ from s3layouts import S3AddResourceLink
 # =============================================================================
 class S3OrganisationModel(S3Model):
     """
-        Organisations & their Sectors
+        Organisations
     """
 
-    names = ["org_sector",
-             "org_sector_id",
-             "org_multi_sector_id",
-             "org_sector_opts",
-             #"org_subsector",
-             "org_organisation_type",
+    names = ["org_organisation_type",
              "org_organisation_type_id",
              "org_organisation",
              "org_organisation_id",
@@ -101,201 +100,14 @@ class S3OrganisationModel(S3Model):
         NONE = messages["NONE"]
         ORGANISATION = messages.ORGANISATION
 
-        location = current.session.s3.location_filter
-        if location:
-            filterby = "location_id"
-            filter_opts = (location, None)
-        else:
-            filterby = None
-            filter_opts = (None,)
-
-        # ---------------------------------------------------------------------
-        # Sector
-        # (Cluster in UN-style terminology)
-        #
-        tablename = "org_sector"
-        table = define_table(tablename,
-                             Field("name", length=128,
-                                   notnull=True,
-                                   label=T("Name")),
-                             Field("abrv", length=64,
-                                   notnull=True,
-                                   label=T("Abbreviation")),
-                             self.gis_location_id(
-                                    widget=S3LocationAutocompleteWidget(),
-                                    requires=IS_EMPTY_OR(IS_LOCATION())
-                                ),
-                             s3_comments(),
-                             *s3_meta_fields())
-
-        # CRUD strings
-        if settings.get_ui_label_cluster():
-            SECTOR = T("Cluster")
-            ADD_SECTOR = T("Add New Cluster")
-            help = T("If you don't see the Cluster in the list, you can add a new one by clicking link 'Add New Cluster'.")
-            crud_strings[tablename] = Storage(
-                title_create=T("Add Cluster"),
-                title_display=T("Cluster Details"),
-                title_list=T("Clusters"),
-                title_update=T("Edit Cluster"),
-                title_search=T("Search Clusters"),
-                subtitle_create=ADD_SECTOR,
-                label_list_button=T("List Clusters"),
-                label_create_button=ADD_SECTOR,
-                label_delete_button=T("Delete Cluster"),
-                msg_record_created=T("Cluster added"),
-                msg_record_modified=T("Cluster updated"),
-                msg_record_deleted=T("Cluster deleted"),
-                msg_list_empty=T("No Clusters currently registered"))
-        else:
-            SECTOR = T("Sector")
-            ADD_SECTOR = T("Add New Sector")
-            help = T("If you don't see the Sector in the list, you can add a new one by clicking link 'Add New Sector'.")
-            crud_strings[tablename] = Storage(
-                title_create=T("Add Sector"),
-                title_display=T("Sector Details"),
-                title_list=T("Sectors"),
-                title_update=T("Edit Sector"),
-                title_search=T("Search Sectors"),
-                subtitle_create=ADD_SECTOR,
-                label_list_button=T("List Sectors"),
-                label_create_button=ADD_SECTOR,
-                label_delete_button=T("Delete Sector"),
-                msg_record_created=T("Sector added"),
-                msg_record_modified=T("Sector updated"),
-                msg_record_deleted=T("Sector deleted"),
-                msg_list_empty=T("No Sectors currently registered"))
-
-        configure("org_sector",
-                  deduplicate=self.org_sector_duplicate)
-
-        sector_comment = lambda child: S3AddResourceLink(c="org", f="sector",
-                                                         vars={"child": child},
-                                                         label=ADD_SECTOR,
-                                                         title=SECTOR,
-                                                         tooltip=help)
-
-        represent = S3Represent(lookup=tablename, translate=True)
-        sector_id = S3ReusableField("sector_id", "reference org_sector",
-                                    sortby="abrv",
-                                    requires=IS_NULL_OR(
-                                                IS_ONE_OF(db, "org_sector.id",
-                                                          represent,
-                                                          sort=True,
-                                                          filterby=filterby,
-                                                          filter_opts=filter_opts,
-                                                          )),
-                                    represent=represent,
-                                    comment=sector_comment("sector_id"),
-                                    label=SECTOR,
-                                    ondelete="SET NULL")
-
-        multi_sector_id = S3ReusableField("multi_sector_id", "list:reference org_sector",
-                                    sortby="abrv",
-                                    requires=IS_NULL_OR(
-                                                IS_ONE_OF(db, "org_sector.id",
-                                                          represent,
-                                                          sort=True,
-                                                          filterby=filterby,
-                                                          filter_opts=filter_opts,
-                                                          multiple=True
-                                                          )),
-                                    represent=S3Represent(lookup="org_sector",
-                                                          multiple=True),
-                                    comment=sector_comment("multi_sector_id"),
-                                    label=SECTOR,
-                                    widget=S3MultiSelectWidget(filter=False,
-                                                               header=False),
-                                    ondelete="SET NULL")
-
-        # Components
-        add_component("project_project",
-                      org_sector=Storage(
-                                link="project_sector_project",
-                                joinby="sector_id",
-                                key="project_id",
-                                actuate="hide"))
-        #add_component("project_activity_type",
-        #              org_sector=Storage(
-        #                        link="project_activity_type_sector",
-        #                        joinby="sector_id",
-        #                        key="activity_type_id",
-        #                        actuate="hide"))
-        #add_component("project_theme",
-        #              org_sector=Storage(
-        #                        link="project_theme_sector",
-        #                        joinby="sector_id",
-        #                        key="theme_id",
-        #                        actuate="hide"))
-
-        # =====================================================================
-        # (Cluster) Subsector
-        #
-        # tablename = "org_subsector"
-        # table = define_table(tablename,
-                             # sector_id(),
-                             # Field("name", length=128,
-                             #       label=T("Name")),
-                             # Field("abrv", length=64,
-                                   # notnull=True, unique=True,
-                                   # label=T("Abbreviation")),
-                             # *s3_meta_fields())
-
-        ##CRUD strings
-        # if settings.get_ui_label_cluster():
-            # SUBSECTOR = T("Cluster Subsector")
-            # crud_strings[tablename] = Storage(
-                # title_create = T("Add Cluster Subsector"),
-                # title_display = T("Cluster Subsector Details"),
-                # title_list = T("Cluster Subsectors"),
-                # title_update = T("Edit Cluster Subsector"),
-                # title_search = T("Search Cluster Subsectors"),
-                # subtitle_create = T("Add New Cluster Subsector"),
-                # label_list_button = T("List Cluster Subsectors"),
-                # label_create_button = T("Add Cluster Subsector"),
-                # label_delete_button = T("Delete Cluster Subsector"),
-                # msg_record_created = T("Cluster Subsector added"),
-                # msg_record_modified = T("Cluster Subsector updated"),
-                # msg_record_deleted = T("Cluster Subsector deleted"),
-                # msg_list_empty = T("No Cluster Subsectors currently registered"))
-        # else:
-            # SUBSECTOR = T("Subsector")
-            # crud_strings[tablename] = Storage(
-                # title_create = T("Add Subsector"),
-                # title_display = T("Subsector Details"),
-                # title_list = T("Subsectors"),
-                # title_update = T("Edit Subsector"),
-                # title_search = T("Search Subsectors"),
-                # subtitle_create = T("Add New Subsector"),
-                # label_list_button = T("List Subsectors"),
-                # label_create_button = T("Add Subsector"),
-                # label_delete_button = T("Delete Subsector"),
-                # msg_record_created = T("Subsector added"),
-                # msg_record_modified = T("Subsector updated"),
-                # msg_record_deleted = T("Subsector deleted"),
-                # msg_list_empty = T("No Subsectors currently registered"))
-
-        # subsector_id = S3ReusableField("subsector_id", table,
-                                       # sortby="abrv",
-                                       # requires = IS_NULL_OR(
-                                                        # IS_ONE_OF(db, "org_subsector.id",
-                                                                  # self.org_subsector_represent,
-                                                                  # sort=True)),
-                                       # represent = self.org_subsector_represent,
-                                       # label = SUBSECTOR,
-                                       ##comment = Script to filter the sector_subsector drop down
-                                       # ondelete = "SET NULL")
-
-        # configure("org_subsector", deduplicate=self.org_sector_duplicate)
-        # add_component("org_subsector", org_sector="sector_id")
+        use_branches = settings.get_org_branches()
 
         # ---------------------------------------------------------------------
         # Organisation Types
         #
         tablename = "org_organisation_type"
         table = define_table(tablename,
-                             Field("name", length=128,
-                                   notnull=True, unique=True,
+                             Field("name", length=128, notnull=True, unique=True,
                                    label=T("Name")),
                              s3_comments(),
                              *s3_meta_fields())
@@ -316,14 +128,15 @@ class S3OrganisationModel(S3Model):
             msg_record_deleted=T("Organization Type deleted"),
             msg_list_empty=T("No Organization Types currently registered"))
 
+        represent = S3Represent(lookup=tablename, translate=True)
         organisation_type_id = S3ReusableField("organisation_type_id", table,
                                 sortby="name",
                                 requires=IS_NULL_OR(
                                             IS_ONE_OF(db, "org_organisation_type.id",
-                                                      self.org_organisation_type_represent,
+                                                      represent,
                                                       sort=True
                                                       )),
-                                represent=self.org_organisation_type_represent,
+                                represent=represent,
                                 label=T("Organization Type"),
                                 comment=S3AddResourceLink(c="org",
                                             f="organisation_type",
@@ -333,7 +146,8 @@ class S3OrganisationModel(S3Model):
                                 ondelete="SET NULL")
 
         configure(tablename,
-                  deduplicate=self.organisation_type_duplicate,
+                  # Not needed since unique=True
+                  #deduplicate=self.organisation_type_duplicate,
                   )
 
         # Tags as component of Organisation Types
@@ -348,8 +162,6 @@ class S3OrganisationModel(S3Model):
         tablename = "org_organisation"
         table = define_table(tablename,
                              self.super_link("pe_id", "pr_pentity"),
-                             #Field("privacy", "integer", default=0),
-                             #Field("archived", "boolean", default=False),
                              Field("name", notnull=True, unique=True,
                                    length=128, # Mayon Compatibility
                                    label=T("Name")),
@@ -363,9 +175,6 @@ class S3OrganisationModel(S3Model):
                              organisation_type_id(#readable = False,
                                                   #writable = False,
                                                   ),
-                             multi_sector_id(#readable = False,
-                                             #writable = False,
-                                             ),
                              #Field("registration", label=T("Registration")),    # Registration Number
                              Field("region",
                                    label=T("Region"),
@@ -382,6 +191,7 @@ class S3OrganisationModel(S3Model):
                                                                   zero=messages.SELECT_LOCATION)),
                                    represent=self.gis_country_code_represent,
                                    ),
+                             # @ToDo: Deprecate with Contact component
                              Field("phone",
                                    label=T("Phone #"),
                                    #readable = False,
@@ -405,25 +215,10 @@ class S3OrganisationModel(S3Model):
                                                _title="%s|%s" % (T("Year"),
                                                                  T("Year that the organization was founded"))),
                                    ),
-                             # @ToDo: Deprecate with Contact component
-                             Field("twitter",
-                                   #readable = False,
-                                   #writable = False,
-                                   represent=lambda v: v or NONE,
-                                   comment=DIV(_class="tooltip",
-                                               _title="%s|%s" % (T("Twitter"),
-                                                                 T("Twitter ID or #hashtag")))),
-                             Field("donation_phone",
-                                   label=T("Donation Phone #"),
-                                   readable = False,
-                                   writable = False,
-                                   requires=IS_NULL_OR(s3_phone_requires),
-                                   represent=lambda v: v or NONE,
-                                   comment=DIV(_class="tooltip",
-                                                 _title="%s|%s" % (T("Donation Phone #"),
-                                                                   T("Phone number to donate to this organization's relief efforts.")))),
                              Field("logo", "upload",
                                    label=T("Logo"),
+                                   uploadfolder = os.path.join(
+                                    current.request.folder, "uploads"),
                                    requires=[IS_EMPTY_OR(IS_IMAGE(maxsize=(400, 400),
                                                                   error_message=T("Upload an image file (png or jpeg), max. 400x400 pixels!"))),
                                              IS_EMPTY_OR(IS_UPLOAD_FILENAME())],
@@ -431,9 +226,11 @@ class S3OrganisationModel(S3Model):
                                    comment=DIV(_class="tooltip",
                                                  _title="%s|%s" % (T("Logo"),
                                                                    T("Logo of the organization. This should be a png or jpeg file and it should be no larger than 400x400")))
-                                  ),
+                                   ),
                              s3_comments(),
                              #document_id(), # Better to have multiple Documents on a Tab
+                             #Field("privacy", "integer", default=0),
+                             #Field("archived", "boolean", default=False),
                              * s3_meta_fields())
 
         # CRUD strings
@@ -493,88 +290,44 @@ class S3OrganisationModel(S3Model):
                                           widget = widget,
                                           )
 
-        organisations_id = S3ReusableField("organisations_id",
-                                           "list:reference org_organisation",
-                                           sortby="name",
-                                           requires=IS_NULL_OR(
-                                                        IS_ONE_OF(db, "org_organisation.id",
-                                                                  org_organisation_represent,
-                                                                  multiple=True,
-                                                                  #filterby="acronym",
-                                                                  #filter_opts=vol_orgs,
-                                                                  orderby="org_organisation.name",
-                                                                  sort=True)),
-                                           represent=self.organisation_multi_represent,
-                                           label=T("Organizations"),
-                                           ondelete="SET NULL")
-
-        # -----------------------------------------------------------------------------
-        organisation_search = S3OrganisationSearch(
-                # simple = (S3SearchSimpleWidget(
-                    # name="org_search_text_simple",
-                    # label = T("Search"),
-                    # comment = T("Search for an Organization by name or acronym."),
-                    # field = [ "name",
-                              # "acronym",
-                            # ]
-                    # )
-                # ),
-                advanced=(S3SearchSimpleWidget(
-                    name="org_search_text_advanced",
-                    label=T("Search"),
-                    comment=T("Search for an Organization by name or acronym"),
-                    field=[ "name",
-                              "acronym",
-                              "parent.name",
-                              "parent.acronym",
-                            ]
-                    ),
-                    S3SearchOptionsWidget(
-                        name="org_search_type",
-                        label=T("Type"),
-                        field="organisation_type_id",
-                        cols=2
-                    ),
-                    S3SearchOptionsWidget(
-                        name="org_search_sector",
-                        label=SECTOR,
-                        field="multi_sector_id",
-                        options=self.org_sector_opts,
-                        cols=3
-                    ),
-                    # Doesn't work on all versions of gluon/sqlhtml.py
-                    S3SearchOptionsWidget(
-                        name="org_search_home_country",
-                        label=T("Home Country"),
-                        field="country",
-                        cols=3
-                    ),
-                )
-            )
-
-        utablename = current.auth.settings.table_user_name
+        utablename = auth.settings.table_user_name
         configure(tablename,
                   super_entity="pr_pentity",
                   deduplicate=self.organisation_duplicate,
                   onaccept=self.org_organisation_onaccept,
                   ondelete=self.org_organisation_ondelete,
                   referenced_by=[(utablename, "organisation_id")],
-                  search_method=organisation_search,
                   xml_post_parse=self.org_organisation_xml_post_parse,
                   list_orderby=table.name,
                   list_fields=["id",
                                "name",
                                "acronym",
                                "organisation_type_id",
-                               "multi_sector_id",
-                               "country",
                                "website"
                                ])
 
         # Components
 
+        # Documents
+        add_component("doc_document", org_organisation="organisation_id")
+        add_component("doc_image", org_organisation="organisation_id")
+
+        # Groups
+        add_component("org_group",
+                      org_organisation=Storage(link="org_group_membership",
+                                               joinby="organisation_id",
+                                               key="group_id",
+                                               actuate="hide"))
+        # Format for filter_widget
+        add_component("org_group_membership",
+                      org_organisation="organisation_id")
+
         # Sites
         add_component("org_site",
+                      org_organisation="organisation_id")
+
+        # Facilities
+        add_component("org_facility",
                       org_organisation="organisation_id")
 
         # Offices
@@ -585,15 +338,7 @@ class S3OrganisationModel(S3Model):
         add_component("inv_warehouse",
                       org_organisation="organisation_id")
 
-        # Catalogs
-        add_component("supply_catalog",
-                      org_organisation="organisation_id")
-
-        # Facilities
-        add_component("org_facility",
-                      org_organisation="organisation_id")
-
-        # Staff
+        # Staff/Volunteers
         add_component("hrm_human_resource",
                       org_organisation="organisation_id")
 
@@ -601,8 +346,32 @@ class S3OrganisationModel(S3Model):
         add_component("member_membership",
                       org_organisation="organisation_id")
 
+        # Locations served
+        add_component("gis_location",
+                      org_organisation=Storage(link="org_organisation_location",
+                                               joinby="organisation_id",
+                                               key="location_id",
+                                               actuate="hide"))
+        # Format for filter_widget
+        add_component("org_organisation_location",
+                      org_organisation="organisation_id")
+
+        # Catalogs
+        add_component("supply_catalog",
+                      org_organisation="organisation_id")
+
         # Resources
         add_component("org_resource",
+                      org_organisation="organisation_id")
+
+        # Sectors
+        add_component("org_sector",
+                      org_organisation=Storage(link="org_sector_organisation",
+                                               joinby="organisation_id",
+                                               key="sector_id",
+                                               actuate="hide"))
+        # Format for filter_widget
+        add_component("org_sector_organisation",
                       org_organisation="organisation_id")
 
         # Services
@@ -611,6 +380,13 @@ class S3OrganisationModel(S3Model):
                                                joinby="organisation_id",
                                                key="service_id",
                                                actuate="hide"))
+        # Format for filter_widget
+        add_component("org_service_organisation",
+                      org_organisation="organisation_id")
+
+        # Assets
+        add_component("asset_asset",
+                      org_organisation="organisation_id")
 
         # Projects
         if settings.get_project_mode_3w():
@@ -634,41 +410,6 @@ class S3OrganisationModel(S3Model):
                           org_organisation=dict(name="summary",
                                                 joinby="organisation_id"))
 
-        # Assets
-        add_component("asset_asset",
-                      org_organisation="organisation_id")
-
-        # Documents
-        add_component("doc_document", org_organisation="organisation_id")
-        add_component("doc_image", org_organisation="organisation_id")
-
-        # Branches
-        add_component("org_organisation",
-                      org_organisation=Storage(
-                                    name="branch",
-                                    link="org_organisation_branch",
-                                    joinby="organisation_id",
-                                    key="branch_id",
-                                    actuate="embed",
-                                    autocomplete="name",
-                                    autodelete=True))
-
-        # For imports
-        add_component("org_organisation",
-                      org_organisation=Storage(
-                                    name="parent",
-                                    link="org_organisation_branch",
-                                    joinby="branch_id",
-                                    key="organisation_id",
-                                    actuate="embed",
-                                    autocomplete="name",
-                                    autodelete=False))
-
-        # Assets
-        # @ToDo
-        #add_component("asset_asset",
-        #              org_organisation = "donated_by_id")
-
         # Requests
         #add_component("req_req",
         #              org_organisation = "donated_by_id")
@@ -678,69 +419,70 @@ class S3OrganisationModel(S3Model):
         #add_component(db.auth_user,
         #              org_organisation="organisation_id")
 
-        # -----------------------------------------------------------------------------
-        # Donors are a type of Organization
-        #
-        # ADD_DONOR = T("Add Donor")
-        # ADD_DONOR_HELP = T("The Donor(s) for this project. Multiple values can be selected by holding down the 'Control' key.")
-        # donor_id = S3ReusableField("donor_id", "list:reference org_organisation",
-                                   # sortby="name",
-                                   # requires = IS_NULL_OR(IS_ONE_OF(db, "org_organisation.id",
-                                                                   # org_organisation_represent,
-                                                                   # multiple=True,
-                                                                   # filterby="type",
-                                                                   # filter_opts=[4])),
-                                   # represent = self.donor_represent,
-                                   # label = T("Funding Organization"),
-                                   # comment=S3AddResourceLink(c="org",
-                                                             # f="organisation",
-                                                             # vars=dict(child="donor_id"),
-                                                             # label=ADD_DONOR,
-                                                             # tooltip=ADD_DONOR_HELP),
-                                   # ondelete = "SET NULL")
+        if use_branches:
+            # Branches
+            add_component("org_organisation",
+                          org_organisation=Storage(
+                                        name="branch",
+                                        link="org_organisation_branch",
+                                        joinby="organisation_id",
+                                        key="branch_id",
+                                        actuate="embed",
+                                        autocomplete="name",
+                                        autodelete=True))
 
+            # For imports
+            add_component("org_organisation",
+                          org_organisation=Storage(
+                                        name="parent",
+                                        link="org_organisation_branch",
+                                        joinby="branch_id",
+                                        key="organisation_id",
+                                        actuate="embed",
+                                        autocomplete="name",
+                                        autodelete=False))
 
-        # ---------------------------------------------------------------------
-        # Organisation Branches
-        #
-        tablename = "org_organisation_branch"
-        table = define_table(tablename,
-                             organisation_id(ondelete="CASCADE"),
-                             organisation_id("branch_id",
-                                             label=T("Branch"),
-                                             default=None,
-                                             ondelete="CASCADE"),
-                             *s3_meta_fields())
+            # ---------------------------------------------------------------------
+            # Organisation Branches
+            #
+            tablename = "org_organisation_branch"
+            table = define_table(tablename,
+                                 organisation_id(ondelete="CASCADE"),
+                                 organisation_id("branch_id",
+                                                 label=T("Branch"),
+                                                 default=None,
+                                                 ondelete="CASCADE"),
+                                 *s3_meta_fields())
 
-        # CRUD strings
-        ADD_BRANCH = T("Add Branch Organization")
-        crud_strings[tablename] = Storage(
-            title_create=ADD_BRANCH,
-            title_display=T("Branch Organization Details"),
-            title_list=T("Branch Organizations"),
-            title_update=T("Edit Branch Organization"),
-            title_search=T("Search Branch Organizations"),
-            title_upload=T("Import Branch Organizations"),
-            subtitle_create=T("Add New Branch Organization"),
-            label_list_button=T("List Branch Organizations"),
-            label_create_button=T("Add New Branch"),
-            label_delete_button=T("Delete Branch"),
-            msg_record_created=T("Branch Organization added"),
-            msg_record_modified=T("Branch Organization updated"),
-            msg_record_deleted=T("Branch Organization deleted"),
-            msg_list_empty=T("No Branch Organizations currently registered"))
+            # CRUD strings
+            ADD_BRANCH = T("Add Branch Organization")
+            crud_strings[tablename] = Storage(
+                title_create=ADD_BRANCH,
+                title_display=T("Branch Organization Details"),
+                title_list=T("Branch Organizations"),
+                title_update=T("Edit Branch Organization"),
+                title_search=T("Search Branch Organizations"),
+                title_upload=T("Import Branch Organizations"),
+                subtitle_create=T("Add New Branch Organization"),
+                label_list_button=T("List Branch Organizations"),
+                label_create_button=T("Add New Branch"),
+                label_delete_button=T("Delete Branch"),
+                msg_record_created=T("Branch Organization added"),
+                msg_record_modified=T("Branch Organization updated"),
+                msg_record_deleted=T("Branch Organization deleted"),
+                msg_list_empty=T("No Branch Organizations currently registered"))
 
-        configure(tablename,
-                  deduplicate=self.org_branch_duplicate,
-                  onaccept=self.org_branch_onaccept,
-                  onvalidation=self.org_branch_onvalidation,
-                  ondelete=self.org_branch_ondelete,
-                  )
+            configure(tablename,
+                      deduplicate=self.org_branch_duplicate,
+                      onaccept=self.org_branch_onaccept,
+                      onvalidation=self.org_branch_onvalidation,
+                      ondelete=self.org_branch_ondelete,
+                      )
 
         # ---------------------------------------------------------------------
         # Organisation <-> User
         #
-        utable = current.auth.settings.table_user
+        utable = auth.settings.table_user
         tablename = "org_organisation_user"
         table = define_table(tablename,
                              Field("user_id", utable),
@@ -751,9 +493,6 @@ class S3OrganisationModel(S3Model):
         # Pass names back to global scope (s3.*)
         #
         return Storage(
-                    org_sector_id=sector_id,
-                    org_multi_sector_id=multi_sector_id,
-                    org_sector_opts=self.org_sector_opts,
                     org_organisation_type_id=organisation_type_id,
                     org_organisation_id=organisation_id,
                     org_organisation_represent=org_organisation_represent
@@ -817,6 +556,7 @@ class S3OrganisationModel(S3Model):
     @staticmethod
     def org_organisation_ondelete(row):
         """
+            If an Org is deleted then remove Logo
         """
 
         db = current.db
@@ -863,78 +603,6 @@ class S3OrganisationModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def org_sector_opts():
-        """
-            Provide the options for Sector search filters
-        """
-
-        db = current.db
-        table = db.org_sector
-        location = current.session.s3.location_filter
-        if location:
-            query = (table.deleted == False) & \
-                    (table.location_id == location)
-        else:
-            query = (table.deleted == False)
-
-        opts = db(query).select(table.id,
-                                table.name,
-                                orderby=table.name)
-        od = OrderedDict()
-        for opt in opts:
-            od[opt.id] = current.T(opt.name)
-        od[None] = current.messages["NONE"]
-        return od
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def org_sector_duplicate(item):
-        """ Import item de-duplication """
-
-        if item.tablename in ("org_sector", "org_subsector"):
-            table = item.table
-            abrv = item.data.get("abrv", None)
-            name = item.data.get("name", None)
-            if abrv:
-                query = (table.abrv.lower() == abrv.lower())
-            elif name:
-                query = (table.name.lower() == name.lower())
-            else:
-                return
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
-        return
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def org_subsector_represent(id, row=None):
-        """ Subsector ID representation """
-
-        if row:
-            return row.name
-        elif not id:
-            return current.messages["NONE"]
-
-        db = current.db
-        table = db.org_subsector
-        r = db(table.id == id).select(table.name,
-                                      table.sector_id,
-                                      limitby=(0, 1)).first()
-        try:
-            sector = db(query).select(table.abrv,
-                                      limitby=(0, 1)).first()
-            if sector:
-                return "%s: %s" % (sector.abrv, current.T(r.name))
-            else:
-                return current.T(r.name)
-        except:
-            return current.messages.UNKNOWN_OPT
-
-    # -------------------------------------------------------------------------
-    @staticmethod
     def organisation_type_duplicate(item):
         """ Import item de-duplication """
 
@@ -947,25 +615,6 @@ class S3OrganisationModel(S3Model):
             if duplicate:
                 item.id = duplicate.id
                 item.method = item.METHOD.UPDATE
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def org_organisation_type_represent(id, row=None):
-        """ FK representation """
-
-        if row:
-            return row.name
-        elif not id:
-            return current.messages["NONE"]
-
-        db = current.db
-        table = db.org_organisation_type
-        r = db(table.id == id).select(table.name,
-                                      limitby=(0, 1)).first()
-        try:
-            return current.T(r.name)
-        except:
-            return current.messages.UNKNOWN_OPT
 
     # -----------------------------------------------------------------------------
     @staticmethod
@@ -995,58 +644,6 @@ class S3OrganisationModel(S3Model):
                     # Retain the correct spelling of the name
                     item.data.name = duplicate.name
                     item.method = item.METHOD.UPDATE
-
-    # -----------------------------------------------------------------------------
-    @staticmethod
-    def organisation_multi_represent(opt):
-        """
-            Organisation representation
-            for multiple=True options
-        """
-
-        db = current.db
-        table = db.org_organisation
-        set = db(table.deleted == False).select(table.id,
-                                                table.name).as_dict()
-
-        if isinstance(opt, (list, tuple)):
-            opts = opt
-            vals = [str(set.get(o)["name"]) for o in opts]
-        elif isinstance(opt, int):
-            opts = [opt]
-            vals = str(set.get(opt)["name"])
-        else:
-            return current.messages["NONE"]
-
-        if len(opts) > 1:
-            vals = ", ".join(vals)
-        else:
-            vals = len(vals) and vals[0] or ""
-        return vals
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def donor_represent(donor_ids):
-        """ Representation of donor record IDs """
-
-        if not donor_ids:
-            return current.messages["NONE"]
-
-        db = current.db
-        table = db.org_organisation
-
-        if isinstance(donor_ids, (list, tuple)):
-            query = (table.id.belongs(donor_ids))
-            donors = db(query).select(table.name)
-            return ", ".join([donor.name for donor in donors])
-        else:
-            query = (table.id == donor_ids)
-            donor = db(query).select(table.name,
-                                     limitby=(0, 1)).first()
-            try:
-                return donor.name
-            except:
-                return current.messages.UNKNOWN_OPT
 
     # -----------------------------------------------------------------------------
     @staticmethod
@@ -1089,20 +686,21 @@ class S3OrganisationModel(S3Model):
             Remove any duplicate memberships and update affiliations
         """
 
-        s3db = current.s3db
-        
         id = form.vars.id
         db = current.db
+        s3db = current.s3db
 
         # Fields a branch organisation inherits from its parent organisation
         inherit = ["organisation_type_id",
-                   "multi_sector_id",
+                   # @ToDo: Update for Component
+                   #"sector",
                    "region",
-                   "country"]
+                   "country",
+                   ]
 
-        ltable = s3db.org_organisation_branch
         otable = s3db.org_organisation
-        btable = s3db.org_organisation.with_alias("org_branch_organisation")
+        ltable = db.org_organisation_branch
+        btable = db.org_organisation.with_alias("org_branch_organisation")
 
         ifields = [otable[fn] for fn in inherit]  + \
                   [btable[fn] for fn in inherit]
@@ -1149,7 +747,7 @@ class S3OrganisationModel(S3Model):
                                     organisation_id=None,
                                     deleted_fk=json.dumps(deleted_fk))
 
-                current.s3db.pr_update_affiliations(ltable, link)
+                org_update_affiliations("org_organisation_branch", link)
             except:
                 pass
         return
@@ -1168,7 +766,192 @@ class S3OrganisationModel(S3Model):
                                                table.deleted_fk,
                                                limitby=(0, 1)).first()
         if record:
-            current.s3db.pr_update_affiliations(table, record)
+            org_update_affiliations("org_organisation_branch", record)
+        return
+
+# =============================================================================
+class S3OrganisationGroupModel(S3Model):
+    """
+        Organisation Group Model
+        - 'Coalitions' or 'Networks'
+    """
+
+    names = ["org_group",
+             "org_group_membership",
+             "org_group_id",
+             ]
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+
+        configure = self.configure
+        define_table = self.define_table
+
+        # ---------------------------------------------------------------------
+        # Organization Groups
+        #
+        tablename = "org_group"
+        table = define_table(tablename,
+                             self.super_link("pe_id", "pr_pentity"),
+                             Field("name", notnull=True, unique=True,
+                                   length=128,
+                                   label=T("Name")),
+                             #self.gis_location_id(),
+                             s3_comments(),
+                             *s3_meta_fields()
+                             )
+
+        # CRUD Strings not defined to allow each template to define as-required
+
+        configure(tablename,
+                  super_entity="pr_pentity",
+                  )
+
+        represent = S3Represent(lookup=tablename)
+        group_id = S3ReusableField("group_id", table,
+                                   sortby="name",
+                                   requires=IS_NULL_OR(
+                                                IS_ONE_OF(db, "org_group.id",
+                                                          represent,
+                                                          sort=True,
+                                                          )),
+                                   represent=represent,
+                                   # Always links via Link Tables
+                                   ondelete="CASCADE",
+                                   )
+
+        # ---------------------------------------------------------------------
+        # Group membership
+        #
+        tablename = "org_group_membership"
+        define_table(tablename,
+                     group_id(),
+                     self.org_organisation_id(),
+                     *s3_meta_fields())
+
+        configure(tablename,
+                  onaccept = self.group_membership_onaccept,
+                  ondelete = self.group_membership_onaccept,
+                  )
+
+        # Pass names back to global scope (s3.*)
+        return dict(
+                org_group_id = group_id,
+            )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def group_membership_onaccept(form):
+        """
+            Remove any duplicate memberships and update affiliations
+        """
+
+        if hasattr(form, "vars"):
+            _id = form.vars.id
+        elif isinstance(form, Row) and "id" in form:
+            _id = form.id
+        else:
+            return
+
+        db = current.db
+        mtable = db.org_group_membership
+
+        if _id:
+            record = db(mtable.id == _id).select(limitby=(0, 1)).first()
+        else:
+            return
+        if record:
+            organisation_id = record.organisation_id
+            group_id = record.group_id
+            if organisation_id and group_id and not record.deleted:
+                query = (mtable.organisation_id == organisation_id) & \
+                        (mtable.group_id == group_id) & \
+                        (mtable.id != record.id) & \
+                        (mtable.deleted != True)
+                deleted_fk = {"organisation_id": organisation_id,
+                              "group_id": group_id}
+                db(query).update(deleted = True,
+                                 organisation_id = None,
+                                 group_id = None,
+                                 deleted_fk = json.dumps(deleted_fk))
+            org_update_affiliations("org_group_membership", record)
+        return
+
+# =============================================================================
+class S3OrganisationLocationModel(S3Model):
+    """
+        Organisation Location Model
+    """
+
+    names = ["org_organisation_location"]
+
+    def model(self):
+
+        T = current.T
+
+        # ---------------------------------------------------------------------
+        # Organizations <> Locations Link Table
+        #
+        tablename = "org_organisation_location"
+        self.define_table(tablename,
+                          self.org_organisation_id(),
+                          self.gis_location_id(
+                            requires = IS_LOCATION(),
+                            #represent = self.gis_LocationRepresent(format=", "),
+                            widget = S3LocationAutocompleteWidget()
+                          ),
+                          *s3_meta_fields()
+                          )
+
+        # CRUD Strings
+        current.response.s3.crud_strings[tablename] = Storage(
+            title_create = T("New Location"),
+            title_display = T("Location"),
+            title_list = T("Locations"),
+            title_update = T("Edit Location"),
+            title_search = T("Search Locations"),
+            title_upload = T("Import Location data"),
+            subtitle_create = T("Add New Location"),
+            label_list_button = T("List Locations"),
+            label_create_button = T("Add Location to Organization"),
+            msg_record_created = T("Location added to Organization"),
+            msg_record_modified = T("Location updated"),
+            msg_record_deleted = T("Location removed from Organization"),
+            msg_list_empty = T("No Locations found for this Organization"))
+
+        self.configure(tablename,
+                       deduplicate=self.org_organisation_location_deduplicate,
+                       )
+
+        # Pass names back to global scope (s3.*)
+        return dict(
+            )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def org_organisation_location_deduplicate(item):
+        """ Import item de-duplication """
+
+        if item.tablename != "org_organisation_location":
+            return
+
+        data = item.data
+        if "organisation_id" in data and \
+           "location_id" in data:
+            organisation_id = data.organisation_id
+            location_id = data.location_id
+            table = item.table
+            query = (table.organisation_id == organisation_id) & \
+                    (table.location_id == location_id)
+            duplicate = current.db(query).select(table.id,
+                                                 limitby=(0, 1)).first()
+
+            if duplicate:
+                item.id = duplicate.id
+                item.method = item.METHOD.UPDATE
+
         return
 
 # =============================================================================
@@ -1304,6 +1087,338 @@ class S3OrganisationResourceModel(S3Model):
         #
         return Storage(
                 )
+
+# =============================================================================
+class S3OrganisationSectorModel(S3Model):
+    """
+        Organisation Sector Model
+    """
+
+    names = ["org_sector",
+             "org_sector_id",
+             "org_sector_opts",
+             #"org_subsector",
+             "org_sector_organisation",
+             ]
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+
+        add_component = self.add_component
+        configure = self.configure
+        crud_strings = current.response.s3.crud_strings
+        define_table = self.define_table
+
+        location = current.session.s3.location_filter
+        if location:
+            filterby = "location_id"
+            filter_opts = (location, None)
+        else:
+            filterby = None
+            filter_opts = (None,)
+
+        # ---------------------------------------------------------------------
+        # Sector
+        # (Cluster in UN-style terminology)
+        #
+        tablename = "org_sector"
+        table = define_table(tablename,
+                             Field("name", length=128,
+                                   notnull=True,
+                                   label=T("Name")),
+                             Field("abrv", length=64,
+                                   notnull=True,
+                                   label=T("Abbreviation")),
+                             self.gis_location_id(
+                                    widget=S3LocationAutocompleteWidget(),
+                                    requires=IS_EMPTY_OR(IS_LOCATION())
+                                ),
+                             s3_comments(),
+                             *s3_meta_fields())
+
+        # CRUD strings
+        if current.deployment_settings.get_ui_label_cluster():
+            SECTOR = T("Cluster")
+            ADD_SECTOR = T("Add New Cluster")
+            help = T("If you don't see the Cluster in the list, you can add a new one by clicking link 'Add New Cluster'.")
+            crud_strings[tablename] = Storage(
+                title_create=T("Add Cluster"),
+                title_display=T("Cluster Details"),
+                title_list=T("Clusters"),
+                title_update=T("Edit Cluster"),
+                title_search=T("Search Clusters"),
+                subtitle_create=ADD_SECTOR,
+                label_list_button=T("List Clusters"),
+                label_create_button=ADD_SECTOR,
+                label_delete_button=T("Delete Cluster"),
+                msg_record_created=T("Cluster added"),
+                msg_record_modified=T("Cluster updated"),
+                msg_record_deleted=T("Cluster deleted"),
+                msg_list_empty=T("No Clusters currently registered"))
+        else:
+            SECTOR = T("Sector")
+            ADD_SECTOR = T("Add New Sector")
+            help = T("If you don't see the Sector in the list, you can add a new one by clicking link 'Add New Sector'.")
+            crud_strings[tablename] = Storage(
+                title_create=T("Add Sector"),
+                title_display=T("Sector Details"),
+                title_list=T("Sectors"),
+                title_update=T("Edit Sector"),
+                title_search=T("Search Sectors"),
+                subtitle_create=ADD_SECTOR,
+                label_list_button=T("List Sectors"),
+                label_create_button=ADD_SECTOR,
+                label_delete_button=T("Delete Sector"),
+                msg_record_created=T("Sector added"),
+                msg_record_modified=T("Sector updated"),
+                msg_record_deleted=T("Sector deleted"),
+                msg_list_empty=T("No Sectors currently registered"))
+
+        configure("org_sector",
+                  deduplicate=self.org_sector_duplicate)
+
+        sector_comment = lambda child: S3AddResourceLink(c="org", f="sector",
+                                                         vars={"child": child},
+                                                         label=ADD_SECTOR,
+                                                         title=SECTOR,
+                                                         tooltip=help)
+
+        represent = S3Represent(lookup=tablename, translate=True)
+        sector_id = S3ReusableField("sector_id", "reference org_sector",
+                                    sortby="abrv",
+                                    requires=IS_NULL_OR(
+                                                IS_ONE_OF(db, "org_sector.id",
+                                                          represent,
+                                                          sort=True,
+                                                          filterby=filterby,
+                                                          filter_opts=filter_opts,
+                                                          )),
+                                    represent=represent,
+                                    comment=sector_comment("sector_id"),
+                                    label=SECTOR,
+                                    ondelete="SET NULL")
+
+        # Components
+        add_component("org_organisation",
+                      org_sector=Storage(
+                                link="org_sector_organisation",
+                                joinby="sector_id",
+                                key="organisation_id",
+                                actuate="hide"))
+        add_component("project_project",
+                      org_sector=Storage(
+                                link="project_sector_project",
+                                joinby="sector_id",
+                                key="project_id",
+                                actuate="hide"))
+        #add_component("project_activity_type",
+        #              org_sector=Storage(
+        #                        link="project_activity_type_sector",
+        #                        joinby="sector_id",
+        #                        key="activity_type_id",
+        #                        actuate="hide"))
+        #add_component("project_theme",
+        #              org_sector=Storage(
+        #                        link="project_theme_sector",
+        #                        joinby="sector_id",
+        #                        key="theme_id",
+        #                        actuate="hide"))
+
+        # =====================================================================
+        # (Cluster) Subsector
+        #
+        # tablename = "org_subsector"
+        # table = define_table(tablename,
+                             # sector_id(),
+                             # Field("name", length=128,
+                             #       label=T("Name")),
+                             # Field("abrv", length=64,
+                                   # notnull=True, unique=True,
+                                   # label=T("Abbreviation")),
+                             # *s3_meta_fields())
+
+        ##CRUD strings
+        # if settings.get_ui_label_cluster():
+            # SUBSECTOR = T("Cluster Subsector")
+            # crud_strings[tablename] = Storage(
+                # title_create = T("Add Cluster Subsector"),
+                # title_display = T("Cluster Subsector Details"),
+                # title_list = T("Cluster Subsectors"),
+                # title_update = T("Edit Cluster Subsector"),
+                # title_search = T("Search Cluster Subsectors"),
+                # subtitle_create = T("Add New Cluster Subsector"),
+                # label_list_button = T("List Cluster Subsectors"),
+                # label_create_button = T("Add Cluster Subsector"),
+                # label_delete_button = T("Delete Cluster Subsector"),
+                # msg_record_created = T("Cluster Subsector added"),
+                # msg_record_modified = T("Cluster Subsector updated"),
+                # msg_record_deleted = T("Cluster Subsector deleted"),
+                # msg_list_empty = T("No Cluster Subsectors currently registered"))
+        # else:
+            # SUBSECTOR = T("Subsector")
+            # crud_strings[tablename] = Storage(
+                # title_create = T("Add Subsector"),
+                # title_display = T("Subsector Details"),
+                # title_list = T("Subsectors"),
+                # title_update = T("Edit Subsector"),
+                # title_search = T("Search Subsectors"),
+                # subtitle_create = T("Add New Subsector"),
+                # label_list_button = T("List Subsectors"),
+                # label_create_button = T("Add Subsector"),
+                # label_delete_button = T("Delete Subsector"),
+                # msg_record_created = T("Subsector added"),
+                # msg_record_modified = T("Subsector updated"),
+                # msg_record_deleted = T("Subsector deleted"),
+                # msg_list_empty = T("No Subsectors currently registered"))
+
+        # subsector_id = S3ReusableField("subsector_id", table,
+                                       # sortby="abrv",
+                                       # requires = IS_NULL_OR(
+                                                        # IS_ONE_OF(db, "org_subsector.id",
+                                                                  # self.org_subsector_represent,
+                                                                  # sort=True)),
+                                       # represent = self.org_subsector_represent,
+                                       # label = SUBSECTOR,
+                                       ##comment = Script to filter the sector_subsector drop down
+                                       # ondelete = "SET NULL")
+
+        # configure("org_subsector", deduplicate=self.org_sector_duplicate)
+        # add_component("org_subsector", org_sector="sector_id")
+
+        # ---------------------------------------------------------------------
+        # Organizations <> Sectors Link Table
+        #
+        tablename = "org_sector_organisation"
+        define_table(tablename,
+                     sector_id(),
+                     self.org_organisation_id(),
+                     *s3_meta_fields()
+                     )
+
+        # CRUD Strings
+        crud_strings[tablename] = Storage(
+            title_create = T("New Sector"),
+            title_display = T("Sector"),
+            title_list = T("Sectors"),
+            title_update = T("Edit Sector"),
+            title_search = T("Search Sectors"),
+            title_upload = T("Import Sector data"),
+            subtitle_create = T("Add New Sector"),
+            label_list_button = T("List Sectors"),
+            label_create_button = T("Add Sector to Organization"),
+            msg_record_created = T("Sector added to Organization"),
+            msg_record_modified = T("Sector updated"),
+            msg_record_deleted = T("Sector removed from Organization"),
+            msg_list_empty = T("No Sectors found for this Organization"))
+
+        configure(tablename,
+                  deduplicate=self.org_sector_organisation_deduplicate,
+                  )
+
+        # Pass names back to global scope (s3.*)
+        return dict(
+                org_sector_id=sector_id,
+                org_sector_opts=self.org_sector_opts,
+            )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def org_sector_opts():
+        """
+            Provide the options for Sector search filters
+        """
+
+        db = current.db
+        table = db.org_sector
+        location = current.session.s3.location_filter
+        if location:
+            query = (table.deleted == False) & \
+                    (table.location_id == location)
+        else:
+            query = (table.deleted == False)
+
+        opts = db(query).select(table.id,
+                                table.name,
+                                orderby=table.name)
+        od = OrderedDict()
+        for opt in opts:
+            od[opt.id] = current.T(opt.name)
+        od[None] = current.messages["NONE"]
+        return od
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def org_sector_duplicate(item):
+        """ Import item de-duplication """
+
+        if item.tablename in ("org_sector", "org_subsector"):
+            table = item.table
+            abrv = item.data.get("abrv", None)
+            name = item.data.get("name", None)
+            if abrv:
+                query = (table.abrv.lower() == abrv.lower())
+            elif name:
+                query = (table.name.lower() == name.lower())
+            else:
+                return
+            duplicate = current.db(query).select(table.id,
+                                                 limitby=(0, 1)).first()
+            if duplicate:
+                item.id = duplicate.id
+                item.method = item.METHOD.UPDATE
+        return
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def org_subsector_represent(id, row=None):
+        """ Subsector ID representation """
+
+        if row:
+            return row.name
+        elif not id:
+            return current.messages["NONE"]
+
+        db = current.db
+        table = db.org_subsector
+        r = db(table.id == id).select(table.name,
+                                      table.sector_id,
+                                      limitby=(0, 1)).first()
+        try:
+            sector = db(query).select(table.abrv,
+                                      limitby=(0, 1)).first()
+            if sector:
+                return "%s: %s" % (sector.abrv, current.T(r.name))
+            else:
+                return current.T(r.name)
+        except:
+            return current.messages.UNKNOWN_OPT
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def org_sector_organisation_deduplicate(item):
+        """ Import item de-duplication """
+
+        if item.tablename != "org_sector_organisation":
+            return
+
+        data = item.data
+        if "organisation_id" in data and \
+           "sector_id" in data:
+            organisation_id = data.organisation_id
+            sector_id = data.sector_id
+            table = item.table
+            query = (table.organisation_id == organisation_id) & \
+                    (table.sector_id == sector_id)
+            duplicate = current.db(query).select(table.id,
+                                                 limitby=(0, 1)).first()
+
+            if duplicate:
+                item.id = duplicate.id
+                item.method = item.METHOD.UPDATE
+
+        return
 
 # =============================================================================
 class S3OrganisationServiceModel(S3Model):
@@ -1792,6 +1907,7 @@ class S3FacilityModel(S3Model):
 
     names = ["org_facility_type",
              "org_facility",
+             "org_facility_group",
              "org_facility_geojson",
              ]
 
@@ -1800,6 +1916,7 @@ class S3FacilityModel(S3Model):
         T = current.T
         db = current.db
 
+        add_component = self.add_component
         configure = self.configure
         crud_strings = current.response.s3.crud_strings
         define_table = self.define_table
@@ -2049,7 +2166,8 @@ class S3FacilityModel(S3Model):
                   deduplicate = self.org_facility_duplicate,
                   onaccept = self.org_facility_onaccept,
                   filter_widgets = filter_widgets,
-                  search_method=S3Search(advanced=org_facility_search),
+                  search_method=S3Search(simple=(),
+                                         advanced=org_facility_search),
                   report_options = Storage(
                     search=org_facility_search,
                     rows=report_fields,
@@ -2083,6 +2201,30 @@ class S3FacilityModel(S3Model):
                   update_realm = True,
                   )
 
+        # Groups
+        add_component("org_group",
+                      org_facility=Storage(link="org_facility_group",
+                                           joinby="facility_id",
+                                           key="group_id",
+                                           actuate="hide"))
+        # Format for filter_widgets
+        add_component("org_facility_group",
+                      org_facility="facility_id")
+
+        # ---------------------------------------------------------------------
+        # Facilities <> Organisation Groups Link Table
+        #
+        tablename = "org_facility_group"
+        define_table(tablename,
+                     Field("facility_id", table),
+                     self.org_group_id(),
+                     *s3_meta_fields()
+                     )
+
+        configure(tablename,
+                  deduplicate=self.org_facility_group_deduplicate,
+                  )
+
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
@@ -2097,7 +2239,7 @@ class S3FacilityModel(S3Model):
             Update Affiliation, record ownership and component ownership
         """
 
-        current.s3db.pr_update_affiliations("org_facility", form.vars)
+        org_update_affiliations("org_facility", form.vars)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2302,6 +2444,31 @@ class S3FacilityModel(S3Model):
         File.write(output)
         File.close()
 
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def org_facility_group_deduplicate(item):
+        """ Import item de-duplication """
+
+        if item.tablename != "org_facility_group":
+            return
+
+        data = item.data
+        if "facility_id" in data and \
+           "group_id" in data:
+            facility_id = data.facility_id
+            group_id = data.group_id
+            table = item.table
+            query = (table.facility_id == facility_id) & \
+                    (table.group_id == group_id)
+            duplicate = current.db(query).select(table.id,
+                                                 limitby=(0, 1)).first()
+
+            if duplicate:
+                item.id = duplicate.id
+                item.method = item.METHOD.UPDATE
+
+        return
+
 # -----------------------------------------------------------------------------
 def org_facility_rheader(r, tabs=[]):
     """
@@ -2441,6 +2608,7 @@ class S3OfficeModel(S3Model):
         T = current.T
         db = current.db
         messages = current.messages
+        settings = current.deployment_settings
         add_component = self.add_component
         configure = self.configure
         crud_strings = current.response.s3.crud_strings
@@ -2575,7 +2743,14 @@ class S3OfficeModel(S3Model):
             msg_list_empty=T("No Offices currently registered"))
 
         # Search Method
-        office_search = S3Search(
+        if settings.get_org_branches():
+            ORGANISATION = T("Organization/Branch")
+            comment = T("Search for office by organization or branch.")
+        else:
+            ORGANISATION = T("Organization")
+            comment = T("Search for office by organization.")
+        search_method = S3Search(
+            simple=(),
             advanced=(S3SearchSimpleWidget(
                         name="office_search_text",
                         label=T("Search"),
@@ -2584,8 +2759,8 @@ class S3OfficeModel(S3Model):
                       ),
                       S3SearchOptionsWidget(
                         name="office_search_org",
-                        label=T("Organization/Branch"),  
-                        comment=T("Search for office by organization or branch."),
+                        label=ORGANISATION,  
+                        comment=comment,
                         field="organisation_id",
                         represent="%(name)s",
                         cols=3
@@ -2619,7 +2794,7 @@ class S3OfficeModel(S3Model):
                   super_entity=("pr_pentity", "org_site"),
                   onaccept=self.org_office_onaccept,
                   deduplicate=self.org_office_duplicate,
-                  search_method=office_search,
+                  search_method=search_method,
                   ## Experimental: filter form
                   #filter_widgets=[
                        #S3TextFilter(["name", "email", "comments"],
@@ -2672,7 +2847,7 @@ class S3OfficeModel(S3Model):
                   update_realm=True,
                  )
 
-        if current.deployment_settings.get_org_summary():
+        if settings.get_org_summary():
             add_component("org_office_summary",
                           org_office=dict(name="summary",
                                           joinby="office_id"))
@@ -2707,18 +2882,15 @@ class S3OfficeModel(S3Model):
             * Process injected fields
         """
 
-        auth = current.auth
-        s3db = current.s3db
-        otable = s3db.org_office
         vars = form.vars
 
         # Affiliation, record ownership and component ownership
-        s3db.pr_update_affiliations(otable, vars)
+        org_update_affiliations("org_office", vars)
 
         if current.deployment_settings.get_org_summary():
 
             db = current.db
-            id = form.vars.id
+            id = vars.id
             table = current.s3db.org_office_summary
             query = (table.office_id == id)
             existing = db(query).select(table.id,
@@ -2857,15 +3029,13 @@ class S3OfficeTypeTagModel(S3Model):
 def org_organisation_address(row):
     """ The address of the first office """
 
-    default = current.messages["NONE"]
-
     if hasattr(row, "org_organisation"):
         row = row.org_organisation
     try:
         organisation_id = row.id
     except:
         # not available
-        return default
+        return current.messages["NONE"]
 
     db = current.db
     s3db = current.s3db
@@ -2875,12 +3045,12 @@ def org_organisation_address(row):
     query = (otable.deleted != True) & \
             (otable.organisation_id == organisation_id) & \
             (otable.location_id == gtable.id)
-    row = db(query).select(gtable.id, limitby=(0, 1)).first()
+    row = db(query).select(gtable.addr_street, limitby=(0, 1)).first()
 
     if row:
-        return s3db.gis_location_represent(row.id)
+        row.addr_street
     else:
-        return default
+        return current.messages["NONE"]
 
 # =============================================================================
 def org_organisation_logo(id, type="png"):
@@ -2903,7 +3073,10 @@ def org_organisation_logo(id, type="png"):
     else:
         table = s3db.org_organisation
         query = (table.id == id)
-        record = current.db(query).select(limitby=(0, 1)).first()
+        record = current.db(query).select(table.name,
+                                          table.acronym,
+                                          table.logo,
+                                          limitby=(0, 1)).first()
 
     format = None
     if type == "bmp":
@@ -3013,7 +3186,7 @@ class org_OrganisationRepresent(S3Represent):
                  acronym=True,
                  multiple=False):
 
-        if parent:
+        if parent and current.deployment_settings.get_org_branches():
             # Need a custom lookup
             self.parent = True
             self.lookup_rows = self.custom_lookup_rows
@@ -3227,7 +3400,6 @@ def org_rheader(r, tabs=[]):
 
     if tablename == "org_organisation":
         # Tabs
-        hack = False
         if not tabs:
             tabs = [(T("Basic Details"), None),
                     (T("Branches"), "branch"),
@@ -3241,8 +3413,8 @@ def org_rheader(r, tabs=[]):
                     #(T("Tasks"), "task"),
                     ]
             # If a filter is being applied to the Organisations, amend the tabs accordingly
-            request = current.request
-            type_filter = request.get_vars.get("organisation.organisation_type_id$name", None)
+            type_filter = current.request.get_vars.get("organisation.organisation_type_id$name",
+                                                       None)
             if type_filter:
                 if type_filter == "Supplier":
                     tabs = [(T("Basic Details"), None),
@@ -3260,15 +3432,16 @@ def org_rheader(r, tabs=[]):
                             ]
         rheader_tabs = s3_rheader_tabs(r, tabs)
 
-        if table.multi_sector_id.readable and record.multi_sector_id:
-            if settings.get_ui_label_cluster():
-                sector_label = T("Cluster(s)")
-            else:
-                sector_label = T("Sector(s)")
-            sectors = TR(TH("%s: " % sector_label),
-                         table.multi_sector_id.represent(record.multi_sector_id))
-        else:
-            sectors = ""
+        # @ToDo: Update for Component
+        # if record.sector_id:
+        #    if settings.get_ui_label_cluster():
+        #        sector_label = T("Cluster(s)")
+        #    else:
+        #        sector_label = T("Sector(s)")
+        #    sectors = TR(TH("%s: " % sector_label),
+        #                 table.sector_id.represent(record.sector_id))
+        # else:
+        #    sectors = ""
 
         if record.website:
             website = TR(TH("%s: " % table.website.label),
@@ -3282,7 +3455,7 @@ def org_rheader(r, tabs=[]):
                          record.name,
                          ),
                       website,
-                      sectors,
+                      #sectors,
                       )
         if logo:
             rheader.append(TABLE(TR(TD(logo), TD(rData))))
@@ -3355,10 +3528,11 @@ def org_organisation_controller():
         multiple controllers for unified menus
     """
 
+    T = current.T
     db = current.db
     s3db = current.s3db
     s3 = current.response.s3
-    T = current.T
+    settings = current.deployment_settings
 
     # Pre-process
     def prep(r):
@@ -3376,6 +3550,10 @@ def org_organisation_controller():
             r.table.country.default = gis.get_default_country("code")
 
             if not r.component and r.method not in ["read", "update", "delete", "deduplicate"]:
+                use_branches = settings.get_org_branches()
+                if use_branches:
+                    # Filter Branches
+                    branch_filter = (S3FieldSelector("parent.id") == None)
                 # Filter Locations
                 lfilter = current.session.s3.location_filter
                 if lfilter:
@@ -3398,16 +3576,60 @@ def org_organisation_controller():
                                                    limitby=(0, 1)).first()
                             code = tag.value
                         # Filter out Branches
-                        branch_filter = (S3FieldSelector("parent.id") == None) | \
-                                        (S3FieldSelector("parent.country") != code) | \
-                                        (S3FieldSelector("parent.country") == None)
-                    else:
-                        # Filter out Branches
-                        branch_filter = (S3FieldSelector("parent.id") == None)
+                        branch_filter |= (S3FieldSelector("parent.country") != code) | \
+                                         (S3FieldSelector("parent.country") == None)
+                if use_branches:
+                    r.resource.add_filter(branch_filter)
+                    search_fields = ["name",
+                                     "acronym",
+                                     "parent.name",
+                                     "parent.acronym",
+                                     ]
                 else:
-                    # Filter out Branches
-                    branch_filter = (S3FieldSelector("parent.id") == None)
-                r.resource.add_filter(branch_filter)
+                    search_fields = ["name", "acronym"]
+                if settings.get_ui_label_cluster():
+                    SECTOR = T("Cluster")
+                else:
+                    SECTOR = T("Sector")
+                search_method = S3OrganisationSearch(
+                        # simple = (S3SearchSimpleWidget(
+                            # name="org_search_text_simple",
+                            # label = T("Search"),
+                            # comment = T("Search for an Organization by name or acronym."),
+                            # field = search_fields
+                            # )
+                        # ),
+                        simple=(),
+                        advanced=(
+                            S3SearchSimpleWidget(
+                                name="org_search_text_advanced",
+                                label=T("Search"),
+                                comment=T("Search for an Organization by name or acronym"),
+                                field=search_fields
+                            ),
+                            S3SearchOptionsWidget(
+                                name="org_search_type",
+                                label=T("Type"),
+                                field="organisation_type_id",
+                                cols=2
+                            ),
+                            S3SearchOptionsWidget(
+                                name="org_search_sector",
+                                label=SECTOR,
+                                field="sector.name",
+                                options=s3db.org_sector_opts,
+                                cols=3
+                            ),
+                            # Doesn't work on all versions of gluon/sqlhtml.py
+                            S3SearchOptionsWidget(
+                                name="org_search_home_country",
+                                label=T("Home Country"),
+                                field="country",
+                                cols=3
+                            ),
+                        )
+                    )
+                s3db.configure("org_organisation", search_method=search_method)
 
             else:
                 cname = r.component_name
@@ -3418,13 +3640,14 @@ def org_organisation_controller():
                     htable.person_id.writable = False
 
                 elif cname == "branch":
-                    # Branches default to the same type/sector/country as the parent
+                    # Branches default to the same type/country as the parent
                     otable = r.table
                     record = r.record
                     otable.organisation_type_id.default = record.organisation_type_id
-                    otable.multi_sector_id.default = record.multi_sector_id
                     otable.region.default = record.region
                     otable.country.default = record.country
+                    # @ToDo: Update for components
+                    #otable.sector_id.default = record.sector_id
                     # Represent orgs without the parent prefix as we have that context already
                     s3db.org_organisation_branch.branch_id.represent = \
                         org_OrganisationRepresent(parent=False)
@@ -3562,7 +3785,6 @@ def org_organisation_controller():
     # Post-process
     def postp(r, output):
         if r.interactive:
-            settings = current.deployment_settings
             if not r.component and \
                settings.get_org_summary():
                 # Insert fields to view/record the summary data
@@ -3646,6 +3868,7 @@ def org_organisation_controller():
     s3.postp = postp
 
     output = current.rest_controller("org", "organisation",
+                                     hide_filter = False,
                                      # Don't allow components with components (such as document) to breakout from tabs
                                      native=False,
                                      rheader=org_rheader,
@@ -3847,5 +4070,238 @@ def org_office_controller():
                                      native=False,
                                      rheader=org_rheader)
     return output
+
+# =============================================================================
+# Hierarchy Manipulation
+# =============================================================================
+#
+def org_update_affiliations(table, record):
+    """
+        Update OU affiliations related to this record
+
+        @param table: the table
+        @param record: the record
+    """
+
+    if hasattr(table, "_tablename"):
+        rtype = table._tablename
+    else:
+        rtype = table
+
+    if rtype == "org_organisation_branch":
+
+        ltable = current.s3db.org_organisation_branch
+        if not isinstance(record, Row):
+            record = current.db(ltable.id == record).select(ltable.ALL,
+                                                            limitby=(0, 1)
+                                                            ).first()
+        if not record:
+            return
+        organisation_update_affiliations(record)
+
+    elif rtype == "org_group_membership":
+
+        mtable = current.s3db.org_group_membership
+        if not isinstance(record, Row):
+            record = current.db(mtable.id == record).select(mtable.ALL,
+                                                            limitby=(0, 1)
+                                                            ).first()
+        if not record:
+            return
+        org_group_update_affiliations(record)
+
+    elif rtype == "org_site" or rtype in current.auth.org_site_types:
+
+        org_site_update_affiliations(record)
+
+    return
+
+# =============================================================================
+def organisation_update_affiliations(record):
+    """
+        Update affiliations for a branch organisation
+
+        @param record: the org_organisation_branch record
+    """
+
+    if record.deleted and record.deleted_fk:
+        try:
+            fk = json.loads(record.deleted_fk)
+            branch_id = fk["branch_id"]
+        except:
+            return
+    else:
+        branch_id = record.branch_id
+
+    from pr import OU
+    BRANCHES = "Branches"
+
+    db = current.db
+    s3db = current.s3db
+    otable = s3db.org_organisation
+    btable = otable.with_alias("branch")
+    ltable = db.org_organisation_branch
+    etable = s3db.pr_pentity
+    rtable = db.pr_role
+    atable = db.pr_affiliation
+
+    o = otable._tablename
+    b = btable._tablename
+    r = rtable._tablename
+
+    # Get current memberships
+    query = (ltable.branch_id == branch_id) & \
+            (ltable.deleted != True)
+    left = [otable.on(ltable.organisation_id == otable.id),
+            btable.on(ltable.branch_id == btable.id)]
+    rows = db(query).select(otable.pe_id, btable.pe_id, left=left)
+    current_memberships = [(row[o].pe_id, row[b].pe_id) for row in rows]
+
+    # Get current affiliations
+    query = (rtable.deleted != True) & \
+            (rtable.role == BRANCHES) & \
+            (rtable.pe_id == etable.pe_id) & \
+            (etable.instance_type == o) & \
+            (atable.deleted != True) & \
+            (atable.role_id == rtable.id) & \
+            (atable.pe_id == btable.pe_id) & \
+            (btable.id == branch_id)
+    rows = db(query).select(rtable.pe_id, btable.pe_id)
+    current_affiliations = [(row[r].pe_id, row[b].pe_id) for row in rows]
+
+    # Remove all affiliations which are not current memberships
+    remove_affiliation = s3db.pr_remove_affiliation
+    for a in current_affiliations:
+        org, branch = a
+        if a not in current_memberships:
+            remove_affiliation(org, branch, role=BRANCHES)
+        else:
+            current_memberships.remove(a)
+
+    # Add affiliations for all new memberships
+    add_affiliation = s3db.pr_add_affiliation
+    for m in current_memberships:
+        org, branch = m
+        add_affiliation(org, branch, role=BRANCHES, role_type=OU)
+    return
+
+# =============================================================================
+def org_group_update_affiliations(record):
+    """
+        Update affiliations for organisation group memberships
+
+        @param record: the org_group_membership record
+    """
+
+    if record.deleted and record.deleted_fk:
+        try:
+            fk = json.loads(record.deleted_fk)
+            organisation_id = fk["organisation_id"]
+        except:
+            return
+    else:
+        organisation_id = record.organisation_id
+
+    MEMBER = 2 # role_type == "Member"
+    MEMBERS = "Members"
+
+    db = current.db
+    s3db = current.s3db
+    mtable = s3db.org_group_membership
+    otable = db.org_organisation
+    gtable = db.org_group
+    etable = s3db.pr_pentity
+    rtable = db.pr_role
+    atable = db.pr_affiliation
+
+    g = gtable._tablename
+    r = rtable._tablename
+    o = otable._tablename
+
+    # Get current memberships
+    query = (mtable.organisation_id == organisation_id) & \
+            (mtable.deleted != True)
+    left = [otable.on(mtable.organisation_id == otable.id),
+            gtable.on(mtable.group_id == gtable.id)]
+    rows = db(query).select(otable.pe_id, gtable.pe_id, left=left)
+    current_memberships = [(row[g].pe_id, row[o].pe_id) for row in rows]
+
+    # Get current affiliations
+    query = (rtable.deleted != True) & \
+            (rtable.role == MEMBERS) & \
+            (rtable.pe_id == etable.pe_id) & \
+            (etable.instance_type == g) & \
+            (atable.deleted != True) & \
+            (atable.role_id == rtable.id) & \
+            (atable.pe_id == otable.pe_id) & \
+            (otable.id == organisation_id)
+    rows = db(query).select(otable.pe_id, rtable.pe_id)
+    current_affiliations = [(row[r].pe_id, row[o].pe_id) for row in rows]
+
+    # Remove all affiliations which are not current memberships
+    remove_affiliation = s3db.pr_remove_affiliation
+    for a in current_affiliations:
+        group, org = a
+        if a not in current_memberships:
+            remove_affiliation(group, org, role=MEMBERS)
+        else:
+            current_memberships.remove(a)
+
+    # Add affiliations for all new memberships
+    add_affiliation = s3db.pr_add_affiliation
+    for m in current_memberships:
+        group, org = m
+        add_affiliation(group, org, role=MEMBERS, role_type=MEMBER)
+    return
+
+# =============================================================================
+def org_site_update_affiliations(record):
+    """
+        Update the affiliations of an org_site instance
+
+        @param record: the org_site instance record
+    """
+
+    from pr import OU
+    SITES = "Sites"
+
+    db = current.db
+    s3db = current.s3db
+    stable = s3db.org_site
+    otable = db.org_organisation
+    ptable = s3db.pr_pentity
+    rtable = db.pr_role
+    atable = db.pr_affiliation
+
+    o_pe_id = None
+    s_pe_id = record.pe_id
+
+    organisation_id = record.organisation_id
+    if organisation_id:
+        org = db(otable.id == organisation_id).select(otable.pe_id,
+                                                      limitby=(0, 1)).first()
+        if org:
+            o_pe_id = org.pe_id
+    if s_pe_id:
+        query = (atable.deleted != True) & \
+                (atable.pe_id == s_pe_id) & \
+                (rtable.deleted != True) & \
+                (rtable.id == atable.role_id) & \
+                (rtable.role == SITES) & \
+                (ptable.pe_id == rtable.pe_id) & \
+                (ptable.instance_type == str(otable))
+        rows = db(query).select(rtable.pe_id)
+        seen = False
+        
+        remove_affiliation = s3db.pr_remove_affiliation
+        for row in rows:
+            if o_pe_id == None or o_pe_id != row.pe_id:
+                remove_affiliation(row.pe_id, s_pe_id, role=SITES)
+            elif o_pe_id == row.pe_id:
+                seen = True
+        if o_pe_id and not seen:
+            s3db.pr_add_affiliation(o_pe_id, s_pe_id, role=SITES,
+                                    role_type=OU)
+    return
 
 # END =========================================================================
