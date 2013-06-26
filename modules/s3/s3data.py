@@ -1180,13 +1180,13 @@ class S3PivotTable(object):
 
         # Retrieve the records ------------------------------------------------
         #
-        result = resource.fast_select(self.rfields.keys(),
-                                      start=None, limit=None)
-        data = result["data"]
-        if data:
+        data = resource.fast_select(self.rfields.keys(),
+                                    start=None, limit=None)
+        drows = data["rows"]
+        if drows:
 
             key = str(resource.table._id)
-            records = Storage([(i[key], i) for i in data])
+            records = Storage([(i[key], i) for i in drows])
                 
             # Generate the data frame -----------------------------------------
             #
@@ -1197,7 +1197,9 @@ class S3PivotTable(object):
 
             if strict:
                 rfields = self.rfields
-                axes = (rfields[self.rows], rfields[self.cols])
+                axes = (rfield
+                        for rfield in (rfields[rows], rfields[cols])
+                        if rfield != None)
                 axisfilter = resource.axisfilter(axes)
             else:
                 axisfilter = None
@@ -1606,6 +1608,7 @@ class S3PivotTable(object):
              maxrows=None,
              maxcols=None,
              least=False,
+             url=None,
              represent=True):
         """
             Render the pivot table data as JSON-serializable dict
@@ -1628,7 +1631,8 @@ class S3PivotTable(object):
                 rows: [rows[index, value, label, total]],
                 cols: [cols[index, value, label, total]],
                 
-                total: <grand total> # @todo
+                total: <grand total>,
+                filter: [url, rows selector, cols selector]
             }
         """
 
@@ -1637,6 +1641,7 @@ class S3PivotTable(object):
 
         tablename = resource.tablename
 
+        T = current.T
         OTHER = "__other__"
 
         # The layer
@@ -1650,6 +1655,7 @@ class S3PivotTable(object):
         orows = []
         ocols = []
         ocells = []
+        lookup = {}
 
         if not self.empty:
             
@@ -1758,13 +1764,13 @@ class S3PivotTable(object):
 
             # Aggregate the grouped values
             ctotals = True
-            lookup = {}
             value_map = {}
             rappend = orows.append
             cappend = ocols.append
             for rindex, rtotal, rtitle in rows:
                 orow = []
-                rval = s3_unicode(rtitle.value) if rindex != OTHER else None
+                rval = s3_unicode(rtitle.value) \
+                       if rtitle.value is not None and rindex != OTHER else None
                 if represent:
                     rappend((rindex,
                              rindex in rothers,
@@ -1836,7 +1842,8 @@ class S3PivotTable(object):
                                  "items": items,
                                  "value": value})
                     if ctotals:
-                        cval = s3_unicode(ctitle.value) if cindex != OTHER else None
+                        cval = s3_unicode(ctitle.value) \
+                               if ctitle.value is not None and cindex != OTHER else None
                         if represent:
                             cappend((cindex,
                                      cindex in cothers,
@@ -1855,16 +1862,17 @@ class S3PivotTable(object):
                   "cols": ocols,
                   "cells": ocells,
                   "lookup": lookup if lookup else None,
-                  "total": self._totals(self.totals, [layer])}
+                  "total": self._totals(self.totals, [layer]),
+                  "nodata": None if not self.empty else str(T("No data available"))}
 
         # Lookup labels
         get_label = self._get_field_label
         get_mname = self._get_method_label
 
         labels = {
-                  "total": str(current.T("Total")),
+                  "total": str(T("Total")),
                   "none": str(current.messages["NONE"]),
-                  "per": str(current.T("per")),
+                  "per": str(T("per")),
                  }
 
         # Layer title
@@ -1908,6 +1916,12 @@ class S3PivotTable(object):
             labels["cols"] = ""
 
         output["labels"] = labels
+
+        # Filter-URL and axis selectors
+        prefix = resource.prefix_selector
+        output["filter"] = (str(url) if url else None,
+                            prefix(rows_dim) if rows_dim else None,
+                            prefix(cols_dim) if cols_dim else None)
 
         # @todo: add the record layer
 

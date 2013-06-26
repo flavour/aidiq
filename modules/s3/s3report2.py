@@ -80,9 +80,8 @@ class S3Report2(S3Method):
             @param attr: controller attributes for the request
         """
 
-
         output = {}
-        
+
         resource = self.resource
         get_config = resource.get_config
 
@@ -99,6 +98,12 @@ class S3Report2(S3Method):
                                  "fact",
                                  "aggregate",
                                  "totals"))
+
+        # Fall back to report options defaults
+        if not get_vars:
+            report_options = get_config("report_options")
+            if report_options and "defaults" in report_options:
+                get_vars = report_options["defaults"]
 
         # Generate the pivot table
         if get_vars:
@@ -119,7 +124,7 @@ class S3Report2(S3Method):
                 else:
                     selector, method = m.group(2), m.group(1)
                     
-            if not all([rows, cols, layer]):
+            if not layer or not any([rows, cols]):
                 pivottable = None
             else:
                 prefix = resource.prefix_selector
@@ -133,15 +138,21 @@ class S3Report2(S3Method):
         else:
             pivottable = None
 
+        # Render as JSON-serializable dict
+        if pivottable is not None:
+            pivotdata = pivottable.json(maxrows=maxrows,
+                                        maxcols=maxcols,
+                                        url=r.url(method=""))
+        else:
+            pivotdata = None
+
         if r.representation in ("html", "iframe"):
 
-            output["title"] = current.T("Report")
-
-            # Fall back to report options defaults
-            if not get_vars:
-                report_options = get_config("report_options")
-                if report_options and "defaults" in report_options:
-                    get_vars = report_options["defaults"]
+            response = current.response
+            tablename = resource.tablename
+            title = response.s3.crud_strings[tablename].get("title_report",
+                                                            current.T("Report"))
+            output["title"] = title
 
             # Filter widgets
             hide_filter = attr.get("hide_filter", False)
@@ -155,7 +166,7 @@ class S3Report2(S3Method):
                                            submit=False,
                                            _class="filter-form",
                                            _id="%s-filter-form" % widget_id)
-                fresource = current.s3db.resource(resource.tablename)
+                fresource = current.s3db.resource(tablename)
                 alias = resource.alias if r.component else None
                 filter_widgets = filter_form.fields(fresource,
                                                     r.get_vars,
@@ -170,26 +181,18 @@ class S3Report2(S3Method):
             ajaxurl = r.url(representation="json", vars=ajax_vars)
 
             output["form"] = S3ReportForm(resource) \
-                                    .html(pivottable,
-                                          maxrows=maxrows,
-                                          maxcols=maxcols,
+                                    .html(pivotdata,
                                           get_vars = get_vars,
                                           filter_widgets = filter_widgets,
                                           ajaxurl = ajaxurl,
                                           widget_id = widget_id)
 
-            # @todo: if pivottable is None: render a datatable instead?
-
             # View
-            current.response.view = self._view(r, "report2.html")
+            response.view = self._view(r, "report2.html")
 
         elif r.representation == "json":
 
-            if pivottable is not None:
-                output = json.dumps(pivottable.json(maxrows=maxrows,
-                                                    maxcols=maxcols))
-            else:
-                output = """null"""
+            output = json.dumps(pivotdata)
 
         elif r.representation == "aadata":
             r.error(501, r.ERROR.BAD_FORMAT)
@@ -222,9 +225,7 @@ class S3ReportForm(object):
 
     # -------------------------------------------------------------------------
     def html(self,
-             pivottable,
-             maxrows=None,
-             maxcols=None,
+             pivotdata,
              filter_widgets=None,
              get_vars=None,
              ajaxurl=None,
@@ -243,16 +244,13 @@ class S3ReportForm(object):
                                                      widget_id = widget_id)
 
         # Pivot data
-        if pivottable is not None:
-            pivotdata = pivottable.json(maxrows=maxrows,
-                                        maxcols=maxcols)
+        if pivotdata is not None:
             labels = pivotdata["labels"]
-            hidden["pivotdata"] = json.dumps(pivotdata)
         else:
             labels = None
-            hidden["pivotdata"] = """null"""
+        hidden["pivotdata"] = json.dumps(pivotdata)
             
-        empty = T("Please select report options.")
+        empty = T("No report specified.")
         hide = T("Hide Table")
         show = T("Show Table")
         
