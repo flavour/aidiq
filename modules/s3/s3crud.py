@@ -119,12 +119,12 @@ class S3CRUD(S3Method):
         elif method in ("datatable", "datatable_f"):
             _attr = Storage(attr)
             _attr["list_type"] = "datatable"
-            _attr["hide_filter"] = method == "datatable"
+            self.hide_filter = method == "datatable"
             output = self.select_filter(r, **_attr)
         elif method in ("datalist", "datalist_f"):
             _attr = Storage(attr)
             _attr["list_type"] = "datalist"
-            _attr["hide_filter"] = method == "datalist"
+            self.hide_filter = method == "datalist"
             output = self.select_filter(r, **_attr)
             
         elif method == "validate":
@@ -1220,7 +1220,7 @@ class S3CRUD(S3Method):
             output["title"] = title
 
             # Filter-form
-            hide_filter = attr.get("hide_filter", True)
+            hide_filter = self.hide_filter
             filter_widgets = get_config("filter_widgets", None)
             if filter_widgets and not hide_filter:
 
@@ -1861,7 +1861,7 @@ class S3CRUD(S3Method):
             r.unauthorised()
 
         # Pagination
-        vars = self.request.get_vars
+        get_vars = self.request.get_vars
         if representation == "aadata":
             start = get_vars.get("iDisplayStart", None)
             limit = get_vars.get("iDisplayLength", 0)
@@ -2595,10 +2595,11 @@ class S3CRUD(S3Method):
                 query = auth.s3_accessible_query("delete", table)
                 rows = current.db(query).select(table._id)
                 restrict = []
+                rappend = restrict.append
                 for row in rows:
                     row_id = row.get("id", None)
                     if row_id:
-                        restrict.append(str(row_id))
+                        rappend(str(row_id))
                 s3crud.action_button(labels.DELETE, delete_url,
                                      _class="delete-btn", restrict=restrict)
             else:

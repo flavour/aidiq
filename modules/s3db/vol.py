@@ -29,13 +29,22 @@
 """
 
 __all__ = ["S3VolunteerModel",
+           "S3VolunteerAwardModel",
            "S3VolunteerClusterModel",
            "vol_active",
            "vol_service_record",
            ]
 
+try:
+    # Python 2.7
+    from collections import OrderedDict
+except:
+    # Python 2.6
+    from gluon.contrib.simplejson.ordered_dict import OrderedDict
+
 from gluon import *
 from gluon.storage import Storage
+
 from ..s3 import *
 from s3layouts import S3AddResourceLink
 
@@ -85,6 +94,115 @@ class S3VolunteerModel(S3Model):
         return output
 
 # =============================================================================
+class S3VolunteerAwardModel(S3Model):
+
+    names = ["vol_award",
+             "vol_volunteer_award",
+             ]
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+        auth = current.auth
+
+        crud_strings = current.response.s3.crud_strings
+        define_table = self.define_table
+
+        ADMIN = current.session.s3.system_roles.ADMIN
+        is_admin = auth.s3_has_role(ADMIN)
+
+        root_org = auth.root_org()
+        if is_admin:
+            filter_opts = ()
+        elif root_org:
+            filter_opts = (root_org, None)
+        else:
+            filter_opts = (None,)
+
+        # ---------------------------------------------------------------------
+        # Volunteer Award
+        #
+        tablename = "vol_award"
+        table = define_table(tablename,
+                             Field("name",
+                                   label = T("Name")),
+                             # Only included in order to be able to set
+                             # realm_entity to filter appropriately
+                             self.org_organisation_id(default = root_org,
+                                                      readable = is_admin,
+                                                      writable = is_admin,
+                                                      ),
+                             s3_comments(label=T("Description"),
+                                         comment=None),
+                             *s3_meta_fields())
+
+        crud_strings[tablename] = Storage(
+            title_create = T("Add Award"),
+            title_display = T("Award"),
+            title_list = T("Award"),
+            title_update = T("Edit Award"),
+            title_search = T("Search Awards"),
+            title_upload = T("Import Awards"),
+            subtitle_create = T("Add New Award"),
+            label_list_button = T("List Awards"),
+            label_create_button = T("Add Award"),
+            label_delete_button = T("Delete Award"),
+            msg_record_created = T("Award added"),
+            msg_record_modified = T("Award updated"),
+            msg_record_deleted = T("Award deleted"),
+            msg_list_empty = T("No Awards found"))
+
+        comment = S3AddResourceLink(c = "vol",
+                                    f = "award",
+                                    label = crud_strings[tablename].label_create_button,
+                                    title = T("Award"),
+                                    )
+
+        represent = S3Represent(lookup=tablename)
+        award_id = S3ReusableField("award_id", table,
+                                   label = T("Award"),
+                                   requires = IS_NULL_OR(
+                                                IS_ONE_OF(db,
+                                                          "vol_award.id",
+                                                          represent,
+                                                          filterby="organisation_id",
+                                                          filter_opts=filter_opts)),
+                                   represent = represent, 
+                                   comment = comment
+                                   )
+
+        # ---------------------------------------------------------------------
+        # Volunteers <> Awards link table
+        #
+        tablename = "vol_volunteer_award"
+        table = define_table(tablename,
+                             self.pr_person_id(empty=False),
+                             award_id(),
+                             s3_date(),
+                             s3_comments(),
+                             *s3_meta_fields())
+
+        crud_strings[tablename] = Storage(
+            title_create = T("Add Award"),
+            title_display = T("Award"),
+            title_list = T("Award"),
+            title_update = T("Edit Award"),
+            title_search = T("Search Awards"),
+            title_upload = T("Import Awards"),
+            subtitle_create = T("Add New Award"),
+            label_list_button = T("List Awards"),
+            label_create_button = T("Add Award"),
+            label_delete_button = T("Delete Award"),
+            msg_record_created = T("Award added"),
+            msg_record_modified = T("Award updated"),
+            msg_record_deleted = T("Award deleted"),
+            msg_list_empty = T("No Awards found"))
+
+        # Pass names back to global scope (s3.*)
+        return Storage()
+
+# =============================================================================
 class S3VolunteerClusterModel(S3Model):
 
     names = ["vol_cluster_type",
@@ -95,8 +213,8 @@ class S3VolunteerClusterModel(S3Model):
 
     def model(self):
 
-        db = current.db
         T = current.T
+        db = current.db
 
         crud_strings = current.response.s3.crud_strings
         define_table = self.define_table
@@ -494,24 +612,23 @@ def vol_service_record(r, **attr):
         hours = {}
         ttable = s3db.hrm_training
         ctable = s3db.hrm_course
-        query = (ttable.person_id == person_id) & \
-                (ttable.deleted == False)
+        query = (ttable.deleted == False) & \
+                (ttable.person_id == person_id) & \
+                (ttable.course_id == ctable.id)
         rows = db(query).select(ctable.name,
                                 ttable.date,
                                 ttable.hours,
-                                left=ctable.on(ttable.course_id == ctable.id),
                                 orderby = ~ttable.date)
-        NONE = current.messages["NONE"]
         date_represent = ttable.date.represent
         for row in rows:
             _row = row["hrm_training"]
             _date = _row.date
-            hours[_date.date()] = dict(course = row["hrm_course"].name or NONE,
+            hours[_date.date()] = dict(course = row["hrm_course"].name,
                                        date = date_represent(_date),
                                        hours = _row.hours or "",
                                        )
-        courses = TABLE(TR(TH(T("Training")),
-                           TH(T("Date")),
+        courses = TABLE(TR(TH(T("Date")),
+                           TH(T("Training")),
                            TH(T("Hours"))))
         _hours = {}
         for key in sorted(hours.iterkeys()):
@@ -520,8 +637,8 @@ def vol_service_record(r, **attr):
         for hour in hours:
             _hour = hours[hour]
             __hours = _hour["hours"] or 0
-            courses.append(TR(_hour["course"],
-                              _hour["date"],
+            courses.append(TR(_hour["date"],
+                              _hour["course"],
                               str(__hours)
                               ))
             total += __hours
@@ -529,51 +646,67 @@ def vol_service_record(r, **attr):
             courses.append(TR(TD(""), TD("Total"), TD("%d" % total)))
 
         # Programme Hours
-        hours = {}
+        # - grouped by Programme/Role
+        programmes = OrderedDict()
         hrstable = s3db.hrm_programme_hours
         ptable = db.hrm_programme
-        query = (hrstable.person_id == person_id) & \
-                (hrstable.deleted == False) & \
-                (hrstable.training == False)
+        jtable = db.hrm_job_title
+        query = (hrstable.deleted == False) & \
+                (hrstable.training == False) & \
+                (hrstable.person_id == person_id) & \
+                (hrstable.programme_id == ptable.id)
+        left = jtable.on(hrstable.job_title_id == jtable.id)
         rows = db(query).select(hrstable.date,
                                 hrstable.hours,
+                                jtable.name,
                                 ptable.name,
                                 ptable.name_long,
-                                left=ptable.on(hrstable.programme_id == ptable.id),
+                                left=left,
                                 orderby = ~hrstable.date)
-        date_represent = hrstable.date.represent
+        NONE = current.messages["NONE"]
         for row in rows:
             _row = row["hrm_programme_hours"]
             _date = _row.date
+            hours = _row.hours or 0
+            role = row["hrm_job_title"]["name"] or NONE
             prow = row["hrm_programme"]
-            if prow:
-                if prow.name_long:
-                    programme = prow.name_long
-                else:
-                    programme = prow.name
+            if prow.name_long:
+                programme = prow.name_long
             else:
-                programme = ""
-            hours[_date] = dict(programme = programme,
-                                date = date_represent(_date),
-                                hours = _row.hours or "",
-                                )
-        programme = TABLE(TR(TH(T("Work on Programme")),
-                             TH(T("Date")),
+                programme = prow.name
+            if programme not in programmes:
+                programmes[programme] = OrderedDict()
+            p = programmes[programme]
+            if role in p:
+                p[role]["end_date"] = _date
+                p[role]["hours"] += hours
+            else:
+                p[role] = dict(start_date = _date,
+                               end_date = _date,
+                               hours = hours,
+                               )
+        date_represent = hrstable.date.represent
+        programme = TABLE(TR(TH(T("Start Date")),
+                             TH(T("End Date")),
+                             TH(T("Work on Programme")),
+                             TH(T("Role")),
                              TH(T("Hours"))))
-        _hours = {}
-        for key in sorted(hours.iterkeys()):
-            _hours[key] = hours[key]
         total = 0
-        for hour in hours:
-            _hour = hours[hour]
-            __hours = _hour["hours"] or 0
-            programme.append(TR(_hour["programme"],
-                                _hour["date"],
-                                str(__hours)
-                                ))
-            total += __hours
+        for p in programmes:
+            _p = programmes[p]
+            for r in _p:
+                role = _p[r]
+                hours = role["hours"]
+                total += hours
+                programme.append(TR(date_represent(role["start_date"]),
+                                    date_represent(role["end_date"]),
+                                    p,
+                                    r,
+                                    str(hours)
+                                    ))
+            
         if total > 0:
-            programme.append(TR(TD(""), TD("Total"), TD("%d" % total)))
+            programme.append(TR("", "", "", TD("Total"), TD("%d" % total)))
 
         # Space for the printed document to be signed
         datestamp = S3DateTime.date_represent(current.request.now)

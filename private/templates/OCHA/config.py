@@ -1,10 +1,17 @@
 # -*- coding: utf-8 -*-
 
+try:
+    # Python 2.7
+    from collections import OrderedDict
+except:
+    # Python 2.6
+    from gluon.contrib.simplejson.ordered_dict import OrderedDict
+
 from gluon import current
 from gluon.storage import Storage
-from gluon.contrib.simplejson.ordered_dict import OrderedDict
-settings = current.deployment_settings
+
 T = current.T
+settings = current.deployment_settings
 
 """
     Template settings for OCHA: UN Office for the Coordination of Humanitarian Affairs
@@ -91,8 +98,8 @@ settings.ui.cluster = True
 settings.org.summary = True
 
 # HRM
-# Uncomment to allow HRs to have multiple Job Roles in addition to their Job Title
-settings.hrm.job_roles = True
+# Uncomment to allow HRs to have multiple Job Titles
+settings.hrm.multiple_job_titles = True
 # Uncomment to disable Staff experience
 settings.hrm.staff_experience = False
 # Uncomment to disable Volunteer experience

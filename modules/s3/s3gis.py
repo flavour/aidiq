@@ -65,6 +65,13 @@ except ImportError:
     except:
         import gluon.contrib.simplejson as json # fallback to pure-Python module
 
+try:
+    # Python 2.7
+    from collections import OrderedDict
+except:
+    # Python 2.6
+    from gluon.contrib.simplejson.ordered_dict import OrderedDict
+
 from gluon import *
 # Here are dependencies listed for reference:
 #from gluon import current
@@ -72,7 +79,6 @@ from gluon import *
 #from gluon.http import HTTP, redirect
 from gluon.dal import Rows
 from gluon.storage import Storage, Messages
-from gluon.contrib.simplejson.ordered_dict import OrderedDict
 
 from s3fields import s3_all_meta_field_names
 from s3rest import S3Method
@@ -5375,7 +5381,8 @@ class MAP(DIV):
         # Map (Embedded not Window)
         # Needs to be an ID which means we can't have multiple per page :/
         # - Alternatives are also fragile. See s3.gis.js
-        components.append(DIV(_id="map_panel"))
+        components.append(DIV(DIV(_class="map_loader"),
+                              _id="map_panel"))
 
         self.components = components
         for c in components:
@@ -7503,9 +7510,8 @@ class S3Map(S3Method):
             output["title"] = title
 
             # Filter widgets
-            hide_filter = attr.get("hide_filter", False)
             filter_widgets = get_config("filter_widgets", None)
-            if filter_widgets and not hide_filter:
+            if filter_widgets and not self.hide_filter:
                 advanced = False
                 for widget in filter_widgets:
                     if "hidden" in widget.opts and widget.opts.hidden:
