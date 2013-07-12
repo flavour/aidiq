@@ -570,7 +570,12 @@ class S3StatsDemographicModel(S3Model):
         (last_period, year_end) = aggregated_period(None)
 
         # Test to see which date format we have based on how we were called
-        if isinstance(records[0]["stats_demographic_data"]["date"], (datetime.date, datetime.datetime)):
+        if isinstance(records, basestring):
+            from_json = True
+            from dateutil.parser import parse
+            records = json.loads(records)
+        elif isinstance(records[0]["stats_demographic_data"]["date"],
+                        (datetime.date, datetime.datetime)):
             from_json = False
         else:
             from_json = True

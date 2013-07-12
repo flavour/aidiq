@@ -225,6 +225,7 @@ Thank you
         else:
             shelter = T("Shelter")
         self.org_site_types = Storage(transport_airport = T("Airport"),
+                                      msg_basestation = T("Cell Tower"),
                                       cr_shelter = shelter,
                                       org_facility = T("Facility"),
                                       #org_facility = T("Site"),
@@ -6180,7 +6181,7 @@ class S3RoleManager(S3Method):
             add_btn = A(T("Add Role"), _href=URL(c="admin", f="role",
                                                  args=["create"]),
                                                  _class="action-btn")
-            output.update(showadd_btn=add_btn)
+            output.update(add_btn=add_btn)
 
             response.view = "admin/role_list.html"
             s3 = response.s3
@@ -6911,7 +6912,7 @@ class S3RoleManager(S3Method):
                               help_txt=help_txt,
                               addform=addform,
                               list_btn=list_btn,
-                              showadd_btn=add_btn)
+                              add_btn=add_btn)
 
                 current.response.view = "admin/membership_manage.html"
             else:
@@ -7175,7 +7176,7 @@ class S3RoleManager(S3Method):
                               addform=addform,
                               list_btn=list_btn,
                               edit_btn=edit_btn,
-                              showadd_btn=add_btn)
+                              add_btn=add_btn)
                 current.response.view = "admin/membership_manage.html"
             else:
                 r.error(501, current.manager.BAD_FORMAT)
