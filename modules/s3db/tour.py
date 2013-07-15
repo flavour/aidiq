@@ -29,7 +29,8 @@
 
 __all__ = ["S3GuidedTourModel",
            "tour_rheader",
-           "tour_builder"]
+           "tour_builder",
+           ]
 
 from gluon import *
 from gluon.storage import Storage
@@ -44,7 +45,7 @@ class S3GuidedTourModel(S3Model):
     names = ["tour_config",
              "tour_details",
              "tour_user",
-            ]
+             ]
 
     def model(self):
 
@@ -68,7 +69,10 @@ class S3GuidedTourModel(S3Model):
                                   Field("name",
                                         represent=lambda v: v or NONE,
                                         label=T("Display name")),
-                                  Field("code", notnull=True, unique=True,
+                                  Field("code",
+                                        length=255,
+                                        notnull=True,
+                                        unique=True,
                                         represent=lambda v: v or NONE,
                                         label=T("Unique code")),
                                   Field("controller",
@@ -364,10 +368,10 @@ def tour_builder(output):
                 pre_step_data.append([cnt, dt_id, row_num])
             if row.redirect:
                 redirect_row = row.redirect.split(",")
-                if len(redirect_row) == 3:
+                if len(redirect_row) >= 3:
                     url = URL(c=redirect_row[0],
                               f=redirect_row[1],
-                              args=redirect_row[2],
+                              args=redirect_row[2:],
                               vars={"tour_running":True,
                                     "tour":tour_id}
                               )
@@ -454,12 +458,12 @@ def tour_builder(output):
     output["joyride_div"] = joyride_div
     if s3.debug:
         appname = request.application
-        s3.scripts.append("/%s/static/scripts/jquery.joyride-2.0.3.js" % appname)
+        s3.scripts.append("/%s/static/scripts/jquery.joyride.js" % appname)
         s3.scripts.append("/%s/static/scripts/S3/s3.guidedtour.js" % appname)
         s3.stylesheets.append("plugins/guidedtour.min.css")
     else:
         s3.scripts.append("/%s/static/scripts/S3/s3.guidedtour.min.js" % request.application)
-        s3.stylesheets.append("plugins/joyride-2.0.3.css")
+        s3.stylesheets.append("plugins/joyride.css")
     return output
 
 # END =========================================================================
