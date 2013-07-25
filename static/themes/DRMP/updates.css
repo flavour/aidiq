@@ -27,6 +27,17 @@ h4.latest-updates {
 	box-shadow: 0 1px 1px #aaaaa7;
 }
 
+h4.latest-disasters{
+    margin-right: -6px;
+}
+
+@media screen and (max-width: 767px){
+    h4.latest-disasters {
+        display: inline-block;
+
+    }
+}
+
 #event_datalist a:hover  {
 	text-decoration: none;
 }
@@ -227,19 +238,6 @@ button.ui-multiselect.ui-widget.ui-state-default.ui-corner-all {
     width: 15% !important;
 }
 
-label.ui-corner-all {
-    margin-left: 5px;
-    margin-bottom: 0;
-    margin-top: 0;
-}
-
-label.ui-corner-all span {
-    position: relative;
-    top: 5px;
-    left: 10px;
-    font-size: 12px;
-}
-
 label#post-auth_user_organisation_id-options-filter__label,
 label#post-cms_post_series_id-options-filter__label,
 label#post-cms_post_created_on-date-filter__label,
@@ -263,9 +261,6 @@ input.btn.btn-primary.filter-submit.filter-ajax {
 	margin-left: -1px;
 }
 
-.filter-controls {
-    clear: both;
-}
 
 /* Large desktop */
 @media (min-width: 1200px) { 

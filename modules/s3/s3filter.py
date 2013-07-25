@@ -52,7 +52,7 @@ from gluon.storage import Storage
 from gluon.tools import callback
 
 from s3rest import S3Method
-from s3resource import S3ResourceField, S3URLQuery
+from s3resource import S3FieldSelector, S3ResourceField, S3URLQuery
 from s3utils import s3_unicode
 from s3validators import *
 from s3widgets import S3DateWidget, S3DateTimeWidget, S3MultiSelectWidget, S3OrganisationHierarchyWidget, S3GroupedOptionsWidget, s3_grouped_checkboxes_widget
@@ -132,7 +132,7 @@ class S3FilterWidget(object):
         """
             Constructor to configure the widget
 
-            @param selector: the selector(s) for the field(s) to filter by
+            @param field: the selector(s) for the field(s) to filter by
             @param attr: configuration options for this widget
         """
 
@@ -587,6 +587,26 @@ class S3LocationFilter(S3FilterWidget):
     operator = "belongs"
 
     # -------------------------------------------------------------------------
+    def __init__(self, field=None, **attr):
+        """
+            Constructor to configure the widget
+
+            @param field: the selector(s) for the field(s) to filter by
+            @param attr: configuration options for this widget
+        """
+
+        # Translate options using gis_location_name?
+        settings = current.deployment_settings
+        translate = settings.get_L10n_translate_gis_location()
+        if translate:
+            language = current.session.s3.language
+            if language == settings.get_L10n_default_language():
+                translate = False
+        self.translate = translate
+
+        super(S3LocationFilter, self).__init__(field=field, **attr)
+
+    # -------------------------------------------------------------------------
     def widget(self, resource, values):
         """
             Render this widget as HTML helper object(s)
@@ -630,7 +650,6 @@ class S3LocationFilter(S3FilterWidget):
                 # Dummy field
                 name = "%s-%s" % (base_name, level)
                 options = levels[level]["options"]
-                options.sort()
                 dummy_field = Storage(name=name,
                                       type=ftype,
                                       requires=IS_IN_SET(options,
@@ -648,7 +667,6 @@ class S3LocationFilter(S3FilterWidget):
                 w_append(widget)
 
         else:
-
             # Grouped Checkboxes
             if "s3-checkboxes-widget" not in _class:
                 attr["_class"] = "%s s3-checkboxes-widget" % _class
@@ -659,7 +677,6 @@ class S3LocationFilter(S3FilterWidget):
                 # Dummy field
                 name = "%s-%s" % (base_name, level)
                 options = levels[level]["options"]
-                options.sort()
                 dummy_field = Storage(name=name,
                                       type=ftype,
                                       requires=IS_IN_SET(options,
@@ -683,7 +700,7 @@ class S3LocationFilter(S3FilterWidget):
     # -------------------------------------------------------------------------
     def data_element(self, variable):
         """
-            Prototype method to construct the hidden element that holds the
+            Construct the hidden element that holds the
             URL query term corresponding to an input element in the widget.
 
             @param variable: the URL query variable
@@ -706,7 +723,7 @@ class S3LocationFilter(S3FilterWidget):
     def ajax_options(self, resource):
 
         attr = self._attr(resource)
-        ftype, levels, noopt = self._options(resource)
+        ftype, levels, noopt = self._options(resource, inject_hierarchy=False)
 
         opts = {}
         base_id = attr["_id"]
@@ -715,12 +732,11 @@ class S3LocationFilter(S3FilterWidget):
                 opts["%s-%s" % (base_id, level)] = str(noopt)
             else:
                 options = levels[level]["options"]
-                options.sort()
                 opts["%s-%s" % (base_id, level)] = options
         return opts
 
     # -------------------------------------------------------------------------
-    def _options(self, resource):
+    def _options(self, resource, inject_hierarchy=True):
 
         T = current.T
 
@@ -728,6 +744,7 @@ class S3LocationFilter(S3FilterWidget):
 
         attr = self.attr
         opts = self.opts
+        translate = self.translate
 
         # Which levels should we display?
         # Lookup the appropriate labels from the GIS configuration
@@ -754,10 +771,12 @@ class S3LocationFilter(S3FilterWidget):
         rfield = S3ResourceField(resource, field_name)
         field = rfield.field
         if not field or rfield.ftype[:len(ftype)] != ftype:
-            # must be a real reference to gis_location
+            # Must be a real reference to gis_location
             return default
         fields = [field_name] + ["%s$%s" % (field_name, l) for l in levels]
-
+        if translate:
+            fields += ["%s$path" % field_name]
+    
         # Find the options
         rows = resource.select(fields=fields,
                                limit=None,
@@ -767,7 +786,7 @@ class S3LocationFilter(S3FilterWidget):
         if not rows:
             return default
 
-        # Intialise Options Storage & Hierarchy
+        # Initialise Options Storage & Hierarchy
         hierarchy = {}
         first = True
         for level in levels:
@@ -775,70 +794,118 @@ class S3LocationFilter(S3FilterWidget):
                 hierarchy[level] = {}
                 _level = level
                 first = False
-            levels[level] = {"label" : levels[level],
-                             "options" : [],
+            # @ToDo: Translate Labels
+            levels[level] = {"label": levels[level],
+                             "options": {} if translate else [],
                              }
 
-        # Store the options & hierarchy
+        # Build the options & hierarchy
+        if translate:
+            # Get IDs via Path to lookup name_l10n
+            ids = []
+            iappend = ids.append
+            for row in rows:
+                if "gis_location" in row:
+                    path = row.gis_location.path.split("/")
+                    for id in path:
+                        if id not in ids:
+                            iappend(id)
+            # Build lookup table for name_l10n
+            name_l10n = {}
+            s3db = current.s3db
+            table = s3db.gis_location
+            ntable = s3db.gis_location_name
+            query = (table.id.belongs(ids)) & \
+                    (ntable.deleted == False) & \
+                    (ntable.location_id == table.id) & \
+                    (ntable.language == current.session.s3.language)
+            nrows = current.db(query).select(table.name,
+                                             ntable.name_l10n,
+                                             limitby=(0, len(ids)),
+                                             )
+            for row in nrows:
+                name_l10n[row["gis_location.name"]] = row["gis_location_name.name_l10n"]
+
+        # Populate the Options and the Hierarchy
         for row in rows:
             if "gis_location" in row:
                 _row = row.gis_location
-                parent = None
-                grandparent = None
-                greatgrandparent = None
-                greatgreatgrandparent = None
-                greatgreatgreatgrandparent = None
-                i = 0
+                if inject_hierarchy:
+                    parent = None
+                    grandparent = None
+                    greatgrandparent = None
+                    greatgreatgrandparent = None
+                    greatgreatgreatgrandparent = None
+                    i = 0
                 for level in levels:
                     v = _row[level]
                     if v:
                         o = levels[level]["options"]
                         if v not in o:
-                            o.append(v)
-                    if i == 0:
-                        h = hierarchy[_level]
-                        if v not in h:
-                            h[v] = {}
-                        parent = v
-                    elif i == 1:
-                        h = hierarchy[_level][parent]
-                        if v not in h:
-                            h[v] = {}
-                        grandparent = parent
-                        parent = v
-                    elif i == 2:
-                        h = hierarchy[_level][grandparent][parent]
-                        if v not in h:
-                            h[v] = {}
-                        greatgrandparent = grandparent
-                        grandparent = parent
-                        parent = v
-                    elif i == 3:
-                        h = hierarchy[_level][greatgrandparent][grandparent][parent]
-                        if v not in h:
-                            h[v] = {}
-                        greatgreatgrandparent = greatgrandparent
-                        greatgrandparent = grandparent
-                        grandparent = parent
-                        parent = v
-                    elif i == 4:
-                        h = hierarchy[_level][greatgreatgrandparent][greatgrandparent][grandparent][parent]
-                        if v not in h:
-                            h[v] = {}
-                        greatgreatgreatgrandparent = greatgreatgrandparent
-                        greatgreatgrandparent = greatgrandparent
-                        greatgrandparent = grandparent
-                        grandparent = parent
-                        parent = v
-                    elif i == 5:
-                        h = hierarchy[_level][greatgreatgreatgrandparent][greatgreatgrandparent][greatgrandparent][grandparent][parent]
-                        if v not in h:
-                            h[v] = {}
-                    i += 1
+                            if translate:
+                                o[v] = name_l10n.get(v, v)
+                            else:
+                                o.append(v)
+                    if inject_hierarchy:
+                        if i == 0:
+                            h = hierarchy[_level]
+                            if v not in h:
+                                h[v] = {}
+                            parent = v
+                        elif i == 1:
+                            h = hierarchy[_level][parent]
+                            if v not in h:
+                                h[v] = {}
+                            grandparent = parent
+                            parent = v
+                        elif i == 2:
+                            h = hierarchy[_level][grandparent][parent]
+                            if v not in h:
+                                h[v] = {}
+                            greatgrandparent = grandparent
+                            grandparent = parent
+                            parent = v
+                        elif i == 3:
+                            h = hierarchy[_level][greatgrandparent][grandparent][parent]
+                            if v not in h:
+                                h[v] = {}
+                            greatgreatgrandparent = greatgrandparent
+                            greatgrandparent = grandparent
+                            grandparent = parent
+                            parent = v
+                        elif i == 4:
+                            h = hierarchy[_level][greatgreatgrandparent][greatgrandparent][grandparent][parent]
+                            if v not in h:
+                                h[v] = {}
+                            greatgreatgreatgrandparent = greatgreatgrandparent
+                            greatgreatgrandparent = greatgrandparent
+                            greatgrandparent = grandparent
+                            grandparent = parent
+                            parent = v
+                        elif i == 5:
+                            h = hierarchy[_level][greatgreatgreatgrandparent][greatgreatgrandparent][greatgrandparent][grandparent][parent]
+                            if v not in h:
+                                h[v] = {}
+                        i += 1
+        if translate:
+            # Sort the options dicts
+            for level in levels:
+                options = levels[level]["options"]
+                options = OrderedDict(sorted(options.iteritems()))
+        else:
+            # Sort the options lists
+            for level in levels:
+                levels[level]["options"].sort()
 
-        # Inject the Location Hierarchy
-        hierarchy = "S3.location_filter_hierarchy=%s" % json.dumps(hierarchy)
-        current.response.s3.js_global.append(hierarchy)
+        if inject_hierarchy:
+            # Inject the Location Hierarchy
+            hierarchy = "S3.location_filter_hierarchy=%s" % json.dumps(hierarchy)
+            js_global = current.response.s3.js_global
+            js_global.append(hierarchy)
+            if translate:
+                # Inject lookup list
+                name_l10n = "S3.location_name_l10n=%s" % json.dumps(name_l10n)
+                js_global.append(name_l10n)
 
         return (ftype, levels, None)
 
@@ -1231,20 +1298,37 @@ class S3FilterForm(object):
             @param alias: the resource alias to use in widgets
         """
 
+        attr = self.attr
+        form_id = attr.get("_id")
+        if not form_id:
+            form_id = "filter-form"
+        attr["_id"] = form_id
+
         opts = self.opts
         formstyle = opts.get("formstyle", None)
         if not formstyle:
             formstyle = self._formstyle
 
-        rows = self._render_widgets(resource,
-                                    get_vars=get_vars or {},
-                                    alias=alias,
-                                    formstyle=formstyle)
+        # Filter Manager (load/apply/save filters)
+        if opts.get("filter_manager", True): #False):
+            filter_manager = self._render_filters(resource, form_id)
+            if filter_manager:
+                rows = [formstyle(None, "", filter_manager, "")]
+            else:
+                rows = []
 
+        # Filter widgets
+        rows.extend(self._render_widgets(resource,
+                                         get_vars=get_vars or {},
+                                         alias=alias,
+                                         formstyle=formstyle))
+
+        # Other filter form controls
         controls = self._render_controls()
         if controls:
             rows.append(formstyle(None, "", controls, ""))
 
+        # Submit button
         submit = opts.get("submit", False)
         if submit:
             _class = "filter-submit"
@@ -1261,7 +1345,7 @@ class S3FilterForm(object):
             # Where to request filtered data from:
             submit_url = opts.get("url", URL(vars={}))
             # Where to request updated options from:
-            ajax_url = opts.get("ajaxurl", URL(args=["filter.json"], vars={}))
+            ajax_url = opts.get("ajaxurl", URL(args=["filter.options"], vars={}))
             submit = TAG[""](
                         INPUT(_type="button",
                               _value=label,
@@ -1288,9 +1372,9 @@ class S3FilterForm(object):
             n = len(elements)
             if n > 0 and elements[0].tag == "tr" or \
                n > 1 and elements[0].tag == "" and elements[1].tag == "tr":
-                form = FORM(TABLE(TBODY(rows)), **self.attr)
+                form = FORM(TABLE(TBODY(rows)), **attr)
             else:
-                form = FORM(DIV(rows), **self.attr)
+                form = FORM(DIV(rows), **attr)
             form.add_class("filter-form")
 
         # Put a copy of formstyle into the form for access by the view
@@ -1369,7 +1453,7 @@ class S3FilterForm(object):
         if clear:
             _class = "filter-clear"
             if clear is True:
-                label = current.T("Reset all filters")
+                label = current.T("Reset filter")
             elif isinstance(clear, (list, tuple)):
                 label = clear[0]
                 _class = "%s %s" % (clear[1], _class)
@@ -1429,6 +1513,72 @@ class S3FilterForm(object):
             self.opts["advanced"] = resource.get_config("filter_advanced", True)
         return rows
             
+    # -------------------------------------------------------------------------
+    def _render_filters(self, resource, form_id):
+        """
+            Render a filter manager widget
+
+            @param resource: the resource
+            @return: the widget
+        """
+
+        SELECT_FILTER = current.T("Choose filter...")
+
+        ajaxurl = self.opts.get("saveurl", URL(args=["filter.json"], vars={}))
+        
+        # Current user
+        auth = current.auth
+        pe_id = auth.user.pe_id if auth.s3_logged_in() else None
+        if not pe_id:
+            return None
+    
+        table = current.s3db.pr_filter
+        query = (table.deleted != True) & \
+                (table.pe_id == pe_id) & \
+                (table.resource == resource.tablename)
+
+        rows = current.db(query).select(table._id,
+                                        table.title,
+                                        table.query,
+                                        orderby=table.title)
+                                        
+        options = [OPTION(SELECT_FILTER, _value="", _disabled="disabled")]
+        add_option = options.append
+        filters = {}
+        for row in rows:
+            filter_id = row[table._id]
+            add_option(OPTION(row.title, _value=filter_id))
+            query = row.query
+            if query:
+                query = json.loads(query)
+            filters[filter_id] = query
+        widget_id = "%s-fm" % form_id
+        widget = SELECT(options,
+                        _id=widget_id,
+                        _class="filter-manager-widget")
+
+        T = current.T
+        script = """
+$("#%(widget_id)s").filtermanager({
+  filters: %(filters)s,
+  ajaxURL: "%(ajaxurl)s",
+  saveTooltip: "%(save_tooltip)s",
+  loadTooltip: "%(load_tooltip)s",
+  createTooltip: "%(create_tooltip)s",
+  titleHint: "%(title_hint)s"
+})""" % dict(
+            widget_id = widget_id,
+            filters = json.dumps(filters),
+            ajaxurl = ajaxurl,
+            save_tooltip = T("Update filter"),
+            load_tooltip = T("Load filter"),
+            create_tooltip = T("Create a new filter from current options"),
+            title_hint = T("Enter a title..."),
+        )
+        current.response.s3.jquery_ready.append(script)
+
+        return widget
+
     # -------------------------------------------------------------------------
     def json(self, resource, get_vars=None):
         """
@@ -1562,7 +1712,7 @@ class S3Filter(S3Method):
         else:
             pe_id = None
         if not pe_id:
-            r.unauthorized()
+            r.unauthorised()
 
         # Read the source
         source = r.body

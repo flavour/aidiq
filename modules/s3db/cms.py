@@ -61,6 +61,7 @@ class S3ContentModel(S3Model):
         configure = self.configure
         crud_strings = current.response.s3.crud_strings
         define_table = self.define_table
+        settings = current.deployment_settings
 
         # ---------------------------------------------------------------------
         # Series
@@ -114,7 +115,8 @@ class S3ContentModel(S3Model):
             msg_list_empty = T("No series currently defined"))
 
         # Reusable field
-        represent = S3Represent(lookup=tablename)
+        translate = settings.get_L10n_translate_cms_series()
+        represent = S3Represent(lookup=tablename, translate=translate)
         series_id = S3ReusableField("series_id", table,
                                     readable = False,
                                     writable = False,
@@ -362,9 +364,8 @@ class S3ContentModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return Storage(
-                cms_post_id = post_id,
-            )
+        return Storage(cms_post_id = post_id,
+                       )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -610,6 +611,7 @@ class S3CMS(S3Method):
         if _item:
             if ADMIN:
                 item = DIV(XML(_item.body),
+                           # @ToDo: Replace with CSS
                            BR(),
                            A(current.T("Edit"),
                              _href=URL(c="cms", f="post",
@@ -617,7 +619,7 @@ class S3CMS(S3Method):
                                        vars={"module": module,
                                              "resource": resource
                                              }),
-                             _class="action-btn"))
+                             _class="action-btn cms-edit"))
             else:
                 item = XML(_item.body)
         elif ADMIN:

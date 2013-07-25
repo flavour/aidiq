@@ -155,10 +155,16 @@ table.embeddedComponent tr.label-row td {
 }
 
 /* Summary Page */
+#summary-tabs {
+    /* Hide while loading */
+    display: none;
+}
+
 #summary-filter-form {
     margin: 0;
 }
 #summary-sections #map{
+    margin-top: 0;
     padding: 0;
 }
 
@@ -1063,6 +1069,14 @@ ul.x-tree-root-ct {
     list-style: none outside none;
 }
 
+/* LocationSelector 2 */
+.geocode_success {
+    color: #0a0;
+}
+.geocode_fail {
+    color: #f00;
+}
+
 /* Search Form */
 .search_select_letter_label,
 .s3-grouped-checkboxes-widget-label,
@@ -1259,4 +1273,35 @@ select#sub_defaulttime_defaulttime_person_id_edit_none {
 }
 input#sub_defaulttime_defaulttime_hours_edit_none {
     width: 60px;
+}
+
+/* Filter Manager */
+.filter-manager-widget {
+    float: left;
+}
+.fm-load,
+.fm-save,
+.fm-create,
+.fm-accept,
+.fm-cancel {
+    float: left;
+    margin-top: 7px;
+    margin-left: 5px;
+    width: 16px;
+    height: 16px;
+}
+.fm-load {
+    background: url(../../img/filter/load.png) no-repeat;
+}
+.fm-save {
+    background: url(../../img/filter/save.png) no-repeat;
+}
+.fm-create {
+    background: url(../../img/filter/create.png) no-repeat;
+}
+.fm-accept {
+    background: url(../../img/crud/apply.png) no-repeat;
+}
+.fm-cancel {
+    background: url(../../img/crud/cancel.png) no-repeat;
 }

@@ -138,6 +138,10 @@ settings.ui.summary = [{"common": True,
 # View Settings
 
 current.response.menu = [
+                {"name": T("Locations"),
+                 "url": URL(c="org", f="facility"),
+                 "icon": "icon-home"
+                 },
                 {"name": T("Residents"),
                  "url": URL(c="stats", f="resident"),
                  "icon": "icon-group"
@@ -154,17 +158,13 @@ current.response.menu = [
                  "url": URL(c="project", f="activity"),
                  "icon": "icon-star-empty"
                  },
-                {"name": T("Organizations"),
-                 "url": URL(c="org", f="organisation"),
-                 "icon": "icon-sitemap"
-                 },
+                #{"name": T("Organizations"),
+                # "url": URL(c="org", f="organisation"),
+                # "icon": "icon-sitemap"
+                # },
                 {"name": T("Trained People"),
                  "url": URL(c="stats", f="trained"),
                  "icon": "icon-user"
-                 },
-                {"name": T("Locations"),
-                 "url": URL(c="org", f="facility"),
-                 "icon": "icon-home"
                  },
                 {"name": T("Evacuation Routes"),
                  "url": URL(c="vulnerability", f="evac_route"),
@@ -203,8 +203,10 @@ def customize_project_activity(**attr):
     tablename = "project_activity"
     table = s3db[tablename]
     table.location_id.label = "" # Gets replaced by widget
-    table.location_id.requires = IS_LOCATION_SELECTOR2(levels=["L1","L2","L3"]) # @ToDo: handle no L2s
-    table.location_id.widget = S3LocationSelectorWidget2(levels=["L1","L2","L3"],
+    table.location_id.requires = IS_LOCATION_SELECTOR2(levels=["L3"])
+    table.location_id.widget = S3LocationSelectorWidget2(levels=["L3"],
+                                                         hide_lx=False,
+                                                         reverse_lx=True,
                                                          show_address=True,
                                                          show_postcode=True,
                                                          )
@@ -249,15 +251,16 @@ def customize_event_incident_report(**attr):
     tablename = "event_incident_report"
     table = current.s3db[tablename]
     table.location_id.label = "" # Gets replaced by widget
-    table.location_id.requires = IS_LOCATION_SELECTOR2(levels=["L1", "L2", "L3"]) # @ToDo: handle no L2s
-    table.location_id.widget = S3LocationSelectorWidget2(levels=["L1", "L2", "L3"],
+    table.location_id.requires = IS_LOCATION_SELECTOR2(levels=["L3"])
+    table.location_id.widget = S3LocationSelectorWidget2(levels=["L3"],
                                                          hide_lx=False,
                                                          reverse_lx=True,
                                                          show_address=True,
                                                          show_postcode=True,
                                                          )
     table.person_id.comment = None
-    table.person_id.widget = S3AddPersonWidget2(controller="pr")
+    #table.person_id.widget = S3AddPersonWidget2(controller="pr")
+    table.person_id.widget = None
     
     current.response.s3.crud_strings[tablename] = Storage(
                 title_create = T("Add Incident"),
@@ -305,12 +308,6 @@ def customize_org_organisation(**attr):
         "name",
         "logo",
         S3SQLInlineComponentCheckbox(
-            "group",
-            label = T("Coalition"),
-            field = "group_id",
-            cols = 3,
-        ),
-        S3SQLInlineComponentCheckbox(
             "sector",
             label = T("Sectors"),
             field = "sector_id",
@@ -338,7 +335,7 @@ def customize_org_organisation(**attr):
             label = T("Organization's Locations"),
             #comment = "Bob",
             fields = ["name", 
-                      "facility_type_id",
+                      "site_facility_type.facility_type_id",
                       "location_id",
                       ],
         ),
@@ -354,12 +351,7 @@ def customize_org_organisation(**attr):
         "comments",
     ) 
 
-    filter_widgets = [S3OptionsFilter("group_membership.group_id",
-                                      label=T("Coalition"),
-                                      represent="%(name)s",
-                                      widget="multiselect",
-                                      ),
-                      S3OptionsFilter("sector_organisation.sector_id",
+    filter_widgets = [S3OptionsFilter("sector_organisation.sector_id",
                                       label=T("Sector"),
                                       represent="%(name)s",
                                       widget="multiselect",
@@ -371,9 +363,26 @@ def customize_org_organisation(**attr):
                                       ),
                       ]
 
+    # Custom Report Fields
+    report_fields = ["name",
+                     (T("Sectors"), "sector_organisation.sector_id"),
+                     (T("Services"), "service_organisation.service_id"),
+                     ]
+
+    report_options = Storage(rows = report_fields,
+                             cols = report_fields,
+                             fact = report_fields,
+                             defaults = Storage(rows = "service_organisation.service_id",
+                                                cols = "sector_organisation.sector_id",
+                                                fact = "list(name)",
+                                                totals = True
+                                                )
+                             )
+
     s3db.configure(tablename,
                    crud_form = crud_form,
                    filter_widgets = filter_widgets,
+                   report_options = report_options,
                    )
 
     attr["hide_filter"] = False
@@ -427,8 +436,10 @@ def customize_org_facility(**attr):
     tablename = "org_facility"
     table = s3db[tablename]
     table.location_id.label = "" # Gets replaced by widget
-    table.location_id.requires = IS_LOCATION_SELECTOR2(levels=["L1","L2","L3"]) # @ToDo: handle no L2s
-    table.location_id.widget = S3LocationSelectorWidget2(levels=["L1","L2","L3"],
+    table.location_id.requires = IS_LOCATION_SELECTOR2(levels=["L3"])
+    table.location_id.widget = S3LocationSelectorWidget2(levels=["L3"],
+                                                         hide_lx=False,
+                                                         reverse_lx=True,
                                                          show_address=True,
                                                          show_postcode=True,
                                                          )
@@ -467,7 +478,7 @@ def customize_org_facility(**attr):
                                       represent="%(name)s",
                                       widget="multiselect",
                                       ),
-                      S3OptionsFilter("facility_type_id",
+                      S3OptionsFilter("site_facility_type.facility_type_id",
                                       label=T("Type"),
                                       represent="%(name)s",
                                       widget="multiselect",
@@ -483,6 +494,8 @@ def customize_org_facility(**attr):
                    crud_form = crud_form,
                    filter_widgets = filter_widgets,
                    )
+
+    attr["hide_filter"] = False
 
     current.response.s3.crud_strings[tablename] = Storage(
                 title_create = T("Add Location"),
@@ -514,8 +527,10 @@ def customize_stats_resident(**attr):
     tablename = "stats_resident"
     table = current.s3db[tablename]
     table.location_id.label = "" # Gets replaced by widget
-    table.location_id.requires = IS_LOCATION_SELECTOR2(levels=["L1","L2","L3"]) # @ToDo: handle no L2s
-    table.location_id.widget = S3LocationSelectorWidget2(levels=["L1","L2","L3"],
+    table.location_id.requires = IS_LOCATION_SELECTOR2(levels=["L3"])
+    table.location_id.widget = S3LocationSelectorWidget2(levels=["L3"],
+                                                         hide_lx=False,
+                                                         reverse_lx=True,
                                                          show_address=True,
                                                          show_postcode=True,
                                                          )
@@ -535,8 +550,10 @@ def customize_stats_trained(**attr):
     tablename = "stats_trained"
     table = current.s3db[tablename]
     table.location_id.label = "" # Gets replaced by widget
-    table.location_id.requires = IS_LOCATION_SELECTOR2(levels=["L1","L2","L3"]) # @ToDo: handle no L2s
-    table.location_id.widget = S3LocationSelectorWidget2(levels=["L1","L2","L3"],
+    table.location_id.requires = IS_LOCATION_SELECTOR2(levels=["L3"])
+    table.location_id.widget = S3LocationSelectorWidget2(levels=["L3"],
+                                                         hide_lx=False,
+                                                         reverse_lx=True,
                                                          show_address=True,
                                                          show_postcode=True,
                                                          )
@@ -556,8 +573,8 @@ def customize_vulnerability_evac_route(**attr):
     tablename = "vulnerability_evac_route"
     table = current.s3db[tablename]
     table.location_id.label = "" # Gets replaced by widget
-    table.location_id.requires = IS_LOCATION_SELECTOR2(levels=["L1","L2","L3"]) # @ToDo: handle no L2s
-    table.location_id.widget = S3LocationSelectorWidget2(levels=["L1","L2","L3"],
+    table.location_id.requires = IS_LOCATION_SELECTOR2(levels=["L3"])
+    table.location_id.widget = S3LocationSelectorWidget2(levels=["L3"],
                                                          polygons=True,
                                                          )
 
@@ -571,115 +588,105 @@ settings.ui.customize_vulnerability_evac_route = customize_vulnerability_evac_ro
 settings.modules = OrderedDict([
     # Core modules which shouldn't be disabled
     ("default", Storage(
-            name_nice = T("Home"),
-            restricted = False, # Use ACLs to control access to this module
-            access = None,      # All Users (inc Anonymous) can see this module in the default menu & access the controller
-            module_type = None  # This item is not shown in the menu
-        )),
+        name_nice = T("Home"),
+        restricted = False, # Use ACLs to control access to this module
+        access = None,      # All Users (inc Anonymous) can see this module in the default menu & access the controller
+        module_type = None  # This item is not shown in the menu
+    )),
     ("admin", Storage(
-            name_nice = T("Administration"),
-            #description = "Site Administration",
-            restricted = True,
-            access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
-            module_type = None  # This item is handled separately for the menu
-        )),
+        name_nice = T("Administration"),
+        #description = "Site Administration",
+        restricted = True,
+        access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
+        module_type = None  # This item is handled separately for the menu
+    )),
     ("appadmin", Storage(
-            name_nice = T("Administration"),
-            #description = "Site Administration",
-            restricted = True,
-            module_type = None  # No Menu
-        )),
+        name_nice = T("Administration"),
+        #description = "Site Administration",
+        restricted = True,
+        module_type = None  # No Menu
+    )),
     ("errors", Storage(
-            name_nice = T("Ticket Viewer"),
-            #description = "Needed for Breadcrumbs",
-            restricted = False,
-            module_type = None  # No Menu
-        )),
+        name_nice = T("Ticket Viewer"),
+        #description = "Needed for Breadcrumbs",
+        restricted = False,
+        module_type = None  # No Menu
+    )),
     ("sync", Storage(
-            name_nice = T("Synchronization"),
-            #description = "Synchronization",
-            restricted = True,
-            access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
-            module_type = None  # This item is handled separately for the menu
-        )),
+        name_nice = T("Synchronization"),
+        #description = "Synchronization",
+        restricted = True,
+        access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
+        module_type = None  # This item is handled separately for the menu
+    )),
     ("translate", Storage(
-            name_nice = T("Translation Functionality"),
-            #description = "Selective translation of strings based on module.",
-            module_type = None,
-        )),
+        name_nice = T("Translation Functionality"),
+        #description = "Selective translation of strings based on module.",
+        module_type = None,
+    )),
     ("gis", Storage(
-            name_nice = T("Map"),
-            #description = "Situation Awareness & Geospatial Analysis",
-            restricted = True,
-            module_type = 1,     # 1st item in the menu
-        )),
+        name_nice = T("Map"),
+        #description = "Situation Awareness & Geospatial Analysis",
+        restricted = True,
+        module_type = 1,     # 1st item in the menu
+    )),
     ("pr", Storage(
-            name_nice = T("Person Registry"),
-            #description = "Central point to record details on People",
-            restricted = True,
-            access = "|1|",     # Only Administrators can see this module in the default menu (access to controller is possible to all still)
-            module_type = None
-        )),
+        name_nice = T("Person Registry"),
+        #description = "Central point to record details on People",
+        restricted = True,
+        access = "|1|",     # Only Administrators can see this module in the default menu (access to controller is possible to all still)
+        module_type = None
+    )),
     ("org", Storage(
-            name_nice = T("Organizations"),
-            #description = 'Lists "who is doing what & where". Allows relief agencies to coordinate their activities',
-            restricted = True,
-            module_type = None
-        )),
+        name_nice = T("Organizations"),
+        #description = 'Lists "who is doing what & where". Allows relief agencies to coordinate their activities',
+        restricted = True,
+        module_type = None
+    )),
     # All modules below here should be possible to disable safely
     ("hrm", Storage(
-            name_nice = T("Staff"),
-            #description = "Human Resources Management",
-            restricted = True,
-            module_type = None,
-        )),
+        name_nice = T("Staff"),
+        #description = "Human Resources Management",
+        restricted = True,
+        module_type = None,
+    )),
     ("cms", Storage(
-            name_nice = T("Content Management"),
-            restricted = True,
-            module_type = None,
-        )),
+        name_nice = T("Content Management"),
+        restricted = True,
+        module_type = None,
+    )),
     ("doc", Storage(
-            name_nice = T("Documents"),
-            #description = "A library of digital resources, such as photos, documents and reports",
-            restricted = True,
-            module_type = None,
-        )),
+        name_nice = T("Documents"),
+        #description = "A library of digital resources, such as photos, documents and reports",
+        restricted = True,
+        module_type = None,
+    )),
     ("msg", Storage(
-            name_nice = T("Messaging"),
-            #description = "Sends & Receives Alerts via Email & SMS",
-            restricted = True,
-            # The user-visible functionality of this module isn't normally required. Rather it's main purpose is to be accessed from other modules.
-            module_type = None,
-        )),
+        name_nice = T("Messaging"),
+        #description = "Sends & Receives Alerts via Email & SMS",
+        restricted = True,
+        # The user-visible functionality of this module isn't normally required. Rather it's main purpose is to be accessed from other modules.
+        module_type = None,
+    )),
     ("event", Storage(
-            name_nice = T("Events"),
-            #description = "Events",
-            restricted = True,
-            module_type = None
-        )),
+        name_nice = T("Events"),
+        #description = "Events",
+        restricted = True,
+        module_type = None
+    )),
     ("project", Storage(
-            name_nice = T("Projects"),
-            restricted = True,
-            module_type = None
-        )),
+        name_nice = T("Projects"),
+        restricted = True,
+        module_type = None
+    )),
     ("stats", Storage(
-            name_nice = T("Statistics"),
-            restricted = True,
-            module_type = None
-        )),
+        name_nice = T("Statistics"),
+        restricted = True,
+        module_type = None
+    )),
     ("vulnerability", Storage(
-            name_nice = T("Vulnerability"),
-            restricted = True,
-            module_type = None
-        )),
-    #("asset", Storage(
-    #        name_nice = T("Assets"),
-    #        restricted = True,
-    #        module_type = None
-    #    )),
-    #("supply", Storage(
-    #        name_nice = "Supply",
-    #        restricted = True,
-    #        module_type = None
-    #    )),
+        name_nice = T("Vulnerability"),
+        restricted = True,
+        module_type = None
+    )),
 ])
