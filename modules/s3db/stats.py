@@ -209,7 +209,7 @@ class S3StatsDemographicModel(S3Model):
 
         location_id = self.gis_location_id
 
-        stats_parameter_represent = S3Represent(lookup="stats_parameter"),
+        stats_parameter_represent = S3Represent(lookup="stats_parameter")
 
         #----------------------------------------------------------------------
         # Demographic
@@ -359,7 +359,8 @@ class S3StatsDemographicModel(S3Model):
                              Field("agg_type", "integer",
                                    requires = IS_IN_SET(aggregate_types),
                                    represent = lambda opt: \
-                                        aggregate_types.get(opt, UNKNOWN_OPT),
+                                    aggregate_types.get(opt,
+                                                        current.messages.UNKNOWN_OPT),
                                    default = 1,
                                    label = T("Aggregation Type"),
                                    ),
@@ -1120,7 +1121,8 @@ class S3StatsResidentModel(S3Model):
                              # Instance
                              super_link("parameter_id", "stats_parameter"),
                              Field("name",
-                                   label=T("Name")),
+                                   label=T("Name"),
+                                   ),
                              s3_comments(),
                              *s3_meta_fields())
 
@@ -1144,6 +1146,7 @@ class S3StatsResidentModel(S3Model):
         # Resource Configuration
         configure(tablename,
                   super_entity = "stats_parameter",
+                  deduplicate = self.stats_resident_type_duplicate,
                   )
 
         represent = S3Represent(lookup=tablename)
@@ -1247,6 +1250,31 @@ class S3StatsResidentModel(S3Model):
         # Pass names back to global scope (s3.*)
         return dict()
 
+    # ---------------------------------------------------------------------
+    @staticmethod
+    def stats_resident_type_duplicate(item):
+        """
+            Deduplication of Resident Types
+        """
+
+        if item.tablename != "stats_resident_type":
+            return
+
+        data = item.data
+        name = data.get("name", None)
+
+        if not name:
+            return
+
+        table = item.table
+        query = (table.name.lower() == name.lower())
+        _duplicate = current.db(query).select(table.id,
+                                              limitby=(0, 1)).first()
+        if _duplicate:
+            item.id = _duplicate.id
+            item.data.id = _duplicate.id
+            item.method = item.METHOD.UPDATE
+
 # =============================================================================
 class S3StatsTrainedPeopleModel(S3Model):
     """
@@ -1276,7 +1304,8 @@ class S3StatsTrainedPeopleModel(S3Model):
                              # Instance
                              super_link("parameter_id", "stats_parameter"),
                              Field("name",
-                                   label=T("Name")),
+                                   label=T("Name"),
+                                   ),
                              s3_comments(),
                              *s3_meta_fields())
 
@@ -1300,6 +1329,7 @@ class S3StatsTrainedPeopleModel(S3Model):
         # Resource Configuration
         configure(tablename,
                   super_entity = "stats_parameter",
+                  deduplicate = self.stats_trained_type_duplicate,
                   )
 
         represent = S3Represent(lookup=tablename)
@@ -1407,5 +1437,30 @@ class S3StatsTrainedPeopleModel(S3Model):
 
         # Pass names back to global scope (s3.*)
         return dict()
+
+    # ---------------------------------------------------------------------
+    @staticmethod
+    def stats_trained_type_duplicate(item):
+        """
+            Deduplication of Trained Types
+        """
+
+        if item.tablename != "stats_trained_type":
+            return
+
+        data = item.data
+        name = data.get("name", None)
+
+        if not name:
+            return
+
+        table = item.table
+        query = (table.name.lower() == name.lower())
+        _duplicate = current.db(query).select(table.id,
+                                              limitby=(0, 1)).first()
+        if _duplicate:
+            item.id = _duplicate.id
+            item.data.id = _duplicate.id
+            item.method = item.METHOD.UPDATE
 
 # END =========================================================================

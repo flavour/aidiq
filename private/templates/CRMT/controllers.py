@@ -52,12 +52,12 @@ class index():
              "name": "Wirefires",
              "url": URL(""),
              },
-#            {"user": "Marilyn Monroe",
-#             "profile": URL("static", "themes", args = ["CRMT", "users", "4.jpeg"]),
-#             "action": "Saved a %s",
-#             "type": "Map",
-#             "url": URL(""),
- #            },
+            #{"user": "Marilyn Monroe",
+            # "profile": URL("static", "themes", args = ["CRMT", "users", "4.jpeg"]),
+            # "action": "Saved a %s",
+            # "type": "Map",
+            # "url": URL(""),
+            #},
             {"user": "Tom Cruise",
              "profile": URL("static", "themes", args = ["CRMT", "users", "5.jpeg"]),
              "action": "Add a %s",
@@ -91,7 +91,41 @@ class index():
                                   )
                              for item in updates]
 
-
+        # Map
+        auth = current.auth
+        callback = None
+        if auth.is_logged_in():
+            # Show the User's Coalition's Polygon
+            org_group_id = auth.user.org_group_id
+            if org_group_id:
+                # Lookup Coalition Name
+                db = current.db
+                table = current.s3db.org_group
+                query = (table.id == org_group_id)
+                row = db(query).select(table.name,
+                                       limitby=(0, 1)).first()
+                if row:
+                    callback = '''S3.gis.show_map();
+var layer,layers=S3.gis.maps.default_map.layers;
+for(var i=0,len=layers.length;i<len;i++){
+ layer=layers[i];
+ if(layer.name=='%s'){layer.setVisibility(true)}}''' % row.name
+        if not callback:
+            # Show all Coalition Polygons
+            callback = '''S3.gis.show_map();
+var layer,layers=S3.gis.maps.default_map.layers;
+for(var i=0,len=layers.length;i<len;i++){
+ layer=layers[i];
+ if(layer.name=='All Coalitions'){layer.setVisibility(true)}}
+'''
+        map = current.gis.show_map(width=770,
+                                   height=270,
+                                   callback=callback,
+                                   catalogue_layers=True,
+                                   collapsed=True,
+                                   save=False,
+                                   )
+        output["map"] = map
         return output
 
 # END =========================================================================

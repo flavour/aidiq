@@ -34,7 +34,6 @@ h4.latest-disasters{
 @media screen and (max-width: 767px){
     h4.latest-disasters {
         display: inline-block;
-
     }
 }
 
@@ -356,5 +355,3 @@ input.btn.btn-primary.filter-submit.filter-ajax {
 	    
 	}
 }
-
-

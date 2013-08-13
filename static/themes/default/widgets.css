@@ -864,22 +864,45 @@ span.tab_next_inactive a {
 #select_from_registry_row td {
    padding: 8px;
 }
-tr.box_top {
+.box_top {
    border-top: #bbb 1px solid;
    border-left: #bbb 1px solid;
    border-right: #bbb 1px solid;
    background: #F0F3F4;
 }
-tr.box_middle {
+.form-horizontal .control-group.box_top {
+    margin-bottom: 0;
+    max-width: 680px;
+}
+.box_middle {
    border-left: #bbb 1px solid;
    border-right: #bbb 1px solid;
    background: #F0F3F4;
 }
-tr.box_bottom {
+.form-horizontal .control-group.box_middle {
+    margin-bottom: 0;
+    max-width: 680px;
+}
+.box_bottom {
    border-bottom: #bbb 1px solid;
    border-left: #bbb 1px solid;
    border-right: #bbb 1px solid;
    background: #F0F3F4;
+}
+.form-horizontal .control-group.box_bottom {
+    margin-bottom: 5px;
+    max-width: 680px;
+}
+
+/* Add Person 2 */
+.add_person_edit_bar {
+    float: right;
+    padding-right: 10px;
+    padding-top: 5px;
+    cursor: pointer;
+}
+.add_person_edit_bar a {
+    text-decoration: none;
 }
 
 /* Subheadings */
@@ -1084,7 +1107,6 @@ ul.x-tree-root-ct {
     margin: 10px 0 0 7px;
     padding-left: 20px;
     height: 16px;
-    width: 16px;
     background: url(../../img/icon_blue_plus15px.png) no-repeat;
     cursor: pointer;
 }
@@ -1304,4 +1326,8 @@ input#sub_defaulttime_defaulttime_hours_edit_none {
 }
 .fm-cancel {
     background: url(../../img/crud/cancel.png) no-repeat;
+}
+
+.cms-edit {
+    display: table;
 }

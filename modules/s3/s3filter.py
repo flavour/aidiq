@@ -1045,11 +1045,10 @@ class S3OptionsFilter(S3FilterWidget):
         elif widget_type == "multiselect":
             if "multiselect-filter-widget" not in _class:
                 attr["_class"] = "%s multiselect-filter-widget" % _class
-            w = S3MultiSelectWidget(
-                    filter = opts.get("filter", False),
-                    header = opts.get("header", False),
-                    selectedList = opts.get("selectedList", 3),
-                )
+            w = S3MultiSelectWidget(filter = opts.get("filter", False),
+                                    header = opts.get("header", False),
+                                    selectedList = opts.get("selectedList", 3),
+                                    )
             widget = w(dummy_field, values, **attr)
         else:
             if "groupedopts-filter-widget" not in _class:
@@ -1310,12 +1309,12 @@ class S3FilterForm(object):
             formstyle = self._formstyle
 
         # Filter Manager (load/apply/save filters)
-        if opts.get("filter_manager", True): #False):
+        rows = []
+        fm = current.deployment_settings.get_search_filter_manager()
+        if fm and opts.get("filter_manager", True):
             filter_manager = self._render_filters(resource, form_id)
             if filter_manager:
                 rows = [formstyle(None, "", filter_manager, "")]
-            else:
-                rows = []
 
         # Filter widgets
         rows.extend(self._render_widgets(resource,
@@ -1522,7 +1521,7 @@ class S3FilterForm(object):
             @return: the widget
         """
 
-        SELECT_FILTER = current.T("Choose filter...")
+        SELECT_FILTER = current.T("Saved Filters...")
 
         ajaxurl = self.opts.get("saveurl", URL(args=["filter.json"], vars={}))
         
@@ -1542,7 +1541,10 @@ class S3FilterForm(object):
                                         table.query,
                                         orderby=table.title)
                                         
-        options = [OPTION(SELECT_FILTER, _value="", _disabled="disabled")]
+        options = [OPTION(SELECT_FILTER,
+                          _value="",
+                          _class="filter-manager-prompt",
+                          _disabled="disabled")]
         add_option = options.append
         filters = {}
         for row in rows:
@@ -1565,15 +1567,22 @@ $("#%(widget_id)s").filtermanager({
   saveTooltip: "%(save_tooltip)s",
   loadTooltip: "%(load_tooltip)s",
   createTooltip: "%(create_tooltip)s",
-  titleHint: "%(title_hint)s"
+  titleHint: "%(title_hint)s",
+  selectHint: "%(select_hint)s",
+  emptyHint: "%(empty_hint)s",
+  confirmUpdate: true,
+  confirmText: "%(confirm_text)s"
 })""" % dict(
             widget_id = widget_id,
             filters = json.dumps(filters),
             ajaxurl = ajaxurl,
-            save_tooltip = T("Update filter"),
+            save_tooltip = T("Update saved filter"),
             load_tooltip = T("Load filter"),
-            create_tooltip = T("Create a new filter from current options"),
+            create_tooltip = T("Create new filter from current options"),
             title_hint = T("Enter a title..."),
+            select_hint = SELECT_FILTER,
+            empty_hint = T("No saved filters"),
+            confirm_text = T("Update this filter?"),
         )
         current.response.s3.jquery_ready.append(script)
 

@@ -247,6 +247,14 @@ class S3Config(Storage):
             organisation_id = None
         return organisation_id
 
+    def get_auth_registration_requests_organisation_group(self):
+        " Have the registration form request the Organisation Group "
+        return self.auth.get("registration_requests_organisation_group", False)
+
+    def get_auth_registration_organisation_group_required(self):
+        " Make the selection of Organisation Group required during registration "
+        return self.auth.get("registration_organisation_group_required", False)
+
     def get_auth_registration_requests_site(self):
         " Have the registration form request the Site "
         return self.auth.get("registration_requests_site", False)
@@ -510,6 +518,10 @@ class S3Config(Storage):
         " Edit Location Groups "
         return self.gis.get("edit_GR", False)
 
+    def get_gis_geocode_imported_addresses(self):
+        " Should Addresses imported from CSV be passed to a Geocoder to try and automate Lat/Lon? "
+        return self.gis.get("geocode_imported_addresses", False)
+
     def get_gis_geoserver_url(self):
         return self.gis.get("geoserver_url", "")
     def get_gis_geoserver_username(self):
@@ -547,6 +559,15 @@ class S3Config(Storage):
     def get_gis_marker_max_width(self):
         return self.gis.get("marker_max_width", 30)
 
+    def get_gis_legend(self):
+        """
+            Should we display a Legend on the Map?
+            - set to True to show a GeoExt Legend (default)
+            - set to False to not show a Legend
+            - set to "float" to use a floating DIV
+        """
+        return self.gis.get("legend", True)
+
     def get_gis_menu(self):
         """
             Should we display a menu of GIS configurations?
@@ -570,6 +591,12 @@ class S3Config(Storage):
             Should the Map Toolbar display Navigation Controls?
         """
         return self.gis.get("nav_controls", True)
+
+    def get_gis_label_overlays(self):
+        """
+            Label for the Map Overlays in the Layer Tree
+        """
+        return self.gis.get("label_overlays", "Overlays")
 
     def get_gis_overview(self):
         """
@@ -621,6 +648,12 @@ class S3Config(Storage):
             return False
         else:
             return self.gis.get("spatialdb", False)
+
+    def get_gis_toolbar(self):
+        """
+            Should the main Map display a Toolbar?
+        """
+        return self.gis.get("toolbar", True)
 
     def get_gis_zoomcontrol(self):
         """
@@ -1011,6 +1044,12 @@ class S3Config(Storage):
             Enable the Saved Search widget
         """
         return self.search.get("save_widget", True)
+
+    # -------------------------------------------------------------------------
+    # Filter Manager Widget
+    def get_search_filter_manager(self):
+        """ Enable the filter manager widget """
+        return self.search.get("filter_manager", True)
 
     # =========================================================================
     # Modules
@@ -1470,17 +1509,19 @@ class S3Config(Storage):
     def get_pr_request_dob(self):
         """ Include Date of Birth in the AddPersonWidget """
         return self.pr.get("request_dob", True)
+
     def get_pr_request_gender(self):
         """ Include Gender in the AddPersonWidget """
         return self.pr.get("request_gender", True)
+
     def get_pr_select_existing(self):
         """
             Whether the AddPersonWidget allows selecting existing PRs
             - set to True if Persons can be found in multiple contexts
             - set to False if just a single context
-            @ToDo: Fix (form fails to submit)
         """
         return self.pr.get("select_existing", True)
+
     def get_pr_import_update_requires_email(self):
         """
             During imports, records are only updated if the import

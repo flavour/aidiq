@@ -88,6 +88,13 @@ except ImportError:
     print >> sys.stderr, "ERROR: lxml module needed for XML handling"
     raise
 
+try:
+    from dateutil.relativedelta import relativedelta
+except ImportError:
+    import sys
+    print >> sys.stderr, "ERROR: dateutil module needed for Date handling"
+    raise
+
 from gluon import *
 # Here are dependencies listed for reference:
 #from gluon import current
@@ -624,164 +631,224 @@ class S3AddPersonWidget2(FormWidget):
 
     def __call__(self, field, value, **attributes):
 
+        controller = self.controller
+
         T = current.T
         request = current.request
-        appname = request.application
         s3 = current.response.s3
-        settings = current.deployment_settings
-
         formstyle = s3.crud.formstyle
+        settings = current.deployment_settings
 
         default = dict(_type = "text",
                        value = (value != None and str(value)) or "")
         attr = StringWidget._attributes(field, default, **attributes)
         attr["_class"] = "hide"
 
-        # Main Input
-        fieldname = str(field)
-        if "_id" in attr:
-            real_input = attr["_id"]
+        fieldname = str(field).replace(".", "_")
+
+        s3db = current.s3db
+        ptable = s3db.pr_person
+
+        if settings.get_pr_request_dob():
+            date_of_birth = ptable.date_of_birth
         else:
-            real_input = fieldname.replace(".", "_")
+            date_of_birth = None
+        if settings.get_pr_request_gender():
+            gender = ptable.gender
+        else:
+            gender = None
 
         if self.controller is None:
             controller = request.controller
         else:
             controller = self.controller
 
-        # Embedded Form
-        s3db = current.s3db
-        ptable = s3db.pr_person
-        ctable = s3db.pr_contact
-        fields = [#ptable.first_name,
-                  #ptable.middle_name,
-                  #ptable.last_name,
-                  ]
-        if settings.get_pr_request_dob():
-            fields.append(ptable.date_of_birth)
-        if settings.get_pr_request_gender():
-            fields.append(ptable.gender)
-
         if controller == "hrm":
             emailRequired = settings.get_hrm_email_required()
+            occupation = None
         elif controller == "vol":
-            fields.append(s3db.pr_person_details.occupation)
+            dtable = s3db.pr_person_details
+            occupation = dtable.occupation
             emailRequired = settings.get_hrm_email_required()
         else:
+            controller = "pr"
             emailRequired = False
-        if emailRequired:
-            validator = IS_EMAIL()
-        else:
-            validator = IS_NULL_OR(IS_EMAIL())
+            occupation = None
 
-        fields.extend([Field("email",
-                             notnull=emailRequired,
-                             requires=validator,
-                             label=T("Email Address")),
-                       Field("mobile_phone",
-                             label=T("Mobile Phone Number"),
-                             # requires=None to work around a web2py bug
-                             requires=None)
-                       ])
-
-        labels, required = s3_mark_required(fields)
-        if required:
-            s3.has_required = True
-
-        if request.env.request_method == "POST" and not value:
+        values = {}
+        if value:
+            db = current.db
+            query = (ptable.id == value)
+            fields = [ptable.first_name,
+                      ptable.middle_name,
+                      ptable.last_name,
+                      ptable.pe_id,
+                      ]
+            if date_of_birth:
+                fields.append(date_of_birth)
+            if gender:
+                fields.append(gender)
+            if occupation:
+                fields.append(occupation)
+                left = dtable.on(dtable.person_id == ptable.id)
+            else:
+                left = None
+            person = db(query).select(*fields,
+                                      left=left,
+                                      limitby=(0, 1)).first()
+            if occupation:
+                values["occupation"] = person["pr_person_details.occupation"]
+                person = person["pr_person"]
+            values["full_name"] = s3_fullname(person)
+            if date_of_birth:
+                values["date_of_birth"] = person.date_of_birth
+            if gender:
+                values["gender"] = person.gender
+            # Contacts as separate query as we can't easily limitby
+            ctable = s3db.pr_contact
+            query = (ctable.pe_id == person.pe_id) & \
+                    (ctable.deleted == False) & \
+                    (ctable.contact_method.belongs(("SMS", "EMAIL")))
+            contacts = db(query).select(ctable.contact_method,
+                                        ctable.value,
+                                        orderby=ctable.priority,
+                                        )
+            email = mobile_phone = ""
+            for contact in contacts:
+                if not email and contact.contact_method == "EMAIL":
+                    email = contact.value
+                elif not mobile_phone:
+                    mobile_phone = contact.value
+                if email and mobile_phone:
+                    break
+            values["email"] = email
+            values["mobile_phone"] = mobile_phone
+        elif request.env.request_method == "POST":
             # Read the POST vars:
-            post_vars = request.post_vars
-            values = Storage(ptable._filter_fields(post_vars))
-            values["email"] = post_vars["email"]
-            values["mobile_phone"] = post_vars["mobile_phone"]
-
-            # Use the validators to convert the POST vars into
-            # internal format (not validating here):
-            data = Storage()
-            for f in fields:
-                fname = f.name
-                if fname in values:
-                    v, error = values[fname], None
-                    requires = f.requires
-                    if requires:
-                        if not isinstance(requires, (list, tuple)):
-                            requires = [requires]
-                        for validator in requires:
-                            v, error = validator(v)
-                            if error:
-                                break
-                    if not error:
-                        data[fname] = v
-
-            record_id = 0
-        else:
-            data = None
-            record_id = value
+            values = request.post_vars
+            # @ToDo: Format these for Display?
 
         # Output
         rows = DIV()
 
-        # Fields
-        # (id, label, widget)
-        fields = [()
-                  ]
-        
-        # Name field
-        # - can search for an existing person
-        # - can create a new person
-        # - multiple names get assigned to first, middle, last
-        id = "%s_name" % fieldname
-        label = T("Name")
-        widget = INPUT(_value="",
-                       _id=id,
-                       )
-        comment = T("Select this Person")
-        throbber = DIV(_id="%s__throbber" % id,
-                       _class="throbber hide"
-                       )
+        # Section Title
+        id = "%s_title" % fieldname
+        label = field.label
+        # @ToDo: Style these icons in non-Bootstrap themes
+        # @ToDo: Check Permissions for existing person records to know whether we can edit the person or simply select a different one
+        widget= DIV(A(I(" ", _class="icon icon-edit"),
+                      _title=T("Edit Entry"), # "Edit Selection"
+                      ),
+                    A(I(" ", _class="icon icon-remove"),
+                      _title=T("Revert Entry"), # "Clear Selection"
+                      ),
+                    _class="add_person_edit_bar hide",
+                    _id="%s_edit_bar" % fieldname,
+                    )
+        comment = ""
         if formstyle == "bootstrap":
             # We would like to hide the whole original control-group & append rows, but that can't be done directly within a Widget
             # -> Elements moved via JS after page load
-            label = LABEL("%s:" % label, _class="control-label",
-                                         _for=id)
-            # @ToDo: Mark Required
-            widget.add_class("input-xlarge")
-            # Currently unused, so remove if this remains so
-            #from gluon.html import BUTTON
-            #comment = BUTTON(comment,
-            #                 _class="btn btn-primary hide",
-            #                 _id="%s__button" % id
-            #                 )
-            #_controls = DIV(widget, throbber, comment, _class="controls")
-            _controls = DIV(widget, throbber, _class="controls")
-            row = DIV(label, _controls, _class="control-group hide", _id="%s__row" % id)
+            label = LABEL(label, _class="control-label", _for=id)
+            _controls = DIV(widget, _class="controls")
+            row = DIV(label, _controls,
+                      _class="control-group hide box_top",
+                      _id="%s__row" % id,
+                      )
         elif callable(formstyle):
             # @ToDo: Test
-            row = formstyle(id, label, widget, comment, hidden=hidden)
+            row = formstyle(id, label, widget, comment)
+            row.add_class("box_top")
         else:
             # Unsupported
             raise
         rows.append(row)
-        
+
+        # Fields
+        # (id, label, widget, required)
+        fattr = {"_data-c": controller}
+        fields = [# Name field
+                  # - can search for an existing person
+                  # - can create a new person
+                  # - multiple names get assigned to first, middle, last
+                  ("full_name", T("Name"), INPUT(**fattr), True)
+                  ]
+
+        if date_of_birth:
+            fields.append(("date_of_birth", date_of_birth.label,
+                           date_of_birth.widget(date_of_birth, values.get("date_of_birth", None),
+                                                _id = "%s_date_of_birth" % fieldname),
+                           False))
+        if gender:
+            fields.append(("gender", gender.label,
+                           OptionsWidget.widget(gender, values.get("gender", None),
+                                                _id = "%s_gender" % fieldname),
+                           False))
+
+        if occupation:
+            fields.append(("occupation", occupation.label, INPUT(), False))
+
+        fields.append(("email", T("Email Address"), INPUT(), emailRequired))
+        fields.append(("mobile_phone", settings.get_ui_label_mobile_phone(), INPUT(), False))
+
+        for f in fields:
+            fname = f[0]
+            id = "%s_%s" % (fieldname, fname)
+            label = f[1]
+            widget = f[2]
+            if fname not in ("date_of_birth", "gender"):
+                widget["_id"] = id
+                widget["_name"] = fname
+                widget["_value"] = values.get(fname, "")
+            if formstyle == "bootstrap":
+                # We would like to hide the whole original control-group & append rows, but that can't be done directly within a Widget
+                # -> Elements moved via JS after page load
+                if f[3]:
+                    label = DIV("%s:" % label,
+                                SPAN(" *", _class="req"))
+                else:
+                    label = "%s:" % label
+                label = LABEL(label, _class="control-label", _for=id)
+                if fname == "date_of_birth":
+                    widget = widget[0]
+                    widget.remove_class("string")
+                widget.add_class("input-xlarge")
+                _controls = DIV(widget, _class="controls")
+                row = DIV(label, _controls,
+                          _class="control-group hide box_middle",
+                          _id="%s__row" % id,
+                          )
+            elif callable(formstyle):
+                # @ToDo: Test
+                row = formstyle(id, label, widget, comment, hidden=hidden)
+                row.add_class("box_middle")
+            else:
+                # Unsupported
+                raise
+            rows.append(row)
+
         # Divider
-        divider = DIV(DIV(_class="subheading"),
-                      DIV(),
-                      _class="box_bottom")
+        divider = DIV(_id="%s_box_bottom" % fieldname,
+                      _class="box_bottom hide",
+                      )
+        if formstyle == "bootstrap":
+            divider.add_class("control-group")
         rows.append(divider)
 
         # JS
         if s3.debug:
-            script = "/%s/static/scripts/S3/s3.add_person.js" % appname
+            script = "/%s/static/scripts/S3/s3.add_person.js" % request.application
         else:
-            script = "/%s/static/scripts/S3/s3.add_person.min.js" % appname
+            script = "/%s/static/scripts/S3/s3.add_person.min.js" % request.application
         scripts = s3.scripts
         if script not in scripts:
             scripts.append(script)
         s3.jquery_ready.append('''S3.addPersonWidget('%s')''' % fieldname)
+        s3.js_global.append('''i18n.none_of_the_above="%s"''' % T("None of the above"))
 
         # Overall layout of components
         return TAG[""](DIV(INPUT(**attr), # Real input, hidden
-                           _classs="hidden"),
+                           _class="hide"),
                        rows,
                        )
 
@@ -1152,7 +1219,7 @@ class S3DateWidget(FormWidget):
                  format = None,
                  past=1440,     # how many months into the past the date can be set to
                  future=1440    # how many months into the future the date can be set to
-                ):
+                 ):
 
         self.format = format
         self.past = past
@@ -1187,15 +1254,40 @@ class S3DateWidget(FormWidget):
         else:
             selector = str(field).replace(".", "_")
 
+        # Convert to Days
+        now = current.request.utcnow
+        past = self.past
+        if past:
+            past = now - relativedelta(months=past)
+            if now > past:
+                days = (now - past).days
+                minDate = "-%s" % days
+            else:
+                days = (past - now).days
+                minDate = "+%s" % days
+        else:
+            minDate = "-0"
+        future = self.future
+        if future:
+            future = now + relativedelta(months=future)
+            if future > now:
+                days = (future - now).days
+                maxDate = "+%s" % days
+            else:
+                days = (now - future).days
+                maxDate = "-%s" % days
+        else:
+            maxDate = "+0"
+
         current.response.s3.jquery_ready.append(
 '''$('#%(selector)s').datepicker('option',{
- minDate:'-%(past)sm',
- maxDate:'+%(future)sm',
+ minDate:%(past)s,
+ maxDate:%(future)s,
  yearRange:'c-100:c+100',
  dateFormat:'%(format)s'})''' % \
         dict(selector = selector,
-             past = self.past,
-             future = self.future,
+             past = minDate,
+             future = maxDate,
              format = format))
 
         return TAG[""](widget, requires = field.requires)
@@ -4060,7 +4152,6 @@ class S3LocationSelectorWidget2(FormWidget):
                                # Hide controls from toolbar
                                nav = False,
                                area = False,
-                               save = False,
                                # Don't use normal callback (since we postpone rendering Map until DIV unhidden)
                                # but use our one if we need to display a map by default
                                callback = callback if use_callback else None,
@@ -4068,11 +4159,13 @@ class S3LocationSelectorWidget2(FormWidget):
             icon_id = "%s_map_icon" % fieldname
             row_id = "%s_map_icon__row" % fieldname
             if formstyle == "bootstrap":
-                map_icon = DIV(LABEL(I(_class="icon-map",
-                                       _id=icon_id,
-                                       ),
-                                     _class="control-label",
-                                     ),
+                map_icon = DIV(DIV(BUTTON(I(_class="icon-map"),
+                                          T("Find on Map"),
+                                          _id=icon_id,
+                                          _class="btn gis_loc_select_btn",
+                                          ),
+                                   _class="controls",
+                                   ),
                                _id = row_id,
                                _class = "control-group hide",
                                )
@@ -4086,14 +4179,15 @@ class S3LocationSelectorWidget2(FormWidget):
                 comment = ""
                 map_icon = formstyle(row_id, label, widget, comment)
             if geocoder:
-                map_icon.append(DIV(DIV(T("Address Mapped"),
+                map_icon.append(DIV(DIV(_class="throbber hide"),
+                                    DIV(T("Address Mapped"),
                                         _class="geocode_success hide"),
                                     DIV(T("Address NOT Mapped"),
                                         _class="geocode_fail hide"),
                                     BUTTON(T("Geocode"),
                                            _class="hide"),
                                     _id="%s_geocode" % fieldname,
-                                    _class="controls",
+                                    _class="controls geocode",
                                     ))
             map = TAG[""](map, map_icon)
         else:
@@ -4128,7 +4222,7 @@ class S3MultiSelectWidget(MultipleOptionsWidget):
     def __init__(self,
                  filter = True,
                  header = True,
-                 selectedList = 4,
+                 selectedList = 3,
                  noneSelectedText = "Select"
                  ):
         self.filter = filter
@@ -4613,11 +4707,10 @@ class S3SliderWidget(FormWidget):
                  minval,
                  maxval,
                  steprange,
-                 value):
+                 ):
         self.minval = minval
         self.maxval = maxval
         self.steprange = steprange
-        self.value = value
 
     def __call__(self, field, value, **attributes):
 
@@ -4630,14 +4723,14 @@ class S3SliderWidget(FormWidget):
         sliderinput = INPUT(_name=localfield[1],
                             _id=inputid,
                             _class="hide",
-                            _value=self.value)
+                            _value=value)
 
-        response.s3.jquery_ready.append('''S3.slider('%s','%f','%f','%f','%f')''' % \
+        response.s3.jquery_ready.append('''S3.slider('%s','%f','%f','%f','%s')''' % \
           (fieldname,
            self.minval,
            self.maxval,
            self.steprange,
-           self.value))
+           value))
 
         return TAG[""](sliderdiv, sliderinput)
 

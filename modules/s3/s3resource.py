@@ -940,13 +940,14 @@ class S3Resource(object):
                 continue
             tname = dfield.tname
             if tname not in stables:
-                sfields = stables[tname] = {"_left": {}}
+                sfields = stables[tname] = {"_left": S3LeftJoins(table)}
             else:
                 sfields = stables[tname]
             if colname not in sfields:
                 sfields[colname] = dfield.field
-                if dfield.left:
-                    sfields["_left"].update(dfield.left)
+                l = dfield.left
+                if l:
+                    [sfields["_left"].add(l[tn]) for tn in l]
 
         # Retrieve + extract into records
         for tname in stables:
@@ -958,7 +959,7 @@ class S3Resource(object):
             efields, ejoins, l, d = sresource.resolve_selectors([])
 
             # Get all left joins for subtable
-            tnames = left_joins.extend(l) + stable["_left"].keys()
+            tnames = left_joins.extend(l) + stable["_left"].tables
             sjoins = left_joins.as_list(tablenames=tnames,
                                         aqueries=aqueries)
             if not sjoins:
@@ -6522,6 +6523,10 @@ class S3ResourceFilter(object):
         if parent:
 
             pf = parent.rfilter
+            if not pf:
+                # Parent filter could be None if the parent is a component
+                # itself (e.g. inline components in component tabs)
+                pf = parent.build_query()
             alias = resource.alias
 
             # Use the master virtual filter

@@ -233,8 +233,10 @@ def customize_project_project(**attr):
     table.file.widget = lambda field, value, download_url: \
         SQLFORM.widgets.upload.widget(field, value, download_url, _size = 15)
     table.comments.widget = SQLFORM.widgets.string.widget
+
     # If not logged in, contact person is required
-    if not current.auth.is_logged_in():
+    logged_in = current.auth.is_logged_in()
+    if not logged_in:
         table = s3db.project_drrpp
         table.focal_person.required = True
         table.email.required = True
@@ -333,6 +335,12 @@ def customize_project_project(**attr):
                            "drrpp.parent_project",
                            "comments",
                            ]
+            if logged_in:
+                 list_fields.extend(["created_by",
+                                     "created_on",
+                                     "modified_by",
+                                     "modified_on",
+                                     ])
             s3db.configure(tablename,
                            list_fields = list_fields)
         return True
