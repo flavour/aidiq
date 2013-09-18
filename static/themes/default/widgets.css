@@ -89,6 +89,22 @@ p.legend em {
     margin-left: 180px;
 }
 
+/* Form field hints
+ http://remysharp.com/2007/03/19/a-few-more-jquery-plugins-crop-labelover-and-pluck/#labelOver
+*/
+div.hint {
+    position: relative;
+    /* Breaks Map Save Panel
+    float: left;*/
+}
+label.over {
+    color: #ccc;
+    font-style: italic;
+    position: absolute;
+    top: 5px;
+    left: 5px;
+}
+
 /* Styling for Inline Components */
 table.embeddedComponent {
     border: 1px solid #B3B3B3;
@@ -654,6 +670,14 @@ body.popup {
     padding: 0 0 0 10px;
 }
 
+.input_throbber {
+    background-size: 50%;
+    height: 24px;
+    width: 24px;
+    display: inline-block;
+    margin: 0 0 -12px -24px;
+}
+
 /* Resource Header */
 #rheader {
     margin-bottom: 0.75em;
@@ -864,33 +888,31 @@ span.tab_next_inactive a {
 #select_from_registry_row td {
    padding: 8px;
 }
-.box_top {
-   border-top: #bbb 1px solid;
+.box_top,
+.box_middle,
+.box_bottom {
    border-left: #bbb 1px solid;
    border-right: #bbb 1px solid;
    background: #F0F3F4;
 }
+
+.box_top {
+   border-top: #bbb 1px solid;
+   padding-top: 10px;
+}
+
+.box_bottom {
+   border-bottom: #bbb 1px solid;
+   padding-bottom: 10px;
+}
+
 .form-horizontal .control-group.box_top {
     margin-bottom: 0;
     max-width: 680px;
 }
-.box_middle {
-   border-left: #bbb 1px solid;
-   border-right: #bbb 1px solid;
-   background: #F0F3F4;
-}
-.form-horizontal .control-group.box_middle {
-    margin-bottom: 0;
-    max-width: 680px;
-}
-.box_bottom {
-   border-bottom: #bbb 1px solid;
-   border-left: #bbb 1px solid;
-   border-right: #bbb 1px solid;
-   background: #F0F3F4;
-}
+
 .form-horizontal .control-group.box_bottom {
-    margin-bottom: 5px;
+    margin-bottom: 10px;
     max-width: 680px;
 }
 
@@ -1131,6 +1153,7 @@ ul.x-tree-root-ct {
     text-align: left;
 }
 .s3-groupedopts-widget label {
+    display: inline;
     margin-left: 5px;
 }
 .s3-groupedopts-widget tr > td {
@@ -1167,6 +1190,7 @@ ul.x-tree-root-ct {
 }
 .range-filter-field {
     float: left;
+    padding-right: 10px;
 }
 
 .filter-form td,
@@ -1307,27 +1331,42 @@ input#sub_defaulttime_defaulttime_hours_edit_none {
 .fm-accept,
 .fm-cancel {
     float: left;
-    margin-top: 7px;
     margin-left: 5px;
+}
+
+div.fm-load,
+div.fm-save,
+div.fm-create,
+div.fm-accept,
+div.fm-cancel {
+    margin-top: 7px;
     width: 16px;
     height: 16px;
 }
-.fm-load {
+div.fm-load {
     background: url(../../img/filter/load.png) no-repeat;
 }
-.fm-save {
+div.fm-save {
     background: url(../../img/filter/save.png) no-repeat;
 }
-.fm-create {
+div.fm-create {
     background: url(../../img/filter/create.png) no-repeat;
 }
-.fm-accept {
+div.fm-accept {
     background: url(../../img/crud/apply.png) no-repeat;
 }
-.fm-cancel {
+div.fm-cancel {
     background: url(../../img/crud/cancel.png) no-repeat;
 }
 
 .cms-edit {
     display: table;
+}
+
+/* Date Picker Widget */
+.datetimepicker {
+    width: 110px;
+}
+.datetimepicker.hide-time {
+    width: 75px;
 }

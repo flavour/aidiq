@@ -795,6 +795,7 @@ class S3PersonModel(S3Model):
 
         # Custom Form
         crud_form = S3SQLCustomForm("first_name",
+                                    "middle_name",
                                     "last_name",
                                     "date_of_birth",
                                     "initials",
@@ -854,10 +855,15 @@ class S3PersonModel(S3Model):
                                     ondelete = "RESTRICT",
                                     widget = S3PersonAutocompleteWidget())
 
-        # Custom Method for S3PersonAutocompleteWidget
-        self.set_method("pr", "person",
-                        method="search_ac",
-                        action=self.pr_search_ac)
+        # Custom Methods for S3PersonAutocompleteWidget and S3AddPersonWidget2
+        set_method = self.set_method
+        set_method("pr", "person",
+                   method="search_ac",
+                   action=self.pr_search_ac)
+
+        set_method("pr", "person",
+                   method="lookup",
+                   action=self.pr_person_lookup)
 
         # Components
         add_component("pr_group_membership", pr_person="person_id")
@@ -1139,7 +1145,7 @@ class S3PersonModel(S3Model):
     @staticmethod
     def pr_search_ac(r, **attr):
         """
-            JSON search method for S3PersonAutocompleteWidget
+            JSON search method for S3PersonAutocompleteWidget and S3AddPersonWidget2
             - full name search
         """
 
@@ -1158,11 +1164,7 @@ class S3PersonModel(S3Model):
         value = _vars.term or _vars.value or _vars.q or None
 
         if not value:
-            output = current.xml.json_message(
-                            False,
-                            400,
-                            "No value provided!"
-                        )
+            output = current.xml.json_message(False, 400, "No value provided!")
             raise HTTP(400, body=output)
 
         # We want to do case-insensitive searches
@@ -1212,6 +1214,102 @@ class S3PersonModel(S3Model):
             output = json.dumps(items)
 
         response.headers["Content-Type"] = "application/json"
+        return output
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def pr_person_lookup(r, **attr):
+        """
+            JSON lookup method for S3AddPersonWidget2
+        """
+
+        id = r.id
+        if not id:
+            output = current.xml.json_message(False, 400, "No id provided!")
+            raise HTTP(400, body=output)
+
+        db = current.db
+        s3db = current.s3db
+        settings = current.deployment_settings
+        request_dob = settings.get_pr_request_dob()
+        request_gender = settings.get_pr_request_gender()
+
+        ptable = r.table
+        ctable = s3db.pr_contact
+        fields = [ptable.pe_id,
+                  # We have these already from the search_ac
+                  #ptable.first_name,
+                  #ptable.middle_name,
+                  #ptable.last_name,
+                  ]
+
+        left = None
+        if request_dob:
+            fields.append(ptable.date_of_birth)
+        if request_gender:
+            fields.append(ptable.gender)
+        if current.request.controller == "vol":
+            dtable = s3db.pr_person_details
+            fields.append(dtable.occupation)
+            left = dtable.on(dtable.person_id == ptable.id)
+
+        query = (ptable.id == id)
+        row = db(query).select(left=left,
+                               *fields).first()
+        if left:
+            occupation = row["pr_person_details.occupation"]
+            row = row["pr_person"]
+        else:
+            occupation = None
+        #first_name = row.first_name
+        #middle_name = row.middle_name
+        #last_name = row.last_name
+        if request_dob:
+            date_of_birth = row.date_of_birth
+        else:
+            date_of_birth = None
+        if request_gender:
+            gender = row.gender
+        else:
+            gender = None
+
+        # Lookup contacts separately as we can't limitby here
+        query = (ctable.pe_id == row.pe_id) & \
+                (ctable.contact_method.belongs(("EMAIL", "SMS")))
+        rows = db(query).select(ctable.contact_method,
+                                ctable.value,
+                                orderby = ctable.priority,
+                                )
+        email = phone = None
+        for row in rows:
+            if not email and row.contact_method == "EMAIL":
+                email = row.value
+            elif not phone and row.contact_method == "SMS":
+                phone = row.value
+            if email and phone:
+                break
+
+        # Minimal flattened structure
+        item = {}
+        #if first_name:
+        #    item["first_name"] = first_name
+        #if middle_name:
+        #    item["middle_name"] = middle_name
+        #if last_name:
+        #    item["last_name"] = last_name
+        if email:
+            item["email"] = email
+        if phone:
+            item["phone"] = phone
+        if gender:
+            item["gender"] = gender
+        if date_of_birth:
+            item["date_of_birth"] = date_of_birth
+        if occupation:
+            item["occupation"] = occupation
+        output = json.dumps(item)
+
+        current.response.headers["Content-Type"] = "application/json"
         return output
 
 # =============================================================================
@@ -1347,8 +1445,10 @@ class S3GroupModel(S3Model):
         tablename = "pr_group_membership"
         table = define_table(tablename,
                              group_id(label = T("Group"),
+                                      empty = False,
                                       ondelete="CASCADE"),
                              self.pr_person_id(label = T("Person"),
+                                               empty = False,
                                                ondelete="CASCADE"),
                              Field("group_head", "boolean",
                                    label = T("Group Head"),
@@ -2470,7 +2570,9 @@ class S3PersonDetailsModel(S3Model):
 class S3SavedFilterModel(S3Model):
     """ Saved Filters """
 
-    names = ["pr_filter", "pr_filter_id"]
+    names = ["pr_filter",
+             "pr_filter_id",
+             ]
 
     def model(self):
 
@@ -2484,6 +2586,7 @@ class S3SavedFilterModel(S3Model):
                                   Field("controller"),
                                   Field("function"),
                                   Field("resource"),
+                                  Field("url"),
                                   Field("description", "text"),
                                   Field("query", "text"),
                                   s3_comments(),
@@ -2503,13 +2606,16 @@ class S3SavedFilterModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return Storage(pr_filter_id = filter_id)
+        return dict(pr_filter_id = filter_id)
 
 # =============================================================================
 class S3SubscriptionModel(S3Model):
     """ Model for subscriptions """
 
-    names = ["pr_subscription"]
+    names = ["pr_subscription",
+             "pr_subscription_resource",
+             "pr_subscription_check_intervals",
+            ]
 
     def model(self):
 
@@ -2517,67 +2623,102 @@ class S3SubscriptionModel(S3Model):
         UNKNOWN_OPT = current.messages.UNKNOWN_OPT
 
         trigger_opts = {
-            1: T("New Records"),
-            2: T("Record Updates"),
-            3: T("New Records + Record Updates"),
+            "new": T("New Records"),
+            "upd": T("Record Updates"),
         }
 
-        format_opts = {
-            1: T("List"),
-            2: T("Report"),
-            3: T("Map"),
-            4: T("Graph"),
+        frequency_opts = (
+            ("immediately", T("Immediately")),
+            ("hourly", T("Hourly")),
+            ("daily", T("Daily")),
+            ("weekly", T("Weekly")),
+            ("never", T("Never")),
+        )
+
+        check_intervals = {
+            "immediately": 5,
+            "hourly": 60,
+            "daily": 1440,
+            "weekly": 10080,
+            "never": 0
         }
 
-        frequency_opts = {
-            "never": T("Never"),
-            #"immediately": T("Immediately"),
-            "hourly": T("Hourly"),
-            "daily": T("Daily"),
-            "weekly": T("Weekly"),
+        email_format_opts = {
+            "text": T("Text"),
+            "html": T("HTML")
         }
+
+        MSG_CONTACT_OPTS = current.msg.MSG_CONTACT_OPTS
+        FREQUENCY_OPTS = dict(frequency_opts)
 
         # ---------------------------------------------------------------------
         tablename = "pr_subscription"
         table = self.define_table(tablename,
                                   self.super_link("pe_id", "pr_pentity"),
-                                  Field("resource"),
                                   self.pr_filter_id(),
-                                  #Field("trigger", "integer",
-                                        #requires=IS_IN_SET(trigger_opts,
-                                                           #zero=None),
-                                        #default=1,
-                                        #represent=lambda opt: \
-                                                  #trigger_opts.get(opt,
-                                                                  #UNKNOWN_OPT)),
-                                  #Field("format", "integer",
-                                        #requires=IS_IN_SET(format_opts,
-                                                           #zero=None),
-                                        #default=1,
-                                        #represent=lambda opt: \
-                                                  #format_opts.get(opt,
-                                                                  #UNKNOWN_OPT)),
-                                  #Field("frequency",
-                                        #requires=IS_IN_SET(frequency_opts,
-                                                           #zero=None),
-                                        #default=1,
-                                        #represent=lambda opt: \
-                                                  #frequency_opts.get(opt,
-                                                                     #UNKNOWN_OPT)),
-                                  #Field("method"),
-                                  #Field("last_checked", "datetime",
-                                        #default=current.request.utcnow,
-                                        #writable=False),
-                                  #Field("next_due_time", "datetime",
-                                        #writable=False),
-                                  #Field("suspended", "boolean",
-                                        #default=False),
+                                  Field("notify_on", "list:string",
+                                        requires=IS_IN_SET(trigger_opts,
+                                                           multiple=True,
+                                                           zero=None),
+                                        default=["new"],
+                                        represent=S3Represent(
+                                                    options=trigger_opts,
+                                                    multiple=True)),
+                                  Field("frequency",
+                                        requires=IS_IN_SET(frequency_opts,
+                                                           zero=None),
+                                        default="daily",
+                                        represent=lambda opt: \
+                                                  FREQUENCY_OPTS.get(opt,
+                                                                     UNKNOWN_OPT)),
+                                  Field("method", "list:string",
+                                        requires=IS_IN_SET(MSG_CONTACT_OPTS,
+                                                           multiple=True,
+                                                           zero=None),
+                                        default=["EMAIL"],
+                                        represent=S3Represent(
+                                                    options=MSG_CONTACT_OPTS,
+                                                    multiple=True)),
+                                  Field("email_format",
+                                        requires=IS_EMPTY_OR(
+                                                   IS_IN_SET(email_format_opts,
+                                                             zero=None)),
+                                        represent=S3Represent(
+                                                    options=email_format_opts)),
+                                  *s3_meta_fields())
+
+        self.add_component("pr_subscription_resource",
+                           pr_subscription="subscription_id")
+
+        # ---------------------------------------------------------------------
+        tablename = "pr_subscription_resource"
+        table = self.define_table(tablename,
+                                  Field("subscription_id",
+                                        "reference pr_subscription",
+                                        ondelete="CASCADE"),
+                                  Field("resource"),
+                                  Field("url"),
+                                  Field("auth_token",
+                                        length=40,
+                                        readable=False,
+                                        writable=False),
+                                  Field("locked", "boolean",
+                                        default=False,
+                                        readable=False,
+                                        writable=False),
+                                  Field("batch_mode", "boolean",
+                                        default=True),
+                                  Field("last_check_time", "datetime",
+                                        default=current.request.utcnow,
+                                        writable=False),
+                                  Field("next_check_time", "datetime",
+                                        writable=False),
                                   *s3_meta_fields())
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return dict(pr_subscription_check_intervals = check_intervals)
 
 # =============================================================================
 class S3SavedSearch(S3Model):
@@ -3763,17 +3904,20 @@ class pr_PersonEntityRepresent(S3Represent):
     def __init__(self,
                  show_label=True,
                  default_label="[No ID Tag]",
+                 show_type=True,
                  multiple=False):
         """
             Constructor
 
             @param show_label: show the ID tag label for persons
             @param default_label: the default for the ID tag label
+            @param show_type: show the instance_type
             @param multiple: assume a value list by default
         """
 
         self.show_label = show_label
         self.default_label = default_label
+        self.show_type = show_type
 
         super(pr_PersonEntityRepresent, self).__init__(lookup="pr_pentity",
                                                        key="pe_id",
@@ -3862,25 +4006,29 @@ class pr_PersonEntityRepresent(S3Represent):
         else:
             label = None
 
-        etable = current.s3db.pr_pentity
-        instance_type_nice = etable.instance_type.represent(instance_type)
+        if self.show_type:
+            etable = current.s3db.pr_pentity
+            instance_type_nice = etable.instance_type.represent(instance_type)
+            instance_type_nice = " (%s)" % instance_type_nice
+        else:
+            instance_type_nice = ""
 
         item = object.__getattribute__(row, instance_type)
         if instance_type == "pr_person":
             if show_label:
-                pe_str = "%s %s (%s)" % (s3_fullname(item),
-                                         label,
-                                         instance_type_nice)
-            else:
-                pe_str = "%s (%s)" % (s3_fullname(item),
+                pe_str = "%s %s%s" % (s3_fullname(item),
+                                      label,
                                       instance_type_nice)
+            else:
+                pe_str = "%s%s" % (s3_fullname(item),
+                                   instance_type_nice)
 
         elif "name" in item:
-            pe_str = "%s (%s)" % (item["name"],
-                                  instance_type_nice)
+            pe_str = "%s%s" % (item["name"],
+                               instance_type_nice)
         else:
-            pe_str = "[%s] (%s)" % (label,
-                                    instance_type_nice)
+            pe_str = "[%s]%s" % (label,
+                                 instance_type_nice)
 
         return pe_str
 

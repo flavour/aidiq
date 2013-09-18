@@ -2,10 +2,17 @@
 
 .export_xls {
     background-image: url(img/icon-xls.png);
-    margin-top: -17px;
+}
+
+.map_legend_panel  .x-panel-body {
+    max-width: 200px;
 }
 
 /* Posts */
+#cms_post_body.text.input-xlarge {
+    height: 100px;
+}
+
 #body__error,
 #name__error,
 #location_id__error {
@@ -39,6 +46,16 @@ div.defaultlocation_error.error{
     width: 206px !important;
 }
 
+#sub-defaultevent_post .label-row,
+#sub-defaultlocation .label-row,
+#sub-filedocument .label-row,
+#sub-partnerorganisation .label-row {
+    /* Hide the column titles since only 1 column
+        - this should be done server-side where-possible, but this isn't possible for Partner Orgs as same field as for Donors
+    */
+    display: none;
+}
+
 /* Contacts Page */
 #pr_person_sub_human_resourcehuman_resource__label {
     /* Hide the colon */
@@ -65,9 +82,10 @@ div.defaultlocation_error.error{
 /* Projects Page */
 
 /* Dropdown with AddResourceLink takes up more vertical space than an INPUT so center the INPUTS
-    and the + button and throbber
- */
+    and the + button and throbber */
 
+#project_project_objectives,
+#project_project_description,
 #dummy_project_project_human_resource_id,
 #project_project_budget,
 #project_project_name,
@@ -150,3 +168,8 @@ div.defaultlocation_error.error{
 .item-container #project_project_name__label {
     display: none;
 }
+
+form#subscription-form.form-horizontal {
+    border: 1px solid #b2b2b2;
+}
+

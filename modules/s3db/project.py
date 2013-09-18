@@ -115,7 +115,7 @@ class S3ProjectModel(S3Model):
         db = current.db
         auth = current.auth
 
-        #NONE = current.messages["NONE"]
+        NONE = current.messages["NONE"]
 
         human_resource_id = self.hrm_human_resource_id
 
@@ -200,7 +200,7 @@ class S3ProjectModel(S3Model):
                                     ),
                                 ),
                              Field("name", unique=True, length=255,
-                                   label = T("Name"),
+                                   label = T("Project Name"),
                                    # Require unique=True if using IS_NOT_ONE_OF like here (same table,
                                    # no filter) in order to allow both automatic indexing (faster)
                                    # and key-based de-duplication (i.e. before field validation)
@@ -249,6 +249,7 @@ class S3ProjectModel(S3Model):
                              Field("objectives", "text",
                                    readable = mode_3w,
                                    writable = mode_3w,
+                                   represent = lambda v: v or NONE,
                                    label = T("Objectives")),
                              human_resource_id(label=T("Contact Person")),
                              s3_comments(comment=DIV(_class="tooltip",
@@ -1132,6 +1133,7 @@ class S3ProjectActivityModel(S3Model):
         #
         tablename = "project_activity"
         table = define_table(tablename,
+                             # Instance
                              self.super_link("doc_id", "doc_entity"),
                              s3_datetime(),
                              self.project_project_id(),
@@ -1915,25 +1917,6 @@ class S3ProjectBeneficiaryModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def project_beneficiary_type_represent(id, row=None):
-        """ FK representation """
-
-        if row:
-            return row.name
-        if not id:
-            return current.messages["NONE"]
-
-        db = current.db
-        table = db.project_beneficiary_type
-        r = db(table.id == id).select(table.name,
-                                      limitby = (0, 1)).first()
-        try:
-            return current.T(r.name)
-        except:
-            return current.messages.UNKNOWN_OPT
-
-    # -------------------------------------------------------------------------
-    @staticmethod
     def project_beneficiary_represent(id, row=None):
         """ FK representation """
 
@@ -1990,7 +1973,7 @@ class S3ProjectBeneficiaryModel(S3Model):
         data = item.data
         if "parameter_id" in data and \
            "project_location_id" in data:
-            # Match beneficiary by type and activity_id
+            # Match beneficiary by type and project_location
             table = item.table
             parameter_id = data.parameter_id
             project_location_id = data.project_location_id
@@ -2877,6 +2860,10 @@ class S3ProjectLocationModel(S3Model):
                             actuate="hide",
                             autodelete=False))
 
+        # Distributions
+        add_component("supply_distribution",
+                      project_location="project_location_id")
+
         # Themes
         add_component("project_theme",
                       project_location=dict(
@@ -3081,7 +3068,7 @@ class S3ProjectOrganisationModel(S3Model):
                                         represent = lambda v: \
                                             IS_FLOAT_AMOUNT.represent(v, precision=2),
                                         widget = IS_FLOAT_AMOUNT.widget,
-                                        label = T("Funds Contributed by this Organization")),
+                                        label = T("Funds Contributed")),
                                   s3_currency(),
                                   s3_comments(),
                                   *s3_meta_fields())

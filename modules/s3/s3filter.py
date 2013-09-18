@@ -29,6 +29,7 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
+import datetime
 import re
 
 try:
@@ -47,13 +48,14 @@ except:
     from gluon.contrib.simplejson.ordered_dict import OrderedDict
 
 from gluon import *
+from gluon.dal import Row
 from gluon.sqlhtml import MultipleOptionsWidget
 from gluon.storage import Storage
 from gluon.tools import callback
 
 from s3rest import S3Method
 from s3resource import S3FieldSelector, S3ResourceField, S3URLQuery
-from s3utils import s3_unicode
+from s3utils import s3_unicode, S3TypeConverter
 from s3validators import *
 from s3widgets import S3DateWidget, S3DateTimeWidget, S3MultiSelectWidget, S3OrganisationHierarchyWidget, S3GroupedOptionsWidget, s3_grouped_checkboxes_widget
 
@@ -134,6 +136,48 @@ class S3FilterWidget(object):
 
             @param field: the selector(s) for the field(s) to filter by
             @param attr: configuration options for this widget
+
+            Configuration options:
+            @keyword label: label for the widget
+            @keyword comment: comment for the widget
+            @keyword hidden: render widget initially hidden (="advanced"
+                             option)
+            @keyword levels: list of location hierarchy levels
+                             (L{S3LocationFilter})
+            @keyword widget: widget to use (L{S3OptionsFilter}),
+                             "multiselect", "multiselect-bootstrap" or
+                             "groupedopts" (default)
+            @keyword cols: number of columns of checkboxes (L{S3OptionsFilter}
+                           and L{S3LocationFilter} with "groupedopts" widget)
+            @keyword filter: show filter for options (L{S3OptionsFilter},
+                             L{S3LocationFilter} with "multiselect" widget)
+            @keyword header: show header in widget (L{S3OptionsFilter},
+                             L{S3LocationFilter} with "multiselect" widget)
+            @keyword selectedList: number of selected items to show before
+                                   collapsing into number of items
+                                   (L{S3OptionsFilter}, L{S3LocationFilter}
+                                   with "multiselect" widget)
+            @keyword no_opts: text to show if no options available
+                              (L{S3OptionsFilter}, L{S3LocationFilter})
+            @keyword resource: alternative resource to look up options
+                               (L{S3LocationFilter}, L{S3OptionsFilter})
+            @keyword lookup: field in the alternative resource to look up
+                             options (L{S3LocationFilter})
+            @keyword options: fixed set of options (L{S3OptionsFilter}: dict
+                              of {value: label} or a callable that returns one,
+                              L{S3LocationFilter}: list of gis_location IDs)
+            @keyword size: maximum size of multi-letter options groups
+                           (L{S3OptionsFilter} with "groupedopts" widget)
+            @keyword help_field: field in the referenced table to display on
+                                 hovering over a foreign key option
+                                 (L{S3OptionsFilter} with "groupedopts" widget)
+            @keyword none: label for explicit None-option in many-to-many
+                           fields (L{S3OptionsFilter})
+            @keyword fieldtype: explicit field type "date" or "datetime" to
+                                use for context or virtual fields
+                                (L{S3DateFilter})
+            @keyword hide_time: don't show time selector (L{S3DateFilter})
+
         """
 
         self.field = field
@@ -148,6 +192,8 @@ class S3FilterWidget(object):
                 options[k] = v
         self.attr = attributes
         self.opts = options
+
+        self.selector = None
 
     # -------------------------------------------------------------------------
     def __call__(self, resource, get_vars=None, alias=None):
@@ -199,6 +245,10 @@ class S3FilterWidget(object):
         # Construct name and id for the widget
         attr = self.attr
         if "_name" not in attr:
+            if not resource:
+                raise SyntaxError("%s: _name parameter required " \
+                                  "when rendered without resource." % \
+                                  self.__class__.__name__)
             flist = self.field
             if type(flist) is not list:
                 flist = [flist]
@@ -282,16 +332,19 @@ class S3FilterWidget(object):
             fields = [fields]
         selectors = []
         for field in fields:
-            try:
-                rfield = S3ResourceField(resource, field)
-            except (AttributeError, TypeError):
-                continue
-            if not rfield.field and not rfield.virtual:
-                # Unresolvable selector
-                continue
-            if not label:
-                label = rfield.label
-            selectors.append(prefix(rfield.selector))
+            if resource:
+                try:
+                    rfield = S3ResourceField(resource, field)
+                except (AttributeError, TypeError):
+                    continue
+                if not rfield.field and not rfield.virtual:
+                    # Unresolvable selector
+                    continue
+                if not label:
+                    label = rfield.label
+                selectors.append(prefix(rfield.selector))
+            else:
+                selectors.append(field)
         if selectors:
             return label, "|".join(selectors)
         else:
@@ -341,6 +394,7 @@ class S3FilterWidget(object):
 
 # =============================================================================
 class S3TextFilter(S3FilterWidget):
+    """ Text filter widget """
 
     _class = "text-filter"
 
@@ -482,7 +536,10 @@ class S3RangeFilter(S3FilterWidget):
 
 # =============================================================================
 class S3DateFilter(S3RangeFilter):
-    """ Date Range Filter Widget """
+    """
+        Date Range Filter Widget
+        @see: L{Configuration Options<S3FilterWidget.__init__>}
+    """
 
     _class = "date-filter"
 
@@ -492,7 +549,7 @@ class S3DateFilter(S3RangeFilter):
     operator = ["ge", "le"]
 
     # Untranslated labels for individual input boxes.
-    input_labels = {"ge": "Earliest", "le": "Latest"}
+    input_labels = {"ge": "From", "le": "To"}
 
     # -------------------------------------------------------------------------
     def widget(self, resource, values):
@@ -514,17 +571,33 @@ class S3DateFilter(S3RangeFilter):
         _id = attr["_id"]
 
         # Determine the field type
-        rfield = S3ResourceField(resource, self.field)
-        field = rfield.field
-        if rfield.virtual:
-            # S3DateTimeWidget doesn't support virtual fields
+        if resource:
+            rfield = S3ResourceField(resource, self.field)
+            field = rfield.field
+        else:
+            rfield = field = None
+        if not field:
+            if not rfield or rfield.virtual:
+                ftype = self.opts.get("fieldtype", "datetime")
+            else:
+                # Unresolvable selector
+                return ""
+        else:
+            ftype = rfield.ftype
+        if not field:
+            # S3DateTimeWidget requires a Field
+            if rfield:
+                tname, fname = rfield.tname, rfield.fname
+            else:
+                tname, fname = "notable", "datetime"
+                if not _id:
+                    raise SyntaxError("%s: _id parameter required " \
+                                      "when rendered without resource." % \
+                                      self.__class__.__name__)
             dtformat = current.deployment_settings.get_L10n_date_format()
-            field = Field(rfield.fname, "datetime",
+            field = Field(fname, ftype,
                           requires = IS_DATE_IN_RANGE(format = dtformat))
-            field.tablename = field._tablename = rfield.tname
-        elif not rfield.field:
-            # Unresolvable selector
-            return ""
+            field.tablename = field._tablename = tname
 
         # Options
         hide_time = self.opts.get("hide_time", False)
@@ -541,7 +614,7 @@ class S3DateFilter(S3RangeFilter):
             input_id = "%s-%s" % (_id, operator)
 
             # Determine the widget class
-            if rfield.ftype == "date":
+            if ftype == "date":
                 widget = S3DateWidget()
             else:
                 opts = {}
@@ -580,7 +653,12 @@ class S3DateFilter(S3RangeFilter):
 
 # =============================================================================
 class S3LocationFilter(S3FilterWidget):
-    """ Hierarchical Location Filter Widget """
+    """
+        Hierarchical Location Filter Widget
+        @see: L{Configuration Options<S3FilterWidget.__init__>}
+
+        NB This will show records linked to all child locations of the Lx
+    """
 
     _class = "location-filter"
 
@@ -638,6 +716,8 @@ class S3LocationFilter(S3FilterWidget):
         operator = self.operator
         field_name = self.field
 
+        fname = self._prefix(field_name) if resource else field_name
+        
         # @ToDo: Hide dropdowns other than first
         if opts.widget == "multiselect":
 
@@ -658,7 +738,7 @@ class S3LocationFilter(S3FilterWidget):
                 attr["_id"] = "%s-%s" % (base_id, level)
                 attr["_name"] = name
                 # Find relevant values to pre-populate the widget
-                _values = values["~.%s$%s__%s" % (field_name, level, operator)]
+                _values = values.get("%s$%s__%s" % (fname, level, operator))
                 w = S3MultiSelectWidget(filter = opts.get("filter", False),
                                         header = opts.get("header", False),
                                         selectedList = opts.get("selectedList", 3),
@@ -670,7 +750,7 @@ class S3LocationFilter(S3FilterWidget):
             # Grouped Checkboxes
             if "s3-checkboxes-widget" not in _class:
                 attr["_class"] = "%s s3-checkboxes-widget" % _class
-            attr["cols"] = opts["cols"]
+            attr["cols"] = opts.get("cols", 3)
 
             # Add one widget per level
             for level in levels:
@@ -685,7 +765,7 @@ class S3LocationFilter(S3FilterWidget):
                 attr["_id"] = "%s-%s" % (base_id, level)
                 attr["_name"] = name
                 # Find relevant values to pre-populate
-                _values = values["~.%s$%s__%s" % (field_name, level, operator)]
+                _values = values.get("%s$%s__%s" % (fname, level, operator))
                 w_append(s3_grouped_checkboxes_widget(dummy_field,
                                                       _values,
                                                       **attr))
@@ -767,16 +847,39 @@ class S3LocationFilter(S3FilterWidget):
         default = (ftype, levels.keys(), opts.get("no_opts", NOOPT))
 
         # Resolve the field selector
-        field_name = self.field
-        rfield = S3ResourceField(resource, field_name)
-        field = rfield.field
-        if not field or rfield.ftype[:len(ftype)] != ftype:
-            # Must be a real reference to gis_location
+        selector = None
+        if resource is None:
+            rname = opts.get("resource")
+            if rname:
+                resource = current.s3db.resource(rname)
+                selector = opts.get("lookup", "location_id")
+        else:
+            selector = self.field
+
+        options = opts.get("options")
+        if options:
+            # Fixed options (=list of location IDs)
+            resource = current.s3db.resource("gis_location", id=options)
+            fields = ["id"] + [l for l in levels]
+            if translate:
+                fields.append("path")
+            joined = False
+
+        elif selector:
+            # Lookup options from resource
+            rfield = S3ResourceField(resource, selector)
+            if not rfield.field or rfield.ftype != ftype:
+                # Must be a real reference to gis_location
+                return default
+            fields = [selector] + ["%s$%s" % (selector, l) for l in levels]
+            if translate:
+                fields.append("%s$path" % selector)
+            joined = True
+
+        else:
+            # Neither fixed options nor resource to look them up
             return default
-        fields = [field_name] + ["%s$%s" % (field_name, l) for l in levels]
-        if translate:
-            fields += ["%s$path" % field_name]
-    
+        
         # Find the options
         rows = resource.select(fields=fields,
                                limit=None,
@@ -799,17 +902,15 @@ class S3LocationFilter(S3FilterWidget):
                              "options": {} if translate else [],
                              }
 
-        # Build the options & hierarchy
+        # Generate a name localization lookup dict
         if translate:
             # Get IDs via Path to lookup name_l10n
-            ids = []
-            iappend = ids.append
+            ids = set()
             for row in rows:
-                if "gis_location" in row:
-                    path = row.gis_location.path.split("/")
-                    for id in path:
-                        if id not in ids:
-                            iappend(id)
+                _row = getattr(row, "gis_location") if joined else row
+                path = _row.path.split("/")
+                if path:
+                    ids |= set(path)
             # Build lookup table for name_l10n
             name_l10n = {}
             s3db = current.s3db
@@ -828,65 +929,65 @@ class S3LocationFilter(S3FilterWidget):
 
         # Populate the Options and the Hierarchy
         for row in rows:
-            if "gis_location" in row:
-                _row = row.gis_location
+            _row = getattr(row, "gis_location") if joined else row
+            if inject_hierarchy:
+                parent = None
+                grandparent = None
+                greatgrandparent = None
+                greatgreatgrandparent = None
+                greatgreatgreatgrandparent = None
+                i = 0
+            for level in levels:
+                v = _row[level]
+                if v:
+                    o = levels[level]["options"]
+                    if v not in o:
+                        if translate:
+                            o[v] = name_l10n.get(v, v)
+                        else:
+                            o.append(v)
                 if inject_hierarchy:
-                    parent = None
-                    grandparent = None
-                    greatgrandparent = None
-                    greatgreatgrandparent = None
-                    greatgreatgreatgrandparent = None
-                    i = 0
-                for level in levels:
-                    v = _row[level]
-                    if v:
-                        o = levels[level]["options"]
-                        if v not in o:
-                            if translate:
-                                o[v] = name_l10n.get(v, v)
-                            else:
-                                o.append(v)
-                    if inject_hierarchy:
-                        if i == 0:
-                            h = hierarchy[_level]
-                            if v not in h:
-                                h[v] = {}
-                            parent = v
-                        elif i == 1:
-                            h = hierarchy[_level][parent]
-                            if v not in h:
-                                h[v] = {}
-                            grandparent = parent
-                            parent = v
-                        elif i == 2:
-                            h = hierarchy[_level][grandparent][parent]
-                            if v not in h:
-                                h[v] = {}
-                            greatgrandparent = grandparent
-                            grandparent = parent
-                            parent = v
-                        elif i == 3:
-                            h = hierarchy[_level][greatgrandparent][grandparent][parent]
-                            if v not in h:
-                                h[v] = {}
-                            greatgreatgrandparent = greatgrandparent
-                            greatgrandparent = grandparent
-                            grandparent = parent
-                            parent = v
-                        elif i == 4:
-                            h = hierarchy[_level][greatgreatgrandparent][greatgrandparent][grandparent][parent]
-                            if v not in h:
-                                h[v] = {}
-                            greatgreatgreatgrandparent = greatgreatgrandparent
-                            greatgreatgrandparent = greatgrandparent
-                            greatgrandparent = grandparent
-                            grandparent = parent
-                            parent = v
-                        elif i == 5:
-                            h = hierarchy[_level][greatgreatgreatgrandparent][greatgreatgrandparent][greatgrandparent][grandparent][parent]
-                            if v not in h:
-                                h[v] = {}
-                        i += 1
+                    if i == 0:
+                        h = hierarchy[_level]
+                        if v not in h:
+                            h[v] = {}
+                        parent = v
+                    elif i == 1:
+                        h = hierarchy[_level][parent]
+                        if v not in h:
+                            h[v] = {}
+                        grandparent = parent
+                        parent = v
+                    elif i == 2:
+                        h = hierarchy[_level][grandparent][parent]
+                        if v not in h:
+                            h[v] = {}
+                        greatgrandparent = grandparent
+                        grandparent = parent
+                        parent = v
+                    elif i == 3:
+                        h = hierarchy[_level][greatgrandparent][grandparent][parent]
+                        if v not in h:
+                            h[v] = {}
+                        greatgreatgrandparent = greatgrandparent
+                        greatgrandparent = grandparent
+                        grandparent = parent
+                        parent = v
+                    elif i == 4:
+                        h = hierarchy[_level][greatgreatgrandparent][greatgrandparent][grandparent][parent]
+                        if v not in h:
+                            h[v] = {}
+                        greatgreatgreatgrandparent = greatgreatgrandparent
+                        greatgreatgrandparent = greatgrandparent
+                        greatgrandparent = grandparent
+                        grandparent = parent
+                        parent = v
+                    elif i == 5:
+                        h = hierarchy[_level][greatgreatgreatgrandparent][greatgreatgrandparent][greatgrandparent][grandparent][parent]
+                        if v not in h:
+                            h[v] = {}
+                    i += 1
+
         if translate:
             # Sort the options dicts
             for level in levels:
@@ -930,15 +1031,18 @@ class S3LocationFilter(S3FilterWidget):
         else:
             levels = current.gis.hierarchy_level_keys
         fields = ["%s$%s" % (fields, level) for level in levels]
-        selectors = []
-        for field in fields:
-            try:
-                rfield = S3ResourceField(resource, field)
-            except (AttributeError, TypeError):
-                continue
-            if not label:
-                label = rfield.label
-            selectors.append(prefix(rfield.selector))
+        if resource:
+            selectors = []
+            for field in fields:
+                try:
+                    rfield = S3ResourceField(resource, field)
+                except (AttributeError, TypeError):
+                    continue
+                if not label:
+                    label = rfield.label
+                selectors.append(prefix(rfield.selector))
+        else:
+            selectors = fields
         if selectors:
             return label, "|".join(selectors)
         else:
@@ -962,6 +1066,10 @@ class S3LocationFilter(S3FilterWidget):
 
 # =============================================================================
 class S3OptionsFilter(S3FilterWidget):
+    """
+        Options filter widget
+        @see: L{Configuration Options<S3FilterWidget.__init__>}
+    """
 
     _class = "options-filter"
 
@@ -981,12 +1089,6 @@ class S3OptionsFilter(S3FilterWidget):
         attr = self._attr(resource)
         opts = self.opts
         name = attr["_name"]
-
-        # Filter class (default+custom)
-        _class = self._class
-        if "_class" in attr and attr["_class"]:
-            _class = "%s %s" % (_class, attr["_class"])
-        attr["_class"] = _class
 
         # Get the options
         ftype, options, noopt = self._options(resource)
@@ -1026,42 +1128,42 @@ class S3OptionsFilter(S3FilterWidget):
         else:
             any_all = ""
 
-        # Render the filter widget
-        dummy_field = Storage(name=name,
-                              type=ftype,
-                              requires=IS_IN_SET(options, multiple=True))
-
+        # Initialize widget
         widget_type = opts["widget"]
         if widget_type == "multiselect-bootstrap":
+            widget_class = "multiselect-filter-bootstrap"
             script = "/%s/static/scripts/bootstrap-multiselect.js" % \
                         current.request.application
             scripts = current.response.s3.scripts
             if script not in scripts:
                 scripts.append(script)
-            widget = MultipleOptionsWidget.widget(dummy_field,
-                                                  values,
-                                                  **attr)
-            widget.add_class("multiselect-filter-bootstrap")
+            w = MultipleOptionsWidget.widget
         elif widget_type == "multiselect":
-            if "multiselect-filter-widget" not in _class:
-                attr["_class"] = "%s multiselect-filter-widget" % _class
-            w = S3MultiSelectWidget(filter = opts.get("filter", False),
-                                    header = opts.get("header", False),
-                                    selectedList = opts.get("selectedList", 3),
-                                    )
-            widget = w(dummy_field, values, **attr)
+            widget_class = "multiselect-filter-widget"
+            w = S3MultiSelectWidget(
+                    filter = opts.get("filter", False),
+                    header = opts.get("header", False),
+                    selectedList = opts.get("selectedList", 3))
         else:
-            if "groupedopts-filter-widget" not in _class:
-                attr["_class"] = "%s groupedopts-filter-widget" % _class
+            widget_class = "groupedopts-filter-widget"
             w = S3GroupedOptionsWidget(
                     options = options,
                     multiple = True,
                     cols = opts["cols"],
                     size = opts["size"] or 12,
-                    help_field = opts["help_field"],
-                )
-            widget = w(dummy_field, values, **attr)
+                    help_field = opts["help_field"])
 
+        # Add widget class and default class
+        classes = set(attr.get("_class", "").split()) | \
+                  set((widget_class, self._class))
+        attr["_class"] = " ".join(classes) if classes else None
+
+        # Render the widget
+        dummy_field = Storage(name=name,
+                              type=ftype,
+                              requires=IS_IN_SET(options, multiple=True))
+        widget = w(dummy_field, values, **attr)
+        
         return TAG[""](any_all, widget)
 
     # -------------------------------------------------------------------------
@@ -1117,13 +1219,23 @@ class S3OptionsFilter(S3FilterWidget):
         if isinstance(selector, (tuple, list)):
             selector = selector[0]
 
-        rfield = S3ResourceField(resource, selector)
-        field = rfield.field
-        colname = rfield.colname
-        ftype = rfield.ftype
+        if resource is None:
+            rname = opts.get("resource")
+            if rname:
+                resource = current.s3db.resource(rname)
+
+        if resource:
+            rfield = S3ResourceField(resource, selector)
+            field = rfield.field
+            colname = rfield.colname
+            ftype = rfield.ftype
+        else:
+            rfield = field = colname = None
+            ftype = "string"
 
         # Find the options
-
+        opt_keys = []
+        
         if opts.options is not None:
             # Custom dict of options {value: label} or a callable
             # returning such a dict:
@@ -1132,7 +1244,7 @@ class S3OptionsFilter(S3FilterWidget):
                 options = options()
             opt_keys = options.keys()
 
-        else:
+        elif resource:
             # Determine the options from the field type
             options = None
             if ftype == "boolean":
@@ -1163,21 +1275,18 @@ class S3OptionsFilter(S3FilterWidget):
                             v = row[colname]
                             if v not in opt_keys:
                                 kappend(v)
-            else:
-                opt_keys = []
 
         # No options?
         if len(opt_keys) < 1 or len(opt_keys) == 1 and not opt_keys[0]:
             return (ftype, None, opts.get("no_opts", NOOPT))
 
         # Represent the options
-
         opt_list = [] # list of tuples (key, value)
 
-        # Custom represent? (otherwise fall back to field represent)
+        # Custom represent? (otherwise fall back to field.represent)
         represent = opts.represent
-        if not represent or ftype[:9] != "reference":
-            represent = field.represent
+        if not represent: # or ftype[:9] != "reference":
+            represent = field.represent if field else None
 
         if options is not None:
             # Custom dict of {value:label} => use this label
@@ -1304,64 +1413,89 @@ class S3FilterForm(object):
         attr["_id"] = form_id
 
         opts = self.opts
+
+        # Form style
         formstyle = opts.get("formstyle", None)
         if not formstyle:
             formstyle = self._formstyle
 
-        # Filter Manager (load/apply/save filters)
-        rows = []
-        fm = current.deployment_settings.get_search_filter_manager()
-        if fm and opts.get("filter_manager", True):
-            filter_manager = self._render_filters(resource, form_id)
-            if filter_manager:
-                rows = [formstyle(None, "", filter_manager, "")]
-
         # Filter widgets
-        rows.extend(self._render_widgets(resource,
-                                         get_vars=get_vars or {},
-                                         alias=alias,
-                                         formstyle=formstyle))
+        rows = self._render_widgets(resource,
+                                    get_vars=get_vars or {},
+                                    alias=alias,
+                                    formstyle=formstyle)
 
         # Other filter form controls
         controls = self._render_controls()
         if controls:
             rows.append(formstyle(None, "", controls, ""))
 
-        # Submit button
+        # Submit elements
+        ajax = opts.get("ajax", False)
         submit = opts.get("submit", False)
         if submit:
-            _class = "filter-submit"
-            ajax = opts.get("ajax", False)
-            if ajax:
-                _class = "%s filter-ajax" % _class
+
+            settings = current.deployment_settings
+            
+            # Auto-submit
+            auto_submit = settings.get_ui_filter_auto_submit()
+            if auto_submit and opts.get("auto_submit", True):
+                script = """S3.search.filterFormAutoSubmit('%s', %s)""" % \
+                         (form_id, auto_submit)
+                current.response.s3.jquery_ready.append(script)
+
+            # Custom label and class
+            _class = None
             if submit is True:
                 label = current.T("Search")
             elif isinstance(submit, (list, tuple)):
-                label = submit[0]
-                _class = "%s %s" % (submit[1], _class)
+                label, _class = submit
             else:
                 label = submit
+
+            # Submit button
+            submit_button = INPUT(_type="button",
+                                  _value=label,
+                                  _class="filter-submit")
+            #if auto_submit:
+                #submit_button.add_class("hide")
+            if _class:
+                submit_button.add_class(_class)
+
             # Where to request filtered data from:
             submit_url = opts.get("url", URL(vars={}))
+            
             # Where to request updated options from:
             ajax_url = opts.get("ajaxurl", URL(args=["filter.options"], vars={}))
-            submit = TAG[""](
-                        INPUT(_type="button",
-                              _value=label,
-                              _class=_class),
-                        INPUT(_type="hidden",
-                              _class="filter-ajax-url",
-                              _value=ajax_url),
-                        INPUT(_type="hidden",
-                              _class="filter-submit-url",
-                              _value=submit_url))
 
+            # Submit row elements
+            submit = TAG[""](submit_button,
+                             INPUT(_type="hidden",
+                                   _class="filter-ajax-url",
+                                   _value=ajax_url),
+                             INPUT(_type="hidden",
+                                   _class="filter-submit-url",
+                                   _value=submit_url))
             if ajax and target:
                 submit.append(INPUT(_type="hidden",
                                     _class="filter-submit-target",
                                     _value=target))
 
-            rows.append(formstyle(None, "", submit, ""))
+            # Append submit row
+            submit_row = formstyle(None, "", submit, "")
+            if auto_submit and hasattr(submit_row, "add_class"):
+                submit_row.add_class("hide")
+            rows.append(submit_row)
+
+        # Filter Manager (load/apply/save filters)
+        fm = settings.get_search_filter_manager()
+        if fm and opts.get("filter_manager", resource is not None):
+            filter_manager = self._render_filters(resource, form_id)
+            if filter_manager:
+                fmrow = formstyle(None, "", filter_manager, "")
+                if hasattr(fmrow, "add_class"):
+                    fmrow.add_class("filter-manager-row")
+                rows.append(fmrow)
 
         # Adapt to formstyle: render a TABLE only if formstyle returns TRs
         if rows:
@@ -1375,6 +1509,10 @@ class S3FilterForm(object):
             else:
                 form = FORM(DIV(rows), **attr)
             form.add_class("filter-form")
+            if ajax:
+                form.add_class("filter-ajax")
+        else:
+            return ""
 
         # Put a copy of formstyle into the form for access by the view
         form.formstyle = formstyle
@@ -1509,7 +1647,11 @@ class S3FilterForm(object):
                 comment = ""
             rappend(formstyle(row_id, label, widget, comment, hidden=hidden))
         if advanced:
-            self.opts["advanced"] = resource.get_config("filter_advanced", True)
+            if resource:
+                self.opts["advanced"] = resource.get_config(
+                                            "filter_advanced", True)
+            else:
+                self.opts["advanced"] = True
         return rows
             
     # -------------------------------------------------------------------------
@@ -1533,8 +1675,12 @@ class S3FilterForm(object):
     
         table = current.s3db.pr_filter
         query = (table.deleted != True) & \
-                (table.pe_id == pe_id) & \
-                (table.resource == resource.tablename)
+                (table.pe_id == pe_id)
+
+        if resource:
+            query &= (table.resource == resource.tablename)
+        else:
+            query &= (table.resource == None)
 
         rows = current.db(query).select(table._id,
                                         table.title,
@@ -1555,35 +1701,53 @@ class S3FilterForm(object):
                 query = json.loads(query)
             filters[filter_id] = query
         widget_id = "%s-fm" % form_id
-        widget = SELECT(options,
-                        _id=widget_id,
-                        _class="filter-manager-widget")
+        widget = DIV(SELECT(options,
+                            _id=widget_id,
+                            _class="filter-manager-widget"),
+                     _class="filter-manager-container")
 
+        # JSON-serializable translator
         T = current.T
-        script = """
-$("#%(widget_id)s").filtermanager({
-  filters: %(filters)s,
-  ajaxURL: "%(ajaxurl)s",
-  saveTooltip: "%(save_tooltip)s",
-  loadTooltip: "%(load_tooltip)s",
-  createTooltip: "%(create_tooltip)s",
-  titleHint: "%(title_hint)s",
-  selectHint: "%(select_hint)s",
-  emptyHint: "%(empty_hint)s",
-  confirmUpdate: true,
-  confirmText: "%(confirm_text)s"
-})""" % dict(
-            widget_id = widget_id,
-            filters = json.dumps(filters),
-            ajaxurl = ajaxurl,
-            save_tooltip = T("Update saved filter"),
-            load_tooltip = T("Load filter"),
-            create_tooltip = T("Create new filter from current options"),
-            title_hint = T("Enter a title..."),
-            select_hint = SELECT_FILTER,
-            empty_hint = T("No saved filters"),
-            confirm_text = T("Update this filter?"),
+        _t = lambda s: str(T(s))
+
+        # Configure the widget
+        config = dict(
+
+            # Filters and Ajax URL
+            filters = filters,
+            ajaxURL = ajaxurl,
+
+            # Tooltips for action icons/buttons
+            saveTooltip = _t("Update saved filter"),
+            loadTooltip = _t("Load filter"),
+            createTooltip = _t("Create new filter from current options"),
+
+            # Hints
+            titleHint = _t("Enter a title..."),
+            selectHint = str(SELECT_FILTER),
+            emptyHint = _t("No saved filters"),
+
+            # Confirm update + confirmation text
+            confirmUpdate = True,
+            confirmText = _t("Update this filter?"),
         )
+
+        # Render actions as buttons with text if configured, otherwise
+        # they will appear as empty DIVs with classes for CSS icons
+        settings = current.deployment_settings
+        create_text = settings.get_search_filter_manager_save()
+        if create_text:
+            config["createText"] = _t(create_text)
+        update_text = settings.get_search_filter_manager_update()
+        if update_text:
+            config["saveText"] = _t(update_text)
+        load_text = settings.get_search_filter_manager_load()
+        if load_text:
+            config["loadText"] = _t(load_text)
+            
+        script = """$("#%s").filtermanager(%s)""" % (widget_id,
+                                                     json.dumps(config))
+
         current.response.s3.jquery_ready.append(script)
 
         return widget
@@ -1628,7 +1792,7 @@ $("#%(widget_id)s").filtermanager({
 
 # =============================================================================
 class S3Filter(S3Method):
-    """ Back-end for filter form updates """
+    """ Back-end for filter forms """
 
     def apply_method(self, r, **attr):
         """
@@ -1766,11 +1930,17 @@ class S3Filter(S3Method):
         if query is not None:
             filter_data["query"] = json.dumps(query)
 
+        url = data.get("url")
+        if url is not None:
+            filter_data["url"] = url
+
         # Store record
         onaccept = None
+        form = Storage(vars=filter_data)
         if record:
             success = db(table.id == record_id).update(**filter_data)
             if success:
+                current.audit("update", "pr", "filter", form, record_id, "json")
                 info = {"updated": record_id}
                 onaccept = s3db.get_config(table, "update_onaccept",
                            s3db.get_config(table, "onaccept"))
@@ -1778,13 +1948,14 @@ class S3Filter(S3Method):
             success = table.insert(**filter_data)
             if success:
                 record_id = success
+                current.audit("create", "pr", "filter", form, record_id, "json")
                 info = {"created": record_id}
                 onaccept = s3db.get_config(table, "update_onaccept",
                            s3db.get_config(table, "onaccept"))
 
         if onaccept is not None:
-            filter_data["id"] = record_id
-            callback(onaccept, Storage(vars=filter_data))
+            form.vars["id"] = record_id
+            callback(onaccept, form)
 
         # Success/Error response
         xml = current.xml
@@ -1854,5 +2025,320 @@ class S3Filter(S3Method):
         # JSON response
         current.response.headers["Content-Type"] = "application/json"
         return json.dumps(filters)
+
+# =============================================================================
+class S3FilterString(object):
+    """
+        Helper class to render a human-readable representation of a
+        filter query, as representation method of JSON-serialized
+        queries in saved filters.
+    """
+
+    def __init__(self, resource, query):
+        """
+            Constructor
+
+            @param query: the URL query (list of key-value pairs or a
+                          string with such a list in JSON)
+        """
+
+        if type(query) is not list:
+            try:
+                self.query = json.loads(query)
+            except ValueError:
+                self.query = []
+        else:
+            self.query = query
+
+        get_vars = {}
+        for k, v in self.query:
+            if v is not None:
+                key = resource.prefix_selector(k)
+                if key in get_vars:
+                    value = get_vars[key]
+                    if type(value) is list:
+                        value.append(v)
+                    else:
+                        get_vars[key] = [value, v]
+                else:
+                    get_vars[key] = v
+
+        self.resource = resource
+        self.get_vars = get_vars
+
+    # -------------------------------------------------------------------------
+    def represent(self):
+        """ Render the query representation for the given resource """
+
+        default = ""
+
+        get_vars = self.get_vars
+        resource = self.resource
+        if not get_vars:
+            return default
+        else:
+            queries = S3URLQuery.parse(resource, get_vars)
+
+        # Get alternative field labels
+        labels = {}
+        get_config = resource.get_config
+        prefix = resource.prefix_selector
+        for config in ("list_fields", "notify_fields"):
+            fields = get_config(config, set())
+            for f in fields:
+                if type(f) is tuple:
+                    labels[prefix(f[1])] = f[0]
+
+        # Iterate over the sub-queries
+        render = self._render
+        substrings = []
+        append = substrings.append
+        for alias, subqueries in queries.iteritems():
+
+            for subquery in subqueries:
+                s = render(resource, alias, subquery, labels=labels)
+                if s:
+                    append(s)
+
+        if substrings:
+            result = substrings[0]
+            T = current.T
+            for s in substrings[1:]:
+                result = T("%s AND %s") % (result, s)
+            return result
+        else:
+            return default
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def _render(cls, resource, alias, query, invert=False, labels=None):
+        """
+            Recursively render a human-readable representation of a
+            S3ResourceQuery.
+
+            @param resource: the S3Resource
+            @param query: the S3ResourceQuery
+            @param invert: invert the query
+        """
+
+        T = current.T
+
+        if not query:
+            return None
+
+        op = query.op
+
+        l = query.left
+        r = query.right
+        render = lambda q, r=resource, a=alias, invert=False, labels=labels: \
+                        cls._render(r, a, q, invert=invert, labels=labels)
+
+        if op == query.AND:
+            # Recurse AND
+            l = render(l)
+            r = render(r)
+            if l is not None and r is not None:
+                if invert:
+                    result = T("NOT %s OR NOT %s") % (l, r)
+                else:
+                    result = T("%s AND %s") % (l, r)
+            else:
+                result = l if l is not None else r
+        elif op == query.OR:
+            # Recurse OR
+            l = render(l)
+            r = render(r)
+            if l is not None and r is not None:
+                if invert:
+                    result = T("NOT %s AND NOT %s") % (l, r)
+                else:
+                    result = T("%s OR %s") % (l, r)
+            else:
+                result = l if l is not None else r
+        elif op == query.NOT:
+            # Recurse NOT
+            result = render(l, invert=not invert)
+        else:
+            # Resolve the field selector against the resource
+            try:
+                rfield = l.resolve(resource)
+            except (AttributeError, SyntaxError):
+                return None
+
+            # Convert the filter values into the field type
+            try:
+                values = cls._convert(rfield, r)
+            except (TypeError, ValueError):
+                values = r
+
+            # Alias
+            selector = l.name
+            if labels and selector in labels:
+                rfield.label = labels[selector]
+            # @todo: for duplicate labels, show the table name
+            #else:
+                #tlabel = " ".join(s.capitalize() for s in rfield.tname.split("_")[1:])
+                #rfield.label = "(%s) %s" % (tlabel, rfield.label)
+
+            # Represent the values
+            if values is None:
+                values = T("None")
+            else:
+                list_type = rfield.ftype[:5] == "list:"
+                renderer = rfield.represent
+                if not callable(renderer):
+                    renderer = lambda v: s3_unicode(v)
+                if hasattr(renderer, "linkto"):
+                    linkto = renderer.linkto
+                    renderer.linkto = None
+                else:
+                    linkto = None
+
+                is_list = type(values) is list
+
+                try:
+                    if is_list and hasattr(renderer, "bulk") and not list_type:
+                        fvalues = renderer.bulk(values, list_type=False)
+                        values = [fvalues[v] for v in values if v in fvalues]
+                    elif list_type:
+                        if is_list:
+                            values = renderer(values)
+                        else:
+                            values = renderer([values])
+                    else:
+                        if is_list:
+                            values = [renderer(v) for v in values]
+                        else:
+                            values = renderer(values)
+                except:
+                    values = s3_unicode(values)
+
+            # Translate the query
+            result = cls._translate_query(query, rfield, values, invert=invert)
+
+        return result
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def _convert(cls, rfield, value):
+        """
+            Convert a filter value according to the field type
+            before representation
+
+            @param rfield: the S3ResourceField
+            @param value: the value
+        """
+
+        if value is None:
+            return value
+
+        ftype = rfield.ftype
+        if ftype[:5] == "list:":
+            if ftype[5:8] in ("int", "ref"):
+                ftype = long
+            else:
+                ftype = unicode
+        elif ftype == "id" or ftype [:9] == "reference":
+            ftype = long
+        elif ftype == "integer":
+            ftype = int
+        elif ftype == "date":
+            ftype = datetime.date
+        elif ftype == "time":
+            ftype = datetime.time
+        elif ftype == "datetime":
+            ftype = datetime.datetime
+        elif ftype == "double":
+            ftype = float
+        elif ftype == "boolean":
+            ftype = bool
+        else:
+            ftype = unicode
+
+        convert = S3TypeConverter.convert
+        if type(value) is list:
+            output = []
+            append = output.append
+            for v in value:
+                try:
+                    append(convert(ftype, v))
+                except TypeError, ValueError:
+                    continue
+        else:
+            try:
+                output = convert(ftype, value)
+            except TypeError, ValueError:
+                output = None
+        return output
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def _translate_query(cls, query, rfield, values, invert=False):
+        """
+            Translate the filter query into human-readable language
+
+            @param query: the S3ResourceQuery
+            @param rfield: the S3ResourceField the query refers to
+            @param values: the filter values
+            @param invert: invert the operation
+        """
+
+        T = current.T
+
+        # Value list templates
+        vor = T("%s or %s")
+        vand = T("%s and %s")
+
+        # Operator templates
+        otemplates = {
+            query.LT: (query.GE, vand, "%(label)s < %(values)s"),
+            query.LE: (query.GT, vand, "%(label)s <= %(values)s"),
+            query.EQ: (query.NE, vor, T("%(label)s is %(values)s")),
+            query.GE: (query.LT, vand, "%(label)s >= %(values)s"),
+            query.GT: (query.LE, vand, "%(label)s > %(values)s"),
+            query.NE: (query.EQ, vor, T("%(label)s != %(values)s")),
+            query.LIKE: ("notlike", vor, T("%(label)s like %(values)s")),
+            query.BELONGS: (query.NE, vor, T("%(label)s = %(values)s")),
+            query.CONTAINS: ("notall", vand, T("%(label)s contains %(values)s")),
+            query.ANYOF: ("notany", vor, T("%(label)s contains any of %(values)s")),
+            "notall": (query.CONTAINS, vand, T("%(label)s does not contain %(values)s")),
+            "notany": (query.ANYOF, vor, T("%(label)s does not contain %(values)s")),
+            "notlike": (query.LIKE, vor, T("%(label)s not like %(values)s"))
+        }
+
+        # Quote values as necessary
+        ftype = rfield.ftype
+        if ftype in ("string", "text") or \
+           ftype[:9] == "reference" or \
+           ftype[:5] == "list:" and ftype[5:8] in ("str", "ref"):
+            if type(values) is list:
+                values = ['"%s"' % v for v in values]
+            elif values is not None:
+                values = '"%s"' % values
+            else:
+                values = current.messages["NONE"]
+
+        # Render value list template
+        def render_values(template=None, values=None):
+            if not template or type(values) is not list:
+                return str(values)
+            elif not values:
+                return "()"
+            elif len(values) == 1:
+                return values[0]
+            else:
+                return template % (", ".join(values[:-1]), values[-1])
+
+        # Render the operator template
+        op = query.op
+        if op in otemplates:
+            inversion, vtemplate, otemplate = otemplates[op]
+            if invert:
+                inversion, vtemplate, otemplate = otemplates[inversion]
+            return otemplate % dict(label=rfield.label,
+                                    values=render_values(vtemplate, values))
+        else:
+            # Fallback to simple representation
+            return query.represent(resource)
 
 # END =========================================================================

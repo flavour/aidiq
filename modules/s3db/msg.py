@@ -39,6 +39,7 @@ __all__ = ["S3MessagingModel",
            "S3TropoModel",
            "S3TwilioModel",
            "S3TwitterModel",
+           "S3TwitterSearchModel",
            "S3XFormsModel",
            "msg_search_subscription_notifications",
            ]
@@ -82,8 +83,8 @@ class S3MessagingModel(S3Model):
         # Message Super Entity - all Inbound & Outbound Messages
         #
 
-        message_types = Storage(msg_email_inbox = T("Email (Inbound)"),
-                                msg_rss_feed = T("RSS Feeds"),
+        message_types = Storage(msg_email = T("Email"),
+                                msg_rss_feed = T("RSS"),
                                 msg_twilio_inbox = T("Twilio SMS InBox"),
                                 )
 
@@ -92,8 +93,10 @@ class S3MessagingModel(S3Model):
                                   message_types,
                                   Field("body", "text",
                                         label = T("Body")),
-                                  Field("from_address"),
-                                  Field("to_address"),
+                                  Field("from_address",
+                                        label = T("From")),
+                                  Field("to_address",
+                                        label = T("To")),
                                   Field("inbound", "boolean", default = False,
                                         represent = lambda direction: \
                                         (direction and [T("In")] or \
@@ -102,11 +105,13 @@ class S3MessagingModel(S3Model):
                                   )
 
         table.instance_type.readable = True
+        table.instance_type.writable = True
 
         configure(tablename,
-                  list_fields=["body",
+                  list_fields=["instance_type",
                                "from_address",
                                "to_address",
+                               "body",
                                "inbound",
                                #"pe_id",
                                #"recipient",
@@ -128,9 +133,6 @@ class S3MessagingModel(S3Model):
         # Message parsing status
         #
 
-        # Components
-        #self.add_component("msg_parsing_status", msg_log="message_id")
-
         # Parsing status of all the messages
         tablename = "msg_parsing_status"
         table = define_table(tablename,
@@ -142,6 +144,8 @@ class S3MessagingModel(S3Model):
                                    label = T("Parsing Status")),
                              Field("source_task_id",
                                    label = T("Message Source")),
+                             Field("reply",
+                                   label = T("Reply")),
                              *s3_meta_fields())
 
         configure(tablename,
@@ -149,59 +153,71 @@ class S3MessagingModel(S3Model):
                                "message_id",
                                "is_parsed",
                                "source_task_id",
+                               "reply",
                                ])
 
         # ---------------------------------------------------------------------
         # Outbound Messages
         # ---------------------------------------------------------------------
         # Show only the supported messaging methods
-        msg_contact_method_opts = current.msg.MSG_CONTACT_OPTS
+        MSG_CONTACT_OPTS = current.msg.MSG_CONTACT_OPTS
+        
+        # Maximum number of retries to send a message
+        MAX_SEND_RETRIES = current.deployment_settings \
+                                  .get_msg_max_send_retries()
 
         # Valid message outbox statuses
-        msg_status_type_opts = {1 : T("Unsent"),
-                                2 : T("Sent"),
-                                3 : T("Draft"),
-                                4 : T("Invalid"),
-                                }
+        MSG_STATUS_OPTS = {1 : T("Unsent"),
+                           2 : T("Sent"),
+                           3 : T("Draft"),
+                           4 : T("Invalid"),
+                           5 : T("Failed"),
+                          }
 
         opt_msg_status = S3ReusableField("status", "integer",
                                          notnull=True,
-                                         requires = IS_IN_SET(msg_status_type_opts,
+                                         requires = IS_IN_SET(MSG_STATUS_OPTS,
                                                               zero=None),
                                          default = 1,
                                          label = T("Status"),
                                          represent = lambda opt: \
-                                            msg_status_type_opts.get(opt, UNKNOWN_OPT))
+                                                     MSG_STATUS_OPTS.get(opt,
+                                                                 UNKNOWN_OPT))
 
-        # Components
-        #self.add_component("msg_outbox", msg_log="message_id")
-
-        # Outbox - needs to be separate to Message since a single message sent needs different outbox entries for each recipient
+        # Outbox - needs to be separate to Message since a single message
+        # sent needs different outbox entries for each recipient
         tablename = "msg_outbox"
         table = define_table(tablename,
                              message_id(),
-                             super_link("pe_id", "pr_pentity"), # Person/Group to send the message out to
-                             Field("address"),   # If set used instead of picking up from pe_id
+                             # Person/Group to send the message out to:
+                             super_link("pe_id", "pr_pentity"),
+                             # If set used instead of picking up from pe_id:
+                             Field("address"),   
                              Field("pr_message_method", length=32,
-                                   requires = IS_IN_SET(msg_contact_method_opts,
+                                   requires = IS_IN_SET(MSG_CONTACT_OPTS,
                                                         zero=None),
                                    default = "EMAIL",
                                    label = T("Contact Method"),
                                    represent = lambda opt: \
-                                        msg_contact_method_opts.get(opt, UNKNOWN_OPT)),
+                                               MSG_CONTACT_OPTS.get(opt,
+                                                            UNKNOWN_OPT)),
                              opt_msg_status(),
                              Field("system_generated", "boolean",
                                    default=False),
                              Field("log"),
+                             Field("retries", "integer",
+                                   default=MAX_SEND_RETRIES,
+                                   readable=False,
+                                   writable=False),
                              *s3_meta_fields())
 
         configure(tablename,
                   orderby = ~table.created_on,
                   list_fields=["id",
-                               #"message_id",
+                               "message_id",
                                "pe_id",
                                "status",
-                               "log",
+                               #"log",
                                ])
 
         # ---------------------------------------------------------------------
@@ -308,7 +324,7 @@ class S3BaseStationModel(S3Model):
             msg_list_empty=T("No Base Stations currently registered"))
 
         self.configure(tablename,
-                       super_entity=("org_site"),
+                       super_entity = "org_site",
                        deduplicate = self.msg_basestation_duplicate,
                        )
 
@@ -1003,7 +1019,9 @@ class S3RSSModel(S3ChannelModel):
         tablename = "msg_rss_channel"
         table = define_table(tablename,
                              self.super_link("channel_id", "msg_channel"),
-                             Field("name"),
+                             Field("name",
+                                   length = 255,
+                                   unique = True),
                              Field("description"),
                              Field("url"),
                              Field("subscribed", "boolean", default = True,
@@ -1046,6 +1064,151 @@ class S3RSSModel(S3ChannelModel):
         # ---------------------------------------------------------------------
         return Storage()
 
+
+# =============================================================================
+class S3TwitterSearchModel(S3ChannelModel):
+    """
+        Twitter Search channel
+        Results are fed to KeyGraph
+    """
+
+    names = ["msg_twitter_search_channel",
+             "msg_twitter_result",
+             "msg_twitter_search_query",
+             "msg_query_id",
+             ]
+
+    def model(self):
+
+        T = current.T
+
+        define_table = self.define_table
+
+        # ---------------------------------------------------------------------
+        # Twitter Search Settings for an account
+        #
+        tablename = "msg_twitter_search_channel"
+        table = define_table(tablename,
+                             self.super_link("channel_id", "msg_channel"),
+                             Field("name",
+                                   length = 255,
+                                   unique = True),
+                             Field("consumer_key", "password"),
+                             Field("consumer_secret", "password"),
+                             Field("access_token", "password"),
+                             Field("access_token_secret", "password"),
+                             *s3_meta_fields())
+
+        self.configure(tablename,
+                       super_entity = "msg_channel",
+                       list_fields = ["name",
+                                     ],
+                       )
+
+        # ---------------------------------------------------------------------
+        # Twitter Search Query
+        #
+        tablename = "msg_twitter_search_query"
+        table = define_table(tablename,
+                             Field("keywords", "text",
+                                   label = T("Keywords")),
+                             Field("lang",
+                                   label = T("Language")),
+                             Field("count", "integer",
+                                   label = T("# Results per query")),
+                             Field("includeEntities", "boolean",
+                                   default = False,
+                                   label = T("Include Entity Information?"),
+                                   represent = s3_yes_no_represent),
+                             Field("is_processed", "boolean",
+                                   default = False,
+                                   label = T("Processed with KeyGraph?"),
+                                   represent = s3_yes_no_represent),
+                             Field("is_searched", "boolean",
+                                   default = False,
+                                   label = T("Searched?"),
+                                   represent = s3_yes_no_represent),
+                             *s3_meta_fields())
+
+        self.configure(tablename,
+                       list_fields = ["keywords",
+                                      "lang",
+                                      "count",
+                                      "includeEntities",
+                                      "is_searched",
+                                      "is_processed",
+                                      ],
+                      )
+
+        # Reusable Query ID
+        query_id = S3ReusableField("query_id", table,
+                                   label = T("Query"),
+                                   requires = IS_NULL_OR(IS_ONE_OF_EMPTY(db, \
+                                              "msg_twitter_search_query.id")),
+                                   represent = self.query_represent,
+                                   ondelete = "RESTRICT")
+
+        # ---------------------------------------------------------------------
+        # Twitter Search results
+        #
+        tablename = "msg_twitter_result"
+        table = define_table(tablename,
+                             self.super_link("message_id", "msg_message"),
+                             query_id(),
+                             Field("tweet_id",
+                                   label = T("Tweet ID")),
+                             Field("lang",
+                                   label = T("Language")),
+                             Field("from_address",
+                                   label = T("Tweeted by")),
+                             Field("created_on","datetime",
+                                   label = T("Tweeted on")),
+                             Field("body",
+                                   label = T("Tweet")),
+                             Field("lat", "double",
+                                   label = T("Latitude"),
+                                   requires = IS_NULL_OR(IS_LAT())),
+                             Field("lon", "double",
+                                   label = T("Longitude"),
+                                   requires = IS_NULL_OR(IS_LON()),
+                                   ),
+                             # Field("places"),
+                             # @ToDo Store the places mentioned in the tweet
+                             *s3_meta_fields())
+
+        self.configure(tablename,
+                       super_entity = current.s3db.msg_message,
+                       list_fields = ["from_address",
+                                      "lang",
+                                      "created_on",
+                                      "body",
+                                      "lat",
+                                      "lon",
+                                      #"places",
+                                      ],
+                       )
+
+        # ---------------------------------------------------------------------
+        return Storage(msg_query_id=query_id)
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def query_represent(id):
+        """ Represent a Query """
+
+        db = current.db
+        table = db.msg_twitter_search_query
+        record = db(table.id == id).select(table.keywords,
+                                           limitby=(0, 1)).first()
+        try:
+            text = record.keywords
+        except:
+            return "Query not found!"
+
+        if len(text) < 80:
+            return text
+        else:
+            return "%s..." % text[:76]
 
 # =============================================================================
 class S3SMSOutboundModel(S3Model):
