@@ -1,13 +1,11 @@
 /* GIS module */
 
-.map_home {
-    margin: 0 0 0 -12px;
-}
 .map_wrapper {
     /* Allow Absolutely positioned panels within */
     position: relative;
     /* Allow legendPanel to slide out */
     overflow: hidden;
+    clear: right;
 }
 /* Ensure Throbber shows centered on main map (but not on location selector)
    - core definition in widgets.css */
@@ -24,6 +22,32 @@ form .map_loader {
     margin: 0 0 0 4px;
 }
 
+/* Main Map */
+.map_home {
+    margin: 0 0 0 -12px;
+}
+.gis_fullscreen_map-btn {
+    font-weight: bold;
+    padding-left: 8px;
+}
+.gis_print_map-btn {
+    font-weight: bold;
+    float: right;
+    padding-right: 8px;
+}
+.notitle .ui-dialog-titlebar {
+    background-image: none !important;
+    border: 0;
+    padding: 0;
+}
+.notitle .ui-dialog-title {
+    margin: 0;
+    padding: 0;
+}
+.notitle .ui-dialog-titlebar-close {
+    margin-top: -10px;
+}
+
 /* Location Selector Widget */
 .form-container form button.gis_loc_select_btn {
     padding: 4px;
@@ -35,20 +59,21 @@ form .map_loader {
 .gis_coord_wrap .decimal {
     width: 174px;
 }
-
 .gis_coord_wrap .gis_coord_dms input {
     width: 37px;
 }
-
 .gis_coord_wrap .gis_coord_dms input.seconds {
     width: 70px;
 }
-
 .gis_coord_wrap div {
     padding-top: 8px;
 }
 
-/* LayerTree */
+/* LayerTree
+.x-tree .x-panel-bwrap {
+    overflow: auto;
+    overflow-x: hidden;
+} */
 .x-tree-elbow,
 .x-tree-elbow-end,
 .x-tree-node-indent,
@@ -57,6 +82,7 @@ form .map_loader {
 }
 .x-tree-node-anchor {
     padding-left: 5px;
+    padding-right: 5px;
 }
 .x-tree-node {
     font-size: 12px;
@@ -76,6 +102,7 @@ form .map_loader {
     bottom: 0;
     right: 0;
 }
+
 .map_legend_div.fullscreen {
     z-index: 9100;
     margin-bottom: -600px;
@@ -83,7 +110,8 @@ form .map_loader {
 .map_legend_panel {
     background-color: #FBFBFB;
     border: solid;
-    border-radius: 5px 5px 5px 5px;
+    border-right: none;
+    border-radius: 5px 0 0 5px;
     padding: 1px;
     margin: 0 0 20px; /* Ref'd in hideLegend & showLegend in gis.js */
     width: auto;
@@ -91,18 +119,22 @@ form .map_loader {
     max-height: 500px;
     overflow-y: auto;
 }
+.map_legend_panel  .x-panel-header-noborder {
+    border: none;
+}
 .map_legend_tab {
     float: left;
     background-color: #FBFBFB;
     border: solid;
+    border-right: none;
     border-width: 2px;
     border-right-width: 0;
-    border-radius: 3px 3px 3px 3px;
-    margin-right: -1px;
+    border-radius: 3px 0 3px 3px;
+    margin-right: -6px;
     margin-left: -12px;
     margin-top: 5px;
     padding-left: 2px;
-    padding-right: 2px;
+    padding-right: 3px;
     font-family: FontAwesome;
     font-weight: normal;
     font-style: normal;
@@ -124,6 +156,7 @@ form .map_loader {
 }
 .gis_legend_title {
     font-weight: bold;
+    margin-top: 10px;
 }
 .gis_legend_desc {
     max-width: 200px;
@@ -135,10 +168,10 @@ form .map_loader {
     position: absolute;
     top: 0;
     right: 0;
-    margin: 0;
+    margin: 10px 0;
     padding: 5px;
     border: solid;
-    border-radius: 5px 5px 5px 5px;
+    border-radius: 5px 0 0 5px;
     /*width: 210px;*/
     width: auto;
 }
@@ -152,6 +185,7 @@ form .map_loader {
 .map_save_button {
     background-color: #FBFBFB;
     padding: 5px;
+    /*margin-right: 10px;*/
     border: solid;
     border-radius: 5px 5px 5px 5px;
     float: right;

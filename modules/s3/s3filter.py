@@ -57,7 +57,7 @@ from s3rest import S3Method
 from s3resource import S3FieldSelector, S3ResourceField, S3URLQuery
 from s3utils import s3_unicode, S3TypeConverter
 from s3validators import *
-from s3widgets import S3DateWidget, S3DateTimeWidget, S3MultiSelectWidget, S3OrganisationHierarchyWidget, S3GroupedOptionsWidget, s3_grouped_checkboxes_widget
+from s3widgets import S3DateWidget, S3DateTimeWidget, S3GroupedOptionsWidget, S3MultiSelectWidget, S3OrganisationHierarchyWidget, S3RadioOptionsWidget, s3_grouped_checkboxes_widget
 
 # =============================================================================
 class S3FilterWidget(object):
@@ -1144,14 +1144,21 @@ class S3OptionsFilter(S3FilterWidget):
                     filter = opts.get("filter", False),
                     header = opts.get("header", False),
                     selectedList = opts.get("selectedList", 3))
+        # Radio is just GroupedOpts with multiple=False
+        #elif widget_type == "radio":
+        #    widget_class = "radio-filter-widget"
+        #    w = S3RadioOptionsWidget(options = options,
+        #                             cols = opts["cols"],
+        #                             help_field = opts["help_field"],
+        #                             )
         else:
             widget_class = "groupedopts-filter-widget"
-            w = S3GroupedOptionsWidget(
-                    options = options,
-                    multiple = True,
-                    cols = opts["cols"],
-                    size = opts["size"] or 12,
-                    help_field = opts["help_field"])
+            w = S3GroupedOptionsWidget(options = options,
+                                       multiple = opts.get("multiple", True),
+                                       cols = opts["cols"],
+                                       size = opts["size"] or 12,
+                                       help_field = opts["help_field"],
+                                       )
 
         # Add widget class and default class
         classes = set(attr.get("_class", "").split()) | \
@@ -1193,7 +1200,8 @@ class S3OptionsFilter(S3FilterWidget):
                                 multiple = True,
                                 cols = opts["cols"],
                                 size = opts["size"] or 12,
-                                help_field = opts["help_field"])
+                                help_field = opts["help_field"]
+                                )
                 options = {attr["_id"]:
                            widget._options({"type": ftype}, [])}
         return options
@@ -1440,7 +1448,7 @@ class S3FilterForm(object):
             # Auto-submit
             auto_submit = settings.get_ui_filter_auto_submit()
             if auto_submit and opts.get("auto_submit", True):
-                script = """S3.search.filterFormAutoSubmit('%s', %s)""" % \
+                script = """S3.search.filterFormAutoSubmit('%s',%s)""" % \
                          (form_id, auto_submit)
                 current.response.s3.jquery_ready.append(script)
 
@@ -1590,7 +1598,7 @@ class S3FilterForm(object):
         if clear:
             _class = "filter-clear"
             if clear is True:
-                label = current.T("Reset filter")
+                label = current.T("Clear filter")
             elif isinstance(clear, (list, tuple)):
                 label = clear[0]
                 _class = "%s %s" % (clear[1], _class)

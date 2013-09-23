@@ -55,13 +55,13 @@ p {
 .intro h3 {
     font-size: 20px;
     line-height: 25px;
-    padding-top: 20px;
+    padding-top: 25px;
     margin-bottom: 5px;
 }
 .intro p {
     font-size: 14px;
     font-weight: 800;
-    margin-bottom: 10px;
+    margin-bottom: 20px;
 }
 
 .updates,
@@ -74,8 +74,12 @@ p {
 }
 
 .updates {
-    padding-top: 5px;
+    padding: 5px 0;
 }
+.updates .dl-item {
+    float: none;
+}
+
 .updates p {
     font-size: 14px;
     line-height: 16px;
@@ -88,11 +92,32 @@ p {
 .updates h5 {
     margin-bottom: 0;
 }
-.updates .filter_opts {
-    float: right;
-    margin: 15px 15px 0 0;
+.update .empty {
+    margin-left: 10px;
+    margin-top: 10px;
 }
-.updates .media {
+#log-filter-form {
+    float: right;
+}
+#log-filter-form .s3-groupedopts-option {
+    /* Hide the Radios (we can click on labels) */
+    display: none;
+}
+#log-filter-form td {
+    padding-top: 0;
+}
+#log-filter-form td:first-child {
+    border-right: solid 1px;
+}
+
+#popup .form-container {
+    margin: 0;
+}
+#popup #table-container {
+    margin: 0;
+}
+.updates .media,
+#popup .media {
     background: linear-gradient(to bottom, #EDEDED 0%, #F6F6F6 10%, #FFFFFF 50%) repeat scroll 0 0 transparent;
     border-top: 1px solid #C8C8C8;
     padding: 5px 10px;
@@ -105,21 +130,39 @@ p {
 .updates .dl-col-0 {
     margin-right: 0;
 }
-.updates .dl-row.even,
-.updates .dl-row.odd,
-.updates .dl-row.even .dl-item,
-.updates .dl-row.odd .dl-item {
-    background-color: transparent;
+.updates .dl-row,
+.updates .dl-row .dl-item,
+#popup .dl-row,
+#popup .dl-row .dl-item {
+    /*background-color: transparent;*/
     padding: 0;
 }
 .updates .dl-navigation {
     border-top: 1px solid #C8C8C8;
-    padding: 5px 10px;
+    padding-left: 5px;
     margin: 0;
 }
+.updates form {
+    margin: 0;
+}
+#audit-auth_user_org_group_id-options-filter {
+    display: none;
+}
+label.inactive {
+    color: #0088CC;
+    text-decoration: underline;
+}
 
-.map {
+.map-btn {
+    float: right;
+    position: relative;
+    z-index:1;
+    margin: 15px
+}
+
+div.map {
     overflow: auto;
+    margin-top: -65px
 }
 
 .community-data {

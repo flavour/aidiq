@@ -7,6 +7,11 @@ body {
     padding-top: 60px;
 }
 
+/* Main Map */
+.gis_fullscreen_map-btn {
+    display: none;
+}
+
 /* Summary Page */
 h2.summary {
     float: left;
@@ -64,16 +69,25 @@ h2.summary {
     border: none;
 }
 #summary-tabs #filter-form {
-    margin: 0 50px;
+    margin: 0 20px 0 50px;
     position: absolute;
-    top: 53px;
+    top: 45px;
     width: auto;
     z-index: 1;
 }
 
 #summary-tabs #table,
 #summary-tabs #charts {
-    padding: 0 20px 20px 20px;
+    padding: 82px 20px 20px 20px;
+}
+
+#table select {
+    width: auto;
+}
+
+#summary-tabs #map {
+    border-radius: 5px;
+    margin: 0;
 }
 
 #summary-2_filter {
@@ -83,7 +97,7 @@ h2.summary {
 /* Hide the colons for Location Selectors before JS can hide */
 .form-container #org_facility_location_id__label,
 .form-container #project_activity_location_id__label,
-.form-container #stats_resident_location_id__label,
+.form-container #stats_people_location_id__label,
 .form-container #vulnerability_evac_route_location_id__label,
 .form-container #vulnerability_risk_location_id__label {
     display: none;
@@ -174,7 +188,7 @@ form.filter-form,
 form#summary-filter-form
  {
     float: left;
-    background-color: white;
+    background-color: rgba(255,255,255,0.8);
     padding: 5px 10px;
     border-radius: 5px;
 }
@@ -186,12 +200,15 @@ form#summary-filter-form
 
 .horiz_filter_form .filter-controls,
 .horiz_filter_form .filter-submit {
-    margin-top: 30px;
+    margin: 30px 0 12px 0;
+}
+
+.horiz_filter_form div.filter-controls {
+    margin-right: 20px;
 }
 
 .horiz_filter_form.filter-manager-row {
-    float: right;
-    clear: left;
+    margin: 23px 0 0 0;
 }
 
 .fm-accept {
@@ -246,10 +263,6 @@ form.jeditable-input input {
     max-width: 400px !important;
 }
 
-#summary-sections {
-    padding-top: 132px;
-}
-
 .pt-form legend {
     font-size: 14px;
     margin-bottom: 0;
@@ -258,4 +271,29 @@ form.jeditable-input input {
 button.toggle-text {
     font-size: 10px !important;
     margin-left: 12px !important;
+}
+
+/* Map Borders*/
+div.map_save_button,
+div.map_save_panel,
+div.map_legend_tab,
+div.map_legend_panel,
+div.x-panel-body {
+    border: 1px solid #B2B2B2;
+}
+
+div.map_legend_tab {
+    border-right: none;
+    margin-right: -1px;
+}
+
+/* Hide border on main map (avoids 2x border) + layer panel*/ 
+div#ext-gen105,
+div#ext-gen113 {
+    border: none;
+    padding: 1px;
+}
+
+div.map_legend_panel {
+    margin-bottom: 30px;
 }

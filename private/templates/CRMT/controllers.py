@@ -15,96 +15,34 @@ from gluon import current, URL
 from gluon.html import *
 #from gluon.storage import Storage
 
-from s3.s3filter import S3FilterString
-from s3.s3resource import S3URLQuery
+from s3.s3filter import S3FilterForm, S3FilterString, S3OptionsFilter
+from s3.s3resource import S3FieldSelector, S3URLQuery
 from s3.s3summary import S3Summary
-from s3.s3utils import s3_avatar_represent, S3CustomController
+from s3.s3utils import s3_auth_user_represent_name, S3CustomController
 
 THEME = "CRMT"
 
 # =============================================================================
-class index():
+class index(S3CustomController):
     """ Custom Home Page """
 
     def __call__(self):
 
-        request = current.request
-        response = current.response
-        output = {}
-        output["title"] = response.title = current.deployment_settings.get_system_name()
-        view = path.join(request.folder, "private", "templates",
-                         THEME, "views", "index.html")
-        try:
-            # Pass view as file not str to work in compiled mode
-            response.view = open(view, "rb")
-        except IOError:
-            from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
-
         T = current.T
         db = current.db
         s3db = current.s3db
-
-        # Site Activity Log
-        from s3.s3resource import S3FieldSelector
-        resource = s3db.resource("s3_audit")
-        resource.add_filter(S3FieldSelector("~.method") != "delete")
-        orderby = "s3_audit.timestmp desc"
-        list_fields = ["id",
-                       "method",
-                       "user_id",
-                       "tablename",
-                       "record_id",
-                       ]
-        from s3.s3utils import s3_auth_user_represent_name
-        db.s3_audit.user_id.represent = s3_auth_user_represent_name
-        datalist, numrows, ids = resource.datalist(fields=list_fields,
-                                                   start=None,
-                                                   limit=4,
-                                                   listid="log",
-                                                   orderby=orderby,
-                                                   layout=render_log)
-        if numrows == 0:
-            # Empty table or just no match?
-            from s3.s3crud import S3CRUD
-            table = resource.table
-            if "deleted" in table:
-                available_records = db(table.deleted != True)
-            else:
-                available_records = db(table._id > 0)
-            if available_records.select(table._id,
-                                        limitby=(0, 1)).first():
-                msg = DIV(S3CRUD.crud_string(resource.tablename,
-                                             "msg_no_match"),
-                          _class="empty")
-            else:
-                msg = DIV(S3CRUD.crud_string(resource.tablename,
-                                             "msg_list_empty"),
-                          _class="empty")
-            data = msg
-        else:
-            # Render the list
-            dl = datalist.html()
-            data = dl
-        output["updates"] = data
-        # dataLists JS
-        appname = request.application
+        request = current.request
+        response = current.response
         s3 = response.s3
-        debug = s3.debug
-        scripts_append = s3.scripts.append
-        # Infinite Scroll doesn't make sense here
-        #if debug:
-        #    scripts_append("/%s/static/scripts/jquery.infinitescroll.js" % appname)
-        #    scripts_append("/%s/static/scripts/jquery.viewport.js" % appname)
-        #    scripts_append("/%s/static/scripts/S3/s3.dataLists.js" % appname)
-        #else:
-        #    scripts_append("/%s/static/scripts/S3/s3.dataLists.min.js" % appname)
-        scripts_append("/%s/static/themes/%s/js/homepage.js" % (appname, THEME))
+
+        output = {}
+        output["title"] = response.title = current.deployment_settings.get_system_name()
 
         # Map
         auth = current.auth
+        is_logged_in = auth.is_logged_in()
         callback = None
-        if auth.is_logged_in():
+        if is_logged_in:
             # Show the User's Coalition's Polygon
             org_group_id = auth.user.org_group_id
             if org_group_id:
@@ -129,7 +67,7 @@ for(var i=0,len=layers.length;i<len;i++){
  if(layer.name=='All Coalitions'){layer.setVisibility(true)}}
 '''
         map = current.gis.show_map(width=770,
-                                   height=270,
+                                   height=295,
                                    callback=callback,
                                    catalogue_layers=True,
                                    collapsed=True,
@@ -137,162 +75,132 @@ for(var i=0,len=layers.length;i<len;i++){
                                    )
         output["map"] = map
 
-        # Button to go full-screen
-        fullscreen = A(I(_class="icon icon-fullscreen"),
-                       _href=URL(c="gis", f="map_viewing_client"),
-                       _class="gis_fullscreen_map-btn fright",
-                       # If we need to support multiple maps on a page
-                       #_map="default",
-                       _title=T("View full screen"),
-                       )
-
-        output["fullscreen"] = fullscreen
-        if debug:
-            script = "/%s/static/scripts/S3/s3.gis.fullscreen.js" % appname
-        else:
-            script = "/%s/static/scripts/S3/s3.gis.fullscreen.min.js" % appname
-        scripts_append(script)
-
+        # Description of available Modules
         from s3db.cms import S3CMS
         for item in response.menu:
             item["cms"] = S3CMS.resource_content(module = item["c"], 
                                                  resource = item["f"])
 
+        # Site Activity Log
+        resource = s3db.resource("s3_audit")
+        resource.add_filter(S3FieldSelector("~.method") != "delete")
+        orderby = "s3_audit.timestmp desc"
+        list_fields = ["id",
+                       "method",
+                       "user_id",
+                       "tablename",
+                       "record_id",
+                       ]
+        #current.deployment_settings.ui.customize_s3_audit()
+        db.s3_audit.user_id.represent = s3_auth_user_represent_name
+        listid = "log"
+        datalist, numrows, ids = resource.datalist(fields=list_fields,
+                                                   start=None,
+                                                   limit=4,
+                                                   listid=listid,
+                                                   orderby=orderby,
+                                                   layout=s3.render_log)
+
+        # Placeholder
+        filter_form = DIV(_class="filter_form")
+        if numrows == 0:
+            # Empty table or just no match?
+            from s3.s3crud import S3CRUD
+            table = resource.table
+            if "deleted" in table:
+                available_records = db(table.deleted != True)
+            else:
+                available_records = db(table._id > 0)
+            if available_records.select(table._id,
+                                        limitby=(0, 1)).first():
+                msg = DIV(S3CRUD.crud_string(resource.tablename,
+                                             "msg_no_match"),
+                          _class="empty")
+            else:
+                msg = DIV(S3CRUD.crud_string(resource.tablename,
+                                             "msg_list_empty"),
+                          _class="empty")
+            data = msg
+        else:
+            # Render the list
+            ajaxurl = URL(c="default", f="audit", args="datalist_f.dl")
+            popup_url = URL(c="default", f="audit", args="datalist.popup")
+            dl = datalist.html(ajaxurl=ajaxurl,
+                               pagesize=4,
+                               popup_url=popup_url,
+                               popup_title=T("Updates"),
+                               )
+            data = dl
+
+            if is_logged_in and org_group_id:
+                # Add a Filter
+                filter_widgets = [S3OptionsFilter("user_id$org_group_id",
+                                                  label="",
+                                                  # Can't just use "" as this is then omitted from rendering
+                                                  options = {"*": T("All"),
+                                                             org_group_id: T("My Community"),
+                                                             },
+                                                  multiple=False
+                                                  ),
+                                  ]
+
+                filter_submit_url = URL(c="default", f="index")
+                filter_ajax_url = URL(c="default", f="audit", args=["filter.options"])
+                filter_form = S3FilterForm(filter_widgets,
+                                           filter_manager = False,
+                                           formstyle = filter_formstyle,
+                                           clear = False,
+                                           submit = True,
+                                           ajax = True,
+                                           url = filter_submit_url,
+                                           ajaxurl = filter_ajax_url,
+                                           _class = "filter-form",
+                                           _id = "%s-filter-form" % listid)
+                filter_form = filter_form.html(resource,
+                                               request.get_vars,
+                                               target=listid,
+                                               )
+
+        output["updates"] = data
+        output["filter_form"] = filter_form
+
+        # Add JavaScript
+        appname = request.application
+        debug = s3.debug
+        scripts_append = s3.scripts.append
+        if debug:
+            # Infinite Scroll doesn't make sense here, but currently required by dataLists.js
+            scripts_append("/%s/static/scripts/jquery.infinitescroll.js" % appname)
+            scripts_append("/%s/static/scripts/jquery.viewport.js" % appname)
+            scripts_append("/%s/static/scripts/S3/s3.dataLists.js" % appname)
+        else:
+            scripts_append("/%s/static/scripts/S3/s3.dataLists.min.js" % appname)
+        #scripts_append("/%s/static/themes/%s/js/homepage.js" % (appname, THEME))
+
+        self._view(THEME, "index.html")
         return output
 
-# -----------------------------------------------------------------------------
-def render_log(listid, resource, rfields, record, **attr):
+# =============================================================================
+def filter_formstyle(row_id, label, widget, comment, hidden=False):
     """
-        Custom dataList item renderer for 'Site Activity Logs' on the Home page
+        Custom Formstyle for FilterForm
 
-        @param listid: the HTML ID for this list
-        @param resource: the S3Resource to render
-        @param rfields: the S3ResourceFields to render
-        @param record: the record as dict
-        @param attr: additional HTML attributes for the item
+        @param row_id: HTML id for the row
+        @param label: the label
+        @param widget: the form widget
+        @param comment: the comment
+        @param hidden: whether the row should initially be hidden or not
     """
 
-    pkey = "s3_audit.id"
-
-    # Construct the item ID
-    if pkey in record:
-        record_id = record[pkey]
-        item_id = "%s-%s" % (listid, record_id)
+    if hidden:
+        _class = "advanced hide"
     else:
-        # template
-        item_id = "%s-[id]" % listid
+        _class= ""
 
-    #item_class = "thumbnail"
-    item_class = ""
-
-    raw = record._row
-    author = record["s3_audit.user_id"]
-    author_id = raw["s3_audit.user_id"]
-    method = raw["s3_audit.method"]
-    tablename = raw["s3_audit.tablename"]
-    record_id = raw["s3_audit.record_id"]
-
-    T = current.T
-    db = current.db
-    s3db = current.s3db
-
-    if tablename == "pr_filter":
-        label = T("Saved Filters")
-        url = URL(c="default", f="index", args=["filters"])
-        if method == "create":
-            body = T("Saved a Filter")
-        elif method == "update":
-            body = T("Updated a Filter")
+    if label:
+        return DIV(label, widget, _id=row_id, _class=_class)
     else:
-        table = s3db[tablename]
-        row = db(table.id == record_id).select(table.name,
-                                               limitby=(0, 1)
-                                               ).first()
-        if row:
-            label = row.name or ""
-        else:
-            label = ""
-        c, f = tablename.split("_")
-        url = URL(c=c, f=f, args=[record_id, "read"])
-        if tablename == "org_facility":
-            if method == "create":
-                body = T("Added a Place")
-            elif method == "update":
-                body = T("Edited a Place")
-        elif tablename == "org_organisation":
-            if method == "create":
-                body = T("Added an Organization")
-            elif method == "update":
-                body = T("Edited an Organization")
-        elif tablename == "project_activity":
-            if method == "create":
-                body = T("Added an Activity")
-            elif method == "update":
-                body = T("Edited an Activity")
-        elif tablename == "stats_resident":
-            if method == "create":
-                body = T("Added People")
-            elif method == "update":
-                body = T("Edited People")
-        elif tablename == "vulnerability_evac_route":
-            if method == "create":
-                body = T("Added an Evacuation Route")
-            elif method == "update":
-                body = T("Edited an Evacuation Route")
-        elif tablename == "vulnerability_risk":
-            if method == "create":
-                body = T("Added a Hazard")
-            elif method == "update":
-                body = T("Edited a Hazard")
-        elif tablename == "gis_config":
-            if method == "create":
-                body = T("Saved a Map")
-            elif method == "update":
-                body = T("Updated a Map")
-
-    body = P(body,
-             BR(),
-             A(label,
-               _href=url),
-             )
-
-    # @ToDo: Optimise by not doing DB lookups (especially duplicate) within render, but doing these in the bulk query
-    avatar = s3_avatar_represent(author_id,
-                                 _class="media-object",
-                                 _style="width:50px;padding:5px;padding-top:0px;")
-    ptable = s3db.pr_person
-    ltable = db.pr_person_user
-    query = (ltable.user_id == author_id) & \
-            (ltable.pe_id == ptable.pe_id)
-    row = db(query).select(ptable.id,
-                           limitby=(0, 1)
-                           ).first()
-    if row:
-        person_url = URL(c="pr", f="person", args=[row.id])
-    else:
-        person_url = "#"
-    author = A(author,
-               _href=person_url,
-               )
-    avatar = A(avatar,
-               _href=person_url,
-               _class="pull-left",
-               )
-
-    # Render the item
-    item = DIV(DIV(avatar,
-  		           DIV(H5(author,
-                          _class="media-heading"),
-                       body,
-                       _class="media-body",
-                       ),
-                   _class="media",
-                   ),
-               _class=item_class,
-               _id=item_id,
-               )
-
-    return item
+        return DIV(widget, _id=row_id, _class=_class)
 
 # =============================================================================
 class filters(S3CustomController):
@@ -316,8 +224,7 @@ class filters(S3CustomController):
         s3 = current.response.s3
 
         # Filter
-        from s3 import S3FieldSelector as FS
-        f = FS("pe_id") == pe_id
+        f = S3FieldSelector("pe_id") == pe_id
         s3.filter = f
 
         # List Fields

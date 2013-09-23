@@ -93,7 +93,6 @@
       <li class='dropdown'><a href='#' class='dropdown-toggle disabled' data-toggle='dropdown'><i class='icon-cog'></i><b class='caret'></b></a>
        <ul class='dropdown-menu'>
         <li><a href='/{{=appname}}/pr/person'><i class='icon-user'></i> {{=T("Contact People")}}</a></li>
-        <li><a href='/{{=appname}}/org/organisation/report2'><i class='icon-th '></i> {{=T("Organization Report")}}</a></li>
         <li class='divider'></li>
         {{if auth.is_logged_in():}}
         <li><a href='/{{=appname}}/default/person'><i class='icon-cog'></i> {{=T("Preferences")}}</a></li>
@@ -103,6 +102,7 @@
         <li><a href='/{{=appname}}/default/user/logout'><i class='icon-off'></i> {{=T("Logout")}}</a></li>
         {{else:}}
         <li><a href='/{{=appname}}/default/user/login'><i class='icon-signin'></i> {{=T("Login")}}</a></li>
+        <li><a href='/{{=appname}}/default/user/login'><i class='icon-check'></i> {{=T("Register")}}</a></li>
         {{pass}}
        </ul>
       </li>
