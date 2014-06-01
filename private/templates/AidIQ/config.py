@@ -131,6 +131,15 @@ settings.customise_project_project_resource = customise_project_project_resource
 # -----------------------------------------------------------------------------
 def customise_project_activity_resource(r, tablename):
 
+    from s3.s3filter import S3OptionsFilter
+    filter_widgets = [S3OptionsFilter("activity_activity_type.activity_type_id",
+                                      label = T("Type"),
+                                      ),
+                      S3OptionsFilter("project_id",
+                                      represent = "%(name)s",
+                                      ),
+                      ]
+
     report_fields = [(T("Project"), "project_id"),
                      (T("Activity"), "name"),
                      (T("Activity Type"), "activity_type.name"),
@@ -150,6 +159,7 @@ def customise_project_activity_resource(r, tablename):
                              )
     
     current.s3db.configure(tablename,
+                           filter_widgets = filter_widgets,
                            report_options = report_options,
                            )
     
