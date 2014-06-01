@@ -14,8 +14,8 @@
          Demo:XXXX......................required.....demographic.name (Demographic = XX in column name, value = cell in row. Multiple allowed)
 
          Date...........................optional.....demographic_data.date
-         Source.........................optional.....stats_source.name
-         Source URL.....................optional.....stats_source.url
+         Source.........................optional.....doc_document.name
+         Source URL.....................optional.....doc_document.url
          Country........................optional.....gis_location.L0
          L1.............................optional.....gis_location.L1
          L2.............................optional.....gis_location.L2
@@ -46,26 +46,42 @@
     <!-- ****************************************************************** -->
     <!-- Indexes for faster processing -->
     <xsl:key name="L1" match="row"
-             use="concat(col[@field=$Country], '/', col[@field='L1'])"/>
+             use="concat(col[contains(
+                             document('../labels.xml')/labels/column[@name='Country']/match/text(),
+                             concat('|', @field, '|'))], '/',
+                         col[@field='L1'])"/>
+
     <xsl:key name="L2" match="row"
-             use="concat(col[@field=$Country], '/', col[@field='L1'], '/',
-                                                    col[@field='L2'])"/>
+             use="concat(col[contains(
+                             document('../labels.xml')/labels/column[@name='Country']/match/text(),
+                             concat('|', @field, '|'))], '/',
+                         col[@field='L1'], '/',
+                         col[@field='L2'])"/>
+
     <xsl:key name="L3" match="row"
-             use="concat(col[@field=$Country], '/', col[@field='L1'], '/',
-                                                    col[@field='L2'], '/',
-                                                    col[@field='L3'])"/>
+             use="concat(col[contains(
+                             document('../labels.xml')/labels/column[@name='Country']/match/text(),
+                             concat('|', @field, '|'))], '/',
+                         col[@field='L1'], '/',
+                         col[@field='L2'], '/',
+                         col[@field='L3'])"/>
+
     <xsl:key name="L4" match="row"
-             use="concat(col[@field=$Country], '/', col[@field='L1'], '/',
-                                                    col[@field='L2'], '/',
-                                                    col[@field='L3'], '/',
-                                                    col[@field='L4'])"/>
+             use="concat(col[contains(
+                             document('../labels.xml')/labels/column[@name='Country']/match/text(),
+                             concat('|', @field, '|'))], '/', col[@field='L1'], '/',
+                         col[@field='L2'], '/',
+                         col[@field='L3'], '/',
+                         col[@field='L4'])"/>
 
     <xsl:key name="L5" match="row"
-             use="concat(col[@field=$Country], '/', col[@field='L1'], '/',
-                                                    col[@field='L2'], '/',
-                                                    col[@field='L3'], '/',
-                                                    col[@field='L4'], '/',
-                                                    col[@field='L5'])"/>
+             use="concat(col[contains(
+                             document('../labels.xml')/labels/column[@name='Country']/match/text(),
+                             concat('|', @field, '|'))], '/', col[@field='L1'], '/',
+                         col[@field='L2'], '/',
+                         col[@field='L3'], '/',
+                         col[@field='L4'], '/',
+                         col[@field='L5'])"/>
 
     <xsl:key name="demographic" match="row" use="col[@field='Demographic']"/>
 
@@ -96,14 +112,18 @@
 
             <!-- L1 -->
             <xsl:for-each select="//row[generate-id(.)=generate-id(key('L1',
-                                                                   concat(col[@field=$Country], '/',
+                                                                   concat(col[contains(
+                                                                              document('../labels.xml')/labels/column[@name='Country']/match/text(),
+                                                                              concat('|', @field, '|'))], '/',
                                                                           col[@field='L1']))[1])]">
                 <xsl:call-template name="L1"/>
             </xsl:for-each>
 
             <!-- L2 -->
             <xsl:for-each select="//row[generate-id(.)=generate-id(key('L2',
-                                                                   concat(col[@field=$Country], '/',
+                                                                   concat(col[contains(
+                                                                              document('../labels.xml')/labels/column[@name='Country']/match/text(),
+                                                                              concat('|', @field, '|'))], '/',
                                                                           col[@field='L1'], '/',
                                                                           col[@field='L2']))[1])]">
                 <xsl:call-template name="L2"/>
@@ -111,7 +131,9 @@
 
             <!-- L3 -->
             <xsl:for-each select="//row[generate-id(.)=generate-id(key('L3',
-                                                                   concat(col[@field=$Country], '/',
+                                                                   concat(col[contains(
+                                                                              document('../labels.xml')/labels/column[@name='Country']/match/text(),
+                                                                              concat('|', @field, '|'))], '/',
                                                                           col[@field='L1'], '/',
                                                                           col[@field='L2'], '/',
                                                                           col[@field='L3']))[1])]">
@@ -120,7 +142,9 @@
 
             <!-- L4 -->
             <xsl:for-each select="//row[generate-id(.)=generate-id(key('L4',
-                                                                   concat(col[@field=$Country], '/',
+                                                                   concat(col[contains(
+                                                                              document('../labels.xml')/labels/column[@name='Country']/match/text(),
+                                                                              concat('|', @field, '|'))], '/',
                                                                           col[@field='L1'], '/',
                                                                           col[@field='L2'], '/',
                                                                           col[@field='L3'], '/',
@@ -130,7 +154,9 @@
 
             <!-- L5 -->
             <xsl:for-each select="//row[generate-id(.)=generate-id(key('L5',
-                                                                   concat(col[@field=$Country], '/',
+                                                                   concat(col[contains(
+                                                                              document('../labels.xml')/labels/column[@name='Country']/match/text(),
+                                                                              concat('|', @field, '|'))], '/',
                                                                           col[@field='L1'], '/',
                                                                           col[@field='L2'], '/',
                                                                           col[@field='L3'], '/',
@@ -327,31 +353,37 @@
 
     <!-- ****************************************************************** -->
     <xsl:template name="Source">
-        <xsl:variable name="name" select="col[@field='Source']"/>
-        <xsl:variable name="location">
-            <xsl:call-template name="LocationUid"/>
-        </xsl:variable>
-        <xsl:variable name="tuid">
-            <xsl:choose>
-                <xsl:when test="col[@field='L1']!='' or col[@field='L2']!=''
-                             or col[@field='L3']!='' or col[@field='L4']!=''
-                             or col[@field='L5']!='' or col[@field='Location']!=''">
-                    <xsl:text>tuid</xsl:text>
-                </xsl:when>
-                <xsl:otherwise>
-                    <xsl:text>uuid</xsl:text>
-                </xsl:otherwise>
-            </xsl:choose>
-        </xsl:variable>
+        <xsl:variable name="SourceName" select="col[@field='Source']"/>
+        <xsl:if test="$SourceName!=''">
+            <xsl:variable name="date" select="col[@field='Date']"/>
+            <xsl:variable name="url" select="col[@field='Source URL']"/>
+            <xsl:variable name="location">
+                <xsl:call-template name="LocationUid"/>
+            </xsl:variable>
+            <xsl:variable name="tuid">
+                <xsl:choose>
+                    <xsl:when test="col[@field='L1']!='' or col[@field='L2']!=''
+                                 or col[@field='L3']!='' or col[@field='L4']!=''
+                                 or col[@field='L5']!='' or col[@field='Location']!=''">
+                        <xsl:text>tuid</xsl:text>
+                    </xsl:when>
+                    <xsl:otherwise>
+                        <xsl:text>uuid</xsl:text>
+                    </xsl:otherwise>
+                </xsl:choose>
+            </xsl:variable>
 
-        <xsl:if test="$name!=''">
             <resource name="doc_document">
                 <xsl:attribute name="tuid">
-                    <xsl:value-of select="concat('doc_document/',$name)"/>
+                    <xsl:value-of select="concat('doc_document/',$SourceName)"/>
                 </xsl:attribute>
-                <data field="name"><xsl:value-of select="$name"/></data>
-                <data field="url"><xsl:value-of select="col[@field='Source URL']"/></data>
-                <data field="date"><xsl:value-of select="col[@field='Date']"/></data>
+                <data field="name"><xsl:value-of select="$SourceName"/></data>
+                <xsl:if test="$url!=''">
+                    <data field="url"><xsl:value-of select="$url"/></data>
+                </xsl:if>
+                <xsl:if test="$date!=''">
+                    <data field="date"><xsl:value-of select="$date"/></data>
+                </xsl:if>
 
                 <!-- Link to Location -->
                 <xsl:call-template name="LocationReference">

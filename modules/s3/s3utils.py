@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: (c) 2010-2013 Sahana Software Foundation
+    @copyright: (c) 2010-2014 Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -30,6 +30,7 @@
 """
 
 import collections
+import copy
 import datetime
 import os
 import re
@@ -56,6 +57,7 @@ from gluon import *
 from gluon.dal import Expression, Field, Row
 from gluon.storage import Storage
 from gluon.languages import lazyT
+from gluon.tools import addrow
 
 DEBUG = False
 if DEBUG:
@@ -65,6 +67,11 @@ if DEBUG:
 else:
     _debug = lambda m: None
 
+URLSCHEMA = re.compile("((?:(())(www\.([^/?#\s]*))|((http(s)?|ftp):)"
+                       "(//([^/?#\s]*)))([^?#\s]*)(\?([^#\s]*))?(#([^\s]*))?)")
+
+RCVARS = "rcvars"
+                           
 # =============================================================================
 def s3_debug(message, value=None):
     """
@@ -87,47 +94,319 @@ def s3_debug(message, value=None):
         print >> sys.stderr, "Debug crashed"
 
 # =============================================================================
+def s3_get_last_record_id(tablename):
+    """
+        Reads the last record ID for a resource from a session
+
+        @param table: the the tablename
+    """
+
+    session = current.session
+
+    if RCVARS in session and tablename in session[RCVARS]:
+        return session[RCVARS][tablename]
+    else:
+        return None
+
+# =============================================================================
+def s3_store_last_record_id(tablename, record_id):
+    """
+        Stores a record ID for a resource in a session
+
+        @param tablename: the tablename
+        @param record_id: the record ID to store
+    """
+
+    session = current.session
+    
+    if RCVARS not in session:
+        session[RCVARS] = Storage({tablename: record_id})
+    else:
+        session[RCVARS][tablename] = record_id
+    return True
+
+# =============================================================================
+def s3_remove_last_record_id(tablename=None):
+    """
+        Clears one or all last record IDs stored in a session
+
+        @param tablename: the tablename, None to remove all last record IDs
+    """
+
+    session = current.session
+    
+    if tablename:
+        if RCVARS in session and tablename in session[RCVARS]:
+            del session[RCVARS][tablename]
+    else:
+        if RCVARS in session:
+            del session[RCVARS]
+    return True
+    
+# =============================================================================
+def s3_validate(table, field, value, record=None):
+    """
+        Validates a value for a field
+
+        @param table: Table
+        @param field: Field or name of the field
+        @param value: value to validate
+        @param record: the existing database record, if available
+
+        @return: tuple (value, error)
+    """
+
+    default = (value, None)
+
+    if isinstance(field, basestring):
+        fieldname = field
+        if fieldname in table.fields:
+            field = table[fieldname]
+        else:
+            return default
+    else:
+        fieldname = field.name
+
+    self_id = None
+
+    if record is not None:
+
+        try:
+            v = record[field]
+        except: # KeyError is now AttributeError
+            v = None
+        if v and v == value:
+            return default
+
+        try:
+            self_id = record[table._id]
+        except: # KeyError is now AttributeError
+            pass
+
+    requires = field.requires
+
+    if field.unique and not requires:
+        # Prevent unique-constraint violations
+        field.requires = IS_NOT_IN_DB(current.db, str(field))
+        if self_id:
+            field.requires.set_self_id(self_id)
+
+    elif self_id:
+
+        # Initialize all validators for self_id
+        if not isinstance(requires, (list, tuple)):
+            requires = [requires]
+        for r in requires:
+            if hasattr(r, "set_self_id"):
+                r.set_self_id(self_id)
+            if hasattr(r, "other") and \
+               hasattr(r.other, "set_self_id"):
+                r.other.set_self_id(self_id)
+
+    try:
+        value, error = field.validate(value)
+    except:
+        # Oops - something went wrong in the validator:
+        # write out a debug message, and continue anyway
+        current.log.error("Validate %s: %s (ignored)" %
+                          (field, sys.exc_info()[1]))
+        return (None, None)
+    else:
+        return (value, error)
+
+# =============================================================================
+def s3_represent_value(field,
+                       value=None,
+                       record=None,
+                       linkto=None,
+                       strip_markup=False,
+                       xml_escape=False,
+                       non_xml_output=False,
+                       extended_comments=False):
+    """
+        Represent a field value
+
+        @param field: the field (Field)
+        @param value: the value
+        @param record: record to retrieve the value from
+        @param linkto: function or format string to link an ID column
+        @param strip_markup: strip away markup from representation
+        @param xml_escape: XML-escape the output
+        @param non_xml_output: Needed for output such as pdf or xls
+        @param extended_comments: Typically the comments are abbreviated
+    """
+
+    xml_encode = current.xml.xml_encode
+
+    NONE = current.response.s3.crud_labels["NONE"]
+    cache = current.cache
+    fname = field.name
+
+    # Get the value
+    if record is not None:
+        tablename = str(field.table)
+        if tablename in record and isinstance(record[tablename], Row):
+            text = val = record[tablename][field.name]
+        else:
+            text = val = record[field.name]
+    else:
+        text = val = value
+        
+    ftype = str(field.type)
+    if ftype[:5] == "list:" and not isinstance(val, list):
+        # Default list representation can't handle single values
+        val = [val]
+
+    # Always XML-escape content markup if it is intended for xml output
+    # This code is needed (for example) for a data table that includes a link
+    # Such a table can be seen at inv/inv_item
+    # where the table displays a link to the warehouse
+    if not non_xml_output:
+        if not xml_escape and val is not None:
+            if ftype in ("string", "text"):
+                val = text = xml_encode(s3_unicode(val))
+            elif ftype == "list:string":
+                val = text = [xml_encode(s3_unicode(v)) for v in val]
+
+    # Get text representation
+    if field.represent:
+        try:
+            key = "%s_repr_%s" % (field, val)
+            unicode(key)
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            text = field.represent(val)
+        else:
+            text = cache.ram(key,
+                             lambda: field.represent(val),
+                             time_expire=60)
+            if isinstance(text, DIV):
+                text = str(text)
+            elif not isinstance(text, basestring):
+                text = s3_unicode(text)
+    else:
+        if val is None:
+            text = NONE
+        elif fname == "comments" and not extended_comments:
+            ur = s3_unicode(text)
+            if len(ur) > 48:
+                text = "%s..." % ur[:45].encode("utf8")
+        else:
+            text = s3_unicode(text)
+
+    # Strip away markup from text
+    if strip_markup and "<" in text:
+        try:
+            stripper = S3MarkupStripper()
+            stripper.feed(text)
+            text = stripper.stripped()
+        except:
+            pass
+
+    # Link ID field
+    if fname == "id" and linkto:
+        id = str(val)
+        try:
+            href = linkto(id)
+        except TypeError:
+            href = linkto % id
+        href = str(href).replace(".aadata", "")
+        return A(text, _href=href).xml()
+
+    # XML-escape text
+    elif xml_escape:
+        text = xml_encode(text)
+
+    try:
+        text = text.decode("utf-8")
+    except:
+        pass
+
+    return text
+
+# =============================================================================
+def s3_set_default_filter(selector, value, tablename=None):
+    """
+        Set a default filter for selector.
+
+        @param selector: the field selector
+        @param value: the value, can be a dict {operator: value},
+                      a list of values, or a single value, or a
+                      callable that returns any of these
+        @param tablename: the tablename
+    """
+
+    s3 = current.response.s3
+
+    filter_defaults = s3
+    for level in ("filter_defaults", tablename):
+        if level not in filter_defaults:
+            filter_defaults[level] = {}
+        filter_defaults = filter_defaults[level]
+    filter_defaults[selector] = value
+    return
+    
+# =============================================================================
 def s3_dev_toolbar():
     """
         Developer Toolbar - ported from gluon.Response.toolbar()
         Shows useful stuff at the bottom of the page in Debug mode
     """
 
-    try:
-        # New web2py
-        from gluon.dal import THREAD_LOCAL
-    except:
-        # Old web2py
-        from gluon.dal import thread as THREAD_LOCAL
+    from gluon.dal import DAL
     from gluon.utils import web2py_uuid
 
+    #admin = URL("admin", "default", "design", extension="html",
+    #            args=current.request.application)
     BUTTON = TAG.button
 
-    if hasattr(THREAD_LOCAL, "instances"):
-        dbstats = [TABLE(*[TR(PRE(row[0]),
-                           "%.2fms" % (row[1]*1000)) \
-                           for row in i.db._timings]) \
-                         for i in THREAD_LOCAL.instances]
-    else:
-        dbstats = [] # if no db or on GAE
+    dbstats = []
+    dbtables = {}
+    infos = DAL.get_instances()
+    for k, v in infos.iteritems():
+        dbstats.append(TABLE(*[TR(PRE(row[0]), "%.2fms" %
+                                      (row[1] * 1000))
+                                       for row in v["dbstats"]]))
+        dbtables[k] = dict(defined=v["dbtables"]["defined"] or "[no defined tables]",
+                           lazy=v["dbtables"]["lazy"] or "[no lazy tables]")
+
     u = web2py_uuid()
+    backtotop = A("Back to top", _href="#totop-%s" % u)
+    # Convert lazy request.vars from property to Storage so they
+    # will be displayed in the toolbar.
+    request = copy.copy(current.request)
+    request.update(vars=current.request.vars,
+                   get_vars=current.request.get_vars,
+                   post_vars=current.request.post_vars)
     return DIV(
-        BUTTON("request", _onclick="$('#request-%s').slideToggle()" % u),
-        DIV(BEAUTIFY(current.request), _class="dbg_hidden", _id="request-%s" % u),
-        BUTTON("session", _onclick="$('#session-%s').slideToggle()" % u),
-        DIV(BEAUTIFY(current.session), _class="dbg_hidden", _id="session-%s" % u),
-        # Disabled response as it breaks S3SearchLocationWidget
-        #BUTTON("response", _onclick="$('#response-%s').slideToggle()" % u),
-        #DIV(BEAUTIFY(current.response), _class="dbg_hidden", _id="response-%s" % u),
-        BUTTON("db stats", _onclick="$('#db-stats-%s').slideToggle()" % u),
-        DIV(BEAUTIFY(dbstats), _class="dbg_hidden", _id="db-stats-%s" % u),
-        SCRIPT("$('.dbg_hidden').hide()")
-        )
+        #BUTTON("design", _onclick="document.location='%s'" % admin),
+        BUTTON("request",
+               _onclick="$('#request-%s').slideToggle().removeClass('hide')" % u),
+        #BUTTON("response",
+        #       _onclick="$('#response-%s').slideToggle().removeClass('hide')" % u),
+        BUTTON("session",
+               _onclick="$('#session-%s').slideToggle().removeClass('hide')" % u),
+        BUTTON("db tables",
+               _onclick="$('#db-tables-%s').slideToggle().removeClass('hide')" % u),
+        BUTTON("db stats",
+               _onclick="$('#db-stats-%s').slideToggle().removeClass('hide')" % u),
+        DIV(BEAUTIFY(request), backtotop,
+            _class="hide", _id="request-%s" % u),
+        #DIV(BEAUTIFY(current.response), backtotop,
+        #    _class="hide", _id="response-%s" % u),
+        DIV(BEAUTIFY(current.session), backtotop,
+            _class="hide", _id="session-%s" % u),
+        DIV(BEAUTIFY(dbtables), backtotop,
+            _class="hide", _id="db-tables-%s" % u),
+        DIV(BEAUTIFY(dbstats), backtotop,
+            _class="hide", _id="db-stats-%s" % u),
+        _id="totop-%s" % u
+    )
 
 # =============================================================================
 def s3_mark_required(fields,
                      mark_required=[],
                      label_html=(lambda field_label:
+                                 # @ToDo: DRY this setting with s3.locationselector.widget2.js
                                  DIV("%s:" % field_label,
                                      SPAN(" *", _class="req"))),
                      map_names=None):
@@ -151,6 +430,9 @@ def s3_mark_required(fields,
             fname, flabel = map_names[field.name]
         else:
             fname, flabel = field.name, field.label
+        if not flabel:
+            labels[fname] = ""
+            continue
         if field.writable:
             validators = field.requires
             if isinstance(validators, IS_EMPTY_OR) and field.name not in mark_required:
@@ -201,6 +483,34 @@ def s3_mark_required(fields,
     #    return None
 
 # =============================================================================
+def s3_addrow(form, label, widget, comment, formstyle, row_id, position=-1):
+    """
+        Add a row to a form, applying formstyle
+
+        @param form: the FORM
+        @param label: the label
+        @param widget: the widget
+        @param comment: the comment
+        @param formstyle: the formstyle
+        @param row_id: the form row HTML id
+        @param position: position where to insert the row
+    """
+
+    if callable(formstyle):
+        row = formstyle(row_id, label, widget, comment)
+        if isinstance(row, (tuple, list)):
+            for subrow in row:
+                form[0].insert(position, subrow)
+                if position >= 0:
+                    position += 1
+        else:
+            form[0].insert(position, row)
+    else:
+        addrow(form, label, widget, comment, formstyle, row_id,
+               position = position)
+    return
+
+# =============================================================================
 def s3_truncate(text, length=48, nice=True):
     """
         Nice truncating of text
@@ -219,57 +529,47 @@ def s3_truncate(text, length=48, nice=True):
         return text
 
 # =============================================================================
-def s3_split_multi_value(value):
+def s3_trunk8(selector=None, lines=None, less=None, more=None):
     """
-        Converts a series of numbers delimited by |, or already in a
-        string into a list. If value = None, returns []
+        Intelligent client-side text truncation
 
-        @todo: parameter description
-        @todo: is this still used?
+        @param selector: the jQuery selector (default: .s3-truncate)
+        @param lines: maximum number of lines (default: 1)
     """
+    
+    T = current.T
+    
+    s3 = current.response.s3
+    scripts = s3.scripts
+    script = "/%s/static/scripts/trunk8.js" % current.request.application
+    if script not in scripts:
+        scripts.append(script)
 
-    if not value:
-        return []
+        # Toggle-script
+        # - only required once per page
+        script = \
+"""$(document).on('click','.s3-truncate-more',function(event){
+ $(this).parent()
+        .trunk8('revert')
+        .append(' <a class="s3-truncate-less" href="#">%(less)s</a>')
+ return false
+})
+$(document).on('click','.s3-truncate-less',function(event){
+ $(this).parent().trunk8()
+ return false
+})""" % dict(less=T("less") if less is None else less)
+        s3.jquery_ready.append(script)
 
-    elif isinstance(value, ( str ) ):
-        if "[" in value:
-            #Remove internal lists
-            value = value.replace("[", "")
-            value = value.replace("]", "")
-            value = value.replace("'", "")
-            value = value.replace('"', "")
-            return eval("[" + value + "]")
-        else:
-            return re.compile('[\w\-:]+').findall(str(value))
-    else:
-        return [str(value)]
+    # Init-script
+    # - required separately for each selector
+    script = """S3.trunk8('%(selector)s', %(lines)s, '%(more)s')""" % \
+             dict(selector = ".s3-truncate" if selector is None else selector,
+                  lines = "null" if lines is None else lines,
+                  more=T("more") if more is None else more,
+                 )
 
-# =============================================================================
-def s3_filter_staff(r):
-    """
-        Filter out people which are already staff for this facility
-
-        @todo: make the Person-AC pick up the filter options from
-               the person_id field (currently not implemented)
-    """
-
-    db = current.db
-    try:
-        hrtable = db.hrm_human_resource
-        site_id = r.record.site_id
-        person_id_field = r.target()[2].person_id
-    except:
-        return
-    query = (hrtable.site_id == site_id) & \
-            (hrtable.deleted == False)
-
-    staff = db(query).select(hrtable.person_id)
-    person_ids = [row.person_id for row in staff]
-    try:
-        person_id_field.requires.set_filter(not_filterby = "id",
-                                            not_filter_opts = person_ids)
-    except:
-        pass
+    s3.jquery_ready.append(script)
+    return
 
 # =============================================================================
 def s3_format_fullname(fname=None, mname=None, lname=None, truncate=True):
@@ -294,10 +594,12 @@ def s3_format_fullname(fname=None, mname=None, lname=None, truncate=True):
             fname = "%s" % s3_truncate(fname, 24)
             mname = "%s" % s3_truncate(mname, 24)
             lname = "%s" % s3_truncate(lname, 24, nice = False)
-        if not mname or mname.isspace():
-            name = ("%s %s" % (fname, lname)).rstrip()
-        else:
-            name = ("%s %s %s" % (fname, mname, lname)).rstrip()
+        name_format = current.deployment_settings.get_pr_name_format()
+        name = name_format % dict(first_name=fname,
+                                  middle_name=mname,
+                                  last_name=lname,
+                                  )
+        name = name.replace("  ", " ").rstrip()
         if truncate:
             name = s3_truncate(name, 24, nice = False)
     return name
@@ -348,7 +650,7 @@ def s3_fullname(person=None, pe_id=None, truncate=True):
 def s3_fullname_bulk(record_ids=[], truncate=True):
     """
         Returns the full name for a set of Persons
-        - used by GIS.get_representation()
+        - currently unused
 
         @param record_ids: a list of record_ids
         @param truncate: truncate the name to max 24 characters
@@ -389,15 +691,15 @@ def s3_comments_represent(text, show_link=True):
         import uuid
         unique =  uuid.uuid4()
         represent = DIV(
-                        DIV(text,
-                            _id=unique,
-                            _class="hide showall",
-                            _onmouseout="$('#%s').hide();" % unique
-                           ),
-                        A("%s..." % text[:76],
-                          _onmouseover="$('#%s').removeClass('hide').show();" % unique,
-                         ),
-                       )
+                DIV(text,
+                    _id=unique,
+                    _class="hide showall",
+                    _onmouseout="$('#%s').hide()" % unique
+                   ),
+                A("%s..." % text[:76],
+                  _onmouseover="$('#%s').removeClass('hide').show()" % unique,
+                 ),
+                )
         return represent
 
 # =============================================================================
@@ -410,6 +712,18 @@ def s3_url_represent(url):
         return ""
     return A(url, _href=url, _target="blank")
 
+# =============================================================================
+def s3_URLise(text):
+    """
+        Convert all URLs in a text into an HTML <A> tag.
+
+        @param text: the text
+    """
+
+    output = URLSCHEMA.sub(lambda m: '<a href="%s">%s</a>' %
+                          (m.group(0), m.group(0)), text)
+    return output
+    
 # =============================================================================
 def s3_avatar_represent(id, tablename="auth_user", gravatar=False, **attr):
     """
@@ -533,36 +847,6 @@ def s3_auth_user_represent_name(id, row=None):
         return current.messages.UNKNOWN_OPT
 
 # =============================================================================
-def s3_auth_group_represent(opt):
-    """
-        Represent user groups by their role names
-    """
-
-    if not opt:
-        return current.messages["NONE"]
-
-    auth = current.auth
-    s3db = current.s3db
-
-    table = auth.settings.table_group
-    groups = current.db(table.id > 0).select(table.id,
-                                             table.role,
-                                             cache=s3db.cache).as_dict()
-    if not isinstance(opt, (list, tuple)):
-        opt = [opt]
-    roles = []
-    for o in opt:
-        try:
-            key = int(o)
-        except ValueError:
-            continue
-        if key in groups:
-            roles.append(groups[key]["role"])
-    if not roles:
-        return current.messages["NONE"]
-    return ", ".join(roles)
-
-# =============================================================================
 def s3_yes_no_represent(value):
     " Represent a Boolean field as Yes/No instead of True/False "
 
@@ -642,7 +926,8 @@ def s3_include_ext():
     if s3.ext_included:
         # Ext already included
         return
-    appname = current.request.application
+    request = current.request
+    appname = request.application
 
     xtheme = current.deployment_settings.get_base_xtheme()
     if xtheme:
@@ -675,18 +960,21 @@ def s3_include_ext():
         else:
             main_css = \
     "<link href='/%s/static/scripts/ext/resources/css/ext-gray.min.css' rel='stylesheet' type='text/css' media='screen' charset='utf-8' />" % appname
-    locale = "%s/src/locale/ext-lang-%s.js" % (PATH, s3.language)
 
     scripts = s3.scripts
     scripts_append = scripts.append
     scripts_append(adapter)
     scripts_append(main_js)
-    scripts_append(locale)
+
+    langfile = "ext-lang-%s.js" % s3.language
+    if os.path.exists(os.path.join(request.folder, "static", "scripts", "ext", "src", "locale", langfile)):
+        locale = "%s/src/locale/%s" % (PATH, langfile)
+        scripts_append(locale)
 
     if xtheme:
-        s3.jquery_ready.append('''$('style:first').after("%s").after("%s")''' % (xtheme, main_css))
+        s3.jquery_ready.append('''$('link:first').after("%s").after("%s")''' % (xtheme, main_css))
     else:
-        s3.jquery_ready.append('''$('style:first').after("%s")''' % main_css)
+        s3.jquery_ready.append('''$('link:first').after("%s")''' % main_css)
     s3.ext_included = True
 
 # =============================================================================
@@ -773,7 +1061,7 @@ def s3_populate_browser_compatibility(request):
     try:
         from pywurfl.algorithms import TwoStepAnalysis
     except ImportError:
-        s3_debug("pywurfl python module has not been installed, browser compatibility listing will not be populated. Download pywurfl from http://pypi.python.org/pypi/pywurfl/")
+        current.log.warning("pywurfl python module has not been installed, browser compatibility listing will not be populated. Download pywurfl from http://pypi.python.org/pypi/pywurfl/")
         return False
     import wurfl
     device = wurfl.devices.select_ua(unicode(request.env.http_user_agent),
@@ -968,10 +1256,17 @@ def s3_orderby_fields(table, orderby, expr=False):
         elif isinstance(item, str):
             fn, direction = (item.strip().split() + ["asc"])[:2]
             tn, fn = ([tablename] + fn.split(".", 1))[-2:]
-            try:
-                f = s3db.table(tn)[fn]
-            except (AttributeError, KeyError):
-                continue
+            if tn:
+                try:
+                    f = s3db.table(tn, db_only=True)[fn]
+                except (AttributeError, KeyError):
+                    continue
+            else:
+                if current.response.s3.debug:
+                    raise SyntaxError('Tablename prefix required for orderby="%s"' % item)
+                else:
+                    # Ignore
+                    continue
             if expr and direction[:3] == "des":
                 f = ~f
         else:
@@ -997,7 +1292,7 @@ def search_vars_represent(search_vars):
     try:
         search_vars = cPickle.loads(str(search_vars))
     except:
-        raise HTTP(500,"ERROR RETRIEVING THE SEARCH CRITERIA")
+        raise HTTP(500, "ERROR RETRIEVING THE SEARCH CRITERIA")
     else:
         s = "<p>"
         pat = '_'
@@ -1359,7 +1654,7 @@ class S3CustomController(object):
             current.response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
         return
 
 # =============================================================================
@@ -1393,7 +1688,7 @@ class S3DateTime(object):
             except:
                 # e.g. dates < 1900
                 date = date.isoformat()
-                s3_debug("Date cannot be formatted - using isoformat", date)
+                current.log.warning("Date cannot be formatted - using isoformat", date)
                 return date
         else:
             return current.messages["NONE"]
@@ -1498,8 +1793,8 @@ class S3TypeConverter(object):
             raise TypeError
         if type(b) is type(a) or isinstance(b, type(a)):
             return b
-        if isinstance(a, (list, tuple)):
-            if isinstance(b, (list, tuple)):
+        if isinstance(a, (list, tuple, set)):
+            if isinstance(b, (list, tuple, set)):
                 return b
             elif isinstance(b, basestring):
                 if "," in b:
@@ -1513,7 +1808,7 @@ class S3TypeConverter(object):
                 return [cnv(a[0], item) for item in b]
             else:
                 return b
-        if isinstance(b, (list, tuple)):
+        if isinstance(b, (list, tuple, set)):
             cnv = cls.convert
             return [cnv(a, item) for item in b]
         if isinstance(a, basestring):

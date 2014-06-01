@@ -10,8 +10,6 @@ except:
 from gluon import current
 from gluon.storage import Storage
 
-from s3.s3forms import S3SQLCustomForm, S3SQLInlineComponent, S3SQLInlineComponentCheckbox
-
 settings = current.deployment_settings
 T = current.T
 
@@ -216,6 +214,8 @@ settings.frontpage.rss = [
 ]
 
 # Organisation Management
+# Enable the use of Organisation Branches
+settings.org.branches = True
 # Uncomment to add summary fields for Organisations/Offices for # National/International staff
 settings.org.summary = True
 
@@ -246,6 +246,10 @@ settings.project.mode_3w = True
 settings.project.codes = True
 # Uncomment this to call project locations 'Communities'
 #settings.project.community = True
+# Uncomment this to enable Hazards in 3W projects
+settings.project.hazards = True
+# Uncomment this to enable Themes in 3W projects
+settings.project.themes = True
 # Uncomment this to use multiple Budgets per project
 settings.project.multiple_budgets = True
 # Uncomment this to use multiple Organisations per project
@@ -260,7 +264,7 @@ settings.project.multiple_organisations = True
 #}
 
 # -----------------------------------------------------------------------------
-def customize_org_organisation(**attr):
+def customise_org_organisation_controller(**attr):
 
     s3 = current.response.s3
 
@@ -273,7 +277,7 @@ def customize_org_organisation(**attr):
         else:
             result = True
 
-        if r.interactive or r.representation.lower() == "aadata":
+        if r.interactive or r.representation == "aadata":
             s3db = current.s3db
             list_fields = ["id",
                            "name",
@@ -287,11 +291,12 @@ def customize_org_organisation(**attr):
             s3db.configure("org_organisation", list_fields=list_fields)
         
         if r.interactive:
+            from s3.s3forms import S3SQLCustomForm, S3SQLInlineComponentCheckbox
             crud_form = S3SQLCustomForm(
                 "name",
                 "acronym",
                 "organisation_type_id",
-                "region",
+                "region_id",
                 "country",
                 S3SQLInlineComponentCheckbox(
                     "sector",
@@ -312,10 +317,12 @@ def customize_org_organisation(**attr):
 
     return attr
 
-settings.ui.customize_org_organisation = customize_org_organisation
+settings.customise_org_organisation_controller = customise_org_organisation_controller
 
 # -----------------------------------------------------------------------------
-settings.ui.crud_form_project_project = S3SQLCustomForm(
+def customise_project_project_resource(r, tablename):
+    from s3.s3forms import S3SQLCustomForm, S3SQLInlineComponentCheckbox
+    crud_form = S3SQLCustomForm(
         "organisation_id",
         "name",
         "code",
@@ -391,9 +398,18 @@ settings.ui.crud_form_project_project = S3SQLCustomForm(
         #"budget",
         #"currency",
         "comments",
-    )
+        )
 
-settings.ui.crud_form_project_location = S3SQLCustomForm(
+    current.s3db.configure(tablename,
+                           crud_form = crud_form,
+                           )
+
+settings.customise_project_project_resource = customise_project_project_resource
+
+# -----------------------------------------------------------------------------
+def customise_project_location_resource(r, tablename):
+    from s3.s3forms import S3SQLCustomForm, S3SQLInlineComponentCheckbox
+    crud_form = S3SQLCustomForm(
         "project_id",
         "location_id",
         # @ToDo: Grouped Checkboxes
@@ -409,10 +425,18 @@ settings.ui.crud_form_project_location = S3SQLCustomForm(
             #          "lookuptable": "project_project",
             #          "lookupkey": "project_id",
             #          },
-        ),
+            ),
         "comments",
-    )
+        )
 
+    current.s3db.configure(tablename,
+                           crud_form = crud_form,
+                           )
+
+settings.customise_project_location_resource = customise_project_location_resource
+
+# =============================================================================
+# Template Modules
 # Comment/uncomment modules here to disable/enable them
 settings.modules = OrderedDict([
     # Core modules which shouldn't be disabled

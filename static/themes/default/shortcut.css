@@ -15,7 +15,7 @@
 /* Hide for both screenreaders and browsers
    css-discuss.incutio.com/wiki/Screenreader_Visibility */
 .hide {
-    display: none;
+    display: none !important;
     /* Interferes with Bootstrap */
     /*visibility: hidden;*/
 }
@@ -93,4 +93,8 @@
 /* A section which isn't translated so should always appear LTR (e.g. Languages menu) */
 .ltr {
     direction: ltr;
+}
+/* A section which isn't translated so should always appear RTL (e.g. Local Names) */
+.rtl {
+    direction: rtl;
 }

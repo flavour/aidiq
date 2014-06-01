@@ -1,5 +1,5 @@
 /**
- * jQuery UI pivottable Widget for S3Report2
+ * jQuery UI pivottable Widget for S3Report
  * 
  * @copyright: 2013 (c) Sahana Software Foundation
  * @license: MIT
@@ -32,7 +32,16 @@
             collapseChart: true,
             collapseTable: false,
 
-            autoSubmit: 1000
+            exploreChart: false,        // Activate/deactivate chart-explore function
+            filterURL: null,            // URL to forward to upon plot-click
+            filterForm: null,           // ID of the filter form to update
+                                        // (default: #filter-form)
+            filterTab: null,            // ID of the summary tab to activate upon
+                                        // plot-click (default: first tab)
+
+            autoSubmit: 1000,
+            thousandSeparator: ' ',
+            thousandGrouping: '3'
         },
 
         _create: function() {
@@ -48,7 +57,7 @@
         _init: function() {
             // Update widget options
             
-            var el = this.element;
+            var $el = $(this.element);
 
             this.data = null;
             this.table = null;
@@ -63,7 +72,7 @@
                 hidden: false
             };
 
-            var chart = $(el).find('.pt-chart');
+            var chart = $el.find('.pt-chart');
             if (chart.length) {
                 this.chart = chart.first();
             } else {
@@ -72,9 +81,9 @@
 
             // Hide the form or parts of it?
             if (!this.options.renderFilter && !this.options.renderOptions) {
-                $(el).find('.pt-form-container').hide();
+                $el.find('.pt-form-container').hide();
             } else {
-                var widget_id = $(el).attr('id');
+                var widget_id = $el.attr('id');
                 if (this.options.renderOptions) {
                     $('#' + widget_id + '-options').show();
                     if (this.options.collapseOptions) {
@@ -98,10 +107,17 @@
             // Hide the pivot table?
             if (this.options.collapseTable) {
                 this.table_options.hidden = true;
-                $(el).find('.pt-table').hide();
-                $(el).find('.pt-show-table').show();
-                $(el).find('.pt-hide-table').hide();
+                $el.find('.pt-table').hide();
+                $el.find('.pt-show-table').show();
+                $el.find('.pt-hide-table').hide();
             }
+
+            // Define thousandFormatter function
+            var re = new RegExp('\\B(?=(\\d{' + this.options.thousandGrouping + '})+(?!\\d))','g');
+            var thousandSeparator = this.options.thousandSeparator;
+            this.options.thousandFormatter = function(number) {
+                return number.toString().replace(re, thousandSeparator);
+            };
 
             // Render all initial contents
             this.refresh();
@@ -118,30 +134,31 @@
         },
 
         refresh: function() {
-            // Rre-draw contents
-            var el = this.element, data = null;
+            // Re-draw contents
+            var $el = $(this.element),
+                data = null;
 
             this._unbindEvents();
 
-            var pivotdata = $(el).find('input[type="hidden"][name="pivotdata"]');
+            var pivotdata = $el.find('input[type="hidden"][name="pivotdata"]');
             if (pivotdata.length) {
                 data = JSON.parse($(pivotdata).first().val());
             }
             if (!data) {
                 data = {empty: true};
                 // Show the empty section
-                $(el).find('.pt-hide-table').hide();
-                $(el).find('.pt-show-table').hide();
+                $el.find('.pt-hide-table').hide();
+                $el.find('.pt-show-table').hide();
             }
             this.data = data;
 
             if (data.nodata) {
-                $(el).find('.pt-table')
-                     .first()
-                     .empty()
-                     .append($('<div class="pt-no-data">' + data.nodata + '</div>'));
-                $(el).find('.pt-hide-table').hide();
-                $(el).find('.pt-show-table').hide();
+                $el.find('.pt-table')
+                   .first()
+                   .empty()
+                   .append($('<div class="pt-no-data">' + data.nodata + '</div>'));
+                $el.find('.pt-hide-table').hide();
+                $el.find('.pt-show-table').hide();
                 this._renderChart();
 
             } else {
@@ -150,25 +167,25 @@
                 this._renderChart();
             }
             if (data.empty) {
-                $(el).find('.pt-empty').show();
+                $el.find('.pt-empty').show();
             } else {
-                $(el).find('.pt-empty').hide();
+                $el.find('.pt-empty').hide();
             }
             if (this.options.autoSubmit) {
-                $(el).find('.pt-submit').hide();
+                $el.find('.pt-submit').hide();
             } else {
-                $(el).find('.pt-submit').show();
+                $el.find('.pt-submit').show();
             }
             this._bindEvents();
 
-            $(el).find('.pt-throbber').hide();
+            $el.find('.pt-throbber').hide();
         },
 
         _renderTable: function() {
             // Render the pivot table (according to current options)
 
-            var el = this.element;
-            var container = $(el).find('.pt-table').first().empty();
+            var $el = $(this.element);
+            var container = $el.find('.pt-table').first().empty();
 
             this.table = null;
 
@@ -204,15 +221,15 @@
                 $(container).append(this.table);
 
                 if (this.table_options.hidden) {
-                    $(el).find('.pt-show-table').show();
-                    $(el).find('.pt-hide-table').hide();
+                    $el.find('.pt-show-table').show();
+                    $el.find('.pt-hide-table').hide();
                 } else {
-                    $(el).find('.pt-show-table').hide();
-                    $(el).find('.pt-hide-table').show();
+                    $el.find('.pt-show-table').hide();
+                    $el.find('.pt-hide-table').show();
                 }
             } else {
-                $(el).find('.pt-show-table').hide();
-                $(el).find('.pt-hide-table').hide();
+                $el.find('.pt-show-table').hide();
+                $el.find('.pt-hide-table').hide();
             }
         },
 
@@ -359,8 +376,8 @@
         _renderChartOptions: function() {
             // Render the chart options (according to current options)
 
-            var el = this.element;
-            var container = $(el).find('.pt-chart-controls').first().empty();
+            var $el = $(this.element)
+            var container = $el.find('.pt-chart-controls').first().empty();
             
             var data = this.data;
             if (data.empty || !this.options.renderChart) {
@@ -368,7 +385,7 @@
             }
             var labels = data.labels;
 
-            var widget_id = $(el).attr('id'),
+            var widget_id = $el.attr('id'),
                 layer_label = labels.layer,
                 rows_label = labels.rows,
                 cols_label = labels.cols,
@@ -384,7 +401,7 @@
 
             if (layer_label) {
                 $(chart_opts).append($(
-                    '<span class="pt-chart-label">' + layer_label + '</span>'
+                    '<span class="pt-chart-label">' + layer_label + ': </span>'
                 ));
             }
             if (rows_label) {
@@ -405,7 +422,7 @@
 
             if (rows_label && cols_label) {
                 $(chart_opts).append($(
-                    '<span class="pt-chart-label">| ' + labels.breakdown + '</span>' +
+                    '<span class="pt-chart-label">| ' + labels.breakdown + ': </span>' +
                     '<div id="' + hchart_rows + '" class="pt-chart-icon pt-hchart"/>' +
                     '<span class="pt-chart-label">' +
                         [per, rows_label, '&amp;', cols_label].join(' ') +
@@ -420,15 +437,25 @@
             // Show the chart options
             $(container).append(chart_opts);
         },
+
+        _truncateLabel: function(label, len) {
+
+            if (label.length > len) {
+                return label.substring(0, len-3).replace(/\s+$/g,'') + '...';
+            } else {
+                return label;
+            }
+            
+        },
         
         _renderChart: function(chart_options) {
             // Render the chart (according to current options)
 
-            var el = this.element,
+            var $el = $(this.element),
                 data = this.data;
 
             // Hide the chart contents section initially
-            $(el).find('.pt-chart-contents').hide();
+            $el.find('.pt-chart-contents').hide();
 
             var chart = this.chart;
             if (chart) {
@@ -473,21 +500,21 @@
                 cols_title = labels.layer + ' ' + per + ' ' + labels.cols;
 
             var filter = data.filter;
-            var filter_url = filter[0],
-                rows_selector = filter[1],
-                cols_selector = filter[2];
+            var filter_url = this.options.filterURL,
+                rows_selector = filter[0],
+                cols_selector = filter[1];
 
             if (chart_type == 'piechart') {
                 if (chart_axis == 'rows') {
-                    this._renderPieChart(data.rows, rows_title, filter_url, rows_selector);
+                    this._renderPieChart(data.rows, rows_title, rows_selector);
                 } else {
-                    this._renderPieChart(data.cols, cols_title, filter_url, cols_selector);
+                    this._renderPieChart(data.cols, cols_title, cols_selector);
                 }
             } else if (chart_type == 'barchart') {
                 if (chart_axis == 'rows') {
-                    this._renderBarChart(data.rows, rows_title, filter_url, rows_selector);
+                    this._renderBarChart(data.rows, rows_title, rows_selector);
                 } else {
-                    this._renderBarChart(data.cols, cols_title, filter_url, cols_selector);
+                    this._renderBarChart(data.cols, cols_title, cols_selector);
                 }
             } else if (chart_type == 'breakdown') {
                 if (chart_axis == 'rows') {
@@ -498,7 +525,7 @@
             }
         },
 
-        _renderPieChart: function(data, title, filter_url, selector) {
+        _renderPieChart: function(data, title, selector) {
             // Render a pie chart
 
             var chart = this.chart;
@@ -568,27 +595,28 @@
             });
 
             // Click-link to filtered URL
-            if (filter_url && selector) {
-                $(chart).bind('plotclick', function(event, pos, item) {
-                    if (item) {
-                        var filter={};
-                        try {
-                            filter[selector] = items[item.seriesIndex]['key'];
+            if (this.options.exploreChart) {
+                if (selector) {
+                    $(chart).bind('plotclick', function(event, pos, item) {
+                        if (item) {
+                            try {
+                                var filter = [[selector, items[item.seriesIndex]['key']]];
+                            }
+                            catch(e) {
+                                return;
+                            }
+                            pt._chartExplore(filter);
                         }
-                        catch(e) {
-                            return;
-                        }
-                        var page = pt._updateURL(filter_url, filter);
-                        window.open(page, '_blank');
-                    }
-                });
+                    });
+                }
             }
         },
 
-        _renderBarChart: function(data, title, filter_url, selector) {
+        _renderBarChart: function(data, title, selector) {
             // Render a (vertical) bar chart
 
-            var chart = this.chart;
+            var chart = this.chart,
+                truncateLabel = this._truncateLabel;
             if (!chart) {
                 return;
             }
@@ -604,7 +632,7 @@
                         data: [[idx+1, item[2]]],
                         key: item[3]
                     });
-                    labels.push([idx+1, item[4]]);
+                    labels.push([idx+1, truncateLabel(item[4], 16)]);
                     idx++;
                 }
             }
@@ -638,9 +666,14 @@
                         min: 0,
                         max: items.length+1,
                         tickLength: 0
-                    }
+                        // Rotate labels with jquery.flot.tickrotor.js:
+                        // rotateTicks: 135
+                    },
+                   yaxis: { tickFormatter: this.options.thousandFormatter }
                 }
             );
+            // jquery.flot.tickrotor.js doesn't hide the original labels:
+            // $('.xAxis .tickLabel').hide();
 
             var pt = this;
 
@@ -665,20 +698,20 @@
             });
             
             // Click-link to filtered URL
-            if (filter_url && selector) {
-                $(chart).bind('plotclick', function(event, pos, item) {
-                    if (item) {
-                        var filter={};
-                        try {
-                            filter[selector] = items[item.seriesIndex]['key'];
+            if (this.options.exploreChart) {
+                if (selector) {
+                    $(chart).bind('plotclick', function(event, pos, item) {
+                        if (item) {
+                            try {
+                                var filter = [[selector, items[item.seriesIndex]['key']]];
+                            }
+                            catch(e) {
+                                return;
+                            }
+                            pt._chartExplore(filter);
                         }
-                        catch(e) {
-                            return;
-                        }
-                        var page = pt._updateURL(filter_url, filter);
-                        window.open(page, '_blank');
-                    }
-                });
+                    });
+                }
             }
         },
 
@@ -691,7 +724,8 @@
             }
             $(chart).closest('.pt-chart-contents').show().css({width: '96%'});
 
-            var filter_url = filter[0], rows_selector, cols_selector;
+            var rows_selector,
+                cols_selector;
 
             var cells = data.cells, rdim, cdim, get_data, ridx = [], cidx = [];
             if (dim === 0) {
@@ -701,8 +735,8 @@
                     var ri = ridx[i], ci = cidx[j];
                     return cells[ri][ci]['value'];
                 };
-                rows_selector = filter[1];
-                cols_selector = filter[2];
+                rows_selector = filter[0];
+                cols_selector = filter[1];
             } else {
                 rdim = data.cols;
                 cdim = data.rows;
@@ -710,8 +744,8 @@
                     var ri = ridx[i], ci = cidx[j];
                     return cells[ci][ri]['value'];
                 };
-                rows_selector = filter[2];
-                cols_selector = filter[1];
+                rows_selector = filter[1];
+                cols_selector = filter[0];
             }
 
             var i, rows = [], cols = [];
@@ -780,7 +814,8 @@
                         max: (rows.length) * (cols.length + 1) + 1
                     },
                     xaxis: {
-                        max: xmax * 1.1
+                        max: xmax * 1.1,
+                        tickFormatter: this.options.thousandFormatter
                     },
                     grid: {
                         hoverable: true,
@@ -789,7 +824,7 @@
                 }
             );
             $('.flot-y-axis .tickLabel').css({
-                'padding-top': '20px',
+                'padding-top': '25px',
                 'left': '0px', // prevent left-overflow
                 'width': '120px'
             });
@@ -824,22 +859,52 @@
             });
 
             // Click-link to filtered URL
-            if (filter_url && rows_selector && cols_selector) {
-                $(chart).bind('plotclick', function(event, pos, item) {
-                    if (item) {
-                        var filter = {};
-                        try {
-                            filter[rows_selector] = rows[item.dataIndex][3];
-                            filter[cols_selector] = cols[item.seriesIndex][3];
+            if (this.options.exploreChart) {
+                if (rows_selector && cols_selector) {
+                    $(chart).bind('plotclick', function(event, pos, item) {
+                        if (item) {
+                            try {
+                                var filter = [[rows_selector, rows[item.dataIndex][3]],
+                                              [cols_selector, cols[item.seriesIndex][3]]];
+                            }
+                            catch(e) {
+                                return;
+                            }
+                            pt._chartExplore(filter);
                         }
-                        catch(e) {
-                            return;
-                        }
-                        var page = pt._updateURL(filter_url, filter);
-                        window.open(page, '_blank');
-                    }
-                });
+                    });
+                }
             }
+        },
+
+        _chartExplore: function(filter) {
+
+            var opts = this.options,
+                summaryTabs = $(this.element).closest('.ui-tabs');
+                
+            var tab = opts.filterTab;
+            if (summaryTabs.length && tab !== false) {
+                // We're inside a summary
+                var filterForm = opts.filterForm;
+
+                // Update the filter form (default: first filter form)
+                var $filterForm = filterForm ? $('#' + filterForm) : undefined;
+                S3.search.setCurrentFilters($filterForm, filter);
+
+                // Switch to the specified tab (default: first tab)
+                var index = tab ? $('#' + tab).index() : 0;
+                summaryTabs.tabs('option', 'active', index);
+                
+            } else {
+                
+                // Forward to a filtered page
+                filterURL = opts.filterURL;
+                if (filterURL) {
+                    var page = this._updateURL(filterURL, filter);
+                    window.open(page, '_blank');
+                }
+            }
+            return;
         },
 
         _renderChartTooltip: function(x, y, contents) {
@@ -872,8 +937,8 @@
         _getOptions: function() {
             // Get current report options form the report options form
 
-            var el = this.element;
-            var widget_id = '#' + $(el).attr('id');
+            var $el = $(this.element);
+            var widget_id = '#' + $el.attr('id');
 
             var options = {
                 rows: $(widget_id + '-rows').val(),
@@ -901,39 +966,65 @@
         },
 
         _updateURL: function(url, filters) {
-            // Update a URL with new filters
+            // Update a URL with both Ajax- and axis-filters
 
             // Construct the URL
-            var url_parts = url.split('?'), query = {};
+            var url_parts,
+                url_vars,
+                queries = [],
+                update = {},
+                seen = {},
+                i, f, q, k;
 
+            // Add axis filters
+            if (filters) {
+                for (i=0, len=filters.length; i<len; i++) {
+                    f = filters[i];
+                    k = f[0];
+                    update[k] = true;
+                    queries.push(k + '=' + f[1]);
+                }
+            }
+
+            // Add filters from ajaxURL
+            var ajaxURL = this.options.ajaxURL;
+            url_parts = ajaxURL.split('?');
             if (url_parts.length > 1) {
-                var qstr = url_parts[1];
+                url_vars = url_parts[1].split('&');
+                var seen = {};
+                for (i=0, len=url_vars.length; i < len; i++) {
+                    q = url_vars[i].split('=');
+                    if (q.length > 1) {
+                        k = decodeURIComponent(q[0]);
+                        if (!update[k]) {
+                            queries.push(k + '=' + decodeURIComponent(q[1]));
+                            seen[k] = true;
+                        }
+                    }
+                }
+                for (k in seen) {
+                    update[k] = true;
+                }
+            }
 
-                var a = qstr.split('&'),
-                b, v, i, len;
-                for (i=0, len=a.length; i < len; i++) {
-                    b = a[i].split('=');
-                    if (b.length > 1) {
-                        query[decodeURIComponent(b[0])] = decodeURIComponent(b[1]);
+            // Extract all original filters
+            url_parts = url.split('?');
+            if (url_parts.length > 1) {
+                url_vars = url_parts[1].split('&');
+                var seen = {};
+                for (i=0, len=url_vars.length; i < len; i++) {
+                    q = url_vars[i].split('=');
+                    if (q.length > 1) {
+                        k = decodeURIComponent(q[0]);
+                        if (!update[k]) {
+                            queries.push(k + '=' + decodeURIComponent(q[1]));
+                        }
                     }
                 }
             }
 
-            if (filters) {
-                for (option in filters) {
-                    newopt = filters[option];
-                    query[option] = newopt ? newopt : null;
-                }
-            }
-
-            var url_queries = [], url_query;
-            for (option in query) {
-                if (query[option] !== null) {
-                    url_queries.push(option + '=' + query[option]);
-                }
-            }
-            url_query = url_queries.join('&');
-            
+            // Update URL
+            var url_query = queries.join('&');
             var filtered_url = url_parts[0];
             if (url_query) {
                 filtered_url = filtered_url + '?' + url_query;
@@ -949,7 +1040,7 @@
             // Construct the URL
             var url_parts = ajaxURL.split('?'),
                 url_query = null,
-                query = [];
+                query = [],
                 needs_reload = false;
 
             var qstr, url_vars;
@@ -1064,20 +1155,20 @@
             }
 
             var pt = this,
-                el = this.element,
+                $el = (this.element),
                 needs_reload;
             
-            var pivotdata = $(el).find('input[type="hidden"][name="pivotdata"]');
+            var pivotdata = $el.find('input[type="hidden"][name="pivotdata"]');
             if (!pivotdata.length) {
                 return;
             }
+            $el.find('.pt-throbber').show();
             if (options || filters) {
                 needs_reload = this._updateAjaxURL(options, filters);
             }
             if (needs_reload || force) {
                 var ajaxURL = this.options.ajaxURL;
-                $(el).find('.pt-throbber').show();
-                $(el).find('.pt-empty').hide();
+                $el.find('.pt-empty').hide();
                 $.ajax({
                     'url': ajaxURL,
                     'dataType': 'json'
@@ -1093,7 +1184,6 @@
                     console.log(msg);
                 });
             } else {
-                $(el).find('.pt-throbber').show();
                 pt.refresh();
             }
         },
@@ -1102,9 +1192,9 @@
             // Bind events to generated elements (after refresh)
 
             var pt = this,
-                el = this.element;
+                $el = $(this.element);
                 data = this.data;
-            var widget_id = $(el).attr('id');
+            var widget_id = $el.attr('id');
 
             // Show/hide report options
             $('#' + widget_id + '-options legend').click(function() {
@@ -1117,15 +1207,15 @@
             });
 
             // Show/hide pivot table
-            $(el).find('.pt-hide-table').click(function() {
+            $el.find('.pt-hide-table').click(function() {
                 pt.table_options.hidden = true;
-                $(el).find('.pt-table').hide();
+                $el.find('.pt-table').hide();
                 $(this).siblings('.pt-show-table').show();
                 $(this).hide();
             });
-            $(el).find('.pt-show-table').click(function() {
+            $el.find('.pt-show-table').click(function() {
                 pt.table_options.hidden = false;
-                $(el).find('.pt-table').show();
+                $el.find('.pt-table').show();
                 $(this).siblings('.pt-hide-table').show();
                 $(this).hide();
             });
@@ -1142,14 +1232,14 @@
             $('#' + widget_id + '-rows, #' +
                     widget_id + '-cols, #' +
                     widget_id + '-fact').on('change.autosubmit', function() {
-                $(el).find('.pt-form').trigger('optionChanged');
+                $('#' + widget_id + '-pt-form').trigger('optionChanged');
             });
 
             // Form submission
             if (this.options.autoSubmit) {
                 // Auto-submit
                 var timeout = this.options.autoSubmit;
-                $(el).find('.pt-form').on('optionChanged', function() {
+                $('#' + widget_id + '-pt-form').on('optionChanged', function() {
                     var that = $(this);
                     if (that.data('noAutoSubmit')) {
                         // Event temporarily disabled
@@ -1168,7 +1258,7 @@
                 });
             } else {
                 // Manual submit
-                $(el).find('input.pt-submit').click(function() {
+                $('#' + widget_id + '-pt-form input.pt-submit').click(function() {
                     var options = pt._getOptions(),
                         filters = pt._getFilters();
                     pt.reload(options, filters, false);
@@ -1219,7 +1309,7 @@
             $('#' + widget_id + '-hchart-cols').click(function() {
                 pt._renderChart({type: 'breakdown', axis: 'cols'});
             });
-            $(el).find('.pt-hide-chart').click(function () {
+            $el.find('.pt-hide-chart').click(function () {
                 pt._renderChart(false);
             });
         },
@@ -1227,8 +1317,8 @@
         _unbindEvents: function() {
             // Unbind events (before refresh)
             
-            var el = this.element;
-            var widget_id = $(el).attr('id');
+            var $el = $(this.element);
+            var widget_id = $el.attr('id');
 
             $('#' + widget_id + ' div.pt-table div.pt-cell-zoom').unbind('click');
             $('#' + widget_id + '-options legend').unbind('click');
@@ -1240,18 +1330,18 @@
                     widget_id + '-cols, #' +
                     widget_id + '-fact').unbind('change.autosubmit');
                     
-            $(el).find('.pt-form').unbind('optionChanged');
-            $(el).find('input.pt-submit').unbind('click');
+            $('#' + widget_id + '-pt-form').unbind('optionChanged');
+            $el.find('input.pt-submit').unbind('click');
 
             $('#' + widget_id + '-pchart-rows').unbind('click');
             $('#' + widget_id + '-vchart-rows').unbind('click');
             $('#' + widget_id + '-pchart-cols').unbind('click');
             $('#' + widget_id + '-vchart-cols').unbind('click');
             
-            $(el).find('.pt-hide-table').unbind('click');
-            $(el).find('.pt-show-table').unbind('click');
+            $el.find('.pt-hide-table').unbind('click');
+            $el.find('.pt-show-table').unbind('click');
             
-            $(el).find('.pt-hide-chart').unbind('click');
+            $el.find('.pt-hide-chart').unbind('click');
             
         }
     });

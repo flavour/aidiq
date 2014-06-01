@@ -52,13 +52,6 @@ settings.base.template = "AidIQ"
 # Set this to the Public URL of the instance
 #settings.base.public_url = "http://127.0.0.1:8000"
 
-# Uncomment to set pootle url
-# settings.L10n.pootle_url = "http://pootle.sahanafoundation.org/"
-
-# Uncomment to set pootle username and password
-# settings.L10n.pootle_username = "username"
-# settings.L10n.pootle_password = "*****"
-
 # Switch to "False" in Production for a Performance gain
 # (need to set to "True" again when Table definitions are changed)
 settings.base.migrate = True
@@ -72,19 +65,26 @@ settings.base.migrate = True
 # ?debug=1
 settings.base.debug = False
 
+# Configure the log level ("DEBUG", "INFO", "WARNING", "ERROR" or "CRITICAL"), None = turn off logging
+#settings.log.level = "WARNING"
+# Uncomment to prevent writing log messages to the console (sys.stderr)
+#settings.log.console = False
+# Configure a log file (file name)
+#settings.log.logfile = None
+# Uncomment to get detailed caller information
+#settings.log.caller_info = True
+
 # Uncomment to use Content Delivery Networks to speed up Internet-facing sites
 #settings.base.cdn = True
 
-# Uncomment this and set the solr url to connect to solr server for Full-Text Search
-#settings.base.solr_url = "http://127.0.0.1:8983/solr/"
+# Allow language files to be updated automatically
+#settings.L10n.languages_readonly = False
 
-# Uncomment to enable a guided tour
-#settings.base.guided_tour = True
-
-# This setting will be automatically changed _before_ registering the 1st user
+# This setting should be changed _before_ registering the 1st user
+# - should happen automatically if installing using supported scripts
 settings.auth.hmac_key = "akeytochange"
 
-# This setting is for Minimum Password Length
+# Minimum Password Length
 #settings.auth.password_min_length = 8
 
 # Email settings
@@ -112,32 +112,19 @@ settings.frontpage.rss = [
     },
     {"title": "Twitter",
      # @SahanaFOSS
-     "url": "https://search.twitter.com/search.rss?q=from%3ASahanaFOSS"
+     #"url": "https://search.twitter.com/search.rss?q=from%3ASahanaFOSS" # API v1 deprecated, so doesn't work, need to use 3rd-party service, like:
+     "url": "http://www.rssitfor.me/getrss?name=@SahanaFOSS"
      # Hashtag
-     #url: "http://search.twitter.com/search.atom?q=%23eqnz"
+     #url: "http://search.twitter.com/search.atom?q=%23eqnz" # API v1 deprecated, so doesn't work, need to use 3rd-party service, like:
+     #url: "http://api2.socialmention.com/search?q=%23eqnz&t=all&f=rss"
     }
 ]
 
-# Enable session store in Memcache to allow sharing of sessions across instances
-#settings.base.session_memcache = '127.0.0.1:11211'
+# Uncomment to enable a guided tour
+#settings.base.guided_tour = True
 
 # Instance Name - for management scripts
 #settings.base.instance_name = "test"
-
-# Allow language files to be updated automatically
-#settings.L10n.languages_readonly = False
-
-# Fill this in to get Google Analytics for your site
-#settings.base.google_analytics_tracking_id = ""
-
-# Fill these to allow users to Login using Facebook
-# https://developers.facebook.com/apps
-#settings.auth.facebook_id = ""
-#settings.auth.facebook_secret = ""
-# Fill these to allow users to Login using Google
-# https://code.google.com/apis/console/
-#settings.auth.google_id = ""
-#settings.auth.google_secret = ""
 
 # Bing API Key (for Map layers)
 #settings.gis.api_bing = ""
@@ -146,6 +133,21 @@ settings.frontpage.rss = [
 #settings.gis.api_google = ""
 # Yahoo API Key (for Geocoder)
 #settings.gis.api_yahoo = ""
+
+# GeoNames username
+#settings.gis.geonames_username = ""
+
+# Fill this in to get Google Analytics for your site
+#settings.base.google_analytics_tracking_id = ""
+
+# Chat server, see: http://eden.sahanafoundation.org/wiki/InstallationGuidelines/Chat
+#settings.base.chat_server = "127.0.0.1:7070" 
+
+# FaceBook OAuth (to allow users to login using FaceBook)
+# https://developers.facebook.com/apps
+#settings.auth.facebook_id = ""
+#settings.auth.facebook_secret = ""
+
 # GeoServer (Currently used by GeoExplorer. Will allow REST control of GeoServer.)
 # NB Needs to be publically-accessible URL for querying via client JS
 #settings.gis.geoserver_url = "http://localhost/geoserver"
@@ -154,13 +156,21 @@ settings.frontpage.rss = [
 # Print Service URL: http://eden.sahanafoundation.org/wiki/BluePrintGISPrinting
 #settings.gis.print_service = "/geoserver/pdf/"
 
-# Twitter settings:
-# Register an app at https://dev.twitter.com/apps
-# (select Application Type: Client)
-# Leave callback URL blank to allow entry of PIN for Tweepy
-# - should be changed sot aht we can have one to use for Auth!
-#settings.msg.twitter_oauth_consumer_key = ""
-#settings.msg.twitter_oauth_consumer_secret = ""
+# Google OAuth (to allow users to login using Google)
+# https://code.google.com/apis/console/
+#settings.auth.google_id = ""
+#settings.auth.google_secret = ""
+
+# Pootle server
+# settings.L10n.pootle_url = "http://pootle.sahanafoundation.org/"
+# settings.L10n.pootle_username = "username"
+# settings.L10n.pootle_password = "*****"
+
+# SOLR server for Full-Text Search
+#settings.base.solr_url = "http://127.0.0.1:8983/solr/"
+
+# Memcache server to allow sharing of sessions across instances
+#settings.base.session_memcache = '127.0.0.1:11211'
 
 # UI options
 # Should user be prompted to save before navigating away?
@@ -179,6 +189,12 @@ settings.frontpage.rss = [
 #settings.security.audit_write = False
 #settings.security.audit_read = False
 
+# Performance Options
+# Maximum number of search results for an Autocomplete Widget
+#settings.search.max_results = 200
+# Maximum number of features for a Map Layer
+#settings.gis.max_features = 1000
+
 # =============================================================================
 # Import the settings from the Template
 # - note: invalid settings are ignored
@@ -192,6 +208,7 @@ if os.path.exists(path):
 #
 
 # e.g.
+#settings.base.system_name = T("Sahana TEST")
 #settings.base.prepopulate = ["demo"]
 #settings.base.theme = "default"
 #settings.L10n.default_language = "en"
@@ -202,6 +219,9 @@ if os.path.exists(path):
 #        restricted = False,
 #        module_type = 10,
 #    )
+# Disable a module which is nromally used by the template
+# - NB Only templates with adaptive menus will work nicely with this!
+#del settings.modules["irs"]
 
 # After 1st_run, set this for Production to save 1x DAL hit/request
 #settings.base.prepopulate = 0

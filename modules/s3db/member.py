@@ -2,7 +2,7 @@
 
 """ Sahana Eden Members Model
 
-    @copyright: 2012-13 (c) Sahana Software Foundation
+    @copyright: 2012-14 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -51,20 +51,17 @@ class S3MembersModel(S3Model):
         T = current.T
         db = current.db
         auth = current.auth
+        s3 = current.response.s3
         settings = current.deployment_settings
 
-        person_id = self.pr_person_id
-        location_id = self.gis_location_id
         organisation_id = self.org_organisation_id
-
-        NONE = current.messages["NONE"]
 
         ADMIN = current.session.s3.system_roles.ADMIN
         is_admin = auth.s3_has_role(ADMIN)
 
-        add_component = self.add_component
+        add_components = self.add_components
         configure = self.configure
-        crud_strings = current.response.s3.crud_strings
+        crud_strings = s3.crud_strings
         define_table = self.define_table
 
         root_org = auth.root_org()
@@ -75,53 +72,54 @@ class S3MembersModel(S3Model):
         else:
             filter_opts = (None,)
 
+        if settings.get_org_autocomplete():
+            org_widget = S3OrganisationAutocompleteWidget(default_from_profile=True)
+        else:
+            org_widget = None
+
         # ---------------------------------------------------------------------
         # Membership Types
         #
         tablename = "member_membership_type"
-        table = define_table(tablename,
-                             Field("name", notnull=True, length=64,
-                                   label=T("Name")),
-                             # Only included in order to be able to set
-                             # realm_entity to filter appropriately
-                             organisation_id(default = root_org,
-                                             readable = is_admin,
-                                             writable = is_admin,
-                                             ),
-                             s3_comments(label=T("Description"), comment=None),
-                             *s3_meta_fields())
+        define_table(tablename,
+                     Field("name", notnull=True, length=64,
+                           label=T("Name")),
+                     # Only included in order to be able to set
+                     # realm_entity to filter appropriately
+                     organisation_id(default = root_org,
+                                     readable = is_admin,
+                                     writable = is_admin,
+                                     ),
+                     s3_comments(label=T("Description"), comment=None),
+                     *s3_meta_fields())
 
+        ADD_MEMBERSHIP_TYPE = T("Create Membership Type")
         crud_strings[tablename] = Storage(
-            title_create = T("Add Membership Type"),
+            label_create = ADD_MEMBERSHIP_TYPE,
             title_display = T("Membership Type Details"),
             title_list = T("Membership Types"),
             title_update = T("Edit Membership Type"),
-            title_search = T("Search Membership Types"),
             title_upload = T("Import Membership Types"),
-            subtitle_create = T("Add New Membership Type"),
             label_list_button = T("List Membership Types"),
-            label_create_button = T("Add Membership Type"),
             label_delete_button = T("Delete Membership Type"),
             msg_record_created = T("Membership Type added"),
             msg_record_modified = T("Membership Type updated"),
             msg_record_deleted = T("Membership Type deleted"),
             msg_list_empty = T("No membership types currently registered"))
 
-        label_create = crud_strings[tablename].label_create_button
-
         represent = S3Represent(lookup=tablename)
-        membership_type_id = S3ReusableField("membership_type_id", table,
+        membership_type_id = S3ReusableField("membership_type_id", "reference %s" % tablename,
                                              sortby = "name",
                                              label = T("Type"),
-                                             requires = IS_NULL_OR(
+                                             requires = IS_EMPTY_OR(
                                                             IS_ONE_OF(db, "member_membership_type.id",
                                                                       represent,
                                                                       filterby="organisation_id",
                                                                       filter_opts=filter_opts)),
                                              represent = represent,
                                              comment=S3AddResourceLink(f="membership_type",
-                                                                       label=label_create,
-                                                                       title=label_create,
+                                                                       label=ADD_MEMBERSHIP_TYPE,
+                                                                       title=ADD_MEMBERSHIP_TYPE,
                                                                        tooltip=T("Add a new membership type to the catalog.")),
                                              ondelete = "SET NULL")
 
@@ -133,80 +131,57 @@ class S3MembersModel(S3Model):
         # Members
         #
         tablename = "member_membership"
-        table = define_table(tablename,
-                             organisation_id(#widget=S3OrganisationAutocompleteWidget(default_from_profile=True),
-                                             requires = self.org_organisation_requires(updateable=True),
-                                             widget = None,
-                                             empty=False),
-                             Field("code",
-                                   #readable=False,
-                                   #writable=False,
-                                   label=T("Member ID")),
-                             person_id(widget=S3AddPersonWidget(controller="member"),
-                                       requires=IS_ADD_PERSON_WIDGET(),
-                                       comment=None),
-                             membership_type_id(),
-                             # History
-                             s3_date("start_date",
-                                     label = T("Date Joined"),
-                                     ),
-                             s3_date("end_date",
-                                     label = T("Date resigned"),
-                                     ),
-                             Field("membership_fee", "double",
-                                   label = T("Membership Fee"),
-                                   ),
-                             s3_date("membership_paid",
-                                     label = T("Membership Paid")
-                                     ),
-                             # Location (from pr_address component)
-                             location_id(readable=False,
-                                         writable=False),
-                             *s3_meta_fields())
+        define_table(tablename,
+                     organisation_id(
+                        empty = False,
+                        requires = self.org_organisation_requires(
+                                        updateable = True,
+                                        ),
+                        widget = org_widget,
+                      ),
+                      Field("code",
+                            label = T("Member ID"),
+                            #readable = False,
+                            #writable = False,
+                            ),
+                      self.pr_person_id(
+                        comment = None,
+                        requires = IS_ADD_PERSON_WIDGET2(),
+                        widget = S3AddPersonWidget2(controller="member"),
+                      ),
+                      membership_type_id(),
+                      # History
+                      s3_date("start_date",
+                              label = T("Date Joined"),
+                              ),
+                      s3_date("end_date",
+                              label = T("Date resigned"),
+                              ),
+                      Field("membership_fee", "double",
+                            label = T("Membership Fee"),
+                            ),
+                      s3_date("membership_paid",
+                              label = T("Membership Paid")
+                              ),
+                      # Location (from pr_address component)
+                      self.gis_location_id(readable = False,
+                                           writable = False),
+                      Field.Method("paid",
+                                   self.member_membership_paid),
+                      *s3_meta_fields())
 
         crud_strings[tablename] = Storage(
-            title_create = T("Add Member"),
+            label_create = T("Add Member"),
             title_display = T("Member Details"),
             title_list = T("Members"),
             title_update = T("Edit Member"),
-            title_search = T("Search Members"),
             title_upload = T("Import Members"),
-            subtitle_create = T("Add New Member"),
             label_list_button = T("List Members"),
-            label_create_button = T("Add Member"),
             label_delete_button = T("Delete Member"),
             msg_record_created = T("Member added"),
             msg_record_modified = T("Member updated"),
             msg_record_deleted = T("Member deleted"),
-            msg_list_empty = T("No members currently registered"))
-
-        table.paid = Field.Lazy(self.member_membership_paid)
-
-        # Components
-        # Email
-        add_component("pr_contact",
-                      member_membership=dict(
-                        name="email",
-                        link="pr_person",
-                        joinby="id",
-                        key="pe_id",
-                        fkey="pe_id",
-                        pkey="person_id",
-                        filterby="contact_method",
-                        filterfor=["EMAIL"],
-                      ))
-        # Phone
-        add_component("pr_contact",
-                      member_membership=dict(
-                        name="phone",
-                        link="pr_person",
-                        joinby="id",
-                        key="pe_id",
-                        fkey="pe_id",
-                        pkey="person_id",
-                        filterby="contact_method",
-                        filterfor=["SMS", "HOME_PHONE", "WORK_PHONE"],
-                      ))
+            msg_list_empty = T("No Members currently registered"))
 
         def member_type_opts():
             """
@@ -222,129 +197,144 @@ class S3MembersModel(S3Model):
                 query = (ttable.deleted == False) & \
                         (ttable.organisation_id == None)
 
-            opts = db(query).select(ttable.id,
-                                    ttable.name)
-            _dict = {}
-            for opt in opts:
-                _dict[opt.id] = opt.name
-            return _dict
+            rows = db(query).select(ttable.id, ttable.name)
+            return dict((row.id, row.name) for row in rows)
 
-        report_search = [
-            S3SearchOptionsWidget(
-                name="member_search_type",
-                label=T("Type"),
-                field="membership_type_id",
-                cols = 3,
-                options = member_type_opts,
-            ),
-            S3SearchOptionsWidget(
-                name="member_search_paid",
-                label=T("Paid"),
-                field="paid",
-                cols = 3,
-                options = {
-                        T("paid"):    T("paid"),
-                        T("overdue"): T("overdue"),
-                        T("expired"): T("expired"),
-                    },
-            ),
-            S3SearchOptionsWidget(
-                name="member_search_organisation_id",
-                field="organisation_id",
-                label=T("Organization"),
-                represent ="%(name)s",
-                cols = 3
-            ),
-            S3SearchOptionsWidget(
-                name="member_search_L0",
-                field="location_id$L0",
-                location_level="L0",
-                cols = 3,
-            ),
-            S3SearchOptionsWidget(
-                name="member_search_L1",
-                field="location_id$L1",
-                location_level="L1",
-                cols = 3,
-            ),
-            S3SearchOptionsWidget(
-                name="member_search_L2",
-                field="location_id$L2",
-                location_level="L2",
-                cols = 3,
-            ),
-            S3SearchOptionsWidget(
-                name="member_search_L3",
-                field="location_id$L3",
-                location_level="L3",
-                cols = 3,
-            ),
-            S3SearchOptionsWidget(
-                name="member_search_L4",
-                field="location_id$L4",
-                location_level="L4",
-                cols = 3,
-            ),
-            ]
-        # Map filter not working on Reports page
-        #advanced_member_search = report_search + [S3SearchLocationWidget(
-        #                                            name="member_search_map",
-        #                                            label=T("Map"),
-        #                                            )
-        #                                          ]
+        # Which levels of Hierarchy are we using?
+        levels = current.gis.get_relevant_hierarchy_levels()
 
-        member_search = S3Search(
-            simple=(self.member_search_simple_widget("simple")),
-            #advanced=[self.member_search_simple_widget("advanced")] + advanced_member_search
-            advanced=[self.member_search_simple_widget("advanced")] + report_search
-        )
+        list_fields = ["person_id",
+                       "organisation_id",
+                       "membership_type_id",
+                       "start_date",
+                       # useful for testing the paid virtual field
+                       #"membership_paid",
+                       (T("Paid"), "paid"),
+                       (T("Email"), "email.value"),
+                       (T("Phone"), "phone.value"),
+                       ]
 
         report_fields = ["person_id",
                          "membership_type_id",
                          "paid",
                          "organisation_id",
-                         "location_id$L0",
-                         "location_id$L1",
-                         "location_id$L2",
                          ]
 
-        configure(tablename,
-                  deduplicate = self.member_duplicate,
-                  onaccept = self.member_onaccept,
-                  search_method = member_search,
-                  report_options=Storage(
-                        search=report_search,
-                        rows=report_fields,
-                        cols=report_fields,
-                        facts=report_fields,
-                        methods=["count", "list"],
-                        defaults=Storage(
-                                aggregate="count",
-                                cols="membership.organisation_id",
-                                fact="membership.person_id",
-                                rows="membership.membership_type_id"
-                            )
-                        ),
-                  list_fields=["person_id",
-                               "organisation_id",
-                               "membership_type_id",
-                               "start_date",
-                               # useful for testing the paid virtual field
-                               #"membership_paid",
-                               (T("Paid"), "paid"),
-                               (T("Email"), "email.value"),
-                               (T("Phone"), "phone.value"),
-                               "location_id$L1",
-                               "location_id$L2",
-                               "location_id$L3",
-                               "location_id$L4",
-                               ],
-                  update_realm=True,
-                  create_next=URL(f="person", args="address",
-                                  vars={"membership.id": "[id]"}),
-                  extra_fields = ["start_date", "membership_paid"],
-                 )
+        text_fields = ["membership_type_id",
+                       "organisation_id$name",
+                       "organisation_id$acronym",
+                       "person_id$first_name",
+                       "person_id$middle_name",
+                       "person_id$last_name",
+                       ]
 
+        for level in levels:
+            lfield = "location_id$%s" % level
+            list_fields.append(lfield)
+            report_fields.append(lfield)
+            text_fields.append(lfield)
+
+        filter_widgets = [
+            S3TextFilter(text_fields,
+                         label = T("Search"),
+                         ),
+            S3OptionsFilter("membership_type_id",
+                            cols = 3,
+                            options = member_type_opts,
+                            hidden = True,
+                            ),
+            S3OptionsFilter("paid",
+                            cols = 3,
+                            options = {T("paid"):    T("paid"),
+                                       T("overdue"): T("overdue"),
+                                       T("expired"): T("expired"),
+                                       },
+                            hidden = True,
+                            ),
+            S3OptionsFilter("organisation_id",
+                            widget = "multiselect",
+                            hidden = True,
+                            ),
+            S3LocationFilter("location_id",
+                             label = T("Location"),
+                             levels = levels,
+                             widget = "multiselect",
+                             hidden = True,
+                             ),
+            ]
+
+        report_options = Storage(rows = report_fields,
+                                 cols = report_fields,
+                                 facts = report_fields,
+                                 defaults = Storage(
+                                    cols = "membership.organisation_id",
+                                    rows = "membership.membership_type_id",
+                                    fact = "count(membership.person_id)",
+                                    totals = True,
+                                    )
+                                 )
+
+        configure(tablename,
+                  create_next = URL(f="person", args="address",
+                                    vars={"membership.id": "[id]"}),
+                  deduplicate = self.member_duplicate,
+                  extra_fields = ["start_date", "membership_paid"],
+                  list_fields = list_fields,
+                  onaccept = self.member_onaccept,
+                  report_options = report_options,
+                  filter_widgets = filter_widgets,
+                  update_realm = True,
+                  # Default summary
+                  summary = [{"name": "addform",
+                              "common": True,
+                              "widgets": [{"method": "create"}],
+                             },
+                             {"name": "table",
+                              "label": "Table",
+                              "widgets": [{"method": "datatable"}]
+                              },
+                             {"name": "report",
+                              "label": "Report",
+                              "widgets": [{"method": "report",
+                                           "ajax_init": True}]
+                              },
+                             {"name": "map",
+                              "label": "Map",
+                              "widgets": [{"method": "map",
+                                           "ajax_init": True}],
+                              },
+                             ],
+                  )
+
+        # Components
+        add_components(tablename,
+                       # Contact Information
+                       pr_contact = (# Email
+                                     {"name": "email",
+                                      "link": "pr_person",
+                                      "joinby": "id",
+                                      "key": "pe_id",
+                                      "fkey": "pe_id",
+                                      "pkey": "person_id",
+                                      "filterby": "contact_method",
+                                      "filterfor": ("EMAIL",),
+                                     },
+                                     # Phone
+                                     {"name": "phone",
+                                      "link": "pr_person",
+                                      "joinby": "id",
+                                      "key": "pe_id",
+                                      "fkey": "pe_id",
+                                      "pkey": "person_id",
+                                      "filterby": "contact_method",
+                                      "filterfor": ("SMS",
+                                                    "HOME_PHONE",
+                                                    "WORK_PHONE",
+                                                    ),
+                                     },
+                                    ),
+                      )
+                      
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
@@ -416,22 +406,6 @@ class S3MembersModel(S3Model):
 
         return current.messages["NONE"]
         
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def member_search_simple_widget(type):
-
-        T = current.T
-
-        return S3SearchSimpleWidget(
-            name = "member_search_simple_%s" % type,
-            label = T("Name"),
-            comment = T("You can search by person name - enter any of the first, middle or last names, separated by spaces. You may use % as wildcard. Press 'Search' without input to list all persons."),
-            field = ["person_id$first_name",
-                     "person_id$middle_name",
-                     "person_id$last_name",
-                     ]
-            )
-
     # ---------------------------------------------------------------------
     @staticmethod
     def member_onaccept(form):
@@ -448,9 +422,9 @@ class S3MembersModel(S3Model):
         mtable = db.member_membership
 
         # Get the full record
-        id = form.vars.id
-        if id:
-            query = (mtable.id == id)
+        _id = form.vars.id
+        if _id:
+            query = (mtable.id == _id)
             record = db(query).select(mtable.id,
                                       mtable.person_id,
                                       mtable.organisation_id,
@@ -497,7 +471,6 @@ class S3MembersModel(S3Model):
                                 utable.site_id,
                                 limitby=(0, 1)).first()
         if user:
-            user_id = user.id
             data.owned_by_user = user.id
 
         if not data:
@@ -565,7 +538,6 @@ def member_rheader(r, tabs=[]):
         return None
 
     T = current.T
-    table = r.table
     resourcename = r.name
 
     # Tabs
@@ -575,9 +547,9 @@ def member_rheader(r, tabs=[]):
             #(T("Contacts"), "contact"),
             (T("Contacts"), "contacts"),
             ]
-    rheader_tabs = s3_rheader_tabs(r, tabs)
 
     if resourcename == "membership":
+        table = r.table
         ptable = current.s3db.pr_person
         query = (table.id == record.id) & \
                 (ptable.id == table.person_id)
@@ -587,23 +559,34 @@ def member_rheader(r, tabs=[]):
                                           ptable.last_name,
                                           limitby=(0, 1)).first()
         if person is not None:
+            rheader_tabs = s3_rheader_tabs(r, tabs)
             rheader = DIV(DIV(s3_avatar_represent(person.id,
                                                   "pr_person",
                                                   _class="fleft"),
-                              _style="padding-bottom:10px;"),
-                          TABLE(
-                            TR(TH(s3_fullname(person))),
-                         ), rheader_tabs)
+                              # @ToDo: Move to CSS
+                              _style="padding-bottom:10px",
+                              ),
+                          TABLE(TR(TH(s3_fullname(person))),
+                                ),
+                          rheader_tabs,
+                          )
         else:
             rheader = None
+
     elif resourcename == "person":
+        if current.deployment_settings.get_member_cv_tab():
+            tabs.append((T("CV"), "cv"))
+        rheader_tabs = s3_rheader_tabs(r, tabs)
         rheader = DIV(DIV(s3_avatar_represent(record.id,
                                               "pr_person",
                                               _class="fleft"),
-                          _style="padding-bottom:10px;"),
-                      TABLE(
-            TR(TH(s3_fullname(record))),
-            ), rheader_tabs)
+                          # @ToDo: Move to CSS
+                          _style="padding-bottom:10px",
+                          ),
+                      TABLE(TR(TH(s3_fullname(record))),
+                            ),
+                      rheader_tabs
+                      )
 
     return rheader
     

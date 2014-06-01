@@ -21,11 +21,13 @@ settings = current.deployment_settings
 settings.base.prepopulate = ["SSF"]
 
 # Theme
-#settings.base.theme = "SSF"
+settings.base.theme = "SSF"
+settings.ui.formstyle_row = "bootstrap"
+settings.ui.formstyle = "bootstrap"
 
 # Should users be allowed to register themselves?
 settings.security.self_registration = True
-settings.auth.registration_requires_verification = False
+settings.auth.registration_requires_verification = True
 settings.auth.registration_requires_approval = False
 
 # The name of the teams that users are added to when they opt-in to receive alerts
@@ -65,7 +67,11 @@ settings.auth.always_notify_approver = True
 
 # Base settings
 settings.base.system_name = T("The Sahana Sunflower: A Community Portal")
-settings.base.system_name_short = T("Sahana Sunflower")
+settings.base.system_name_short = T("Sunflower")
+
+# Assign the new users the permission to read.
+settings.auth.registration_roles = {"organisation_id": ["PROJECT_READ"],
+                                    }
 
 # L10n settings
 settings.L10n.languages = OrderedDict([
@@ -186,7 +192,8 @@ settings.security.archive_not_delete = True
 # 6: Apply Controller, Function, Table & Organisation ACLs
 # 7: Apply Controller, Function, Table, Organisation & Facility ACLs
 #
-#settings.security.policy = 6 # Organisation-ACLs
+
+settings.security.policy = 5
 #acl = settings.aaa.acl
 #settings.aaa.default_uacl =  acl.READ   # User ACL
 #settings.aaa.default_oacl =  acl.CREATE | acl.READ | acl.UPDATE # Owner ACL
@@ -248,15 +255,12 @@ settings.security.archive_not_delete = True
 #LIST_ITEM_REQUEST = T("List Requests for Donations")
 # req_req Crud Strings for Item Request (type=1)
 #settings.req.req_crud_strings[1] = Storage(
-#    title_create = ADD_ITEM_REQUEST,
+#    label_create = ADD_ITEM_REQUEST,
 #    title_display = T("Request for Donations Details"),
 #    title_list = LIST_ITEM_REQUEST,
 #    title_update = T("Edit Request for Donations"),
-#    title_search = T("Search Requests for Donations"),
-#    subtitle_create = ADD_ITEM_REQUEST,
 #    subtitle_list = T("Requests for Donations"),
 #    label_list_button = LIST_ITEM_REQUEST,
-#    label_create_button = ADD_ITEM_REQUEST,
 #    label_delete_button = T("Delete Request for Donations"),
 #    msg_record_created = T("Request for Donations Added"),
 #    msg_record_modified = T("Request for Donations Updated"),
@@ -266,15 +270,12 @@ settings.security.archive_not_delete = True
 #LIST_PEOPLE_REQUEST = T("List Requests for Volunteers")
 # req_req Crud Strings for People Request (type=3)
 #settings.req.req_crud_strings[3] = Storage(
-#    title_create = ADD_PEOPLE_REQUEST,
+#    label_create = ADD_PEOPLE_REQUEST,
 #    title_display = T("Request for Volunteers Details"),
 #    title_list = LIST_PEOPLE_REQUEST,
 #    title_update = T("Edit Request for Volunteers"),
-#    title_search = T("Search Requests for Volunteers"),
-#    subtitle_create = ADD_PEOPLE_REQUEST,
 #    subtitle_list = T("Requests for Volunteers"),
 #    label_list_button = LIST_PEOPLE_REQUEST,
-#    label_create_button = ADD_PEOPLE_REQUEST,
 #    label_delete_button = T("Delete Request for Volunteers"),
 #    msg_record_created = T("Request for Volunteers Added"),
 #    msg_record_modified = T("Request for Volunteers Updated"),
@@ -304,8 +305,12 @@ settings.hrm.show_staff = False
 # Project 
 # Uncomment this to use settings suitable for detailed Task management
 settings.project.mode_task = True
-# Uncomment this to use Activities for projects
+# Uncomment this to use Activities for projects & tasks
 settings.project.activities = True
+# Uncomment this to enable Milestones in tasks
+settings.project.milestones = True
+# Uncomment this to enable Sectors in projects
+settings.project.sectors = True
 
 # Formstyle
 def formstyle_row(id, label, widget, comment, hidden=False):
@@ -339,31 +344,108 @@ def form_style(self, xfields):
         form.append(formstyle_row(id, a, b, c))
 
     return form
-settings.ui.formstyle_row = formstyle_row
-settings.ui.formstyle = formstyle_row
+# settings.ui.formstyle_row = formstyle_row
+# settings.ui.formstyle = formstyle_row
 
+# -----------------------------------------------------------------------------
+def customise_project_project_controller(**attr):
+    """
+        Customise project_project controller
+    """
 
-from s3 import s3forms
-settings.ui.crud_form_project_project = s3forms.S3SQLCustomForm(
-        "organisation_id",
-        "name",
-        "description",
-        "status_id",
-        "start_date",
-        "end_date",
-        "calendar",
-        "human_resource_id",
-        s3forms.S3SQLInlineComponentCheckbox(
-            "sector",
-            label = T("Sectors"),
-            field = "sector_id",
-            cols = 4,
-        ),
-        "budget",
-        "currency",
-        "comments",
-    )
+    db = current.db
+    s3db = current.s3db
+    s3 = current.response.s3
+    tablename = "project_project"
 
+    # Custom prep
+    standard_prep = s3.prep
+    def custom_prep(r):
+        # Call standard prep
+        if callable(standard_prep):
+            result = standard_prep(r)
+        else:
+            result = True
+
+        if r.interactive:
+            is_deployment = False
+
+            # Viewing details of project_project record
+            if r.id:
+                stable = s3db.project_sector_project
+                otable = s3db.org_sector
+
+                query = (stable.project_id == r.id) & \
+                        (otable.id == stable.sector_id)
+                rows = db(query).select(otable.name)
+                for row in rows:
+                    if row.name == "Deployment":
+                        is_deployment = True
+
+            request_sector = r.get_vars.get("sector.name")
+
+            # Viewing Projects/Deployments Page
+            if request_sector and "Deployment" in request_sector:
+                is_deployment = True
+
+            if is_deployment:
+                s3db[tablename].name.label = T("Deployment Name")
+                s3.crud_strings[tablename] = Storage(
+                                    label_create = T("Create Deployment"),
+                                    title_display = T("Deployment Details"),
+                                    title_list = T("Deployments"),
+                                    title_update = T("Edit Deployment"),
+                                    title_report = T("Deployment Report"),
+                                    title_upload = T("Import Deployments"),
+                                    label_list_button = T("List Deployments"),
+                                    label_delete_button = T("Delete Deployment"),
+                                    msg_record_created = T("Deployment added"),
+                                    msg_record_modified = T("Deployment updated"),
+                                    msg_record_deleted = T("Deployment deleted"),
+                                    msg_list_empty = T("No Deployments currently registered"))
+
+                # Bring back to the Deployments page if record deleted
+                var = {"sector.name": "None,Deployment"}
+                delete_next = URL(c="project", f="project", vars=var)
+            else:
+                # Bring back to the Projects page if record deleted
+                var = {"sector.name": "None,Project"}
+                delete_next = URL(c="project", f="project", vars=var)
+
+            # Modify the CRUD form
+            from s3 import s3forms
+            crud_form = s3forms.S3SQLCustomForm(
+                    "organisation_id",
+                    "name",
+                    "description",
+                    "status_id",
+                    "start_date",
+                    "end_date",
+                    "calendar",
+                    "human_resource_id",
+                    s3forms.S3SQLInlineComponentCheckbox(
+                        "sector",
+                        label = T("Sectors"),
+                        field = "sector_id",
+                        cols = 4,
+                    ),
+                    "budget",
+                    "currency",
+                    "comments",
+                )
+
+            s3db.configure(tablename,
+                            crud_form = crud_form,
+                            delete_next = delete_next,
+                            )
+
+        return result
+
+    s3.prep = custom_prep
+
+    return attr
+
+settings.customise_project_project_controller = customise_project_project_controller
 
 # Comment/uncomment modules here to disable/enable them
 settings.modules = OrderedDict([

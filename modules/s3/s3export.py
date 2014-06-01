@@ -6,7 +6,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2009-2013 (c) Sahana Software Foundation
+    @copyright: 2009-2014 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -44,17 +44,6 @@ class S3Exporter(object):
         Exporter toolkit
     """
 
-    def __init__(self):
-        """ Constructor """
-
-        T = current.T
-
-        self.ERROR = Storage(
-            REPORTLAB_ERROR = T("%(module)s not installed") % dict(module="ReportLab"),
-            NO_RECORDS = T("No records in this resource"),
-            XLWT_ERROR = T("%(module)s not installed") % dict(module="xlwt"),
-        )
-
     # -------------------------------------------------------------------------
     def csv(self, resource):
         """
@@ -89,14 +78,12 @@ class S3Exporter(object):
         """
             Export a resource as JSON
 
-            @note: export does not include components!
-
-            @ToDo: Deprecate (after modifying search_ac functions)
-
-            @param resource: the resource to export
-            @param start: index of the first record to export (for slicing)
-            @param limit: maximum number of records to export (for slicing)
-            @param fields: fields to include in the export (None for all fields)
+            @param resource: the resource to export from
+            @param start: index of the first record to export
+            @param limit: maximum number of records to export
+            @param fields: list of field selectors for fields to include in
+                           the export (None for all fields)
+            @param orderby: ORDERBY expression
         """
 
         if fields is None:

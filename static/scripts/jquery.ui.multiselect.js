@@ -33,6 +33,7 @@
       classes: '',
       checkAllText: 'Check all',
       uncheckAllText: 'Uncheck all',
+      allSelectedText: 'All selected',
       noneSelectedText: 'Select options',
       selectedText: '# selected',
       selectedList: 0,
@@ -40,7 +41,8 @@
       hide: null,
       autoOpen: false,
       multiple: true,
-      position: {}
+      position: {},
+      appendTo: "body"
     },
 
     _create: function() {
@@ -68,7 +70,7 @@
         menu = (this.menu = $('<div />'))
           .addClass('ui-multiselect-menu ui-widget ui-widget-content ui-corner-all')
           .addClass(o.classes)
-          .appendTo(document.body),
+          .appendTo($(o.appendTo)),
 
         header = (this.header = $('<div />'))
           .addClass('ui-widget-header ui-corner-all ui-multiselect-header ui-helper-clearfix')
@@ -103,6 +105,11 @@
           menu.addClass('ui-multiselect-single');
         }
 
+        // S3: If the select is set to be hidden then also hide the MultiSelect
+        if (el.hasClass('hide')) {
+            button.hide();
+        }
+
         // bump unique ID
         multiselectID++;
     },
@@ -135,8 +142,8 @@
       el.find('option').each(function(i) {
         var $this = $(this);
         var parent = this.parentNode;
-        var title = this.innerHTML;
-        var description = this.title;
+        var description = this.innerHTML;
+        var title = this.title;
         var value = this.value;
         var inputID = 'ui-multiselect-' + (this.id || id + '-option-' + i);
         var isDisabled = this.disabled;
@@ -169,7 +176,7 @@
         html += '<li class="' + liClasses + '">';
 
         // create the label
-        html += '<label for="' + inputID + '" title="' + description + '" class="' + labelClasses.join(' ') + '">';
+        html += '<label for="' + inputID + '" title="' + title + '" class="' + labelClasses.join(' ') + '">';
         html += '<input id="' + inputID + '" name="multiselect_' + id + '" type="' + (o.multiple ? "checkbox" : "radio") + '" value="' + value + '" title="' + title + '"';
 
         // pre-selected?
@@ -184,14 +191,14 @@
           html += ' aria-disabled="true"';
         }
 
-        // add the title and close everything off
-        html += ' /><span>' + title + '</span></label></li>';
+        // add the description and close everything off
+        html += ' /><span>' + description + '</span></label></li>';
       });
 
       // insert into the DOM
       checkboxContainer.html(html);
 
-      // cache some moar useful elements
+      // cache some more useful elements
       this.labels = menu.find('label');
       this.inputs = this.labels.children('input');
 
@@ -218,6 +225,8 @@
 
       if(numChecked === 0) {
         value = o.noneSelectedText;
+      } else if (numChecked === $inputs.length) {
+        value = o.allSelectedText;
       } else {
         if($.isFunction(o.selectedText)) {
           value = o.selectedText.call(this, numChecked, $inputs.length, $checked.get());
@@ -405,11 +414,11 @@
         var target = event.target;
 
         if(self._isOpen
+            && target !== self.button[0]
+            && target !== self.menu[0]
             && !$.contains(self.menu[0], target)
             && !$.contains(self.button[0], target)
-            && target !== self.button[0]
-            && target !== self.menu[0])
-        {
+          ) {
           self.close();
         }
       });
@@ -418,7 +427,7 @@
       // restored to their defaultValue prop on form reset, and the reset
       // handler fires before the form is actually reset.  delaying it a bit
       // gives the form inputs time to clear.
-      $(this.element[0].form).bind('reset.multiselect', function() {
+      $(this.element[0].form).bind('reset.' + this._namespaceID, function() {
         setTimeout($.proxy(self.refresh, self), 10);
       });
     },
@@ -448,7 +457,7 @@
       var moveToLast = which === 38 || which === 37;
 
       // select the first li that isn't an optgroup label / disabled
-      $next = $start.parent()[moveToLast ? 'prevAll' : 'nextAll']('li:not(.ui-multiselect-disabled, .ui-multiselect-optgroup-label)')[ moveToLast ? 'last' : 'first']();
+      var $next = $start.parent()[moveToLast ? 'prevAll' : 'nextAll']('li:not(.ui-multiselect-disabled, .ui-multiselect-optgroup-label)').first();
 
       // if at the first/last element
       if(!$next.length) {
@@ -645,6 +654,7 @@
 
       // unbind events
       $doc.unbind(this._namespaceID);
+      $(this.element[0].form).unbind(this._namespaceID);
 
       this.button.remove();
       this.menu.remove();

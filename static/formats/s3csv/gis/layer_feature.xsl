@@ -18,10 +18,12 @@
          Popup Fields.........comma-sep list..Layer Popup Fields (Fields to build feature OnHover tooltip)
          Attributes...........comma-sep list..Layer Attributes (Fields to put in feature attributes to be visible to Styler)
          Filter...............string..........Layer Filter
-         Site.................boolean.........Layer Site (use Site for location)
-         Trackable............boolean.........Layer Trackable
+         Default..............boolean.........Layer Default
          Polygons.............boolean.........Layer Polygons
+         Trackable............boolean.........Layer Trackable
+         Site.................boolean.........Layer Site (use Site for location)
          Style................string..........Layer Style
+         Opacity..............string..........Layer Opacity (set here to make selectStyle just remove Opacity rather than change colour)
          Folder...............string..........Layer Folder
          Config...............string..........Configuration Name
          Enabled..............boolean.........Layer Enabled in config? (SITE_DEFAULT if not-specified)
@@ -135,18 +137,23 @@
             </xsl:attribute>
             <data field="name"><xsl:value-of select="$Layer"/></data>
             <data field="description"><xsl:value-of select="col[@field='Description']"/></data>
-            <xsl:if test="col[@field='Site']">
-                <data field="use_site"><xsl:value-of select="col[@field='Site']"/></data>
-            </xsl:if>
-            <xsl:if test="col[@field='Trackable']">
-                <data field="trackable"><xsl:value-of select="col[@field='Trackable']"/></data>
+            <xsl:if test="col[@field='Default']">
+                <data field="style_default"><xsl:value-of select="col[@field='Default']"/></data>
             </xsl:if>
             <xsl:if test="col[@field='Polygons']">
                 <data field="polygons"><xsl:value-of select="col[@field='Polygons']"/></data>
             </xsl:if>
+            <xsl:if test="col[@field='Trackable']">
+                <data field="trackable"><xsl:value-of select="col[@field='Trackable']"/></data>
+            </xsl:if>
+            <xsl:if test="col[@field='Site']">
+                <data field="use_site"><xsl:value-of select="col[@field='Site']"/></data>
+            </xsl:if>
             <data field="controller"><xsl:value-of select="col[@field='Controller']"/></data>
             <data field="function"><xsl:value-of select="col[@field='Function']"/></data>
-            <data field="filter"><xsl:value-of select="col[@field='Filter']"/></data>
+            <xsl:if test="col[@field='Filter']!=''">
+                <data field="filter"><xsl:value-of select="col[@field='Filter']"/></data>
+            </xsl:if>
             <data field="popup_label"><xsl:value-of select="col[@field='Popup Label']"/></data>
             <xsl:if test="$PopupFields!=''">
                 <data field="popup_fields">
@@ -174,7 +181,12 @@
                     </xsl:attribute>
                 </data>
             </xsl:if>
-            <data field="dir"><xsl:value-of select="col[@field='Folder']"/></data>
+            <xsl:if test="col[@field='Folder']!=''">
+                <data field="dir"><xsl:value-of select="col[@field='Folder']"/></data>
+            </xsl:if>
+            <xsl:if test="col[@field='Opacity']!=''">
+                <data field="opacity"><xsl:value-of select="col[@field='Opacity']"/></data>
+            </xsl:if>
             <xsl:if test="col[@field='Refresh']!=''">
                 <data field="refresh"><xsl:value-of select="col[@field='Refresh']"/></data>
             </xsl:if>
@@ -209,7 +221,9 @@
                     </xsl:otherwise>
                 </xsl:choose>
             </reference>
-            <data field="style"><xsl:value-of select="col[@field='Style']"/></data>
+            <xsl:if test="col[@field='Style']!=''">
+                <data field="style"><xsl:value-of select="col[@field='Style']"/></data>
+            </xsl:if>
             <data field="enabled"><xsl:value-of select="col[@field='Enabled']"/></data>
             <data field="visible"><xsl:value-of select="col[@field='Visible']"/></data>
         </resource>

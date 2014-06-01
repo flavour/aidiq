@@ -38,10 +38,8 @@ class S3MainMenu(default.S3MainMenu):
         """ Custom Auth Menu """
 
         auth = current.auth
-        logged_in = auth.is_logged_in()
-        self_registration = current.deployment_settings.get_security_self_registration()
 
-        if not logged_in:
+        if not auth.is_logged_in():
             request = current.request
             login_next = URL(args=request.args, vars=request.vars)
             if request.controller == "default" and \

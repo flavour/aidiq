@@ -50,7 +50,7 @@ def homepage():
     response = current.response
     s3 = response.s3
 
-    current.deployment_settings.ui.customize_cms_post()
+    current.deployment_settings.ui.customise_cms_post()
 
     list_layout = render_homepage_posts
 
@@ -117,12 +117,12 @@ def homepage():
             response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
 
         # Latest 5 Disasters
         resource = s3db.resource("event_event")
         list_fields = ["name",
-                       "zero_hour",
+                       "start_date",
                        "closed",
                        ]
         orderby = resource.get_config("list_orderby",
@@ -130,7 +130,7 @@ def homepage():
         datalist, numrows, ids = resource.datalist(fields=list_fields,
                                                    start=None,
                                                    limit=5,
-                                                   listid="event_datalist",
+                                                   list_id="event_datalist",
                                                    orderby=orderby,
                                                    layout=render_homepage_events)
         if numrows == 0:
@@ -177,7 +177,7 @@ def login():
         response.view = open(view, "rb")
     except IOError:
         from gluon.http import HTTP
-        raise HTTP("404", "Unable to open Custom View: %s" % view)
+        raise HTTP(404, "Unable to open Custom View: %s" % view)
 
     response.title = current.T("Login")
 
@@ -208,28 +208,18 @@ def filter_formstyle(row_id, label, widget, comment):
         return widget
 
 # -----------------------------------------------------------------------------
-def render_homepage_posts(listid, resource, rfields, record, **attr):
+def render_homepage_posts(list_id, item_id, resource, rfields, record):
     """
         Custom dataList item renderer for CMS Posts on the Homepage
 
-        @param listid: the HTML ID for this list
+        @param list_id: the HTML ID of the list
+        @param item_id: the HTML ID of the item
         @param resource: the S3Resource to render
         @param rfields: the S3ResourceFields to render
         @param record: the record as dict
-        @param attr: additional HTML attributes for the item
     """
     
-    pkey = "cms_post.id"
-
-    # Construct the item ID
-    listid = "datalist"
-    if pkey in record:
-        record_id = record[pkey]
-        item_id = "%s-%s" % (listid, record_id)
-    else:
-        # template
-        item_id = "%s-[id]" % listid
-
+    record_id = record["cms_post.id"]
     item_class = "thumbnail"
 
     db = current.db
@@ -378,33 +368,24 @@ def render_homepage_posts(listid, resource, rfields, record, **attr):
     return item
 
 # -----------------------------------------------------------------------------
-def render_homepage_events(listid, resource, rfields, record, **attr):
+def render_homepage_events(list_id, item_id, resource, rfields, record):
     """
         Custom dataList item renderer for CMS Posts on the Homepage
 
-        @param listid: the HTML ID for this list
+        @param list_id: the HTML ID of the list
+        @param item_id: the HTML ID of the item
         @param resource: the S3Resource to render
         @param rfields: the S3ResourceFields to render
         @param record: the record as dict
-        @param attr: additional HTML attributes for the item
     """
 
-    pkey = "event_event.id"
-
-    # Construct the item ID
-    listid = "event_datalist"
-    if pkey in record:
-        item_id = "%s-%s" % (listid, record[pkey])
-    else:
-        # template
-        item_id = "%s-[id]" % listid
-
+    record_id = record["event_event.id"]
     item_class = "thumbnail"
 
     raw = record._row
     record_id = raw["event_event.id"]
     name = record["event_event.name"]
-    date = record["event_event.zero_hour"]
+    date = record["event_event.start_date"]
     closed = raw["event_event.closed"]
 
     if closed:
@@ -452,7 +433,7 @@ class secondary():
             current.response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
 
         return dict()
 

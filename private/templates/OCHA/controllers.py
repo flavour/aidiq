@@ -27,7 +27,7 @@ class index():
                                 appname
         s3.actions = None
         project_box = DIV(H3(T("Projects")),
-                          A(T("Add Project"),
+                          A(T("Create Project"),
                             _href = URL(c="project", f="project",
                                         args=["create"]),
                             _id = "add-btn",
@@ -57,7 +57,7 @@ class index():
 
             if self_registration:
                 # Provide a Registration box on front page
-                register_form = auth.s3_registration_form()
+                register_form = auth.register()
                 register_div = DIV(H3(T("Register")),
                                    P(XML(T("If you would like to add data, then please %(sign_up_now)s") % \
                                             dict(sign_up_now=B(T("sign-up now"))))))
@@ -83,9 +83,8 @@ $('#login-btn').click(function(){
                 s3.jquery_ready.append(register_script)
 
             # Provide a login box on front page
-            request.args = ["login"]
             auth.messages.submit_button = T("Login")
-            login_form = auth()
+            login_form = auth.login(inline=True)
             login_div = DIV(H3(T("Login")),
                             P(XML(T("Registered users can %(login)s to access the system") % \
                                   dict(login=B(T("login"))))))
@@ -97,7 +96,7 @@ $('#login-btn').click(function(){
             response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
 
         return dict(title = response.title,
                     project_box = project_box,
@@ -125,7 +124,7 @@ class project():
         resource = current.s3db.resource("project_project")
         totalrows = resource.count()
         if "iDisplayLength" in get_vars:
-            display_length = int(request.get_vars["iDisplayLength"])
+            display_length = int(get_vars["iDisplayLength"])
         else:
             display_length = 10
         limit = 4 * display_length
@@ -147,34 +146,37 @@ class project():
         rows = data["rows"]
 
         dt = S3DataTable(rfields, rows)
-        dt.defaultActionButtons(resource)
-        current.response.s3.no_formats = True
+        dt_id = "proj_dt"
 
         if request.extension == "html":
+
+            dt.defaultActionButtons(resource)
+            current.response.s3.no_formats = True
             items = dt.html(totalrows,
-                            totalrows,
-                            "org_dt",
+                            filteredrows,
+                            dt_id,
                             dt_displayLength=display_length,
                             dt_ajax_url=URL(c="default",
                                             f="index",
                                             args=["project"],
                                             extension="aadata",
-                                            vars={"id": "org_dt"},
+                                            vars={"id": dt_id},
                                             ),
                             dt_pagination="true",
-                           )
-        elif request.extension.lower() == "aadata":
-            if "sEcho" in request.vars:
-                echo = int(request.vars.sEcho)
+                            )
+        elif request.extension == "aadata":
+            if "sEcho" in get_vars:
+                echo = int(get_vars.sEcho)
             else:
                 echo = None
             items = dt.json(totalrows,
                             filteredrows,
-                            "org_dt",
+                            dt_id,
                             echo)
+            current.response.headers["Content-Type"] = "application/json"
         else:
             from gluon.http import HTTP
-            raise HTTP(501, resource.ERROR.BAD_FORMAT)
+            raise HTTP(501, current.ERROR.BAD_FORMAT)
         return items
 
 # END =========================================================================

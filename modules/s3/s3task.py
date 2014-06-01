@@ -17,7 +17,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2011-13 (c) Sahana Software Foundation
+    @copyright: 2011-14 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -57,7 +57,7 @@ except ImportError:
 from gluon import current, HTTP, IS_EMPTY_OR
 from gluon.storage import Storage
 
-from s3utils import s3_debug, S3DateTime
+from s3utils import S3DateTime
 from s3validators import IS_TIME_INTERVAL_WIDGET, IS_UTC_DATETIME
 from s3widgets import S3DateTimeWidget, S3TimeIntervalWidget
 
@@ -116,18 +116,20 @@ class S3Task(object):
         table.times_failed.readable = False
 
         field = table.start_time
-        field.represent = lambda dt: S3DateTime.datetime_represent(dt, utc=True)
+        field.represent = lambda dt: \
+            S3DateTime.datetime_represent(dt, utc=True)
         field.widget = S3DateTimeWidget(past=0)
         field.requires = IS_UTC_DATETIME(
-                    format=current.deployment_settings.get_L10n_datetime_format()
+                format=current.deployment_settings.get_L10n_datetime_format()
                 )
 
         field = table.stop_time
-        field.represent = lambda dt: S3DateTime.datetime_represent(dt, utc=True)
+        field.represent = lambda dt: \
+            S3DateTime.datetime_represent(dt, utc=True)
         field.widget = S3DateTimeWidget(past=0)
         field.requires = IS_EMPTY_OR(
                             IS_UTC_DATETIME(
-                    format=current.deployment_settings.get_L10n_datetime_format()
+                format=current.deployment_settings.get_L10n_datetime_format()
                 ))
 
         if not task:
@@ -187,31 +189,30 @@ class S3Task(object):
         table.status.readable = table.status.writable = False
         table.next_run_time.readable = table.next_run_time.writable = False
         table.times_run.readable = table.times_run.writable = False
-        table.assigned_worker_name.readable = table.assigned_worker_name.writable = False
+        table.assigned_worker_name.readable = \
+            table.assigned_worker_name.writable = False
 
         current.s3db.configure(tablename,
-                               list_fields=["id",
-                                            "enabled",
-                                            "start_time",
-                                            "repeats",
-                                            "period",
-                                            (T("Last run"), "last_run_time"),
-                                            (T("Last status"), "status"),
-                                            (T("Next run"), "next_run_time"),
-                                            "stop_time"
-                                            ])
+                               list_fields = ["id",
+                                              "enabled",
+                                              "start_time",
+                                              "repeats",
+                                              "period",
+                                              (T("Last run"), "last_run_time"),
+                                              (T("Last status"), "status"),
+                                              (T("Next run"), "next_run_time"),
+                                              "stop_time"
+                                              ],
+                               )
 
         response = current.response
         if response:
             response.s3.crud_strings[tablename] = Storage(
-                title_create = T("Add Job"),
+                label_create = T("Create Job"),
                 title_display = T("Scheduled Jobs"),
                 title_list = T("Job Schedule"),
                 title_update = T("Edit Job"),
-                #title_search = T("Search for Job"),
-                subtitle_create = T("Add Job"),
                 label_list_button = T("List Jobs"),
-                label_create_button = T("Add Job"),
                 msg_record_created = T("Job added"),
                 msg_record_modified = T("Job updated"),
                 msg_record_deleted = T("Job deleted"),
@@ -356,7 +357,7 @@ class S3Task(object):
 
         if not ignore_duplicate and self._duplicate_task_exists(task, args, vars):
             # if duplicate task exists, do not insert a new one
-            s3_debug("Duplicate Task, Not Inserted", value=task)
+            current.log.warning("Duplicate Task, Not Inserted", value=task)
             return False
 
         auth = current.auth
@@ -384,6 +385,7 @@ class S3Task(object):
             @param args: the job position arguments (list)
             @param vars: the job named arguments (dict)
         """
+
         db = current.db
         ttable = db.scheduler_task
 
@@ -442,7 +444,8 @@ class S3Task(object):
         ttable = db.scheduler_task
 
         query = (ttable.id == task_id) & (ttable.status == "FAILED")
-        task = db(query).select(limitby=(0, 1)).first()
+        task = db(query).select(ttable.id,
+                                limitby=(0, 1)).first()
         if task:
             task.update_record(status="QUEUED")
 

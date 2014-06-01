@@ -17,7 +17,8 @@
 
         // default options
         options: {
-            columns: 3
+            columns: 3,
+            emptyText: 'No options available'
         },
 
         _create: function() {
@@ -30,7 +31,6 @@
             var multiple = el.attr('multiple');
             this.multiple = (typeof multiple != 'undefined') ? true : false;
             this.menu = null;
-
         },
 
         _init: function() {
@@ -49,13 +49,20 @@
             var el = this.element;
 
             this.index = 0;
-            this.name = 's3-groupedopts-' + groupedoptsID;
+            this.name = 's3-groupedopts-' + this.id;
             if (this.menu) {
                 this.menu.remove();
             }
             this.selected = el.val();
 
             var groups = el.find('optgroup');
+            if (!el.find('option').length) {
+                this.grouped = true;
+                this.menu = $('<div class="s3-groupedopts-widget">' +
+                              '<span class="no-options-available">' +
+                              this.options.emptyText +
+                              '</span></div>');
+            } else
             if (groups.length) {
                 this.grouped = true;
                 this.menu = $('<div class="s3-groupedopts-widget"/>');
@@ -70,6 +77,16 @@
             }
             el.after(this.menu);
             this._bindEvents();
+        },
+
+        hide: function() {
+            // Hide the menu
+            this.menu.hide();
+        },
+
+        show: function() {
+            // Hide the menu
+            this.menu.show();
         },
 
         _renderGroup: function(optgroup) {
@@ -89,7 +106,12 @@
 
         _renderRows: function(items, group) {
             // Render all rows in a group
-            var cols = this.options.columns, head = [], tail = items, pos = 0, size, item;
+            var cols = this.options.columns,
+                       head = [],
+                       tail = items,
+                       pos = 0,
+                       size,
+                       item;
 
             while(tail.length) {
                 size = Math.min(cols, tail.length);
@@ -198,6 +220,9 @@
                 el.val(selected).change();
             });
 
+            // Apply cluetip (from S3.js)
+            self.menu.find('label[title]').cluetip({splitTitle: '|', showTitle:false});
+            
             self.menu.find('.s3-groupedopts-label').click(function() {
                 var div = $(this);
                 div.next('table').toggle();

@@ -2,7 +2,7 @@
 
 """ Sahana Eden Incident Reporting Model
 
-    @copyright: 2009-2013 (c) Sahana Software Foundation
+    @copyright: 2009-2014 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -46,6 +46,9 @@ from gluon.storage import Storage
 from ..s3 import *
 from s3layouts import S3AddResourceLink
 
+# Compact JSON encoding
+SEPARATORS = (",", ":")
+
 # =============================================================================
 class S3IRSModel(S3Model):
 
@@ -59,12 +62,13 @@ class S3IRSModel(S3Model):
 
         T = current.T
         db = current.db
+        s3 = current.response.s3
         settings = current.deployment_settings
 
         # Shortcuts
-        add_component = self.add_component
+        add_components = self.add_components
         configure = self.configure
-        crud_strings = current.response.s3.crud_strings
+        crud_strings = s3.crud_strings
         define_table = self.define_table
         set_method = self.set_method
         super_link = self.super_link
@@ -204,21 +208,23 @@ class S3IRSModel(S3Model):
             "other.buildingCollapsed": T("Building Collapsed"),
             "other.peopleTrapped": T("People Trapped"),
             "other.powerFailure": T("Power Failure"),
-        }
+            }
 
         # This Table defines which Categories are visible to end-users
         tablename = "irs_icategory"
-        table = define_table(tablename,
-                             Field("code", label = T("Category"),
-                                   requires = IS_IN_SET_LAZY(lambda: \
-                                        sort_dict_by_values(irs_incident_type_opts)),
-                                   represent = lambda opt: \
-                                        irs_incident_type_opts.get(opt, opt)),
-                             *s3_meta_fields())
+        define_table(tablename,
+                     Field("code",
+                           label = T("Category"),
+                           requires = IS_IN_SET_LAZY(lambda: \
+                                      sort_dict_by_values(irs_incident_type_opts)),
+                           represent = lambda opt: \
+                                       irs_incident_type_opts.get(opt, opt)),
+                     *s3_meta_fields())
 
         configure(tablename,
-                  onvalidation=self.irs_icategory_onvalidation,
-                  list_fields=[ "code" ])
+                  list_fields = ["code"],
+                  onvalidation = self.irs_icategory_onvalidation,
+                  )
 
         # ---------------------------------------------------------------------
         # Reports
@@ -236,205 +242,158 @@ class S3IRSModel(S3Model):
         #    8201:T("Rescue")
         #}
         tablename = "irs_ireport"
-        table = define_table(tablename,
-                             super_link("sit_id", "sit_situation"),
-                             super_link("doc_id", "doc_entity"),
-                             Field("name",
-                                   label = T("Short Description"),
-                                   requires = IS_NOT_EMPTY()),
-                             Field("message", "text",
-                                   label = T("Message"),
-                                   represent = lambda text: \
+        define_table(tablename,
+                     super_link("sit_id", "sit_situation"),
+                     super_link("doc_id", "doc_entity"),
+                     Field("name",
+                           label = T("Short Description"),
+                           requires = IS_NOT_EMPTY()),
+                     Field("message", "text",
+                           label = T("Message"),
+                           represent = lambda text: \
                                        s3_truncate(text, length=48, nice=True)),
-                             Field("category",
-                                   label = T("Category"),
-                                   # The full set available to Admins & Imports/Exports
-                                   # (users use the subset by over-riding this in the Controller)
-                                   requires = IS_NULL_OR(IS_IN_SET_LAZY(lambda: \
-                                       sort_dict_by_values(irs_incident_type_opts))),
-                                   # Use this instead if a simpler set of Options required
-                                   #requires = IS_NULL_OR(IS_IN_SET(irs_incident_type_opts)),
-                                   represent = lambda opt: \
+                     Field("category",
+                           label = T("Category"),
+                           # The full set available to Admins & Imports/Exports
+                           # (users use the subset by over-riding this in the Controller)
+                           requires = IS_EMPTY_OR(IS_IN_SET_LAZY(lambda: \
+                                      sort_dict_by_values(irs_incident_type_opts))),
+                           # Use this instead if a simpler set of Options required
+                           #requires = IS_EMPTY_OR(IS_IN_SET(irs_incident_type_opts)),
+                           represent = lambda opt: \
                                        irs_incident_type_opts.get(opt, opt)),
-                             self.hrm_human_resource_id(
-                                    #readable=False,
-                                    #writable=False,
-                                    label = T("Reported By (Staff)")
-                                    ),
-                             # Plain text field in case non-staff & don't want to clutter the PR
-                             Field("person",
-                                   #readable = False,
-                                   #writable = False,
-                                   label = T("Reported By (Not Staff)"),
-                                   #comment = (T("At/Visited Location (not virtual)"))
-                                   ),
-                             Field("contact",
-                                   readable = False,
-                                   writable = False,
-                                   label = T("Contact Details")),
-                             s3_datetime("datetime",
-                                         label = T("Date/Time of Alert"),
-                                         empty=False,
-                                         default="now",
-                                         future=0,
-                                         ),
-                             s3_datetime("expiry",
-                                         label = T("Expiry Date/Time"),
-                                         past=0,
-                                         ),
-                             self.gis_location_id(),
-                             # Very basic Impact Assessment
-                             Field("affected", "integer",
-                                   label=T("Number of People Affected"),
-                                   represent = lambda val: val or T("unknown"),
-                                   ),
-                             Field("dead", "integer",
-                                   label=T("Number of People Dead"),
-                                   represent = lambda val: val or T("unknown"),
-                                   ),
-                             Field("injured", "integer",
-                                   label=T("Number of People Injured"),
-                                   represent = lambda val: val or T("unknown"),
-                                   ),
-                             # Probably too much to try & capture
-                             #Field("missing", "integer",
-                             #      label=T("Number of People Missing")),
-                             #Field("displaced", "integer",
-                             #      label=T("Number of People Displaced")),
-                             Field("verified", "boolean",    # Ushahidi-compatibility
-                                   # We don't want these visible in Create forms
-                                   # (we override in Update forms in controller)
-                                   readable = False,
-                                   writable = False,
-                                   label = T("Verified?"),
-                                   represent = lambda verified: \
-                                         (T("No"),
-                                          T("Yes"))[verified == True]),
-                             # @ToDo: Move this to Events?
-                             # Then add component to list_fields
-                             s3_datetime("dispatch",
-                                         label = T("Date/Time of Dispatch"),
-                                         future=0,
-                                         # We don't want these visible in Create forms
-                                         # (we override in Update forms in controller)
-                                         readable = False,
-                                         writable = False,
-                                         ),
-                             Field("closed", "boolean",
-                                   # We don't want these visible in Create forms
-                                   # (we override in Update forms in controller)
-                                   default = False,
-                                   readable = False,
-                                   writable = False,
-                                   label = T("Closed?"),
-                                   represent = lambda closed: \
-                                         (T("No"),
-                                          T("Yes"))[closed == True]),
-                             s3_comments(),
-                             *s3_meta_fields())
+                     self.hrm_human_resource_id(
+                          #readable=False,
+                          #writable=False,
+                          label = T("Reported By (Staff)")
+                          ),
+                     # Plain text field in case non-staff & don't want to clutter the PR
+                     Field("person",
+                           #readable = False,
+                           #writable = False,
+                           label = T("Reported By (Not Staff)"),
+                           #comment = (T("At/Visited Location (not virtual)"))
+                           ),
+                     Field("contact",
+                           readable = False,
+                           writable = False,
+                           label = T("Contact Details")),
+                     s3_datetime("datetime",
+                                 label = T("Date/Time of Alert"),
+                                 empty=False,
+                                 default="now",
+                                 future=0,
+                                 ),
+                     s3_datetime("expiry",
+                                 label = T("Expiry Date/Time"),
+                                 past=0,
+                                 ),
+                     self.gis_location_id(),
+                     # Very basic Impact Assessment
+                     # @ToDo: Use Stats_Impact component instead
+                     Field("affected", "integer",
+                           label=T("Number of People Affected"),
+                           represent = lambda val: val or T("unknown"),
+                           ),
+                     Field("dead", "integer",
+                           label=T("Number of People Dead"),
+                           represent = lambda val: val or T("unknown"),
+                           ),
+                     Field("injured", "integer",
+                           label=T("Number of People Injured"),
+                           represent = lambda val: val or T("unknown"),
+                           ),
+                     # Probably too much to try & capture
+                     #Field("missing", "integer",
+                     #      label=T("Number of People Missing")),
+                     #Field("displaced", "integer",
+                     #      label=T("Number of People Displaced")),
+                     Field("verified", "boolean",    # Ushahidi-compatibility
+                           # We don't want these visible in Create forms
+                           # (we override in Update forms in controller)
+                           readable = False,
+                           writable = False,
+                           label = T("Verified?"),
+                           represent = lambda verified: \
+                                       (T("No"),
+                                       T("Yes"))[verified == True]
+                           ),
+                     # @ToDo: Move this to Events?
+                     # Then add component to list_fields
+                     s3_datetime("dispatch",
+                                 label = T("Date/Time of Dispatch"),
+                                 future=0,
+                                 # We don't want these visible in Create forms
+                                 # (we override in Update forms in controller)
+                                 readable = False,
+                                 writable = False,
+                                 ),
+                     Field("closed", "boolean",
+                           # We don't want these visible in Create forms
+                           # (we override in Update forms in controller)
+                           default = False,
+                           readable = False,
+                           writable = False,
+                           label = T("Closed?"),
+                           represent = lambda closed: \
+                                       (T("No"),
+                                       T("Yes"))[closed == True]
+                           ),
+                     s3_comments(),
+                     *s3_meta_fields())
+
         # CRUD strings
-        ADD_INC_REPORT = T("Add Incident Report")
+        ADD_INC_REPORT = T("Create Incident Report")
         crud_strings[tablename] = Storage(
-            title_create = ADD_INC_REPORT,
+            label_create = ADD_INC_REPORT,
             title_display = T("Incident Report Details"),
             title_list = T("Incident Reports"),
             title_update = T("Edit Incident Report"),
             title_upload = T("Import Incident Reports"),
-            title_search = T("Search Incident Reports"),
             title_map = T("Map of Incident Reports"),
-            subtitle_create = T("Add New Incident Report"),
             label_list_button = T("List Incident Reports"),
-            label_create_button = ADD_INC_REPORT,
             label_delete_button = T("Delete Incident Report"),
             msg_record_created = T("Incident Report added"),
             msg_record_modified = T("Incident Report updated"),
             msg_record_deleted = T("Incident Report deleted"),
             msg_list_empty = T("No Incident Reports currently registered"))
 
-        ireport_search = S3Search(
-            advanced=(
-                    S3SearchSimpleWidget(
-                        name = "incident_search_simple",
-                        label = T("Description"),
-                        comment = T("You can search by description. You may use % as wildcard. Press 'Search' without input to list all incidents."),
-                        field = ["name",
-                                 "message",
-                                 "comments",
-                                ]
-                    ),
-                    S3SearchOptionsWidget(
-                        name="incident_search_L1",
-                        field="location_id$L1",
-                        location_level="L1",
-                        cols = 3,
-                    ),
-                    S3SearchOptionsWidget(
-                        name="incident_search_L2",
-                        field="location_id$L2",
-                        location_level="L2",
-                        cols = 3,
-                    ),
-                    S3SearchOptionsWidget(
-                        name="incident_search_category",
-                        field="category",
-                        label = T("Category"),
-                        cols = 3,
-                    ),
-                    S3SearchMinMaxWidget(
-                        name="incident_search_date",
-                        method="range",
-                        label=T("Date"),
-                        field="datetime"
-                    ),
-            ))
+        # Which levels of Hierarchy are we using?
+        levels = current.gis.get_relevant_hierarchy_levels()
 
-        report_fields = [
-                         "category",
+        filter_widgets = [
+            S3TextFilter(["name",
+                          "message",
+                          "comments",
+                          ],
+                         label=T("Description"),
+                         comment = T("You can search by description. You may use % as wildcard. Press 'Search' without input to list all incidents."),
+                        _class="filter-search",
+                         ),
+            S3LocationFilter("location_id",
+                             levels = levels,
+                             #hidden = True,
+                             ),
+            S3OptionsFilter("category",
+                            #hidden = True,
+                            ),
+            S3DateFilter("datetime",
+                         label = T("Date"),
+                         hide_time = True,
+                         #hidden = True,
+                         ),
+            ]
+
+        report_fields = ["category",
                          "datetime",
-                         "location_id$L1",
-                         "location_id$L2",
                          ]
+
+        for level in levels:
+            report_fields.append("location_id$%s" % level)
 
         # Resource Configuration
         configure(tablename,
-                  super_entity = ("sit_situation", "doc_entity"),
-                  search_method = ireport_search,
-                  report_options=Storage(
-                      search=[
-                            S3SearchOptionsWidget(
-                                name="incident_search_L1",
-                                field="location_id$L1",
-                                location_level="L1",
-                                cols = 3,
-                            ),
-                            S3SearchOptionsWidget(
-                                name="incident_search_L2",
-                                field="location_id$L2",
-                                location_level="L2",
-                                cols = 3,
-                            ),
-                            S3SearchOptionsWidget(
-                                name="incident_search_category",
-                                field="category",
-                                label = T("Category"),
-                                cols = 3,
-                            ),
-                            S3SearchMinMaxWidget(
-                                name="incident_search_date",
-                                method="range",
-                                label=T("Date"),
-                                field="datetime"
-                            ),
-                      ],
-                      rows=report_fields,
-                      cols=report_fields,
-                      fact=report_fields,
-                      methods=["count", "list"],
-                      defaults = dict(rows="location_id$L1",
-                                      cols="category",
-                                      fact="datetime",
-                                      aggregate="count")
-                  ),
+                  filter_widgets = filter_widgets,
                   list_fields = ["id",
                                  "name",
                                  "category",
@@ -446,62 +405,70 @@ class S3IRSModel(S3Model):
                                  "injured",
                                  "verified",
                                  "message",
-                                ])
+                                 ],
+                 report_options = Storage(rows = report_fields,
+                                          cols = report_fields,
+                                          fact = [(T("Number of Incidents"), "count(id)"),
+                                                  (T("Total Affected"), "sum(affected)"),
+                                                  (T("Total Dead"), "sum(dead)"),
+                                                  (T("Total Injured"), "sum(injured)"),
+                                                  ],
+                                          defaults = dict(rows = "location_id$%s" % levels[0], # Highest-level of hierarchy
+                                                          cols = "category",
+                                                          fact = "count(id)",
+                                                          totals = True,
+                                                          )
+                                          ),
+                 super_entity = ("sit_situation", "doc_entity"),
+                 )
 
         # Components
-        # Tasks
-        add_component("project_task",
-                      irs_ireport=Storage(link="project_task_ireport",
-                                          joinby="ireport_id",
-                                          key="task_id",
-                                          actuate="replace",
-                                          autocomplete="name",
-                                          autodelete=False))
-
-        # Vehicles
-        add_component("asset_asset",
-                      irs_ireport=Storage(
-                            link="irs_ireport_vehicle",
-                            joinby="ireport_id",
-                            key="asset_id",
-                            name="vehicle",
-                            # Dispatcher doesn't need to Add/Edit records, just Link
-                            actuate="link",
-                            autocomplete="name",
-                            autodelete=False))
-
         if settings.get_irs_vehicle():
             # @ToDo: This workflow requires more work
-            link_table = "irs_ireport_vehicle_human_resource"
+            hr_link_table = "irs_ireport_vehicle_human_resource"
         else:
-            link_table = "irs_ireport_human_resource"
-        add_component("hrm_human_resource",
-                      irs_ireport=Storage(
-                                    link=link_table,
-                                    joinby="ireport_id",
-                                    key="human_resource_id",
-                                    # Dispatcher doesn't need to Add/Edit HRs, just Link
-                                    actuate="hide",
-                                    autocomplete="name",
-                                    autodelete=False
-                                )
-                            )
-
-        # Affected Persons
-        add_component("pr_person",
-                      irs_ireport=Storage(
-                                    link="irs_ireport_person",
-                                    joinby="ireport_id",
-                                    key="person_id",
-                                    actuate="link",
-                                    #actuate="embed",
-                                    #widget=S3AddPersonWidget(),
-                                    autodelete=False
-                                )
-                            )
-
-        ireport_id = S3ReusableField("ireport_id", table,
-                                     requires = IS_NULL_OR(
+            hr_link_table = "irs_ireport_human_resource"
+        add_components(tablename,
+                       # Tasks
+                       project_task={"link": "project_task_ireport",
+                                     "joinby": "ireport_id",
+                                     "key": "task_id",
+                                     "actuate": "replace",
+                                     "autocomplete": "name",
+                                     "autodelete": False,
+                                    },
+                       # Vehicles
+                       asset_asset={"link": "irs_ireport_vehicle",
+                                    "joinby": "ireport_id",
+                                    "key": "asset_id",
+                                    "name": "vehicle",
+                                    # Dispatcher doesn't need to Add/Edit records, just Link
+                                    "actuate": "link",
+                                    "autocomplete": "name",
+                                    "autodelete": False,
+                                   },
+                       # Human Resources
+                       hrm_human_resource={"link": hr_link_table,
+                                           "joinby": "ireport_id",
+                                           "key": "human_resource_id",
+                                           # Dispatcher doesn't need to Add/Edit HRs, just Link
+                                           "actuate": "hide",
+                                           "autocomplete": "name",
+                                           "autodelete": False,
+                                          },
+                       # Affected Persons
+                       pr_person={"link": "irs_ireport_person",
+                                  "joinby": "ireport_id",
+                                  "key": "person_id",
+                                  "actuate": "link",
+                                  #"actuate": "embed",
+                                  #"widget": S3AddPersonWidget2(),
+                                  "autodelete": False,
+                                 },
+                      )
+                      
+        ireport_id = S3ReusableField("ireport_id", "reference %s" % tablename,
+                                     requires = IS_EMPTY_OR(
                                                     IS_ONE_OF(db,
                                                               "irs_ireport.id",
                                                               self.irs_ireport_represent)),
@@ -509,19 +476,18 @@ class S3IRSModel(S3Model):
                                      label = T("Incident"),
                                      ondelete = "CASCADE")
 
-        # ---------------------------------------------------------------------
         # Custom Methods
         set_method("irs", "ireport",
-                   method="dispatch",
+                   method = "dispatch",
                    action=self.irs_dispatch)
 
         set_method("irs", "ireport",
-                   method="timeline",
-                   action=self.irs_timeline)
+                   method = "timeline",
+                   action = self.irs_timeline)
 
         set_method("irs", "ireport",
-                   method="ushahidi",
-                   action=self.irs_ushahidi_import)
+                   method = "ushahidi",
+                   action = self.irs_ushahidi_import)
 
         if settings.has_module("fire"):
             create_next = URL(args=["[id]", "human_resource"])
@@ -529,27 +495,26 @@ class S3IRSModel(S3Model):
             create_next = URL(args=["[id]", "image"])
 
         configure("irs_ireport",
-                  create_onaccept=self.ireport_onaccept,
-                  create_next=create_next,
-                  update_next=URL(args=["[id]", "update"])
+                  create_next = create_next,
+                  create_onaccept = self.ireport_onaccept,
+                  update_next = URL(args=["[id]", "update"])
                   )
 
         # -----------------------------------------------------------
         # Affected Persons
         tablename = "irs_ireport_person"
-        table = define_table(tablename,
-                             ireport_id(),
-                             self.pr_person_id(),
-                             s3_comments(),
-                             *s3_meta_fields())
+        define_table(tablename,
+                     ireport_id(),
+                     self.pr_person_id(),
+                     s3_comments(),
+                     *s3_meta_fields())
 
         # ---------------------------------------------------------------------
         # Return model-global names to response.s3
         #
-        return Storage(
-            irs_ireport_id = ireport_id,
-            irs_incident_type_opts = irs_incident_type_opts
-            )
+        return dict(irs_ireport_id = ireport_id,
+                    irs_incident_type_opts = irs_incident_type_opts,
+                    )
 
     # -------------------------------------------------------------------------
     def defaults(self):
@@ -799,7 +764,7 @@ class S3IRSModel(S3Model):
             return output
 
         else:
-            raise HTTP(501, BADMETHOD)
+            raise HTTP(501, current.ERROR.BAD_METHOD)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -821,7 +786,6 @@ class S3IRSModel(S3Model):
             request = current.request
             response = current.response
             s3 = response.s3
-            now = request.utcnow
 
             itable = s3db.doc_image
             dtable = s3db.doc_document
@@ -848,12 +812,11 @@ class S3IRSModel(S3Model):
                 r.resource.load(limit=2000)
                 rows = r.resource._rows
 
-            data = {'dateTimeFormat': 'iso8601',
-                    'events': []
+            data = {"dateTimeFormat": "iso8601",
                     }
 
-            tl_start = now
-            tl_end = now
+            now = request.utcnow
+            tl_start = tl_end = now
             events = []
             for row in rows:
                 # Dates
@@ -879,18 +842,18 @@ class S3IRSModel(S3Model):
                     image = image.url or ""
                 # URL
                 link = URL(args=[row.id])
-                events.append({'start': start,
-                               'end': end,
-                               'title': row.name,
-                               'caption': row.message or "",
-                               'description': row.message or "",
-                               'image': image or "",
-                               'link': link or ""
+                events.append({"start": start,
+                               "end": end,
+                               "title": row.name,
+                               "caption": row.message or "",
+                               "description": row.message or "",
+                               "image": image or "",
+                               "link": link or "",
                                # @ToDo: Colour based on Category (More generically: Resource or Resource Type)
-                               #'color' : 'blue'
+                               #"color" : "blue',
                             })
             data["events"] = events
-            data = json.dumps(data)
+            data = json.dumps(data, separators=SEPARATORS)
 
             code = "".join((
 '''S3.timeline.data=''', data, '''
@@ -903,7 +866,7 @@ S3.timeline.now="''', now.isoformat(), '''"
             s3.js_global.append(code)
 
             # Create the DIV
-            item = DIV(_id="s3timeline", _style="height:400px;border:1px solid #aaa;font-family:Trebuchet MS,sans-serif;font-size:85%;")
+            item = DIV(_id="s3timeline", _class="s3-timeline")
 
             output = dict(item = item)
 
@@ -918,7 +881,7 @@ S3.timeline.now="''', now.isoformat(), '''"
             return output
 
         else:
-            raise HTTP(501, BADMETHOD)
+            raise HTTP(501, current.ERROR.BAD_METHOD)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1018,7 +981,7 @@ S3.timeline.now="''', now.isoformat(), '''"
             return output
 
         else:
-            raise HTTP(501, BADMETHOD)
+            raise HTTP(501, current.ERROR.BAD_METHOD)
 
 # =============================================================================
 class S3IRSResponseModel(S3Model):
@@ -1028,8 +991,7 @@ class S3IRSResponseModel(S3Model):
 
         Currently this has code specific to Porto Firefighters
 
-        @ToDo: Move these to Events module?
-               - the response shouldn't live within the reporting system?
+        @ToDo: Replace with Deployment module
     """
 
     names = ["irs_ireport_human_resource",
@@ -1071,33 +1033,33 @@ class S3IRSResponseModel(S3Model):
         #
         msg_enabled = settings.has_module("msg")
         tablename = "irs_ireport_human_resource"
-        table = define_table(tablename,
-                             ireport_id(),
-                             # @ToDo: Limit Staff to those which are not already assigned to an Incident
-                             human_resource_id(label = hrm_label,
-                                               # Simple dropdown is faster for a small team
-                                               #widget=None,
-                                               #comment=None,
-                                               ),
-                             Field("incident_commander", "boolean",
-                                   default = False,
-                                   label = T("Incident Commander"),
-                                   represent = lambda incident_commander: \
-                                           (T("No"),
-                                            T("Yes"))[incident_commander == True]),
-                             Field("response", "boolean",
-                                   default = None,
-                                   label = T("Able to Respond?"),
-                                   writable = msg_enabled,
-                                   readable = msg_enabled,
-                                   represent = response_represent,
-                                   ),
-                             s3_comments("reply",
-                                         label = T("Reply Message"),
-                                         writable = msg_enabled,
-                                         readable = msg_enabled
-                                         ),
-                             *s3_meta_fields())
+        define_table(tablename,
+                     ireport_id(),
+                     # @ToDo: Limit Staff to those which are not already assigned to an Incident
+                     human_resource_id(label = hrm_label,
+                                       # Simple dropdown is faster for a small team
+                                       #widget=None,
+                                       #comment=None,
+                                       ),
+                     Field("incident_commander", "boolean",
+                           default = False,
+                           label = T("Incident Commander"),
+                           represent = lambda incident_commander: \
+                                       (T("No"),
+                                       T("Yes"))[incident_commander == True]),
+                     Field("response", "boolean",
+                           default = None,
+                           label = T("Able to Respond?"),
+                           writable = msg_enabled,
+                           readable = msg_enabled,
+                           represent = response_represent,
+                           ),
+                     s3_comments("reply",
+                                 label = T("Reply Message"),
+                                 writable = msg_enabled,
+                                 readable = msg_enabled
+                                 ),
+                     *s3_meta_fields())
 
         configure(tablename,
                   list_fields=["id",
@@ -1115,73 +1077,71 @@ class S3IRSResponseModel(S3Model):
         #
         asset_id = self.asset_asset_id
         tablename = "irs_ireport_vehicle"
-        table = define_table(tablename,
-                             ireport_id(),
-                             asset_id(
-                                    label = T("Vehicle"),
-                                    # Limit Vehicles to those which are not already assigned to an Incident
-                                    requires=self.irs_vehicle_requires,
-                                    comment = S3AddResourceLink(
-                                        c="vehicle",
-                                        f="vehicle",
-                                        label=T("Add Vehicle"),
-                                        tooltip=T("If you don't see the vehicle in the list, you can add a new one by clicking link 'Add Vehicle'.")),
+        define_table(tablename,
+                     ireport_id(),
+                     asset_id(label = T("Vehicle"),
+                              # Limit Vehicles to those which are not already assigned to an Incident
+                              requires=self.irs_vehicle_requires,
+                              comment = S3AddResourceLink(
+                                 c="vehicle",
+                                 f="vehicle",
+                                 label=T("Add Vehicle"),
+                                 tooltip=T("If you don't see the vehicle in the list, you can add a new one by clicking link 'Add Vehicle'.")),
+                              ),
+                     s3_datetime("datetime",
+                                 label=T("Dispatch Time"),
+                                 default="now",
+                                 future=0,
+                                 ),
+                     self.super_link("site_id", "org_site",
+                                     label = T("Fire Station"),
+                                     readable = True,
+                                     # Populated from fire_station_vehicle
+                                     #writable = True
+                                     ),
+                     self.gis_location_id(label=T("Destination")),
+                     Field("closed",
+                           # @ToDo: Close all assignments when Incident closed
+                           readable=False,
+                           writable=False),
+                     Field.Method("minutes",
+                                  self.irs_ireport_vehicle_minutes),
+                     s3_comments(),
+                     *s3_meta_fields())
 
-                                    ),
-                             s3_datetime("datetime",
-                                         label=T("Dispatch Time"),
-                                         default="now",
-                                         future=0,
-                                         ),
-                             self.super_link("site_id", "org_site",
-                                             label = T("Fire Station"),
-                                             readable = True,
-                                             # Populated from fire_station_vehicle
-                                             #writable = True
-                                             ),
-                             self.gis_location_id(label=T("Destination")),
-                             Field("closed",
-                                   # @ToDo: Close all assignments when Incident closed
-                                   readable=False,
-                                   writable=False),
-                             s3_comments(),
-                             *s3_meta_fields())
-
-        table.minutes = Field.Lazy(self.irs_ireport_vehicle_minutes)
         configure(tablename, extra_fields = ["datetime"])
 
         # ---------------------------------------------------------------------
         # Which Staff are assigned to which Vehicle?
         #
         tablename = "irs_ireport_vehicle_human_resource"
-        table = define_table(tablename,
-                             ireport_id(),
-                             # @ToDo: Limit Staff to those which are not already assigned to an Incident
-                             human_resource_id(label = hrm_label,
-                                               # Simple dropdown is faster for a small team
-                                               widget=None,
-                                               comment=None,
-                                               ),
-                             asset_id(label=T("Vehicle"),
-                                      # @ToDo: Limit to Vehicles which are assigned to this Incident
-                                      requires = IS_NULL_OR(
-                                                    IS_ONE_OF(db, "asset_asset.id",
-                                                              self.asset_represent,
-                                                              filterby="type",
-                                                              filter_opts=(1,),
-                                                              sort=True)),
-                                     comment = S3AddResourceLink(
-                                        c="vehicle",
-                                        f="vehicle",
-                                        label=T("Add Vehicle"),
-                                        tooltip=T("If you don't see the vehicle in the list, you can add a new one by clicking link 'Add Vehicle'.")),
-
-                                     ),
-                             Field("closed",
-                                   # @ToDo: Close all assignments when Incident closed
-                                   readable=False,
-                                   writable=False),
-                             *s3_meta_fields())
+        define_table(tablename,
+                     ireport_id(),
+                     # @ToDo: Limit Staff to those which are not already assigned to an Incident
+                     human_resource_id(label = hrm_label,
+                                       # Simple dropdown is faster for a small team
+                                       widget=None,
+                                       comment=None,
+                                       ),
+                     asset_id(label=T("Vehicle"),
+                              # @ToDo: Limit to Vehicles which are assigned to this Incident
+                              requires = IS_EMPTY_OR(
+                                            IS_ONE_OF(db, "asset_asset.id",
+                                                      self.asset_represent,
+                                                      filterby="type",
+                                                      filter_opts=(1,),
+                                                      sort=True)),
+                              comment = S3AddResourceLink(
+                              c="vehicle",
+                              f="vehicle",
+                              label=T("Add Vehicle"),
+                              tooltip=T("If you don't see the vehicle in the list, you can add a new one by clicking link 'Add Vehicle'.")),
+                              ),
+                     Field("closed",
+                           # @ToDo: Close all assignments when Incident closed
+                           readable=False,
+                           writable=False),
+                     *s3_meta_fields())
 
         # ---------------------------------------------------------------------
         # Return model-global names to s3db.*
@@ -1212,11 +1172,11 @@ class S3IRSResponseModel(S3Model):
                  (ltable.closed == True) | \
                  (ltable.deleted == True))
         left = ltable.on(table.id == ltable.asset_id)
-        requires = IS_NULL_OR(IS_ONE_OF(current.db(query),
-                                        "asset_asset.id",
-                                        asset_represent,
-                                        left=left,
-                                        sort=True))
+        requires = IS_EMPTY_OR(IS_ONE_OF(current.db(query),
+                                         "asset_asset.id",
+                                         asset_represent,
+                                         left=left,
+                                         sort=True))
         return requires
 
     # -------------------------------------------------------------------------
@@ -1291,7 +1251,7 @@ def irs_rheader(r, tabs=[]):
             #                          args="create",
             #                          vars={"format":"popup",
             #                                "caller":"irs_ireport"}),
-            #                _title=T("Add Task"))
+            #                _title=T("Create Task"))
             rheader = DIV(TABLE(
                             TR(
                                 TH("%s: " % table.name.label), report.name,

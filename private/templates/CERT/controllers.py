@@ -30,7 +30,7 @@ class index():
             response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
 
         appname = request.application
         settings = current.deployment_settings
@@ -50,9 +50,9 @@ class index():
         # Menu Boxes
         # NB Order defined later (in sit_dec_res_box)
         menu_btns = [#div, label, app, function, is_icon
-                    ["vol", T("View Volunteers"), "vol", "volunteer/search", True],
-                    ["vol", T("View Volunteers"), "vol", "volunteer/search", False],
-                    ["vol", T("Add Volunteer"), "vol", "volunteer/create", False],
+                    ["vol", T("View Volunteers"), "vol", "volunteer", True],
+                    ["vol", T("View Volunteers"), "vol", "volunteer", False],
+                    ["vol", T("Create Volunteer"), "vol", "volunteer/create", False],
                     ["qua", T("View Qualifications"), "vol", "certificate", True],
                     ["qua", T("View Qualifications"), "vol", "certificate", False],
                     ["qua", T("Add Qualification"), "vol", "certificate/create", False],
@@ -146,7 +146,7 @@ class index():
 
             if self_registration:
                 # Provide a Registration box on front page
-                register_form = auth.s3_registration_form()
+                register_form = auth.register()
                 register_div = DIV(H3(T("Register")),
                                    P(XML(T("If you would like to help, then please %(sign_up_now)s") % \
                                             dict(sign_up_now=B(T("sign-up now"))))))
@@ -172,9 +172,8 @@ $('#login-btn').click(function(){
                 response.s3.jquery_ready.append(register_script)
 
             # Provide a login box on front page
-            request.args = ["login"]
             auth.messages.submit_button = T("Login")
-            login_form = auth()
+            login_form = auth.login(inline=True)
             login_div = DIV(H3(T("Login")),
                             P(XML(T("Registered users can %(login)s to access the system") % \
                                   dict(login=B(T("login"))))))

@@ -21,3 +21,5 @@
 *.~*~
 .directory
 .pythonhistory
+.idea
+.sass-cache

@@ -105,30 +105,12 @@ if len(pop_list) > 0:
                              timeout=300, # seconds
                              repeats=0    # unlimited
                              )
-        # Old saved search notifications
-        #s3task.schedule_task("msg_search_subscription_notifications",
-        #                     vars={"frequency":"hourly"},
-        #                     period=3600,
-        #                     timeout=300,
-        #                     repeats=0
-        #                     )
-        #s3task.schedule_task("msg_search_subscription_notifications",
-        #                     vars={"frequency":"daily"},
-        #                     period=86400,
-        #                     timeout=300,
-        #                     repeats=0
-        #                     )
-        #s3task.schedule_task("msg_search_subscription_notifications",
-        #                     vars={"frequency":"weekly"},
-        #                     period=604800,
-        #                     timeout=300,
-        #                     repeats=0
-        #                     )
-        #s3task.schedule_task("msg_search_subscription_notifications",
-        #                     vars={"frequency":"monthly"},
-        #                     period=2419200,
-        #                     timeout=300,
-        #                     repeats=0
+        # Tweets every minute
+        #s3task.schedule_task("msg_process_outbox",
+        #                     vars={"contact_method":"TWITTER"},
+        #                     period=120,  # seconds
+        #                     timeout=120, # seconds
+        #                     repeats=0    # unlimited
         #                     )
 
         # Subscription notifications
@@ -179,14 +161,6 @@ if len(pop_list) > 0:
     db.executesql("CREATE INDEX %s__idx on %s(%s);" % (field, tablename, field))
 
     # GIS
-    # L0 Countries
-    resource = s3db.resource("gis_location")
-    stylesheet = path_join(request_folder, "static", "formats", "s3csv", "gis", "location.xsl")
-    import_file = path_join(request_folder, "private", "templates", "locations", "countries.csv")
-    File = open(import_file, "r")
-    resource.import_xml(File, format="csv", stylesheet=stylesheet)
-    db(db.gis_location.level == "L0").update(owned_by_group=map_admin)
-    db.commit()
     # Add extra index on search field
     # Should work for our 3 supported databases: sqlite, MySQL & PostgreSQL
     tablename = "gis_location"
@@ -195,23 +169,23 @@ if len(pop_list) > 0:
 
     # Messaging Module
     if has_module("msg"):
+        update_super = s3db.update_super
         # To read inbound email, set username (email address), password, etc.
         # here. Insert multiple records for multiple email sources.
-        db.msg_email_inbound_channel.insert(server = "imap.gmail.com",
-                                            protocol = "imap",
-                                            use_ssl = True,
-                                            port = 993,
-                                            username = "example-username",
-                                            password = "password",
-                                            delete_from_server = False
-                                            )
+        table = db.msg_email_channel
+        id = table.insert(server = "imap.gmail.com",
+                          protocol = "imap",
+                          use_ssl = True,
+                          port = 993,
+                          username = "example-username",
+                          password = "password",
+                          delete_from_server = False
+                          )
+        update_super(table, dict(id=id))
         # Need entries for the Settings/1/Update URLs to work
-        db.msg_sms_outbound_gateway.insert( outgoing_sms_handler = "WEB_API" )
-        db.msg_sms_modem_channel.insert( modem_baud = 115200 )
-        db.msg_sms_webapi_channel.insert( to_variable = "to" )
-        db.msg_sms_smtp_channel.insert( address="changeme" )
-        db.msg_tropo_channel.insert( token_messaging = "" )
-        db.msg_twitter_channel.insert( pin = "" )
+        table = db.msg_twitter_channel
+        id = table.insert(enabled = False)
+        update_super(table, dict(id=id))
 
     # Budget Module
     if has_module("budget"):
@@ -239,7 +213,7 @@ if len(pop_list) > 0:
 
     # Supply Module
     if has_module("supply"):
-        db.supply_catalog.insert(name = settings.get_supply_catalog_default() )
+        db.supply_catalog.insert(name = settings.get_supply_catalog_default())
 
     # Ensure DB population committed when running through shell
     db.commit()
@@ -256,10 +230,6 @@ if len(pop_list) > 0:
     s3.import_image = bi.import_image
     s3.import_remote_csv = bi.import_remote_csv
 
-    # Disable table protection
-    protected = s3mgr.PROTECTED
-    s3mgr.PROTECTED = []
-
     # Relax strict email-matching rule for import updates of person records
     email_required = settings.get_pr_import_update_requires_email()
     settings.pr.import_update_requires_email = False
@@ -267,7 +237,10 @@ if len(pop_list) > 0:
     # Additional settings for user table imports:
     s3db.configure("auth_user",
                    onaccept = lambda form: auth.s3_approve_user(form.vars))
-    s3db.add_component("auth_membership", auth_user="user_id")
+    s3db.add_components("auth_user", auth_membership="user_id")
+
+    # Flag that Assets are being imported, not synced
+    s3.asset_import = True
 
     # Allow population via shell scripts
     if not request.env.request_method:
@@ -319,9 +292,6 @@ if len(pop_list) > 0:
                     pass
             print >> sys.stderr, _errorLine
 
-    # Restore table protection
-    s3mgr.PROTECTED = protected
-
     # Restore setting for strict email-matching
     settings.pr.import_update_requires_email = email_required
 
@@ -333,6 +303,9 @@ if len(pop_list) > 0:
     gis.update_location_tree()
     end = datetime.datetime.now()
     print >> sys.stdout, "Location Tree update completed in %s" % (end - start)
+
+    # Countries are only editable by MapAdmin
+    db(db.gis_location.level == "L0").update(owned_by_group=map_admin)
 
     if has_module("stats"):
         # Populate stats_demographic_aggregate (disabled during prepop)

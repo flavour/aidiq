@@ -246,11 +246,27 @@ def dojs(dogis = False, warnings = True):
         pass
     shutil.move(outputFilename, "../S3")
 
-    # Reports
-    print "Compressing Reports"
+    # JSTree
+    print "Compressing JSTree"
     sourceDirectory = ".."
-    configFilename = "sahana.js.report.cfg"
-    outputFilename = "s3.report.min.js"
+    configFilename = "sahana.js.jstree.cfg"
+    outputFilename = "s3.jstree.min.js"
+    merged = mergejs.run(sourceDirectory,
+                         None,
+                         configFilename)
+    minimized = minimize(merged)
+    open(outputFilename, "w").write(minimized)
+    try:
+        os.remove("../S3/%s" % outputFilename)
+    except:
+        pass
+    shutil.move(outputFilename, "../S3")
+
+    # Chat
+    print "Compressing Chat"
+    sourceDirectory = ".."
+    configFilename = "sahana.js.chat.cfg"
+    outputFilename = "s3.chat.min.js"
     merged = mergejs.run(sourceDirectory,
                          None,
                          configFilename)
@@ -310,10 +326,14 @@ def dojs(dogis = False, warnings = True):
 
     # Single scripts
     for filename in ["add_person",
+                     "cap",
                      "contacts",
                      "embed_component",
                      "gis",
+                     "gis.feature_crud",
                      "gis.fullscreen",
+                     "gis.latlon",
+                     "gis.pois",
                      "locationselector.widget",
                      "locationselector.widget2",
                      "msg",
@@ -334,14 +354,16 @@ def dojs(dogis = False, warnings = True):
             pass
         shutil.move(outputFilename, "../S3")
 
-    for filename in ("spectrum",):
-        print "Compressing %s.js" % filename
-        in_f = os.path.join("..", filename + ".js")
-        out_f = os.path.join("..", filename + ".min.js")
-        with open(in_f, "r") as inp:
-            with open(out_f, "w") as out:
-                out.write(minimize(inp.read()))
-        
+    #for filename in ("spectrum",
+    #                 "tag-it",
+    #                 ):
+    #    print "Compressing %s.js" % filename
+    #    in_f = os.path.join("..", filename + ".js")
+    #    out_f = os.path.join("..", filename + ".min.js")
+    #    with open(in_f, "r") as inp:
+    #        with open(out_f, "w") as out:
+    #            out.write(minimize(inp.read()))
+
     if dogis:
         sourceDirectoryOpenLayers = "../gis/openlayers/lib"
         sourceDirectoryOpenLayersExten = "../gis"

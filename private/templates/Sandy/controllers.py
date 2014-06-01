@@ -39,7 +39,7 @@ class index():
                                     appname
             s3.actions = None
             hospital_box = DIV(H3(T("Hospitals")),
-                               A(T("Add Hospital"),
+                               A(T("Create Hospital"),
                                  _href = URL(c="hms", f="hospital",
                                              args=["create"]),
                                  _id = "add-btn",
@@ -78,7 +78,7 @@ class index():
 
             if self_registration:
                 # Provide a Registration box on front page
-                register_form = auth.s3_registration_form()
+                register_form = auth.register()
                 register_div = DIV(H3(T("Register")),
                                    P(XML(T("If you would like to help, then please %(sign_up_now)s") % \
                                             dict(sign_up_now=B(T("sign-up now"))))))
@@ -104,9 +104,8 @@ $('#login-btn').click(function(){
                 s3.jquery_ready.append(register_script)
 
             # Provide a login box on front page
-            request.args = ["login"]
             auth.messages.submit_button = T("Login")
-            login_form = auth()
+            login_form = auth.login(inline=True)
             login_div = DIV(H3(T("Login")),
                             P(XML(T("Registered users can %(login)s to access the system") % \
                                   dict(login=B(T("login"))))))
@@ -151,7 +150,7 @@ google.setOnLoadCallback(LoadDynamicFeedControl)'''))
             response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
 
         return dict(title = response.title,
                     item = item,
@@ -217,7 +216,7 @@ google.setOnLoadCallback(LoadDynamicFeedControl)'''))
                                             ),
                             dt_pagination="true",
                            )
-        elif request.extension.lower() == "aadata":
+        elif request.extension == "aadata":
             if "sEcho" in request.vars:
                 echo = int(request.vars.sEcho)
             else:
@@ -228,7 +227,7 @@ google.setOnLoadCallback(LoadDynamicFeedControl)'''))
                             echo)
         else:
             from gluon.http import HTTP
-            raise HTTP(501, resource.ERROR.BAD_FORMAT)
+            raise HTTP(501, current.ERROR.BAD_FORMAT)
         return items
 
 # END =========================================================================

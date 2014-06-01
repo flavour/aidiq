@@ -10,6 +10,7 @@
          Last Name...............auth_user.last_name
          Email...................auth_user.email
          Password................auth_user.password
+         Language................auth_user.language
          Role....................auth_group.role
          Organisation............org_organisation.name
          Organisation Group......org_group.name
@@ -64,6 +65,9 @@
                     <xsl:value-of select="col[@field='Password']"/>
                 </xsl:attribute>
             </data>
+            <xsl:if test="col[@field='Language']!=''">
+                <data field="language"><xsl:value-of select="col[@field='Language']"/></data>
+            </xsl:if>
 
             <!-- Every user must have the authenticated role -->
             <resource name="auth_membership">
@@ -127,12 +131,15 @@
                     <xsl:value-of select="$role"/>
                 </xsl:attribute>
             </reference>
-            <xsl:if test="$realm='0'">
-                <data field="pe_id" value="0"/>
-            </xsl:if>
-            <xsl:if test="contains($realm, '=')">
-                <data field="pe_id"><xsl:value-of select="$realm"/></data>
-            </xsl:if>
+            <xsl:choose>
+                <xsl:when test="$realm='0'">
+                    <data field="pe_id" value="0"/>
+                </xsl:when>
+                <!-- e.g. org_organisation.name=Viet Nam Red Cross -->
+                <xsl:when test="contains($realm, '=')">
+                    <data field="pe_id"><xsl:value-of select="$realm"/></data>
+                </xsl:when>
+            </xsl:choose>
         </resource>
 
     </xsl:template>

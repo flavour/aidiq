@@ -32,7 +32,7 @@ class index():
             response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
 
         # Show full width instead of login box if user is logged in 
         if current.auth.is_logged_in():
@@ -96,8 +96,7 @@ class index():
             lappend(card)
             odd = False if odd else True
 
-        request.args = ["login"]
-        login = current.auth()
+        login = current.auth.login(inline=True)
 
         appname = request.application
         s3 = response.s3
@@ -146,7 +145,7 @@ class register():
             response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
 
         T = current.T
         auth = current.auth
@@ -157,7 +156,7 @@ class register():
         table.language.default = T.accepted_language
 
         # Combo box for Organisation
-        table.organisation_id.widget = S3OrganisationAutocompleteWidget(new_items=True)
+        table.organisation_id.widget = S3OrganisationAutocompleteWidget()
         table.organisation_id.requires = IS_COMBO_BOX("org_organisation",
                                                       current.s3db.org_organisation_id.attr.requires)
 
@@ -165,10 +164,10 @@ class register():
         _settings.register_onaccept = register_onaccept
 
         # Build the registration form
-        form = auth()
-        form.attributes["_id"] = "regform"
+        form = auth.register(js_validation=False)
 
         # Set the formstyle
+        # @ToDo: Update to the fact that Auth now uses formstyle & use s3_addrow to add new rows
         _form = form[0]
         _form[-1] = TR(TD(_class="w2p_fl"),
                        TD(_class="w2p_fc"),
@@ -315,7 +314,7 @@ class register():
             s3.scripts.append("/%s/static/scripts/jquery.pstrength.2.1.0.min.js" % appname)
             s3.scripts.append("/%s/static/scripts/jquery.validate.min.js" % appname)
         s3.jquery_ready.append("".join(('''
-$('#regform').validate({
+$('.auth_register').validate({
  errorClass:'req',
  rules:{
   first_name:{
@@ -404,7 +403,7 @@ class contact():
             response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
 
         if request.env.request_method == "POST":
             # Processs Form
@@ -515,7 +514,7 @@ class about():
             response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
 
         response.title = T("About")
 
@@ -548,7 +547,7 @@ class admin():
                 response.view = open(view, "rb")
             except IOError:
                 from gluon.http import HTTP
-                raise HTTP("404", "Unable to open Custom View: %s" % view)
+                raise HTTP(404, "Unable to open Custom View: %s" % view)
             
             response.title = T("Administration Panel")
             
@@ -610,7 +609,7 @@ class analysis():
             response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
 
         response.title = T("Project Analysis")
 
@@ -636,7 +635,7 @@ class get_started():
             response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
 
         response.title = T("Get Started")
 
@@ -661,21 +660,20 @@ class login():
             response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
 
         response.title = T("Login")
 
-        request.args = ["login"]
-        login = current.auth()
-
         return dict(
-            form = login
+            form = current.auth.login()
         )
 
 # =============================================================================
 class mypage():
     """
         Custom page for a User to manage their Saved Search & Subscriptions
+
+        @todo: pr_saved_search no longer supported (S3Search deprecated)
     """
 
     def __call__(self):
@@ -693,7 +691,7 @@ class mypage():
                 response.view = open(view, "rb")
             except IOError:
                 from gluon.http import HTTP
-                raise HTTP("404", "Unable to open Custom View: %s" % view)
+                raise HTTP(404, "Unable to open Custom View: %s" % view)
 
             response.title = T("My Page")
 
@@ -714,9 +712,6 @@ class organisations():
 
     def __call__(self):
 
-        from gluon.storage import Storage
-        from s3 import S3FieldSelector
-
         #T = current.T
         request = current.request
         response = current.response
@@ -729,16 +724,13 @@ class organisations():
             response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
 
         s3 = response.s3
         s3["dataTable_sDom"] = 'ripl<"dataTable_table"t>p'
 
         tables = []
         table = request.vars.get("table", None)
-
-        # URL format breaks the REST controller conventions
-        #request.args.pop()
 
         if table is None:
             # HTML call
@@ -777,12 +769,11 @@ class organisations():
             - Filtered subset of Organisations
         """
 
-        from s3 import S3FieldSelector, s3_request
         T = current.T
 
         s3request = s3_request("org", "organisation", extension="aadata")
-        # (S3FieldSelector("project.id") != None) & \
-        f = (S3FieldSelector("organisation_type_id$name").anyof(["Regional Organisation",
+        # (FS("project.id") != None) & \
+        f = (FS("organisation_type_id$name").anyof(["Regional Organisation",
                                                                  "Regional Office",
                                                                  "Regional Center"]))
         s3request.resource.add_filter(f)
@@ -793,7 +784,7 @@ class organisations():
             "acronym",
             (T("Type"), "organisation_type_id"),
             "website",
-            "region",
+            "region_id",
             "year",
             (T("Notes"), "comments"),
         ]
@@ -807,28 +798,27 @@ class organisations():
             - Filtered subset of Organisations
         """
 
-        from s3 import S3FieldSelector, s3_request
         T = current.T
 
         s3db = current.s3db
         table = s3db.org_organisation
-        table.address = Field.Lazy(s3db.org_organisation_address)
+        table.address = Field.Method("address",
+                                     s3db.org_organisation_address)
 
         s3request = s3_request("org", "organisation", extension="aadata")
-        #(S3FieldSelector("project.id") != None) & \
-        f = (S3FieldSelector("organisation_type_id$name").anyof(["Committees/Mechanism/Forum",
+        #(FS("project.id") != None) & \
+        f = (FS("organisation_type_id$name").anyof(["Committees/Mechanism/Forum",
                                                                  "Network"]))
         s3request.resource.add_filter(f)
 
-        field_list = [
-            "id",
-            "name",
-            "acronym",
-            (T("Type"), "organisation_type_id"),
-            "year",
-            (T("Address"), "address"),
-            (T("Notes"), "comments"),
-        ]
+        field_list = ["id",
+                      "name",
+                      "acronym",
+                      (T("Type"), "organisation_type_id"),
+                      "year",
+                      (T("Address"), "address"),
+                      (T("Notes"), "comments"),
+                      ]
         return (s3request, field_list)
 
     # -------------------------------------------------------------------------
@@ -876,7 +866,6 @@ class organisations():
         table = Storage(cols=cols,
                         rows=rows,
                         #options=options,
-                        classes="dataTable display"
                         )
 
         return table

@@ -10,6 +10,8 @@ resourcename = request.function
 if not settings.has_module(module):
     raise HTTP(404, body="Module disabled: %s" % module)
 
+s3db.hrm_vars()
+
 # =============================================================================
 def index():
     """ Dashboard """
@@ -23,7 +25,7 @@ def index_alt():
     """
 
     # Just redirect to the list of Members
-    redirect(URL(f="membership"))
+    redirect(URL(f="membership", args=["summary"]))
 
 # =============================================================================
 def membership_type():
@@ -43,18 +45,29 @@ def membership():
         REST Controller
     """
 
-    tablename = "member_membership"
-    table = s3db[tablename]
-
     def prep(r):
         if r.interactive:
             if r.id and r.component is None and r.method != "delete":
                 # Redirect to person controller
                 vars = {"membership.id": r.id}
                 redirect(URL(f="person", vars=vars))
-            else:
-                # Assume members under 120
-                s3db.pr_person.date_of_birth.widget = S3DateWidget(past=1440)
+
+            # Assume members under 120
+            s3db.pr_person.date_of_birth.widget = S3DateWidget(past=1440)
+
+        elif r.representation == "xls":
+            # Split person_id into first/middle/last to make it match Import sheets
+            list_fields = s3db.get_config("member_membership",
+                                          "list_fields")
+            list_fields.remove("person_id")
+            list_fields = ["person_id$first_name",
+                           "person_id$middle_name",
+                           "person_id$last_name",
+                           ] + list_fields
+
+            s3db.configure("member_membership",
+                           list_fields = list_fields)
+
         return True
     s3.prep = prep
 
@@ -66,8 +79,7 @@ def membership():
         return output
     s3.postp = postp
 
-    output = s3_rest_controller(rheader=s3db.member_rheader)
-    return output
+    return s3_rest_controller(rheader = s3db.member_rheader)
 
 # =============================================================================
 def person():
@@ -85,12 +97,20 @@ def person():
             title_upload = T("Import Members"))
 
     s3db.configure("member_membership",
-                   delete_next=URL("member", "membership"))
+                   delete_next = URL("member", "membership"),
+                   )
 
     # Custom Method for Contacts
-    s3db.set_method("pr", resourcename,
-                    method="contacts",
-                    action=s3db.pr_contacts)
+    set_method = s3db.set_method
+    set_method("pr", resourcename,
+               method = "contacts",
+               action = s3db.pr_contacts)
+
+    # Custom Method for CV
+    set_method("pr", "person",
+               method = "cv",
+               # @ToDo: Allow Members to have a CV without enabling HRM?
+               action = s3db.hrm_cv)
 
     # Upload for configuration (add replace option)
     s3.importerPrep = lambda: \
@@ -99,9 +119,8 @@ def person():
     # Import pre-process
     def import_prep(data):
         """
-            Deletes all Member records of the organisation
-            before processing a new data import, used for the import_prep
-            hook in s3mgr
+            Deletes all Member records of the organisation/branch
+            before processing a new data import
         """
         resource, tree = data
         xml = current.xml
@@ -126,10 +145,11 @@ def person():
                         query = (otable.name == org_name) & \
                                 (mtable.organisation_id == otable.id)
                         resource = s3db.resource("member_membership", filter=query)
-                        ondelete = s3db.get_config("member_membership", "ondelete")
-                        resource.delete(ondelete=ondelete, format="xml", cascade=True)
+                        # Use cascade=True so that the deletion gets
+                        # rolled back if the import fails:
+                        resource.delete(format="xml", cascade=True)
 
-    s3mgr.import_prep = import_prep
+    s3.import_prep = import_prep
 
     # CRUD pre-process
     def prep(r):
@@ -152,14 +172,13 @@ def person():
                         r.id = r.record.id
                 if not r.record:
                     session.error = T("Record not found")
-                    redirect(URL(f="membership",
-                                #args=["search"]
-                                ))
-                member_id = request.get_vars.get("membership.id", None)
+                    redirect(URL(f="membership"))
+                member_id = get_vars.get("membership.id", None)
                 if member_id and r.component_name == "membership":
                     r.component_id = member_id
                 s3db.configure("member_membership",
-                                insertable = False)
+                               insertable = False,
+                               )
         return True
     s3.prep = prep
 
@@ -183,8 +202,9 @@ def person():
     s3.postp = postp
 
     output = s3_rest_controller("pr", resourcename,
-                                rheader=s3db.member_rheader,
-                                replace_option=T("Remove existing data before import"))
+                                replace_option = T("Remove existing data before import"),
+                                rheader = s3db.member_rheader,
+                                )
     return output
 
 # END =========================================================================

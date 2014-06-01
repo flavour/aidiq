@@ -1,0 +1,37 @@
+*** Settings ***
+Documentation     Main resource file for Eden Tests
+Library           Selenium2Library
+Variables         ../../execution/config.py
+Resource          auth.txt
+Resource          base.txt
+Resource          crud.txt
+Resource          filter.txt
+Resource          datatable.txt
+Resource          widgets.txt
+
+*** Variables ***
+${DELAY}            0
+${BASEURL}          ${SERVER}/${APPNAME}
+${HOMEPAGE}         http://${BASEURL}/default/index
+
+*** Keywords ***
+Start Browser With Proxy
+    ${proxy}=  Evaluate  sys.modules['selenium.webdriver'].Proxy()  sys, selenium.webdriver
+    ${proxy.http_proxy}=  Set Variable  ${HTTP_PROXY}
+    ${proxy.no_proxy}=  Set Variable  ${NO_PROXY}
+    Create Webdriver  ${BROWSER}  proxy=${proxy}
+
+Start Browser
+    Create Webdriver  ${BROWSER}
+
+Start Testing
+    [Documentation]  Starts the test
+    Run Keyword If  "${HTTP_PROXY}" != "" and "${BROWSER}" == "Firefox"  Start Browser With Proxy
+    ...  ELSE  Start Browser
+    Login To Eden
+    Set Selenium Speed  ${DELAY}
+
+End Testing
+    [Documentation]  Ends the test
+    Logout From Eden
+    Close Browser

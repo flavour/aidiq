@@ -91,6 +91,8 @@ settings.project.mode_task = True
 settings.project.activities = True
 # Uncomment this to use Milestones in project/task.
 settings.project.milestones = True
+# Uncomment this to use Projects in Activities & Tasks
+settings.project.projects = True
 # Uncomment this to disable Sectors in projects
 #settings.project.sectors = False
 # Change the label for Organisation from 'Lead Implementer'
@@ -121,22 +123,6 @@ settings.ui.crud_form_project_project = s3forms.S3SQLCustomForm(
 
 # Uncomment to allow HR records to be deletable rather than just marking them as obsolete
 settings.hrm.deletable = True
-
-# Frontpage settings
-# RSS feeds
-#deployment_settings.frontpage.rss = [
-#    {"title": "Blog",
-#     # Drupal Blog
-#     "url": "http://aidiq.com/blog/feed"
-#    },
-#    {"title": "Twitter",
-#     # Use idfromuser.com to determine the ID
-#     # @SahanaFOSS
-#     "url": "http://twitter.com/statuses/user_timeline/80964032.rss"
-#     # Hashtag
-#     #url: "http://search.twitter.com/search.atom?q=%23eqnz"
-#    }
-#]
 
 # Comment/uncomment modules here to disable/enable them
 settings.modules = OrderedDict([

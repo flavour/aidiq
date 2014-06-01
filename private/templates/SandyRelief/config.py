@@ -91,9 +91,6 @@ settings.auth.registration_link_user_to = {"staff":T("Staff"),
 
 settings.security.policy = 5 # Controller, Function & Table ACLs
 
-# Resource which need approval
-#settings.auth.record_approval_required_for = ["org_facility"]
-
 settings.ui.update_label = "Edit"
 settings.ui.label_attachments = "Media"
 
@@ -149,8 +146,6 @@ settings.req.summary = True
 
 # -----------------------------------------------------------------------------
 # Organisations
-# Disable the use of Organisation Branches
-settings.org.branches = False
 settings.org.site_label = "Facility"
 # Uncomment to show the date when a Site (Facilities-only for now) was last contacted
 settings.org.site_last_contacted = True
@@ -168,8 +163,8 @@ settings.org.site_last_contacted = True
 #     }
 # Uncomment to use an Autocomplete for Site lookup fields
 settings.org.site_autocomplete = True
-# Uncomment to have Site Autocompletes search within Address fields
-settings.org.site_address_autocomplete = True
+# Extra fields to search in Autocompletes & display in Representations
+settings.org.site_autocomplete_fields = ("location_id$addr_street",)
 # Uncomment to hide inv & req tabs from Sites
 #settings.org.site_inv_req_tabs = True
 
@@ -236,16 +231,16 @@ def facility_marker_fn(record):
                                                     ).first()
     return marker
 
-def customize_org_facility(**attr):
+def customise_org_facility_controller(**attr):
     # Tell the client to request per-feature markers
     current.s3db.configure("org_facility", marker_fn=facility_marker_fn)
 
     return attr
 
-settings.ui.customize_org_facility = customize_org_facility
+settings.customise_org_facility_controller = customise_org_facility_controller
 
 # -----------------------------------------------------------------------------
-def customize_org_organisation(**attr):
+def customise_org_organisation_controller(**attr):
 
     s3db = current.s3db
     s3 = current.response.s3
@@ -259,7 +254,7 @@ def customize_org_organisation(**attr):
         else:
             result = True
 
-        if r.interactive or r.representation.lower() == "aadata":
+        if r.interactive or r.representation == "aadata":
             list_fields = ["id",
                            "name",
                            "acronym",
@@ -270,20 +265,23 @@ def customize_org_organisation(**attr):
             s3db.configure("org_organisation", list_fields=list_fields)
             
         if r.interactive:
-            from s3.s3forms import S3SQLCustomForm, S3SQLInlineComponent, S3SQLInlineComponentCheckbox
+            from s3.s3forms import S3SQLCustomForm, S3SQLInlineComponent, S3SQLInlineComponentMultiSelectWidget
             s3db.pr_address.comments.label = ""
             s3db.pr_contact.value.label = ""
+            s3db.doc_document.url.label = ""
             crud_form = S3SQLCustomForm(
                 "name",
                 "acronym",
                 "organisation_type_id",
-                S3SQLInlineComponentCheckbox(
+                #S3SQLInlineComponentCheckbox(
+                S3SQLInlineComponentMultiSelectWidget(
                     "service",
                     label = T("Services"),
                     field = "service_id",
                     cols = 4,
                 ),
-                S3SQLInlineComponentCheckbox(
+                #S3SQLInlineComponentCheckbox(
+                S3SQLInlineComponentMultiSelectWidget(
                     "group",
                     label = T("Network"),
                     field = "group_id",
@@ -297,13 +295,15 @@ def customize_org_organisation(**attr):
                     # Ultimately should go into location_id$addr_street
                     fields = ["comments"],
                 ),
-                S3SQLInlineComponentCheckbox(
+                #S3SQLInlineComponentCheckbox(
+                S3SQLInlineComponentMultiSelectWidget(
                     "location",
                     label = T("Neighborhoods Served"),
                     field = "location_id",
                     filterby = dict(field = "level",
                                     options = "L4"
                                     ),
+                    # @ToDo: GroupedCheckbox Widget or Hierarchical MultiSelectWidget
                     cols = 5,
                 ),
                 "phone",
@@ -339,6 +339,28 @@ def customize_org_organisation(**attr):
                                     )
                 ),
                 S3SQLInlineComponent(
+                    "document",
+                    name = "iCal",
+                    label = "iCAL",
+                    multiple = False,
+                    fields = ["url",
+                              ],
+                    filterby = dict(field = "name",
+                                    options="iCal"
+                                    )
+                ),                                                                
+                S3SQLInlineComponent(
+                    "document",
+                    name = "data",
+                    label = T("Data"),
+                    multiple = False,
+                    fields = ["url",
+                              ],
+                    filterby = dict(field = "name",
+                                    options="Data"
+                                    )
+                ),                                                                
+                S3SQLInlineComponent(
                     "contact",
                     name = "twitter",
                     label = T("Twitter"),
@@ -346,6 +368,16 @@ def customize_org_organisation(**attr):
                     fields = ["value"],
                     filterby = dict(field = "contact_method",
                                     options = "TWITTER"
+                                    )
+                ),
+                S3SQLInlineComponent(
+                    "contact",
+                    name = "facebook",
+                    label = T("Facebook"),
+                    multiple = False,
+                    fields = ["value"],
+                    filterby = dict(field = "contact_method",
+                                    options = "FACEBOOK"
                                     )
                 ),
                 "comments",
@@ -386,47 +418,10 @@ def customize_org_organisation(**attr):
                                 #hidden=True,
                                 ),
                 ]
-            from s3.s3search import S3Search, S3SearchSimpleWidget, S3SearchOptionsWidget
-            search_method = S3Search(
-                simple=(),
-                advanced=(
-                    S3SearchSimpleWidget(
-                        name="org_search_text_advanced",
-                        label=T("Name"),
-                        comment=T("Search for an Organization by name or acronym"),
-                        field=["name", "acronym"]
-                    ),
-                    S3SearchOptionsWidget(
-                        name="org_search_network",
-                        label=T("Network"),
-                        field="group.name",
-                        cols=2
-                    ),
-                    S3SearchOptionsWidget(
-                        name="org_search_location",
-                        label=T("Neighborhood"),
-                        field="location.L4",
-                        location_level="L4",
-                        cols=2
-                    ),
-                    S3SearchOptionsWidget(
-                        name="org_search_service",
-                        label=T("Services"),
-                        field="service.name",
-                        cols=2
-                    ),
-                    S3SearchOptionsWidget(
-                        name="org_search_type",
-                        label=T("Type"),
-                        field="organisation_type_id",
-                        cols=2
-                    ),
-                ))
+                
             s3db.configure("org_organisation",
                            crud_form=crud_form,
-                           # @ToDo: Style & Enable
-                           #filter_widgets = filter_widgets,
-                           search_method=search_method,
+                           filter_widgets = filter_widgets,
                            )
 
         return result
@@ -452,29 +447,22 @@ def customize_org_organisation(**attr):
         return output
     s3.postp = custom_postp
 
-    attr["hide_filter"] = False
     return attr
 
-settings.ui.customize_org_organisation = customize_org_organisation
+settings.customise_org_organisation_controller = customise_org_organisation_controller
 
 # -----------------------------------------------------------------------------
 # Networks (org_group)
-def customize_org_group(**attr):
-    """
-        Customize org_group controller
-    """
+def customise_org_group_controller(**attr):
 
     tablename = "org_group"
     # CRUD Strings
     current.response.s3.crud_strings[tablename] = Storage(
-                title_create = T("Add Network"),
+                label_create = T("Add Network"),
                 title_display = T("Network Details"),
                 title_list = T("Networks"),
                 title_update = T("Edit Network"),
-                title_search = T("Search Networks"),
-                subtitle_create = T("Add New Network"),
                 label_list_button = T("List Networks"),
-                label_create_button = T("Add Network"),
                 label_delete_button = T("Remove Network"),
                 msg_record_created = T("Network added"),
                 msg_record_modified = T("Network updated"),
@@ -483,7 +471,7 @@ def customize_org_group(**attr):
 
     return attr
 
-settings.ui.customize_org_group = customize_org_group
+settings.customise_org_group_controller = customise_org_group_controller
 
 # -----------------------------------------------------------------------------
 # Persons
@@ -492,6 +480,56 @@ settings.pr.request_dob = False
 settings.pr.request_gender = False
 # Doesn't yet work (form fails to submit)
 #settings.pr.select_existing = False
+
+# -----------------------------------------------------------------------------
+# Persons
+def customise_pr_person_controller(**attr):
+
+    s3 = current.response.s3
+
+    # Custom prep
+    standard_prep = s3.prep
+    def custom_prep(r):
+        # Call standard prep
+        if callable(standard_prep):
+            result = standard_prep(r)
+        else:
+            result = True
+
+        if r.interactive and r.component_name == "membership":
+            current.s3db.pr_group_membership.group_head = T("Group Chairperson")
+
+        return result
+    s3.prep = custom_prep
+
+    return attr
+
+settings.customise_pr_person_controller = customise_pr_person_controller
+
+# -----------------------------------------------------------------------------
+# Groups
+def customise_pr_group_controller(**attr):
+
+    s3 = current.response.s3
+
+    # Custom prep
+    standard_prep = s3.prep
+    def custom_prep(r):
+        # Call standard prep
+        if callable(standard_prep):
+            result = standard_prep(r)
+        else:
+            result = True
+
+        if r.interactive and r.component_name == "membership":
+            current.s3db.pr_group_membership.group_head = T("Group Chairperson")
+
+        return result
+    s3.prep = custom_prep
+
+    return attr
+
+settings.customise_pr_group_controller = customise_pr_group_controller
 
 # -----------------------------------------------------------------------------
 # Human Resource Management
@@ -523,7 +561,7 @@ settings.hrm.teams = "Groups"
 #settings.hrm.organisation_label = "National Society / Branch"
 settings.hrm.organisation_label = "Organization"
 
-def customize_hrm_human_resource(**attr):
+def customise_hrm_human_resource_controller(**attr):
 
     s3 = current.response.s3
 
@@ -537,29 +575,30 @@ def customize_hrm_human_resource(**attr):
             result = True
 
         if r.interactive or r.representation == "aadata":
-            s3db = current.s3db
-            table = r.table
-            table.department_id.readable = table.department_id.writable = False
-            table.end_date.readable = table.end_date.writable = False
-            list_fields = ["id",
-                           "person_id",
-                           "job_title_id",
-                           "organisation_id",
-                           (T("Groups"), "person_id$group_membership.group_id"),
-                           "site_id",
-                           #"site_contact",
-                           (T("Email"), "email.value"),
-                           (settings.get_ui_label_mobile_phone(), "phone.value"),
-                           ]
+            if not r.component:
+                s3db = current.s3db
+                table = r.table
+                table.department_id.readable = table.department_id.writable = False
+                table.end_date.readable = table.end_date.writable = False
+                list_fields = ["id",
+                               "person_id",
+                               "job_title_id",
+                               "organisation_id",
+                               (T("Groups"), "person_id$group_membership.group_id"),
+                               "site_id",
+                               #"site_contact",
+                               (T("Email"), "email.value"),
+                               (settings.get_ui_label_mobile_phone(), "phone.value"),
+                               ]
 
-            s3db.configure("hrm_human_resource", list_fields=list_fields)
+                s3db.configure("hrm_human_resource", list_fields=list_fields)
 
         return result
     s3.prep = custom_prep
 
     return attr
 
-settings.ui.customize_hrm_human_resource = customize_hrm_human_resource
+settings.customise_hrm_human_resource_controller = customise_hrm_human_resource_controller
 
 # -----------------------------------------------------------------------------
 # Projects
@@ -576,7 +615,7 @@ settings.project.sectors = False
 # Multiple partner organizations
 settings.project.multiple_organisations = True
 
-def customize_project_project(**attr):
+def customise_project_project_controller(**attr):
 
     s3 = current.response.s3
 
@@ -614,7 +653,7 @@ def customize_project_project(**attr):
                 #"objectives",
                 "human_resource_id",
                 # Activities
-               S3SQLInlineComponent(
+                S3SQLInlineComponent(
                     "location",
                     label = T("Location"),
                     fields = ["location_id"],
@@ -665,7 +704,7 @@ def customize_project_project(**attr):
 
     return attr
 
-settings.ui.customize_project_project = customize_project_project
+settings.customise_project_project_controller = customise_project_project_controller
 
 # -----------------------------------------------------------------------------
 # Uncomment to show created_by/modified_by using Names not Emails

@@ -5,8 +5,6 @@ from os import path
 from gluon import current
 from gluon.html import *
 
-from s3.s3utils import s3_register_validation
-
 # =============================================================================
 class index():
     """ Custom Home Page """
@@ -29,7 +27,7 @@ class index():
             response.view = open(view, "rb")
         except IOError:
             from gluon.http import HTTP
-            raise HTTP("404", "Unable to open Custom View: %s" % view)
+            raise HTTP(404, "Unable to open Custom View: %s" % view)
 
         title = settings.get_system_name()
         response.title = title
@@ -54,15 +52,11 @@ class index():
 
             if self_registration:
                 # Provide a Registration box on front page
-                register_form = auth.s3_registration_form()
+                register_form = auth.register()
                 register_div = DIV(H3(T("Register")),
                                    P(XML(T("If you would like to help, then please %(sign_up_now)s") % \
                                             dict(sign_up_now=B(T("sign-up now"))))))
 
-                if s3.debug:
-                    s3.scripts.append("/%s/static/scripts/jquery.validate.js" % appname)
-                else:
-                    s3.scripts.append("/%s/static/scripts/jquery.validate.min.js" % appname)
                 if request.env.request_method == "POST":
                     post_script = \
 '''$('#register_form').removeClass('hide')
@@ -84,9 +78,8 @@ $('#login-btn').click(function(){
                 s3.jquery_ready.append(register_script)
 
             # Provide a login box on front page
-            request.args = ["login"]
             auth.messages.submit_button = T("Login")
-            login_form = auth()
+            login_form = auth.login(inline=True)
             login_div = DIV(H3(T("Login")),
                             P(XML(T("Registered users can %(login)s to access the system") % \
                                   dict(login=B(T("login"))))))

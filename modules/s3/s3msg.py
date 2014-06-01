@@ -3,13 +3,13 @@
 
 """ Messaging API
 
-    API to send messages:
-        - currently SMS, Email & Twitter
+    API to send & receive messages:
+    - currently SMS, Email, RSS & Twitter
 
     Messages get sent to the Outbox (& Log)
-    From there, Cron tasks collect them & send them
+    From there, the Scheduler tasks collect them & send them
 
-    @copyright: 2009-2013 (c) Sahana Software Foundation
+    @copyright: 2009-2014 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -46,6 +46,11 @@ import urllib
 import urllib2
 
 try:
+    from cStringIO import StringIO    # Faster, where available
+except:
+    from StringIO import StringIO
+
+try:
     import json # try stdlib (Python 2.6)
 except ImportError:
     try:
@@ -56,20 +61,18 @@ except ImportError:
 try:
     from lxml import etree
 except ImportError:
+    import sys
     print >> sys.stderr, "ERROR: lxml module needed for XML handling"
     raise
 
 from gluon import current, redirect
 from gluon.html import *
-# @ToDo: deprecate these 2
-from gluon.sqlhtml import SQLTABLE
-from gluon.tools import Crud
 
 from s3codec import S3Codec
 from s3crud import S3CRUD
 from s3forms import S3SQLDefaultForm
-from s3utils import s3_debug
-from s3validators import IS_IN_SET, IS_ONE_OF, IS_ONE_OF_EMPTY
+from s3utils import s3_unicode
+from s3validators import IS_IN_SET, IS_ONE_OF
 from s3widgets import S3PentityAutocompleteWidget
 
 IDENTITYTRANS = ALLCHARS = string.maketrans("", "")
@@ -172,7 +175,7 @@ class S3Msg(object):
                 clean = "%s%s" % (default_country_code, clean)
             else:
                 clean = "%s%s" % (default_country_code,
-                                  string.lstrip(clean, "0"))
+                                  clean.lstrip("0"))
 
         return clean
 
@@ -180,140 +183,60 @@ class S3Msg(object):
     # Inbound Messages
     # =========================================================================
     @staticmethod
-    def receive_msg(subject="",
-                    message="",
-                    sender="",
-                    fromaddress="",
-                    system_generated = False,
-                    pr_message_method = "EMAIL",
-                   ):
+    def sort_by_sender(row):
         """
-            Function to call to drop incoming messages into msg_log
+           Helper method to sort messages according to sender priority.
         """
 
-        db = current.db
         s3db = current.s3db
+        db = current.db
+        ptable = s3db.msg_parsing_status
+        mtable = s3db.msg_message
+        stable = s3db.msg_sender
 
         try:
-            message_log_id = s3db.msg_log.insert(inbound = True,
-                                                 subject = subject,
-                                                 message = message,
-                                                 sender  = sender,
-                                                 fromaddress = fromaddress,
-                                                )
+            # @ToDo: Look at doing a Join?
+            pmessage = db(ptable.id == row.id).select(ptable.message_id)
+            m_id = pmessage.message_id
+
+            message = db(mtable.id == m_id).select(mtable.from_address,
+                                                   limitby=(0, 1)).first()
+            sender = message.from_address
+
+            srecord = db(stable.sender == sender).select(stable.priority,
+                                                         limitby=(0, 1)).first()
+
+            return srecord.priority
         except:
-            return False
-            #2) This is not transaction safe - power failure in the middle will cause no message in the outbox
-        try:
-            s3db.msg_channel.insert(message_id = message_log_id,
-                                    pr_message_method = pr_message_method)
-        except:
-            return False
-        # Explicitly commit DB operations when running from Cron
-        db.commit()
-        return True
+            import sys
+            # Return max value i.e. assign lowest priority
+            return sys.maxint
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def parse_import(workflow, source):
+    def parse(channel_id, function_name):
         """
-           Parse Inbound Messages
-           @ToDo Handle all message types.
+           Parse unparsed Messages from Channel with Parser
+           - called from Scheduler
+
+           @param channel_id: Channel
+           @param function_name: Parser
         """
 
         from s3parser import S3Parsing
 
-        db = current.db
-        s3db = current.s3db
-        ptable = s3db.msg_parsing_status
-        mtable = s3db.msg_message
-        wtable = s3db.msg_workflow
-        otable = s3db.msg_outbox
-        ctable = s3db.pr_contact
         parser = S3Parsing.parser
-        contact_method = ctable.contact_method
-        value = ctable.value
-        send_msg = S3Msg.send_by_pe_id
-
-        query = (wtable.workflow_task_id == workflow) & \
-                (wtable.source_task_id == source)
-        records = db(query).select(wtable.source_task_id)
-        reply = ""
-        wflow = ""
-        contact = ""
-        for record in records:
-            query = (ptable.is_parsed == False) & \
-                    (ptable.source_task_id == record.source_task_id)
-            rows = db(query).select()
-
-            for row in rows:
-                rquery = (mtable.id == row.message_id)
-                rmessage = db(rquery).select(mtable.id,
-                                             mtable.body,
-                                             mtable.instance_type,
-                                             mtable.from_address,
-                                             limitby=(0, 1)).first()
-                message = rmessage.body
-                subject_in = ""
-                if rmessage.instance_type == "msg_email":
-                    mquery = (s3db.msg_email.message_id == rmessage.id)
-                    subject_in = db(mquery).select(s3db.msg_email.subject,
-                                                   limitby=(0, 1)).first()
-                    subject_in = subject_in.subject
-                try:
-                    contact = rmessage.from_address.split("<")[1].split(">")[0]
-                    query = (contact_method == "EMAIL") & \
-                            (value == contact)
-                    pe_ids = db(query).select(ctable.pe_id)
-                    if not pe_ids:
-                        query = (contact_method == "SMS") & \
-                                (value == contact)
-                        pe_ids = db(query).select(ctable.pe_id)
-
-                except:
-                    raise ValueError("Source not defined!")
-
-                reply = parser(workflow, message, contact)
-                if reply:
-                    pquery = (ptable.message_id == row.message_id)
-                    db(pquery).update(reply = reply,
-                                      is_parsed = True)
-                else:
-                    pquery = (ptable.message_id == row.message_id)
-                    flow = db(pquery).select(ptable.reply,
-                                             limitby=(0, 1)).first()
-                    try:
-                        wflow = flow.reply.split("Workflow:")[1].split(".")[0]
-                    except:
-                        pass
-                    if wflow == workflow:
-                        reply = "Send help to see how to respond!"
-                        pquery = (ptable.message_id == row.message_id)
-                        db(pquery).update(reply = reply,
-                                          is_parsed = True)
-                    else:
-                        reply = "Workflow:%s. Send help to see how to respond!" \
-                                % workflow
-                        pquery = (ptable.message_id == row.message_id)
-                        db(pquery).update(reply = flow.reply + reply)
-                        db.commit()
-                        return
-
-                if subject_in:
-                    subject = "Re: " + subject_in
-                else:
-                    subject = ""
-
-                if pe_ids:
-                    for pe_id in pe_ids:
-                        send_msg(pr_message_method = "EMAIL",
-                                 message = reply,
-                                 pe_id = pe_id.pe_id,
-                                 subject = subject)
-                else:
-                    return "Not able to look up contacts!"
-                db.commit()
-
+        stable = current.s3db.msg_parsing_status
+        query = (stable.channel_id == channel_id) & \
+                (stable.is_parsed == False)
+        messages = current.db(query).select(stable.id,
+                                            stable.message_id)
+        for message in messages:
+            # Parse the Message
+            reply_id = parser(function_name, message.message_id)
+            # Update to show that we've parsed the message & provide a link to the reply
+            message.update_record(is_parsed=True,
+                                  reply_id=reply_id)
         return
 
     # =========================================================================
@@ -361,7 +284,7 @@ class S3Msg(object):
 
         # Authenticated users need to have update rights on the msg controller
         if not auth.permission.has_permission("update", c="msg"):
-            current.session.error = T("You do not have permission to send messages")
+            current.session.error = current.T("You do not have permission to send messages")
             redirect(URL(f="index"))
 
         # Configure an instance of S3Compose
@@ -388,76 +311,97 @@ class S3Msg(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
+    def send(recipient, message, subject=None):
+        """
+            Send a single message to an Address
+
+            @param recipient: "email@address", "+4412345678", "@nick"
+            @param message: message body
+            @param subject: message subject (Email only)
+        """
+
+        # Determine channel to send on based on format of recipient
+        if recipient.startswith("@"):
+            # Twitter
+            tablename = "msg_twitter"
+        elif "@" in recipient:
+            # Email
+            tablename = "msg_email"
+        else:
+            # SMS
+            tablename = "msg_sms"
+
+        # @ToDo: Complete this
+
+    # -------------------------------------------------------------------------
+    @staticmethod
     def send_by_pe_id(pe_id,
-                      subject="",
-                      message="",
-                      sender_pe_id = None,
-                      pr_message_method = "EMAIL",
-                      sender="",
-                      fromaddress="",
+                      subject = "",
+                      message = "",
+                      contact_method = "EMAIL",
+                      from_address = None,
                       system_generated = False):
         """
             Send a single message to a Person Entity (or list thereof)
 
-            @ToDo: pr_message_method = ALL
+            @ToDo: contact_method = ALL
                 - look up the pr_contact options available for the pe & send via all
 
             @ToDo: This is not transaction safe
               - power failure in the middle will cause no message in the outbox
         """
 
-        db = current.db
         s3db = current.s3db
 
         # Place the Message in the appropriate Log
-        if pr_message_method == "EMAIL":
-            if not fromaddress:
-                fromaddress = current.deployment_settings.get_mail_sender()
+        if contact_method == "EMAIL":
+            if not from_address:
+                from_address = current.deployment_settings.get_mail_sender()
 
             table = s3db.msg_email
-            id = table.insert(body=message,
-                              subject=subject,
-                              from_address=fromaddress,
-                              inbound=False,
-                              )
-            record = db(table.id == id).select(table.id,
-                                               table.message_id,
-                                               limitby=(0, 1)).first()
+            _id = table.insert(body=message,
+                               subject=subject,
+                               from_address=from_address,
+                               #to_address=pe_id,
+                               inbound=False,
+                               )
+            record = dict(id=_id)
             s3db.update_super(table, record)
-            message_id = record.message_id
-        elif pr_message_method == "SMS":
-            table = s3db.msg_sms_outbox
-            id = table.insert(body=message,
-                              )
-            record = db(table.id == id).select(table.id,
-                                               table.message_id,
-                                               limitby=(0, 1)).first()
+            message_id = record["message_id"]
+        elif contact_method == "SMS":
+            table = s3db.msg_sms
+            _id = table.insert(body=message,
+                               from_address=from_address,
+                               inbound=False,
+                               )
+            record = dict(id=_id)
             s3db.update_super(table, record)
-            message_id = record.message_id
-        elif pr_message_method == "TWITTER":
-            table = s3db.msg_twitter_outbox
-            id = table.insert(body=message,
-                              )
-            record = db(table.id == id).select(table.id,
-                                               table.message_id,
-                                               limitby=(0, 1)).first()
+            message_id = record["message_id"]
+        elif contact_method == "TWITTER":
+            table = s3db.msg_twitter
+            _id = table.insert(body=message,
+                               from_address=from_address,
+                               inbound=False,
+                               )
+            record = dict(id=_id)
             s3db.update_super(table, record)
-            message_id = record.message_id
+            message_id = record["message_id"]
         else:
             # @ToDo
-            pass
+            raise
 
-        # Place the Message in the OutBox
+        # Place the Message in the main OutBox
         table = s3db.msg_outbox
         if isinstance(pe_id, list):
             # Add an entry per recipient
             listindex = 0
-            for id in pe_id:
+            insert = table.insert
+            for _id in pe_id:
                 try:
-                    table.insert(message_id = message_id,
-                                 pe_id = id,
-                                 pr_message_method = pr_message_method,
-                                 system_generated = system_generated)
+                    insert(message_id = message_id,
+                           pe_id = _id,
+                           contact_method = contact_method,
+                           system_generated = system_generated)
                     listindex = listindex + 1
                 except:
                     return listindex
@@ -465,16 +409,16 @@ class S3Msg(object):
             try:
                 table.insert(message_id = message_id,
                              pe_id = pe_id,
-                             pr_message_method = pr_message_method,
+                             contact_method = contact_method,
                              system_generated = system_generated)
             except:
                 return False
 
         # Process OutBox async
         current.s3task.async("msg_process_outbox",
-                             args=[pr_message_method])
+                             args = [contact_method])
 
-        return True
+        return message_id
 
     # -------------------------------------------------------------------------
     def process_outbox(self, contact_method="EMAIL"):
@@ -490,21 +434,51 @@ class S3Msg(object):
         s3db = current.s3db
 
         if contact_method == "SMS":
+            # Read all enabled Gateways
+            # - we assume there are relatively few & we may need to decide which to use based on the message's organisation
             table = s3db.msg_sms_outbound_gateway
-            settings = db(table.id > 0).select(table.outgoing_sms_handler,
-                                               limitby=(0, 1)).first()
-            if not settings:
+            etable = db.msg_channel
+            query = (table.deleted == False) & \
+                    (table.channel_id == etable.channel_id)
+            rows = db(query).select(table.channel_id,
+                                    table.organisation_id,
+                                    etable.instance_type,
+                                    )
+            if not rows:
+                # Raise exception here to make the scheduler
+                # task fail permanently until manually reset
+                raise ValueError("No SMS handler defined!")
+
+            if len(rows) == 1:
+                lookup_org = False
+                row = rows.first()
+                outgoing_sms_handler = row["msg_channel.instance_type"]
+                channel_id = row["msg_sms_outbound_gateway.channel_id"]
+            else:
+                lookup_org = True
+                org_branches = current.deployment_settings.get_org_branches()
+                if org_branches:
+                    org_parents = s3db.org_parents
+                channels = {}
+                for row in rows:
+                    channels[row["msg_sms_outbound_gateway.organisation_id"]] = \
+                        dict(outgoing_sms_handler = row["msg_channel.instance_type"],
+                             channel_id = row["msg_sms_outbound_gateway.channel_id"])
+
+        elif contact_method == "TWITTER":
+            twitter_settings = self.get_twitter_api()
+            if not twitter_settings:
                 # Raise exception here to make the scheduler
                 # task fail permanently
-                raise ValueError("No SMS handler defined!")
-            outgoing_sms_handler = settings.outgoing_sms_handler
+                raise ValueError("No Twitter API available!")
 
         def dispatch_to_pe_id(pe_id,
                               subject,
                               message,
                               outbox_id,
                               message_id,
-                              contact_method=contact_method):
+                              organisation_id = None,
+                              contact_method = contact_method):
             """
                 Helper method to send messages by pe_id
 
@@ -513,6 +487,7 @@ class S3Msg(object):
                 @param message: the message body
                 @param outbox_id: the outbox record ID
                 @param message_id: the message_id
+                @param organisation_id: the organisation_id (for SMS)
                 @param contact_method: the contact method
             """
 
@@ -532,113 +507,158 @@ class S3Msg(object):
                                            subject,
                                            message)
                 elif contact_method == "SMS":
-                    if outgoing_sms_handler == "WEB_API":
-                        return self.send_sms_via_api(address, message)
-                    elif outgoing_sms_handler == "SMTP":
-                        return self.send_sms_via_smtp(address, message)
-                    elif outgoing_sms_handler == "MODEM":
-                        return self.send_sms_via_modem(address, message)
-                    elif outgoing_sms_handler == "TROPO":
+                    if lookup_org:
+                        channel = channels.get(organisation_id)
+                        if not channel and \
+                            org_branches:
+                            orgs = org_parents(organisation_id)
+                            for org in orgs:
+                                channel = channels.get(org)
+                                if channel:
+                                    break
+                        if not channel:
+                            # Look for an unrestricted channel
+                            channel = channels.get(None)
+                        if not channel:
+                            # We can't send this message as there is no unrestricted channel & none which matches this Org
+                            return False
+                        outgoing_sms_handler = channel["outgoing_sms_handler"]
+                        channel_id = channel["channel_id"]
+                    if outgoing_sms_handler == "msg_sms_webapi_channel":
+                        return self.send_sms_via_api(address,
+                                                     message,
+                                                     message_id,
+                                                     channel_id)
+                    elif outgoing_sms_handler == "msg_sms_smtp_channel":
+                        return self.send_sms_via_smtp(address,
+                                                      message,
+                                                      channel_id)
+                    elif outgoing_sms_handler == "msg_sms_modem_channel":
+                        return self.send_sms_via_modem(address,
+                                                       message,
+                                                       channel_id)
+                    elif outgoing_sms_handler == "msg_sms_tropo_channel":
                         # NB This does not mean the message is sent
-                        return self.send_text_via_tropo(outbox_id,
-                                                        message_id,
-                                                        address,
-                                                        message)
+                        return self.send_sms_via_tropo(outbox_id,
+                                                       message_id,
+                                                       address,
+                                                       message,
+                                                       channel_id)
                 elif contact_method == "TWITTER":
                     return self.send_tweet(message, address)
-                    
+
             return False
 
         outbox = s3db.msg_outbox
-        
+
+        query = (outbox.contact_method == contact_method) & \
+                (outbox.status == 1) & \
+                (outbox.deleted == False)
+
         petable = s3db.pr_pentity
         left = [petable.on(petable.pe_id == outbox.pe_id)]
-        
+
         fields = [outbox.id,
                   outbox.message_id,
                   outbox.pe_id,
                   outbox.retries,
-                  petable.instance_type]
-                  
-        query = (outbox.pr_message_method == contact_method) & \
-                (outbox.status == 1) & \
-                (outbox.deleted == False)
+                  petable.instance_type,
+                  ]
 
         if contact_method == "EMAIL":
             mailbox = s3db.msg_email
             fields.extend([mailbox.subject, mailbox.body])
             left.append(mailbox.on(mailbox.message_id == outbox.message_id))
         elif contact_method == "SMS":
-            mailbox = s3db.msg_sms_outbox
+            mailbox = s3db.msg_sms
             fields.append(mailbox.body)
+            if lookup_org:
+                fields.append(mailbox.organisation_id)
             left.append(mailbox.on(mailbox.message_id == outbox.message_id))
         elif contact_method == "TWITTER":
-            mailbox = s3db.msg_twitter_outbox
+            mailbox = s3db.msg_twitter
             fields.append(mailbox.body)
             left.append(mailbox.on(mailbox.message_id == outbox.message_id))
         else:
             # @ToDo
-            return
+            raise
 
         rows = db(query).select(*fields,
                                 left=left,
                                 orderby=~outbox.retries)
         if not rows:
             return
-                                
-        ptable = s3db.pr_person
-        gtable = s3db.pr_group
-        mtable = s3db.pr_group_membership
-        otable = s3db.org_organisation
+
         htable = s3db.hrm_human_resource
+        otable = db.org_organisation
+        ptable = db.pr_person
+        gtable = s3db.pr_group
+        mtable = db.pr_group_membership
 
         # Left joins for multi-recipient lookups
         gleft = [mtable.on((mtable.group_id == gtable.id) &
                            (mtable.person_id != None) &
                            (mtable.deleted != True)),
                  ptable.on((ptable.id == mtable.person_id) &
-                           (ptable.deleted != True))]
+                           (ptable.deleted != True))
+                 ]
 
         oleft = [htable.on((htable.organisation_id == otable.id) &
                            (htable.person_id != None) &
                            (htable.deleted != True)),
                  ptable.on((ptable.id == htable.person_id) &
-                           (ptable.deleted != True))]
-                           
+                           (ptable.deleted != True))
+                 ]
+
+        atable = s3db.table("deploy_alert", None)
+        if atable:
+            ltable = db.deploy_alert_recipient
+            aleft = [ltable.on(ltable.alert_id == atable.id),
+                     htable.on((htable.id == ltable.human_resource_id) &
+                               (htable.person_id != None) &
+                               (htable.deleted != True)),
+                     ptable.on((ptable.id == htable.person_id) &
+                               (ptable.deleted != True))
+                     ]
+
         # chainrun: used to fire process_outbox again,
         # when messages are sent to groups or organisations
         chainrun = False
 
+        # Set a default for non-SMS
+        organisation_id = None
+
         for row in rows:
-            
+
             status = True
 
             if contact_method == "EMAIL":
                 subject = row["msg_email.subject"] or ""
                 message = row["msg_email.body"] or ""
             elif contact_method == "SMS":
-                subject = ""
-                message = row["msg_sms_outbox.body"] or ""
+                subject = None
+                message = row["msg_sms.body"] or ""
+                if lookup_org:
+                    organisation_id = row["msg_sms.organisation_id"]
             elif contact_method == "TWITTER":
-                subject = ""
-                message = row["msg_twitter_outbox.body"] or ""
+                subject = None
+                message = row["msg_twitter.body"] or ""
             else:
                 # @ToDo
                 continue
 
             entity_type = row["pr_pentity"].instance_type
             if not entity_type:
-                s3_debug("s3msg", "Entity type unknown")
+                current.log.warning("s3msg", "Entity type unknown")
                 continue
 
             row = row["msg_outbox"]
             pe_id = row.pe_id
-            outbox_id = row.id
             message_id = row.message_id
 
             if entity_type == "pr_group":
                 # Re-queue the message for each member in the group
-                gquery = (gtable.pe_id == pe_id) & (gtable.deleted != True)
+                gquery = (gtable.pe_id == pe_id)
                 recipients = db(gquery).select(ptable.pe_id, left=gleft)
                 pe_ids = set(r.pe_id for r in recipients)
                 pe_ids.discard(None)
@@ -646,14 +666,29 @@ class S3Msg(object):
                     for pe_id in pe_ids:
                         outbox.insert(message_id=message_id,
                                       pe_id=pe_id,
-                                      pr_message_method=contact_method,
+                                      contact_method=contact_method,
+                                      system_generated=True)
+                    chainrun = True
+                status = True
+
+            elif entity_type == "deploy_alert":
+                # Re-queue the message for each HR in the group
+                aquery = (atable.pe_id == pe_id)
+                recipients = db(aquery).select(ptable.pe_id, left=aleft)
+                pe_ids = set(r.pe_id for r in recipients)
+                pe_ids.discard(None)
+                if pe_ids:
+                    for pe_id in pe_ids:
+                        outbox.insert(message_id=message_id,
+                                      pe_id=pe_id,
+                                      contact_method=contact_method,
                                       system_generated=True)
                     chainrun = True
                 status = True
 
             elif entity_type == "org_organisation":
                 # Re-queue the message for each HR in the organisation
-                oquery = (otable.pe_id == pe_id) & (otable.deleted != True)
+                oquery = (otable.pe_id == pe_id)
                 recipients = db(oquery).select(ptable.pe_id, left=oleft)
                 pe_ids = set(r.pe_id for r in recipients)
                 pe_ids.discard(None)
@@ -661,7 +696,7 @@ class S3Msg(object):
                     for pe_id in pe_ids:
                         outbox.insert(message_id=message_id,
                                       pe_id=pe_id,
-                                      pr_message_method=contact_method,
+                                      contact_method=contact_method,
                                       system_generated=True)
                     chainrun = True
                 status = True
@@ -672,8 +707,9 @@ class S3Msg(object):
                     status = dispatch_to_pe_id(pe_id,
                                                subject,
                                                message,
-                                               outbox_id,
-                                               message_id)
+                                               row.id,
+                                               message_id,
+                                               organisation_id)
                 except:
                     status = False
             else:
@@ -721,7 +757,7 @@ class S3Msg(object):
         settings = current.deployment_settings
         default_sender = settings.get_mail_sender()
         if not default_sender:
-            s3_debug("Email sending disabled until the Sender address has been set in models/000_config.py")
+            current.log.warning("Email sending disabled until the Sender address has been set in models/000_config.py")
             return False
 
         limit = settings.get_mail_limit()
@@ -729,7 +765,8 @@ class S3Msg(object):
             # Check whether we've reached our daily limit
             day = datetime.timedelta(hours=24)
             cutoff = current.request.utcnow - day
-            table = current.s3db.msg_limit
+            table = current.s3db.msg_channel_limit
+            # @ToDo: Include Channel Info
             check = current.db(table.created_on > cutoff).count()
             if check >= limit:
                 return False
@@ -743,7 +780,7 @@ class S3Msg(object):
                                    cc=cc,
                                    bcc=bcc,
                                    reply_to=reply_to,
-                                   # @ToDo: Once more people have upgrade their web2py
+                                   # @ToDo: Once more people have upgraded their web2py
                                    #sender=sender,
                                    encoding=encoding
                                    )
@@ -759,9 +796,7 @@ class S3Msg(object):
                             pe_id,
                             subject="",
                             message="",
-                            sender_pe_id=None,  # s3_logged_in_person() is useful here
-                            sender="",
-                            fromaddress="",
+                            from_address=None,
                             system_generated=False):
         """
             API wrapper over send_by_pe_id
@@ -770,10 +805,8 @@ class S3Msg(object):
         return self.send_by_pe_id(pe_id,
                                   subject,
                                   message,
-                                  sender_pe_id,
                                   "EMAIL",
-                                  sender,
-                                  fromaddress,
+                                  from_address,
                                   system_generated)
 
     # =========================================================================
@@ -846,8 +879,7 @@ class S3Msg(object):
         code = ""
         text = ""
 
-        s3db = current.s3db
-        words = string.split(message)
+        words = message.split(" ")
         if "http://maps.google.com/?q" in words[0]:
             # Parse OpenGeoSMS
             pwords = words[0].split("?q=")[1].split(",")
@@ -864,7 +896,98 @@ class S3Msg(object):
     # -------------------------------------------------------------------------
     # Send SMS
     # -------------------------------------------------------------------------
-    def send_sms_via_modem(self, mobile, text=""):
+    def send_sms_via_api(self,
+                         mobile,
+                         text = "",
+                         message_id = None,
+                         channel_id = None,
+                         ):
+        """
+            Function to send SMS via Web API
+        """
+
+        db = current.db
+        s3db = current.s3db
+        table = s3db.msg_sms_webapi_channel
+
+        # Get Configuration
+        if channel_id:
+            sms_api = db(table.channel_id == channel_id).select(limitby=(0, 1)
+                                                                ).first()
+        else:
+            sms_api = db(table.enabled == True).select(limitby=(0, 1)).first()
+        if not sms_api:
+            return False
+
+        post_data = {}
+
+        parts = sms_api.parameters.split("&")
+        for p in parts:
+            post_data[p.split("=")[0]] = p.split("=")[1]
+
+        mobile = self.sanitise_phone(mobile)
+
+        # To send non-ASCII characters in UTF-8 encoding, we'd need
+        # to hex-encode the text and activate unicode=1, but this
+        # would limit messages to 70 characters, and many mobile
+        # phones can't display unicode anyway.
+        
+        # To be however able to send messages with at least special
+        # European characters like á or ø,  we convert the UTF-8 to
+        # the default ISO-8859-1 (latin-1) here:
+        text_latin1 = s3_unicode(text).encode("utf-8") \
+                                      .decode("utf-8") \
+                                      .encode("iso-8859-1")
+
+        post_data[sms_api.message_variable] = text_latin1
+        post_data[sms_api.to_variable] = str(mobile)
+
+        url = sms_api.url
+        clickatell = "clickatell" in url
+        if clickatell:
+            text_len = len(text)
+            if text_len > 480:
+                current.log.error("Clickatell messages cannot exceed 480 chars")
+                return False
+            elif text_len > 320:
+                post_data["concat"] = 3
+            elif text_len > 160:
+                post_data["concat"] = 2
+
+        request = urllib2.Request(url)
+        query = urllib.urlencode(post_data)
+        if sms_api.username and sms_api.password:
+            # e.g. Mobile Commons
+            base64string = base64.encodestring("%s:%s" % (sms_api.username, sms_api.password)).replace("\n", "")
+            request.add_header("Authorization", "Basic %s" % base64string)
+        try:
+            result = urllib2.urlopen(request, query)
+        except urllib2.HTTPError, e:
+            current.log.error("SMS message send failed: %s" % e)
+            return False
+        else:
+            # Parse result
+            output = result.read()
+            if clickatell:
+                if output.startswith("ERR"):
+                    current.log.error("Clickatell message send failed: %s" % output)
+                    return False
+                elif message_id and output.startswith("ID"):
+                    # Store ID from Clickatell to be able to followup
+                    remote_id = output[4:]
+                    db(s3db.msg_sms.message_id == message_id).update(remote_id=remote_id)
+            elif "mcommons" in url:
+                # http://www.mobilecommons.com/mobile-commons-api/rest/#errors
+                # Good = <response success="true"></response>
+                # Bad = <response success="false"><errror id="id" message="message"></response>
+                if "error" in output:
+                    current.log.error("Mobile Commons message send failed: %s" % output)
+                    return False
+
+            return True
+
+    # -------------------------------------------------------------------------
+    def send_sms_via_modem(self, mobile, text="", channel_id=None):
         """
             Function to send SMS via locally-attached Modem
             - needs to have the cron/sms_handler_modem.py script running
@@ -879,57 +1002,11 @@ class S3Msg(object):
             self.modem.send_sms(mobile, text)
             return True
         except KeyError:
-            s3_debug("s3msg", "Modem not available: need to have the cron/sms_handler_modem.py script running")
+            current.log.error("s3msg", "Modem not available: need to have the cron/sms_handler_modem.py script running")
             return False
 
     # -------------------------------------------------------------------------
-    def send_sms_via_api(self, mobile, text=""):
-        """
-            Function to send SMS via Web API
-        """
-
-        db = current.db
-        s3db = current.s3db
-        table = s3db.msg_sms_webapi_channel
-
-        # Get Configuration
-        query = (table.enabled == True)
-        sms_api = db(query).select(limitby=(0, 1)).first()
-        if not sms_api:
-            return False
-
-        sms_api_post_config = {}
-
-        tmp_parameters = sms_api.parameters.split("&")
-        for tmp_parameter in tmp_parameters:
-            sms_api_post_config[tmp_parameter.split("=")[0]] = \
-                                        tmp_parameter.split("=")[1]
-
-        mobile = self.sanitise_phone(mobile)
-
-        sms_api_post_config[sms_api.message_variable] = text
-        sms_api_post_config[sms_api.to_variable] = str(mobile)
-
-        request = urllib2.Request(sms_api.url)
-        query = urllib.urlencode(sms_api_post_config)
-        if sms_api.username and sms_api.password:
-            base64string = base64.encodestring("%s:%s" % (sms_api.username, sms_api.password)).replace("\n", "")
-            request.add_header("Authorization", "Basic %s" % base64string)
-        try:
-            result = urllib2.urlopen(request, query)
-            output = result.read()
-        except urllib2.HTTPError, e:
-            return False
-        else:
-            # @ToDo: parse result
-            # if service == MobileCommons:
-            # Good = <response success="true"></response>
-            # Bad = <response success="false"><errror id="id" message="message"></response>
-            # http://www.mobilecommons.com/mobile-commons-api/rest/#errors
-            return True
-
-    # -------------------------------------------------------------------------
-    def send_sms_via_smtp(self, mobile, text=""):
+    def send_sms_via_smtp(self, mobile, text="", channel_id=None):
         """
             Function to send SMS via SMTP
 
@@ -940,7 +1017,10 @@ class S3Msg(object):
         """
 
         table = current.s3db.msg_sms_smtp_channel
-        query = (table.enabled == True)
+        if channel_id:
+            query = (table.channel_id == channel_id)
+        else:
+            query = (table.enabled == True)
         settings = current.db(query).select(limitby=(0, 1)
                                             ).first()
         if not settings:
@@ -960,12 +1040,14 @@ class S3Msg(object):
             return False
 
     #-------------------------------------------------------------------------------------------------
-    def send_text_via_tropo(self,
-                            row_id,
-                            message_id,
-                            recipient,
-                            message,
-                            network = "SMS"):
+    def send_sms_via_tropo(self,
+                           row_id,
+                           message_id,
+                           recipient,
+                           message,
+                           network = "SMS",
+                           channel_id = None,
+                           ):
         """
             Send a URL request to Tropo to pick a message up
         """
@@ -977,7 +1059,10 @@ class S3Msg(object):
         base_url = "http://api.tropo.com/1.0/sessions"
         action = "create"
 
-        query = (table.id == 1)
+        if channel_id:
+            query = (table.channel_id == channel_id)
+        else:
+            query = (table.enabled == True)
         tropo_settings = db(query).select(table.token_messaging,
                                           limitby=(0, 1)).first()
         if tropo_settings:
@@ -999,7 +1084,7 @@ class S3Msg(object):
                                        ("token", tropo_token_messaging),
                                        ("outgoing", "1"),
                                        ("row_id", row_id)
-                                      ])
+                                       ])
             xml = urllib2.urlopen("%s?%s" % (base_url, params)).read()
             # Parse Response (actual message is sent as a response to the POST which will happen in parallel)
             #root = etree.fromstring(xml)
@@ -1018,9 +1103,7 @@ class S3Msg(object):
     def send_sms_by_pe_id(self,
                           pe_id,
                           message="",
-                          sender_pe_id=None,  # s3_logged_in_person() is useful here
-                          sender="",
-                          fromaddress="",
+                          from_address=None,
                           system_generated=False):
         """
             API wrapper over send_by_pe_id
@@ -1028,19 +1111,17 @@ class S3Msg(object):
 
         return self.send_by_pe_id(pe_id,
                                   message,
-                                  sender_pe_id,
                                   "SMS",
-                                  sender,
-                                  fromaddress,
+                                  from_address,
                                   system_generated,
                                   subject=""
-                                 )
+                                  )
 
     # -------------------------------------------------------------------------
     # Twitter
     # -------------------------------------------------------------------------
     @staticmethod
-    def sanitise_twitter_account(account):
+    def _sanitise_twitter_account(account):
         """
             Only keep characters that are legal for a twitter account:
             letters, digits, and _
@@ -1050,10 +1131,10 @@ class S3Msg(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def break_to_chunks(text,
-                        chunk_size=TWITTER_MAX_CHARS,
-                        suffix = TWITTER_HAS_NEXT_SUFFIX,
-                        prefix = TWITTER_HAS_PREV_PREFIX):
+    def _break_to_chunks(text,
+                         chunk_size=TWITTER_MAX_CHARS,
+                         suffix = TWITTER_HAS_NEXT_SUFFIX,
+                         prefix = TWITTER_HAS_PREV_PREFIX):
         """
             Breaks text to <=chunk_size long chunks. Tries to do this at a space.
             All chunks, except for last, end with suffix.
@@ -1076,7 +1157,8 @@ class S3Msg(object):
                 current_prefix = prefix # from now on, we want a prefix
 
     # -------------------------------------------------------------------------
-    def get_twitter_api(self):
+    @staticmethod
+    def get_twitter_api(channel_id=None):
         """
             Initialize Twitter API
         """
@@ -1084,33 +1166,32 @@ class S3Msg(object):
         try:
             import tweepy
         except ImportError:
-            s3_debug("s3msg", "Tweepy not available, so non-Tropo Twitter support disabled")
+            current.log.error("s3msg", "Tweepy not available, so non-Tropo Twitter support disabled")
             return None
-        else:
-            self.tweepy = tweepy
 
         table = current.s3db.msg_twitter_channel
-        # @ToDo: Don't assume that we only have a single record
-        twitter_settings = current.db(table.id > 0).select(table.oauth_key,
-                                                           table.oauth_secret,
-                                                           table.twitter_account,
-                                                           limitby=(0, 1)
-                                                           ).first()
-        if twitter_settings and twitter_settings.twitter_account:
-            settings = current.deployment_settings.msg
-            try:
-                oauth = tweepy.OAuthHandler(settings.twitter_oauth_consumer_key,
-                                            settings.twitter_oauth_consumer_secret)
-                oauth.set_access_token(twitter_settings.oauth_key,
-                                       twitter_settings.oauth_secret)
-                twitter_api = tweepy.API(oauth)
-                twitter_account = twitter_settings.twitter_account
-                return dict(twitter_api=twitter_api,
-                            twitter_account=twitter_account)
-            except:
-                pass
+        if not channel_id:
+            # Try the 1st enabled one in the DB
+            query = (table.enabled == True)
+        else:
+            query = (table.channel_id == channel_id)
 
-        return None
+        c = current.db(query).select(table.twitter_account,
+                                     table.consumer_key,
+                                     table.consumer_secret,
+                                     table.access_token,
+                                     table.access_token_secret,
+                                     limitby=(0, 1)
+                                     ).first()
+        try:
+            oauth = tweepy.OAuthHandler(c.consumer_key,
+                                        c.consumer_secret)
+            oauth.set_access_token(c.access_token,
+                                   c.access_token_secret)
+            twitter_api = tweepy.API(oauth)
+            return (twitter_api, c.twitter_account)
+        except:
+            return None
 
     # -------------------------------------------------------------------------
     def send_tweet(self, text="", recipient=None):
@@ -1128,192 +1209,235 @@ class S3Msg(object):
         if not twitter_settings:
             # Abort
             return False
-        tweepy = self.tweepy
 
-        twitter_api = None
-        if twitter_settings:
-            twitter_api = twitter_settings["twitter_api"]
-            twitter_account = twitter_settings["twitter_account"]
+        import tweepy
 
-        if not twitter_api and text:
-            # Abort
-            return False
+        twitter_api = twitter_settings[0]
+        twitter_account = twitter_settings[1]
+
+        from_address = twitter_api.me().screen_name
+
+        db = current.db
+        s3db = current.s3db
+        table = s3db.msg_twitter
+        otable = s3db.msg_outbox
+
+        def log_tweet(tweet, recipient, from_address):
+            # Log in msg_twitter
+            _id = table.insert(body=tweet,
+                               from_address=from_address,
+                               )
+            record = db(table.id == _id).select(table.id,
+                                                limitby=(0, 1)
+                                                ).first()
+            s3db.update_super(table, record)
+            message_id = record.message_id
+
+            # Log in msg_outbox
+            otable.insert(message_id = message_id,
+                          address = recipient,
+                          status = 2,
+                          contact_method = "TWITTER",
+                          )
 
         if recipient:
-            recipient = self.sanitise_twitter_account(recipient)
+            recipient = self._sanitise_twitter_account(recipient)
             try:
-                can_dm = twitter_api.exists_friendship(recipient, twitter_account)
-            except tweepy.TweepError: # recipient not found
+                can_dm = recipient == twitter_account or \
+                         twitter_api.get_user(recipient).id in twitter_api.followers_ids(twitter_account)
+            except tweepy.TweepError:
+                # recipient not found
                 return False
             if can_dm:
-                chunks = self.break_to_chunks(text, TWITTER_MAX_CHARS)
+                chunks = self._break_to_chunks(text)
                 for c in chunks:
                     try:
                         # Note: send_direct_message() requires explicit kwargs (at least in tweepy 1.5)
                         # See http://groups.google.com/group/tweepy/msg/790fcab8bc6affb5
-                        twitter_api.send_direct_message(screen_name=recipient,
-                                                        text=c)
+                        if twitter_api.send_direct_message(screen_name=recipient,
+                                                           text=c):
+                            log_tweet(c, recipient, from_address)
+
                     except tweepy.TweepError:
-                        s3_debug("Unable to Tweet DM")
+                        current.log.error("Unable to Tweet DM")
             else:
                 prefix = "@%s " % recipient
-                chunks = self.break_to_chunks(text,
-                                              TWITTER_MAX_CHARS - len(prefix))
+                chunks = self._break_to_chunks(text,
+                                               TWITTER_MAX_CHARS - len(prefix))
                 for c in chunks:
                     try:
-                        twitter_api.update_status(prefix + c)
+                        twitter_api.update_status("%s %s" % prefix, c)
                     except tweepy.TweepError:
-                        s3_debug("Unable to Tweet @mention")
+                        current.log.error("Unable to Tweet @mention")
+                    else:
+                        log_tweet(c, recipient, from_address)
         else:
-            chunks = self.break_to_chunks(text, TWITTER_MAX_CHARS)
+            chunks = self._break_to_chunks(text)
             for c in chunks:
                 try:
                     twitter_api.update_status(c)
                 except tweepy.TweepError:
-                    s3_debug("Unable to Tweet")
-
-        return True
-
-    #-------------------------------------------------------------------------
-    def receive_subscribed_tweets(self):
-        """
-            Function  to call to drop the tweets into search_results table
-            - called via cron or twitter_search_results controller
-        """
-
-        # Initialize Twitter API
-        twitter_settings = self.get_twitter_api()
-        if not twitter_settings:
-            # Abort
-            return False
-
-        tweepy = self.tweepy
-        twitter_api = None
-        if twitter_settings:
-            twitter_api = twitter_settings["twitter_api"]
-
-        if not twitter_api:
-            # Abort
-            return False
-
-        from s3parser import S3Parsing
-        parser = S3Parsing.parser
-
-        db = current.db
-        s3db = current.s3db
-        results_table = s3db.msg_twitter_search_results
-        table = s3db.msg_twitter_search
-        rows = db(table.id > 0).select(table.id,
-                                       table.search_query)
-
-        # Get the latest updated post time to use it as since_id in twitter search
-        recent_time = results_table.posted_at.max()
-
-        for row in rows:
-            query = row.search_query
-            try:
-                if recent_time:
-                    search_results = twitter_api.search(query,
-                                                        result_type="recent",
-                                                        show_user=True,
-                                                        since_id=recent_time)
+                    current.log.error("Unable to Tweet")
                 else:
-                    search_results = twitter_api.search(query,
-                                                        result_type="recent",
-                                                        show_user=True)
-
-                search_results.reverse()
-
-                id = row.id
-                for result in search_results:
-                    # Check if the tweet already exists in the table
-                    query = (results_table.posted_by == result.from_user) & \
-                            (results_table.posted_at == result.created_at)
-                    tweet_exists = db(query).select(results_table.id,
-                                                    limitby=(0, 1)
-                                                    ).first()
-
-                    if tweet_exists:
-                        continue
-                    else:
-                        tweet = result.text
-                        posted_by = result.from_user
-                        if result.geo:
-                            coordinates = result.geo["coordinates"]
-                        else:
-                            coordinates = None
-                        category, priority, location_id = parser("filter",
-                                                                 tweet,
-                                                                 posted_by,
-                                                                 service="twitter",
-                                                                 coordinates=coordinates)
-                        results_table.insert(tweet = tweet,
-                                             category = category,
-                                             priority = priority,
-                                             location_id = location_id,
-                                             posted_by = posted_by,
-                                             posted_at = result.created_at,
-                                             twitter_search = id
-                                             )
-            except tweepy.TweepError:
-                s3_debug("Unable to get the Tweets for the user search query.")
-                return False
-
-            # Explicitly commit DB operations when running from Cron
-            db.commit()
+                    log_tweet(c, recipient, from_address)
 
         return True
 
     # -------------------------------------------------------------------------
-    def fetch_inbound_email(self, username, server):
+    def poll(self, tablename, channel_id):
+        """
+            Poll a Channel for New Messages
+        """
+
+        channel_type = tablename.split("_", 2)[1]
+        # Launch the correct Poller
+        function_name = "poll_%s" % channel_type
+        try:
+            fn = getattr(S3Msg, function_name)
+        except:
+            error = "Unsupported Channel: %s" % channel_type
+            current.log.error(error)
+            return error
+
+        result = fn(channel_id)
+        return result
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def poll_email(channel_id):
         """
             This is a simple mailbox polling script for the Messaging Module.
-            It is called from the scheduler.
-            @param username: email address of the email source to read from.
-            This uniquely identifies one inbound email task.
-        """
-        # This is the former cron/email_receive.py.
-        #
-        # @ToDo: If delete_from_server is false, we don't want to download the
-        # same messages repeatedly.  Perhaps record time of fetch runs (or use
-        # info from the scheduler_run table), compare w/ message timestamp, as
-        # a filter.  That may not be completely accurate, so could check
-        # msg_log for messages close to the last fetch time.  Or just advise
-        # people to have a dedicated account to which email is sent, that does
-        # not also need to be read by humans.  Or don't delete the fetched mail
-        # until the next run.  Or...
-        #
-        # ToDos from the original version:
-        # @ToDo: If there is a need to collect from non-compliant mailers then
-        # suggest using the robust Fetchmail to collect & store in a more
-        # compliant mailer!
-        # @ToDo: This doesn't handle MIME attachments.
+            It is normally called from the scheduler.
 
-        import socket, email
+            @ToDo: Handle MIME attachments
+                   http://docs.python.org/2/library/email-examples.html
+            @ToDo: If there is a need to collect from non-compliant mailers
+                   then suggest using the robust Fetchmail to collect & store
+                   in a more compliant mailer!
+            @ToDo: If delete_from_server is false, we don't want to download the
+                   same messages repeatedly.  Perhaps record time of fetch runs
+                   (or use info from the scheduler_run table), compare w/ message
+                   timestamp, as a filter. That may not be completely accurate,
+                   so could check msg_email for messages close to the last
+                   fetch time. Or just advise people to have a dedicated account
+                   to which email is sent, that does not also need to be read
+                   by humans. Or don't delete the fetched mail until the next run.
+        """
 
         db = current.db
         s3db = current.s3db
 
-        inbound_status_table = s3db.msg_email_inbound_status
-        inbox_table = s3db.msg_email
-        parsing_table = s3db.msg_parsing_status
-        source_task_id = username
-        setting_table = s3db.msg_email_inbound_channel
-
+        table = s3db.msg_email_channel
         # Read-in configuration from Database
-        query = (setting_table.username == username) & (setting_table.server == server)
-        settings = db(query).select(limitby=(0, 1)).first()
-        if not settings:
-            return "Username %s (%s) not scheduled." % username % server
+        query = (table.channel_id == channel_id)
+        channel = db(query).select(table.username,
+                                   table.password,
+                                   table.server,
+                                   table.protocol,
+                                   table.use_ssl,
+                                   table.port,
+                                   table.delete_from_server,
+                                   limitby=(0, 1)).first()
+        if not channel:
+            return "No Such Email Channel: %s" % channel_id
 
-        host = server
-        protocol = settings.protocol
-        ssl = settings.use_ssl
-        port = int(settings.port)
-        username = settings.username
-        password = settings.password
-        delete = settings.delete_from_server
+        import email
+        #import mimetypes
+        import socket
 
+        from dateutil import parser
+        date_parse = parser.parse
+
+        username = channel.username
+        password = channel.password
+        host = channel.server
+        protocol = channel.protocol
+        ssl = channel.use_ssl
+        port = int(channel.port)
+        delete = channel.delete_from_server
+
+        mtable = db.msg_email
+        minsert = mtable.insert
+        stable = db.msg_channel_status
+        sinsert = stable.insert
+        atable = s3db.msg_attachment
+        ainsert = atable.insert
+        dtable = db.doc_document
+        dinsert = dtable.insert
+        store = dtable.file.store
+        update_super = s3db.update_super
+        # Is this channel connected to a parser?
+        parser = s3db.msg_parser_enabled(channel_id)
+        if parser:
+            ptable = db.msg_parsing_status
+            pinsert = ptable.insert
+
+        # ---------------------------------------------------------------------
+        def parse_email(message):
+            """
+                Helper to parse the mail
+            """
+
+            # Create a Message object
+            msg = email.message_from_string(message)
+            # Parse the Headers
+            sender = msg["from"]
+            subject = msg.get("subject", "")
+            date_sent = msg.get("date", None)
+            # Store the whole raw message
+            raw = msg.as_string()
+            # Parse out the 'Body'
+            # Look for Attachments
+            attachments = []
+            # http://docs.python.org/2/library/email-examples.html
+            body = ""
+            for part in msg.walk():
+                if part.get_content_maintype() == "multipart":
+                    # multipart/* are just containers
+                    continue
+                filename = part.get_filename()
+                if not filename:
+                    # Assume this is the Message Body (plain text or HTML)
+                    if not body:
+                        # Plain text will come first
+                        body = part.get_payload(decode=True)
+                    continue
+                attachments.append((filename, part.get_payload(decode=True)))
+
+            # Store in DB
+            data = dict(channel_id=channel_id,
+                        from_address=sender,
+                        subject=subject[:78],
+                        body=body,
+                        raw=raw,
+                        inbound=True,
+                        )
+            if date_sent:
+                data["date"] = date_parse(date_sent)
+            _id = minsert(**data)
+            record = dict(id=_id)
+            update_super(mtable, record)
+            message_id = record["message_id"]
+            for a in attachments:
+                # Linux ext2/3 max filename length = 255
+                # b16encode doubles length & need to leave room for doc_document.file.16charsuuid.
+                # store doesn't support unicode, so need an ascii string
+                filename = s3_unicode(a[0][:92]).encode("ascii", "ignore")
+                fp = StringIO()
+                fp.write(a[1])
+                fp.seek(0)
+                newfilename = store(fp, filename)
+                fp.close()
+                document_id = dinsert(name=filename,
+                                      file=newfilename)
+                update_super(dtable, dict(id=document_id))
+                ainsert(message_id=message_id,
+                        document_id=document_id)
+            if parser:
+                pinsert(message_id=message_id,
+                        channel_id=channel_id)
+
+        dellist = []
         if protocol == "pop3":
             import poplib
             # http://docs.python.org/library/poplib.html
@@ -1324,16 +1448,11 @@ class S3Msg(object):
                     p = poplib.POP3(host, port)
             except socket.error, e:
                 error = "Cannot connect: %s" % e
-                print error
+                current.log.error(error)
                 # Store status in the DB
-                try:
-                    id = db().select(inbound_status_table.id, limitby=(0, 1)).first().id
-                    db(inbound_status_table.id == id).update(status=error)
-                except:
-                    inbound_status_table.insert(status=error)
-                # Explicitly commit DB operations when running from Cron
-                db.commit()
-                return True
+                sinsert(channel_id=channel_id,
+                        status=error)
+                return error
 
             try:
                 # Attempting APOP authentication...
@@ -1344,56 +1463,22 @@ class S3Msg(object):
                     p.user(username)
                     p.pass_(password)
                 except poplib.error_proto, e:
-                    print "Login failed:", e
+                    error = "Login failed: %s" % e
+                    current.log.error(error)
                     # Store status in the DB
-                    try:
-                        id = db().select(inbound_status_table.id, limitby=(0, 1)).first().id
-                        db(inbound_status_table.id == id).update(status="Login failed: %s" % e)
-                    except:
-                        inbound_status_table.insert(status="Login failed: %s" % e)
-                    # Explicitly commit DB operations when running from Cron
-                    db.commit()
-                    return True
+                    sinsert(channel_id=channel_id,
+                            status=error)
+                    return error
 
-            dellist = []
             mblist = p.list()[1]
-            update_super = s3db.update_super
             for item in mblist:
                 number, octets = item.split(" ")
                 # Retrieve the message (storing it in a list of lines)
                 lines = p.retr(number)[1]
-                # Create an e-mail object representing the message
-                msg = email.message_from_string("\n".join(lines))
-                # Parse out the 'From' Header
-                sender = msg["from"]
-                # Parse out the 'Subject' Header
-                if "subject" in msg:
-                    subject = msg["subject"]
-                else:
-                    subject = ""
-                # Parse out the 'Body'
-                textParts = msg.get_payload()
-                body = textParts[0]
-                # Store in DB
-                id = inbox_table.insert(from_address=sender,
-                                        subject=subject,
-                                        body=body,
-                                        inbound=True)
-                record = db(inbox_table.id == id).select(inbox_table.id,
-                                                         inbox_table.message_id,
-                                                         limitby=(0, 1)
-                                                        ).first()
-                update_super(inbox_table, record)
-                parsing_table.insert(message_id = record.message_id,
-                                     source_task_id = source_task_id,
-                                     is_parsed = False)
-
+                parse_email("\n".join(lines))
                 if delete:
                     # Add it to the list of messages to delete later
                     dellist.append(number)
-            # Explicitly commit DB operations when running from Cron.
-            # @ToDo:  Still needed when running under Scheduler?
-            db.commit()
             # Iterate over the list of messages to delete
             for number in dellist:
                 p.dele(number)
@@ -1409,75 +1494,37 @@ class S3Msg(object):
                     M = imaplib.IMAP4(host, port)
             except socket.error, e:
                 error = "Cannot connect: %s" % e
-                print error
+                current.log.error(error)
                 # Store status in the DB
-                try:
-                    id = db().select(inbound_status_table.id, limitby=(0, 1)).first().id
-                    db(inbound_status_table.id == id).update(status=error)
-                except:
-                    inbound_status_table.insert(status=error)
-                # Explicitly commit DB operations when running from Cron
-                # @ToDo:  Still needed when running under Scheduler?
-                db.commit()
-                return True
+                sinsert(channel_id=channel_id,
+                        status=error)
+                return error
 
             try:
                 M.login(username, password)
             except M.error, e:
                 error = "Login failed: %s" % e
-                print error
+                current.log.error(error)
                 # Store status in the DB
-                try:
-                    id = db().select(inbound_status_table.id, limitby=(0, 1)).first().id
-                    db(inbound_status_table.id == id).update(status=error)
-                except:
-                    inbound_status_table.insert(status=error)
+                sinsert(channel_id=channel_id,
+                        status=error)
                 # Explicitly commit DB operations when running from Cron
                 db.commit()
-                return True
+                return error
 
-            dellist = []
             # Select inbox
             M.select()
             # Search for Messages to Download
             typ, data = M.search(None, "ALL")
-            update_super = s3db.update_super
-
-            for num in data[0].split():
-                typ, msg_data = M.fetch(num, "(RFC822)")
+            mblist = data[0].split()
+            for number in mblist:
+                typ, msg_data = M.fetch(number, "(RFC822)")
                 for response_part in msg_data:
                     if isinstance(response_part, tuple):
-                        msg = email.message_from_string(response_part[1])
-                        # Parse out the 'From' Header
-                        sender = msg["from"]
-                        # Parse out the 'Subject' Header
-                        if "subject" in msg:
-                            subject = msg["subject"]
-                        else:
-                            subject = ""
-                        # Parse out the 'Body'
-                        textParts = msg.get_payload()
-                        body = textParts[0]
-                        # Store in DB
-                        id = inbox_table.insert(from_address=sender,
-                                                subject=subject,
-                                                body=body,
-                                                inbound=True)
-                        iquery = (inbox_table.id == id)
-                        record = db(iquery).select(inbox_table.id,
-                                                   inbox_table.message_id,
-                                                   limitby=(0, 1)
-                                                  ).first()
-                        update_super(inbox_table, record)
-                        parsing_table.insert(message_id = record.message_id,
-                                             source_task_id = source_task_id,
-                                             is_parsed = False)
-
+                        parse_email(response_part[1])
                         if delete:
                             # Add it to the list of messages to delete later
-                            dellist.append(num)
-            # Explicitly commit DB operations when running from Cron
-            db.commit()
+                            dellist.append(number)
             # Iterate over the list of messages to delete
             for number in dellist:
                 typ, response = M.store(number, "+FLAGS", r"(\Deleted)")
@@ -1486,20 +1533,7 @@ class S3Msg(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def source_id(username):
-        """ Extracts the source_task_id from a given message. """
-
-        db = current.db
-        table = db.scheduler_task
-        records = db(table.id > 0).select(table.id,
-                                          table.vars)
-        for record in records:
-            if record.vars.split(":") == ["{\"username\""," \"%s\"}" % username] :
-                return record.id
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def mcommons_poll(campaign_id):
+    def poll_mcommons(channel_id):
         """
             Fetches the inbound SMS from Mobile Commons API
             http://www.mobilecommons.com/mobile-commons-api/rest/#ListIncomingMessages
@@ -1508,248 +1542,625 @@ class S3Msg(object):
         db = current.db
         s3db = current.s3db
         table = s3db.msg_mcommons_channel
-        query = (table.campaign_id == campaign_id)
-        account = db(query).select(limitby=(0, 1)).first()
-        if account:
-            url = account.url
-            username = account.username
-            password = account.password
-            _query = account.query
-            timestamp = account.timestmp
+        query = (table.channel_id == channel_id)
+        channel = db(query).select(table.url,
+                                   table.campaign_id,
+                                   table.username,
+                                   table.password,
+                                   table.query,
+                                   table.timestmp,
+                                   limitby=(0, 1)).first()
+        if not channel:
+            return "No Such MCommons Channel: %s" % channel_id
 
-            url = "%s?campaign_id=%s" % (url, campaign_id)
-            if timestamp:
-                url = "%s&start_time=%s" % (url, timestamp)
-            if _query:
-                url = "%s&query=%s" % (url, _query)
+        url = channel.url
+        username = channel.username
+        password = channel.password
+        _query = channel.query
+        timestamp = channel.timestmp
 
-            # Create a password manager
-            passman = urllib2.HTTPPasswordMgrWithDefaultRealm()
-            passman.add_password(None, url, username, password)
+        url = "%s?campaign_id=%s" % (url, channel.campaign_id)
+        if timestamp:
+            url = "%s&start_time=%s" % (url, timestamp)
+        if _query:
+            url = "%s&query=%s" % (url, _query)
 
-            # Create the AuthHandler
-            authhandler = urllib2.HTTPBasicAuthHandler(passman)
-            opener = urllib2.build_opener(authhandler)
-            urllib2.install_opener(opener)
+        # Create a password manager
+        passman = urllib2.HTTPPasswordMgrWithDefaultRealm()
+        passman.add_password(None, url, username, password)
 
-            # Update the timestamp
-            # NB Ensure MCommons account is in UTC
-            db(query).update(timestmp = current.request.utcnow)
+        # Create the AuthHandler
+        authhandler = urllib2.HTTPBasicAuthHandler(passman)
+        opener = urllib2.build_opener(authhandler)
+        urllib2.install_opener(opener)
 
-            table = s3db.msg_inbox
-            try:
-                _response = urllib2.urlopen(url)
-                sms_xml = _response.read()
-                tree = etree.XML(sms_xml)
-                messages = tree.findall(".//message")
-                iinsert = table.insert
-                decode = S3Codec.decode_iso_datetime
-                for message in messages:
-                    sender_phone = message.find("phone_number").text
-                    body = message.find("body").text
-                    received_on = decode(message.find("received_at").text)
-                    iinsert(channel = "MCommons: %s" % campaign_id,
-                            sender_phone = sender_phone,
-                            body = body,
-                            received_on = received_on,
-                            )
+        # Update the timestamp
+        # NB Ensure MCommons account is in UTC
+        db(query).update(timestmp = current.request.utcnow)
 
-            except urllib2.HTTPError, e:
-                return "Error:" + str(e.code)
-            return
+        try:
+            _response = urllib2.urlopen(url)
+        except urllib2.HTTPError, e:
+            return "Error: %s" % e.code
+        else:
+            sms_xml = _response.read()
+            tree = etree.XML(sms_xml)
+            messages = tree.findall(".//message")
 
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def twilio_poll(account_name):
-        """ Fetches the inbound SMS from Twilio API."""
+            mtable = s3db.msg_sms
+            minsert = mtable.insert
+            update_super = s3db.update_super
+            decode = S3Codec.decode_iso_datetime
 
-        db = current.db
-        s3db = current.s3db
-        ttable = s3db.msg_twilio_inbound_channel
-        query = (ttable.account_name == account_name) & \
-                (ttable.deleted == False)
-        account = db(query).select(limitby=(0, 1)).first()
-        if account:
-            url = account.url
-            account_sid = account.account_sid
-            auth_token = account.auth_token
+            # Is this channel connected to a parser?
+            parser = s3db.msg_parser_enabled(channel_id)
+            if parser:
+                ptable = db.msg_parsing_status
+                pinsert = ptable.insert
 
-            # @ToDo: Do we really have to download *all* messages every time
-            # & then only import the ones we don't yet have?
-            url += "/%s/SMS/Messages.json" % str(account_sid)
+            for message in messages:
+                sender_phone = message.find("phone_number").text
+                body = message.find("body").text
+                received_on = decode(message.find("received_at").text)
+                _id = minsert(channel_id = channel_id,
+                              sender_phone = sender_phone,
+                              body = body,
+                              received_on = received_on,
+                              )
+                record = dict(id=_id)
+                update_super(mtable, record)
+                if parser:
+                    pinsert(message_id = record["message_id"],
+                            channel_id = channel_id)
 
-            # Create a password manager
-            passman = urllib2.HTTPPasswordMgrWithDefaultRealm()
-            passman.add_password(None, url, account_sid, auth_token)
-
-            # Create the AuthHandler
-            authhandler = urllib2.HTTPBasicAuthHandler(passman)
-            opener = urllib2.build_opener(authhandler)
-            urllib2.install_opener(opener)
-
-            itable = s3db.msg_twilio_inbox
-            mtable = s3db.msg_message
-            query = itable.deleted == False
-            messages = db(query).select(itable.sid)
-            downloaded_sms = [message.sid for message in messages]
-            try:
-                smspage = urllib2.urlopen(url)
-                minsert = itable.insert
-                sms_list = json.loads(smspage.read())
-                update_super = s3db.update_super
-
-                for sms in  sms_list["sms_messages"]:
-                    if (sms["direction"] == "inbound") and \
-                       (sms["sid"] not in downloaded_sms):
-                        sender = "<" + sms["from"] + ">"
-                        id = minsert(sid=sms["sid"],
-                                     body=sms["body"],
-                                     status=sms["status"],
-                                     from_address=sender,
-                                     received_on=sms["date_sent"])
-                        record = db(itable.id == id).select(itable.message_id,
-                                                            limitby=(0, 1)
-                                                            ).first()
-                        update_super(itable, record)
-                        message_id = record.message_id
-                        ptable.insert(message_id = message_id, \
-                                      source_task_id = sender)
-
-            except urllib2.HTTPError, e:
-                return "Error:" + str(e.code)
-            return
+        return "OK"
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def rss_poll():
-        """ Fetches RSS Feeds."""
+    def poll_twilio(channel_id):
+        """
+            Fetches the inbound SMS from Twilio API
+            http://www.twilio.com/docs/api/rest
+        """
 
-        import gluon.contrib.feedparser as feedparser
-
-        request = current.request
-        s3db = current.s3db
         db = current.db
-        ctable = s3db.msg_rss_channel
-        ftable = s3db.msg_rss_feed
-        ptable = s3db.msg_parsing_status
+        s3db = current.s3db
+        table = s3db.msg_twilio_channel
+        query = (table.channel_id == channel_id)
+        channel = db(query).select(table.account_sid,
+                                   table.auth_token,
+                                   table.url,
+                                   limitby=(0, 1)).first()
+        if not channel:
+            return "No Such Twilio Channel: %s" % channel_id
 
-        query = (ctable.deleted == False) & (ctable.subscribed == True)
-        links = db(query).select(ctable.url)
+        # @ToDo: Do we really have to download *all* messages every time
+        # & then only import the ones we don't yet have?
+        account_sid = channel.account_sid
+        url = "%s/%s/SMS/Messages.json" % (channel.url, account_sid)
 
+        # Create a password manager
+        passman = urllib2.HTTPPasswordMgrWithDefaultRealm()
+        passman.add_password(None, url, account_sid, channel.auth_token)
+
+        # Create the AuthHandler
+        authhandler = urllib2.HTTPBasicAuthHandler(passman)
+        opener = urllib2.build_opener(authhandler)
+        urllib2.install_opener(opener)
+
+        try:
+            smspage = urllib2.urlopen(url)
+        except urllib2.HTTPError, e:
+            error = "Error: %s" % e.code
+            current.log.error(error)
+            # Store status in the DB
+            db(table.channel_id == channel_id).update(status=error)
+            return error
+        else:
+            sms_list = json.loads(smspage.read())
+            messages = sms_list["sms_messages"]
+            # Find all the SIDs we have already downloaded
+            # (even if message was deleted)
+            stable = db.msg_twilio_sid
+            sids = db(stable.id > 0).select(stable.sid)
+            downloaded_sms = [s.sid for s in sids]
+
+            mtable = s3db.msg_sms
+            minsert = mtable.insert
+            sinsert = stable.insert
+            update_super = s3db.update_super
+
+            # Is this channel connected to a parser?
+            parser = s3db.msg_parser_enabled(channel_id)
+            if parser:
+                ptable = db.msg_parsing_status
+                pinsert = ptable.insert
+
+            for sms in messages:
+                if (sms["direction"] == "inbound") and \
+                   (sms["sid"] not in downloaded_sms):
+                    sender = "<" + sms["from"] + ">"
+                    _id = minsert(channel_id=channel_id,
+                                  body=sms["body"],
+                                  status=sms["status"],
+                                  from_address=sender,
+                                  received_on=sms["date_sent"])
+                    record = dict(id=_id)
+                    update_super(mtable, record)
+                    message_id = record["message_id"]
+                    sinsert(message_id = message_id,
+                            sid=sms["sid"])
+                    if parser:
+                        pinsert(message_id = message_id,
+                                channel_id = channel_id)
+        return "OK"
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def poll_rss(channel_id):
+        """
+            Fetches all new messages from a subscribed RSS Feed
+        """
+
+        db = current.db
+        s3db = current.s3db
+        table = s3db.msg_rss_channel
+        query = (table.channel_id == channel_id)
+        channel = db(query).select(table.date,
+                                   table.etag,
+                                   table.url,
+                                   limitby=(0, 1)).first()
+        if not channel:
+            return "No Such RSS Channel: %s" % channel_id
+
+        # http://pythonhosted.org/feedparser
+        import feedparser
+        if channel.etag:
+            # http://pythonhosted.org/feedparser/http-etag.html
+            # NB This won't help for a server like Drupal 7 set to not allow caching & hence generating a new ETag/Last Modified each request!
+            d = feedparser.parse(channel.url, etag=channel.etag)
+        elif channel.date:
+            d = feedparser.parse(channel.url, modified=channel.date.utctimetuple())
+        else:
+            # We've not polled this feed before
+            d = feedparser.parse(channel.url)
+
+        if d.bozo:
+            # Something doesn't seem right
+            S3Msg.update_channel_status(channel_id,
+                                        status=d.bozo_exception.message,
+                                        period=(300, 3600))
+            return
+
+        # Update ETag/Last-polled
+        now = current.request.utcnow
+        data = dict(date=now)
+        etag = d.get("etag", None)
+        if etag:
+            data["etag"] = etag
+        db(query).update(**data)
+        
+        from time import mktime, struct_time
+        gis = current.gis
+        geocode_r = gis.geocode_r
+        hierarchy_level_keys = gis.hierarchy_level_keys
+        utcfromtimestamp = datetime.datetime.utcfromtimestamp
+        gtable = db.gis_location
+        ginsert = gtable.insert
+        mtable = db.msg_rss
+        minsert = mtable.insert
         update_super = s3db.update_super
 
-        for link in links:
-            d = feedparser.parse(link.url)
-            for entry in d.entries:
-                id = ftable.insert(title = entry.title,
-                                   from_address = entry.link,
-                                   body = entry.description,
-                                   created_on = request.now)
-                record = db(ftable.id == id).select(ftable.id,
-                                                    ftable.message_id,
-                                                    limitby=(0, 1)).first()
-                update_super(ftable, record)
-                message_id = record.message_id
-                ptable.insert(message_id = message_id,
-                              source_task_id = link.url)
+        # Is this channel connected to a parser?
+        parser = s3db.msg_parser_enabled(channel_id)
+        if parser:
+            ptable = db.msg_parsing_status
+            pinsert = ptable.insert
 
-        # Commit as this is a task normally run async
-        db.commit()
-        return
+        entries = d.entries
+        if entries:
+            # Check how many we have already to see if any are new
+            count_old = db(mtable.id > 0).count()
+        for entry in entries:
+            link = entry.get("link", None)
+
+            # Check for duplicates
+            # (ETag just saves bandwidth, doesn't filter the contents of the feed)
+            exists = db(mtable.from_address == link).select(mtable.id,
+                                                            mtable.location_id,
+                                                            mtable.message_id,
+                                                            limitby=(0, 1)
+                                                            ).first()
+            if exists:
+                location_id = exists.location_id
+            else:
+                location_id = None
+
+            title = entry.title
+
+            content = entry.get("content", None)
+            if content:
+                content = content[0].value
+            else:
+                content = entry.get("description", None)
+
+            # Consider using dateutil.parser.parse(entry.get("published"))
+            # http://www.deadlybloodyserious.com/2007/09/feedparser-v-django/
+            date_published = entry.get("published_parsed", entry.get("updated_parsed"))
+            if isinstance(date_published, struct_time):
+                date_published = utcfromtimestamp(mktime(date_published))
+            else:
+                date_published = now
+
+            tags = entry.get("tags", None)
+            if tags:
+                tags = [t.term.encode("utf-8") for t in tags]
+
+            location = False
+            lat = entry.get("geo_lat", None)
+            lon = entry.get("geo_long", None)
+            if lat is None or lon is None:
+                # Try GeoRSS
+                georss = entry.get("georss_point", None)
+                if georss:
+                    location = True
+                    lat, lon = georss.split(" ")
+            else:
+                location = True
+            if location:
+                try:
+                    query = (gtable.lat == lat) &\
+                            (gtable.lon == lon)
+                    exists = db(query).select(gtable.id,
+                                              limitby=(0, 1),
+                                              orderby=gtable.level,
+                                              ).first()
+                    if exists:
+                        location_id = exists.id
+                    else:
+                        data = dict(lat=lat,
+                                    lon=lon,
+                                    )
+                        results = geocode_r(lat, lon)
+                        if isinstance(results, dict):
+                            for key in hierarchy_level_keys:
+                                v = results.get(key, None)
+                                if v:
+                                    data[key] = v
+                        #if location_id:
+                        # Location has been changed
+                        #db(gtable.id == location_id).update(**data)
+                        location_id = ginsert(**data)
+                        data["id"] = location_id
+                        gis.update_location_tree(data)
+                except:
+                    # Don't die on badly-formed Geo
+                    pass
+
+            if exists:
+                db(mtable.id == exists.id).update(channel_id = channel_id,
+                                                  title = title,
+                                                  from_address = link,
+                                                  body = content,
+                                                  author = entry.get("author", None),
+                                                  date = date_published,
+                                                  location_id = location_id,
+                                                  tags = tags,
+                                                  # @ToDo: Enclosures
+                                                  )
+                if parser:
+                    pinsert(message_id = exists.message_id,
+                            channel_id = channel_id)
+                
+            else:
+                _id = minsert(channel_id = channel_id,
+                              title = entry.title,
+                              from_address = link,
+                              body = content,
+                              author = entry.get("author", None),
+                              date = date_published,
+                              location_id = location_id,
+                              tags = tags,
+                              # @ToDo: Enclosures
+                              )
+                record = dict(id=_id)
+                update_super(mtable, record)
+                if parser:
+                    pinsert(message_id = record["message_id"],
+                            channel_id = channel_id)
+
+        if entries:
+            # Check again to see if there were any new ones
+            count_new = db(mtable.id > 0).count()
+            if count_new == count_old:
+                # No new posts?
+                # Back-off in-case the site isn't respecting ETags/Last-Modified
+                S3Msg.update_channel_status(channel_id,
+                                            status="+1",
+                                            period=(300, 3600))
+
+        return "OK"
+
+    #-------------------------------------------------------------------------
+    @staticmethod
+    def poll_twitter(channel_id):
+        """
+            Function  to call to fetch tweets into msg_twitter table
+            - called via Scheduler or twitter_inbox controller
+        """
+
+        # Initialize Twitter API
+        twitter_settings = S3Msg.get_twitter_api(channel_id)
+        if not twitter_settings:
+            # Abort
+            return False
+
+        import tweepy
+
+        twitter_api = twitter_settings[0]
+
+        db = current.db
+        s3db = current.s3db
+        table = s3db.msg_twitter
+
+        # Get the latest Twitter message ID to use it as since_id
+        query = (table.channel_id == channel_id) & \
+                (table.inbound == True)
+        latest = db(query).select(table.msg_id,
+                                  orderby=~table.date,
+                                  limitby=(0, 1)
+                                  ).first()
+
+        try:
+            if latest:
+                messages = twitter_api.direct_messages(since_id=latest.msg_id)
+            else:
+                messages = twitter_api.direct_messages()
+        except tweepy.TweepError as e:
+            error = e.message[0]["message"]
+            current.log.error("Unable to get the Tweets for the user: %s" % error)
+            return False
+
+        messages.reverse()
+
+        tinsert = table.insert
+        update_super = s3db.update_super
+        for message in messages:
+            _id = tinsert(channel_id = channel_id,
+                          body = message.text,
+                          from_address = message.sender_screen_name,
+                          to_address = message.recipient_screen_name,
+                          date = message.created_at,
+                          inbound = True,
+                          msg_id = message.id,
+                          )
+            update_super(table, dict(id=_id))
+
+        return True
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def twitter_search_poll(query_id):
-        """ Fetches Twitter Search Results."""
+    def update_channel_status(channel_id, status, period=None):
+        """
+            Update the Status for a Channel
+        """
 
-        s3db = current.s3db
         db = current.db
 
-        mtable = s3db.msg_message
-        rtable = s3db.msg_twitter_result
-        qtable = s3db.msg_twitter_search_query
-        query = db(qtable.id == query_id).select(qtable.id,
-                                                 qtable.keywords,
-                                                 qtable.lang,
-                                                 qtable.count,
-                                                 qtable.includeEntities,
-                                                 limitby=(0, 1)).first()
+        # Read current status
+        stable = current.s3db.msg_channel_status
+        query = (stable.channel_id == channel_id)
+        old_status = db(query).select(stable.status,
+                                      limitby=(0, 1)
+                                      ).first()
+        if old_status:
+            # Update
+            if status[0] == "+":
+                # Increment status if-numeric
+                old_status = old_status.status
+                try:
+                    old_status = int(old_status)
+                except:
+                    new_status = status
+                else:
+                    new_status = old_status + int(status[1:])
+            else:
+                new_status = status
+            db(query).update(status = new_status)
+        else:
+            # Initialise
+            stable.insert(channel_id = channel_id,
+                          status = status)
+        if period:
+            # Amend the frequency of the scheduled task
+            ttable = db.scheduler_task
+            args = '["msg_rss_channel", %s]' % channel_id
+            query = ((ttable.function_name == "msg_poll") & \
+                     (ttable.args == args) & \
+                     (ttable.status.belongs(["RUNNING", "QUEUED", "ALLOCATED"])))
+            exists = db(query).select(ttable.id,
+                                      ttable.period,
+                                      limitby=(0, 1)).first()
+            if not exists:
+                return
+            old_period = exists.period
+            max_period = period[1]
+            if old_period < max_period:
+                new_period = old_period + period[0]
+                new_period = min(new_period, max_period)
+                db(ttable.id == exists.id).update(period=new_period)
 
-        keywords = query.keywords.split(" ")
-        language = query.lang
-        count = int(query.count)
-        includeEntities = query.includeEntities
-
-        ttable = s3db.msg_twitter_search_channel
-        settings = db(ttable.id>0).select(ttable.id,
-                                          ttable.consumer_key,
-                                          ttable.consumer_secret,
-                                          ttable.access_token,
-                                          ttable.access_token_secret,
-                                          limitby=(0, 1)).first()
-        consumer_key = settings.consumer_key
-        consumer_secret = settings.consumer_secret
-        access_token = settings.access_token
-        access_token_secret = settings.access_token_secret
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def twitter_search(search_id):
+        """
+            Fetch Results for a Twitter Search Query
+        """
 
         try:
             import TwitterSearch
         except ImportError:
-            s3_debug("s3msg", "Message Parsing unresolved dependency: TwitterSearch required for fetching results from twitter keyword queries")
-            raise
+            error = "Unresolved dependency: TwitterSearch required for fetching results from twitter keyword queries"
+            current.log.error("s3msg", error)
+            current.session.error = error
+            redirect(URL(f="index"))
+
+        db = current.db
+        s3db = current.s3db
+
+        # Read Settings
+        table = s3db.msg_twitter_channel
+        # Doesn't need to be enabled for Polling
+        settings = db(table.id > 0).select(table.consumer_key,
+                                           table.consumer_secret,
+                                           table.access_token,
+                                           table.access_token_secret,
+                                           limitby=(0, 1)).first()
+
+        if not settings:
+            error = "Twitter Search requires an account configuring"
+            current.log.error("s3msg", error)
+            current.session.error = error
+            redirect(URL(f="twitter_channel"))
+
+        qtable = s3db.msg_twitter_search
+        rtable = db.msg_twitter_result
+        search_query = db(qtable.id == search_id).select(qtable.id,
+                                                         qtable.keywords,
+                                                         qtable.lang,
+                                                         qtable.count,
+                                                         qtable.include_entities,
+                                                         limitby=(0, 1)).first()
+
+        tso = TwitterSearch.TwitterSearchOrder()
+        tso.setKeywords(search_query.keywords.split(" "))
+        tso.setLanguage(search_query.lang)
+        # @ToDo Handle more than 100 results per page
+        # This may have to be changed upstream
+        tso.setCount(int(search_query.count))
+        tso.setIncludeEntities(search_query.include_entities)
 
         try:
-            tso = TwitterSearch.TwitterSearchOrder()
-            tso.setKeywords(keywords)
-            tso.setLanguage(language)
-            # @ToDo Handle more than 100 results per page
-            # This may have to be changed upstream
-            tso.setCount(count)
-            tso.setIncludeEntities(includeEntities)
-
             ts = TwitterSearch.TwitterSearch(
-                consumer_key = consumer_key,
-                consumer_secret = consumer_secret,
-                access_token = access_token,
-                access_token_secret = access_token_secret
-             )
-
-            update_super = s3db.update_super
-            from dateutil import parser
-            for tweet in ts.searchTweetsIterable(tso):
-                user = tweet["user"]["screen_name"]
-                body = tweet["text"]
-                tweet_id = tweet["id_str"]
-                lang = tweet["lang"]
-                created_on = parser.parse(tweet["created_at"])
-                lat = None
-                lon = None
-                if tweet["coordinates"]:
-                    lat = tweet["coordinates"]["coordinates"][1]
-                    lon = tweet["coordinates"]["coordinates"][0]
-                id = rtable.insert(from_address = user,
-                                   query_id = query_id,
-                                   body = body,
-                                   tweet_id = tweet_id,
-                                   lang = lang,
-                                   created_on = created_on,
-                                   lat = lat,
-                                   lon = lon)
-                rquery = (rtable.id == id)
-                record = db(rquery).select(rtable.id,
-                                           rtable.message_id,
-                                           limitby=(0, 1)).first()
-                update_super(rtable, record)
-                db(mtable.id == record.message_id).update(inbound = True)
-
+                consumer_key = settings.consumer_key,
+                consumer_secret = settings.consumer_secret,
+                access_token = settings.access_token,
+                access_token_secret = settings.access_token_secret
+                )
         except TwitterSearch.TwitterSearchException as e:
             return(str(e))
 
-        db(qtable.id == query_id).update(is_searched = True)
+        from dateutil import parser
+        date_parse = parser.parse
 
-        # Commit as this is a task normally run async
-        db.commit()
-        return
+        gtable = db.gis_location
+        # Disable validation
+        rtable.location_id.requires = None
+        update_super = s3db.update_super
+
+        for tweet in ts.searchTweetsIterable(tso):
+            user = tweet["user"]["screen_name"]
+            body = tweet["text"]
+            tweet_id = tweet["id_str"]
+            lang = tweet["lang"]
+            created_at = date_parse(tweet["created_at"])
+            lat = None
+            lon = None
+            if tweet["coordinates"]:
+                lat = tweet["coordinates"]["coordinates"][1]
+                lon = tweet["coordinates"]["coordinates"][0]
+                location_id = gtable.insert(lat=lat, lon=lon)
+            else:
+                location_id = None
+            _id = rtable.insert(from_address = user,
+                                search_id = search_id,
+                                body = body,
+                                tweet_id = tweet_id,
+                                lang = lang,
+                                date = created_at,
+                                inbound = True,
+                                location_id = location_id,
+                                )
+            update_super(rtable, dict(id=_id))
+
+        # This is simplistic as we may well want to repeat the same search multiple times
+        db(qtable.id == search_id).update(is_searched = True)
+
+        return "OK"
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def process_keygraph(search_id):
+        """ Process results of twitter search with KeyGraph."""
+
+        import subprocess
+        import os
+        import tempfile
+
+        db = current.db
+        s3db = current.s3db
+        curpath = os.getcwd()
+        preprocess = S3Msg.preprocess_tweet
+
+        def generateFiles():
+
+            dirpath = tempfile.mkdtemp()
+            os.chdir(dirpath)
+
+            rtable = s3db.msg_twitter_search_results
+            tweets = db(rtable.deleted == False).select(rtable.body)
+            tweetno = 1
+            for tweet in tweets:
+                filename = "%s.txt" % tweetno
+                f = open(filename, "w")
+                f.write(preprocess(tweet.body))
+                tweetno += 1
+
+            return dirpath
+
+        tpath = generateFiles()
+        jarpath = os.path.join(curpath, "static", "KeyGraph", "keygraph.jar")
+        resultpath = os.path.join(curpath, "static", "KeyGraph", "results", "%s.txt" % search_id)
+        return subprocess.call(["java", "-jar", jarpath, tpath , resultpath])
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def preprocess_tweet(tweet):
+        """
+            Preprocesses tweets to remove  URLs,
+            RTs, extra whitespaces and replace hashtags
+            with their definitions.
+        """
+
+        import re
+
+        tagdef = S3Msg.tagdef
+        tweet = tweet.lower()
+        tweet = re.sub('((www\.[\s]+)|(https?://[^\s]+))', "", tweet)
+        tweet = re.sub('@[^\s]+', "", tweet)
+        tweet = re.sub('[\s]+', " ", tweet)
+        tweet = re.sub(r'#([^\s]+)', lambda m:tagdef(m.group(0)), tweet)
+        tweet = tweet.strip('\'"')
+
+        return tweet
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def tagdef(hashtag):
+        """
+            Returns the definition of a hashtag.
+        """
+
+        hashtag = hashtag.split("#")[1]
+
+        turl = "http://api.tagdef.com/one.%s.json" % hashtag
+        try:
+            hashstr = urllib2.urlopen(turl).read()
+            hashdef = json.loads(hashstr)
+        except:
+            return hashtag
+        else:
+            return hashdef["defs"]["def"]["text"]
 
 # =============================================================================
 class S3Compose(S3CRUD):
@@ -1767,7 +2178,7 @@ class S3Compose(S3CRUD):
         if r.http in ("GET", "POST"):
             output = self.compose(r, **attr)
         else:
-            r.error(405, current.manager.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
         return output
 
     # -------------------------------------------------------------------------
@@ -1823,7 +2234,7 @@ class S3Compose(S3CRUD):
         if self.method == "compose":
             output = dict(form=form)
         else:
-            r.error(501, current.manager.ERROR.BAD_METHOD)
+            r.error(501, current.ERROR.BAD_METHOD)
 
         # Complete the page
         if r.representation == "html":
@@ -1844,7 +2255,7 @@ class S3Compose(S3CRUD):
             output["title"] = title
             #output["subtitle"] = subtitle
             #output["form"] = form
-            #current.response.view = self._view(r, "list_create.html")
+            #current.response.view = self._view(r, "list_filter.html")
             current.response.view = self._view(r, "create.html")
 
         return output
@@ -1856,27 +2267,45 @@ class S3Compose(S3CRUD):
             Route the message
         """
 
-        auth = current.auth
-        if auth.user:
-            sender_pe_id = auth.user.pe_id
-        else:
-            return
+        post_vars = current.request.post_vars
+        settings = current.deployment_settings
 
-        vars = current.request.post_vars
+        if settings.get_mail_default_subject():
+            system_name_short = "%s - " % settings.get_system_name_short()
+        else:
+            system_name_short = ""
+
+        if settings.get_mail_auth_user_in_subject():
+            user = current.auth.user
+            if user:
+                authenticated_user = "%s %s - " % (user.first_name,
+                                                   user.last_name)
+        else:
+            authenticated_user = ""
+
+        post_vars.subject = authenticated_user + system_name_short + post_vars.subject
+        contact_method = post_vars.contact_method
 
         recipients = self.recipients
         if not recipients:
-            if not vars.pe_id:
-                current.session.error = current.T("Please enter the recipient(s)")
-                redirect(self.url)
+            if not post_vars.pe_id:
+                if contact_method != "TWITTER":
+                    current.session.error = current.T("Please enter the recipient(s)")
+                    redirect(self.url)
+                else:
+                    # This must be a Status Update
+                    if current.msg.send_tweet(post_vars.body):
+                        current.session.confirmation = current.T("Check outbox for the message status")
+                    else:
+                        current.session.error = current.T("Error sending message!")
+                    redirect(self.url)
             else:
-                recipients = vars.pe_id
+                recipients = post_vars.pe_id
 
         if current.msg.send_by_pe_id(recipients,
-                                     vars.subject,
-                                     vars.body,
-                                     sender_pe_id,
-                                     vars.pr_message_method):
+                                     post_vars.subject,
+                                     post_vars.body,
+                                     contact_method):
             current.session.confirmation = current.T("Check outbox for the message status")
             redirect(self.url)
         else:
@@ -1896,7 +2325,7 @@ class S3Compose(S3CRUD):
         db = current.db
         s3db = current.s3db
         request = current.request
-        vars = request.get_vars
+        get_vars = request.get_vars
 
         mtable = s3db.msg_message
         otable = s3db.msg_outbox
@@ -1919,19 +2348,19 @@ class S3Compose(S3CRUD):
             # See if we have defined a custom default contact method for this table
             contact_method = self._config("msg_contact_method", "EMAIL")
 
-        otable.pr_message_method.default = contact_method
+        otable.contact_method.default = contact_method
 
         recipient = self.recipient # from msg.compose()
         if not recipient:
-            if "pe_id" in vars:
-                recipient = vars.pe_id
-            elif "person_id" in vars:
+            if "pe_id" in get_vars:
+                recipient = get_vars.pe_id
+            elif "person_id" in get_vars:
                 # @ToDo
                 pass
-            elif "group_id" in vars:
+            elif "group_id" in get_vars:
                 # @ToDo
                 pass
-            elif "human_resource.id" in vars:
+            elif "human_resource.id" in get_vars:
                 # @ToDo
                 pass
 
@@ -1960,6 +2389,8 @@ class S3Compose(S3CRUD):
         pe_field.label = T("Recipient(s)")
         pe_field.writable = True
         if recipients:
+            # Don't download a SELECT
+            pe_field.requires = None
             # Tell onvalidation about them
             self.recipients = recipients
 
@@ -1989,22 +2420,22 @@ class S3Compose(S3CRUD):
                         if controller == "hrm":
                             url = URL(c="hrm", f="person", args="contacts",
                                       vars={"group": "staff",
-                                            "human_resource.id": vars.get("human_resource.id")})
+                                            "human_resource.id": get_vars.get("human_resource.id")})
                         elif controller == "vol":
                             url = URL(c="vol", f="person", args="contacts",
                                       vars={"group": "volunteer",
-                                            "human_resource.id": vars.get("human_resource.id")})
+                                            "human_resource.id": get_vars.get("human_resource.id")})
                         elif controller == "member":
                             url = URL(c="member", f="person", args="contacts",
-                                      vars={"membership.id": vars.get("membership.id")})
+                                      vars={"membership.id": get_vars.get("membership.id")})
                         else:
                             # @ToDo: Lookup the type
                             url = URL(f="index")
                         redirect(url)
-                    otable.pr_message_method.requires = IS_IN_SET(contact_method_opts,
-                                                                  zero=None)
+                    otable.contact_method.requires = IS_IN_SET(contact_method_opts,
+                                                               zero=None)
                     if contact_method not in contact_method_opts:
-                        otable.pr_message_method.default = contact_method_opts.popitem()[0]
+                        otable.contact_method.default = contact_method_opts.popitem()[0]
                 #elif entity_type = "pr_group":
                     # @ToDo: Loop through members
             else:
@@ -2063,10 +2494,10 @@ class S3Compose(S3CRUD):
 
         # Build a custom form from the 2 source forms
         form = DIV(lcustom.begin,
-                   TABLE(TBODY(TR(TD(LABEL(ocustom.label.pr_message_method)),
-                                  TD(ocustom.widget.pr_message_method),
-                                  TD(ocustom.comment.pr_message_method),
-                                  _id="msg_outbox_pr_message_method__row"
+                   TABLE(TBODY(TR(TD(LABEL(ocustom.label.contact_method)),
+                                  TD(ocustom.widget.contact_method),
+                                  TD(ocustom.comment.contact_method),
+                                  _id="msg_outbox_contact_method__row"
                                   ),
                                pe_row,
                                TR(TD(LABEL(mcustom.label.subject)),
@@ -2099,6 +2530,9 @@ class S3Compose(S3CRUD):
             s3.scripts.append("/%s/static/scripts/S3/s3.msg.js" % request.application)
         else:
             s3.scripts.append("/%s/static/scripts/S3/s3.msg.min.js" % request.application)
+        script = '''i18n.none_of_the_above="%s"''' % T("None of the above")
+        s3.js_global.append(script)
+        # @ToDo: Port SMS maxLength from alert_create_script() in controllers/deploy.py
 
         return form
 
