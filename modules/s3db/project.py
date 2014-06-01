@@ -4607,11 +4607,8 @@ class S3ProjectTaskModel(S3Model):
         query = (ttable.deleted == False) & \
                 (ltable.task_id == ttable.id) & \
                 (ltable.activity_id == atable.id)
-        opts = db(query).select(atable.name)
-        _dict = {}
-        for opt in opts:
-            _dict[opt.name] = opt.name
-        return _dict
+        rows = db(query).select(atable.id, atable.name)
+        return dict([(row.id, row.name) for row in rows])
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -4628,11 +4625,8 @@ class S3ProjectTaskModel(S3Model):
         query = (ttable.deleted == False) & \
                 (ltable.task_id == ttable.id) & \
                 (ltable.milestone_id == mtable.id)
-        opts = db(query).select(mtable.name)
-        _dict = {}
-        for opt in opts:
-            _dict[opt.name] = opt.name
-        return _dict
+        rows = db(query).select(mtable.id, mtable.name)
+        return dict([(row.id, row.name) for row in rows])
 
     # -------------------------------------------------------------------------
     @staticmethod

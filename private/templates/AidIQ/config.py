@@ -84,6 +84,7 @@ settings.auth.registration_organisation_mandatory = True
 # Uncomment to set the default role UUIDs assigned to newly-registered users
 settings.auth.registration_roles = {"site_id": ["project_reader"]}
 
+# -----------------------------------------------------------------------------
 # Projects
 # Uncomment this to use settings suitable for detailed Task management
 settings.project.mode_task = True
@@ -100,27 +101,61 @@ settings.project.organisation_roles = {
     1: T("Customer")
 }
 
-from s3 import s3forms
-settings.ui.crud_form_project_project = s3forms.S3SQLCustomForm(
-        "organisation_id",
-        "name",
-        "description",
-        "status_id",
-        "start_date",
-        "end_date",
-        "calendar",
-        "human_resource_id",
-        s3forms.S3SQLInlineComponentCheckbox(
-            "sector",
-            label = T("Sectors"),
-            field = "sector_id",
-            cols = 4,
-        ),
-        "budget",
-        "currency",
-        "comments",
-    )
+def customise_project_project_resource(r, tablename):
 
+    from s3.s3forms import S3SQLCustomForm, S3SQLInlineComponentCheckbox
+    crud_form = S3SQLCustomForm("organisation_id",
+                                "name",
+                                "description",
+                                "status_id",
+                                "start_date",
+                                "end_date",
+                                "calendar",
+                                "human_resource_id",
+                                S3SQLInlineComponentCheckbox(
+                                    "sector",
+                                    label = T("Sectors"),
+                                    field = "sector_id",
+                                    cols = 3,
+                                ),
+                                "budget",
+                                "currency",
+                                "comments",
+                                )
+    current.s3db.configure(tablename,
+                           crud_form = crud_form,
+                           )
+    
+    
+settings.customise_project_project_resource = customise_project_project_resource
+# -----------------------------------------------------------------------------
+def customise_project_activity_resource(r, tablename):
+
+    report_fields = [(T("Project"), "project_id"),
+                     (T("Activity"), "name"),
+                     (T("Activity Type"), "activity_type.name"),
+                     (T("Sector"), "project_id$sector.name"),
+                     (T("Time Estimated"), "time_estimated"),
+                     (T("Time Actual"), "time_actual"),
+                     ]
+
+    report_options = Storage(rows = report_fields,
+                             cols = report_fields,
+                             fact = report_fields,
+                             defaults=Storage(rows = "activity.project_id",
+                                              cols = "activity.name",
+                                              fact = "sum(activity.time_actual)",
+                                              totals = True,
+                                              )
+                             )
+    
+    current.s3db.configure(tablename,
+                           report_options = report_options,
+                           )
+    
+    
+settings.customise_project_activity_resource = customise_project_activity_resource
+# -----------------------------------------------------------------------------
 # Uncomment to allow HR records to be deletable rather than just marking them as obsolete
 settings.hrm.deletable = True
 
