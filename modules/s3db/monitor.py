@@ -84,7 +84,7 @@ class S3MonitorModel(S3Model):
         define_table(tablename,
                      # @ToDo: Host Groups
                      #group_id(),
-                     Field("name", unique=True,
+                     Field("name", unique=True, length=255,
                            label = T("Name"),
                            ),
                      status_id(),
@@ -131,7 +131,7 @@ class S3MonitorModel(S3Model):
 
         tablename = "monitor_service"
         define_table(tablename,
-                     Field("name", unique=True,
+                     Field("name", unique=True, length=255,
                            label = T("Name"),
                            ),
                      s3_comments(),
@@ -158,7 +158,7 @@ class S3MonitorModel(S3Model):
         tablename = "monitor_check"
         define_table(tablename,
                      service_id(),
-                     Field("name", unique=True,
+                     Field("name", unique=True, length=255,
                            label = T("Name"),
                            ),
                      Field("function_name",
