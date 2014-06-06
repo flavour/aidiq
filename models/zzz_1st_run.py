@@ -88,6 +88,14 @@ if len(pop_list) > 0:
     #
 
     has_module = settings.has_module
+    if has_module("monitor"):
+        # Check Services every 5 minutes
+        s3task.schedule_task("monitor_check",
+                             period=300,  # seconds
+                             timeout=300, # seconds
+                             repeats=0    # unlimited
+                             )
+
     if has_module("msg"):
 
         # Send Messages from Outbox

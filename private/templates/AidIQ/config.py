@@ -23,6 +23,12 @@ settings.base.prepopulate = ["AidIQ"]
 # Theme
 settings.base.theme = "AidIQ"
 
+# Parser
+settings.msg.parser = "AidIQ"
+
+# Monitoring Scripts
+settings.monitor.template = "AidIQ"
+
 # Security Policy
 settings.security.policy = 6 # Entity Realm
 
@@ -254,6 +260,12 @@ settings.modules = OrderedDict([
             #description = "Tracking of Projects, Activities and Tasks",
             restricted = True,
             module_type = 1
+        )),
+    ("monitor", Storage(
+            name_nice = T("Monitor"),
+            #description = "Monitoring of Servers & Applications",
+            restricted = True,
+            module_type = 3
         )),
     #("survey", Storage(
     #        name_nice = T("Surveys"),

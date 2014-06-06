@@ -305,6 +305,10 @@ settings.gis.geonames_username = "eden_test"
 # Uncomment to turn off enforcement of E.123 international phone number notation
 #settings.msg.require_international_phone_numbers = False
 
+# Monitoring Settings
+# If you wish to use a monitor.py in another folder than "default"
+#settings.monitor.template = "mytemplatefolder"
+
 # Use 'soft' deletes
 #settings.security.archive_not_delete = False
 

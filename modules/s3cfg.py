@@ -110,6 +110,7 @@ class S3Config(Storage):
         self.log = Storage()
         self.mail = Storage()
         self.member = Storage()
+        self.monitor = Storage()
         self.msg = Storage()
         self.org = Storage()
         self.pr = Storage()
@@ -1421,6 +1422,18 @@ class S3Config(Storage):
                    to be <themename>-rtl (e.g. "default-rtl")
         """
         return self.ui.get("hierarchy_theme", None)
+
+    # =========================================================================
+    # Monitoring
+    #
+
+    # -------------------------------------------------------------------------
+    # Template
+    def get_monitor_template(self):
+        """
+            Which template folder to use to load monitor.py
+        """
+        return self.monitor.get("template", "default")
 
     # =========================================================================
     # Messaging

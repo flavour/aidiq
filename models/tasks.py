@@ -195,6 +195,37 @@ def org_facility_geojson(user_id=None):
 tasks["org_facility_geojson"] = org_facility_geojson
 
 # -----------------------------------------------------------------------------
+if settings.has_module("monitor"):
+
+    # -------------------------------------------------------------------------
+    def monitor_run_task(task_id, user_id=None):
+        """
+            Run a Monitoring Task
+        """
+        if user_id:
+            auth.s3_impersonate(user_id)
+        # Run the Task & return the result
+        result = s3db.monitor_run_task(task_id)
+        db.commit()
+        return result
+
+    tasks["monitor_run_task"] = monitor_run_task
+
+    # -------------------------------------------------------------------------
+    def monitor_check_email_reply(run_id, user_id=None):
+        """
+            Check whether we have received a reply to an Email check
+        """
+        if user_id:
+            auth.s3_impersonate(user_id)
+        # Run the Task & return the result
+        result = s3db.monitor_check_email_reply(run_id)
+        db.commit()
+        return result
+
+    tasks["monitor_check_email_reply"] = monitor_check_email_reply
+
+ # -----------------------------------------------------------------------------
 if settings.has_module("msg"):
 
     # -------------------------------------------------------------------------
