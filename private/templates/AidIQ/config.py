@@ -107,6 +107,7 @@ settings.project.organisation_roles = {
     1: T("Customer")
 }
 
+# -----------------------------------------------------------------------------
 def customise_project_project_resource(r, tablename):
 
     from s3.s3forms import S3SQLCustomForm, S3SQLInlineComponentCheckbox
@@ -134,6 +135,46 @@ def customise_project_project_resource(r, tablename):
     
     
 settings.customise_project_project_resource = customise_project_project_resource
+
+# -----------------------------------------------------------------------------
+def customise_project_task_controller(**attr):
+
+    s3 = current.response.s3
+
+    standard_prep = s3.prep
+    def custom_prep(r):
+
+        result = standard_prep(r) if callable(standard_prep) else True
+
+        mine = "mine" in r.get_vars
+        list_fields = ["id",
+                       (T("ID"), "task_id"),
+                       "priority",
+                       "task_project.project_id",
+                       "name",
+                       #"task_activity.activity_id",
+                       #"task_milestone.milestone_id",
+                       ]
+        if not mine:
+            # Assigned-to field: only needed if not "mine"
+            list_fields.append("pe_id")
+
+        list_fields.extend(("date_due",
+                            "time_estimated",
+                            "time_actual",
+                            "created_on",
+                            ))
+        if not mine:
+            list_fields.append("status")
+        r.resource.configure(list_fields=list_fields)
+
+        return result
+    s3.prep = custom_prep
+    
+    return attr
+            
+#settings.customise_project_task_controller = customise_project_task_controller
+
 # -----------------------------------------------------------------------------
 def customise_project_activity_resource(r, tablename):
 
@@ -171,6 +212,7 @@ def customise_project_activity_resource(r, tablename):
     
     
 settings.customise_project_activity_resource = customise_project_activity_resource
+
 # -----------------------------------------------------------------------------
 # Uncomment to allow HR records to be deletable rather than just marking them as obsolete
 settings.hrm.deletable = True
