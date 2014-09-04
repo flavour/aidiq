@@ -205,3 +205,9 @@
   /* Used for filter forms */
   content: "\f0d8";
 }
+.icon-play-sign:before {
+  content: "\f144";
+}
+.icon-puzzle-piece:before {
+  content: "\f12e";
+}
