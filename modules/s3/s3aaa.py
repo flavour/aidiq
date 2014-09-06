@@ -29,13 +29,13 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["AuthS3",
+__all__ = ("AuthS3",
            "S3Permission",
            "S3Audit",
            "S3RoleManager",
            "S3OrgRoleManager",
            "S3PersonRoleManager",
-           ]
+           )
 
 import datetime
 #import re
@@ -60,17 +60,14 @@ from gluon import *
 from gluon.dal import Row, Rows, Query, Table
 from gluon.sqlhtml import OptionsWidget
 from gluon.storage import Storage
-from gluon.tools import Auth, callback
+from gluon.tools import Auth, callback, DEFAULT, replace_id
 from gluon.utils import web2py_uuid
 
 from s3error import S3PermissionError
 from s3fields import S3Represent, s3_uid, s3_timestamp, s3_deletion_status, s3_comments
 from s3rest import S3Method
 from s3track import S3Tracker
-from s3utils import s3_addrow, s3_mark_required
-
-DEFAULT = lambda: None
-#table_field = re.compile("[\w_]+\.[\w_]+")
+from s3utils import s3_addrow, S3DateTime, s3_get_extension, s3_mark_required
 
 DEBUG = False
 if DEBUG:
@@ -290,6 +287,9 @@ Thank you"""
                       default=""),
                 Field("email", length=255, unique=True,
                       default=""),
+                # Used For chat in default deployment config
+                Field("username", length=255, default="",
+                      readable=False, writable=False),
                 Field("language", length=16,
                       default = deployment_settings.get_L10n_default_language()),
                 Field("utc_offset", length=16,
@@ -591,9 +591,7 @@ Thank you"""
             if buttons:
                 submit_button = INPUT(_type="submit", _value=T("Login"))
                 buttons.insert(0, submit_button)
-            else:
-                buttons = None
-            
+
             form = SQLFORM(utable,
                            fields = [userfield, passfield],
                            hidden = dict(_next=request.vars._next),
@@ -719,8 +717,15 @@ Thank you"""
                                    request.post_vars)
                     # Invalid login
                     session.error = messages.invalid_login
-                    redirect(self.url(args=request.args,
-                                      vars=request.get_vars))
+                    if inline:
+                        # If inline, stay on the same page
+                        next_url = URL(args=request.args,
+                                       vars=request.get_vars)
+                    else:
+                        # If not inline, return to configured login page
+                        next_url = self.url(args=request.args,
+                                            vars=request.get_vars)
+                    redirect(next_url)
         else:
             # Use a central authentication server
             cas = settings.login_form
@@ -831,7 +836,7 @@ Thank you"""
                     next = replace_id(next, form)
                 redirect(next, client_side=settings.client_side)
         return form
-        
+
     # -------------------------------------------------------------------------
     def request_reset_password(self,
                                next=DEFAULT,
@@ -840,7 +845,13 @@ Thank you"""
                                log=DEFAULT,
                                ):
         """
-            Returns a form to reset the user password
+            Returns a form to reset the user password, overrides web2py's
+            version of the method to apply Eden formstyles.
+
+            @param next: URL to redirect to after successful form submission
+            @param onvalidation: callback to validate password reset form
+            @param onaccept: callback to post-process password reset request
+            @param log: event description for the log (string)
         """
 
         messages = self.messages
@@ -850,7 +861,7 @@ Thank you"""
         response = current.response
         session = current.session
         captcha = settings.retrieve_password_captcha or \
-                (settings.retrieve_password_captcha != False and settings.captcha)
+                  (settings.retrieve_password_captcha != False and settings.captcha)
 
         if next is DEFAULT:
             next = self.get_vars_next() or settings.request_reset_password_next
@@ -890,7 +901,7 @@ Thank you"""
                         formname="reset_password", dbio=False,
                         onvalidation=onvalidation,
                         hideerror=settings.hideerror):
-            user = table_user(**{userfield:form.vars.get(userfield)})
+            user = utable(**{userfield:form.vars.get(userfield)})
             if not user:
                 session.error = messages["invalid_%s" % userfield]
                 redirect(self.url(args=request.args),
@@ -910,7 +921,7 @@ Thank you"""
             else:
                 next = replace_id(next, form)
             redirect(next, client_side=settings.client_side)
-        # old_requires = table_user.email.requires
+        # old_requires = utable.email.requires
         return form
 
     # -------------------------------------------------------------------------
@@ -975,7 +986,7 @@ Thank you"""
             ignore_levels_for_presence = deployment_settings.get_auth_ignore_levels_for_presence()
             greatCircleDistance = gis.greatCircleDistance
             for location in locations:
-                if location.level not in ignore_levels_for_presence: 
+                if location.level not in ignore_levels_for_presence:
                     if closestpoint != 0:
                         currentdistance = greatCircleDistance(closestpoint.lat,
                                                               closestpoint.lon,
@@ -988,7 +999,7 @@ Thank you"""
                         closestpoint = location
 
             s3tracker = S3Tracker()
-            if closestpoint == 0 and deployment_settings.get_auth_create_unknown_locations(): 
+            if closestpoint == 0 and deployment_settings.get_auth_create_unknown_locations():
                 # There wasn't any near-by location, so create one
                 newpoint = {"lat": userlat,
                             "lon": userlon,
@@ -997,7 +1008,7 @@ Thank you"""
                 closestpoint = current.s3db.gis_location.insert(**newpoint)
                 s3tracker(db.pr_person,
                           self.user.id).set_location(closestpoint,
-                                                     timestmp=request.utcnow)             
+                                                     timestmp=request.utcnow)
             else:
                 s3tracker(db.pr_person,
                           self.user.id).set_location(closestpoint.id,
@@ -1057,6 +1068,7 @@ Thank you"""
         labels, required = s3_mark_required(utable)
 
         formstyle = deployment_settings.get_ui_formstyle()
+        current.response.form_label_separator = ""
         form = SQLFORM(utable,
                        hidden = dict(_next=request.vars._next),
                        labels = labels,
@@ -1064,7 +1076,7 @@ Thank you"""
                        showid = settings.showid,
                        submit_button = T("Register"),
                        delete_label = messages.delete_label,
-                       formstyle = formstyle
+                       formstyle = formstyle,
                        )
 
         # Identify form for CSS & JS Validation
@@ -1305,22 +1317,28 @@ Thank you"""
     # -------------------------------------------------------------------------
     def email_reset_password(self, user):
         """
-             Overrides Web2Py's email_reset_password() to modify the message structure
+             Overrides Web2Py's email_reset_password() to modify the message
+             structure
+
+             @param user: the auth_user record (Row)
         """
 
-        import time
-        settings = self.settings
-        if not settings.mailer:
+        mailer = self.settings.mailer
+        if not mailer:
             return False
+
+        import time
         reset_password_key = str(int(time.time())) + '-' + web2py_uuid()
-        message = self.messages.reset_password % \
-            dict(url="%s/default/user/reset_password/%s" % \
-                dict(current.response.s3.base_url, reset_password_key))
-        if settings.mailer.send(to=user.email,
-                                subject=self.messages.reset_password_subject,
-                                message=message):
+        reset_password_url = "%s/default/user/reset_password/%s" % \
+                             (current.response.s3.base_url, reset_password_key)
+
+        message = self.messages.reset_password % dict(url=reset_password_url)
+        if mailer.send(to=user.email,
+                       subject=self.messages.reset_password_subject,
+                       message=message):
             user.update_record(reset_password_key=reset_password_key)
             return True
+
         return False
 
     # -------------------------------------------------------------------------
@@ -1512,6 +1530,7 @@ Thank you"""
                         formname="profile",
                         onvalidation=onvalidation,
                         hideerror=settings.hideerror):
+            self.auth_user_onaccept(form.vars.email, self.user.id)
             self.user.update(utable._filter_fields(form.vars))
             session.flash = messages.profile_updated
             if log:
@@ -1558,7 +1577,7 @@ Thank you"""
         """
             Configure User Fields - for registration & user administration
 
-            pe_ids: an optional list of pe_ids for the Org Filter 
+            pe_ids: an optional list of pe_ids for the Org Filter
                     i.e. org_admin coming from admin.py/user()
         """
 
@@ -1637,7 +1656,7 @@ Thank you"""
         #utable.reset_password_key.label = messages.label_registration_key
 
         # Organisation
-        if self.s3_has_role("ADMIN"):         
+        if self.s3_has_role("ADMIN"):
             show_org = deployment_settings.get_auth_admin_sees_organisation()
         else:
             show_org = deployment_settings.get_auth_registration_requests_organisation()
@@ -1988,6 +2007,20 @@ S3OptionsFilter({
         s3.jquery_ready.append('''s3_register_validation()''')
 
     # -------------------------------------------------------------------------
+    def auth_user_onaccept(self, email, user_id):
+        db = current.db
+        if self.settings.login_userfield != "username":
+            deployment_settings = current.deployment_settings
+            chat_username = email.replace("@", "_")
+            db(db.auth_user.id == user_id).update(username = chat_username)
+            chat_server = deployment_settings.get_chat_server()
+            if chat_server:
+                chatdb = DAL(deployment_settings.get_chatdb_string(), migrate=False)
+                # Using RawSQL as table not created in web2py
+                sql_query="insert into ofGroupUser values (\'%s\',\'%s\' ,0);" % (chat_server["groupname"], chat_username)
+                chatdb.executesql(sql_query)
+
+    # -------------------------------------------------------------------------
     def s3_user_register_onaccept(self, form):
         """
             S3 framework function
@@ -2251,6 +2284,8 @@ S3OptionsFilter({
 
         if current.response.s3.bulk is True:
             # Non-interactive imports should stop here
+            user_email = db(utable.id == user_id).select(utable.email).first().email
+            self.auth_user_onaccept(user_email, user_id)
             return
 
         # Allow them to login
@@ -2261,6 +2296,8 @@ S3OptionsFilter({
            "org_organisation" in deployment_settings.get_auth_record_approval_required_for():
             s3db.resource("org_organisation", user.organisation_id, unapproved=True).approve()
 
+        user_email = db(utable.id == user_id).select(utable.email).first().email
+        self.auth_user_onaccept(user_email, user_id)
         # Send Welcome mail
         self.s3_send_welcome_email(user)
 
@@ -4169,7 +4206,7 @@ S3OptionsFilter({
         def decorator(action):
 
             def f(*a, **b):
-                
+
                 if self.override:
                     return action(*a, **b)
 
@@ -4299,7 +4336,7 @@ S3OptionsFilter({
 
             # Update realm-components
             if success and update and REALM in data:
-                rc = s3db.get_config(table, "realm_components", [])
+                rc = s3db.get_config(table, "realm_components", ())
                 resource = s3db.resource(table, components=rc)
                 realm = {REALM:data[REALM]}
                 for component in resource.components.values():
@@ -4870,14 +4907,15 @@ class S3Permission(object):
 
     TABLENAME = "s3_permission"
 
-    CREATE = 0x0001
-    READ = 0x0002
-    UPDATE = 0x0004
-    DELETE = 0x0008
-    REVIEW = 0x0010
-    APPROVE = 0x0020
+    CREATE = 0x0001     # Permission to create new records
+    READ = 0x0002       # Permission to read records
+    UPDATE = 0x0004     # Permission to update records
+    DELETE = 0x0008     # Permission to delete records
+    REVIEW = 0x0010     # Permission to review unapproved records
+    APPROVE = 0x0020    # Permission to approve records
+    PUBLISH = 0x0040    # Permission to publish records outside of Eden
 
-    ALL = CREATE | READ | UPDATE | DELETE | REVIEW | APPROVE
+    ALL = CREATE | READ | UPDATE | DELETE | REVIEW | APPROVE | PUBLISH
     NONE = 0x0000 # must be 0!
 
     PERMISSION_OPTS = OrderedDict([
@@ -4887,9 +4925,11 @@ class S3Permission(object):
         [UPDATE, "UPDATE"],
         [DELETE, "DELETE"],
         [REVIEW, "REVIEW"],
-        [APPROVE, "APPROVE"]])
+        [APPROVE, "APPROVE"],
+        [PUBLISH, "PUBLISH"],
+    ])
 
-    # Method string <-> required permission
+    # Method <-> required permission
     METHODS = Storage({
         "create": CREATE,
         "read": READ,
@@ -4902,6 +4942,7 @@ class S3Permission(object):
         "review": REVIEW,
         "approve": APPROVE,
         "reject": APPROVE,
+        "publish": PUBLISH,
     })
 
     # Lambda expressions for ACL handling
@@ -4973,22 +5014,7 @@ class S3Permission(object):
         self.function = request.function
 
         # Request format
-        # @todo: move this into s3utils.py:
-        self.format = request.extension
-        if "format" in request.get_vars:
-            ext = request.get_vars.format
-            if isinstance(ext, list):
-                ext = ext[-1]
-            self.format = ext.lower() or self.format
-        else:
-            ext = [a for a in request.args if "." in a]
-            if ext:
-                self.format = ext[-1].rsplit(".", 1)[1].lower()
-
-        if request.function == "ticket" and \
-           request.controller == "admin":
-            # Error tickets need an override
-            self.format = "html"
+        self.format = s3_get_extension()
 
         # Page permission cache
         self.page_acls = Storage()
@@ -5476,7 +5502,7 @@ class S3Permission(object):
         if "ANY" in acls:
             # User is permitted access for all Realms
             return None
-        
+
         entities = []
         for entity in acls:
             acl = acls[entity]
@@ -5597,7 +5623,7 @@ class S3Permission(object):
             @param t: the table or tablename
             @param record: the record or record ID (None for any record)
         """
-        
+
         # Multiple methods?
         if isinstance(method, (list, tuple)):
             #query = None
@@ -6544,7 +6570,9 @@ class S3Audit(object):
         db = current.db
         if tablename not in db:
             db.define_table(tablename,
-                            Field("timestmp", "datetime"),
+                            Field("timestmp", "datetime",
+                                  represent = S3DateTime.datetime_represent,
+                                  ),
                             Field("user_id", db.auth_user),
                             Field("method"),
                             Field("tablename"),
@@ -7028,7 +7056,7 @@ class S3RoleManager(S3Method):
             s3.no_formats = True
             s3.actions = []
             s3.no_sspag = True
-            
+
             from s3data import S3DataTable
             dt = S3DataTable.htmlConfig(items, "datatable", [[1, "asc"]],
                                         dt_pagination=False)

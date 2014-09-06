@@ -291,6 +291,90 @@ class ResourceFilterJoinTests(unittest.TestCase):
 
     # -------------------------------------------------------------------------
     @unittest.skipIf(not current.deployment_settings.has_module("project"), "project module disabled")
+    def testGetQueryMixedQueryType(self):
+        """ Test combinations of web2py Queries with S3ResourceQueries """
+
+        s3db = current.s3db
+
+        resource = s3db.resource("project_project")
+        q = (FS("organisation_id$name") == "test") & \
+            (resource.table.name == "test")
+
+        # Test joins
+        joins, distinct = q._joins(resource)
+        self.assertEqual(joins.keys(), [])
+
+        # Test left joins
+        project_project = resource.table
+        project_task_project = s3db.project_task_project
+        project_task = s3db.project_task
+        org_organisation = s3db.org_organisation
+
+        expected = org_organisation.on(
+                        project_project.organisation_id == org_organisation.id)
+
+        joins, distinct = q._joins(resource, left=True)
+        self.assertEqual(joins.keys(), ["org_organisation"])
+
+        self.assertTrue(isinstance(joins["org_organisation"], list))
+        self.assertEqual(len(joins["org_organisation"]), 1)
+        self.assertEqual(str(joins["org_organisation"][0]), str(expected))
+        self.assertTrue(distinct)
+
+        # Test split and query
+        qq, qf = q.split(resource)
+        self.assertEqual(qf, None)
+        query = qq.query(resource)
+        expected = ((org_organisation.name == "test") & \
+                    (project_project.name == "test"))
+        self.assertEqual(str(query), str(expected))
+
+        # Test get_query
+        resource.add_filter(q)
+        query = resource.get_query()
+        expected = (((project_project.deleted != True) & \
+                     (project_project.id > 0)) & \
+                    ((org_organisation.name == "test") & \
+                     (project_project.name == "test")))
+        self.assertEqual(str(query), str(expected))
+        
+    # -------------------------------------------------------------------------
+    @unittest.skipIf(not current.deployment_settings.has_module("project"), "project module disabled")
+    def testGetQueryMixedQueryTypeVirtual(self):
+        """ Test combinations of web2py Queries with virtual field filter """
+
+        s3db = current.s3db
+
+        resource = s3db.resource("project_project")
+        q = (FS("virtualfield") == "test") & \
+            (resource.table.name == "test")
+
+        project_project = resource.table
+
+        # Test joins
+        joins, distinct = q._joins(resource)
+        self.assertEqual(joins, {})
+
+        # Test left joins
+        joins, distinct = q._joins(resource, left=True)
+        self.assertEqual(joins, {})
+
+        # Test split and query
+        qq, qf = q.split(resource)
+        expected = (project_project.name == "test")
+        self.assertEqual(str(qq), str(expected))
+        self.assertTrue(isinstance(qf, S3ResourceQuery))
+
+        # Test get_query
+        resource.add_filter(q)
+        query = resource.get_query()
+        expected =  (((project_project.deleted != True) & \
+                    (project_project.id > 0)) & \
+                    (project_project.name == "test"))
+        self.assertEqual(str(query), str(expected))
+
+    # -------------------------------------------------------------------------
+    @unittest.skipIf(not current.deployment_settings.has_module("project"), "project module disabled")
     def testGetFilterLeftJoins(self):
         """ Check list of left joins in resource filters """
 
@@ -651,14 +735,14 @@ class ResourceFilterQueryTests(unittest.TestCase):
 
         q = FS("skill_id").contains([1, 2])
         query = q.query(resource)
-        expected = ((req_req_skill.skill_id.like("%|1|%")) &
-                    (req_req_skill.skill_id.like("%|2|%")))
+        expected = ((req_req_skill.skill_id.lower().like("%|1|%")) &
+                    (req_req_skill.skill_id.lower().like("%|2|%")))
         self.assertEqual(str(query), str(expected))
 
         q = FS("skill_id").anyof([1, 2])
         query = q.query(resource)
-        expected = ((req_req_skill.skill_id.like("%|1|%")) |
-                    (req_req_skill.skill_id.like("%|2|%")))
+        expected = ((req_req_skill.skill_id.lower().like("%|1|%")) |
+                    (req_req_skill.skill_id.lower().like("%|2|%")))
         self.assertEqual(str(query), str(expected))
 
     # -------------------------------------------------------------------------
@@ -1562,6 +1646,7 @@ class URLQueryParserTests(unittest.TestCase):
         parse = S3URLQuery.parse_value
 
         items = [
+            ("Liquiçá,Other", ["Liquiçá", "Other"]),
             ("123", "123"),
             ("1,2,3", ["1", "2", "3"]),
             ('"1,2",3', ["1,2", "3"]),
@@ -1749,35 +1834,164 @@ class URLQueryParserTests(unittest.TestCase):
         self.assertEqual(str(query), str(expected))
 
     # -------------------------------------------------------------------------
-    def testBBOXFilter(self):
-        """ Test URL query with BBOX filter """
+    def testBBOXFilterDirectLink(self):
+        """ Test URL query with BBOX filter, location_id """
 
         s3db = current.s3db
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
 
         org_office = s3db.org_office
         gis_location = s3db.gis_location
 
-        url_query = {"bbox": "119.80485082193,12.860457717185,122.27677462907,15.107136411359"}
+        # Remove any location context
+        context = s3db.get_config("org_office", "context")
+        s3db.configure("org_office", context={})
 
-        resource = s3db.resource("org_office", vars=url_query)
-        rfilter = resource.rfilter
+        try:
+            url_query = {"bbox": "119.80,12.86,122.27,15.10"}
 
-        # Check the query
-        query = rfilter.get_query()
-        expected = (((org_office.deleted != True) &
-                     (org_office.id > 0)) &
-                    ((org_office.location_id == gis_location.id) &
-                     ((((gis_location.lon > 119.80485082193) &
-                        (gis_location.lon < 122.27677462907)) &
-                       (gis_location.lat > 12.860457717185)) &
-                      (gis_location.lat < 15.107136411359))))
+            resource = s3db.resource("org_office", vars=url_query)
+            rfilter = resource.rfilter
 
-        self.assertEqual(str(query), str(expected))
+            # Parse the bbox
+            bbox, joins = rfilter.parse_bbox_query(resource, url_query)
+
+            expected_bbox = ((((gis_location.lon > 119.8) & \
+                            (gis_location.lon < 122.27)) & \
+                            (gis_location.lat > 12.86)) & \
+                            (gis_location.lat < 15.1))
+            assertEqual(bbox, expected_bbox)
+
+            # Check the joins
+            assertTrue(isinstance(joins, dict))
+            assertEqual(len(joins), 1)
+
+            subjoins = joins.get("gis_location")
+            assertNotEqual(subjoins, None)
+            assertEqual(len(subjoins), 1)
+            expected_join = gis_location.on(org_office.location_id == gis_location.id)
+            assertEqual(str(subjoins[0]), str(expected_join))
+
+            # Check the query
+            query = rfilter.get_query()
+            expected = (((org_office.deleted != True) & (org_office.id > 0)) & expected_bbox)
+            assertEqual(str(query), str(expected))
+            
+        finally:
+            # Restore context configuration
+            resource.configure(context=context)
+
+    # -------------------------------------------------------------------------
+    def testBBOXFilterLocationContext(self):
+        """ Test URL query with BBOX filter, location context """
+
+        s3db = current.s3db
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+
+        org_office = s3db.org_office
+        gis_location = s3db.gis_location
+        org_organisation = s3db.org_organisation
+        org_organisation_location = s3db.org_organisation_location
+
+        # Define a location context
+        context = s3db.get_config("org_office", "context")
+        s3db.configure("org_office",
+                       context={"location": "organisation_id$organisation_location.location_id"})
+
+        try:
+            url_query = {"bbox": "119.80,12.86,122.27,15.10"}
+
+            resource = s3db.resource("org_office", vars=url_query)
+            rfilter = resource.rfilter
+
+            # Parse the bbox
+            bbox, joins = rfilter.parse_bbox_query(resource, url_query)
+
+            expected_bbox = ((((gis_location.lon > 119.8) & \
+                            (gis_location.lon < 122.27)) & \
+                            (gis_location.lat > 12.86)) & \
+                            (gis_location.lat < 15.1))
+            assertEqual(bbox, expected_bbox)
+
+            # Check the joins
+            assertTrue(isinstance(joins, dict))
+            assertEqual(len(joins), 3)
+
+            subjoins = joins.get("gis_location")
+            assertNotEqual(subjoins, None)
+            assertEqual(len(subjoins), 1)
+            expected_join = gis_location.on(org_organisation_location.location_id == gis_location.id)
+            assertEqual(str(subjoins[0]), str(expected_join))
+
+            subjoins = joins.get("org_organisation")
+            assertNotEqual(subjoins, None)
+            assertEqual(len(subjoins), 1)
+            expected_join = org_organisation.on(org_office.organisation_id == org_organisation.id)
+            assertEqual(str(subjoins[0]), str(expected_join))
+
+            subjoins = joins.get("org_organisation_location")
+            assertNotEqual(subjoins, None)
+            assertEqual(len(subjoins), 1)
+            expected_join = org_organisation_location.on(
+                                (org_organisation_location.organisation_id == org_organisation.id) &
+                                (org_organisation_location.deleted != True)
+                            )
+            assertEqual(str(subjoins[0]), str(expected_join))
+
+            # Check the query
+            query = rfilter.get_query()
+            expected = (((org_office.deleted != True) & (org_office.id > 0)) & expected_bbox)
+            assertEqual(str(query), str(expected))
+            
+        finally:
+            # Restore context configuration
+            resource.configure(context=context)
 
     # -------------------------------------------------------------------------
     def tearDown(self):
 
         current.auth.override = False
+
+# =============================================================================
+class JoinResolutionTests(unittest.TestCase):
+
+    @unittest.skipIf(not current.deployment_settings.has_module("project"), "project module disabled")
+    def testPreferredSet(self):
+        """ Test resolution of duplicate inner/left joins """
+
+        s3db = current.s3db
+        ptable = s3db.project_project
+        ltable = s3db.project_task_project
+        ttable = s3db.project_task
+
+        ptable_join = ptable.on(ltable.project_id == ptable.id)
+        ltable_join = ltable.on(ltable.task_id == ttable.id)
+
+        # Define a set of inner joins for one table
+        ijoins = S3Joins("project_task")
+        ijoins.extend({"project_project": [ptable_join, ltable_join]})
+
+        # Define a sub-join of the inner joins as a left join
+        ljoins = S3Joins("project_task")
+        ljoins.extend({"project_task_project": [ltable_join]})
+
+        # Request joins for both tables from both sets, prefer the left joins
+        tablenames = ["project_project", "project_task_project"]
+        join = ijoins.as_list(tablenames=tablenames, prefer=ljoins)
+        left = ljoins.as_list(tablenames=tablenames)
+
+        # Joins should be moved to the left joins set
+        self.assertEqual(join, [])
+        self.assertEqual(len(left), 2)
+        # Mind the order! (must be ordered by dependency)
+        self.assertEqual(str(left[0]), str(ltable_join))
+        self.assertEqual(str(left[1]), str(ptable_join))
 
 # =============================================================================
 def run_suite(*test_classes):
@@ -1800,6 +2014,7 @@ if __name__ == "__main__":
         ResourceFilterJoinTests,
         ResourceFilterQueryTests,
         ResourceContextFilterTests,
+        JoinResolutionTests,
 
         URLQueryParserTests,
 

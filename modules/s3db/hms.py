@@ -27,11 +27,11 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["HospitalDataModel",
+__all__ = ("HospitalDataModel",
            "CholeraTreatmentCapabilityModel",
            "HospitalActivityReportModel",
            "hms_hospital_rheader"
-           ]
+           )
 
 from gluon import *
 from gluon.storage import Storage
@@ -42,14 +42,14 @@ from s3layouts import S3AddResourceLink
 # =============================================================================
 class HospitalDataModel(S3Model):
 
-    names = ["hms_hospital",
+    names = ("hms_hospital",
              "hms_contact",
              "hms_bed_capacity",
              "hms_services",
              "hms_image",
              "hms_resources",
-             "hms_hospital_id"
-             ]
+             "hms_hospital_id",
+             )
 
     def model(self):
 
@@ -373,6 +373,11 @@ class HospitalDataModel(S3Model):
         if settings.get_hms_activity_reports():
             add_components(tablename, hms_activity=multiple)
 
+        # Custom Method to Assign HRs
+        self.set_method("hms", "hospital",
+                        method = "assign",
+                        action = self.hrm_AssignMethod(component="human_resource_site"))
+
         # ---------------------------------------------------------------------
         # Hospital status
         #
@@ -450,135 +455,148 @@ class HospitalDataModel(S3Model):
 
         tablename = "hms_status"
         define_table(tablename,
-                     hospital_id(ondelete="CASCADE"),
+                     hospital_id(ondelete = "CASCADE"),
 
                      # Status of the facility and facility operations
                      Field("facility_status", "integer",
-                           requires = IS_EMPTY_OR(
-                                        IS_IN_SET(hms_facility_status_opts)),
                            label = T("Facility Status"),
                            represent = lambda opt: \
                                        NONE if opt is None else \
                                        hms_facility_status_opts.get(opt,
-                                                                    UNKNOWN_OPT)),
+                                                                    UNKNOWN_OPT),
+                           requires = IS_EMPTY_OR(
+                                        IS_IN_SET(hms_facility_status_opts)),
+                           ),
                      s3_date("date_reopening",
-                             label=T("Estimated Reopening Date"),
+                             label = T("Estimated Reopening Date"),
                              ),
                      Field("facility_operations", "integer",
-                           requires = IS_EMPTY_OR(
-                                        IS_IN_SET(hms_resource_status_opts)),
                            label = T("Facility Operations"),
                            represent = lambda opt: \
                                        NONE if opt is None else \
                                        hms_resource_status_opts.get(opt,
-                                                                    UNKNOWN_OPT)),
+                                                                    UNKNOWN_OPT),
+                           requires = IS_EMPTY_OR(
+                                        IS_IN_SET(hms_resource_status_opts)),
+                           ),
 
                      # Facility Status Details
                      Field("damage", "list:integer",
-                           label=T("Damage sustained"),
-                           requires=IS_EMPTY_OR(
+                           label = T("Damage sustained"),
+                           represent = hms_facility_damage_multirepresent,
+                           requires = IS_EMPTY_OR(
                                       IS_IN_SET(hms_facility_damage_opts,
                                                 multiple=True)),
-                           widget=CheckboxesWidgetS3.widget,
-                           represent = hms_facility_damage_multirepresent,
+                           widget = CheckboxesWidgetS3.widget,
                            ),
                      Field("power_supply_type", "integer",
-                           label=T("Power Supply Type"),
-                           requires=IS_EMPTY_OR(
-                                      IS_IN_SET(hms_power_supply_type_opts,
-                                                zero=None)),
+                           label = T("Power Supply Type"),
                            represent = lambda opt: \
                                        NONE if opt is None else \
                                        hms_power_supply_type_opts.get(opt,
-                                                                      UNKNOWN_OPT)),
-                     Field("gas_supply_type", "integer",
-                           label=T("Gas Supply Type"),
-                           requires=IS_EMPTY_OR(
-                                      IS_IN_SET(hms_gas_supply_type_opts,
+                                                                      UNKNOWN_OPT),
+                           requires = IS_EMPTY_OR(
+                                      IS_IN_SET(hms_power_supply_type_opts,
                                                 zero=None)),
+                           ),
+                     Field("gas_supply_type", "integer",
+                           label = T("Gas Supply Type"),
                            represent = lambda opt: \
                                        NONE if opt is None else \
                                        hms_gas_supply_type_opts.get(opt,
-                                                                    UNKNOWN_OPT)),
+                                                                    UNKNOWN_OPT),
+                           requires = IS_EMPTY_OR(
+                                        IS_IN_SET(hms_gas_supply_type_opts,
+                                                  zero=None)),
+                           ),
                      Field("gas_supply_capacity", "integer",
-                           label=T("Gas Supply Left (in hours)"),
-                           requires=IS_EMPTY_OR(IS_INT_IN_RANGE(0, 999999))),
+                           label = T("Gas Supply Left (in hours)"),
+                           requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, 999999)),
+                           ),
 
                      # Clinical status and clinical operations
                      Field("clinical_status", "integer",
-                           requires = IS_EMPTY_OR(
-                                        IS_IN_SET(hms_clinical_status_opts)),
                            label = T("Clinical Status"),
                            represent = lambda opt: \
                                        NONE if opt is None else \
                                        hms_clinical_status_opts.get(opt,
-                                                                    UNKNOWN_OPT)),
-                     Field("clinical_operations", "integer",
+                                                                    UNKNOWN_OPT),
                            requires = IS_EMPTY_OR(
-                                        IS_IN_SET(hms_resource_status_opts)),
+                                        IS_IN_SET(hms_clinical_status_opts)),
+                           ),
+                     Field("clinical_operations", "integer",
                            label = T("Clinical Operations"),
                            represent = lambda opt: \
                                        NONE if opt is None else \
                                        hms_resource_status_opts.get(opt,
-                                                                    UNKNOWN_OPT)),
-                     Field("security_status", "integer",
+                                                                    UNKNOWN_OPT),
                            requires = IS_EMPTY_OR(
-                                        IS_IN_SET(hms_security_status_opts)),
+                                        IS_IN_SET(hms_resource_status_opts)),
+                           ),
+                     Field("security_status", "integer",
                            label = T("Security Status"),
                            represent = lambda opt: \
                                        NONE if opt is None else \
                                        hms_security_status_opts.get(opt,
-                                                                    UNKNOWN_OPT)),
+                                                                    UNKNOWN_OPT),
+                           requires = IS_EMPTY_OR(
+                                        IS_IN_SET(hms_security_status_opts)),
+                           ),
 
                      # Staffing status
                      Field("staffing", "integer",
-                           requires = IS_EMPTY_OR(
-                                        IS_IN_SET(hms_resource_status_opts)),
                            label = T("Staffing Level"),
                            represent = lambda opt: \
                                        NONE if opt is None else \
                                        hms_resource_status_opts.get(opt,
-                                                                    UNKNOWN_OPT)),
+                                                                    UNKNOWN_OPT),
+                           requires = IS_EMPTY_OR(
+                                        IS_IN_SET(hms_resource_status_opts)),
+                           ),
 
                      # Emergency Room Status
                      Field("ems_status", "integer",
-                           requires = IS_EMPTY_OR(
-                                        IS_IN_SET(hms_ems_traffic_opts)),
                            label = T("ER Status"),
                            represent = lambda opt: \
                                        NONE if opt is None else \
                                        hms_ems_traffic_opts.get(opt,
-                                                                UNKNOWN_OPT)),
-                     Field("ems_reason",
-                           length=128,
-                           label = T("ER Status Reason")),
+                                                                UNKNOWN_OPT),
+                           requires = IS_EMPTY_OR(
+                                        IS_IN_SET(hms_ems_traffic_opts)),
+                           ),
+                     Field("ems_reason", length=128,
+                           label = T("ER Status Reason"),
+                           ),
 
                      # Operating Room Status
                      Field("or_status", "integer",
-                           requires = IS_EMPTY_OR(
-                                        IS_IN_SET(hms_or_status_opts)),
                            label = T("OR Status"),
                            represent = lambda opt: \
                                        NONE if opt is None else \
                                        hms_or_status_opts.get(opt,
-                                                              UNKNOWN_OPT)),
-                     Field("or_reason",
-                           length=128,
-                           label = T("OR Status Reason")),
+                                                              UNKNOWN_OPT),
+                           requires = IS_EMPTY_OR(
+                                        IS_IN_SET(hms_or_status_opts)),
+                           ),
+                     Field("or_reason", length=128,
+                           label = T("OR Status Reason"),
+                           ),
 
                      # Morgue status and capacity
                      Field("morgue_status", "integer",
-                           requires = IS_EMPTY_OR(
-                                        IS_IN_SET(hms_morgue_status_opts)),
                            label = T("Morgue Status"),
                            represent = lambda opt: \
                                        NONE if opt is None else \
                                        hms_morgue_status_opts.get(opt,
-                                                                  UNKNOWN_OPT)),
+                                                                  UNKNOWN_OPT),
+                           requires = IS_EMPTY_OR(
+                                        IS_IN_SET(hms_morgue_status_opts)),
+                           ),
                      Field("morgue_units", "integer",
-                           requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, 9999)),
                            label = T("Morgue Units Available"),
-                           represent = lambda v: IS_INT_AMOUNT.represent(v)),
+                           represent = lambda v: IS_INT_AMOUNT.represent(v),
+                           requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, 9999)),
+                           ),
 
                      Field("access_status", "text",
                            label = T("Road Conditions")),
@@ -602,25 +620,35 @@ class HospitalDataModel(S3Model):
         #
         tablename = "hms_contact"
         define_table(tablename,
-                     hospital_id(ondelete="CASCADE"),
-                     person_id(label = T("Contact"),
-                               empty=False),
+                     hospital_id(ondelete = "CASCADE"),
+                     person_id(empty = False,
+                               label = T("Contact"),
+                               ),
                      Field("title",
-                           label = T("Job Title")),
+                           label = T("Job Title"),
+                           ),
                      Field("phone",
                            label = T("Phone"),
-                           requires = IS_EMPTY_OR(s3_phone_requires)),
+                           requires = IS_EMPTY_OR(s3_phone_requires),
+                           ),
                      Field("mobile",
                            label = settings.get_ui_label_mobile_phone(),
-                           requires = IS_EMPTY_OR(s3_phone_requires)),
+                           requires = IS_EMPTY_OR(s3_phone_requires),
+                           ),
                      Field("email",
                            label = T("Email"),
-                           requires = IS_EMPTY_OR(IS_EMAIL())),
+                           requires = IS_EMPTY_OR(IS_EMAIL()),
+                           ),
                      Field("fax",
                            label = T("Fax"),
-                           requires = IS_EMPTY_OR(s3_phone_requires)),
-                     Field("skype", label = T("Skype ID")),
-                     Field("website", label=T("Website")),
+                           requires = IS_EMPTY_OR(s3_phone_requires),
+                           ),
+                     Field("skype",
+                           label = T("Skype ID"),
+                           ),
+                     Field("website",
+                           label = T("Website"),
+                           ),
                      *s3_meta_fields())
 
         # CRUD Strings
@@ -637,18 +665,19 @@ class HospitalDataModel(S3Model):
 
         # Resource configuration
         configure(tablename,
-                  mark_required = ["person_id"],
-                  list_fields=["id",
-                               "person_id",
-                               "title",
-                               "phone",
-                               "mobile",
-                               "email",
-                               "fax",
-                               "skype"
-                               ],
-                  main="person_id",
-                  extra="title")
+                  extra = "title",
+                  list_fields = ["id",
+                                 "person_id",
+                                 "title",
+                                 "phone",
+                                 "mobile",
+                                 "email",
+                                 "fax",
+                                 "skype"
+                                 ],
+                  main = "person_id",
+                  mark_required = ("person_id",),
+                  )
 
         # ---------------------------------------------------------------------
         # Bed Capacity
@@ -954,7 +983,7 @@ class HospitalDataModel(S3Model):
 # =============================================================================
 class CholeraTreatmentCapabilityModel(S3Model):
 
-    names = ["hms_ctc"]
+    names = ("hms_ctc",)
 
     def model(self):
 
@@ -1092,7 +1121,7 @@ class CholeraTreatmentCapabilityModel(S3Model):
 # =============================================================================
 class HospitalActivityReportModel(S3Model):
 
-    names = ["hms_activity"]
+    names = ("hms_activity",)
 
     def model(self):
 
@@ -1212,7 +1241,7 @@ def hms_hospital_rheader(r, tabs=[]):
                         (T("Images"), "image"),
                         (T("Services"), "services"),
                         (T("Bed Capacity"), "bed_capacity"),
-                       ]
+                        ]
 
                 if settings.get_hms_activity_reports():
                     tabs.append((T("Activity Report"), "activity"))
@@ -1220,12 +1249,14 @@ def hms_hospital_rheader(r, tabs=[]):
                 if settings.get_hms_track_ctc():
                     tabs.append((T("Cholera Treatment Capability"), "ctc"))
 
-                tabs += [
-                        (T("Staff"), "human_resource"),
-                        (T("Assign Staff"), "human_resource_site"),
-                        ]
+                STAFF = settings.get_hrm_staff_label()
+                tabs.append((STAFF, "human_resource"))
+                if current.auth.s3_has_permission("create", "hrm_human_resource_site"):
+                    #tabs.append((T("Assign %(staff)s") % dict(staff=STAFF), "human_resource_site"))
+                    tabs.append((T("Assign %(staff)s") % dict(staff=STAFF), "assign")),
+
                 try:
-                    tabs = tabs + s3db.req_tabs(r)
+                    tabs = tabs + s3db.req_tabs(r, match=False)
                 except:
                     pass
                 try:

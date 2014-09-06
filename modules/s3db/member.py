@@ -27,9 +27,9 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["S3MembersModel",
+__all__ = ("S3MembersModel",
            "member_rheader"
-           ]
+           )
 
 import datetime
 from gluon import *
@@ -42,9 +42,9 @@ class S3MembersModel(S3Model):
     """
     """
 
-    names = ["member_membership_type",
+    names = ("member_membership_type",
              "member_membership",
-             ]
+             )
 
     def model(self):
 
@@ -171,7 +171,7 @@ class S3MembersModel(S3Model):
                       *s3_meta_fields())
 
         crud_strings[tablename] = Storage(
-            label_create = T("Add Member"),
+            label_create = T("Create Member"),
             title_display = T("Member Details"),
             title_list = T("Members"),
             title_update = T("Edit Member"),
@@ -216,7 +216,7 @@ class S3MembersModel(S3Model):
 
         report_fields = ["person_id",
                          "membership_type_id",
-                         "paid",
+                         (T("Paid"), "paid"),
                          "organisation_id",
                          ]
 
@@ -245,6 +245,7 @@ class S3MembersModel(S3Model):
                             ),
             S3OptionsFilter("paid",
                             cols = 3,
+                            label = T("Paid"),
                             options = {T("paid"):    T("paid"),
                                        T("overdue"): T("overdue"),
                                        T("expired"): T("expired"),
@@ -563,8 +564,7 @@ def member_rheader(r, tabs=[]):
             rheader = DIV(DIV(s3_avatar_represent(person.id,
                                                   "pr_person",
                                                   _class="fleft"),
-                              # @ToDo: Move to CSS
-                              _style="padding-bottom:10px",
+                              _class="rheader-avatar",
                               ),
                           TABLE(TR(TH(s3_fullname(person))),
                                 ),
@@ -580,8 +580,7 @@ def member_rheader(r, tabs=[]):
         rheader = DIV(DIV(s3_avatar_represent(record.id,
                                               "pr_person",
                                               _class="fleft"),
-                          # @ToDo: Move to CSS
-                          _style="padding-bottom:10px",
+                          _class="rheader-avatar",
                           ),
                       TABLE(TR(TH(s3_fullname(record))),
                             ),

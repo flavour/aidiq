@@ -27,6 +27,14 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
+__all__ = ("FS",
+           "S3FieldSelector",
+           "S3Joins",
+           "S3ResourceField",
+           "S3ResourceQuery",
+           "S3URLQuery",
+           )
+
 import datetime
 import re
 import sys
@@ -360,7 +368,7 @@ class S3FieldPath(object):
             # Resolve the tail
             op = tokens.pop(0)
             if tokens:
-                
+
                 if op == ".":
                     # head is a component or linktable alias, and tokens is
                     # a field expression in the component/linked table
@@ -374,11 +382,11 @@ class S3FieldPath(object):
                     # a field expression in the referenced table
                     ktable, join = self._resolve_key(table, head)
                     self.distinct = True
-                    
+
                 if join is not None:
                     self.joins[ktable._tablename] = join
                 tail = S3FieldPath(None, ktable, tokens)
-                
+
             else:
                 raise SyntaxError("trailing operator")
 
@@ -498,8 +506,19 @@ class S3FieldPath(object):
             return resource.table, None, False, False
 
         multiple = True
-        s3db = current.s3db
 
+        linked = resource.linked
+        if linked and linked.alias == alias:
+
+            # It's the linked table
+            linktable = resource.table
+
+            ktable = linked.table
+            join = [ktable.on(ktable[linked.fkey] == linktable[linked.rkey])]
+
+            return ktable, join, multiple, True
+
+        s3db = current.s3db
         tablename = resource.tablename
 
         # Try to attach the component
@@ -624,7 +643,7 @@ class S3ResourceField(object):
         self.colname = lf.colname
 
         self._joins = lf.joins
-        
+
         self.distinct = lf.distinct
         self.multiple = lf.multiple
 
@@ -697,7 +716,7 @@ class S3ResourceField(object):
 
         if self._join is not None:
             return self._join
-            
+
         join = self._join = {}
         for tablename, joins in self._joins.items():
             query = None
@@ -709,7 +728,7 @@ class S3ResourceField(object):
             if query:
                 join[tablename] = query
         return join
-            
+
     # -------------------------------------------------------------------------
     @property
     def left(self):
@@ -822,7 +841,7 @@ class S3Joins(object):
 
         master = self.tablename
         joins_dict = self.joins
-        
+
         tables = current.db._adapter.tables
 
         joins_dict[tablename] = joins
@@ -870,7 +889,7 @@ class S3Joins(object):
             Add joins to this collection
 
             @param joins: a join or a list/tuple of joins
-            
+
             @return: the list of names of all tables for which joins have
                      been added to the collection
         """
@@ -917,7 +936,7 @@ class S3Joins(object):
         return "<S3Joins %s>" % str([str(j) for j in self.as_list()])
 
     # -------------------------------------------------------------------------
-    def as_list(self, tablenames=None, exclude=None, aqueries=None):
+    def as_list(self, tablenames=None, aqueries=None, prefer=None):
         """
             Return joins from this collection as list
 
@@ -925,12 +944,6 @@ class S3Joins(object):
                                shall be returned, defaults to all tables
                                in the collection. Dependencies will be
                                included automatically (if available)
-            @param exclude: tables to exclude from tablenames, can be
-                            another S3Joins collection, or a list/tuple/set
-                            of tablenames, useful e.g. to prevent duplication
-                            of left joins as inner joins:
-                            join = inner_joins.as_list(exclude=left_joins)
-                            left = left_joins.as_list()
             @param aqueries: dict of accessible-queries {tablename: query}
                              to include in the joins; if there is no entry
                              for a particular table, then it will be looked
@@ -938,6 +951,13 @@ class S3Joins(object):
                              To prevent differential authorization of a
                              particular joined table, set {<tablename>: None}
                              in the dict
+            @param prefer: If any table or any of its dependencies would be
+                           joined by this S3Joins collection, then skip this
+                           table here (and enforce it to be joined by the
+                           preferred collection), to prevent duplication of
+                           left joins as inner joins:
+                           join = inner_joins.as_list(prefer=left_joins)
+                           left = left_joins.as_list()
 
             @return: a list of joins, ordered by their interdependency, which
                      can be used as join/left parameter of Set.select()
@@ -949,11 +969,17 @@ class S3Joins(object):
             tablenames = self.tables
         else:
             tablenames = set(tablenames)
-        if isinstance(exclude, S3Joins):
-            tablenames -= set(exclude.keys())
-        elif exclude:
-            tablenames -= set(exclude)
-            
+
+        skip = set()
+        if prefer:
+            preferred_joins = prefer.as_list(tablenames=tablenames)
+            for join in preferred_joins:
+                try:
+                    tname = join.first._tablename
+                except AttributeError:
+                    tname = str(join.first)
+                skip.add(tname)
+        tablenames -= skip
 
         joins = self.joins
 
@@ -961,13 +987,27 @@ class S3Joins(object):
         required_tables = set()
         get_tables = current.db._adapter.tables
         for tablename in tablenames:
-            if tablename not in joins or tablename == self.tablename:
+            if tablename not in joins or \
+               tablename == self.tablename or \
+               tablename in skip:
                 continue
-            required_tables.add(tablename)
-            for join in joins[tablename]:
-                dependencies = get_tables(join.second)
-                if dependencies:
-                    required_tables |= set(dependencies)
+
+            join_list = joins[tablename]
+            preferred = False
+            dependencies = set()
+            for join in join_list:
+                join_tables = set(get_tables(join.second))
+                if join_tables:
+                    if any((tname in skip for tname in join_tables)):
+                        preferred = True
+                    dependencies |= join_tables
+            if preferred:
+                skip.add(tablename)
+                skip |= dependencies
+                prefer.extend({tablename: join_list})
+            else:
+                required_tables.add(tablename)
+                required_tables |= dependencies
 
         # Collect joins
         joins_dict = {}
@@ -1094,22 +1134,31 @@ class S3ResourceQuery(object):
 
     # -------------------------------------------------------------------------
     def _joins(self, resource, left=False):
-        
+
         op = self.op
         l = self.left
         r = self.right
 
         if op in (self.AND, self.OR):
-            ljoins, ld = l._joins(resource, left=left)
-            rjoins, rd = r._joins(resource, left=left)
-            
+            if isinstance(l, S3ResourceQuery):
+                ljoins, ld = l._joins(resource, left=left)
+            else:
+                ljoins, ld = {}, False
+            if isinstance(r, S3ResourceQuery):
+                rjoins, rd = r._joins(resource, left=left)
+            else:
+                rjoins, rd = {}, False
+
             ljoins = dict(ljoins)
             ljoins.update(rjoins)
-            
+
             return (ljoins, ld or rd)
-            
+
         elif op == self.NOT:
-            return l._joins(resource, left=left)
+            if isinstance(l, S3ResourceQuery):
+                return l._joins(resource, left=left)
+            else:
+                return {}, False
 
         joins, distinct = {}, False
 
@@ -1123,8 +1172,8 @@ class S3ResourceQuery(object):
                 if distinct and left or not distinct and not left:
                     joins = rfield._joins
 
-        return(joins, distinct)
-        
+        return (joins, distinct)
+
     # -------------------------------------------------------------------------
     def fields(self):
         """ Get all field selectors involved with this query """
@@ -1159,8 +1208,10 @@ class S3ResourceQuery(object):
         r = self.right
 
         if op == self.AND:
-            lq, lf = l.split(resource)
-            rq, rf = r.split(resource)
+            lq, lf = l.split(resource) \
+                     if isinstance(l, S3ResourceQuery) else (l, None)
+            rq, rf = r.split(resource) \
+                     if isinstance(r, S3ResourceQuery) else (r, None)
             q = lq
             if rq is not None:
                 if q is not None:
@@ -1175,8 +1226,10 @@ class S3ResourceQuery(object):
                     f = rf
             return q, f
         elif op == self.OR:
-            lq, lf = l.split(resource)
-            rq, rf = r.split(resource)
+            lq, lf = l.split(resource) \
+                     if isinstance(l, S3ResourceQuery) else (l, None)
+            rq, rf = r.split(resource) \
+                     if isinstance(r, S3ResourceQuery) else (r, None)
             if lf is not None or rf is not None:
                 return None, self
             else:
@@ -1188,17 +1241,20 @@ class S3ResourceQuery(object):
                         q = rq
                 return q, None
         elif op == self.NOT:
-            if l.op == self.OR:
-                i = (~(l.left)) & (~(l.right))
-                return i.split(resource)
+            if isinstance(l, S3ResourceQuery):
+                if l.op == self.OR:
+                    i = (~(l.left)) & (~(l.right))
+                    return i.split(resource)
+                else:
+                    q, f = l.split(resource)
+                    if q is not None and f is not None:
+                        return None, self
+                    elif q is not None:
+                        return ~q, None
+                    elif f is not None:
+                        return None, ~f
             else:
-                q, f = l.split(resource)
-                if q is not None and f is not None:
-                    return None, self
-                elif q is not None:
-                    return ~q, None
-                elif f is not None:
-                    return None, ~f
+                return ~l, None
 
         l = self.left
         try:
@@ -1240,8 +1296,8 @@ class S3ResourceQuery(object):
 
         # Resolve query components
         if op == self.AND:
-            l = l.query(resource)
-            r = r.query(resource)
+            l = l.query(resource) if isinstance(l, S3ResourceQuery) else l
+            r = r.query(resource) if isinstance(r, S3ResourceQuery) else r
             if l is None or r is None:
                 return None
             elif l is False or r is False:
@@ -1249,8 +1305,8 @@ class S3ResourceQuery(object):
             else:
                 return l & r
         elif op == self.OR:
-            l = l.query(resource)
-            r = r.query(resource)
+            l = l.query(resource) if isinstance(l, S3ResourceQuery) else l
+            r = r.query(resource) if isinstance(r, S3ResourceQuery) else r
             if l is None or r is None:
                 return None
             elif l is False or r is False:
@@ -1258,7 +1314,7 @@ class S3ResourceQuery(object):
             else:
                 return l | r
         elif op == self.NOT:
-            l = l.query(resource)
+            l = l.query(resource) if isinstance(l, S3ResourceQuery) else l
             if l is None:
                 return None
             elif l is False:
@@ -1417,7 +1473,7 @@ class S3ResourceQuery(object):
             @param l: the left operator
             @param r: the right operator
         """
-        
+
         from s3hierarchy import S3Hierarchy
 
         tablename = l.tablename
@@ -1517,7 +1573,7 @@ class S3ResourceQuery(object):
 
         expr = None
         none = False
-        
+
         if not isinstance(r, (list, tuple, set)):
             items = [r]
         else:
@@ -1525,9 +1581,9 @@ class S3ResourceQuery(object):
         if None in items:
             none = True
             items = [item for item in items if item is not None]
-            
+
         wildcard = False
-        
+
         if str(l.type) in ("string", "text"):
             for item in items:
                 if isinstance(item, basestring):
@@ -1545,16 +1601,16 @@ class S3ResourceQuery(object):
                     _expr = (field.like(s))
                 else:
                     _expr = (field == s)
-                    
+
                 if expr is None:
                     expr = _expr
                 else:
                     expr |= _expr
-                    
+
         if not wildcard:
             if len(items) == 1:
                 # Don't use belongs() for single value
-                expr = (field == items[0])
+                expr = (field == tuple(items)[0])
             elif items:
                 expr = (field.belongs(items))
 
@@ -1699,7 +1755,7 @@ class S3ResourceQuery(object):
         if op == self.CONTAINS:
             r = convert(l, r)
             result = self._probe_contains(l, r)
-            
+
         elif op == self.ANYOF:
             if not isinstance(r, (list, tuple, set)):
                 r = [r]
@@ -1710,17 +1766,17 @@ class S3ResourceQuery(object):
                 elif l == v:
                     return True
             return False
-            
+
         elif op == self.BELONGS:
             if not isinstance(r, (list, tuple, set)):
                 r = [r]
             r = convert(l, r)
             result = self._probe_contains(r, l)
-            
+
         elif op == self.LIKE:
             pattern = re.escape(str(r)).replace("\\%", ".*").replace(".*.*", "\\%")
             return re.match(pattern, str(l)) is not None
-            
+
         else:
             r = convert(l, r)
             if op == self.LT:
@@ -1735,7 +1791,7 @@ class S3ResourceQuery(object):
                 result = l >= r
             elif op == self.GT:
                 result = l > r
-                
+
         return result
 
     # -------------------------------------------------------------------------
@@ -1786,15 +1842,20 @@ class S3ResourceQuery(object):
         l = self.left
         r = self.right
         if op == self.AND:
-            l = l.represent(resource)
-            r = r.represent(resource)
+            l = l.represent(resource) \
+                if isinstance(l, S3ResourceQuery) else str(l)
+            r = r.represent(resource) \
+                if isinstance(r, S3ResourceQuery) else str(r)
             return "(%s and %s)" % (l, r)
         elif op == self.OR:
-            l = l.represent(resource)
-            r = r.represent(resource)
+            l = l.represent(resource) \
+                if isinstance(l, S3ResourceQuery) else str(l)
+            r = r.represent(resource) \
+                if isinstance(r, S3ResourceQuery) else str(r)
             return "(%s or %s)" % (l, r)
         elif op == self.NOT:
-            l = l.represent(resource)
+            l = l.represent(resource) \
+                if isinstance(l, S3ResourceQuery) else str(l)
             return "(not %s)" % l
         else:
             if isinstance(l, S3FieldSelector):
@@ -2072,7 +2133,7 @@ class S3URLQuery(object):
             w = ""
             quote = False
             ignore_quote = False
-            for c in item:
+            for c in s3_unicode(item):
                 if c == '"' and not ignore_quote:
                     w += c
                     quote = not quote

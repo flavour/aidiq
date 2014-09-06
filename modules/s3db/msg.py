@@ -27,10 +27,11 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["S3ChannelModel",
+__all__ = ("S3ChannelModel",
            "S3MessageModel",
            "S3MessageAttachmentModel",
            "S3EmailModel",
+           "S3FacebookModel",
            "S3MCommonsModel",
            "S3ParsingModel",
            "S3RSSModel",
@@ -42,7 +43,7 @@ __all__ = ["S3ChannelModel",
            "S3TwitterSearchModel",
            "S3XFormsModel",
            "S3BaseStationModel",
-           ]
+           )
 
 from gluon import *
 from gluon.storage import Storage
@@ -59,7 +60,7 @@ class S3ChannelModel(S3Model):
           super-entity
     """
 
-    names = ["msg_channel",
+    names = ("msg_channel",
              "msg_channel_limit",
              "msg_channel_status",
              "msg_channel_id",
@@ -68,7 +69,7 @@ class S3ChannelModel(S3Model):
              "msg_channel_enable_interactive",
              "msg_channel_disable_interactive",
              "msg_channel_onaccept",
-             ]
+             )
 
     def model(self):
 
@@ -81,8 +82,7 @@ class S3ChannelModel(S3Model):
         # Super entity: msg_channel
         #
         channel_types = Storage(msg_email_channel = T("Email (Inbound)"),
-                                # @ToDo:
-                                #msg_facebook_channel = T("Facebook"),
+                                msg_facebook_channel = T("Facebook"),
                                 msg_mcommons_channel = T("Mobile Commons (Inbound)"),
                                 msg_rss_channel = T("RSS Feed"),
                                 msg_sms_modem_channel = T("SMS Modem"),
@@ -173,6 +173,7 @@ class S3ChannelModel(S3Model):
         """
             Enable a Channel
             - Schedule a Poll for new messages
+            - Enable all associated Parsers
 
             CLI API for shell scripts & to be called by S3Method
         """
@@ -190,6 +191,14 @@ class S3ChannelModel(S3Model):
             record.update_record(enabled = True)
             # Update Super
             s3db.update_super(table, record)
+
+        # Enable all Parser tasks on this channel
+        ptable = s3db.msg_parser
+        query = (ptable.channel_id == channel_id) & \
+                (ptable.deleted == False)
+        parsers = db(query).select(ptable.id)
+        for parser in parsers:
+            s3db.msg_parser_enable(parser.id)
 
         # Do we have an existing Task?
         ttable = db.scheduler_task
@@ -232,6 +241,7 @@ class S3ChannelModel(S3Model):
         """
             Disable a Channel
             - Remove schedule for Polling for new messages
+            - Disable all associated Parsers
 
             CLI API for shell scripts & to be called by S3Method
         """
@@ -249,6 +259,12 @@ class S3ChannelModel(S3Model):
             record.update_record(enabled = False)
             # Update Super
             s3db.update_super(table, record)
+
+        # Disable all Parser tasks on this channel
+        ptable = s3db.msg_parser
+        parsers = db(ptable.channel_id == channel_id).select(ptable.id)
+        for parser in parsers:
+            s3db.msg_parser_disable(parser.id)
 
         # Do we have an existing Task?
         ttable = db.scheduler_task
@@ -338,11 +354,11 @@ class S3MessageModel(S3Model):
         Messages
     """
 
-    names = ["msg_message",
+    names = ("msg_message",
              "msg_message_id",
              "msg_message_represent",
              "msg_outbox",
-             ]
+             )
 
     def model(self):
 
@@ -365,6 +381,7 @@ class S3MessageModel(S3Model):
         #
 
         message_types = Storage(msg_email = T("Email"),
+                                msg_facebook = T("Facebook"),
                                 msg_rss = T("RSS"),
                                 msg_sms = T("SMS"),
                                 msg_twitter = T("Twitter"),
@@ -499,6 +516,20 @@ class S3MessageModel(S3Model):
                     msg_message_represent = message_represent,
                     )
 
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def defaults():
+        """
+            Return safe defaults in case the model has been deactivated.
+        """
+
+        dummy = S3ReusableField("dummy_id", "integer",
+                                readable = False,
+                                writable = False)
+
+        return dict(msg_message_id = lambda **attr: dummy("message_id"),
+                    )
+
 # =============================================================================
 class S3MessageAttachmentModel(S3Model):
     """
@@ -506,8 +537,7 @@ class S3MessageAttachmentModel(S3Model):
         - link table between msg_message & doc_document
     """
 
-    names = ["msg_attachment",
-             ]
+    names = ("msg_attachment",)
 
     def model(self):
 
@@ -516,7 +546,7 @@ class S3MessageAttachmentModel(S3Model):
         tablename = "msg_attachment"
         self.define_table(tablename,
                           # FK not instance
-                          self.msg_message_id(),
+                          self.msg_message_id(ondelete="CASCADE"),
                           self.doc_document_id(),
                           *s3_meta_fields())
 
@@ -533,9 +563,9 @@ class S3EmailModel(S3ChannelModel):
             InBox/OutBox
     """
 
-    names = ["msg_email_channel",
+    names = ("msg_email_channel",
              "msg_email",
-             ]
+             )
 
     def model(self):
 
@@ -653,14 +683,157 @@ class S3EmailModel(S3ChannelModel):
         return dict()
         
 # =============================================================================
+class S3FacebookModel(S3ChannelModel):
+    """
+        Facebook
+            Channels
+            InBox/OutBox
+
+        https://developers.facebook.com/docs/graph-api
+    """
+
+    names = ("msg_facebook_channel",
+             "msg_facebook",
+             "msg_facebook_login",
+             )
+
+    def model(self):
+
+        T = current.T
+
+        configure = self.configure
+        define_table = self.define_table
+        set_method = self.set_method
+        super_link = self.super_link
+
+        # ---------------------------------------------------------------------
+        # Facebook Channels
+        #
+        tablename = "msg_facebook_channel"
+        define_table(tablename,
+                     # Instance
+                     super_link("channel_id", "msg_channel"),
+                     Field("name"),
+                     Field("description"),
+                     Field("enabled", "boolean",
+                           default = True,
+                           label = T("Enabled?"),
+                           represent = s3_yes_no_represent,
+                           ),
+                     Field("login", "boolean",
+                           default = False,
+                           label = T("Use for Login?"),
+                           represent = s3_yes_no_represent,
+                           ),
+                     Field("app_id", "bigint",
+                           requires = IS_INT_IN_RANGE(0, +1e16)
+                           ),
+                     Field("app_secret", "password", length=64,
+                           readable = False,
+                           requires = IS_NOT_EMPTY(),
+                           ),
+                     # Optional
+                     Field("page_id", "bigint",
+                           requires = IS_INT_IN_RANGE(0, +1e16)
+                           ),
+                     Field("page_access_token"),
+                     *s3_meta_fields())
+
+        configure(tablename,
+                  onaccept = self.msg_facebook_channel_onaccept,
+                  super_entity = "msg_channel",
+                  )
+
+        set_method("msg", "facebook_channel",
+                   method = "enable",
+                   action = self.msg_channel_enable_interactive)
+
+        set_method("msg", "facebook_channel",
+                   method = "disable",
+                   action = self.msg_channel_disable_interactive)
+
+        #set_method("msg", "facebook_channel",
+        #           method = "poll",
+        #           action = self.msg_channel_poll)
+
+        # ---------------------------------------------------------------------
+        # Facebook Messages: InBox & Outbox
+        #
+
+        tablename = "msg_facebook"
+        define_table(tablename,
+                     # Instance
+                     super_link("message_id", "msg_message"),
+                     self.msg_channel_id(),
+                     s3_datetime(default = "now"),
+                     Field("body", "text",
+                           label = T("Message"),
+                           ),
+                     # @ToDo: Are from_address / to_address relevant in Facebook?
+                     Field("from_address", #notnull=True,
+                           #default = sender,
+                           label = T("Sender"),
+                           ),
+                     Field("to_address",
+                           label = T("To"),
+                           ),
+                     Field("inbound", "boolean",
+                           default = False,
+                           label = T("Direction"),
+                           represent = lambda direction: \
+                                       (direction and [T("In")] or [T("Out")])[0],
+                           ),
+                     *s3_meta_fields())
+
+        configure(tablename,
+                  orderby = "msg_facebook.date desc",
+                  super_entity = "msg_message",
+                  )
+
+        # ---------------------------------------------------------------------
+        return dict(msg_facebook_login = self.msg_facebook_login,
+                    )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def defaults():
+        """ Safe defaults for model-global names if module is disabled """
+
+        return dict(msg_facebook_login = lambda: False,
+                    )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def msg_facebook_channel_onaccept(form):
+
+        if form.vars.login:
+            # Ensure only a single account used for Login
+            current.db(current.s3db.msg_facebook_channel.id != form.vars.id).update(login = False)
+
+        # Normal onaccept processing
+        S3ChannelModel.channel_onaccept(form)
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def msg_facebook_login():
+
+        table = current.s3db.msg_facebook_channel
+        query = (table.login == True) & \
+                (table.deleted == False)
+        c = current.db(query).select(table.app_id,
+                                     table.app_secret,
+                                     limitby=(0, 1)
+                                     ).first()
+        return c
+
+# =============================================================================
 class S3MCommonsModel(S3ChannelModel):
     """
         Mobile Commons Inbound SMS Settings
         - Outbound can use Web API
     """
 
-    names = ["msg_mcommons_channel",
-             ]
+    names = ("msg_mcommons_channel",)
 
     def model(self):
 
@@ -702,8 +875,8 @@ class S3MCommonsModel(S3ChannelModel):
                      *s3_meta_fields())
 
         self.configure(tablename,
-                       super_entity = "msg_channel",
                        onaccept = self.msg_channel_onaccept,
+                       super_entity = "msg_channel",
                        )
 
         set_method("msg", "mcommons_channel",
@@ -727,7 +900,7 @@ class S3ParsingModel(S3Model):
         Message Parsing Model
     """
 
-    names = ["msg_parser",
+    names = ("msg_parser",
              "msg_parsing_status",
              "msg_session",
              "msg_keyword",
@@ -737,7 +910,7 @@ class S3ParsingModel(S3Model):
              "msg_parser_disable",
              "msg_parser_enable_interactive",
              "msg_parser_disable_interactive",
-             ]
+             )
 
     def model(self):
 
@@ -1027,9 +1200,9 @@ class S3RSSModel(S3ChannelModel):
         RSS channel
     """
 
-    names = ["msg_rss_channel",
-             "msg_rss"
-             ]
+    names = ("msg_rss_channel",
+             "msg_rss",
+             )
 
     def model(self):
 
@@ -1176,8 +1349,7 @@ class S3SMSModel(S3Model):
         - Twilio
     """
 
-    names = ["msg_sms",
-             ]
+    names = ("msg_sms",)
 
     def model(self):
 
@@ -1243,11 +1415,11 @@ class S3SMSOutboundModel(S3Model):
         - Web API (inc Clickatell, MCommons, mVaayoo)
     """
 
-    names = ["msg_sms_outbound_gateway",
+    names = ("msg_sms_outbound_gateway",
              "msg_sms_modem_channel",
              "msg_sms_smtp_channel",
              "msg_sms_webapi_channel",
-             ]
+             )
 
     def model(self):
 
@@ -1389,9 +1561,9 @@ class S3TropoModel(S3Model):
         https://www.tropo.com
     """
 
-    names = ["msg_tropo_channel",
+    names = ("msg_tropo_channel",
              "msg_tropo_scratch",
-             ]
+             )
 
     def model(self):
 
@@ -1454,9 +1626,9 @@ class S3TwilioModel(S3ChannelModel):
         Twilio Inbound SMS channel
     """
 
-    names = ["msg_twilio_channel",
+    names = ("msg_twilio_channel",
              "msg_twilio_sid",
-             ]
+             )
 
     def model(self):
 
@@ -1527,9 +1699,9 @@ class S3TwilioModel(S3ChannelModel):
 # =============================================================================
 class S3TwitterModel(S3Model):
 
-    names = ["msg_twitter_channel",
+    names = ("msg_twitter_channel",
              "msg_twitter",
-             ]
+             )
 
     def model(self):
 
@@ -1543,6 +1715,7 @@ class S3TwitterModel(S3Model):
         # ---------------------------------------------------------------------
         # Twitter Channel
         #
+        password_widget = S3PasswordWidget()
         tablename = "msg_twitter_channel"
         define_table(tablename,
                      #Instance
@@ -1557,10 +1730,18 @@ class S3TwitterModel(S3Model):
                            represent = s3_yes_no_represent,
                            ),
                      Field("twitter_account"),
-                     Field("consumer_key", "password"),
-                     Field("consumer_secret", "password"),
-                     Field("access_token", "password"),
-                     Field("access_token_secret", "password"),
+                     Field("consumer_key", "password", 
+                           widget = password_widget,
+                           ),
+                     Field("consumer_secret", "password",
+                           widget = password_widget,
+                           ),
+                     Field("access_token", "password",
+                           widget = password_widget,
+                           ),
+                     Field("access_token_secret", "password",
+                           widget = password_widget,
+                           ),
                      *s3_meta_fields())
 
         configure(tablename,
@@ -1709,11 +1890,13 @@ class S3TwitterSearchModel(S3ChannelModel):
     """
         Twitter Searches
          - results can be fed to KeyGraph
+
+        https://dev.twitter.com/docs/api/1.1/get/search/tweets
     """
 
-    names = ["msg_twitter_search",
+    names = ("msg_twitter_search",
              "msg_twitter_result",
-             ]
+             )
 
     def model(self):
 
@@ -1732,6 +1915,8 @@ class S3TwitterSearchModel(S3ChannelModel):
                      Field("keywords", "text",
                            label = T("Keywords"),
                            ),
+                     # @ToDo: Allow setting a Point & Radius for filtering by geocode
+                     #self.gis_location_id(),
                      Field("lang",
                            # Set in controller
                            #default = current.response.s3.language,
@@ -1981,7 +2166,7 @@ class S3XFormsModel(S3Model):
         http://eden.sahanafoundation.org/wiki/BluePrint/Mobile#Android
     """
 
-    names = ["msg_xforms_store"]
+    names = ("msg_xforms_store",)
 
     def model(self):
 
@@ -2010,7 +2195,7 @@ class S3BaseStationModel(S3Model):
                - see RadioMobile
     """
 
-    names = ["msg_basestation"]
+    names = ("msg_basestation",)
 
     def model(self):
 

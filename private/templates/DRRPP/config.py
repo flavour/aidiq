@@ -14,13 +14,13 @@ T = current.T
 settings = current.deployment_settings
 
 """
-    Template settings for DRRPP
+    Template settings for DRR Project Portal
 """
 # =============================================================================
 # Base Deployment Settings
 
 # Pre-Populate
-settings.base.prepopulate = ["DRRPP"]
+settings.base.prepopulate = ("DRRPP", "default/users")
 
 settings.base.system_name = T("DRR Project Portal")
 settings.base.system_name_short = T("DRRPP")
@@ -93,8 +93,8 @@ settings.gis.map_width = 960 # container_12
 settings.gis.display_L0 = True
 # Deployment only covers Asia-Pacific
 settings.gis.countries = [ "AF", "AU", "BD", "BN", "CK", "CN", "FJ", "FM", "HK", "ID", "IN", "JP", "KH", "KI", "KP", "KR", "LA", "MH", "MM", "MN", "MV", "MY", "NP", "NZ", "PG", "PH", "PK", "PW", "SB", "SG", "SL", "TH", "TL", "TO", "TV", "TW", "VN", "VU", "WS"]
-# Uncomment to disable the ability to add PoIs to the main map
-settings.gis.pois = False
+# Resources which can be directly added to the main map
+settings.gis.poi_create_resources = None
 
 # =============================================================================
 # Organisation Deployment Settings

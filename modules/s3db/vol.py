@@ -50,8 +50,7 @@ from s3layouts import S3AddResourceLink
 # =============================================================================
 class S3VolunteerModel(S3Model):
 
-    names = ["vol_details",
-             ]
+    names = ("vol_details",)
 
     def model(self):
 
@@ -113,9 +112,9 @@ class S3VolunteerModel(S3Model):
 # =============================================================================
 class S3VolunteerAwardModel(S3Model):
 
-    names = ["vol_award",
+    names = ("vol_award",
              "vol_volunteer_award",
-             ]
+             )
 
     def model(self):
 
@@ -220,11 +219,11 @@ class S3VolunteerAwardModel(S3Model):
 # =============================================================================
 class S3VolunteerClusterModel(S3Model):
 
-    names = ["vol_cluster_type",
+    names = ("vol_cluster_type",
              "vol_cluster",
              "vol_cluster_position",
              "vol_volunteer_cluster",
-             ]
+             )
 
     def model(self):
 
@@ -359,9 +358,9 @@ class S3VolunteerClusterModel(S3Model):
         # ---------------------------------------------------------------------
         # Volunteer Cluster Link Table
         cluster_type_filter = '''
-S3OptionsFilter({
- 'triggerName':'vol_cluster_type_id',
- 'targetName':'vol_cluster_id',
+$.filterOptionsS3({
+ 'trigger':'vol_cluster_type_id',
+ 'target':'vol_cluster_id',
  'lookupKey':'vol_cluster_type_id',
  'lookupPrefix':'vol',
  'lookupResource':'cluster',
@@ -672,6 +671,7 @@ def vol_service_record(r, **attr):
 
         return output
 
+    from s3.s3export import S3Exporter
     exporter = S3Exporter().pdf
     return exporter(r.resource,
                     request = r,

@@ -27,7 +27,7 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["S3Codec"]
+__all__ = ("S3Codec",)
 
 import datetime
 try:
@@ -159,7 +159,7 @@ class S3Codec(object):
         # Default seconds/microseconds=zero
         DEFAULT = datetime.datetime.utcnow().replace(second=0,
                                                      microsecond=0)
-                                                     
+
         dt = dateutil.parser.parse(dtstr, default=DEFAULT)
         if dt.tzinfo is None:
             try:

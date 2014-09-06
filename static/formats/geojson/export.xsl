@@ -38,11 +38,14 @@
     <s3:fields tables="gis_layer_shapefile*" select="layer_id"/>
     <s3:fields tables="gis_theme_data" select="location_id,value"/>
     <!-- Need to be able to filter &/or style records -->
+    <s3:fields tables="cms_series" select="name"/>
     <s3:fields tables="deploy_application" select="human_resource_id"/>
     <!--
     <s3:fields tables="event_event" select="event_type_id"/>
     <s3:fields tables="event_event_location" select="event_id"/>-->
     <s3:fields tables="event_incident_report_group" select="incident_report_id"/>
+    <s3:fields tables="event_post_incident_type" select="incident_type_id,post_id"/>
+    <s3:fields tables="event_task" select="task_id"/>
     <s3:fields tables="project_activity_activity_type" select="activity_id"/>
     <s3:fields tables="project_activity_group" select="activity_id"/>
     <s3:fields tables="project_activity_organisation" select="activity_id"/>
@@ -51,6 +54,7 @@
     <s3:fields tables="stats_people_group" select="people_id"/>
     <s3:fields tables="stats_trained_group" select="trained_id"/>
     <s3:fields tables="supply_distribution" select="activity_id"/>
+    <s3:fields tables="vehicle_vehicle" select="asset_id,vehicle_type_id"/>
     <s3:fields tables="vulnerability_evac_route_group" select="evac_route_id"/>
     <s3:fields tables="vulnerability_risk_group" select="risk_id"/>
     <s3:fields tables="vulnerability_risk_tag" select="risk_id"/>
@@ -69,6 +73,10 @@
         <xsl:variable name="results">
             <xsl:value-of select="@results"/>
         </xsl:variable>
+        <xsl:variable name="s3">
+            <!-- S3 Extensions -->
+            <xsl:value-of select="@map"/>
+        </xsl:variable>
         <xsl:if test="$results &gt; 0">
             <xsl:variable name="resource">
                 <xsl:value-of select="concat($prefix, '_', $name)"/>
@@ -77,14 +85,18 @@
                 <xsl:when test="$resource='gis_layer_shapefile'">
                     <xsl:apply-templates select="./resource[@name='gis_layer_shapefile']"/>
                 </xsl:when>
-                <!-- skip if all resources have no latlon defined
-                <xsl:when test="not(//reference[@name='location'])">
-                </xsl:when> -->
+                <!-- Skip if all resources have no latlon defined -->
                 <xsl:when test="count(./resource[@name=$resource])=1">
                     <xsl:apply-templates select="./resource[@name=$resource]"/>
                 </xsl:when>
                 <xsl:otherwise>
                     <type>FeatureCollection</type>
+                    <!-- S3 Extensions -->
+                    <xsl:if test="$s3">
+                        <s3>
+                            <xsl:value-of select="$s3"/>
+                        </s3>
+                    </xsl:if>
                     <xsl:for-each select="./resource[@name=$resource]">
                         <features>
                             <xsl:apply-templates select="."/>
@@ -99,7 +111,7 @@
     <xsl:template match="resource[@name='gis_location']">
         <xsl:variable name="uuid" select="./@uuid"/>
         <xsl:variable name="geometry" select="./map[1]/geometry/@value"/>
-        <xsl:variable name="attributes" select="map[1]/@attributes"/>
+        <xsl:variable name="attributes" select="./map[1]/@attributes"/>
         <xsl:choose>
             <xsl:when test="//reference[@resource='gis_location' and @uuid=$uuid]">
                 <xsl:for-each select="//reference[@resource='gis_location' and @uuid=$uuid]">
@@ -117,46 +129,7 @@
                     </xsl:attribute>
                 </geometry>
                 <properties>
-                    <id>
-                        <xsl:value-of select="substring-after($uuid, 'urn:uuid:')"/>
-                    </id>
-                    <!-- Generic marker not used in GeoJSON
-                    <xsl:if test="@marker!=''">
-                        <marker>
-                            <xsl:value-of select="@marker"/>
-                        </marker>
-                    </xsl:if>-->
-                    <xsl:if test="map[1]/@popup!=''">
-                        <popup>
-                            <xsl:value-of select="map[1]/@popup"/>
-                        </popup>
-                    </xsl:if>
-                    <xsl:if test="map[1]/@popup_url!=''">
-                        <url>
-                            <xsl:value-of select="map[1]/@popup_url"/>
-                        </url>
-                    </xsl:if>
-                    
-                    <!-- Per-feature Marker not used for gis_location
-                    <xsl:if test="@marker_url">
-                        <marker_url>
-                            <xsl:value-of select="@marker_url"/>
-                        </marker_url>
-                        <marker_height>
-                            <xsl:value-of select="@marker_height"/>
-                        </marker_height>
-                        <marker_width>
-                            <xsl:value-of select="@marker_width"/>
-                        </marker_width>
-                    </xsl:if>-->
-
-                    <xsl:if test="$attributes!=''">
-                        <xsl:call-template name="Attributes">
-                            <xsl:with-param name="attributes">
-                                <xsl:value-of select="$attributes"/>
-                            </xsl:with-param>
-                        </xsl:call-template>
-                    </xsl:if>
+                    <xsl:call-template name="Properties"/>
                 </properties>
             </xsl:when>
             <xsl:otherwise>
@@ -173,21 +146,7 @@
                     </coordinates>
                 </geometry>
                 <properties>
-                    <id>
-                        <xsl:value-of select="substring-after($uuid, 'urn:uuid:')"/>
-                    </id>
-                    <name>
-                        <xsl:value-of select="data[@field='name']"/>
-                    </name>
-                    <marker>
-                        <xsl:value-of select="map[1]/@marker"/>
-                    </marker>
-                    <popup>
-                        <xsl:value-of select="map[1]/@popup"/>
-                    </popup>
-                    <url>
-                        <xsl:value-of select="map[1]/@popup_url"/>
-                    </url>
+                    <xsl:call-template name="Properties"/>
                 </properties>
             </xsl:otherwise>
         </xsl:choose>
@@ -362,12 +321,9 @@
                 </geometry>
                 <properties>
                     <xsl:call-template name="Properties"/>
-                        <!--<xsl:with-param name="uuid">
-                            <xsl:value-of select="./@uuid"/>
-                        </xsl:with-param>
-                    </xsl:call-template>-->
                 </properties>
             </xsl:when>
+            <!--
             <xsl:when test="./map[1]/@wkt!='null'">
                 <xsl:call-template name="WKT">
                     <xsl:with-param name="wkt">
@@ -377,7 +333,7 @@
                         <xsl:value-of select="./@uuid"/>
                     </xsl:with-param>
                 </xsl:call-template>
-            </xsl:when>
+            </xsl:when> -->
             <xsl:when test="./map[1]/@lon!='null'">
                 <type>Feature</type>
                 <geometry>
@@ -393,10 +349,6 @@
                 </geometry>
                 <properties>
                     <xsl:call-template name="Properties"/>
-                        <!--<xsl:with-param name="uuid">
-                            <xsl:value-of select="./@uuid"/>
-                        </xsl:with-param>
-                    </xsl:call-template>-->
                 </properties>
             </xsl:when>
             <!-- xsl:otherwise skip -->
@@ -407,28 +359,20 @@
     <xsl:template name="Properties">
         <!--<xsl:param name="uuid"/>-->
         <xsl:variable name="attributes" select="./map[1]/@attributes"/>
+        <xsl:variable name="style" select="./map[1]/style/@value"/>
 
         <!-- We don't need the UUID, so save bandwidth
         <id>-->
             <!-- We want the Resource's UUID here, not the associated Location's or Site's
             <xsl:value-of select="substring-after($uuid, 'urn:uuid:')"/>
         </id>-->
+
         <xsl:if test="map[1]/@marker!=''">
             <marker>
                 <xsl:value-of select="map[1]/@marker"/>
             </marker>
         </xsl:if>
-        <xsl:if test="map[1]/@popup!=''">
-            <popup>
-                <xsl:value-of select="map[1]/@popup"/>
-            </popup>
-        </xsl:if>
-        <xsl:if test="map[1]/@popup_url!=''">
-            <url>
-                <xsl:value-of select="map[1]/@popup_url"/>
-            </url>
-        </xsl:if>
-        
+
         <xsl:if test="map[1]/@marker_url">
             <!-- Per-feature Marker -->
             <marker_url>
@@ -440,6 +384,30 @@
             <marker_width>
                 <xsl:value-of select="map[1]/@marker_width"/>
             </marker_width>
+        </xsl:if>
+
+        <!--
+        <xsl:if test="map[1]/@popup_url!=''">
+            <url>
+                <xsl:value-of select="map[1]/@popup_url"/>
+            </url>
+        </xsl:if> -->
+        <!-- id is used for url_format -->
+        <id>
+            <!-- Numeric -->
+            <xsl:attribute name="type">
+                <xsl:text>numeric</xsl:text>
+            </xsl:attribute>
+            <xsl:value-of select="@id"/>
+        </id>
+
+        <xsl:if test="$style!=''">
+            <!-- Use pre-prepared JSON -->
+            <style>
+                <xsl:attribute name="value">
+                    <xsl:value-of select="$style"/>
+                </xsl:attribute>
+            </style>
         </xsl:if>
 
         <xsl:if test="$attributes!=''">
@@ -455,39 +423,46 @@
     <xsl:template name="Attribute">
         <xsl:param name="attribute"/>
 
-        <xsl:variable name="key" select="substring-before(substring-after(substring-before($attribute,':'),'|'),'|')"/>
-        <xsl:variable name="value" select="substring-after($attribute,':')"/>
-        <xsl:choose>
-            <xsl:when test="contains($value,'|')">
-                <!-- Text -->
-                <xsl:element name="{$key}">
-                    <xsl:value-of select="substring-before(substring-after($value,'|'),'|')"/>
-                </xsl:element>
-            </xsl:when>
-            <xsl:otherwise>
-                <!-- Numeric -->
-                <xsl:element name="{$key}">
-                    <xsl:attribute name="type">
-                        <xsl:text>numeric</xsl:text>
-                    </xsl:attribute>
-                    <xsl:value-of select="$value"/>
-                </xsl:element>
-            </xsl:otherwise>
-        </xsl:choose>
+        <xsl:variable name="key" select="substring-after(substring-before($attribute, '||::'), '||')"/>
+        <xsl:variable name="value" select="substring-after($attribute, '||::')"/>
+        <!--<xsl:if test="$key!=''">-->
+            <xsl:element name="{$key}">
+                <xsl:choose>
+                    <xsl:when test="contains($value, '||')">
+                        <!-- Text -->
+                        <xsl:value-of select="substring-before(substring-after($value, '||'), '||')"/>
+                    </xsl:when>
+                    <xsl:otherwise>
+                        <!-- Numeric -->
+                        <xsl:attribute name="type">
+                            <xsl:text>numeric</xsl:text>
+                        </xsl:attribute>
+                        <xsl:value-of select="$value"/>
+                    </xsl:otherwise>
+                </xsl:choose>
+            </xsl:element>
+        <!--</xsl:if>-->
     </xsl:template>
 
     <!-- ****************************************************************** -->
     <xsl:template name="Attributes">
         <xsl:param name="attributes"/>
-        <xsl:variable name="attr" select="substring-before(substring-after($attributes,'{'),'}')"/>
+
+        <xsl:variable name="attr">
+            <xsl:choose>
+                <xsl:when test="contains($attributes, '{{')">
+                    <xsl:value-of select="substring-before(substring-after($attributes, '{{'), '}}')"/>
+                </xsl:when>
+                <xsl:otherwise>
+                    <xsl:value-of select="$attributes"/>
+                </xsl:otherwise>
+            </xsl:choose>
+        </xsl:variable>
+
         <xsl:choose>
-            <!--<xsl:when test="contains($attributes,'],[')">-->
-            <xsl:when test="contains($attr,',')">
-                <!--
-                <xsl:variable name="attribute" select="substring-before($attributes,',[')"/>
-                <xsl:variable name="remainder" select="normalize-space(substring-after($attributes,'],'))"/>-->
-                <xsl:variable name="attribute" select="substring-before($attr,',')"/>
-                <xsl:variable name="remainder" select="normalize-space(substring-after($attr,','))"/>
+            <xsl:when test="contains($attr, ',,||')">
+                <xsl:variable name="attribute" select="substring-before($attr, ',,||')"/>
+                <xsl:variable name="remainder" select="normalize-space(substring-after($attr, ',,'))"/>
                 <xsl:call-template name="Attribute">
                     <xsl:with-param name="attribute">
                         <xsl:value-of select="$attribute"/>

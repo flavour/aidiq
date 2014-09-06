@@ -7,6 +7,9 @@
 module = request.controller
 resourcename = request.function
 
+# Compact JSON encoding
+SEPARATORS = (",", ":")
+
 # -----------------------------------------------------------------------------
 def index():
     """
@@ -141,24 +144,63 @@ def define_map(height = None,
         wms_browser = None
 
     # Do we allow creation of PoIs from the main Map?
-    pois = settings.get_gis_pois() and \
-           auth.s3_has_permission("create", s3db.gis_poi)
-    if pois:
-        if s3.debug:
-            script = "/%s/static/scripts/S3/s3.gis.pois.js" % appname
-        else:
-            script = "/%s/static/scripts/S3/s3.gis.pois.min.js" % appname
-        s3.scripts.append(script)
-        # @ToDo: Allow multiple PoI layers
-        ftable = s3db.gis_layer_feature
-        layer = db(ftable.name == "PoIs").select(ftable.layer_id,
-                                                 limitby=(0, 1)
-                                                 ).first()
-        if layer:
-            script = '''S3.gis.pois_layer=%s''' % layer.layer_id
-            s3.js_global.append(script)
+    add_feature = add_line = add_polygon = False
+    poi_resources = settings.get_gis_poi_create_resources()
+    if poi_resources:
+        layers = []
+        # Remove those which this user doesn't have permissions to create
+        not_permitted = []
+        for res in poi_resources:
+            permit = auth.s3_has_permission("create", res["table"], c=res["c"], f=res["f"])
+            if permit:
+                # Store the layer name
+                layers.append(res["layer"])
+                # Enable the relevant button
+                # @ToDo: Support Menus / Popups
+                feature_type = res.get("type", None)
+                if feature_type == "line":
+                    add_line = True
+                elif feature_type == "polygon":
+                    add_polygon = True
+                else:
+                    # Default
+                    add_feature = True
+            else:
+                # Remove from list
+                not_permitted.append(res)
+        for res in not_permitted:
+            poi_resources.remove(res)
 
-    # @ToDo: Generalise with feature/tablename?
+        if poi_resources:
+            # Lookup Layer IDs
+            ftable = s3db.gis_layer_feature
+            rows = db(ftable.name.belongs(layers)).select(ftable.layer_id, ftable.name)
+            layers_lookup = dict()
+            for row in rows:
+                layers_lookup[row.name] = row.layer_id
+
+            # Prepare JSON data structure
+            pois = []
+            for res in poi_resources:
+                poi = dict(c = res["c"],
+                           f = res["f"],
+                           l = s3_unicode(res["label"]),
+                           #t = s3_unicode(res["tooltip"]),
+                           i = layers_lookup.get(res["layer"], None),
+                           t = res.get("type", "point"),
+                           )
+                pois.append(poi)
+
+            # Inject client-side JS
+            script = '''S3.gis.poi_resources=%s''' % json.dumps(pois, separators=SEPARATORS)
+            s3.js_global.append(script)
+            if s3.debug:
+                script = "/%s/static/scripts/S3/s3.gis.pois.js" % appname
+            else:
+                script = "/%s/static/scripts/S3/s3.gis.pois.min.js" % appname
+            s3.scripts.append(script)
+
+    # Are we wanting to display a specific PoI Marker?
     poi = get_vars.get("poi", None)
     if poi:
         ptable = s3db.gis_poi
@@ -173,13 +215,18 @@ def define_map(height = None,
             lat = record.lat
             lon = record.lon
             filter_url = "~.id=%s" % poi
-            feature_resources = [dict(name = T("PoI"),
-                                      id = "PoI",
-                                      layer_id = layer.layer_id,
-                                      filter = filter_url,
-                                      active = True,
-                                      ),
-                                 ]
+            # @ToDo: Generalise with feature/tablename?
+            layer = db(ftable.name == "PoIs").select(ftable.layer_id,
+                                                     limitby=(0, 1)
+                                                     ).first()
+            if layer:
+                feature_resources = [dict(name = T("PoI"),
+                                          id = "PoI",
+                                          layer_id = layer.layer_id,
+                                          filter = filter_url,
+                                          active = True,
+                                          ),
+                                     ]
         else:
             lat = None
             lon = None
@@ -194,7 +241,9 @@ def define_map(height = None,
                        width = width,
                        lat = lat,
                        lon = lon,
-                       add_feature = pois,
+                       add_feature = add_feature,
+                       add_line = add_line,
+                       add_polygon = add_polygon,
                        catalogue_layers = True,
                        feature_resources = feature_resources,
                        legend = legend,
@@ -240,14 +289,17 @@ def location():
                      ]
     if settings.get_L10n_translate_gis_location():
         search_fields.append("name.name_l10n")
+    if settings.get_L10n_name_alt_gis_location():
+        search_fields.append("name_alt.name_alt")
 
     filter_level_widgets = []
     for level, level_label in location_hierarchy.items():
         search_fields.append(level)
+        hidden = False if level == "L0" else True
         filter_level_widgets.append(S3OptionsFilter(level,
                                                     label = level_label,
                                                     #cols = 5,
-                                                    hidden = True,
+                                                    hidden = hidden,
                                                     ))
 
     filter_widgets = [
@@ -299,10 +351,10 @@ def location():
                        report_options = Storage(
                                 rows = ["name"],
                                 cols = [],
-                                fact = [("population", "sum", T("Total Population"))],
+                                fact = [(T("Total Population"), "sum(population)")],
                                 defaults = Storage(rows="name",
                                                    cols=None,
-                                                   fact="sum:population",
+                                                   fact="sum(population)",
                                                    totals=True
                                                    )
                                 ),
@@ -580,7 +632,7 @@ def ldata():
                                                     f=int(l.parent),
                                                     )
 
-    script = '''n=%s\n''' % json.dumps(location_dict)
+    script = '''n=%s\n''' % json.dumps(location_dict, separators=SEPARATORS)
     response.headers["Content-Type"] = "application/json"
     return script
 
@@ -601,7 +653,7 @@ def hdata():
     if len(args) == 0:
         raise HTTP(400)
 
-    id = args[0]
+    _id = args[0]
 
     # @ToDo: Translate options using gis_hierarchy_name?
     #translate = settings.get_L10n_translate_gis_location()
@@ -612,7 +664,7 @@ def hdata():
 
     table = s3db.gis_hierarchy
     query = (table.deleted == False) & \
-            (table.location_id == id)
+            (table.location_id == _id)
     fields = [table.L1,
               table.L2,
               table.L3,
@@ -623,14 +675,14 @@ def hdata():
                            limitby=(0, 1)
                            ).first()
     if not row:
-        return ""
+        return '''var n'''
 
     hdict = {}
     for l in ["L1", "L2", "L3", "L4", "L5"]:
         if row[l]:
             hdict[int(l[1:])] = row[l]
 
-    script = '''n=%s\n''' % json.dumps(hdict)
+    script = '''n=%s\n''' % json.dumps(hdict, separators=SEPARATORS)
     response.headers["Content-Type"] = "application/json"
     return script
 
@@ -653,7 +705,7 @@ def s3_gis_location_parents(r, **attr):
         # @ToDo
         output = dict()
         #return output
-        raise HTTP(501, body=current.ERROR.BAD_FORMAT)
+        raise HTTP(501, ERROR.BAD_FORMAT)
 
     elif r.representation == "json":
 
@@ -664,15 +716,15 @@ def s3_gis_location_parents(r, **attr):
                 _parents = {}
                 for parent in parents:
                     _parents[parent.level] = parent.id
-                output = json.dumps(_parents)
+                output = json.dumps(_parents, separators=SEPARATORS)
                 return output
             else:
-                raise HTTP(404, body=current.ERROR.NO_MATCH)
+                raise HTTP(404, ERROR.NO_MATCH)
         else:
-            raise HTTP(404, body=current.ERROR.BAD_RECORD)
+            raise HTTP(404, ERROR.BAD_RECORD)
 
     else:
-        raise HTTP(501, body=current.ERROR.BAD_FORMAT)
+        raise HTTP(501, ERROR.BAD_FORMAT)
 
 # -----------------------------------------------------------------------------
 def l0():
@@ -728,7 +780,7 @@ def l0():
     for key in location_hierarchy:
         result[key] = location_hierarchy[key]
 
-    output = json.dumps(result)
+    output = json.dumps(result, separators=SEPARATORS)
     response.headers["Content-Type"] = "application/json"
     return output
 
@@ -765,16 +817,16 @@ def config_default(r, **attr):
 
     id = r.id
     table = s3db.gis_config
-    query = (table.id == id)
-    config = db(query).select(table.pe_id,
-                              table.pe_default,
-                              table.name,
-                              table.default_location_id,
-                              table.lat,
-                              table.lon,
-                              table.zoom,
-                              limitby=(0, 1)
-                              ).first()
+    config = db(table.id == id).select(table.id,
+                                       table.pe_id,
+                                       table.pe_default,
+                                       table.name,
+                                       table.default_location_id,
+                                       table.lat,
+                                       table.lon,
+                                       table.zoom,
+                                       limitby=(0, 1)
+                                       ).first()
     if not config:
         session.error = T("Config not found!")
         redirect(URL())
@@ -785,7 +837,7 @@ def config_default(r, **attr):
             redirect(URL())
         else:
             # Set this to default
-            db(query).update(pe_default = True)
+            config.update_record(pe_default = True)
             # Set all others to False
             query = (table.pe_id == pe_id) & \
                     (table.id != id)
@@ -793,6 +845,7 @@ def config_default(r, **attr):
             session.confirmation = T("Map has been set as Default")
             redirect(URL())
     else:
+        # Copy Config
         new_id = table.insert(pe_id = pe_id,
                               pe_type = 1,
                               pe_default = True,
@@ -802,13 +855,14 @@ def config_default(r, **attr):
                               lon = config.lon,
                               zoom = config.zoom,
                               )
+        # Copy Layers
         table = db.gis_layer_config
-        query = (table.config_id == id)
+        query = (table.config_id == id) & \
+                (table.deleted == False)
         layers = db(query).select(table.layer_id,
                                   table.enabled,
                                   table.visible,
                                   table.base,
-                                  table.style,
                                   )
         insert = table.insert
         for layer in layers:
@@ -817,7 +871,33 @@ def config_default(r, **attr):
                    enabled = layer.enabled,
                    visible = layer.visible,
                    base = layer.base,
-                   style = layer.style,
+                   )
+        # Copy Styles
+        table = db.gis_style
+        query = (table.config_id == id) & \
+                (table.deleted == False)
+        styles = db(query).select(table.layer_id,
+                                  table.record_id,
+                                  table.marker_id,
+                                  table.gps_marker,
+                                  table.opacity,
+                                  table.popup_format,
+                                  table.cluster_distance,
+                                  table.cluster_threshold,
+                                  table.style,
+                                  )
+        insert = table.insert
+        for style in styles:
+            insert(config_id = new_id,
+                   layer_id = style.layer_id,
+                   record_id = style.record_id,
+                   marker_id = style.marker_id,
+                   gps_marker = style.gps_marker,
+                   opacity = style.opacity,
+                   popup_format = style.popup_format,
+                   cluster_distance = style.cluster_distance,
+                   cluster_threshold = style.cluster_threshold,
+                   style = style.style,
                    )
         session.confirmation = T("Map has been copied and set as Default")
         redirect(URL())
@@ -919,7 +999,6 @@ def config():
                                   "lat",
                                   "lon",
                                   #"projection_id",
-                                  #"symbology_id",
                                   #"wmsbrowser_url",
                                   #"wmsbrowser_name",
                                   ]
@@ -988,7 +1067,6 @@ def config():
                                            "gis_layer_wfs",
                                            ):
                         ltable.base.readable = ltable.base.writable = False
-                        ltable.style.readable = ltable.style.writable = True
                 else:
                     # Only show Layers not yet in this config
                     # Find the records which are used
@@ -1060,7 +1138,6 @@ def config():
                         pass
                     # Add the ID
                     result["id"] = config_id
-                    SEPARATORS = (",", ":")
                     output["item"] = json.dumps(result, separators=SEPARATORS)
                 elif post_vars.get("hide", False):
                     # This is coming from Save Panel
@@ -1069,7 +1146,6 @@ def config():
                         del result["message"]
                     except:
                         pass
-                    SEPARATORS = (",", ":")
                     output["item"] = json.dumps(result, separators=SEPARATORS)
                 # Process Layers
                 ltable = s3db.gis_layer_config
@@ -1085,7 +1161,7 @@ def config():
                             form_vars.base = layer["base"]
                         form_vars.visible = layer.get("visible", False)
                         if "style" in layer:
-                            form_vars.style = json.dumps(layer["style"])
+                            form_vars.style = json.dumps(layer["style"], separators=SEPARATORS)
                         # Update or Insert?
                         query = (ltable.config_id == config_id) & \
                                 (ltable.layer_id == layer_id)
@@ -1114,6 +1190,7 @@ def enable_layer(r, **attr):
     """
         Enable a Layer
             designed to be a custom method called by an action button
+        @ToDo: Make this call an API function which can then also be used by CLI scripts (like msg_channel_enable)
     """
 
     if r.component_name != "layer_entity":
@@ -1132,6 +1209,7 @@ def disable_layer(r, **attr):
     """
         Disable a Layer
             designed to be a custom method called by an action button in config/layer_entity
+        @ToDo: Make this call an API function which can then also be used by CLI scripts (like msg_channel_disable)
     """
 
     if r.component_name != "layer_entity":
@@ -1160,55 +1238,6 @@ def menu():
     return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
-def symbology():
-    """ RESTful CRUD controller """
-
-    # Pre-process
-    def prep(r):
-        if r.interactive:
-            if r.component_name == "layer_entity":
-                s3.crud_strings["gis_layer_entity"] = Storage(
-                    label_create=T("Configure Layer for this Symbology"),
-                    title_display=LAYER_DETAILS,
-                    title_list=LAYERS,
-                    title_update=EDIT_LAYER,
-                    label_list_button=T("List Layers in Symbology"),
-                    label_delete_button = T("Remove Layer from Symbology"),
-                    msg_record_created=LAYER_ADDED,
-                    msg_record_modified=LAYER_UPDATED,
-                    msg_record_deleted=T("Layer removed from Symbology"),
-                    msg_list_empty=T("No Layers currently defined in this Symbology"))
-                if r.method != "update":
-                    # Only show Layers not yet in this symbology
-                    table =  s3db.gis_layer_entity
-                    ltable = s3db.gis_layer_symbology
-                    # Find the records which are used
-                    query = (ltable.layer_id == table.layer_id) & \
-                            (ltable.symbology_id == r.id)
-                    rows = db(query).select(table.layer_id)
-                    # Filter them out
-                    # Restrict Layers to those which have Markers
-                    ltable.layer_id.requires = IS_ONE_OF(db, "gis_layer_entity.layer_id",
-                                                         s3db.gis_layer_represent,
-                                                         filterby="instance_type",
-                                                         filter_opts=("gis_layer_feature",
-                                                                      "gis_layer_georss",
-                                                                      "gis_layer_geojson",
-                                                                      "gis_layer_kml",
-                                                                      # @ToDo:
-                                                                      #"gis_layer_openweathermap",
-                                                                      ),
-                                                         not_filterby="layer_id",
-                                                         not_filter_opts=[row.layer_id for row in rows]
-                                                         )
-
-        return True
-    s3.prep = prep
-
-    output = s3_rest_controller(rheader=s3db.gis_rheader)
-    return output
-
-# -----------------------------------------------------------------------------
 def marker():
     """ RESTful CRUD controller """
 
@@ -1230,6 +1259,19 @@ def projection():
 
     if settings.get_security_map() and not s3_has_role(MAP_ADMIN):
         auth.permission.fail()
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def style():
+    """ RESTful CRUD controller """
+
+    field = s3db.gis_style.layer_id
+    field.readable = field.writable = True
+    field.label = T("Layer")
+    represent = field.represent = s3base.S3Represent(lookup = "gis_layer_entity")
+    field.requires = IS_ONE_OF(db, "gis_layer_entity.layer_id",
+                               represent)
 
     return s3_rest_controller()
 
@@ -1360,28 +1402,13 @@ def layer_entity():
                                                           not_filter_opts=[row.id for row in rows]
                                                           )
 
-            elif r.component_name == "symbology":
-                ltable = s3db.gis_layer_symbology
+            elif r.component_name == "style":
                 # Hide irrelevant fields
                 type = r.record.instance_type
                 if type != "gis_layer_feature":
-                    ltable.gps_marker.writable = ltable.gps_marker.readable = False
-                if r.method =="update":
-                    # Existing records don't need to change the symbology pointed to (confusing UI & adds validation overheads)
-                    ltable.symbology_id.writable = False
-                else:
-                    # Only show Symbologies not yet defined for this Layer
-                    table =  s3db.gis_symbology
-                    # Find the records which are used
-                    query = (ltable.symbology_id == table.id) & \
-                            (ltable.layer_id == r.id)
-                    rows = db(query).select(table.id)
-                    # Filter them out
-                    ltable.symbology_id.requires = IS_ONE_OF(db, "gis_symbology.id",
-                                                             "%(name)s",
-                                                             not_filterby="id",
-                                                             not_filter_opts=[row.id for row in rows]
-                                                             )
+                    field = s3db.gis_style.gps_marker
+                    field.writable = field.readable = False
+
         return True
     s3.prep = prep
 
@@ -1403,9 +1430,6 @@ def layer_feature():
             if r.component_name == "config":
                 ltable = s3db.gis_layer_config
                 ltable.base.writable = ltable.base.readable = False
-                ltable.style.readable = ltable.style.writable = True
-                # @ToDo: Move style to layer_config
-                #ltable.style.writable = ltable.style.readable = True
                 if r.method != "update":
                     # Only show Configs with no definition yet for this layer
                     table = r.table
@@ -1419,20 +1443,6 @@ def layer_feature():
                                                           not_filterby="config_id",
                                                           not_filter_opts=[row.config_id for row in rows]
                                                           )
-            elif r.component_name == "symbology" and r.method != "update":
-                # Only show ones with no definition yet for this Layer
-                table = r.table
-                ltable = s3db.gis_layer_symbology
-                # Find the records which are used
-                query = (ltable.layer_id == table.layer_id) & \
-                        (table.id == r.id)
-                rows = db(query).select(ltable.symbology_id)
-                # Filter them out
-                ltable.symbology_id.requires = IS_ONE_OF(db, "gis_symbology.id",
-                                                         "%(name)s",
-                                                         not_filterby="id",
-                                                         not_filter_opts=[row.symbology_id for row in rows]
-                                                         )
         return True
     s3.prep = prep
 
@@ -1817,7 +1827,6 @@ def layer_geojson():
             if r.component_name == "config":
                 ltable = s3db.gis_layer_config
                 ltable.base.writable = ltable.base.readable = False
-                ltable.style.readable = ltable.style.writable = True
                 if r.method != "update":
                     # Only show Configs with no definition yet for this layer
                     table = r.table
@@ -1831,22 +1840,10 @@ def layer_geojson():
                                                           not_filterby="config_id",
                                                           not_filter_opts=[row.config_id for row in rows]
                                                           )
-            elif r.component_name == "symbology":
-                ltable = s3db.gis_layer_symbology
-                ltable.gps_marker.writable = ltable.gps_marker.readable = False
-                if r.method != "update":
-                    # Only show ones with no definition yet for this Layer
-                    table = r.table
-                    # Find the records which are used
-                    query = (ltable.layer_id == table.layer_id) & \
-                            (table.id == r.id)
-                    rows = db(query).select(ltable.symbology_id)
-                    # Filter them out
-                    ltable.symbology_id.requires = IS_ONE_OF(db, "gis_symbology.id",
-                                                             "%(name)s",
-                                                             not_filterby="id",
-                                                             not_filter_opts=[row.symbology_id for row in rows]
-                                                             )
+            elif r.component_name == "style":
+                field = s3db.gis_style.gps_marker
+                field.writable = field.readable = False
+
         return True
     s3.prep = prep
 
@@ -1914,22 +1911,10 @@ def layer_georss():
                                                           not_filterby="config_id",
                                                           not_filter_opts=[row.config_id for row in rows]
                                                           )
-            elif r.component_name == "symbology":
-                ltable = s3db.gis_layer_symbology
-                ltable.gps_marker.writable = ltable.gps_marker.readable = False
-                if r.method != "update":
-                    # Only show ones with no definition yet for this Layer
-                    table = r.table
-                    # Find the records which are used
-                    query = (ltable.layer_id == table.layer_id) & \
-                            (table.id == r.id)
-                    rows = db(query).select(ltable.symbology_id)
-                    # Filter them out
-                    ltable.symbology_id.requires = IS_ONE_OF(db, "gis_symbology.id",
-                                                             "%(name)s",
-                                                             not_filterby="id",
-                                                             not_filter_opts=[row.symbology_id for row in rows]
-                                                             )
+            elif r.component_name == "style":
+                field = s3db.gis_style.gps_marker
+                field.writable = field.readable = False
+
         return True
     s3.prep = prep
 
@@ -2048,7 +2033,6 @@ def layer_kml():
             if r.component_name == "config":
                 ltable = s3db.gis_layer_config
                 ltable.base.writable = ltable.base.readable = False
-                ltable.style.readable = ltable.style.writable = True
                 if r.method != "update":
                     # Only show Configs with no definition yet for this layer
                     table = r.table
@@ -2062,22 +2046,6 @@ def layer_kml():
                                                           not_filterby="config_id",
                                                           not_filter_opts=[row.config_id for row in rows]
                                                           )
-            elif r.component_name == "symbology":
-                ltable = s3db.gis_layer_symbology
-                #ltable.gps_marker.readable = ltable.gps_marker.writable = False
-                if r.method != "update":
-                    # Only show ones with no definition yet for this Layer
-                    table = r.table
-                    # Find the records which are used
-                    query = (ltable.layer_id == table.layer_id) & \
-                            (table.id == r.id)
-                    rows = db(query).select(ltable.symbology_id)
-                    # Filter them out
-                    ltable.symbology_id.requires = IS_ONE_OF(db, "gis_symbology.id",
-                                                             "%(name)s",
-                                                             not_filterby="id",
-                                                             not_filter_opts=[row.symbology_id for row in rows]
-                                                             )
         return True
     s3.prep = prep
 
@@ -2145,22 +2113,10 @@ def layer_openweathermap():
                                                           not_filterby="config_id",
                                                           not_filter_opts=[row.config_id for row in rows]
                                                           )
-            elif r.component_name == "symbology":
-                ltable = s3db.gis_layer_symbology
-                ltable.gps_marker.readable = ltable.gps_marker.writable = False
-                if r.method != "update":
-                    # Only show ones with no definition yet for this Layer
-                    table = r.table
-                    # Find the records which are used
-                    query = (ltable.layer_id == table.layer_id) & \
-                            (table.id == r.id)
-                    rows = db(query).select(ltable.symbology_id)
-                    # Filter them out
-                    ltable.symbology_id.requires = IS_ONE_OF(db, "gis_symbology.id",
-                                                             "%(name)s",
-                                                             not_filterby="id",
-                                                             not_filter_opts=[row.symbology_id for row in rows]
-                                                             )
+            elif r.component_name == "style":
+                field = s3db.gis_style.gps_marker
+                field.writable = field.readable = False
+
         return True
     s3.prep = prep
 
@@ -2256,7 +2212,6 @@ def layer_shapefile():
             if r.component_name == "config":
                 ltable = s3db.gis_layer_config
                 ltable.base.writable = ltable.base.readable = False
-                ltable.style.writable = ltable.style.readable = True
                 if r.method != "update":
                     # Only show Configs with no definition yet for this layer
                     table = r.table
@@ -2270,23 +2225,6 @@ def layer_shapefile():
                                                           not_filterby="config_id",
                                                           not_filter_opts=[row.config_id for row in rows]
                                                           )
-            elif r.component_name == "symbology":
-                # Markers - just for Points layers
-                ltable = s3db.gis_layer_symbology
-                #ltable.gps_marker.readable = ltable.gps_marker.writable = False
-                if r.method != "update":
-                    # Only show ones with no definition yet for this Layer
-                    table = r.table
-                    # Find the records which are used
-                    query = (ltable.layer_id == table.layer_id) & \
-                            (table.id == r.id)
-                    rows = db(query).select(ltable.symbology_id)
-                    # Filter them out
-                    ltable.symbology_id.requires = IS_ONE_OF(db, "gis_symbology.id",
-                                                             "%(name)s",
-                                                             not_filterby="id",
-                                                             not_filter_opts=[row.symbology_id for row in rows]
-                                                             )
         return True
     s3.prep = prep
 
@@ -2313,7 +2251,6 @@ def layer_theme():
             if r.component_name == "config":
                 ltable = s3db.gis_layer_config
                 ltable.base.writable = ltable.base.readable = False
-                ltable.style.writable = ltable.style.readable = True
                 if r.method != "update":
                     # Only show Configs with no definition yet for this layer
                     table = r.table
@@ -2491,7 +2428,6 @@ def layer_wfs():
             if r.component_name == "config":
                 ltable = s3db.gis_layer_config
                 ltable.base.writable = ltable.base.readable = False
-                ltable.style.readable = ltable.style.writable = True
                 if r.method != "update":
                     # Only show Configs with no definition yet for this layer
                     table = r.table
@@ -2505,23 +2441,6 @@ def layer_wfs():
                                                           not_filterby="config_id",
                                                           not_filter_opts=[row.config_id for row in rows]
                                                           )
-            elif r.component_name == "symbology":
-                # Markers
-                ltable = s3db.gis_layer_symbology
-                #ltable.gps_marker.readable = ltable.gps_marker.writable = False
-                if r.method != "update":
-                    # Only show ones with no definition yet for this Layer
-                    table = r.table
-                    # Find the records which are used
-                    query = (ltable.layer_id == table.layer_id) & \
-                            (table.id == r.id)
-                    rows = db(query).select(ltable.symbology_id)
-                    # Filter them out
-                    ltable.symbology_id.requires = IS_ONE_OF(db, "gis_symbology.id",
-                                                             "%(name)s",
-                                                             not_filterby="id",
-                                                             not_filter_opts=[row.symbology_id for row in rows]
-                                                             )
         return True
     s3.prep = prep
 
@@ -2845,17 +2764,27 @@ def poi():
                 field = r.table.location_id
                 field.label = ""
                 # Lat/Lon from Feature?
+                # @ToDo: S3PoIWidget() instead to pickup the passed Lat/Lon/WKT
                 lat = get_vars.get("lat", None)
                 if lat is not None:
                     lon = get_vars.get("lon", None)
                     if lon is not None:
-                        form_vars = Storage(lat=float(lat),
-                                            lon=float(lon),
+                        form_vars = Storage(lat = float(lat),
+                                            lon = float(lon),
                                             )
                         form = Storage(vars=form_vars)
                         s3db.gis_location_onvalidation(form)
                         id = s3db.gis_location.insert(**form_vars)
                         field.default = id
+                # WKT from Feature?
+                wkt = get_vars.get("wkt", None)
+                if wkt is not None:
+                    form_vars = Storage(wkt = wkt,
+                                        )
+                    form = Storage(vars = form_vars)
+                    s3db.gis_location_onvalidation(form)
+                    id = s3db.gis_location.insert(**form_vars)
+                    field.default = id
 
             elif r.method in ("update", "update.popup"):
                 table = r.table
@@ -2886,7 +2815,7 @@ def poi():
                     popup_edit_url = r.url(method="update",
                                            representation="popup",
                                            )
-                    
+
                 s3db.configure("gis_poi",
                                popup_edit_url = popup_edit_url,
                                )
@@ -2962,6 +2891,7 @@ def display_feature():
     # zoom = config.zoom + 2
     bounds = gis.get_bounds(features=[feature])
 
+    response.view = "gis/iframe.html"
     map = gis.show_map(
         features = [feature.wkt],
         lat = lat,
@@ -3097,7 +3027,7 @@ def geocode():
         # Not needed by S3LocationSelectorWidget2 as it downloads bounds with options
         results = "NotImplementedError"
 
-    results = json.dumps(results)
+    results = json.dumps(results, separators=SEPARATORS)
     response.headers["Content-Type"] = "application/json"
     return results
 
@@ -3123,7 +3053,7 @@ def geocode_r():
     results = gis.geocode_r(lat, lon)
 
     # Return the results
-    results = json.dumps(results)
+    results = json.dumps(results, separators=SEPARATORS)
     response.headers["Content-Type"] = "application/json"
     return results
 
@@ -3353,7 +3283,7 @@ def maps():
         # @ToDo: Read Metadata (no way of editing this yet)
 
         # Encode as JSON
-        output = json.dumps(output)
+        output = json.dumps(output, separators=SEPARATORS)
 
         # Output to browser
         response.headers["Content-Type"] = "application/json"
@@ -3435,7 +3365,7 @@ def maps():
         id = table.insert(lat=lat, lon=lon, zoom=zoom, layer_id=layers)
 
         # Return the ID of the saved record for the Bookmark
-        output = json.dumps(dict(id=id))
+        output = json.dumps(dict(id=id), separators=SEPARATORS)
         return output
 
     elif request.env.request_method == "PUT":
@@ -3519,7 +3449,7 @@ def maps():
         db(table.id == id).update(lat=lat, lon=lon, zoom=zoom, layer_id=layers)
 
         # Return the ID of the saved record for the Bookmark
-        output = json.dumps(dict(id=id))
+        output = json.dumps(dict(id=id), separators=SEPARATORS)
         return output
 
     # Abort - we shouldn't get here

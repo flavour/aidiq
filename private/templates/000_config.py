@@ -65,6 +65,9 @@ settings.base.migrate = True
 # ?debug=1
 settings.base.debug = False
 
+# Uncomment this to prevent automated test runs from remote
+# settings.base.allow_testing = False
+
 # Configure the log level ("DEBUG", "INFO", "WARNING", "ERROR" or "CRITICAL"), None = turn off logging
 #settings.log.level = "WARNING"
 # Uncomment to prevent writing log messages to the console (sys.stderr)
@@ -141,12 +144,21 @@ settings.frontpage.rss = [
 #settings.base.google_analytics_tracking_id = ""
 
 # Chat server, see: http://eden.sahanafoundation.org/wiki/InstallationGuidelines/Chat
-#settings.base.chat_server = "127.0.0.1:7070" 
-
-# FaceBook OAuth (to allow users to login using FaceBook)
-# https://developers.facebook.com/apps
-#settings.auth.facebook_id = ""
-#settings.auth.facebook_secret = ""
+#settings.base.chat_server = {
+#   "ip": "127.0.0.1",
+#   "port": 7070,
+#   "name": "servername",
+#	# Default group everyone is added to
+#   "groupname" : "everyone",
+#   "server_db" : "openfire",
+#   # These settings fallback to main DB settings if not specified
+#   # Only mysql/postgres supported
+#   #"server_db_type" : "mysql",
+#   #"server_db_username" : "",
+#   #"server_db_password": "",
+#   #"server_db_port" : 3306,
+#   #"server_db_ip" : "127.0.0.1",
+#   }
 
 # GeoServer (Currently used by GeoExplorer. Will allow REST control of GeoServer.)
 # NB Needs to be publically-accessible URL for querying via client JS
@@ -209,7 +221,7 @@ if os.path.exists(path):
 
 # e.g.
 #settings.base.system_name = T("Sahana TEST")
-#settings.base.prepopulate = ["demo"]
+#settings.base.prepopulate = ("default", "default/users")
 #settings.base.theme = "default"
 #settings.L10n.default_language = "en"
 #settings.security.policy = 7 # Organisation-ACLs

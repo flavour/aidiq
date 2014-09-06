@@ -37,8 +37,20 @@ import urllib
 import hashlib
 import hmac
 import base64
-import requests
-import json
+
+try:
+    import requests
+except:
+    from gluon import current
+    current.log.warning("S3MSG: Requests module needed for posting to Facebook")
+
+try:
+    import json # try stdlib (Python 2.6)
+except ImportError:
+    try:
+        import simplejson as json # try external module
+    except:
+        import gluon.contrib.simplejson as json # fallback to pure-Python module
 
 # Find a query string parser
 try:
@@ -46,11 +58,8 @@ try:
 except ImportError:
     from urlparse import parse_qs
 
-from . import version
-
-
-__version__ = version.__version__
-
+# https://github.com/pythonforfacebook/facebook-sdk
+__version__ = "1.0.0-alpha"
 
 class GraphAPI(object):
     """A client for the Facebook Graph API.
@@ -86,11 +95,11 @@ class GraphAPI(object):
         self.timeout = timeout
 
     def get_object(self, id, **args):
-        """Fetchs the given object from the graph."""
+        """Fetches the given object from the graph."""
         return self.request(id, args)
 
     def get_objects(self, ids, **args):
-        """Fetchs all of the given object from the graph.
+        """Fetches all of the given object from the graph.
 
         We return a map from ID to object. If any of the IDs are
         invalid, we raise an exception.
@@ -127,7 +136,7 @@ class GraphAPI(object):
 
         """
         assert self.access_token, "Write operations require an access token"
-        return self.request(parent_object + "/" + connection_name,
+        return self.request("%s/%s" % (parent_object, connection_name),
                             post_args=data,
                             method="POST")
 
@@ -201,7 +210,7 @@ class GraphAPI(object):
 
         try:
             response = requests.request(method or "GET",
-                                        "https://graph.facebook.com/" + path,
+                                        "https://graph.facebook.com/%s" % path,
                                         timeout=self.timeout,
                                         params=args,
                                         data=post_args,
@@ -325,7 +334,7 @@ def get_user_from_cookie(cookies, app_id, app_secret):
     http://developers.facebook.com/docs/authentication/.
 
     """
-    cookie = cookies.get("fbsr_" + app_id, "")
+    cookie = cookies.get("fbsr_%s" % app_id, None)
     if not cookie:
         return None
     parsed_request = parse_signed_request(cookie, app_secret)

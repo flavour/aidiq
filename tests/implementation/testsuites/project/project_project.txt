@@ -8,5 +8,6 @@ ${PROJECT URL}      http://${BASEURL}/project/project
 *** Test Cases ***
 
 Test Project List
+    Login To Eden If Not Logged In  ${VALID USER}  ${VALID PASSWORD}
     Go To    ${PROJECT URL}
     Table Should Contain    datatable   Water and Sanitation

@@ -28,9 +28,7 @@ settings = current.deployment_settings
 # /private/templates/
 # eg:
 # ["default"] (1 is a shortcut for this)
-# ["Standard"]
-# ["IFRC_Train"]
-# ["roles", "user"]
+# ["default", "default/users"]
 # Unless doing a manual DB migration, where prepopulate = 0
 # In Production, prepopulate = 0 (to save 1x DAL hit every page)
 #settings.base.prepopulate = 1
@@ -178,6 +176,8 @@ settings.L10n.decimal_separator = "."
 #settings.L10n.translate_gis_layer = True
 # Uncomment this to Translate Location Names
 #settings.L10n.translate_gis_location = True
+# Uncomment this for Alternate Location Names
+#settings.L10n.name_alt_gis_location = True
 
 # Finance settings
 #settings.fin.currencies = {
@@ -228,8 +228,8 @@ settings.L10n.decimal_separator = "."
 #settings.gis.display_L0 = True
 # Currently unused
 #settings.gis.display_L1 = False
-# Uncomemnt this to do deduplicate lookups on Imports via PCode (as alternative to Name)
-#settings.gis.lookup_pcode = True
+# Uncomment this to do deduplicate lookups on Imports via PCode (as alternative to Name)
+#settings.gis.lookup_code = "PCode"
 # Set this if there will be multiple areas in which work is being done,
 # and a menu to select among them is wanted.
 #settings.gis.menu = "Maps"
@@ -264,6 +264,8 @@ settings.L10n.decimal_separator = "."
 #settings.gis.layer_tree_radio = True
 # Uncomment to display the Map Legend as a floating DIV
 #settings.gis.legend = "float"
+# Uncomment to prevent showing LatLon in Location Represents
+#settings.gis.location_represent_address_only = True
 # Mouse Position: 'normal', 'mgrs' or None
 #settings.gis.mouse_position = "mgrs"
 # Uncomment to show the Navigation controls on the toolbar
@@ -272,10 +274,11 @@ settings.L10n.decimal_separator = "."
 #settings.gis.overview = False
 # Uncomment to hide the permalink control
 #settings.gis.permalink = False
-# Uncomment to disable the ability to add PoIs to the main map
-#settings.gis.pois = False
+# Resources which can be directly added to the main map
+#settings.gis.poi_create_resources = None
+#settings.gis.poi_create_resources = [{"c":"event", "f":"incident_report", "table": "gis_poi", label": T("Add Incident Report") ,"tooltip": T("Add Incident Report"), "layer":"Incident Reports", "location": "popup"}]
 # PoIs to export in KML/OSM feeds from Admin locations
-#settings.gis.poi_resources = ["cr_shelter", "hms_hospital", "org_office"]
+#settings.gis.poi_export_resources = ["cr_shelter", "hms_hospital", "org_office"]
 # Uncomment to show the Print control:
 # http://eden.sahanafoundation.org/wiki/UserGuidelines/Admin/MapPrinting
 #settings.gis.print_button = True
@@ -354,6 +357,8 @@ settings.gis.geonames_username = "eden_test"
 #settings.ui.cluster = True
 # Enable this to use the label 'Camp' instead of 'Shelter'
 #settings.ui.camp = True
+# Enable this to have Open links in IFrames open a full page in a new tab
+#settings.ui.iframe_opens_full = True
 # Enable this to change the label for 'Attachments' tabs
 #settings.ui.label_attachments = "Attachments"
 # Enable this to change the label for 'Mobile Phone'
@@ -367,7 +372,7 @@ settings.gis.geonames_username = "eden_test"
 # Uncomment to show created_by/modified_by using Names not Emails
 #settings.ui.auth_user_represent = "name"
 # Uncomment to restrict the export formats available
-#settings.ui.export_formats = ["kml", "pdf", "rss", "xls", "xml"]
+#settings.ui.export_formats = ("kml", "pdf", "rss", "xls", "xml")
 # Uncomment to include an Interim Save button on CRUD forms
 #settings.ui.interim_save = True
 # Uncomment to enable glyphicon icons on action buttons (requires bootstrap CSS)
@@ -376,6 +381,8 @@ settings.gis.geonames_username = "eden_test"
 #settings.ui.multiselect_widget = True
 # Theme for the S3HierarchyWidget (folder in static/styles/jstree or relative to application)
 #settings.ui.hierarchy_theme = "default"
+# Uncomment to show a default cancel button in standalone create/update forms
+#settings.ui.default_cancel_button = True
 
 # -----------------------------------------------------------------------------
 # CMS
@@ -405,13 +412,15 @@ settings.gis.geonames_username = "eden_test"
 
 # -----------------------------------------------------------------------------
 # Shelters
-# Uncomment to use a dynamic population estimation by calculations based on registrations  
+# Uncomment to use a dynamic population estimation by calculations based on registrations
 #settings.cr.shelter_population_dynamic = True
 
 # -----------------------------------------------------------------------------
 # Events
 # Make Event Types Hierarchical
 #settings.event.types_hierarchical = True
+# Make Incident Types Hierarchical
+#settings.event.incident_types_hierarchical = True
 
 # -----------------------------------------------------------------------------
 # Members
@@ -420,7 +429,7 @@ settings.gis.geonames_username = "eden_test"
 
 # -----------------------------------------------------------------------------
 # Persons
-# Uncomment to allow person imports to match even without email addresses 
+# Uncomment to allow person imports to match even without email addresses
 #settings.pr.import_update_requires_email = False
 # Uncomment to a fuzzy search for duplicates in the new AddPersonWidget2
 #settings.pr.lookup_duplicates = True
@@ -444,15 +453,25 @@ settings.gis.geonames_username = "eden_test"
 #settings.org.autocomplete = True
 # Enable the use of Organisation Branches
 #settings.org.branches = True
+# Show branches as tree rather than as table
+#settings.org.branches_tree_view = True
 # Make Facility Types Hierarchical
 #settings.org.facility_types_hierarchical = True
 # Enable the use of Organisation Groups & what their name is
 #settings.org.groups = "Coalition"
 #settings.org.groups = "Network"
+# Organisation Location context
+#settings.org.organisation_location_context = "organisation_location.location_id"
+# Make Organisation Types Hierarchical
+#settings.org.organisation_types_hierarchical = True
+# Make Organisation Types Multiple
+#settings.org.organisation_types_multiple = True
 # Enable the use of Organisation Regions
 #settings.org.regions = True
 # Make Organisation Regions Hierarchical
 #settings.org.regions_hierarchical = True
+# Uncomment to show a Tab for Organisation Resources
+#settings.org.resources_tab = True
 # Make Services Hierarchical
 #settings.org.services_hierarchical = True
 # Set the length of the auto-generated org/site code the default is 10
@@ -467,6 +486,8 @@ settings.gis.geonames_username = "eden_test"
 #settings.org.site_autocomplete_fields = ("instance_type", "location_id$L1", "location_id$addr_street", "organisation_id$name")
 # Uncomment to hide inv & req tabs from Sites
 #settings.org.site_inv_req_tabs = False
+# Uncomment to allow Sites to be staffed by Volunteers
+#settings.org.site_volunteers = True
 # Uncomment to add summary fields for Organisations/Offices for # National/International staff
 #settings.org.summary = True
 # Enable certain fields just for specific Organisations
@@ -483,6 +504,10 @@ settings.gis.geonames_username = "eden_test"
 #     "vol_volunteer_cluster.vol_cluster_id"          : [],
 #     "vol_volunteer_cluster.vol_cluster_position_id" : [],
 #     }
+# Uncomment to make Office codes unique
+#settings.org.office_code_unique = True
+# Uncomment to make Facility codes unique
+#settings.org.facility_code_unique = True
 
 # -----------------------------------------------------------------------------
 # Human Resource Management
@@ -539,6 +564,8 @@ settings.gis.geonames_username = "eden_test"
 #settings.hrm.teams = False
 # Uncomment to disable the use of HR Trainings
 #settings.hrm.use_trainings = False
+# Uncomment to use activity types in experience record, specify as {"code":"label", ...}
+#settings.hrm.activity_types = {"rdrt": "RDRT Mission"}
 
 # -----------------------------------------------------------------------------
 # Inventory Management
@@ -599,7 +626,7 @@ settings.gis.geonames_username = "eden_test"
 #settings.req.requester_optional = True
 # Uncomment if the User Account logging the Request is NOT normally the Requester
 #settings.req.requester_is_author = False
-# Filter Requester as being from the Site 
+# Filter Requester as being from the Site
 #settings.req.requester_from_site = True
 # Set the Requester as being an HR for the Site if no HR record yet & as Site contact if none yet exists
 #settings.req.requester_to_site = True
@@ -697,6 +724,8 @@ settings.gis.geonames_username = "eden_test"
 #settings.project.projects = True
 # Uncomment this to disable Sectors in projects
 #settings.project.sectors = False
+# Uncomment this to use Tags in Tasks
+#settings.project.task_tag = True
 # Uncomment this to enable Themes in 3W projects
 #settings.project.themes = True
 # Uncomment this to use Theme Percentages for projects
@@ -717,15 +746,24 @@ settings.gis.geonames_username = "eden_test"
 #settings.project.organisation_lead_role = 1
 # Uncomment to customise the list of options for the Priority of a Task.
 # NB Be very cautious about doing this (see docstring in modules/s3cfg.py)
-#settings.project.task_priority_opts = 
+#settings.project.task_priority_opts =
 # Uncomment to customise the list of options for the Status of a Task.
 # NB Be very cautious about doing this (see docstring in modules/s3cfg.py)
-#settings.project.task_status_opts = 
+#settings.project.task_status_opts =
 
 # -----------------------------------------------------------------------------
 # Incidents
 # Uncomment this to use vehicles when responding to Incident Reports
 #settings.irs.vehicle = True
+
+# -----------------------------------------------------------------------------
+# Transport
+# Uncomment to make Airport codes unique
+#settings.transport.airport_code_unique = True
+# Uncomment to make Seaport codes unique
+#settings.transport.seaport_code_unique = True
+# Uncomment to make Heliport codes unique
+#settings.transport.heliport_code_unique = True
 
 # -----------------------------------------------------------------------------
 # Filter Manager

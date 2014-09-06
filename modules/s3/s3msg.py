@@ -35,9 +35,9 @@
 
 """
 
-__all__ = ["S3Msg",
+__all__ = ("S3Msg",
            "S3Compose",
-           ]
+           )
 
 import base64
 import datetime
@@ -119,40 +119,41 @@ class S3Msg(object):
 
         MOBILE = current.deployment_settings.get_ui_label_mobile_phone()
         # Full range of contact options
-        self.CONTACT_OPTS = {
-                "EMAIL":       T("Email"),
-                "FACEBOOK":    T("Facebook"),
-                "FAX":         T("Fax"),
-                "HOME_PHONE":  T("Home phone"),
-                "RADIO":       T("Radio Callsign"),
-                "RSS":         T("RSS Feed"),
-                "SKYPE":       T("Skype"),
-                "SMS":         MOBILE,
-                "TWITTER":     T("Twitter"),
-                #"XMPP":       "XMPP",
-                #"WEB":        T("Website"),
-                "WORK_PHONE":  T("Work phone"),
-                "OTHER":       T("other")
-            }
+        self.CONTACT_OPTS = {"EMAIL":       T("Email"),
+                             "FACEBOOK":    T("Facebook"),
+                             "FAX":         T("Fax"),
+                             "HOME_PHONE":  T("Home phone"),
+                             "RADIO":       T("Radio Callsign"),
+                             "RSS":         T("RSS Feed"),
+                             "SKYPE":       T("Skype"),
+                             "SMS":         MOBILE,
+                             "TWITTER":     T("Twitter"),
+                             #"XMPP":       "XMPP",
+                             #"WEB":        T("Website"),
+                             "WORK_PHONE":  T("Work phone"),
+                             "IRC":         T("IRC handle"),
+                             "GITHUB":      T("Github Repo"),
+                             "LINKEDIN":    T("LinkedIn Profile"),
+                             "BLOG":        T("Blog"),
+                             "OTHER":       T("Other")
+                             }
 
         # Those contact options to which we can send notifications
         # NB Coded into hrm_map_popup & s3.msg.js
-        self.MSG_CONTACT_OPTS = {
-                "EMAIL":   T("Email"),
-                "SMS":     MOBILE,
-                "TWITTER": T("Twitter"),
-                #"XMPP":   "XMPP",
-            }
+        self.MSG_CONTACT_OPTS = {"EMAIL":   T("Email"),
+                                 "SMS":     MOBILE,
+                                 "TWITTER": T("Twitter"),
+                                 #"XMPP":   "XMPP",
+                                 }
 
         # SMS Gateways
-        self.GATEWAY_OPTS = {
-                "MODEM":   T("Modem"),
-                "SMTP":    T("SMTP"),
-                "TROPO":   T("Tropo"),
-                # Currently only available for Inbound
-                #"TWILIO":  T("Twilio"),
-                "WEB_API": T("Web API"),
-            }
+        self.GATEWAY_OPTS = {"MODEM":   T("Modem"),
+                             "SMTP":    T("SMTP"),
+                             "TROPO":   T("Tropo"),
+                             # Currently only available for Inbound
+                             #"TWILIO":  T("Twilio"),
+                             "WEB_API": T("Web API"),
+                             }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -178,6 +179,28 @@ class S3Msg(object):
                                   clean.lstrip("0"))
 
         return clean
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def decode_email(header):
+        """
+            Decode an RFC2047-encoded email header (e.g.
+            "Dominic =?ISO-8859-1?Q?K=F6nig?=") and return it as unicode.
+
+            @param header: the header
+        """
+
+        # Deal with missing word separation (thanks Ingmar Hupp)
+        import re
+        header = re.sub(r"(=\?.*\?=)(?!$)", r"\1 ", header)
+
+        # Decode header
+        from email.header import decode_header
+        decoded = decode_header(header)
+
+        # Build string
+        return " ".join([s3_unicode(part[0], part[1] or "ASCII")
+                         for part in decoded])
 
     # =========================================================================
     # Inbound Messages
@@ -939,7 +962,7 @@ class S3Msg(object):
         # to hex-encode the text and activate unicode=1, but this
         # would limit messages to 70 characters, and many mobile
         # phones can't display unicode anyway.
-        
+
         # To be however able to send messages with at least special
         # European characters like á or ø,  we convert the UTF-8 to
         # the default ISO-8859-1 (latin-1) here:
@@ -1290,6 +1313,50 @@ class S3Msg(object):
                     log_tweet(c, recipient, from_address)
 
         return True
+
+    #------------------------------------------------------------------------------
+    def post_to_facebook(self, text="", channel_id=None):
+        """
+            Posts a message on Facebook
+
+            https://developers.facebook.com/docs/graph-api
+
+            @ToDo: Log messages in msg_facebook
+        """
+
+        table = current.s3db.msg_facebook_channel
+        if not channel_id:
+            # Try the 1st enabled one in the DB
+            query = (table.enabled == True)
+        else:
+            query = (table.channel_id == channel_id)
+
+        c = current.db(query).select(table.app_id,
+                                     table.app_secret,
+                                     table.page_id,
+                                     table.page_access_token,
+                                     limitby=(0, 1)
+                                     ).first()
+
+        import facebook
+
+        try:
+            app_access_token = facebook.get_app_access_token(c.app_id,
+                                                             c.app_secret)
+        except:
+            import sys
+            message = sys.exc_info()[1]
+            current.log.error("S3MSG: %s" % message)
+            return
+
+        graph = facebook.GraphAPI(app_access_token)
+
+        page_id = c.page_id
+        if page_id:
+            graph = facebook.GraphAPI(c.page_access_token)
+            graph.put_object(page_id, "feed", message=text)
+        else:
+            graph.put_object(user_id, "feed", message=text)
 
     # -------------------------------------------------------------------------
     def poll(self, tablename, channel_id):
@@ -1747,7 +1814,7 @@ class S3Msg(object):
         if etag:
             data["etag"] = etag
         db(query).update(**data)
-        
+
         from time import mktime, struct_time
         gis = current.gis
         geocode_r = gis.geocode_r
@@ -1859,7 +1926,7 @@ class S3Msg(object):
                 if parser:
                     pinsert(message_id = exists.message_id,
                             channel_id = channel_id)
-                
+
             else:
                 _id = minsert(channel_id = channel_id,
                               title = entry.title,
@@ -2086,7 +2153,7 @@ class S3Msg(object):
                                 tweet_id = tweet_id,
                                 lang = lang,
                                 date = created_at,
-                                inbound = True,
+                                #inbound = True,
                                 location_id = location_id,
                                 )
             update_super(rtable, dict(id=_id))
@@ -2463,7 +2530,7 @@ class S3Compose(S3CRUD):
             else:
                 # @ToDo A new widget (tree?) required to handle multiple persons and groups
                 pe_field.widget = S3PentityAutocompleteWidget()
-                
+
             pe_field.comment = DIV(_class="tooltip",
                                    _title="%s|%s" % \
                 (T("Recipients"),

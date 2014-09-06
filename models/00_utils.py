@@ -204,7 +204,7 @@ def s3_barchart(r, **attr):
         except ValueError:
             raise HTTP(400, "Bad Request")
     else:
-        raise HTTP(501, body=ERROR.BAD_FORMAT)
+        raise HTTP(501, ERROR.BAD_FORMAT)
 
 # -----------------------------------------------------------------------------
 def s3_rest_controller(prefix=None, resourcename=None, **attr):
@@ -280,10 +280,12 @@ def s3_rest_controller(prefix=None, resourcename=None, **attr):
                                             vars={"from_record":r.id})))
     set_handler("deduplicate", s3base.S3Merge)
     set_handler("filter", s3base.S3Filter)
+    set_handler("hierarchy", s3base.S3HierarchyCRUD)
     set_handler("import", s3base.S3Importer)
     set_handler("map", s3base.S3Map)
     set_handler("profile", s3base.S3Profile)
     set_handler("report", s3base.S3Report)
+    set_handler("report", s3base.S3Report, transform=True)
     set_handler("timeplot", s3base.S3TimePlot) # temporary setting for testing
     set_handler("search_ac", s3base.search_ac)
     set_handler("summary", s3base.S3Summary)
@@ -345,6 +347,10 @@ def s3_rest_controller(prefix=None, resourcename=None, **attr):
                                                authorised=authorised,
                                                update=editable,
                                                native=native)("[id]")
+            if r.representation == "iframe" and not settings.get_ui_iframe_opens_full():
+                # If this request is in iframe-format, "open" should
+                # be in iframe-format as well
+                open_url = s3base.s3_set_extension(open_url, "iframe")
 
             # Add action buttons for Open/Delete/Copy as appropriate
             s3_action_buttons(r,

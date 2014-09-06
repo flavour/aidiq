@@ -56,7 +56,6 @@ def create():
 def marker_fn(record):
     """
         Function to decide which Marker to use for Requests Map
-        @ToDo: Use Symbology
     """
 
     # Base Icon based on Type
@@ -118,6 +117,8 @@ def req_template():
     field.readable = field.writable = False
     s3.filter = (field == True)
 
+    settings.req.prompt_match = False
+
     if "req_item" in request.args:
         # List fields for req_item
         table = s3db.req_req_item
@@ -128,7 +129,8 @@ def req_template():
                        "comments",
                        ]
         s3db.configure("req_req_item",
-                       list_fields=list_fields)
+                       list_fields = list_fields,
+                       )
 
     elif "req_skill" in request.args:
         # List fields for req_skill
@@ -139,7 +141,8 @@ def req_template():
                        "comments",
                        ]
         s3db.configure("req_req_skill",
-                       list_fields=list_fields)
+                       list_fields = list_fields,
+                       )
 
     else:
         # Main Req
@@ -167,12 +170,12 @@ def req_template():
         list_fields.append("purpose")
         list_fields.append("comments")
         s3db.configure("req_req",
-                       list_fields=list_fields)
+                       list_fields = list_fields,
+                       )
 
         # CRUD strings
-        ADD_REQUEST = T("Add Request Template")
         s3.crud_strings["req_req"] = Storage(
-            label_create = ADD_REQUEST,
+            label_create = T("Create Request Template"),
             title_display = T("Request Template Details"),
             title_list = T("Request Templates"),
             title_update = T("Edit Request Template"),
@@ -183,11 +186,11 @@ def req_template():
             msg_record_deleted = T("Request Template Deleted"),
             msg_list_empty = T("No Request Templates"))
 
-    output = req_controller()
+    output = req_controller(template = True)
     return output
 
 # -----------------------------------------------------------------------------
-def req_controller():
+def req_controller(template = False):
     """ REST Controller """
 
     def prep(r):
@@ -419,11 +422,10 @@ def req_controller():
                                               filter_opts = [req_id],
                                               sort=True
                                               )
-                    
                     s3.jquery_ready.append('''
-S3OptionsFilter({
- 'triggerName':'req_item_id',
- 'targetName':'item_pack_id',
+$.filterOptionsS3({
+ 'trigger':'req_item_id',
+ 'target':'item_pack_id',
  'lookupPrefix':'req',
  'lookupResource':'req_item_packs',
  'lookupKey':'req_item_id',
@@ -546,7 +548,7 @@ S3OptionsFilter({
                                                      # ),
                                            # _class="action-btn"))
                         # output["buttons"]["delete_btn"] = delete_btn
-                if settings.get_req_use_commit():
+                if not template and settings.get_req_use_commit():
                     # This is appropriate to all
                     s3.actions.append(
                         dict(url = URL(c="req", f="req",
@@ -588,14 +590,15 @@ S3OptionsFilter({
                              label = str(T("Copy"))
                             )
                         )
-                s3.actions.append(
-                        dict(url = URL(c="req", f="req",
-                                       args=["[id]", "commit_all", "send"]),
-                             _class = "action-btn send-btn dispatch",
-                             label = str(T("Send"))
+                if not template:
+                    s3.actions.append(
+                            dict(url = URL(c="req", f="req",
+                                           args=["[id]", "commit_all", "send"]),
+                                 _class = "action-btn send-btn dispatch",
+                                 label = str(T("Send"))
+                                )
                             )
-                        )
-                s3.jquery_ready.append(
+                    s3.jquery_ready.append(
 '''S3.confirmClick('.send-btn','%s')''' % T("Are you sure you want to commit to this request and send a shipment?"))
             else:
                 s3_action_buttons(r)
@@ -969,9 +972,9 @@ $('#req_commit_site_id_link').click(function(){
                     itable = s3db.req_commit_item
                     itable.req_item_id.widget = None
                     jappend('''
-S3OptionsFilter({
-'triggerName':'req_item_id',
-'targetName':'item_pack_id',
+$.filterOptionsS3({
+'trigger':'req_item_id',
+'target':'item_pack_id',
 'lookupPrefix':'req',
 'lookupResource':'req_item_packs',
 'lookupKey':'req_item_id',

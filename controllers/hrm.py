@@ -87,7 +87,7 @@ def staff():
                            #"site_contact",
                            (T("Email"), "email.value"),
                            (settings.get_ui_label_mobile_phone(), "phone.value"),
-                          ]
+                           ]
             if settings.get_hrm_use_trainings():
                 list_fields.append("person_id$training.course_id")
             if settings.get_hrm_use_certificates():
@@ -104,7 +104,11 @@ def staff():
                         "human_resource.id": r.id,
                         "group": "staff"
                     }
-                    redirect(URL(f="person", vars=vars))
+                    args = []
+                    if r.representation == "iframe":
+                        vars["format"] = "iframe"
+                        args = [r.method]
+                    redirect(URL(f="person", vars=vars, args=args))
             else:
                 if r.method == "import":
                     # Redirect to person controller
@@ -164,7 +168,8 @@ def staff():
                            "person_id$middle_name",
                            "person_id$last_name",
                            ] + list_fields
-            s3db.configure(tablename, list_fields=list_fields)
+            s3db.configure(tablename,
+                           list_fields = list_fields)
         return True
     s3.prep = prep
 
@@ -406,7 +411,7 @@ def job_title():
         return True
     s3.prep = prep
 
-    s3.filter = FS("human_resource.type").belongs((1, 3))
+    s3.filter = FS("type").belongs((1, 3))
 
     if not auth.s3_has_role(ADMIN):
         s3.filter &= auth.filter_by_root_org(s3db.hrm_job_title)

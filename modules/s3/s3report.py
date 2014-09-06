@@ -27,10 +27,9 @@
     WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
     OTHER DEALINGS IN THE SOFTWARE.
-
-    @status: work in progress
 """
 
+import os
 import re
 
 try:
@@ -44,10 +43,13 @@ except ImportError:
 from gluon import current
 from gluon.storage import Storage
 from gluon.html import *
+from gluon.languages import regex_translate
 from gluon.sqlhtml import OptionsWidget
 from gluon.validators import IS_IN_SET, IS_EMPTY_OR
 
+from s3query import FS
 from s3rest import S3Method
+from s3xml import S3XMLFormat
 
 layer_pattern = re.compile("([a-zA-Z]+)\((.*)\)\Z")
 
@@ -68,7 +70,10 @@ class S3Report(S3Method):
         """
 
         if r.http == "GET":
-            output = self.report(r, **attr)
+            if r.representation == "geojson":
+                output = self.geojson(r, **attr)
+            else:
+                output = self.report(r, **attr)
         else:
             r.error(405, current.ERROR.BAD_METHOD)
         return output
@@ -95,7 +100,7 @@ class S3Report(S3Method):
                 from s3filter import S3FilterForm
                 show_filter_form = True
                 S3FilterForm.apply_filter_defaults(r, resource)
-                
+
         # Filter
         response = current.response
         s3_filter = response.s3.filter
@@ -126,15 +131,15 @@ class S3Report(S3Method):
 
         # Generate the pivot table
         if get_vars:
-            
+
             rows = get_vars.get("rows", None)
             cols = get_vars.get("cols", None)
             layer = get_vars.get("fact", "id")
 
-            # Backward-compatiblity: alternative "aggregate" option
             if layer is not None:
                 m = layer_pattern.match(layer)
                 if m is None:
+                    # Backward-compatiblity: alternative "aggregate" option
                     selector = layer
                     if get_vars and "aggregate" in get_vars:
                         method = get_vars["aggregate"]
@@ -166,7 +171,7 @@ class S3Report(S3Method):
         if r.representation in ("html", "iframe"):
 
             tablename = resource.tablename
-            
+
             output["title"] = self.crud_string(tablename, "title_report")
 
             # Filter widgets
@@ -196,14 +201,14 @@ class S3Report(S3Method):
             # Generate the report form
             ajax_vars = Storage(r.get_vars)
             ajax_vars.update(get_vars)
-            filter_url = url=r.url(method="",
-                                   representation="",
-                                   vars=ajax_vars.fromkeys((k for k in ajax_vars
-                                                            if k not in report_vars)))
+            filter_url = r.url(method="",
+                               representation="",
+                               vars=ajax_vars.fromkeys((k for k in ajax_vars
+                                                        if k not in report_vars)))
             ajaxurl = attr.get("ajaxurl", r.url(method="report",
                                                 representation="json",
                                                 vars=ajax_vars))
-                                                
+
             output["form"] = S3ReportForm(resource) \
                                     .html(pivotdata,
                                           get_vars = get_vars,
@@ -221,14 +226,211 @@ class S3Report(S3Method):
 
         else:
             r.error(501, current.ERROR.BAD_FORMAT)
-            
+
+        return output
+
+    # -------------------------------------------------------------------------
+    def geojson(self, r, **attr):
+        """
+            Render the pivot table data as a dict ready to be exported as
+            GeoJSON for display on a Map.
+
+            @param r: the S3Request instance
+            @param attr: controller attributes for the request
+        """
+
+        resource = self.resource
+        response = current.response
+        s3 = response.s3
+
+        # Set response headers
+        response.headers["Content-Type"] = s3.content_type.get("geojson",
+                                                               "application/json")
+
+        # Filter
+        s3_filter = s3.filter
+        if s3_filter is not None:
+            resource.add_filter(s3_filter)
+
+        if not resource.count():
+            # No Data
+            return json.dumps({})
+
+        # Extract the relevant GET vars
+        get_vars = r.get_vars
+        layer_id = r.get_vars.get("layer", None)
+        level = get_vars.get("level", "L0")
+
+        # Fall back to report options defaults
+        get_config = resource.get_config
+        report_options = get_config("report_options", {})
+        defaults = report_options.get("defaults", {})
+
+        # The rows dimension
+        context = get_config("context")
+        if context and "location" in context:
+            # @ToDo: We can add sanity-checking using resource.parse_bbox_query() as a guide if-desired
+            rows = "(location)$%s" % level
+        else:
+            # Fallback to location_id
+            rows = "location_id$%s" % level
+            # Fallback we can add if-required
+            #rows = "site_id$location_id$%s" % level
+
+        # Filter out null values
+        resource.add_filter(FS(rows) != None)
+
+        # Set XSLT stylesheet
+        stylesheet = os.path.join(r.folder, r.XSLT_PATH, "geojson", "export.xsl")
+
+        # Do we have any data at this level of aggregation?
+        fallback_to_points = True # @ToDo: deployment_setting?
+        output = None
+        if fallback_to_points:
+            if resource.count() == 0:
+                # Show Points
+                resource.clear_query()
+                if s3_filter is not None:
+                    resource.add_filter(s3_filter)
+
+                # Extract the Location Data
+                xmlformat = S3XMLFormat(stylesheet)
+                include, exclude = xmlformat.get_fields(resource.tablename)
+                resource.load(fields=include,
+                              skip=exclude,
+                              start=0,
+                              limit=None,
+                              orderby=None,
+                              virtual=False,
+                              cacheable=True)
+                gis = current.gis
+                attr_fields = []
+                style = gis.get_style(layer_id=layer_id,
+                                      aggregate=False)
+                popup_format = style.popup_format
+                if popup_format:
+                    if "T(" in popup_format:
+                        # i18n
+                        T = current.T
+                        items = regex_translate.findall(popup_format)
+                        for item in items:
+                            titem = str(T(item[1:-1]))
+                            popup_format = popup_format.replace("T(%s)" % item,
+                                                                titem)
+                        style.popup_format = popup_format
+                    # Extract the attr_fields
+                    parts = popup_format.split("{")
+                    # Skip the first part
+                    parts = parts[1:]
+                    for part in parts:
+                        attribute = part.split("}")[0]
+                        attr_fields.append(attribute)
+                    attr_fields = ",".join(attr_fields)
+
+                location_data = gis.get_location_data(resource,
+                                                      attr_fields=attr_fields)
+
+                # Export as GeoJSON
+                current.xml.show_ids = True
+                output = resource.export_xml(fields=include,
+                                             mcomponents=None,
+                                             references=[],
+                                             stylesheet=stylesheet,
+                                             as_json=True,
+                                             location_data=location_data,
+                                             map_data=dict(style=style),
+                                             )
+                # Transformation error?
+                if not output:
+                    r.error(400, "XSLT Transformation Error: %s " % current.xml.error)
+
+        else:
+            while resource.count() == 0:
+                # Try a lower level of aggregation
+                level = int(level[1:])
+                if level == 0:
+                    # Nothing we can display
+                    return json.dumps({})
+                resource.clear_query()
+                if s3_filter is not None:
+                    resource.add_filter(s3_filter)
+                level = "L%s" % (level - 1)
+                if context and "location" in context:
+                    # @ToDo: We can add sanity-checking using resource.parse_bbox_query() as a guide if-desired
+                    rows = "(location)$%s" % level
+                else:
+                    # Fallback to location_id
+                    rows = "location_id$%s" % level
+                    # Fallback we can add if-required
+                    #rows = "site_id$location_id$%s" % level
+                resource.add_filter(FS(rows) != None)
+
+        if not output:
+            # Build the Pivot Table
+            cols = None
+            layer = get_vars.get("fact",
+                                 defaults.get("fact",
+                                              "count(id)"))
+            m = layer_pattern.match(layer)
+            selector, method = m.group(2), m.group(1)
+            prefix = resource.prefix_selector
+            selector = prefix(selector)
+            layer = (selector, method)
+            pivottable = resource.pivottable(rows, cols, [layer])
+
+            # Extract the Location Data
+            #attr_fields = []
+            style = current.gis.get_style(layer_id=layer_id,
+                                          aggregate=True)
+            popup_format = style.popup_format
+            if popup_format:
+                if"T(" in popup_format:
+                    # i18n
+                    T = current.T
+                    items = regex_translate.findall(popup_format)
+                    for item in items:
+                        titem = str(T(item[1:-1]))
+                        popup_format = popup_format.replace("T(%s)" % item,
+                                                            titem)
+                    style.popup_format = popup_format
+                    # Extract the attr_fields
+                    # No need as defaulted inside S3PivotTable.geojson()
+                    #parts = popup_format.split("{")
+                    ## Skip the first part
+                    #parts = parts[1:]
+                    #for part in parts:
+                    #    attribute = part.split("}")[0]
+                    #    attr_fields.append(attribute)
+                    #attr_fields = ",".join(attr_fields)
+
+            ids, location_data = pivottable.geojson(layer=layer, level=level)
+
+            # Export as GeoJSON
+            current.xml.show_ids = True
+            gresource = current.s3db.resource("gis_location", id=ids)
+            output = gresource.export_xml(fields=[],
+                                          mcomponents=None,
+                                          references=[],
+                                          stylesheet=stylesheet,
+                                          as_json=True,
+                                          location_data=location_data,
+                                          # Tell the client that we are
+                                          # displaying aggregated data and
+                                          # the level it is aggregated at
+                                          map_data=dict(level=int(level[1:]),
+                                                        style=style),
+                                          )
+            # Transformation error?
+            if not output:
+                r.error(400, "XSLT Transformation Error: %s " % current.xml.error)
+
         return output
 
     # -------------------------------------------------------------------------
     def widget(self, r, method=None, widget_id=None, visible=True, **attr):
         """
             Pivot table report widget
-        
+
             @param r: the S3Request
             @param method: the widget method
             @param widget_id: the widget ID
@@ -265,7 +467,7 @@ class S3Report(S3Method):
                               defaults.get("chart", None))
         get_vars["table"] = r.get_vars.get("table",
                               defaults.get("table", None))
-                              
+
         # Generate the pivot table
         if get_vars:
 
@@ -355,7 +557,7 @@ class S3ReportForm(object):
              filter_tab=None,
              widget_id=None):
         """
-            Render the form for the report 
+            Render the form for the report
 
             @param get_vars: the GET vars if the request (as dict)
             @param widget_id: the HTML element base ID for the widgets
@@ -466,7 +668,7 @@ class S3ReportForm(object):
             "renderChart": True,
             "collapseChart": True,
             "defaultChart": None,
-            
+
             "exploreChart": True,
             "filterURL": filter_url,
             "filterTab": filter_tab,
@@ -499,13 +701,14 @@ class S3ReportForm(object):
         s3 = current.response.s3
         scripts = s3.scripts
         if s3.debug:
+            # @todo: support CDN
+            script = "/%s/static/scripts/d3/d3.js" % appname
+            if script not in scripts:
+                scripts.append(script)
+            script = "/%s/static/scripts/d3/nv.d3.js" % appname
+            if script not in scripts:
+                scripts.append(script)
             script = "/%s/static/scripts/S3/s3.jquery.ui.pivottable.js" % appname
-            if script not in scripts:
-                scripts.append(script)
-            script = "/%s/static/scripts/flot/jquery.flot.js" % appname
-            if script not in scripts:
-                scripts.append(script)
-            script = "/%s/static/scripts/flot/jquery.flot.pie.js" % appname
             if script not in scripts:
                 scripts.append(script)
         else:
@@ -609,7 +812,6 @@ class S3ReportForm(object):
         fieldset = self._fieldset(T("Report Options"),
                                   selectors,
                                   _id="%s-options" % widget_id)
-
         return fieldset
 
     # -------------------------------------------------------------------------
@@ -716,9 +918,9 @@ class S3ReportForm(object):
             mlabel = mname(method)
             flabel = rfield.label if rfield.label != "Id" else RECORDS
             return T("%s (%s)") % (flabel, mlabel)
-        
+
         prefix = resource.prefix_selector
-        
+
         layer_opts = []
         for layer in layers:
 
@@ -732,7 +934,7 @@ class S3ReportForm(object):
                 s, m = match.group(2), match.group(1)
             else:
                 m = None
-                
+
             # Resolve the selector
             selector = prefix(s)
             rfield = resource.resolve_selector(selector)
@@ -812,7 +1014,7 @@ class S3ReportForm(object):
                                           _name="fact",
                                           _class="pt-fact")
             single = False
-            
+
         return widget, single
 
     # -------------------------------------------------------------------------
@@ -830,7 +1032,7 @@ class S3ReportForm(object):
         T = current.T
         SHOW = T("Show")
         HIDE = T("Hide")
-        
+
         return FIELDSET(LEGEND(title,
                                BUTTON(SHOW,
                                       _type="button",

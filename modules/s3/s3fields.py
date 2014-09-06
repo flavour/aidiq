@@ -159,8 +159,12 @@ class S3ReusableField(object):
 
         ia = Storage(self.attr)
 
+        DEFAULT = "default"
+        widgets = ia.pop("widgets", {})
+
         if attr:
-            if not attr.get("empty", True):
+            empty = attr.pop("empty", True)
+            if not empty:
                 requires = ia.requires
                 if requires:
                     if not isinstance(requires, (list, tuple)):
@@ -170,9 +174,22 @@ class S3ReusableField(object):
                         if isinstance(r, IS_EMPTY_OR):
                             requires = r.other
                             ia.update(requires=requires)
-            if "empty" in attr:
-                del attr["empty"]
+            widget = attr.pop("widget", DEFAULT)
             ia.update(**attr)
+        else:
+            widget = DEFAULT
+
+        if isinstance(widget, basestring):
+            if widget == DEFAULT and "widget" in ia:
+                widget = ia.widget
+            else:
+                if not isinstance(widgets, dict):
+                    widgets = {DEFAULT: widgets}
+                if widget != DEFAULT and widget not in widgets:
+                    raise NameError("Undefined widget: %s" % widget)
+                else:
+                    widget = widgets.get(widget)
+        ia.widget = widget
 
         if "script" in ia:
             if ia.script:
@@ -206,7 +223,7 @@ class S3Represent(object):
         @group Internal Methods: _setup,
                                  _lookup
     """
-    
+
     def __init__(self,
                  lookup=None,
                  key=None,
@@ -267,7 +284,7 @@ class S3Represent(object):
         self.lazy_show_link = False
 
         self.rows = {}
-        
+
         # Attributes to simulate being a function for sqlhtml's represent()
         # Make sure we indicate only 1 position argument
         self.func_code = Storage(co_argcount = 1)
@@ -331,10 +348,10 @@ class S3Represent(object):
             output = current.T(v)
         else:
             output = v
-            
+
         if prefix and self.hierarchy:
             return self.htemplate % (prefix, output)
-                
+
         return output
 
     # -------------------------------------------------------------------------
@@ -634,8 +651,10 @@ class S3Represent(object):
             if h.config:
                 def lookup_parent(node_id):
                     parent = h.parent(node_id)
-                    if parent and parent not in theset:
-                        lookup[parent] = True
+                    if parent and \
+                       parent not in theset and \
+                       parent not in lookup:
+                        lookup[parent] = False
                         lookup_parent(parent)
                     return
                 for node_id in lookup.keys():
@@ -685,13 +704,16 @@ class S3Represent(object):
             if h:
                 represent_path = self._represent_path
                 for k, row in rows.items():
-                    lookup.pop(k, None)
-                    items[keys.get(k, k)] = represent_path(k, row, rows=rows, hierarchy=h)
+                    if lookup.pop(k, None):
+                        items[keys.get(k, k)] = represent_path(k,
+                                                               row,
+                                                               rows=rows,
+                                                               hierarchy=h)
             else:
                 for k, row in rows.items():
                     lookup.pop(k, None)
                     items[keys.get(k, k)] = theset[k] = represent_row(row)
-                    
+
         if lookup:
             for k in lookup:
                 items[keys.get(k, k)] = self.default
@@ -714,12 +736,12 @@ class S3Represent(object):
 
         if value in theset:
             return theset[value]
-            
+
         represent_row = self.represent_row
 
         prefix = None
         parent = hierarchy.parent(value)
-        
+
         if parent:
             if parent in theset:
                 prefix = theset[parent]
