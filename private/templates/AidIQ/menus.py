@@ -74,4 +74,40 @@ class S3MainMenu(default.S3MainMenu):
 
         return menu_admin
 
+# =============================================================================
+class S3OptionsMenu(default.S3OptionsMenu):
+    """ Custom Controller Menus """
+
+    # -------------------------------------------------------------------------
+    def monitor(self):
+        """ Monitoring """
+
+        return M(c="monitor")(
+                    M("Hosts", f="host")(
+                        M("Create", m="create"),
+                        #M("Report", m="report"),
+                        #M("Import", m="import"),
+                    ),
+                    M("Services", f="service")(
+                        M("Create", m="create"),
+                        #M("Import", m="import"),
+                    ),
+                    M("Checks", f="check")(
+                        M("Create", m="create"),
+                        M("Import", m="import"),
+                    ),
+                    M("Tasks", f="task")(
+                        M("Create", m="create"),
+                        M("Import", m="import"),
+                    ),
+                    M("Logs", f="run")(
+                        #M("Create", m="create"),
+                        #M("Import", m="import"),
+                    ),
+                    M("Alerts", f="alert")(
+                        M("Create", m="create"),
+                        #M("Import", m="import"),
+                    ),
+                )
+
 # END =========================================================================

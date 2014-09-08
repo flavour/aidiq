@@ -1312,38 +1312,6 @@ class S3OptionsMenu(object):
                 )
 
     # -------------------------------------------------------------------------
-    def monitor(self):
-        """ Monitoring """
-
-        return M(c="monitor")(
-                    M("Hosts", f="host")(
-                        M("Create", m="create"),
-                        #M("Report", m="report"),
-                        #M("Import", m="import"),
-                    ),
-                    M("Services", f="service")(
-                        M("Create", m="create"),
-                        #M("Import", m="import"),
-                    ),
-                    M("Checks", f="check")(
-                        M("Create", m="create"),
-                        M("Import", m="import"),
-                    ),
-                    M("Tasks", f="task")(
-                        M("Create", m="create"),
-                        M("Import", m="import"),
-                    ),
-                    M("Logs", f="run")(
-                        #M("Create", m="create"),
-                        #M("Import", m="import"),
-                    ),
-                    M("Alerts", f="alert")(
-                        M("Create", m="create"),
-                        #M("Import", m="import"),
-                    ),
-                )
-
-    # -------------------------------------------------------------------------
     @staticmethod
     def mpr():
         """ MPR / Missing Person Registry """
