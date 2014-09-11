@@ -2267,11 +2267,13 @@ class GIS(object):
         if layer_id:
             # Feature Layer
             # e.g. Search results loaded as a Feature Resource layer
-            layer = db(ftable.id == layer_id).select(ftable.attr_fields,
-                                                     ftable.popup_fields, # @ToDo: Deprecate
-                                                     ftable.individual,
-                                                     ftable.trackable,
-                                                     limitby=(0, 1)).first()
+            layer = db(ftable.layer_id == layer_id).select(ftable.attr_fields,
+                                                           # @ToDo: Deprecate
+                                                           ftable.popup_fields,
+                                                           ftable.individual,
+                                                           ftable.trackable,
+                                                           limitby=(0, 1)
+                                                           ).first()
 
         else:
             # e.g. KML, GeoRSS or GPX export
@@ -7853,6 +7855,7 @@ class LayerFeature(Layer):
                                                             titem)
                 output["popup_format"] = popup_format
             else:
+                # @ToDo: Deprecate
                 popup_fields = self.popup_fields
                 if popup_fields:
                     # Old-style
@@ -7864,12 +7867,17 @@ class LayerFeature(Layer):
                         popup_format = "%s" % popup_fields[0]
                     for f in popup_fields[1:]:
                         popup_format = "%s<br/>{%s}" % (popup_format, f)
-                    output["popup_format"] = popup_format
+                output["popup_format"] = popup_format or ""
 
             # Attributes which are defaulted client-side if not set
             self.setup_folder_visibility_and_opacity(output)
             self.setup_clustering(output)
+            if self.aggregate:
+                # Enable the Cluster Strategy, so that it can be enabled/disabled
+                # depending on the zoom level & hence Points or Polygons
+                output["cluster"] = 1
             if not popup_format:
+                # Need this to differentiate from e.g. FeatureQueries
                 output["no_popups"] = 1
             if self.style:
                 output["style"] = self.style
@@ -8845,8 +8853,6 @@ class Style(object):
         if style:
             if style.marker_id:
                 style.marker = Marker(marker_id=style.marker_id)
-            else:
-                style.marker = None
             if aggregate is True:
                 # Use gis/location controller in all reports
                 style.url_format = "%s/{id}.plain" % URL(c="gis", f="location")
@@ -8875,7 +8881,7 @@ class Style(object):
         output = Storage()
         if not style:
             return output
-        if style.marker:
+        if hasattr(style, "marker"):
             output.marker = style.marker.as_json_dict()
         opacity = style.opacity
         if opacity and opacity not in (1, 1.0):

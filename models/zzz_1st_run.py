@@ -343,9 +343,11 @@ if len(pop_list) > 0:
     db.executesql("CREATE INDEX %s__idx on %s(%s);" % (field, tablename, field))
     if settings.get_gis_spatialdb():
         # Add Spatial Index (PostgreSQL-only currently)
-        db.executesql("CREATE INDEX gis_location_gist on %s USING GIST (the_geom);")
+        db.executesql("CREATE INDEX gis_location_gist on %s USING GIST (the_geom);" % tablename)
         # Ensure the Planner takes this into consideration
-        db.executesql("VACUUM ANALYZE;")
+        # Vacuum cannot run in a transaction block
+        # autovacuum should be on anyway so will run ANALYZE after 50 rows inserted/updated/deleted
+        #db.executesql("VACUUM ANALYZE;")
 
     # Restore view
     response.view = "default/index.html"
