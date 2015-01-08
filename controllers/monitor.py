@@ -146,20 +146,46 @@ def check():
 def task():
 
     def prep(r):
-        if r.interactive:
+        if r.interactive or r.representation == "aadata":
 
-            s3.crud_strings[r.tablename] = Storage(
-                label_create = T("Create Task"),
-                title_display = T("Task Details"),
-                title_list =  T("Tasks"),
-                title_update = T("Edit Task"),
-                title_upload = T("Import Tasks"),
-                label_list_button =  T("List Tasks"),
-                label_delete_button = T("Delete Task"),
-                msg_record_created = T("Task added"),
-                msg_record_modified = T("Task updated"),
-                msg_record_deleted = T("Task deleted"),
-                msg_list_empty = T("No Tasks currently registered"))
+            if r.component_name == "run":
+                s3.crud_strings["monitor_run"] = Storage(
+                    #label_create = T("Create Log Entry"),
+                    title_display = T("Log Entry Details"),
+                    title_list =  T("Log Entries"),
+                    title_update = T("Edit Log Entry"),
+                    #title_upload = T("Import Log Entries"),
+                    label_list_button =  T("List Log Entries"),
+                    label_delete_button = T("Delete Log Entry"),
+                    #msg_record_created = T("Log Entry added"),
+                    msg_record_modified = T("Log Entry updated"),
+                    msg_record_deleted = T("Log Entry deleted"),
+                    msg_list_empty = T("No Log Entries currently registered"))
+
+                datetime_represent = s3base.S3DateTime.datetime_represent
+                s3db.monitor_run.created_on.represent = lambda dt: datetime_represent(dt, utc=True)
+
+                s3db.configure("monitor_run",
+                               list_fields = ["created_on",
+                                              "task_id",
+                                              "status",
+                                              "comments",
+                                              ],
+                               orderby = "monitor_run.created_on desc",
+                               )
+            else:
+                s3.crud_strings[r.tablename] = Storage(
+                    label_create = T("Create Task"),
+                    title_display = T("Task Details"),
+                    title_list =  T("Tasks"),
+                    title_update = T("Edit Task"),
+                    title_upload = T("Import Tasks"),
+                    label_list_button =  T("List Tasks"),
+                    label_delete_button = T("Delete Task"),
+                    msg_record_created = T("Task added"),
+                    msg_record_modified = T("Task updated"),
+                    msg_record_deleted = T("Task deleted"),
+                    msg_list_empty = T("No Tasks currently registered"))
 
         return True
     s3.prep = prep
@@ -202,7 +228,7 @@ def task():
 def run():
 
     def prep(r):
-        if r.interactive:
+        if r.interactive or r.representation == "aadata":
 
             s3.crud_strings[r.tablename] = Storage(
                 #label_create = T("Create Log Entry"),
@@ -226,8 +252,8 @@ def run():
                                           "status",
                                           "comments",
                                           ],
+                           orderby = "monitor_run.created_on desc",
                            )
-
         return True
     s3.prep = prep
 
