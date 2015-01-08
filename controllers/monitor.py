@@ -223,7 +223,7 @@ def run():
             s3db.configure("monitor_run",
                            list_fields = ["created_on",
                                           "task_id",
-                                          "status_id",
+                                          "status",
                                           "comments",
                                           ],
                            )
