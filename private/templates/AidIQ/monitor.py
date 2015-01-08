@@ -3,9 +3,9 @@
 
 """ Monitoring
 
-    Template-specific Message Parsers are defined here.
+    Template-specific Monitoring Tasks are defined here.
 
-    @copyright: 2014 (c) Sahana Software Foundation
+    @copyright: 2014-2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -30,7 +30,7 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["S3Monitor"]
+__all__ = ("S3Monitor",)
 
 import datetime
 

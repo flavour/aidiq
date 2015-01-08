@@ -2,7 +2,7 @@
 
 """ Sahana Eden Monitoring Model
 
-    @copyright: 2014 (c) Sahana Software Foundation
+    @copyright: 2014-2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -27,9 +27,9 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["S3MonitorModel",
+__all__ = ("S3MonitorModel",
            "monitor_run_task",
-           ]
+           )
 
 import sys
 
@@ -40,7 +40,7 @@ from ..s3 import *
 # =============================================================================
 class S3MonitorModel(S3Model):
 
-    names = ["monitor_host",
+    names = ("monitor_host",
              "monitor_service",
              "monitor_check",
              "monitor_check_option",
@@ -48,7 +48,7 @@ class S3MonitorModel(S3Model):
              "monitor_task_option",
              "monitor_run",
              "monitor_alert",
-             ]
+             )
 
     def model(self):
 

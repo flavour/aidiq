@@ -217,6 +217,17 @@ def run():
                 msg_record_deleted = T("Log Entry deleted"),
                 msg_list_empty = T("No Log Entries currently registered"))
 
+            datetime_represent = s3base.S3DateTime.datetime_represent
+            s3db.monitor_run.created_on.represent = lambda dt: datetime_represent(dt, utc=True)
+
+            s3db.configure("monitor_run",
+                           list_fields = ["created_on",
+                                          "task_id",
+                                          "status_id",
+                                          "comments",
+                                          ],
+                           )
+
         return True
     s3.prep = prep
 
