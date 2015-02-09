@@ -2,7 +2,7 @@
 
 """ S3 Hierarchy Toolkit
 
-    @copyright: 2013-14 (c) Sahana Software Foundation
+    @copyright: 2013-15 (c) Sahana Software Foundation
     @license: MIT
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
@@ -126,14 +126,22 @@ class S3HierarchyCRUD(S3Method):
                              representation="popup"),
             "addLabel": str(T("Add")),
             "addTitle": str(crud_string("label_create")),
+            "deleteLabel": str(T("Delete")),
+            "deleteURL": r.url(method="delete",
+                               id="[id]",
+                               representation="json"),
+            # @todo: disable root node deletion if r.record is not None
             "addURL": r.url(method="create", representation="popup"),
         }
         theme = current.deployment_settings.get_ui_hierarchy_theme()
-        if theme and hasattr(theme, "rsplit"):
-            folder, theme = ([None] + theme.rsplit("/", 1))[-2:]
-            if folder:
-                widget_opts["themesFolder"] = folder
-            widget_opts["theme"] = theme
+        icons = theme.get("icons", False)
+        if icons:
+            # Only include non-default options
+            widget_opts["icons"] = icons
+        stripes = theme.get("stripes", True)
+        if not stripes:
+            # Only include non-default options
+            widget_opts["stripes"] = stripes
         self.include_scripts(widget_id, widget_opts)
 
         # View
@@ -176,6 +184,7 @@ class S3HierarchyCRUD(S3Method):
                     h._represent(node_ids=children)
                     for child_id in children:
                         label = h.label(child_id)
+                        # @todo: include CRUD permissions?
                         nodes.append({"node": child_id,
                                       "label": str(label) if label else None,
                                       })
@@ -216,24 +225,31 @@ class S3HierarchyCRUD(S3Method):
     # -------------------------------------------------------------------------
     @staticmethod
     def include_scripts(widget_id, widget_opts):
-        """ Include JS needed for hierarchical CRUD """
+        """ Include JS & CSS needed for hierarchical CRUD """
 
         s3 = current.response.s3
         scripts = s3.scripts
+        theme = current.deployment_settings.get_ui_hierarchy_theme()
 
-        # Include static scripts
+        # Include static scripts & stylesheets
         script_dir = "/%s/static/scripts" % current.request.application
         if s3.debug:
-            script = "%s/jquery.jstree.js" % script_dir
+            script = "%s/jstree.js" % script_dir
             if script not in scripts:
                 scripts.append(script)
-            script = "%s/S3/s3.jquery.ui.hierarchicalcrud.js" % script_dir
+            script = "%s/S3/s3.ui.hierarchicalcrud.js" % script_dir
             if script not in scripts:
                 scripts.append(script)
+            style = "%s/jstree.css" % theme.get("css", "plugins")
+            if style not in s3.stylesheets:
+                s3.stylesheets.append(style)
         else:
             script = "%s/S3/s3.jstree.min.js" % script_dir
             if script not in scripts:
                 scripts.append(script)
+            style = "%s/jstree.min.css" % theme.get("css", "plugins")
+            if style not in s3.stylesheets:
+                s3.stylesheets.append(style)
 
         # Apply the widget JS
         script = '''$('#%(widget_id)s').hierarchicalcrud(%(widget_opts)s)''' % \
@@ -711,9 +727,17 @@ class S3Hierarchy(object):
             @param r: the request
             @param table: the hierarchical table
             @param parent_id: the parent ID
-
-            @todo: make sure that the parent exists
         """
+
+        # Make sure the parent record exists
+        table = current.s3db.table(self.tablename)
+        query = (table[self.pkey.name] == parent_id)
+        DELETED = current.xml.DELETED
+        if DELETED in table.fields:
+            query &= table[DELETED] != True
+        parent = current.db(query).select(table._id).first()
+        if not parent:
+            raise KeyError("Parent record not found")
 
         link = self.link
         fkey = self.fkey
@@ -777,6 +801,54 @@ class S3Hierarchy(object):
         return
 
     # -------------------------------------------------------------------------
+    def delete(self, node_ids, cascade=False):
+        """
+            Recursive deletion of hierarchy branches
+
+            @param node_ids: the parent node IDs of the branches to be deleted
+            @param cascade: cascade call, do not commit (internal use)
+
+            @return: number of deleted nodes, or None if cascade failed
+        """
+
+        if not self.config:
+            return None
+
+        tablename = self.tablename
+
+        total = 0
+        for node_id in node_ids:
+
+            # Recursively delete child nodes
+            children = self.children(node_id)
+            if children:
+                result = self.delete(children, cascade=True)
+                if result is None:
+                    if not cascade:
+                        current.db.rollback()
+                    return None
+                else:
+                    total += result
+
+            # Delete node
+            from s3query import FS
+            query = (FS(self.pkey.name) == node_id)
+            resource = current.s3db.resource(tablename, filter=query)
+            success = resource.delete(cascade=True)
+            if success:
+                self.remove(node_id)
+                total += 1
+            else:
+                if not cascade:
+                    current.db.rollback()
+                return None
+
+        if not cascade and total:
+            self.dirty(tablename)
+
+        return total
+
+    # -------------------------------------------------------------------------
     def add(self, node_id, parent_id=None, category=None):
         """
             Add a new node to the hierarchy
@@ -807,6 +879,28 @@ class S3Hierarchy(object):
 
         theset[node_id] = node
         return node
+
+    # -------------------------------------------------------------------------
+    def remove(self, node_id):
+        """
+            Remove a node from the hierarchy
+
+            @param node_id: the node ID
+        """
+
+        theset = self.__theset
+
+        if node_id in theset:
+            node = theset[node_id]
+        else:
+            return False
+
+        parent_id = node["p"]
+        if parent_id:
+            parent = theset[parent_id]
+            parent["s"].discard(node_id)
+        del theset[node_id]
+        return True
 
     # -------------------------------------------------------------------------
     def __subset(self):
@@ -1205,6 +1299,8 @@ class S3Hierarchy(object):
             @param represent: the node ID representation method
 
             @return: the list item (LI)
+
+            @todo: option to add CRUD permissions
         """
 
         node = self.nodes.get(node_id)

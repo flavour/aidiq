@@ -19,6 +19,7 @@
          Attributes...........comma-sep list..Layer Attributes (Fields to put in feature attributes to use for Popup Format &/or Style)
          Default..............boolean.........Layer Default
          Individual...........boolean.........Layer Individual
+         Points...............boolean.........Layer Points
          Trackable............boolean.........Layer Trackable
          Site.................boolean.........Layer Site (use Site for location)
          Style................string..........Style Style
@@ -30,17 +31,18 @@
          Cluster Attribute....string..........Layer Cluster Attribute: The attribute to use for clustering
          Cluster Distance.....integer.........Style Cluster Distance: The number of pixels apart that features need to be before they are clustered (default=20)
          Cluster Threshold....integer.........Style Cluster Threshold: The minimum number of features to form a cluster (default=2, 0 to disable)
-         Refresh..............integer.........layer Refresh (Number of seconds between refreshes: 0 to disable)
+         Refresh..............integer.........Layer Refresh (Number of seconds between refreshes: 0 to disable)
 
     *********************************************************************** -->
-    <xsl:output method="xml"/>
+    <xsl:import href="../commons.xsl"/>
 
-    <xsl:include href="../commons.xsl"/>
+    <xsl:output method="xml"/>
 
     <!-- ****************************************************************** -->
     <!-- Indexes for faster processing -->
     <xsl:key name="configs" match="row" use="col[@field='Config']/text()"/>
-    <xsl:key name="layers" match="row" use="col[@field='Name']/text()"/>
+    <xsl:key name="layers" match="row" use="concat(col[@field='Config'], '/',
+                                                   col[@field='Name'])"/>
     <xsl:key name="markers" match="row" use="col[@field='Marker']/text()"/>
 
     <!-- ****************************************************************** -->
@@ -54,7 +56,8 @@
 
             <!-- Layers -->
             <xsl:for-each select="//row[generate-id(.)=generate-id(key('layers',
-                                                                   col[@field='Name'])[1])]">
+                                                                   concat(col[@field='Config'], '/',
+                                                                          col[@field='Name']))[1])]">
                 <xsl:call-template name="Layer"/>
             </xsl:for-each>
 
@@ -75,7 +78,7 @@
         <xsl:if test="$Config!=''">
             <resource name="gis_config">
                 <xsl:attribute name="tuid">
-                    <xsl:value-of select="$Config"/>
+                    <xsl:value-of select="concat('Config:', $Config)"/>
                 </xsl:attribute>
                 <data field="name"><xsl:value-of select="$Config"/></data>
             </resource>
@@ -101,6 +104,9 @@
             </xsl:if>
             <xsl:if test="col[@field='Individual']">
                 <data field="individual"><xsl:value-of select="col[@field='Individual']"/></data>
+            </xsl:if>
+            <xsl:if test="col[@field='Points']">
+                <data field="points"><xsl:value-of select="col[@field='Points']"/></data>
             </xsl:if>
             <xsl:if test="col[@field='Trackable']">
                 <data field="trackable"><xsl:value-of select="col[@field='Trackable']"/></data>
@@ -138,7 +144,7 @@
                     <xsl:choose>
                         <xsl:when test="$Config!=''">
                             <xsl:attribute name="tuid">
-                                <xsl:value-of select="$Config"/>
+                                <xsl:value-of select="concat('Config:', $Config)"/>
                             </xsl:attribute>
                         </xsl:when>
                         <xsl:otherwise>

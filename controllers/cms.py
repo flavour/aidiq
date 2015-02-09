@@ -152,10 +152,16 @@ def post():
                     table.location_id.readable = table.location_id.writable = False
                     table.date.readable = table.date.writable = False
                     table.expired.readable = table.expired.writable = False
+                    # We always want the Rich Text widget here
+                    table.body.widget = s3base.s3_richtext_widget
                     resource = get_vars.get("resource", None)
                     if resource in ("contact", "index"):
-                        # We're creating/updating text for a Contact page
-                        table.name.default = "Contact Page"
+                        if resource == "contact":
+                            # We're creating/updating text for a Contact page
+                            table.name.default = "Contact Page"
+                        else:
+                            # We're creating/updating text for the Home page
+                            table.name.default = "Home Page"
                         #table.title.readable = table.title.writable = False
                         table.replies.readable = table.replies.writable = False
                         url = URL(c=_module, f=resource)
@@ -317,8 +323,8 @@ def newsfeed():
     stable = db.cms_series
     title_list = T("Latest Information")
 
-    # Hide Posts linked to Modules & Expired Posts
-    s3.filter = (FS("post_module.module") == None) & (FS("expired") != True)
+    # Hide Posts linked to Modules and Maps & Expired Posts
+    s3.filter = (FS("post_module.module") == None) & (FS("post_layer.layer_id") == None) & (FS("expired") != True)
 
     # Ensure that filtered views translate into options which update the Widget
     if "~.series_id$name" in get_vars:
@@ -409,8 +415,13 @@ def newsfeed():
                                    hidden = hidden,
                                    ))
 
+    notify_fields = [(T("Date"), "date"),
+                     (T("Location"), "location_id"),
+                     ]
+
     len_series = db(stable.deleted == False).count()
     if len_series > 3:
+        notify_fields.insert(0, (T("Type"), "series_id"))
         # Multiselect widget
         finsert(1, S3OptionsFilter("series_id",
                                    label = T("Filter by Type"),
@@ -420,6 +431,7 @@ def newsfeed():
                                    ))
                       
     elif len_series > 1:
+        notify_fields.insert(0, (T("Type"), "series_id"))
         # Checkboxes
         finsert(1, S3OptionsFilter("series_id",
                                    label = T("Filter by Type"),
@@ -429,13 +441,9 @@ def newsfeed():
                                    hidden = hidden,
                                    ))
     else:
-        # No Widget
+        # No Widget or notify_field
         pass
 
-    notify_fields = [(T("Type"), "series_id"),
-                     (T("Date"), "date"),
-                     (T("Location"), "location_id"),
-                     ]
     nappend = notify_fields.append
     if org_field:
         nappend((T("Organization"), org_field))
@@ -445,6 +453,8 @@ def newsfeed():
         nappend((T("Contact"), contact_field))
     nappend((T("Description"), "body"))
 
+    # @todo: allow configuration (?)
+    filter_formstyle = settings.get_ui_formstyle()
     s3db.configure("cms_post",
                    # We could use a custom Advanced widget
                    #filter_advanced = False,
@@ -467,8 +477,26 @@ def newsfeed():
             s3db.cms_customise_post_fields()
 
         if r.interactive:
-            field = table.series_id
-            field.label = T("Type")
+            if len_series > 1:
+                refresh = get_vars.get("refresh", None)
+                if refresh == "datalist":
+                    # We must be coming from the News Feed page so can change the type on-the-fly
+                    field = table.series_id
+                    field.label = T("Type")
+                    field.readable = field.writable = True
+            else:
+                field = table.series_id
+                row = db(stable.deleted == False).select(stable.id,
+                                                         limitby=(0, 1)
+                                                         ).first()
+                try:
+                    field.default = row.id
+                except:
+                    # Prepop not done: expose field to show error
+                    field.label = T("Type")
+                    field.readable = field.writable = True
+                else:
+                    field.readable = field.writable = False
 
             if r.method == "read":
                 # Restore the label for the Location
@@ -487,11 +515,6 @@ def newsfeed():
                 #                               not_filter_opts = ("Alert",),
                 #                               )
 
-            refresh = get_vars.get("refresh", None)
-            if refresh == "datalist":
-                # We must be coming from the News Feed page so can change the type on-the-fly
-                field.readable = field.writable = True
-            #field.requires = field.requires.other
             #field = table.name
             #field.readable = field.writable = False
             #field = table.title
@@ -566,14 +589,16 @@ def newsfeed():
                                              ))
             if contact_field == "person_id":
                 cappend("person_id")
-            # @ToDo: deployment_setting for attachments
-            cappend(S3SQLInlineComponent("document",
-                                         name = "file",
-                                         label = T("Files"),
-                                         fields = [("", "file"),
-                                                   #"comments",
-                                                   ],
-                                         ))
+
+            if settings.get_cms_show_attachments():
+                cappend(S3SQLInlineComponent("document",
+                                             name = "file",
+                                             label = T("Files"),
+                                             fields = [("", "file"),
+                                                       #"comments",
+                                                       ],
+                                             ))
+
             if settings.get_cms_show_links():
                 cappend(S3SQLInlineComponent("document",
                                              name = "url",
@@ -653,6 +678,7 @@ def newsfeed():
                 # Hide side menu
                 current.menu.options = None
                 response.view = s3base.S3CRUD._view(r, "cms/newsfeed.html")
+
         return output
     s3.postp = postp
 
@@ -884,7 +910,8 @@ def posts():
         row = LI(DIV(avatar,
                      DIV(DIV(header,
                              _class="comment-header"),
-                         DIV(XML(post.body)),
+                         DIV(XML(post.body),
+                             _class="comment-body"),
                          _class="comment-text"),
                          DIV(DIV(post.created_on,
                                  _class="comment-date"),

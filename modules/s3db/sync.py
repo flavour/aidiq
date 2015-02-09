@@ -2,7 +2,7 @@
 
 """ Sahana Eden Synchronization
 
-    @copyright: 2009-2014 (c) Sahana Software Foundation
+    @copyright: 2009-2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -34,8 +34,9 @@ __all__ = ("SyncDataModel",
            )
 
 from gluon import *
-from gluon.dal import Row
 from gluon.storage import Storage
+
+from s3dal import Row
 from ..s3 import *
 
 # =============================================================================

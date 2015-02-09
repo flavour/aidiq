@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: (c) 2010-2014 Sahana Software Foundation
+    @copyright: (c) 2010-2015 Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -39,35 +39,33 @@ __all__ = ("single_phone_number_pattern",
            "IS_ADD_PERSON_WIDGET2",
            "IS_COMBO_BOX",
            "IS_FLOAT_AMOUNT",
+           "IS_HTML_COLOUR",
            "IS_INT_AMOUNT",
            "IS_IN_SET_LAZY",
-           "IS_HTML_COLOUR",
+           "IS_ISO639_2_LANGUAGE_CODE",
            "IS_JSONS3",
            "IS_LAT",
            "IS_LON",
            "IS_LAT_LON",
            "IS_LOCATION",
            "IS_LOCATION_SELECTOR",
-           "IS_LOCATION_SELECTOR2",
            "IS_ONE_OF",
            "IS_ONE_OF_EMPTY",
            "IS_ONE_OF_EMPTY_SELECT",
            "IS_NOT_ONE_OF",
+           "IS_PHONE_NUMBER",
            "IS_PROCESSED_IMAGE",
            "IS_SITE_SELECTOR",
            "IS_UTC_DATETIME",
            "IS_UTC_OFFSET",
            "QUANTITY_INV_ITEM",
-           "IS_PHONE_NUMBER",
-           "IS_ISO639_2_LANGUAGE_CODE",
            )
 
 import re
 import time
 from datetime import datetime, timedelta
 
-JSONErrors = (NameError, TypeError, ValueError, AttributeError,
-              KeyError)
+JSONErrors = (NameError, TypeError, ValueError, AttributeError, KeyError)
 try:
     import json # try stdlib (Python 2.6)
 except ImportError:
@@ -80,7 +78,6 @@ except ImportError:
 
 from gluon import *
 #from gluon import current
-#from gluon.dal import Field
 #from gluon.validators import IS_DATE_IN_RANGE, IS_MATCH, IS_NOT_IN_DB, IS_IN_SET, IS_INT_IN_RANGE, IS_FLOAT_IN_RANGE, IS_EMAIL
 from gluon.storage import Storage
 from gluon.validators import Validator
@@ -699,9 +696,10 @@ class IS_ONE_OF_EMPTY(Validator):
                    not_filterby = None,
                    not_filter_opts = None):
         """
-            This can be called from prep to apply a filter base on
+            This can be called from prep to apply a filter based on
             data in the record or the primary resource id.
         """
+
         if filterby:
             self.filterby = filterby
         if filter_opts:
@@ -1147,10 +1145,7 @@ class IS_LOCATION(Validator):
             table = db.gis_location
             query = (table.id == value) & (table.deleted == False)
             if level:
-                if not hasattr(level, "strip") and \
-                       (hasattr(level, "__getitem__") or \
-                        hasattr(level, "__iter__")):
-                    # List or Tuple
+                if isinstance(level, (tuple, list)):
                     if None in level:
                         # None needs special handling
                         level = [l for l in level if l is not None]
@@ -1160,7 +1155,7 @@ class IS_LOCATION(Validator):
                         query &= (table.level.belongs(level))
                 else:
                     query &= (table.level == level)
-            ok = db(query).select(table.id, limitby=(0, 1))
+            ok = db(query).select(table.id, limitby=(0, 1)).first()
         if ok:
             return (value, None)
         else:
@@ -1734,253 +1729,6 @@ class IS_LOCATION_SELECTOR(Validator):
                            )
 
         return location
-
-# =============================================================================
-class IS_LOCATION_SELECTOR2(Validator):
-    """
-        Designed for use with the S3LocationSelectorWidget2
-
-        For Create forms, this will create a new location if there is a Lat/Lon
-                          submitted
-        For Update forms, this will check that we have a valid location_id FK
-                          and update any changes
-
-        @ToDo: Audit
-        @ToDo: Allow multiple in a single page
-    """
-
-    def __init__(self,
-                 levels = None,
-                 error_message = None,
-                 ):
-
-        self.levels = levels
-        self.error_message = error_message
-        # Tell s3_mark_required that this validator doesn't accept NULL values
-        self.mark_required = True
-
-    # -------------------------------------------------------------------------
-    def __call__(self, value):
-
-        if not value:
-            return (None, self.error_message or current.T("Location Required!"))
-
-        s3 = current.response.s3
-        if s3.bulk:
-            # Pointless in imports/sync
-            return (value, None)
-
-        post_vars = current.request.post_vars
-        address = post_vars.get("address", None)
-        postcode = post_vars.get("postcode", None)
-        lat = post_vars.get("lat", None)
-        if lat == "":
-            lat = None
-        lon = post_vars.get("lon", None)
-        if lon == "":
-            lon = None
-        wkt = post_vars.get("wkt", None)
-        if wkt == "":
-            wkt = None
-        parent = post_vars.get("parent", None)
-        # Rough check for valid Lat/Lon
-        errors = Storage()
-        if lat:
-            try:
-                lat = float(lat)
-            except ValueError:
-                errors["lat"] = current.T("Latitude is Invalid!")
-        if lon:
-            try:
-                lon = float(lon)
-            except ValueError:
-                errors["lon"] = current.T("Longitude is Invalid!")
-        if wkt:
-            try:
-                from shapely.wkt import loads as wkt_loads
-                wkt_loads(wkt)
-            except:
-                errors["wkt"] = current.T("WKT is Invalid!")
-        if errors:
-            return (value, errors)
-
-        if parent or address or postcode or wkt is not None or \
-           (lat is not None and lon is not None):
-            # Specific Location
-            db = current.db
-            table = db.gis_location
-            if value == "dummy":
-                # Create a new point
-                if not current.auth.s3_has_permission("create", table):
-                    return (None, current.auth.messages.access_denied)
-                if wkt is not None or \
-                   (lat is not None and lon is not None):
-                    inherited = False
-                else:
-                    inherited = True
-                feature = Storage(lat=lat,
-                                  lon=lon,
-                                  wkt=wkt,
-                                  inherited=inherited,
-                                  addr_street=address,
-                                  addr_postcode=postcode,
-                                  parent=parent,
-                                  )
-                # onvalidation
-                # - includes detailed bounds check if deployment_setting doesn't disable it
-                form = Storage()
-                form.errors = errors
-                form.vars = feature
-                current.s3db.gis_location_onvalidation(form)
-                if form.errors:
-                    errors = form.errors
-                    error = ""
-                    for e in errors:
-                        error = "%s\n%s" % (error, errors[e]) if error else \
-                                errors[e]
-                    return (parent, error)
-                _id = table.insert(**feature)
-                feature.id = _id
-                # onaccept
-                current.gis.update_location_tree(feature)
-                return (_id, None)
-            else:
-                # Update existing Point
-                # Check that this is a valid location_id
-                query = (table.id == value) & \
-                        (table.deleted == False) & \
-                        (table.level == None) # NB Specific Locations only
-                location = db(query).select(table.lat,
-                                            table.lon,
-                                            table.wkt,
-                                            table.addr_street,
-                                            table.addr_postcode,
-                                            table.parent,
-                                            limitby=(0, 1)).first()
-                if location:
-                    changed = False
-                    lparent = location.parent
-                    if parent and lparent:
-                        if int(parent) != int(lparent):
-                            changed = True
-                    elif parent or lparent:
-                        changed = True
-                    if not changed:
-                        addr_street = location.addr_street
-                        if address and addr_street:
-                            if address != addr_street:
-                                changed = True
-                        elif address or addr_street:
-                            changed = True
-                        if not changed:
-                            addr_postcode = location.addr_postcode
-                            if postcode and addr_postcode:
-                                if postcode != addr_postcode:
-                                    changed = True
-                            elif postcode or addr_postcode:
-                                changed = True
-                            if not changed:
-                                if wkt and wkt != location.wkt:
-                                    changed = True
-                                else:
-                                    # Float comparisons need care
-                                    # - just check the 1st 5 decimal points, as
-                                    #   that's all we care about
-                                    llat = location.lat
-                                    if lat is not None and llat is not None:
-                                        if round(lat, 5) != round(llat, 5):
-                                            changed = True
-                                    elif lat is not None or llat is not None:
-                                        changed = True
-                                    if not changed:
-                                        llon = location.lon
-                                        if lon is not None and llon is not None:
-                                            if round(lon, 5) != round(llon, 5):
-                                                changed = True
-                                        elif lon is not None or llon is not None:
-                                            changed = True
-
-                    if changed:
-                        # Update the record
-                        if not current.auth.s3_has_permission("update", table,
-                                                              record_id=value):
-                            return (value, current.auth.messages.access_denied)
-                        feature = Storage(addr_street=address,
-                                          addr_postcode=postcode,
-                                          parent=parent,
-                                          )
-                        if lat is not None and lon is not None:
-                            feature.lat = lat
-                            feature.lon = lon
-                            feature.inherited = False
-                        elif wkt is not None:
-                            feature.wkt = wkt
-                            feature.inherited = False
-                        # onvalidation
-                        # - includes detailed bounds check if deployment_setting
-                        #   doesn't disable it
-                        form = Storage()
-                        form.errors = errors
-                        form.vars = feature
-                        current.s3db.gis_location_onvalidation(form)
-                        if form.errors:
-                            errors = form.errors
-                            error = ""
-                            for e in errors:
-                                error = "%s\n%s" % (error, errors[e]) if error \
-                                   else errors[e]
-                            return (value, error)
-                        # Update the record
-                        db(table.id == value).update(**feature)
-                        # Update location tree in case parent has changed
-                        feature.id = value
-                        # onaccept
-                        current.gis.update_location_tree(feature)
-                    return (value, None)
-                else:
-                    return (value,
-                            self.error_message or current.T("Invalid Location!"))
-        else:
-            # Lx or a specific location with blank Parent/Address/Lat/Lon
-            db = current.db
-            table = db.gis_location
-            query = (table.id == value) & \
-                    (table.deleted == False)
-            location = db(query).select(table.level,
-                                        table.lat,
-                                        table.lon,
-                                        table.addr_street,
-                                        table.addr_postcode,
-                                        table.parent,
-                                        limitby=(0, 1)).first()
-            if not location:
-                return (value,
-                        self.error_message or current.T("Invalid Location!"))
-            level = location.level
-            if level:
-                # Which levels of Hierarchy are we using?
-                levels = self.levels or \
-                         current.gis.get_relevant_hierarchy_levels()
-
-                if level in levels:
-                    # OK
-                    return (value, None)
-                else:
-                    return (value, self.error_message or \
-                            current.T("Location is of incorrect level!"))
-            else:
-                # Clear the Parent/Lat/Lon/Address
-                feature = Storage(lat = None,
-                                  lon = None,
-                                  addr_street = None,
-                                  addr_postcode = None,
-                                  parent = None)
-                db(table.id == value).update(**feature)
-                # Update location tree in case parent has changed
-                feature.id = value
-                # onaccept
-                current.gis.update_location_tree(feature)
-                return (value, None)
 
 # =============================================================================
 class IS_SITE_SELECTOR(IS_LOCATION_SELECTOR):
@@ -2968,10 +2716,11 @@ class IS_COMBO_BOX(Validator):
             return (value, None)
 
 # =============================================================================
-class QUANTITY_INV_ITEM(object):
+class QUANTITY_INV_ITEM(Validator):
     """
         For Inventory module
     """
+
     def __init__(self,
                  db,
                  inv_item_id,
@@ -3021,10 +2770,6 @@ class QUANTITY_INV_ITEM(object):
                 return (value, None)
         else:
             return (value, error)
-
-    # -------------------------------------------------------------------------
-    def formatter(self, value):
-        return value
 
 # =============================================================================
 class IS_IN_SET_LAZY(Validator):
@@ -3265,7 +3010,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                                                 zero = zero,
                                                 sort = sort,
                                                 )
-                                                
+
         if select is DEFAULT:
             self._select = current.deployment_settings.get_L10n_languages()
         else:
@@ -3291,122 +3036,145 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
         if zero and not self.zero is None and not self.multiple:
             items.insert(0, ("", self.zero))
         return items
-    
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def represent(cls, code):
+        """
+            Represent a language code by language name
+
+            @param code: the language code
+        """
+
+        l10n_languages = current.deployment_settings.get_L10n_languages()
+        if code in l10n_languages:
+            name = l10n_languages[code]
+        else:
+            all_languages = dict(cls.language_codes())
+            name = all_languages.get(code)
+            if name is None:
+                name = current.messages.UNKNOWN_OPT
+        return name
+
     # -------------------------------------------------------------------------
     @staticmethod
     def language_codes():
         """
             Returns a list of tuples of ISO639-1 alpha-2 language
             codes, can also be used to look up the language name
+
+            Just the subset which are useful for Translations
+            - 2 letter code preferred, 3-letter code where none exists,
+              no 'families' or Old
         """
 
-        return [("aar", "Afar"),
+        return [#("aar", "Afar"),
                 ("aa", "Afar"),
-                ("abk", "Abkhazian"),
+                #("abk", "Abkhazian"),
                 ("ab", "Abkhazian"),
                 ("ace", "Achinese"),
                 ("ach", "Acoli"),
                 ("ada", "Adangme"),
                 ("ady", "Adyghe; Adygei"),
-                ("afa", "Afro-Asiatic languages"),
+                #("afa", "Afro-Asiatic languages"),
                 ("afh", "Afrihili"),
-                ("afr", "Afrikaans"),
+                #("afr", "Afrikaans"),
                 ("af", "Afrikaans"),
                 ("ain", "Ainu"),
-                ("aka", "Akan"),
+                #("aka", "Akan"),
                 ("ak", "Akan"),
                 ("akk", "Akkadian"),
-                ("alb", "Albanian"),
+                #("alb", "Albanian"),
                 ("sq", "Albanian"),
                 ("ale", "Aleut"),
-                ("alg", "Algonquian languages"),
+                #("alg", "Algonquian languages"),
                 ("alt", "Southern Altai"),
-                ("amh", "Amharic"),
+                #("amh", "Amharic"),
                 ("am", "Amharic"),
-                ("ang", "English, Old (ca.450-1100)"),
+                #("ang", "English, Old (ca.450-1100)"),
                 ("anp", "Angika"),
-                ("apa", "Apache languages"),
-                ("ara", "Arabic"),
+                #("apa", "Apache languages"),
+                #("ara", "Arabic"),
                 ("ar", "Arabic"),
-                ("arc", "Official Aramaic (700-300 BCE); Imperial Aramaic (700-300 BCE)"),
-                ("arg", "Aragonese"),
+                #("arc", "Official Aramaic (700-300 BCE); Imperial Aramaic (700-300 BCE)"),
+                #("arg", "Aragonese"),
                 ("an", "Aragonese"),
-                ("arm", "Armenian"),
+                #("arm", "Armenian"),
                 ("hy", "Armenian"),
                 ("arn", "Mapudungun; Mapuche"),
                 ("arp", "Arapaho"),
-                ("art", "Artificial languages"),
+                #("art", "Artificial languages"),
                 ("arw", "Arawak"),
-                ("asm", "Assamese"),
+                #("asm", "Assamese"),
                 ("as", "Assamese"),
                 ("ast", "Asturian; Bable; Leonese; Asturleonese"),
-                ("ath", "Athapascan languages"),
-                ("aus", "Australian languages"),
-                ("ava", "Avaric"),
+                #("ath", "Athapascan languages"),
+                #("aus", "Australian languages"),
+                #("ava", "Avaric"),
                 ("av", "Avaric"),
-                ("ave", "Avestan"),
+                #("ave", "Avestan"),
                 ("ae", "Avestan"),
                 ("awa", "Awadhi"),
-                ("aym", "Aymara"),
+                #("aym", "Aymara"),
                 ("ay", "Aymara"),
-                ("aze", "Azerbaijani"),
+                #("aze", "Azerbaijani"),
                 ("az", "Azerbaijani"),
-                ("bad", "Banda languages"),
-                ("bai", "Bamileke languages"),
-                ("bak", "Bashkir"),
+                #("bad", "Banda languages"),
+                #("bai", "Bamileke languages"),
+                #("bak", "Bashkir"),
                 ("ba", "Bashkir"),
                 ("bal", "Baluchi"),
-                ("bam", "Bambara"),
+                #("bam", "Bambara"),
                 ("bm", "Bambara"),
                 ("ban", "Balinese"),
-                ("baq", "Basque"),
+                #("baq", "Basque"),
                 ("eu", "Basque"),
                 ("bas", "Basa"),
-                ("bat", "Baltic languages"),
+                #("bat", "Baltic languages"),
                 ("bej", "Beja; Bedawiyet"),
-                ("bel", "Belarusian"),
+                #("bel", "Belarusian"),
                 ("be", "Belarusian"),
                 ("bem", "Bemba"),
-                ("ben", "Bengali"),
+                #("ben", "Bengali"),
                 ("bn", "Bengali"),
-                ("ber", "Berber languages"),
+                #("ber", "Berber languages"),
                 ("bho", "Bhojpuri"),
-                ("bih", "Bihari languages"),
-                ("bh", "Bihari languages"),
+                #("bih", "Bihari languages"),
+                #("bh", "Bihari languages"),
                 ("bik", "Bikol"),
                 ("bin", "Bini; Edo"),
-                ("bis", "Bislama"),
+                #("bis", "Bislama"),
                 ("bi", "Bislama"),
                 ("bla", "Siksika"),
-                ("bnt", "Bantu (Other)"),
-                ("bos", "Bosnian"),
+                #("bnt", "Bantu (Other)"),
+                #("bos", "Bosnian"),
                 ("bs", "Bosnian"),
                 ("bra", "Braj"),
-                ("bre", "Breton"),
+                #("bre", "Breton"),
                 ("br", "Breton"),
-                ("btk", "Batak languages"),
+                #("btk", "Batak languages"),
                 ("bua", "Buriat"),
                 ("bug", "Buginese"),
-                ("bul", "Bulgarian"),
+                #("bul", "Bulgarian"),
                 ("bg", "Bulgarian"),
-                ("bur", "Burmese"),
+                #("bur", "Burmese"),
                 ("my", "Burmese"),
                 ("byn", "Blin; Bilin"),
                 ("cad", "Caddo"),
-                ("cai", "Central American Indian languages"),
+                #("cai", "Central American Indian languages"),
                 ("car", "Galibi Carib"),
-                ("cat", "Catalan; Valencian"),
+                #("cat", "Catalan; Valencian"),
                 ("ca", "Catalan; Valencian"),
-                ("cau", "Caucasian languages"),
+                #("cau", "Caucasian languages"),
                 ("ceb", "Cebuano"),
-                ("cel", "Celtic languages"),
-                ("cha", "Chamorro"),
+                #("cel", "Celtic languages"),
+                #("cha", "Chamorro"),
                 ("ch", "Chamorro"),
                 ("chb", "Chibcha"),
-                ("che", "Chechen"),
+                #("che", "Chechen"),
                 ("ce", "Chechen"),
                 ("chg", "Chagatai"),
-                ("chi", "Chinese"),
+                #("chi", "Chinese"),
                 ("zh", "Chinese"),
                 ("chk", "Chuukese"),
                 ("chm", "Mari"),
@@ -3414,561 +3182,561 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("cho", "Choctaw"),
                 ("chp", "Chipewyan; Dene Suline"),
                 ("chr", "Cherokee"),
-                ("chu", "Church Slavic; Old Slavonic; Church Slavonic; Old Bulgarian; Old Church Slavonic"),
+                #("chu", "Church Slavic; Old Slavonic; Church Slavonic; Old Bulgarian; Old Church Slavonic"),
                 ("cu", "Church Slavic; Old Slavonic; Church Slavonic; Old Bulgarian; Old Church Slavonic"),
-                ("chv", "Chuvash"),
+                #("chv", "Chuvash"),
                 ("cv", "Chuvash"),
                 ("chy", "Cheyenne"),
-                ("cmc", "Chamic languages"),
+                #("cmc", "Chamic languages"),
                 ("cop", "Coptic"),
-                ("cor", "Cornish"),
+                #("cor", "Cornish"),
                 ("kw", "Cornish"),
-                ("cos", "Corsican"),
+                #("cos", "Corsican"),
                 ("co", "Corsican"),
-                ("cpe", "Creoles and pidgins, English based"),
-                ("cpf", "Creoles and pidgins, French-based "),
-                ("cpp", "Creoles and pidgins, Portuguese-based "),
-                ("cre", "Cree"),
+                #("cpe", "Creoles and pidgins, English based"),
+                #("cpf", "Creoles and pidgins, French-based"),
+                #("cpp", "Creoles and pidgins, Portuguese-based"),
+                #("cre", "Cree"),
                 ("cr", "Cree"),
                 ("crh", "Crimean Tatar; Crimean Turkish"),
-                ("crp", "Creoles and pidgins "),
+                #("crp", "Creoles and pidgins"),
                 ("csb", "Kashubian"),
                 ("cus", "Cushitic languages"),
-                ("cze", "Czech"),
+                #("cze", "Czech"),
                 ("cs", "Czech"),
                 ("dak", "Dakota"),
-                ("dan", "Danish"),
+                #("dan", "Danish"),
                 ("da", "Danish"),
                 ("dar", "Dargwa"),
-                ("day", "Land Dayak languages"),
+                #("day", "Land Dayak languages"),
                 ("del", "Delaware"),
                 ("den", "Slave (Athapascan)"),
                 ("dgr", "Dogrib"),
                 ("din", "Dinka"),
-                ("div", "Divehi; Dhivehi; Maldivian"),
+                #("div", "Divehi; Dhivehi; Maldivian"),
                 ("dv", "Divehi; Dhivehi; Maldivian"),
                 ("doi", "Dogri"),
-                ("dra", "Dravidian languages"),
+                #("dra", "Dravidian languages"),
                 ("dsb", "Lower Sorbian"),
                 ("dua", "Duala"),
-                ("dum", "Dutch, Middle (ca.1050-1350)"),
-                ("dut", "Dutch; Flemish"),
+                #("dum", "Dutch, Middle (ca.1050-1350)"),
+                #("dut", "Dutch; Flemish"),
                 ("nl", "Dutch; Flemish"),
                 ("dyu", "Dyula"),
-                ("dzo", "Dzongkha"),
+                #("dzo", "Dzongkha"),
                 ("dz", "Dzongkha"),
                 ("efi", "Efik"),
-                ("egy", "Egyptian (Ancient)"),
+                #("egy", "Egyptian (Ancient)"),
                 ("eka", "Ekajuk"),
                 ("elx", "Elamite"),
-                ("eng", "English"),
+                #("eng", "English"),
                 ("en", "English"),
-                ("enm", "English, Middle (1100-1500)"),
-                ("epo", "Esperanto"),
+                #("enm", "English, Middle (1100-1500)"),
+                #("epo", "Esperanto"),
                 ("eo", "Esperanto"),
-                ("est", "Estonian"),
+                #("est", "Estonian"),
                 ("et", "Estonian"),
-                ("ewe", "Ewe"),
+                #("ewe", "Ewe"),
                 ("ee", "Ewe"),
                 ("ewo", "Ewondo"),
                 ("fan", "Fang"),
-                ("fao", "Faroese"),
+                #("fao", "Faroese"),
                 ("fo", "Faroese"),
                 ("fat", "Fanti"),
-                ("fij", "Fijian"),
+                #("fij", "Fijian"),
                 ("fj", "Fijian"),
                 ("fil", "Filipino; Pilipino"),
-                ("fin", "Finnish"),
+                #("fin", "Finnish"),
                 ("fi", "Finnish"),
-                ("fiu", "Finno-Ugrian languages"),
+                #("fiu", "Finno-Ugrian languages"),
                 ("fon", "Fon"),
-                ("fre", "French"),
+                #("fre", "French"),
                 ("fr", "French"),
-                ("frm", "French, Middle (ca.1400-1600)"),
-                ("fro", "French, Old (842-ca.1400)"),
+                #("frm", "French, Middle (ca.1400-1600)"),
+                #("fro", "French, Old (842-ca.1400)"),
                 ("frr", "Northern Frisian"),
                 ("frs", "Eastern Frisian"),
-                ("fry", "Western Frisian"),
+                #("fry", "Western Frisian"),
                 ("fy", "Western Frisian"),
-                ("ful", "Fulah"),
+                #("ful", "Fulah"),
                 ("ff", "Fulah"),
                 ("fur", "Friulian"),
                 ("gaa", "Ga"),
                 ("gay", "Gayo"),
                 ("gba", "Gbaya"),
-                ("gem", "Germanic languages"),
-                ("geo", "Georgian"),
+                #("gem", "Germanic languages"),
+                #("geo", "Georgian"),
                 ("ka", "Georgian"),
-                ("ger", "German"),
+                #("ger", "German"),
                 ("de", "German"),
                 ("gez", "Geez"),
                 ("gil", "Gilbertese"),
-                ("gla", "Gaelic; Scottish Gaelic"),
+                #("gla", "Gaelic; Scottish Gaelic"),
                 ("gd", "Gaelic; Scottish Gaelic"),
-                ("gle", "Irish"),
+                #("gle", "Irish"),
                 ("ga", "Irish"),
-                ("glg", "Galician"),
+                #("glg", "Galician"),
                 ("gl", "Galician"),
-                ("glv", "Manx"),
+                #("glv", "Manx"),
                 ("gv", "Manx"),
-                ("gmh", "German, Middle High (ca.1050-1500)"),
-                ("goh", "German, Old High (ca.750-1050)"),
+                #("gmh", "German, Middle High (ca.1050-1500)"),
+                #("goh", "German, Old High (ca.750-1050)"),
                 ("gon", "Gondi"),
                 ("gor", "Gorontalo"),
                 ("got", "Gothic"),
                 ("grb", "Grebo"),
-                ("grc", "Greek, Ancient (to 1453)"),
-                ("gre", "Greek, Modern (1453-)"),
+                #("grc", "Greek, Ancient (to 1453)"),
+                #("gre", "Greek, Modern (1453-)"),
                 ("el", "Greek, Modern (1453-)"),
-                ("grn", "Guarani"),
+                #("grn", "Guarani"),
                 ("gn", "Guarani"),
                 ("gsw", "Swiss German; Alemannic; Alsatian"),
-                ("guj", "Gujarati"),
+                #("guj", "Gujarati"),
                 ("gu", "Gujarati"),
                 ("gwi", "Gwich'in"),
                 ("hai", "Haida"),
-                ("hat", "Haitian; Haitian Creole"),
+                #("hat", "Haitian; Haitian Creole"),
                 ("ht", "Haitian; Haitian Creole"),
-                ("hau", "Hausa"),
+                #("hau", "Hausa"),
                 ("ha", "Hausa"),
                 ("haw", "Hawaiian"),
-                ("heb", "Hebrew"),
+                #("heb", "Hebrew"),
                 ("he", "Hebrew"),
-                ("her", "Herero"),
+                #("her", "Herero"),
                 ("hz", "Herero"),
                 ("hil", "Hiligaynon"),
-                ("him", "Himachali languages; Western Pahari languages"),
-                ("hin", "Hindi"),
+                #("him", "Himachali languages; Western Pahari languages"),
+                #("hin", "Hindi"),
                 ("hi", "Hindi"),
                 ("hit", "Hittite"),
                 ("hmn", "Hmong; Mong"),
-                ("hmo", "Hiri Motu"),
+                #("hmo", "Hiri Motu"),
                 ("ho", "Hiri Motu"),
-                ("hrv", "Croatian"),
+                #("hrv", "Croatian"),
                 ("hr", "Croatian"),
                 ("hsb", "Upper Sorbian"),
-                ("hun", "Hungarian"),
+                #("hun", "Hungarian"),
                 ("hu", "Hungarian"),
                 ("hup", "Hupa"),
                 ("iba", "Iban"),
-                ("ibo", "Igbo"),
+                #("ibo", "Igbo"),
                 ("ig", "Igbo"),
-                ("ice", "Icelandic"),
+                #("ice", "Icelandic"),
                 ("is", "Icelandic"),
-                ("ido", "Ido"),
+                #("ido", "Ido"),
                 ("io", "Ido"),
-                ("iii", "Sichuan Yi; Nuosu"),
+                #("iii", "Sichuan Yi; Nuosu"),
                 ("ii", "Sichuan Yi; Nuosu"),
-                ("ijo", "Ijo languages"),
-                ("iku", "Inuktitut"),
+                #("ijo", "Ijo languages"),
+                #("iku", "Inuktitut"),
                 ("iu", "Inuktitut"),
-                ("ile", "Interlingue; Occidental"),
+                #("ile", "Interlingue; Occidental"),
                 ("ie", "Interlingue; Occidental"),
                 ("ilo", "Iloko"),
-                ("ina", "Interlingua (International Auxiliary Language Association)"),
+                #("ina", "Interlingua (International Auxiliary Language Association)"),
                 ("ia", "Interlingua (International Auxiliary Language Association)"),
-                ("inc", "Indic languages"),
-                ("ind", "Indonesian"),
+                #("inc", "Indic languages"),
+                #("ind", "Indonesian"),
                 ("id", "Indonesian"),
-                ("ine", "Indo-European languages"),
+                #("ine", "Indo-European languages"),
                 ("inh", "Ingush"),
-                ("ipk", "Inupiaq"),
+                #("ipk", "Inupiaq"),
                 ("ik", "Inupiaq"),
-                ("ira", "Iranian languages"),
-                ("iro", "Iroquoian languages"),
-                ("ita", "Italian"),
+                #("ira", "Iranian languages"),
+                #("iro", "Iroquoian languages"),
+                #("ita", "Italian"),
                 ("it", "Italian"),
-                ("jav", "Javanese"),
+                #("jav", "Javanese"),
                 ("jv", "Javanese"),
                 ("jbo", "Lojban"),
-                ("jpn", "Japanese"),
+                #("jpn", "Japanese"),
                 ("ja", "Japanese"),
-                ("jpr", "Judeo-Persian"),
-                ("jrb", "Judeo-Arabic"),
+                #("jpr", "Judeo-Persian"),
+                #("jrb", "Judeo-Arabic"),
                 ("kaa", "Kara-Kalpak"),
                 ("kab", "Kabyle"),
                 ("kac", "Kachin; Jingpho"),
-                ("kal", "Kalaallisut; Greenlandic"),
+                #("kal", "Kalaallisut; Greenlandic"),
                 ("kl", "Kalaallisut; Greenlandic"),
                 ("kam", "Kamba"),
-                ("kan", "Kannada"),
+                #("kan", "Kannada"),
                 ("kn", "Kannada"),
-                ("kar", "Karen languages"),
-                ("kas", "Kashmiri"),
+                #("kar", "Karen languages"),
+                #("kas", "Kashmiri"),
                 ("ks", "Kashmiri"),
-                ("kau", "Kanuri"),
+                #("kau", "Kanuri"),
                 ("kr", "Kanuri"),
                 ("kaw", "Kawi"),
-                ("kaz", "Kazakh"),
+                #("kaz", "Kazakh"),
                 ("kk", "Kazakh"),
                 ("kbd", "Kabardian"),
                 ("kha", "Khasi"),
-                ("khi", "Khoisan languages"),
-                ("khm", "Central Khmer"),
+                #("khi", "Khoisan languages"),
+                #("khm", "Central Khmer"),
                 ("km", "Central Khmer"),
                 ("kho", "Khotanese; Sakan"),
-                ("kik", "Kikuyu; Gikuyu"),
+                #("kik", "Kikuyu; Gikuyu"),
                 ("ki", "Kikuyu; Gikuyu"),
-                ("kin", "Kinyarwanda"),
+                #("kin", "Kinyarwanda"),
                 ("rw", "Kinyarwanda"),
-                ("kir", "Kirghiz; Kyrgyz"),
+                #("kir", "Kirghiz; Kyrgyz"),
                 ("ky", "Kirghiz; Kyrgyz"),
                 ("kmb", "Kimbundu"),
                 ("kok", "Konkani"),
-                ("kom", "Komi"),
+                #("kom", "Komi"),
                 ("kv", "Komi"),
-                ("kon", "Kongo"),
+                #("kon", "Kongo"),
                 ("kg", "Kongo"),
-                ("kor", "Korean"),
+                #("kor", "Korean"),
                 ("ko", "Korean"),
                 ("kos", "Kosraean"),
                 ("kpe", "Kpelle"),
                 ("krc", "Karachay-Balkar"),
                 ("krl", "Karelian"),
-                ("kro", "Kru languages"),
+                #("kro", "Kru languages"),
                 ("kru", "Kurukh"),
-                ("kua", "Kuanyama; Kwanyama"),
+                #("kua", "Kuanyama; Kwanyama"),
                 ("kj", "Kuanyama; Kwanyama"),
                 ("kum", "Kumyk"),
-                ("kur", "Kurdish"),
+                #("kur", "Kurdish"),
                 ("ku", "Kurdish"),
                 ("kut", "Kutenai"),
                 ("lad", "Ladino"),
                 ("lah", "Lahnda"),
                 ("lam", "Lamba"),
-                ("lao", "Lao"),
+                #("lao", "Lao"),
                 ("lo", "Lao"),
-                ("lat", "Latin"),
+                #("lat", "Latin"),
                 ("la", "Latin"),
-                ("lav", "Latvian"),
+                #("lav", "Latvian"),
                 ("lv", "Latvian"),
                 ("lez", "Lezghian"),
-                ("lim", "Limburgan; Limburger; Limburgish"),
+                #("lim", "Limburgan; Limburger; Limburgish"),
                 ("li", "Limburgan; Limburger; Limburgish"),
-                ("lin", "Lingala"),
+                #("lin", "Lingala"),
                 ("ln", "Lingala"),
-                ("lit", "Lithuanian"),
+                #("lit", "Lithuanian"),
                 ("lt", "Lithuanian"),
                 ("lol", "Mongo"),
                 ("loz", "Lozi"),
-                ("ltz", "Luxembourgish; Letzeburgesch"),
+                #("ltz", "Luxembourgish; Letzeburgesch"),
                 ("lb", "Luxembourgish; Letzeburgesch"),
                 ("lua", "Luba-Lulua"),
-                ("lub", "Luba-Katanga"),
+                #("lub", "Luba-Katanga"),
                 ("lu", "Luba-Katanga"),
-                ("lug", "Ganda"),
+                #("lug", "Ganda"),
                 ("lg", "Ganda"),
                 ("lui", "Luiseno"),
                 ("lun", "Lunda"),
                 ("luo", "Luo (Kenya and Tanzania)"),
                 ("lus", "Lushai"),
-                ("mac", "Macedonian"),
+                #("mac", "Macedonian"),
                 ("mk", "Macedonian"),
                 ("mad", "Madurese"),
                 ("mag", "Magahi"),
-                ("mah", "Marshallese"),
+                #("mah", "Marshallese"),
                 ("mh", "Marshallese"),
                 ("mai", "Maithili"),
                 ("mak", "Makasar"),
-                ("mal", "Malayalam"),
+                #("mal", "Malayalam"),
                 ("ml", "Malayalam"),
                 ("man", "Mandingo"),
-                ("mao", "Maori"),
+                #("mao", "Maori"),
                 ("mi", "Maori"),
-                ("map", "Austronesian languages"),
-                ("mar", "Marathi"),
+                #("map", "Austronesian languages"),
+                #("mar", "Marathi"),
                 ("mr", "Marathi"),
                 ("mas", "Masai"),
-                ("may", "Malay"),
+                #("may", "Malay"),
                 ("ms", "Malay"),
                 ("mdf", "Moksha"),
                 ("mdr", "Mandar"),
                 ("men", "Mende"),
-                ("mga", "Irish, Middle (900-1200)"),
+                #("mga", "Irish, Middle (900-1200)"),
                 ("mic", "Mi'kmaq; Micmac"),
                 ("min", "Minangkabau"),
-                ("mis", "Uncoded languages"),
-                ("mkh", "Mon-Khmer languages"),
-                ("mlg", "Malagasy"),
+                #("mis", "Uncoded languages"),
+                #("mkh", "Mon-Khmer languages"),
+                #("mlg", "Malagasy"),
                 ("mg", "Malagasy"),
                 ("mlt", "Maltese"),
                 ("mt", "Maltese"),
                 ("mnc", "Manchu"),
                 ("mni", "Manipuri"),
-                ("mno", "Manobo languages"),
+                #("mno", "Manobo languages"),
                 ("moh", "Mohawk"),
-                ("mon", "Mongolian"),
+                #("mon", "Mongolian"),
                 ("mn", "Mongolian"),
                 ("mos", "Mossi"),
-                ("mul", "Multiple languages"),
-                ("mun", "Munda languages"),
+                #("mul", "Multiple languages"),
+                #("mun", "Munda languages"),
                 ("mus", "Creek"),
                 ("mwl", "Mirandese"),
                 ("mwr", "Marwari"),
-                ("myn", "Mayan languages"),
+                #("myn", "Mayan languages"),
                 ("myv", "Erzya"),
-                ("nah", "Nahuatl languages"),
-                ("nai", "North American Indian languages"),
+                #("nah", "Nahuatl languages"),
+                #("nai", "North American Indian languages"),
                 ("nap", "Neapolitan"),
-                ("nau", "Nauru"),
+                #("nau", "Nauru"),
                 ("na", "Nauru"),
-                ("nav", "Navajo; Navaho"),
+                #("nav", "Navajo; Navaho"),
                 ("nv", "Navajo; Navaho"),
-                ("nbl", "Ndebele, South; South Ndebele"),
+                #("nbl", "Ndebele, South; South Ndebele"),
                 ("nr", "Ndebele, South; South Ndebele"),
-                ("nde", "Ndebele, North; North Ndebele"),
+                #("nde", "Ndebele, North; North Ndebele"),
                 ("nd", "Ndebele, North; North Ndebele"),
-                ("ndo", "Ndonga"),
+                #("ndo", "Ndonga"),
                 ("ng", "Ndonga"),
                 ("nds", "Low German; Low Saxon; German, Low; Saxon, Low"),
-                ("nep", "Nepali"),
+                #("nep", "Nepali"),
                 ("ne", "Nepali"),
                 ("new", "Nepal Bhasa; Newari"),
                 ("nia", "Nias"),
-                ("nic", "Niger-Kordofanian languages"),
+                #("nic", "Niger-Kordofanian languages"),
                 ("niu", "Niuean"),
-                ("nno", "Norwegian Nynorsk; Nynorsk, Norwegian"),
+                #("nno", "Norwegian Nynorsk; Nynorsk, Norwegian"),
                 ("nn", "Norwegian Nynorsk; Nynorsk, Norwegian"),
-                ("nob", "Bokmål, Norwegian; Norwegian Bokmål"),
+                #("nob", "Bokmål, Norwegian; Norwegian Bokmål"),
                 ("nb", "Bokmål, Norwegian; Norwegian Bokmål"),
                 ("nog", "Nogai"),
-                ("non", "Norse, Old"),
-                ("nor", "Norwegian"),
+                #("non", "Norse, Old"),
+                #("nor", "Norwegian"),
                 ("no", "Norwegian"),
                 ("nqo", "N'Ko"),
                 ("nso", "Pedi; Sepedi; Northern Sotho"),
-                ("nub", "Nubian languages"),
-                ("nwc", "Classical Newari; Old Newari; Classical Nepal Bhasa"),
-                ("nya", "Chichewa; Chewa; Nyanja"),
+                #("nub", "Nubian languages"),
+                #("nwc", "Classical Newari; Old Newari; Classical Nepal Bhasa"),
+                #("nya", "Chichewa; Chewa; Nyanja"),
                 ("ny", "Chichewa; Chewa; Nyanja"),
                 ("nym", "Nyamwezi"),
                 ("nyn", "Nyankole"),
                 ("nyo", "Nyoro"),
                 ("nzi", "Nzima"),
-                ("oci", "Occitan (post 1500); Provençal"),
+                #("oci", "Occitan (post 1500); Provençal"),
                 ("oc", "Occitan (post 1500); Provençal"),
-                ("oji", "Ojibwa"),
+                #("oji", "Ojibwa"),
                 ("oj", "Ojibwa"),
-                ("ori", "Oriya"),
+                #("ori", "Oriya"),
                 ("or", "Oriya"),
-                ("orm", "Oromo"),
+                #("orm", "Oromo"),
                 ("om", "Oromo"),
                 ("osa", "Osage"),
-                ("oss", "Ossetian; Ossetic"),
+                #("oss", "Ossetian; Ossetic"),
                 ("os", "Ossetian; Ossetic"),
-                ("ota", "Turkish, Ottoman (1500-1928)"),
-                ("oto", "Otomian languages"),
-                ("paa", "Papuan languages"),
+                #("ota", "Turkish, Ottoman (1500-1928)"),
+                #("oto", "Otomian languages"),
+                #("paa", "Papuan languages"),
                 ("pag", "Pangasinan"),
                 ("pal", "Pahlavi"),
                 ("pam", "Pampanga; Kapampangan"),
-                ("pan", "Panjabi; Punjabi"),
+                #("pan", "Panjabi; Punjabi"),
                 ("pa", "Panjabi; Punjabi"),
                 ("pap", "Papiamento"),
                 ("pau", "Palauan"),
-                ("peo", "Persian, Old (ca.600-400 B.C.)"),
-                ("per", "Persian"),
+                #("peo", "Persian, Old (ca.600-400 B.C.)"),
+                #("per", "Persian"),
                 ("fa", "Persian"),
-                ("phi", "Philippine languages"),
+                #("phi", "Philippine languages"),
                 ("phn", "Phoenician"),
-                ("pli", "Pali"),
+                #("pli", "Pali"),
                 ("pi", "Pali"),
-                ("pol", "Polish"),
+                #("pol", "Polish"),
                 ("pl", "Polish"),
                 ("pon", "Pohnpeian"),
-                ("por", "Portuguese"),
+                #("por", "Portuguese"),
                 ("pt", "Portuguese"),
-                ("pra", "Prakrit languages"),
-                ("pro", "Provençal, Old (to 1500)"),
-                ("pus", "Pushto; Pashto"),
+                #("pra", "Prakrit languages"),
+                #("pro", "Provençal, Old (to 1500)"),
+                #("pus", "Pushto; Pashto"),
                 ("ps", "Pushto; Pashto"),
-                ("qaa-qtz", "Reserved for local use"),
-                ("que", "Quechua"),
+                #("qaa-qtz", "Reserved for local use"),
+                #("que", "Quechua"),
                 ("qu", "Quechua"),
                 ("raj", "Rajasthani"),
                 ("rap", "Rapanui"),
                 ("rar", "Rarotongan; Cook Islands Maori"),
-                ("roa", "Romance languages"),
-                ("roh", "Romansh"),
+                #("roa", "Romance languages"),
+                #("roh", "Romansh"),
                 ("rm", "Romansh"),
                 ("rom", "Romany"),
-                ("rum", "Romanian; Moldavian; Moldovan"),
+                #("rum", "Romanian; Moldavian; Moldovan"),
                 ("ro", "Romanian; Moldavian; Moldovan"),
-                ("run", "Rundi"),
+                #("run", "Rundi"),
                 ("rn", "Rundi"),
                 ("rup", "Aromanian; Arumanian; Macedo-Romanian"),
-                ("rus", "Russian"),
+                #("rus", "Russian"),
                 ("ru", "Russian"),
                 ("sad", "Sandawe"),
-                ("sag", "Sango"),
+                #("sag", "Sango"),
                 ("sg", "Sango"),
                 ("sah", "Yakut"),
-                ("sai", "South American Indian (Other)"),
-                ("sal", "Salishan languages"),
+                #("sai", "South American Indian (Other)"),
+                #("sal", "Salishan languages"),
                 ("sam", "Samaritan Aramaic"),
-                ("san", "Sanskrit"),
+                #("san", "Sanskrit"),
                 ("sa", "Sanskrit"),
                 ("sas", "Sasak"),
                 ("sat", "Santali"),
                 ("scn", "Sicilian"),
                 ("sco", "Scots"),
                 ("sel", "Selkup"),
-                ("sem", "Semitic languages"),
-                ("sga", "Irish, Old (to 900)"),
-                ("sgn", "Sign Languages"),
+                #("sem", "Semitic languages"),
+                #("sga", "Irish, Old (to 900)"),
+                #("sgn", "Sign Languages"),
                 ("shn", "Shan"),
                 ("sid", "Sidamo"),
-                ("sin", "Sinhala; Sinhalese"),
+                #("sin", "Sinhala; Sinhalese"),
                 ("si", "Sinhala; Sinhalese"),
-                ("sio", "Siouan languages"),
-                ("sit", "Sino-Tibetan languages"),
-                ("sla", "Slavic languages"),
-                ("slo", "Slovak"),
+                #("sio", "Siouan languages"),
+                #("sit", "Sino-Tibetan languages"),
+                #("sla", "Slavic languages"),
+                #("slo", "Slovak"),
                 ("sk", "Slovak"),
-                ("slv", "Slovenian"),
+                #("slv", "Slovenian"),
                 ("sl", "Slovenian"),
                 ("sma", "Southern Sami"),
-                ("sme", "Northern Sami"),
+                #("sme", "Northern Sami"),
                 ("se", "Northern Sami"),
-                ("smi", "Sami languages"),
+                #("smi", "Sami languages"),
                 ("smj", "Lule Sami"),
                 ("smn", "Inari Sami"),
-                ("smo", "Samoan"),
+                #("smo", "Samoan"),
                 ("sm", "Samoan"),
                 ("sms", "Skolt Sami"),
-                ("sna", "Shona"),
+                #("sna", "Shona"),
                 ("sn", "Shona"),
-                ("snd", "Sindhi"),
+                #("snd", "Sindhi"),
                 ("sd", "Sindhi"),
                 ("snk", "Soninke"),
                 ("sog", "Sogdian"),
-                ("som", "Somali"),
+                #("som", "Somali"),
                 ("so", "Somali"),
-                ("son", "Songhai languages"),
-                ("sot", "Sotho, Southern"),
+                #("son", "Songhai languages"),
+                #("sot", "Sotho, Southern"),
                 ("st", "Sotho, Southern"),
-                ("spa", "Spanish; Castilian"),
+                #("spa", "Spanish; Castilian"),
                 ("es", "Spanish; Castilian"),
-                ("srd", "Sardinian"),
+                #("srd", "Sardinian"),
                 ("sc", "Sardinian"),
                 ("srn", "Sranan Tongo"),
-                ("srp", "Serbian"),
+                #("srp", "Serbian"),
                 ("sr", "Serbian"),
                 ("srr", "Serer"),
-                ("ssa", "Nilo-Saharan languages"),
-                ("ssw", "Swati"),
+                #("ssa", "Nilo-Saharan languages"),
+                #("ssw", "Swati"),
                 ("ss", "Swati"),
                 ("suk", "Sukuma"),
-                ("sun", "Sundanese"),
+                #("sun", "Sundanese"),
                 ("su", "Sundanese"),
                 ("sus", "Susu"),
                 ("sux", "Sumerian"),
-                ("swa", "Swahili"),
+                #("swa", "Swahili"),
                 ("sw", "Swahili"),
-                ("swe", "Swedish"),
+                #("swe", "Swedish"),
                 ("sv", "Swedish"),
-                ("syc", "Classical Syriac"),
+                #("syc", "Classical Syriac"),
                 ("syr", "Syriac"),
-                ("tah", "Tahitian"),
+                #("tah", "Tahitian"),
                 ("ty", "Tahitian"),
-                ("tai", "Tai languages"),
-                ("tam", "Tamil"),
+                #("tai", "Tai languages"),
+                #("tam", "Tamil"),
                 ("ta", "Tamil"),
-                ("tat", "Tatar"),
+                #("tat", "Tatar"),
                 ("tt", "Tatar"),
-                ("tel", "Telugu"),
+                #("tel", "Telugu"),
                 ("te", "Telugu"),
                 ("tem", "Timne"),
                 ("ter", "Tereno"),
                 ("tet", "Tetum"),
-                ("tgk", "Tajik"),
+                #("tgk", "Tajik"),
                 ("tg", "Tajik"),
-                ("tgl", "Tagalog"),
+                #("tgl", "Tagalog"),
                 ("tl", "Tagalog"),
-                ("tha", "Thai"),
+                #("tha", "Thai"),
                 ("th", "Thai"),
-                ("tib", "Tibetan"),
+                #("tib", "Tibetan"),
                 ("bo", "Tibetan"),
                 ("tig", "Tigre"),
-                ("tir", "Tigrinya"),
+                #("tir", "Tigrinya"),
                 ("ti", "Tigrinya"),
                 ("tiv", "Tiv"),
                 ("tkl", "Tokelau"),
-                ("tlh", "Klingon; tlhIngan-Hol"),
+                #("tlh", "Klingon; tlhIngan-Hol"),
                 ("tli", "Tlingit"),
                 ("tmh", "Tamashek"),
                 ("tog", "Tonga (Nyasa)"),
-                ("ton", "Tonga (Tonga Islands)"),
+                #("ton", "Tonga (Tonga Islands)"),
                 ("to", "Tonga (Tonga Islands)"),
                 ("tpi", "Tok Pisin"),
                 ("tsi", "Tsimshian"),
-                ("tsn", "Tswana"),
+                #("tsn", "Tswana"),
                 ("tn", "Tswana"),
-                ("tso", "Tsonga"),
+                #("tso", "Tsonga"),
                 ("ts", "Tsonga"),
-                ("tuk", "Turkmen"),
+                #("tuk", "Turkmen"),
                 ("tk", "Turkmen"),
                 ("tum", "Tumbuka"),
-                ("tup", "Tupi languages"),
-                ("tur", "Turkish"),
+                #("tup", "Tupi languages"),
+                #("tur", "Turkish"),
                 ("tr", "Turkish"),
-                ("tut", "Altaic languages"),
+                #("tut", "Altaic languages"),
                 ("tvl", "Tuvalu"),
-                ("twi", "Twi"),
+                #("twi", "Twi"),
                 ("tw", "Twi"),
                 ("tyv", "Tuvinian"),
                 ("udm", "Udmurt"),
                 ("uga", "Ugaritic"),
-                ("uig", "Uighur; Uyghur"),
+                #("uig", "Uighur; Uyghur"),
                 ("ug", "Uighur; Uyghur"),
-                ("ukr", "Ukrainian"),
+                #("ukr", "Ukrainian"),
                 ("uk", "Ukrainian"),
                 ("umb", "Umbundu"),
-                ("und", "Undetermined"),
-                ("urd", "Urdu"),
+                #("und", "Undetermined"),
+                #("urd", "Urdu"),
                 ("ur", "Urdu"),
-                ("uzb", "Uzbek"),
+                #("uzb", "Uzbek"),
                 ("uz", "Uzbek"),
                 ("vai", "Vai"),
-                ("ven", "Venda"),
+                #("ven", "Venda"),
                 ("ve", "Venda"),
-                ("vie", "Vietnamese"),
+                #("vie", "Vietnamese"),
                 ("vi", "Vietnamese"),
-                ("vol", "Volapük"),
+                #("vol", "Volapük"),
                 ("vo", "Volapük"),
                 ("vot", "Votic"),
-                ("wak", "Wakashan languages"),
+                #("wak", "Wakashan languages"),
                 ("wal", "Walamo"),
                 ("war", "Waray"),
                 ("was", "Washo"),
-                ("wel", "Welsh"),
+                #("wel", "Welsh"),
                 ("cy", "Welsh"),
-                ("wen", "Sorbian languages"),
-                ("wln", "Walloon"),
+                #("wen", "Sorbian languages"),
+                #("wln", "Walloon"),
                 ("wa", "Walloon"),
-                ("wol", "Wolof"),
+                #("wol", "Wolof"),
                 ("wo", "Wolof"),
                 ("xal", "Kalmyk; Oirat"),
-                ("xho", "Xhosa"),
+                #("xho", "Xhosa"),
                 ("xh", "Xhosa"),
                 ("yao", "Yao"),
                 ("yap", "Yapese"),
-                ("yid", "Yiddish"),
+                #("yid", "Yiddish"),
                 ("yi", "Yiddish"),
-                ("yor", "Yoruba"),
+                #("yor", "Yoruba"),
                 ("yo", "Yoruba"),
-                ("ypk", "Yupik languages"),
+                #("ypk", "Yupik languages"),
                 ("zap", "Zapotec"),
-                ("zbl", "Blissymbols; Blissymbolics; Bliss"),
+                #("zbl", "Blissymbols; Blissymbolics; Bliss"),
                 ("zen", "Zenaga"),
                 ("zgh", "Standard Moroccan Tamazight"),
-                ("zha", "Zhuang; Chuang"),
+                #("zha", "Zhuang; Chuang"),
                 ("za", "Zhuang; Chuang"),
-                ("znd", "Zande languages"),
-                ("zul", "Zulu"),
+                #("znd", "Zande languages"),
+                #("zul", "Zulu"),
                 ("zu", "Zulu"),
                 ("zun", "Zuni"),
-                ("zxx", "No linguistic content; Not applicable"),
+                #("zxx", "No linguistic content; Not applicable"),
                 ("zza", "Zaza; Dimili; Dimli; Kirdki; Kirmanjki; Zazaki"),
                  ]
 

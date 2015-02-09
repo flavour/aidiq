@@ -2,7 +2,7 @@
 
 """ S3 Resources
 
-    @copyright: 2009-2014 (c) Sahana Software Foundation
+    @copyright: 2009-2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -64,10 +64,10 @@ from gluon import current
 from gluon.html import A, TAG
 from gluon.http import HTTP
 from gluon.validators import IS_EMPTY_OR
-from gluon.dal import Row, Rows, Table, Field, Expression
 from gluon.storage import Storage
 from gluon.tools import callback
 
+from s3dal import Expression, Field, Row, Rows, Table
 from s3data import S3DataTable, S3DataList, S3PivotTable
 from s3fields import S3Represent, s3_all_meta_field_names
 from s3query import FS, S3ResourceField, S3ResourceQuery, S3Joins, S3URLQuery
@@ -224,6 +224,8 @@ class S3Resource(object):
         self.fields = table.fields
         self._id = table._id
 
+        self.defaults = None
+
         # Hooks ---------------------------------------------------------------
 
         # Authorization hooks
@@ -368,7 +370,7 @@ class S3Resource(object):
         component.autocomplete = hook.autocomplete
         component.alias = alias
         component.multiple = hook.multiple
-        component.values = hook.values
+        component.defaults = hook.defaults
 
         if hook.filterby is not None:
             filterfor = hook.filterfor
@@ -610,7 +612,6 @@ class S3Resource(object):
         """
 
         s3db = current.s3db
-
         # Reset error
         self.error = None
 
@@ -663,7 +664,14 @@ class S3Resource(object):
         if current.deployment_settings.get_security_archive_not_delete() and \
            DELETED in table:
 
-            # Find all deletable rows
+            # Find all references
+            if not cascade:
+                # Must load all models to detect dependencies
+                s3db.load_all_models()
+            if db._lazy_tables:
+                # Must roll out all lazy tables to detect dependencies
+                for tn in db._LAZY_TABLES.keys():
+                    db[tn]
             references = table._referenced_by
             try:
                 rfields = [f for f in references if f.ondelete == "RESTRICT"]
@@ -745,6 +753,7 @@ class S3Resource(object):
                                                     unapproved=True)
                         rresource.delete(cascade=True)
                         if rresource.error:
+                            self.error = rresource.error
                             break
                     elif rfield.ondelete == "SET NULL":
                         try:
@@ -1698,7 +1707,7 @@ class S3Resource(object):
                             after this datetime
             @param fields: data fields to include (default: all)
             @param dereference: include referenced resources
-            @param maxdepth: 
+            @param maxdepth:
             @param mcomponents: components of the master resource to
                                 include (list of tablenames), empty list
                                 for all
@@ -1819,7 +1828,7 @@ class S3Resource(object):
             @param fields: data fields to include (default: all)
             @param references: foreign keys to include (default: all)
             @param dereference: also export referenced records
-            @param maxdepth: 
+            @param maxdepth:
             @param mcomponents: components of the master resource to
                                 include (list of tablenames), empty list
                                 for all
@@ -1830,7 +1839,7 @@ class S3Resource(object):
                             {tablename: {url_var: string}}
             @param maxbounds: include lat/lon boundaries in the top
                               level element (off by default)
-            @param xmlformat: 
+            @param xmlformat:
             @param location_data: dictionary of location data which has been
                                   looked-up in bulk ready for xml.gis_encode()
             @param map_data: dictionary of options which can be read by the map
@@ -2123,7 +2132,7 @@ class S3Resource(object):
             @param base_url: the base URL of the resource
             @param reference_map: the reference map of the request
             @param export_map: the export map of the request
-            @param lazy: 
+            @param lazy:
             @param components: list of components to include from referenced
                                resources (tablenames)
             @param filters: additional URL filters (Sync), as dict
@@ -2131,7 +2140,7 @@ class S3Resource(object):
             @param msince: the minimum update datetime for exported records
             @param master: True of this is the master resource
             @param location_data: the location_data for GIS encoding
-            @param xmlformat: 
+            @param xmlformat:
         """
 
         xml = current.xml
@@ -3677,21 +3686,33 @@ class S3Resource(object):
                 numcols = int(get_vars[iSortingCols])
             except:
                 numcols = 0
+
             columns = []
+            pkey = str(self._id)
             for i in xrange(numcols):
                 try:
                     iSortCol = int(get_vars["iSortCol_%s" % i])
-                    # Map sortable-column index to the real list_fields
-                    # index: for every non-sortable column to the left
-                    # of sortable column subtract 1
-                    for j in xrange(iSortCol):
-                        if get_vars.get("bSortable_%s" % j, "true") == "false":
-                            iSortCol -= 1
-                    rfield = rfields[iSortCol + 1]
-                except:
-                    # iSortCol_x is either not present in vars or specifies
-                    # a non-existent column (i.e. iSortCol_x >= numcols) =>
-                    # ignore silently
+                except (AttributeError, KeyError):
+                    # iSortCol_x not present in get_vars => ignore
+                    columns.append(Storage(field=None))
+                    continue
+
+                # Map sortable-column index to the real list_fields
+                # index: for every non-id non-sortable column to the
+                # left of sortable column subtract 1
+                for j in xrange(iSortCol):
+                    if get_vars.get("bSortable_%s" % j, "true") == "false":
+                        try:
+                            if rfields[j].colname != pkey:
+                                iSortCol -= 1
+                        except KeyError:
+                            break
+
+                try:
+                    rfield = rfields[iSortCol]
+                except IndexError:
+                    # iSortCol specifies a non-existent column, i.e.
+                    # iSortCol_x>=numcols => ignore
                     columns.append(Storage(field=None))
                 else:
                     columns.append(rfield)
@@ -4156,12 +4177,13 @@ class S3ResourceFilter(object):
             if vars:
                 resource.vars = Storage(vars)
 
-                # BBox
-                bbox, joins = self.parse_bbox_query(resource, vars)
-                if bbox is not None:
-                    self.queries.append(bbox)
-                    if joins:
-                        self.ljoins.update(joins)
+                if not vars.get("track"):
+                    # Apply BBox Filter unless using S3Track to geolocate
+                    bbox, joins = self.parse_bbox_query(resource, vars)
+                    if bbox is not None:
+                        self.queries.append(bbox)
+                        if joins:
+                            self.ljoins.update(joins)
 
                 # Filters
                 add_filter = self.add_filter

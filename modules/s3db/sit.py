@@ -2,7 +2,7 @@
 
 """ Sahana Eden Situation Model
 
-    @copyright: 2009-2014 (c) Sahana Software Foundation
+    @copyright: 2009-2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -106,7 +106,7 @@ class S3SituationModel(S3Model):
         # Components
         self.add_components(tablename,
                             # Presence
-                            sit_presence=self.super_key("sit_trackable"),
+                            sit_presence = self.super_key("sit_trackable"),
                             )
 
         # ---------------------------------------------------------------------
@@ -118,10 +118,24 @@ class S3SituationModel(S3Model):
         tablename = "sit_presence"
         self.define_table(tablename,
                           self.super_link("track_id", "sit_trackable"),
-                          Field("timestmp", "datetime",
-                                label = T("Date/Time"),
+                          s3_datetime("timestmp",
+                                      label = T("Date/Time"),
+                                      ),
+                          location_id(
+                            widget = S3LocationSelector(show_address = False,
+                                                        show_postcode = False,
+                                                        show_latlon = True,
+                                                        ),
+                            ),
+                          Field("direction",
+                                label = T("Direction"),
                                 ),
-                          location_id(),
+                          Field("speed",
+                                label = T("Speed"),
+                                ),
+                          Field("accuracy",
+                                label = T("Accuracy"),
+                                ),
                           Field("interlock",
                                 readable = False,
                                 writable = False,

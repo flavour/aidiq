@@ -2,7 +2,7 @@
 
 """ Sahana Eden Menu Structure and Layout
 
-    @copyright: 2011-2014 (c) Sahana Software Foundation
+    @copyright: 2011-2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -27,9 +27,9 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["S3MainMenu",
-           "S3OptionsMenu"
-           ]
+__all__ = ("S3MainMenu",
+           "S3OptionsMenu",
+           )
 
 import re
 
@@ -42,6 +42,7 @@ from s3layouts import *
 class S3MainMenu(object):
     """ The default configurations for the main application menu """
 
+    # -------------------------------------------------------------------------
     @classmethod
     def menu(cls):
 
@@ -74,6 +75,7 @@ class S3MainMenu(object):
 
         # Home always 1st
         module = all_modules["default"]
+
         menu_modules.append(MM(module.name_nice, c="default", f="index"))
 
         # Modules to hide due to insufficient permissions
@@ -190,7 +192,6 @@ class S3MainMenu(object):
 
         auth = current.auth
         logged_in = auth.is_logged_in()
-        self_registration = current.deployment_settings.get_security_self_registration()
 
         if not logged_in:
             request = current.request
@@ -200,14 +201,22 @@ class S3MainMenu(object):
                "_next" in request.get_vars:
                 login_next = request.get_vars["_next"]
 
+            self_registration = current.deployment_settings.get_security_self_registration()
+            if self_registration == "index":
+                register = MM("Register", c="default", f="index", m="register",
+                               vars=dict(_next=login_next),
+                               check=self_registration)
+            else:
+                register = MM("Register", m="register",
+                               vars=dict(_next=login_next),
+                               check=self_registration)
+
             menu_auth = MM("Login", c="default", f="user", m="login",
                            _id="auth_menu_login",
                            vars=dict(_next=login_next), **attr)(
                             MM("Login", m="login",
                                vars=dict(_next=login_next)),
-                            MM("Register", m="register",
-                               vars=dict(_next=login_next),
-                               check=self_registration),
+                            register,
                             MM("Lost Password", m="retrieve_password")
                         )
         else:
@@ -239,23 +248,27 @@ class S3MainMenu(object):
     def menu_admin(cls, **attr):
         """ Administrator Menu """
 
-        ADMIN = current.session.s3.system_roles.ADMIN
+        s3_has_role = current.auth.s3_has_role
         settings = current.deployment_settings
         name_nice = settings.modules["admin"].name_nice
-        translate = settings.has_module("translate")
 
-        menu_admin = MM(name_nice, c="admin",
-                        restrict=[ADMIN], **attr)(
-                            MM("Settings", f="setting"),
-                            MM("Users", f="user"),
-                            MM("Person Registry", c="pr"),
-                            MM("Database", c="appadmin", f="index"),
-                            MM("Error Tickets", f="errors"),
-                            MM("Synchronization", c="sync", f="index"),
-                            MM("Translation", c="admin", f="translate",
-                               check=translate),
-                            MM("Test Results", f="result"),
-                        )
+        if s3_has_role("ADMIN"):
+            translate = settings.has_module("translate")
+            menu_admin = MM(name_nice, c="admin", **attr)(
+                                MM("Settings", f="setting"),
+                                MM("Users", f="user"),
+                                MM("Person Registry", c="pr"),
+                                MM("Database", c="appadmin", f="index"),
+                                MM("Error Tickets", f="errors"),
+                                MM("Synchronization", c="sync", f="index"),
+                                MM("Translation", c="admin", f="translate",
+                                   check=translate),
+                                MM("Test Results", f="result"),
+                            )
+        elif s3_has_role("ORG_ADMIN"):
+            menu_admin = MM(name_nice, c="admin", f="user", **attr)()
+        else:
+            menu_admin = None
 
         return menu_admin
 
@@ -459,9 +472,16 @@ class S3OptionsMenu(object):
         """ ASSET Controller """
 
         ADMIN = current.session.s3.system_roles.ADMIN
+        telephones = lambda i: current.deployment_settings.get_asset_telephones()
 
         return M(c="asset")(
                     M("Assets", f="asset", m="summary")(
+                        M("Create", m="create"),
+                        #M("Map", m="map"),
+                        M("Import", m="import", p="create"),
+                    ),
+                    M("Telephones", f="telephone", m="summary",
+                      check=telephones)(
                         M("Create", m="create"),
                         #M("Map", m="map"),
                         M("Import", m="import", p="create"),
@@ -606,6 +626,25 @@ class S3OptionsMenu(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
+    def dc():
+        """ Data Collection Tool """
+
+        ADMIN = current.session.s3.system_roles.ADMIN
+
+        return M(c="dc")(
+                    M("Templates", f="template")(
+                        M("Create", m="create"),
+                    ),
+                    M("Questions", f="question")(
+                        M("Create", m="create"),
+                    ),
+                    M("Data Collections", f="collection")(
+                        M("Create", m="create"),
+                    ),
+                )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
     def delphi():
         """ DELPHI / Delphi Decision Maker """
 
@@ -664,6 +703,38 @@ class S3OptionsMenu(object):
                           c="deploy", f="person", m="import"),
                    ),
                   )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def disease():
+        """ Disease Case Tracking and Contact Tracing """
+
+        return M(c="disease")(
+                    M("Cases",
+                      c="disease", f="case", m="summary")(
+                        M("Create", m="create"),
+                        M("Watch List", m="summary",
+                          vars={"~.monitoring_level__belongs": "OBSERVATION,DIAGNOSTICS"}),
+                    ),
+                    M("Contact Tracing",
+                      c="disease", f="tracing")(
+                       M("Create", m="create"),
+                    ),
+                    M("Statistics Data",
+                      c="disease", f="stats_data", args="summary")(
+                        M("Create", m="create"),
+                        M("Time Plot", m="timeplot"),
+                        M("Import", m="import"),
+                    ),
+                    M("Statistics",
+                      c="disease", f="statistic")(
+                        M("Create", m="create"),
+                    ),
+                    M("Diseases",
+                      c="disease", f="disease")(
+                        M("Create", m="create"),
+                    ),
+               )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -742,7 +813,7 @@ class S3OptionsMenu(object):
                     M("Incidents", c="event", f="incident")(
                         M("Create", m="create"),
                     ),
-                    M("Incident Reports", c="event", f="incident_report")(
+                    M("Incident Reports", c="event", f="incident_report", m="summary")(
                         M("Create", m="create"),
                     ),
                     M("Incident Types", c="event", f="incident_type")(
@@ -1120,7 +1191,7 @@ class S3OptionsMenu(object):
                         M("Summary of Releases", c="inv", f="track_item",
                           vars=dict(report="rel")),
                     ),
-                    M(inv_recv_list, c="inv", f="recv")(
+                    M(inv_recv_list, c="inv", f="recv", translate=False)( # Already T()
                         M("Create", m="create"),
                         M("Timeline", args="timeline"),
                     ),
@@ -1156,6 +1227,10 @@ class S3OptionsMenu(object):
                         M("Create", m="create", t="org_facility"),
                     ),
                     M("Facility Types", c="inv", f="facility_type",
+                      restrict=[ADMIN])(
+                        M("Create", m="create"),
+                    ),
+                    M("Warehouse Types", c="inv", f="warehouse_type",
                       restrict=[ADMIN])(
                         M("Create", m="create"),
                     ),
@@ -1198,39 +1273,35 @@ class S3OptionsMenu(object):
         ADMIN = current.session.s3.system_roles.ADMIN
 
         return M(c="security")(
-                    M("Incident Reports", c="irs", f="ireport")(
+                    M("Incident Reports", c="event", f="incident_report", m="summary")(
                         M("Create", m="create"),
-                        M("Open Incidents", vars={"open":1}),
-                        M("Map", m="map"),
-                        M("Timeline", args="timeline"),
                         M("Import", m="import"),
-                        M("Report", m="report",
-                          vars=dict(rows="L1",
-                                    cols="category",
-                                    fact="datetime",
-                                    aggregate="count"))
                     ),
-                    M("Incident Categories", c="irs", f="icategory",
-                      restrict=[ADMIN])(
+                    M("Security Levels", f="level")(
+                        M("level", m="create"),
+                    ),
+                    M("Security Zones", f="zone")(
                         M("Create", m="create"),
                     ),
                     M("Facilities", c="org", f="facility", m="summary")(
+                        M("Create", m="create"),
+                        M("Import", m="import"),
+                    ),
+                    M("Personnel", f="staff")(
+                        M("Create", m="create"),
+                        M("List All Security-related Staff"),
+                        M("List All Essential Staff", f="essential"),
+                    ),
+                    M("Incident Categories", c="event", f="incident_type",
+                      restrict=[ADMIN])(
                         M("Create", m="create"),
                     ),
                     M("Facility Types", c="org", f="facility_type",
                       restrict=[ADMIN])(
                         M("Create", m="create"),
                     ),
-                    M("Zones", f="zone")(
-                        M("Create", m="create"),
-                    ),
                     M("Zone Types", f="zone_type", restrict=[ADMIN])(
                         M("Create", m="create"),
-                    ),
-                    M("Personnel", f="staff")(
-                        M("Create", m="create"),
-                        M("List All Security-related Staff"),
-                        M("List All Essential Staff", f="essential"),
                     ),
                     M("Security Staff Types", f="staff_type", restrict=[ADMIN])(
                         M("Create", m="create"),
@@ -1379,7 +1450,7 @@ class S3OptionsMenu(object):
 
         return M(c="org")(
                     M("Organizations", f="organisation")(
-                        M("Create Organization", m="create"),
+                        M("Create", m="create"),
                         M("Import", m="import")
                     ),
                     M("Offices", f="office")(
@@ -1586,15 +1657,26 @@ class S3OptionsMenu(object):
         """ REQ / Request Management """
 
         ADMIN = current.session.s3.system_roles.ADMIN
-
         settings = current.deployment_settings
+        types = settings.get_req_req_type()
+        if len(types) == 1:
+            t = types[0]
+            if t == "Stock":
+                create_menu = M("Create", m="create", vars={"type": 1})
+            elif t == "People":
+                create_menu = M("Create", m="create", vars={"type": 2})
+            else:
+                create_menu = M("Create", m="create")
+        else:
+            create_menu = M("Create", m="create")
+
         use_commit = lambda i: settings.get_req_use_commit()
-        req_items = lambda i: "Stock" in settings.get_req_req_type()
-        req_skills = lambda i: "People" in settings.get_req_req_type()
+        req_items = lambda i: "Stock" in types
+        req_skills = lambda i: "People" in types
 
         return M(c="req")(
                     M("Requests", f="req")(
-                        M("Create", m="create"),
+                        create_menu,
                         M("List Recurring Requests", f="req_template"),
                         M("Map", m="map"),
                         M("Report", m="report"),
@@ -1632,8 +1714,10 @@ class S3OptionsMenu(object):
                     M("Demographics", f="demographic")(
                         M("Create", m="create"),
                     ),
-                    M("Demographic Data", f="demographic_data")(
+                    M("Demographic Data", f="demographic_data", args="summary")(
                         M("Create", m="create"),
+                        # Not usually dis-aggregated
+                        M("Time Plot", m="timeplot"),
                         M("Import", m="import"),
                     ),
                 )

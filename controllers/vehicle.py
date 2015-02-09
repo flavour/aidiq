@@ -80,6 +80,9 @@ def vehicle():
                                       title=T("Vehicle Type"),
                                       tooltip=T("Only Items whose Category are of type 'Vehicle' will be seen in the dropdown."))
 
+    # Use this controller for options.json rather than looking for one called 'asset'
+    table.organisation_id.comment[0].vars = dict(parent="vehicle")
+
     # Only select from vehicles
     field.widget = None # We want a simple dropdown
     ctable = s3db.supply_item_category
@@ -95,9 +98,8 @@ def vehicle():
     s3db.asset_log.room_id.label = T("Parking Area")
 
     # CRUD strings
-    ADD_VEHICLE = T("Add Vehicle")
     s3.crud_strings[tablename] = Storage(
-        label_create = ADD_VEHICLE,
+        label_create = T("Add Vehicle"),
         title_display = T("Vehicle Details"),
         title_list = T("Vehicles"),
         title_update = T("Edit Vehicle"),
@@ -149,9 +151,8 @@ def item():
                                       tooltip=T("Only Categories of type 'Vehicle' will be seen in the dropdown."))
 
     # CRUD strings
-    ADD_ITEM = T("Add New Vehicle Type")
     s3.crud_strings["supply_item"] = Storage(
-        label_create = ADD_ITEM,
+        label_create = T("Add New Vehicle Type"),
         title_display = T("Vehicle Type Details"),
         title_list = T("Vehicle Types"),
         title_update = T("Edit Vehicle Type"),

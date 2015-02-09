@@ -76,7 +76,7 @@ def staff():
                            "department_id",
                            "site_id",
                            #"site_contact",
-                          ]
+                           ]
         else:
             # Adapt list_fields
             list_fields = ["person_id",
@@ -134,9 +134,9 @@ def staff():
                     #                                  title=T("Add New Site"),
                     #                                 )
 
-                    # Hide status field 
+                    # Hide status field
                     table.status.writable = table.status.readable = False
-                    
+
                     # Assume staff only between 16-81
                     s3db.pr_person.date_of_birth.widget = S3DateWidget(past=972,
                                                                        future=-192)
@@ -181,6 +181,7 @@ def staff():
 '''S3.start_end_date('hrm_human_resource_start_date','hrm_human_resource_end_date')''')
                 s3_action_buttons(r, deletable=settings.get_hrm_deletable())
                 if "msg" in settings.modules and \
+                   settings.get_hrm_compose_button() and \
                    auth.permission.has_permission("update", c="hrm", f="compose"):
                     # @ToDo: Remove this now that we have it in Events?
                     s3.actions.append(
@@ -221,12 +222,14 @@ def profile():
 
     # Custom Method for Contacts
     s3db.set_method("pr", resourcename,
-                    method="contacts",
-                    action=s3db.pr_contacts)
+                    method = "contacts",
+                    action = s3db.pr_Contacts)
 
     if settings.has_module("asset"):
         # Assets as component of people
-        s3db.add_components("pr_person", asset_asset="assigned_to_id")
+        s3db.add_components("pr_person",
+                            asset_asset = "assigned_to_id",
+                            )
 
     group = get_vars.get("group", "staff")
 
@@ -239,7 +242,8 @@ def profile():
     tablename = "pr_person"
     table = s3db[tablename]
     s3db.configure(tablename,
-                   deletable=False)
+                   deletable = False,
+                   )
 
     # Configure for personal mode
     s3.crud_strings[tablename].update(
@@ -290,7 +294,7 @@ def profile():
     s3.postp = postp
 
     output = s3_rest_controller("pr", "person",
-                                rheader=s3db.hrm_rheader,
+                                rheader = s3db.hrm_rheader,
                                 )
     return output
 
@@ -379,7 +383,7 @@ def group_membership():
                                 csv_template="group_membership",
                                 csv_stylesheet=("hrm", "group_membership.xsl"),
                                 )
-    return output 
+    return output
 
 # =============================================================================
 # Jobs
@@ -390,7 +394,7 @@ def department():
     mode = session.s3.hrm.mode
     def prep(r):
         if mode is not None:
-            r.error(403, message=auth.permission.INSUFFICIENT_PRIVILEGES)
+            auth.permission.fail()
         return True
     s3.prep = prep
 
@@ -407,7 +411,7 @@ def job_title():
     mode = session.s3.hrm.mode
     def prep(r):
         if mode is not None:
-            r.error(403, message=auth.permission.INSUFFICIENT_PRIVILEGES)
+            auth.permission.fail()
         return True
     s3.prep = prep
 
@@ -426,9 +430,11 @@ def skill():
     """ Skills Controller """
 
     mode = session.s3.hrm.mode
-    if mode is not None:
-        session.error = T("Access denied")
-        redirect(URL(f="index"))
+    def prep(r):
+        if mode is not None:
+            auth.permission.fail()
+        return True
+    s3.prep = prep
 
     output = s3_rest_controller()
     return output
@@ -438,9 +444,11 @@ def skill_type():
     """ Skill Types Controller """
 
     mode = session.s3.hrm.mode
-    if mode is not None:
-        session.error = T("Access denied")
-        redirect(URL(f="index"))
+    def prep(r):
+        if mode is not None:
+            auth.permission.fail()
+        return True
+    s3.prep = prep
 
     output = s3_rest_controller()
     return output
@@ -450,9 +458,11 @@ def competency_rating():
     """ Competency Rating for Skill Types Controller """
 
     mode = session.s3.hrm.mode
-    if mode is not None:
-        session.error = T("Access denied")
-        redirect(URL(f="index"))
+    def prep(r):
+        if mode is not None:
+            auth.permission.fail()
+        return True
+    s3.prep = prep
 
     output = s3_rest_controller()
     return output
@@ -462,9 +472,11 @@ def skill_provision():
     """ Skill Provisions Controller """
 
     mode = session.s3.hrm.mode
-    if mode is not None:
-        session.error = T("Access denied")
-        redirect(URL(f="index"))
+    def prep(r):
+        if mode is not None:
+            auth.permission.fail()
+        return True
+    s3.prep = prep
 
     output = s3_rest_controller()
     return output
@@ -474,9 +486,11 @@ def course():
     """ Courses Controller """
 
     mode = session.s3.hrm.mode
-    if mode is not None:
-        session.error = T("Access denied")
-        redirect(URL(f="index"))
+    def prep(r):
+        if mode is not None:
+            auth.permission.fail()
+        return True
+    s3.prep = prep
 
     if not auth.s3_has_role(ADMIN):
         s3.filter = auth.filter_by_root_org(s3db.hrm_course)
@@ -489,9 +503,11 @@ def course_certificate():
     """ Courses to Certificates Controller """
 
     mode = session.s3.hrm.mode
-    if mode is not None:
-        session.error = T("Access denied")
-        redirect(URL(f="index"))
+    def prep(r):
+        if mode is not None:
+            auth.permission.fail()
+        return True
+    s3.prep = prep
 
     output = s3_rest_controller()
     return output
@@ -503,7 +519,7 @@ def certificate():
     mode = session.s3.hrm.mode
     def prep(r):
         if mode is not None:
-            r.error(403, message=auth.permission.INSUFFICIENT_PRIVILEGES)
+            auth.permission.fail()
         return True
     s3.prep = prep
 
@@ -519,9 +535,11 @@ def certificate_skill():
     """ Certificates to Skills Controller """
 
     mode = session.s3.hrm.mode
-    if mode is not None:
-        session.error = T("Access denied")
-        redirect(URL(f="index"))
+    def prep(r):
+        if mode is not None:
+            auth.permission.fail()
+        return True
+    s3.prep = prep
 
     output = s3_rest_controller()
     return output
@@ -560,6 +578,10 @@ def competency():
     """
 
     s3.filter = FS("person_id$human_resource.type") == 1
+
+    field = s3db.hrm_competency.person_id
+    field.widget = S3PersonAutocompleteWidget(ajax_filter = "~.human_resource.type=1")
+
     return s3db.hrm_competency_controller()
 
 # =============================================================================
@@ -634,6 +656,109 @@ def staff_for_site():
 
     response.headers["Content-Type"] = "application/json"
     return result
+
+# =============================================================================
+# Salaries
+# =============================================================================
+def staff_level():
+    """ Staff Levels Controller """
+
+    mode = session.s3.hrm.mode
+    def prep(r):
+        if mode is not None:
+            auth.permission.fail()
+        return True
+    s3.prep = prep
+
+    output = s3_rest_controller()
+    return output
+
+def salary_grade():
+    """ Salary Grade Controller """
+
+    mode = session.s3.hrm.mode
+    def prep(r):
+        if mode is not None:
+            auth.permission.fail()
+        return True
+    s3.prep = prep
+
+    output = s3_rest_controller()
+    return output
+
+# =============================================================================
+# Insurance Information
+# =============================================================================
+def insurance():
+    """ Insurance Information Controller """
+
+    mode = session.s3.hrm.mode
+    def prep(r):
+        if mode is not None:
+            auth.permission.fail()
+        return True
+    s3.prep = prep
+
+    output = s3_rest_controller()
+    return output
+
+# =============================================================================
+# Awards
+# =============================================================================
+def award_type():
+    """ Award Type Controller """
+
+    mode = session.s3.hrm.mode
+    def prep(r):
+        if mode is not None:
+            auth.permission.fail()
+        return True
+    s3.prep = prep
+
+    output = s3_rest_controller()
+    return output
+
+def award():
+    """ Awards Controller """
+
+    mode = session.s3.hrm.mode
+    def prep(r):
+        if mode is not None:
+            auth.permission.fail()
+        return True
+    s3.prep = prep
+
+    output = s3_rest_controller()
+    return output
+
+# =============================================================================
+# Disciplinary Record
+# =============================================================================
+def disciplinary_type():
+    """ Disciplinary Type Controller """
+
+    mode = session.s3.hrm.mode
+    def prep(r):
+        if mode is not None:
+            auth.permission.fail()
+        return True
+    s3.prep = prep
+
+    output = s3_rest_controller()
+    return output
+
+def disciplinary_action():
+    """ Disciplinary Action Controller """
+
+    mode = session.s3.hrm.mode
+    def prep(r):
+        if mode is not None:
+            auth.permission.fail()
+        return True
+    s3.prep = prep
+
+    output = s3_rest_controller()
+    return output
 
 # =============================================================================
 # Messaging

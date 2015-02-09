@@ -2,7 +2,7 @@
 
 """ Sahana Eden Evacuees Registry Model
 
-    @copyright: 2014 (c) Sahana Software Foundation
+    @copyright: 2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -608,12 +608,12 @@ class evr_AddGroupMembers(S3Method):
 
             # Data table boundaries
             get_vars = self.request.get_vars
-            if "iDisplayStart" in get_vars:
-                start = int(get_vars["iDisplayStart"])
+            if "displayStart" in get_vars:
+                start = int(get_vars["displayStart"])
             else:
                 start = None
-            if "iDisplayLength" in get_vars:
-                display_length = int(get_vars["iDisplayLength"])
+            if "pageLength" in get_vars:
+                display_length = int(get_vars["pageLength"])
             else:
                 display_length = response.s3.ROWSPERPAGE
             limit = 4 * display_length
@@ -662,16 +662,16 @@ class evr_AddGroupMembers(S3Method):
                 items = dt.html(totalrows,
                                 filteredrows,
                                 dt_id,
-                                dt_displayLength=display_length,
                                 dt_ajax_url=URL(c="evr",
                                                 f="group",
                                                 args=["add_members"],
                                                 vars={},
                                                 extension="aadata",
                                                 ),
-                                dt_bFilter="false",
-                                dt_pagination="true",
                                 dt_bulk_actions=dt_bulk_actions,
+                                dt_pageLength=display_length,
+                                dt_pagination="true",
+                                dt_searching="false",
                                 )
 
                 resource.configure(deletable = False)
@@ -722,8 +722,8 @@ class evr_AddGroupMembers(S3Method):
 
             else:
                 # Ajax refresh
-                if "sEcho" in get_vars:
-                    echo = int(get_vars.sEcho)
+                if "draw" in get_vars:
+                    echo = int(get_vars.draw)
                 else:
                     echo = None
                 items = dt.json(totalrows,

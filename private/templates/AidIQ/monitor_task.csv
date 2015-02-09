@@ -1,2 +1,0 @@
-Host,Check,Enabled,Option:to,Option:subject,Option:message,Option:reply_to,Comments
-RMS,Round Trip,False,rms@aidiq.com,MONITOR: TEST ROUND TRIP,This is a test message to be collected by the parser and replied to,monitor@aidiq.com,

@@ -2,7 +2,7 @@
 
 """ S3 Encoder/Decoder Base Class
 
-    @copyright: 2011-14 (c) Sahana Software Foundation
+    @copyright: 2011-15 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -51,6 +51,8 @@ from xml.sax.saxutils import escape, unescape
 
 from gluon import current
 from gluon.storage import Storage
+
+from s3utils import s3_unicode
 
 # =============================================================================
 class S3Codec(object):
@@ -262,7 +264,7 @@ class S3Codec(object):
 
         tree = kwargs.get("tree", None)
         if message:
-            output["message"] = unicode(message)
+            output["message"] = s3_unicode(message)
         for k, v in kwargs.items():
             if k != "tree":
                 output[k] = v

@@ -2,7 +2,7 @@
 
 """ Sahana Eden Scenario Model
 
-    @copyright: 2009-2014 (c) Sahana Software Foundation
+    @copyright: 2009-2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -34,11 +34,13 @@ __all__ = ("S3ScenarioModel",
            "S3ScenarioOrganisationModel",
            "S3ScenarioSiteModel",
            "S3ScenarioTaskModel",
+           "scenario_rheader",
            )
 
 from gluon import *
 from gluon.storage import Storage
 from ..s3 import *
+from ..s3layouts import S3AddResourceLink
 
 # =============================================================================
 class S3ScenarioModel(S3Model):
@@ -60,8 +62,6 @@ class S3ScenarioModel(S3Model):
         T = current.T
         db = current.db
 
-        add_components = self.add_components
-
         # ---------------------------------------------------------------------
         # Scenarios
         #
@@ -73,20 +73,20 @@ class S3ScenarioModel(S3Model):
                           self.event_incident_type_id(),
                           Field("name", notnull=True,
                                 length=64,    # Mayon compatiblity
-                                label=T("Name")),
+                                label = T("Name"),
+                                ),
                           s3_comments(),
                           *s3_meta_fields())
 
         self.configure(tablename,
                        # Open Map Config to set the default Location
-                       create_next=URL(args=["[id]", "config"]),
-                       deduplicate=self.scenario_duplicate,
+                       create_next = URL(args=["[id]", "config"]),
+                       deduplicate = self.scenario_duplicate,
                        )
 
         # CRUD strings
-        ADD_SCENARIO = T("New Scenario")
         current.response.s3.crud_strings[tablename] = Storage(
-            label_create = ADD_SCENARIO,
+            label_create = T("Create Scenario"),
             title_display = T("Scenario Details"),
             title_list = T("Scenarios"),
             title_update = T("Edit Scenario"),
@@ -99,55 +99,55 @@ class S3ScenarioModel(S3Model):
             msg_list_empty = T("No Scenarios currently registered"))
 
         # Components
-        add_components(tablename,
-                       # Tasks
-                       project_task = {"link": "scenario_task",
-                                       "joinby": "scenario_id",
-                                       "key": "task_id",
-                                       # @ToDo: Widget to handle embedded LocationSelector
-                                       #"actuate": "embed",
-                                       "actuate": "link",
-                                       "autocomplete": "name",
-                                       "autodelete": False,
-                                       },
-                       # Human Resources
-                       hrm_human_resource = {"link": "scenario_human_resource",
-                                             "joinby": "scenario_id",
-                                             "key": "human_resource_id",
-                                             # @ToDo: Widget to handle embedded AddPersonWidget
-                                             #"actuate": "embed",
-                                             "actuate": "link",
-                                             "autocomplete": "name",
-                                             "autodelete": False,
-                                             },
-                       # Assets
-                       asset_asset = {"link": "scenario_asset",
-                                      "joinby": "scenario_id",
-                                      "key": "asset_id",
-                                      "actuate": "embed",
-                                      "autocomplete": "name",
-                                      "autodelete": False,
-                                      },
-                       # Facilities
-                       scenario_site = "scenario_id",
-                       # Organisations
-                       org_organisation = {"link": "scenario_organisation",
+        self.add_components(tablename,
+                            # Tasks
+                            project_task = {"link": "scenario_task",
+                                            "joinby": "scenario_id",
+                                            "key": "task_id",
+                                            # @ToDo: Widget to handle embedded LocationSelector
+                                            #"actuate": "embed",
+                                            "actuate": "link",
+                                            "autocomplete": "name",
+                                            "autodelete": False,
+                                            },
+                            # Human Resources
+                            hrm_human_resource = {"link": "scenario_human_resource",
+                                                  "joinby": "scenario_id",
+                                                  "key": "human_resource_id",
+                                                  # @ToDo: Widget to handle embedded AddPersonWidget
+                                                  #"actuate": "embed",
+                                                  "actuate": "link",
+                                                  "autocomplete": "name",
+                                                  "autodelete": False,
+                                                  },
+                            # Assets
+                            asset_asset = {"link": "scenario_asset",
                                            "joinby": "scenario_id",
-                                           "key": "organisation_id",
+                                           "key": "asset_id",
                                            "actuate": "embed",
                                            "autocomplete": "name",
                                            "autodelete": False,
                                            },
-                       # Map Config as a component of Scenarios
-                       gis_config = {"link": "scenario_config",
-                                     "joinby": "scenario_id",
-                                     "multiple": False,
-                                     "key": "config_id",
-                                     "actuate": "replace",
-                                     "autocomplete": "name",
-                                     "autodelete": True,
-                                     },
-                      )
+                            # Facilities
+                            scenario_site = "scenario_id",
+                            # Organisations
+                            org_organisation = {"link": "scenario_organisation",
+                                                "joinby": "scenario_id",
+                                                "key": "organisation_id",
+                                                "actuate": "embed",
+                                                "autocomplete": "name",
+                                                "autodelete": False,
+                                                },
+                            # Map Config as a component of Scenarios
+                            gis_config = {"link": "scenario_config",
+                                          "joinby": "scenario_id",
+                                          "multiple": False,
+                                          "key": "config_id",
+                                          "actuate": "replace",
+                                          "autocomplete": "name",
+                                          "autodelete": True,
+                                          },
+                            )
 
         represent = S3Represent(lookup=tablename)
         scenario_id = S3ReusableField("scenario_id", "reference %s" % tablename,
@@ -167,6 +167,18 @@ class S3ScenarioModel(S3Model):
                                       #              _title="%s|%s" % (T("Scenario"),
                                       #                                current.messages.AUTOCOMPLETE_HELP))
                                     )
+
+        filter_widgets = [
+            S3TextFilter("name",
+                         label = T("Search")),
+            S3OptionsFilter("incident_type_id",
+                            label = T("Incident Type")),
+            ]
+
+        self.configure(tablename,
+                       filter_widgets = filter_widgets,
+                       list_fields = ["name", "incident_type_id"],
+                       )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
@@ -195,19 +207,15 @@ class S3ScenarioModel(S3Model):
             Deduplication of Scenarios
         """
 
-        if item.tablename != "scenario_scenario":
-            return
-
         data = item.data
-        name = data.get("name", None)
+        name = data.get("name")
 
         table = item.table
         query = (table.name == name)
-        _duplicate = current.db(query).select(table.id,
-                                              limitby=(0, 1)).first()
-        if _duplicate:
-            item.id = _duplicate.id
-            item.data.id = _duplicate.id
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
             item.method = item.METHOD.UPDATE
 
 # =============================================================================
@@ -253,7 +261,7 @@ class S3ScenarioAssetModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return Storage()
+        return dict()
 
 # =============================================================================
 class S3ScenarioHRModel(S3Model):
@@ -271,6 +279,7 @@ class S3ScenarioHRModel(S3Model):
         # Staff/Volunteers
         # @ToDo: Use Positions, not individual HRs (Typed resources?)
         # @ToDo: Search Widget
+
         tablename = "scenario_human_resource"
         self.define_table(tablename,
                           self.scenario_scenario_id(),
@@ -292,7 +301,7 @@ class S3ScenarioHRModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return Storage()
+        return dict()
 
 # =============================================================================
 class S3ScenarioMapModel(S3Model):
@@ -318,16 +327,16 @@ class S3ScenarioMapModel(S3Model):
                           *s3_meta_fields())
 
         current.response.s3.crud_strings[tablename] = Storage(
-            label_create = T("Create Map Configuration"),
-            title_display = T("Map Configuration Details"),
-            title_list = T("Map Configurations"),
-            title_update = T("Edit Map Configuration"),
-            label_list_button = T("List Map Configurations"),
-            label_delete_button = T("Remove Map Configuration from this scenario"),
-            msg_record_created = T("Map Configuration added"),
-            msg_record_modified = T("Map Configuration updated"),
-            msg_record_deleted = T("Map Configuration removed"),
-            msg_list_empty = T("No Map Configurations currently registered in this scenario"))
+            label_create = T("Create Map Profile"),
+            title_display = T("Map Profile Details"),
+            title_list = T("Map Profiles"),
+            title_update = T("Edit Map Profile"),
+            label_list_button = T("List Map Profiles"),
+            label_delete_button = T("Remove Map Profile from this scenario"),
+            msg_record_created = T("Map Profile added"),
+            msg_record_modified = T("Map Profile updated"),
+            msg_record_deleted = T("Map Profile removed"),
+            msg_list_empty = T("No Map Profiles currently registered in this scenario"))
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
@@ -373,7 +382,7 @@ class S3ScenarioOrganisationModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return Storage()
+        return dict()
 
 # =============================================================================
 class S3ScenarioSiteModel(S3Model):
@@ -412,7 +421,7 @@ class S3ScenarioSiteModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return Storage()
+        return dict()
 
 # =============================================================================
 class S3ScenarioTaskModel(S3Model):
@@ -454,6 +463,42 @@ class S3ScenarioTaskModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return Storage()
+        return dict()
+
+# -----------------------------------------------------------------------------
+def scenario_rheader(r, tabs=[]):
+    """ Resource headers for component views """
+
+    rheader = None
+
+    if r.representation == "html":
+
+        if r.name == "scenario":
+            # Scenario Controller
+
+            T = current.T
+            settings = current.deployment_settings
+            tabs = [(T("Scenario Details"), None)]
+            if settings.has_module("hrm"):
+                tabs.append((T("Human Resources"), "human_resource"))
+            if settings.has_module("asset"):
+                tabs.append((T("Assets"), "asset"))
+            tabs.append((T("Organizations"), "organisation"))
+            tabs.append((T("Facilities"), "site"))
+            if settings.has_module("project"):
+                tabs.append((T("Tasks"), "task"))
+            tabs.append((T("Map Profile"), "config"))
+
+            rheader_tabs = s3_rheader_tabs(r, tabs)
+
+            record = r.record
+            if record:
+                rheader = DIV(TABLE(TR(TH("%s: " % T("Name")),
+                                       record.name),
+                                    TR(TH("%s: " % T("Comments")),
+                                       record.comments),
+                                    ), rheader_tabs)
+
+    return rheader
 
 # END =========================================================================

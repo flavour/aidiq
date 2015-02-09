@@ -21,7 +21,7 @@ S3.search = {};
             if (result.search(/\,/) != -1) {
                 result = '"' + result + '"';
             }
-            return result
+            return result;
         } else {
             return (value);
         }
@@ -73,10 +73,12 @@ S3.search = {};
             $this = $(this);
             if (this.tagName.toLowerCase() == 'select') {
                 $this.val('');
-                if ($this.hasClass('groupedopts-filter-widget') && typeof $this.groupedopts != 'undefined') {
+                if ($this.hasClass('groupedopts-filter-widget') && 
+                    $this.groupedopts('instance')) {
                     $this.groupedopts('refresh');
                 } else
-                if ($this.hasClass('multiselect-filter-widget') && typeof $this.multiselect != 'undefined') {
+                if ($this.hasClass('multiselect-filter-widget') && 
+                    $this.multiselect('instance')) {
                     $this.multiselect('refresh');
                 }
             } else {
@@ -357,7 +359,7 @@ S3.search = {};
         return queries;
     };
 
-    // Pass to global scope to be called by s3.jquery.ui.pivottable.js
+    // Pass to global scope to be called by s3.ui.pivottable.js
     S3.search.getCurrentFilters = getCurrentFilters;
 
     /**
@@ -464,11 +466,11 @@ S3.search = {};
                     }
                     $this.val(values);
                     if ($this.hasClass('groupedopts-filter-widget') &&
-                        typeof $this.groupedopts != 'undefined') {
+                        $this.groupedopts('instance')) {
                         $this.groupedopts('refresh');
                     } else
-                    if ($this.hasClass('multiselect-filter-widget') &&
-                        typeof $this.multiselect != 'undefined') {
+                    if ($this.hasClass('multiselect-filter-widget') && 
+                        $this.multiselect('instance')) {
                         $this.multiselect('refresh');
                     }
                 }
@@ -554,12 +556,12 @@ S3.search = {};
                         toggleAdvanced(form);
                     }
                     $this.val(values);
-                    if ($this.hasClass('groupedopts-filter-widget') &&
-                        typeof $this.groupedopts != 'undefined') {
+                    if ($this.hasClass('groupedopts-filter-widget') && 
+                        $this.groupedopts('instance')) {
                         $this.groupedopts('refresh');
                     } else
-                    if ($this.hasClass('multiselect-filter-widget') &&
-                        typeof $this.multiselect != 'undefined') {
+                    if ($this.hasClass('multiselect-filter-widget') && 
+                        $this.multiselect('instance')) {
                         $this.multiselect('refresh');
                     }
                     hierarchical_location_change(this);
@@ -613,7 +615,7 @@ S3.search = {};
                 var qstr = url_parts[1];
                 var a = qstr.split('&'), b, c;
                 for (i=0; i<a.length; i++) {
-                    var b = a[i].split('=');
+                    b = a[i].split('=');
                     if (b.length > 1) {
                         c = decodeURIComponent(b[0]);
                         if (c != name) {
@@ -676,8 +678,10 @@ S3.search = {};
 
         var query = [];
 
-        if (url_parts.length > 1) {
-
+        if (S3.search.stripFilters == 1) {
+            // Strip existing URL filters
+        } else if (url_parts.length > 1) {
+            // Keep existing URL filters
             var qstr = url_parts[1];
             var url_vars = qstr.split('&');
 
@@ -783,10 +787,12 @@ S3.search = {};
                         }
 
                         // Refresh UI widgets
-                        if (widget.hasClass('groupedopts-filter-widget') && typeof widget.groupedopts != 'undefined') {
+                        if (widget.hasClass('groupedopts-filter-widget') && 
+                            widget.groupedopts('instance')) {
                             widget.groupedopts('refresh');
                         } else
-                        if (widget.hasClass('multiselect-filter-widget') && typeof widget.multiselect != 'undefined') {
+                        if (widget.hasClass('multiselect-filter-widget') && 
+                            widget.multiselect('instance')) {
                             widget.multiselect('refresh');
                         }
 
@@ -902,7 +908,7 @@ S3.search = {};
         for (target_id in targets) {
             t = $('#' + target_id);
             if (!t.is(':visible')) {
-                continue
+                continue;
             }
             target_data = targets[target_id];
             t = $('#' + target_id);
@@ -912,7 +918,7 @@ S3.search = {};
             } else if (t.hasClass('dataTable')) {
                 var dt = t.dataTable();
                 // Refresh Data
-                dt.fnReloadAjax(target_data['ajaxurl']);
+                dt.reloadAjax(target_data['ajaxurl']);
                 updateFormatURLs(dt, queries);
                 $('#' + dt[0].id + '_dataTable_filterURL').each(function() {
                     $(this).val(target_data['ajaxurl']);
@@ -1005,7 +1011,7 @@ S3.search = {};
                         if (typeof ajaxurl != 'undefined') {
                             ajaxurl = filterURL(ajaxurl, q);
                         } else {
-                            continue
+                            continue;
                         }
                     }
                 } else {
@@ -1018,6 +1024,19 @@ S3.search = {};
                 };
             }
         }
+
+        /**
+         * Helper method to trigger re-calculation of column width in
+         * responsive data tables after unhiding them
+         *
+         * @param {jQuery} datatable - the datatable
+         */
+        var recalcResponsive = function(datatable) {
+            var dt = $(datatable).DataTable();
+            if (dt && dt.responsive) {
+                dt.responsive.recalc();
+            }
+        };
 
         // Initialise jQueryUI Tabs
         $('#summary-tabs').tabs({
@@ -1064,10 +1083,20 @@ S3.search = {};
                     // Update all just-unhidden widgets which have pending updates
                     updatePendingTargets(form);
                 }
+                newPanel.find('table.dataTable.display.responsive')
+                        .each(function() {
+                    recalcResponsive(this);
+                });
             }
         }).css({visibility: 'visible'});
+
         // Activate not called? Unhide initial section anyway:
-        $('.ui-tabs-panel[aria-hidden="false"]').first().removeClass('hide');
+        $('.ui-tabs-panel[aria-hidden="false"]').first()
+                                                .removeClass('hide')
+                                                .find('table.dataTable.display.responsive')
+                                                .each(function() {
+                                                    recalcResponsive(this);
+                                                });
     };
 
     /**
@@ -1110,11 +1139,13 @@ S3.search = {};
                 if (undefined === gis.maps[map_id]) {
                     // Instantiate the map (can't be done when the DIV is hidden)
                     var options = gis.options[map_id];
-                    gis.show_map(map_id, options);
-                    // Get the current Filters
-                    var queries = getCurrentFilters($('#' + form));
-                    // Load the layer
-                    gis.refreshLayer('search_results', queries);
+                    if (undefined != options) {
+                        gis.show_map(map_id, options);
+                        // Get the current Filters
+                        var queries = getCurrentFilters($('#' + form));
+                        // Load the layer
+                        gis.refreshLayer('search_results', queries);
+                    }
                 }
             }
         }
@@ -1142,11 +1173,15 @@ S3.search = {};
      */
     var hierarchical_location_change = function(widget) {
         var name = widget.name;
+        var base = name.slice(0, -1);
+        var level = parseInt(name.slice(-1));
         var $widget = $('#' + name);
         var values = $widget.val();
         if (values) {
             // Show the next widget down
-            $widget.next('.ui-multiselect').next('.location-filter').next('.ui-multiselect').show();
+            var fn = base.replace(/-/g, '_') + (level + 1);
+            S3[fn]();
+            $('#' + base + (level + 1)).next('.ui-multiselect').show();
         } else {
             // Hide the next widget down
             var next_widget = $widget.next('.ui-multiselect').next('.location-filter').next('.ui-multiselect');
@@ -1174,8 +1209,6 @@ S3.search = {};
                 }
             }
         }
-        var base = name.slice(0, -1);
-        var level = parseInt(name.slice(-1));
         var hierarchy = S3.location_filter_hierarchy;
         if (S3.location_name_l10n != undefined) {
             var translate = true;
@@ -1348,14 +1381,14 @@ S3.search = {};
                     }
                 }
                 select.html(_options);
-                if (select.hasClass('groupedopts-filter-widget') &&
-                    typeof select.groupedopts != 'undefined') {
+                if (select.hasClass('groupedopts-filter-widget') && 
+                    select.groupedopts('instance')) {
                     try {
                         select.groupedopts('refresh');
                     } catch(e) { }
                 } else
-                if (select.hasClass('multiselect-filter-widget') &&
-                    typeof select.multiselect != 'undefined') {
+                if (select.hasClass('multiselect-filter-widget') && 
+                    select.multiselect('instance')) {
                     select.multiselect('refresh');
                 }
                 if (l === (level + 1)) {
@@ -1473,7 +1506,7 @@ S3.search = {};
 
             // Ajax-update all visible targets
             for (i=0; i < targets.length; i++) {
-                target_id = targets[i]
+                target_id = targets[i];
                 t = $('#' + target_id);
                 if (!t.is(':visible')) {
                     continue;
@@ -1482,7 +1515,7 @@ S3.search = {};
 //                     dlAjaxReload(target_id, queries);
                 } else if (t.hasClass('dataTable')) {
                     var dt = t.dataTable();
-                    dt.fnReloadAjax(dt_ajaxurl[target_id]);
+                    dt.reloadAjax(dt_ajaxurl[target_id]);
                     updateFormatURLs(dt, queries);
                     $('#' + dt[0].id + '_dataTable_filterURL').each(function() {
                         $(this).val(dt_ajaxurl[target_id]);
@@ -1500,7 +1533,7 @@ S3.search = {};
             url = filterURL(url, queries);
             window.location.href = url;
         }
-    }
+    };
 
     var toggleAdvanced = function(form) {
 
@@ -1520,11 +1553,11 @@ S3.search = {};
                             selector.addClass('active');
                             // Refresh the contents
                             if (selector.hasClass('groupedopts-filter-widget') &&
-                                typeof selector.groupedopts != 'undefined') {
+                                selector.groupedopts('instance')) {
                                 selector.groupedopts('refresh');
                             } else
                             if (selector.hasClass('multiselect-filter-widget') &&
-                                typeof selector.multiselect != 'undefined') {
+                                selector.multiselect('instance')) {
                                 selector.multiselect('refresh');
                             }
                         });

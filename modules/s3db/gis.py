@@ -2,7 +2,7 @@
 
 """ Sahana Eden GIS Model
 
-    @copyright: 2009-2014 (c) Sahana Software Foundation
+    @copyright: 2009-2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -39,8 +39,9 @@ __all__ = ("S3LocationModel",
            "S3FeatureLayerModel",
            "S3MapModel",
            "S3GISThemeModel",
-           "S3POIModel",
-           "S3POIFeedModel",
+           "S3PoIModel",
+           "S3PoIOrganisationGroupModel",
+           "S3PoIFeedModel",
            "gis_location_filter",
            "gis_LocationRepresent",
            "gis_layer_represent",
@@ -58,8 +59,8 @@ except ImportError:
         import gluon.contrib.simplejson as json # fallback to pure-Python module
 
 from gluon import *
-from gluon.dal import Row, Rows
 from gluon.storage import Storage
+
 from ..s3 import *
 from s3layouts import S3AddResourceLink
 from s3.s3widgets import set_match_strings
@@ -93,7 +94,6 @@ class S3LocationModel(S3Model):
         NONE = messages["NONE"]
 
         # Shortcuts
-        add_components = self.add_components
         #define_table = self.define_table
 
         # ---------------------------------------------------------------------
@@ -131,7 +131,7 @@ class S3LocationModel(S3Model):
         else:
             meta_spatial_fields = (s3_meta_fields())
 
-        gis_location_represent = gis_LocationRepresent()
+        gis_location_represent = gis_LocationRepresent(show_link=True)
 
         tablename = "gis_location"
         self.define_table(tablename,
@@ -315,14 +315,12 @@ class S3LocationModel(S3Model):
                                       label = T("Location"),
                                       ondelete = "RESTRICT",
                                       represent = gis_location_represent,
-                                      requires = IS_EMPTY_OR(
-                                                    IS_LOCATION_SELECTOR2()
-                                                    ),
+                                      requires = IS_EMPTY_OR(IS_LOCATION()),
                                       sortby = "name",
-                                      widget = S3LocationSelectorWidget2(show_address=True,
-                                                                         show_map=settings.get_gis_map_selector(),
-                                                                         show_postcode=settings.get_gis_postcode_selector(),
-                                                                         ),
+                                      widget = S3LocationSelector(show_address=True,
+                                                                  show_map=settings.get_gis_map_selector(),
+                                                                  show_postcode=settings.get_gis_postcode_selector(),
+                                                                  ),
                                       # Alternate LocationSelector for when you don't have the Location Hierarchy available to load
                                       #requires = IS_EMPTY_OR(
                                       #              IS_LOCATION_SELECTOR()
@@ -385,27 +383,27 @@ class S3LocationModel(S3Model):
                         action = self.gis_search_ac)
 
         # Components
-        add_components(tablename,
-                       # Tags
-                       gis_location_tag = {"name": "tag",
-                                           "joinby": "location_id",
-                                           },
-                       # Names
-                       gis_location_name = {"name": "name",
-                                            "joinby": "location_id",
-                                            },
-                       # Alternate Names
-                       gis_location_name_alt = {"name": "name_alt",
+        self.add_components(tablename,
+                            # Tags
+                            gis_location_tag = {"name": "tag",
                                                 "joinby": "location_id",
                                                 },
-                       # Child Locations
-                       #gis_location = {"joinby": "parent",
-                       #                "multiple": False,
-                       #                },
+                            # Names
+                            gis_location_name = {"name": "name",
+                                                 "joinby": "location_id",
+                                                 },
+                            # Alternate Names
+                            gis_location_name_alt = {"name": "name_alt",
+                                                     "joinby": "location_id",
+                                                     },
+                            # Child Locations
+                            #gis_location = {"joinby": "parent",
+                            #                "multiple": False,
+                            #                },
 
-                       # Sites
-                       org_site = "location_id",
-                       )
+                            # Sites
+                            org_site = "location_id",
+                            )
 
         # ---------------------------------------------------------------------
         # Error
@@ -455,10 +453,10 @@ class S3LocationModel(S3Model):
         """
 
         auth = current.auth
-        vars = form.vars
-        id = vars.id
+        form_vars = form.vars
+        id = form_vars.id
 
-        if vars.path and current.response.s3.bulk:
+        if form_vars.path and current.response.s3.bulk:
             # Don't import path from foreign sources as IDs won't match
             db = current.db
             db(db.gis_location.id == id).update(path=None)
@@ -468,7 +466,7 @@ class S3LocationModel(S3Model):
             # Update the Path (async if-possible)
             # (skip during prepop)
             feature = json.dumps(dict(id=id,
-                                      level=vars.get("level", False),
+                                      level=form_vars.get("level", False),
                                       ))
             current.s3task.async("gis_update_location_tree",
                                  args=[feature])
@@ -484,9 +482,11 @@ class S3LocationModel(S3Model):
         T = current.T
         db = current.db
         gis = current.gis
+        auth = current.auth
         response = current.response
+        settings = current.deployment_settings
 
-        MAP_ADMIN = current.auth.s3_has_role(current.session.s3.system_roles.MAP_ADMIN)
+        MAP_ADMIN = auth.s3_has_role(current.session.s3.system_roles.MAP_ADMIN)
 
         form_vars = form.vars
         vars_get = form_vars.get
@@ -498,11 +498,13 @@ class S3LocationModel(S3Model):
 
         if addr_street and lat is None and lon is None and \
            response.s3.bulk:
-            geocoder = current.deployment_settings.get_gis_geocode_imported_addresses()
+            geocoder = settings.get_gis_geocode_imported_addresses()
             if geocoder:
                 # Geocode imported addresses
                 postcode = vars_get("postcode", None)
-                # Build Path (won't be populated yet)
+                # Build Path (won't be populated yet). Note get_parents will not
+                # construct the path during prepopulate. Updating the location
+                # tree is deferred til after the prepopulate data is loaded.
                 if parent:
                     Lx_ids = gis.get_parents(parent, ids_only=True)
                     if Lx_ids:
@@ -514,9 +516,14 @@ class S3LocationModel(S3Model):
                 results = gis.geocode(addr_street, postcode, Lx_ids, geocoder)
                 if isinstance(results, basestring):
                     # Error
-                    current.log.error(results)
-                    form.errors["addr_street"] = results
-                    return
+                    if auth.override and not \
+                       settings.get_gis_check_within_parent_boundaries():
+                        # Just Warn
+                        current.log.warning(results)
+                    else:
+                        # Make this check mandatory
+                        form.errors["addr_street"] = results
+                        return
                 else:
                     form_vars.lon = lon = results["lon"]
                     form_vars.lat = lat = results["lat"]
@@ -595,10 +602,14 @@ class S3LocationModel(S3Model):
                 #if lat not in (None, "") and lon not in (None, ""):
                 if lat and lon:
                     name = form_vars.name
-                    if parent and current.deployment_settings.get_gis_check_within_parent_boundaries():
-                        # Check within Bounds of the Parent
+                    if parent and settings.get_gis_check_within_parent_boundaries():
+                        # Check within Bounds of the Parent if possible.
                         # Rough (Bounding Box)
-                        lat_min, lon_min, lat_max, lon_max, parent_name = gis.get_bounds(parent=parent)
+                        # During prepopulate, the location tree update is
+                        # disabled. This is what propagates location and bounds
+                        # down the hierarchy so the parent may not have bounds.
+                        # Prepopulate data should be prepared to be correct.
+                        lat_min, lon_min, lat_max, lon_max, parent_name = gis.get_parent_bounds(parent=parent)
                         if (lat > lat_max) or (lat < lat_min):
                             lat_error =  "%s: %s & %s" % (T("Latitude should be between"),
                                                           lat_min, lat_max)
@@ -681,15 +692,15 @@ class S3LocationModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def gis_location_duplicate(job):
+    def gis_location_duplicate(item):
         """
           This callback will be called when importing location records it will look
           to see if the record being imported is a duplicate.
 
-          @param job: An S3ImportJob object which includes all the details
-                      of the record being imported
+          @param item: An S3ImportItem object which includes all the details
+                       of the record being imported
 
-          If the record is a duplicate then it will set the job method to update
+          If the record is a duplicate then it will set the item method to update
 
           Rules for finding a duplicate:
            - Don't do deduplication if there is no level
@@ -704,56 +715,79 @@ class S3LocationModel(S3Model):
                    - make a deployment_setting for relevant function?
         """
 
-        if job.tablename == "gis_location":
-            table = job.table
-            data = job.data
-            name = data.get("name", None)
+        table = item.table
+        data = item.data
+        name = data.get("name", None)
 
-            if not name:
+        if not name:
+            return
+
+        level = data.get("level", None)
+        if not level:
+            # Don't deduplicate precise locations as hard to ensure these have unique names
+            return
+
+        # Don't try to update Countries
+        if level == "L0":
+            item.method = None
+            return
+
+        code = current.deployment_settings.get_gis_lookup_code()
+        if code:
+            # The name is a Code
+            kv_table = current.s3db.gis_location_tag
+            query = (kv_table.tag == code) & \
+                    (kv_table.value == name) & \
+                    (kv_table.location_id == table.id)
+            duplicate = current.db(query).select(table.id,
+                                                 table.name,
+                                                 orderby=~table.end_date,
+                                                 limitby=(0, 1)).first()
+
+            if duplicate:
+                # @ToDo: Import Log
+                #current.log.debug("Location PCode Match")
+                data.name = duplicate.name # Don't update the name with the code
+                item.id = duplicate.id
+                item.method = item.METHOD.UPDATE
                 return
 
-            level = data.get("level", None)
-            if not level:
-                # Don't deduplicate precise locations as hard to ensure these have unique names
-                return
+        parent = data.get("parent", None)
+        start_date = data.get("start_date", None)
+        end_date = data.get("end_date", None)
 
-            # Don't try to update Countries
-            if level == "L0":
-                job.method = None
-                return
+        # @ToDo: check the the lat and lon if they exist?
+        #lat = "lat" in data and data.lat
+        #lon = "lon" in data and data.lon
 
-            code = current.deployment_settings.get_gis_lookup_code()
-            if code:
-                # The name is a Code
-                kv_table = current.s3db.gis_location_tag
-                query = (kv_table.tag == code) & \
-                        (kv_table.value == name) & \
-                        (kv_table.location_id == table.id)
-                duplicate = current.db(query).select(table.id,
-                                                     table.name,
-                                                     orderby=~table.end_date,
-                                                     limitby=(0, 1)).first()
+        # Try the Name
+        # @ToDo: Hook for possible duplicates vs definite?
+        #query = (table.name.lower().like('%%%s%%' % name.lower()))
+        query = (table.name.lower() == name.lower()) & \
+                (table.level == level)
+        if parent:
+            query &= (table.parent == parent)
+        if end_date:
+            query &= (table.end_date == end_date)
+        if start_date:
+            query &= ((table.start_date == start_date) | \
+                      (table.end_date == None))
 
-                if duplicate:
-                    # @ToDo: Import Log
-                    #current.log.debug("Location PCode Match")
-                    data.name = duplicate.name # Don't update the name with the code
-                    job.id = duplicate.id
-                    job.method = job.METHOD.UPDATE
-                    return
+        duplicate = current.db(query).select(table.id,
+                                             orderby=~table.end_date,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            # @ToDo: Import Log
+            #current.log.debug("Location Match")
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
+            return
 
-            parent = data.get("parent", None)
-            start_date = data.get("start_date", None)
-            end_date = data.get("end_date", None)
-
-            # @ToDo: check the the lat and lon if they exist?
-            #lat = "lat" in data and data.lat
-            #lon = "lon" in data and data.lon
-
-            # Try the Name
-            # @ToDo: Hook for possible duplicates vs definite?
-            #query = (table.name.lower().like('%%%s%%' % name.lower()))
-            query = (table.name.lower() == name.lower()) & \
+        elif current.deployment_settings.get_L10n_translate_gis_location():
+            # See if this a name_l10n
+            ltable = current.s3db.gis_location_name
+            query = (ltable.name_l10n == name) & \
+                    (ltable.location_id == table.id) & \
                     (table.level == level)
             if parent:
                 query &= (table.parent == parent)
@@ -763,42 +797,19 @@ class S3LocationModel(S3Model):
                 query &= (table.start_date == start_date)
 
             duplicate = current.db(query).select(table.id,
+                                                 table.name,
                                                  orderby=~table.end_date,
                                                  limitby=(0, 1)).first()
             if duplicate:
                 # @ToDo: Import Log
-                #current.log.debug("Location Match")
-                job.id = duplicate.id
-                job.method = job.METHOD.UPDATE
-                return
-
-            elif current.deployment_settings.get_L10n_translate_gis_location():
-                # See if this a name_l10n
-                ltable = current.s3db.gis_location_name
-                query = (ltable.name_l10n == name) & \
-                        (ltable.location_id == table.id) & \
-                        (table.level == level)
-                if parent:
-                    query &= (table.parent == parent)
-                if end_date:
-                    query &= (table.end_date == end_date)
-                if start_date:
-                    query &= (table.start_date == start_date)
-
-                duplicate = current.db(query).select(table.id,
-                                                     table.name,
-                                                     orderby=~table.end_date,
-                                                     limitby=(0, 1)).first()
-                if duplicate:
-                    # @ToDo: Import Log
-                    #current.log.debug("Location l10n Match")
-                    data.name = duplicate.name # Don't update the name
-                    job.id = duplicate.id
-                    job.method = job.METHOD.UPDATE
-                else:
-                    # @ToDo: Import Log
-                    #current.log.debug("No Match", name)
-                    pass
+                #current.log.debug("Location l10n Match")
+                data.name = duplicate.name # Don't update the name
+                item.id = duplicate.id
+                item.method = item.METHOD.UPDATE
+            else:
+                # @ToDo: Import Log
+                #current.log.debug("No Match", name)
+                pass
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1148,6 +1159,7 @@ class S3LocationNameModel(S3Model):
         configure = self.configure
         define_table = self.define_table
         location_id = self.gis_location_id
+        l10n_languages = current.deployment_settings.get_L10n_languages()
 
         # ---------------------------------------------------------------------
         # Local Names
@@ -1203,53 +1215,51 @@ class S3LocationNameModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def gis_location_name_deduplicate(job):
+    def gis_location_name_deduplicate(item):
         """
-           If the record is a duplicate then it will set the job method to update
+           If the record is a duplicate then it will set the item method to update
         """
 
-        if job.tablename == "gis_location_name":
-            table = job.table
-            data = job.data
-            language = data.get("language", None)
-            location = data.get("location", None)
+        data = item.data
+        language = data.get("language", None)
+        location = data.get("location_id", None)
 
-            if not language or not location:
-                return
+        if not language or not location:
+            return
 
-            query = (table.language == language) & \
-                    (table.location_id == location)
+        table = item.table
+        query = (table.language == language) & \
+                (table.location_id == location)
 
-            _duplicate = current.db(query).select(table.id,
-                                                  limitby=(0, 1)).first()
-            if _duplicate:
-                job.id = _duplicate.id
-                job.method = job.METHOD.UPDATE
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def gis_location_name_alt_deduplicate(job):
+    def gis_location_name_alt_deduplicate(item):
         """
-           If the record is a duplicate then it will set the job method to update
+           If the record is a duplicate then it will set the item method to update
         """
 
-        if job.tablename == "gis_location_name_alt":
-            table = job.table
-            data = job.data
-            location = data.get("location", None)
-            name_alt = data.get("name_alt", None)
+        data = item.data
+        location = data.get("location_id", None)
+        name_alt = data.get("name_alt", None)
 
-            if not name_alt or not location:
-                return
+        if not name_alt or not location:
+            return
 
-            query = (table.name_alt == name_alt) & \
-                    (table.location_id == location)
+        table = item.table
+        query = (table.name_alt == name_alt) & \
+                (table.location_id == location)
 
-            _duplicate = current.db(query).select(table.id,
-                                                  limitby=(0, 1)).first()
-            if _duplicate:
-                job.id = _duplicate.id
-                job.method = job.METHOD.UPDATE
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
 # =============================================================================
 class S3LocationTagModel(S3Model):
@@ -1330,28 +1340,30 @@ class S3LocationTagModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def gis_location_tag_deduplicate(job):
+    def gis_location_tag_deduplicate(item):
         """
-           If the record is a duplicate then it will set the job method to update
+           If the record is a duplicate then it will set the item method
+           to update
+
+           @param item: the S3ImportItem
         """
 
-        if job.tablename == "gis_location_tag":
-            table = job.table
-            data = job.data
-            tag = data.get("tag", None)
-            location = data.get("location", None)
+        data = item.data
+        tag = data.get("tag", None)
+        location_id = data.get("location_id", None)
 
-            if not tag or not location:
-                return
+        if not tag or not location_id:
+            return
 
-            query = (table.tag.lower() == tag.lower()) & \
-                    (table.location_id == location)
+        table = item.table
+        query = (table.tag.lower() == tag.lower()) & \
+                (table.location_id == location_id)
 
-            _duplicate = current.db(query).select(table.id,
-                                                  limitby=(0, 1)).first()
-            if _duplicate:
-                job.id = _duplicate.id
-                job.method = job.METHOD.UPDATE
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
 # =============================================================================
 class S3LocationGroupModel(S3Model):
@@ -1614,6 +1626,7 @@ class S3GISConfigModel(S3Model):
 
         location_id = self.gis_location_id
 
+        settings = current.deployment_settings
         NONE = current.messages["NONE"]
 
         # Shortcuts
@@ -1633,20 +1646,21 @@ class S3GISConfigModel(S3Model):
                      # If-needed, then Symbology should be here
                      #symbology_id(),
                      Field("image", "upload", autodelete=False,
+                           custom_retrieve = gis_marker_retrieve,
+                           custom_retrieve_file_properties = gis_marker_retrieve_file_properties,
                            label = T("Image"),
-                           # upload folder needs to be visible to the download() function as well as the upload
-                           uploadfolder = os.path.join(current.request.folder,
-                                                       "static",
-                                                       "img",
-                                                       "markers"),
-                           custom_retrieve = self.gis_marker_retrieve,
-                           custom_retrieve_file_properties = self.gis_marker_retrieve_file_properties,
                            represent = lambda filename: \
                                (filename and [DIV(IMG(_src=URL(c="static",
                                                                f="img",
                                                                args=["markers",
                                                                      filename]),
                                                       _height=40))] or [""])[0],
+                           # upload folder needs to be visible to the download() function as well as the upload
+                           uploadfolder = os.path.join(current.request.folder,
+                                                       "static",
+                                                       "img",
+                                                       "markers"),
+                           widget = S3ImageCropWidget((50, 50)),
                            ),
                      # We could get size client-side using Javascript's Image() class, although this is unreliable!
                      Field("height", "integer", # In Pixels, for display purposes
@@ -1683,6 +1697,7 @@ class S3GISConfigModel(S3Model):
                                                           "%(name)s",
                                                           zero=T("Use default"))),
                                     sortby = "name",
+                                    widget = S3SelectWidget(icons=self.gis_marker_options),
                                     comment=S3AddResourceLink(c="gis",
                                                               f="marker",
                                                               #vars={"child": "marker_id",
@@ -1791,13 +1806,20 @@ class S3GISConfigModel(S3Model):
         #        according to any active Event or Region config and any OU or
         #        Personal config found
 
-        pe_types = {1: "person",
-                    2: "group",
-                    4: "facility",
-                    6: "branch",
-                    7: "organisation",
+        org_group_label = settings.get_org_groups()
+        org_site_label = settings.get_org_site_label()
+        teams_label = settings.get_hrm_teams()
+
+        pe_types = {1: T("Person"),
+                    2: T(teams_label),
+                    4: T(org_site_label),
+                    7: T("Organization"),
                     9: "SITE_DEFAULT",
                     }
+        if settings.get_org_branches():
+            pe_types[6] = T("Branch")
+        if org_group_label:
+            pe_types[8] = T(org_group_label)
 
         tablename = "gis_config"
         define_table(tablename,
@@ -1890,12 +1912,33 @@ class S3GISConfigModel(S3Model):
                            writable = False,
                            ),
 
+                     Field("image", "upload", autodelete=False,
+                           custom_retrieve = gis_marker_retrieve,
+                           custom_retrieve_file_properties = gis_marker_retrieve_file_properties,
+                           label = T("Image"),
+                           represent = lambda filename: \
+                               (filename and [DIV(IMG(_src=URL(c="static",
+                                                               f="cache",
+                                                               args=["jpg",
+                                                                     filename]),
+                                                      _height=40))] or [""])[0],
+                           # upload folder needs to be visible to the download() function as well as the upload
+                           uploadfolder = os.path.join(current.request.folder,
+                                                       "static",
+                                                       "cache",
+                                                       "jpg"),
+                           # Enable in-templates as-required
+                           #readable = False,
+                           #writable = False,
+                           #widget = S3ImageCropWidget((820, 410)),
+                           ),
+
                      *s3_meta_fields())
 
         # Reusable field - used by Events & Scenarios
         represent = S3Represent(lookup=tablename)
         config_id = S3ReusableField("config_id", "reference %s" % tablename,
-                                    label = T("Map Configuration"),
+                                    label = T("Map Profile"),
                                     ondelete = "CASCADE",
                                     represent = represent,
                                     requires = IS_EMPTY_OR(
@@ -1904,22 +1947,26 @@ class S3GISConfigModel(S3Model):
                                     )
 
         crud_strings[tablename] = Storage(
-            label_create = T("Create Map Configuration"),
-            title_display = T("Map Configuration"),
-            title_list = T("Map Configurations"),
-            title_update = T("Edit Map Configuration"),
-            label_list_button = T("List Map Configurations"),
-            label_delete_button = T("Delete Map Configuration"),
-            msg_record_created = T("Map Configuration added"),
-            msg_record_modified = T("Map Configuration updated"),
-            msg_record_deleted = T("Map Configuration deleted"),
-            msg_list_empty = T("No Map Configurations currently defined")
+            label_create = T("Create Map Profile"),
+            title_display = T("Map Profile"),
+            title_list = T("Map Profiles"),
+            title_update = T("Edit Map Profile"),
+            label_list_button = T("List Map Profiles"),
+            label_delete_button = T("Delete Map Profile"),
+            msg_record_created = T("Map Profile added"),
+            msg_record_modified = T("Map Profile updated"),
+            msg_record_deleted = T("Map Profile deleted"),
+            msg_list_empty = T("No Map Profiles currently defined")
         )
 
         configure(tablename,
                   create_next = URL(c="gis", f="config",
                                     args=["[id]", "layer_entity"]),
                   deduplicate = self.gis_config_deduplicate,
+                  # These are amended as-required in the controller
+                  list_fields = ["name",
+                                 "pe_id",
+                                 ],
                   onaccept = self.gis_config_onaccept,
                   ondelete = self.gis_config_ondelete,
                   onvalidation = self.gis_config_onvalidation,
@@ -1939,7 +1986,7 @@ class S3GISConfigModel(S3Model):
                        gis_style = "config_id",
                        )
 
-        if current.deployment_settings.get_security_map() and not \
+        if settings.get_security_map() and not \
            current.auth.s3_has_role("MapAdmin"):
             configure(tablename,
                       deletable = False,
@@ -1964,9 +2011,8 @@ class S3GISConfigModel(S3Model):
 
         # Initially will be populated only when a Personal config is created
         # CRUD Strings
-        # ADD_MENU = T("Add Menu Entry")
         # crud_strings[tablename] = Storage(
-            # label_create = ADD_MENU,
+            # label_create = T("Add Menu Entry"),
             # title_display = T("Menu Entry Details"),
             # title_list = T("Menu Entries"),
             # title_update = T("Edit Menu Entry"),
@@ -2111,21 +2157,22 @@ class S3GISConfigModel(S3Model):
           @param item: An S3ImportJob object which includes all the details
                       of the record being imported
 
-          If the record is a duplicate then it will set the job method to update
+          If the record is a duplicate then it will set the item method to update
 
         """
 
-        if item.tablename == "gis_config" and \
-           "name" in item.data:
-            # Match by name (all-lowercase)
-            table = item.table
-            name = item.data.name
-            query = (table.name.lower() == name.lower())
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
+        # Match by name (all-lowercase)
+        name = item.data.name
+        if not name:
+            return
+
+        table = item.table
+        query = (table.name.lower() == name.lower())
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2155,6 +2202,8 @@ class S3GISConfigModel(S3Model):
                         form_vars.pe_type = 2
                     elif pe_type == "org_office":
                         form_vars.pe_type = 4
+                    elif pe_type == "org_group":
+                        form_vars.pe_type = 8
                     elif pe_type == "org_organisation":
                         if current.deployment_settings.get_org_branches():
                             # Check if we're a branch
@@ -2192,7 +2241,7 @@ class S3GISConfigModel(S3Model):
         auth = current.auth
 
         form_vars = form.vars
-        id = form_vars.id
+        config_id = form_vars.id
         pe_id = form_vars.get("pe_id", None)
         if pe_id:
             user = auth.user
@@ -2203,14 +2252,14 @@ class S3GISConfigModel(S3Model):
                 # Ensure no other records for this PE are marked as default
                 table = db.gis_config
                 query = (table.pe_id == pe_id) & \
-                        (table.id != id)
+                        (table.id != config_id)
                 db(query).update(pe_default=False)
             # Add to GIS Menu
-            db.gis_menu.update_or_insert(config_id=id,
+            db.gis_menu.update_or_insert(config_id=config_id,
                                          pe_id=pe_id)
         else:
             config = current.response.s3.gis.config
-            if config and config.id == id:
+            if config and config.id == config_id:
                 # This is the currently active config, so clear our cache
                 config = None
 
@@ -2218,19 +2267,28 @@ class S3GISConfigModel(S3Model):
         # That makes Authenticated no longer an owner, so they only get whatever
         # is permitted by uacl (usually READ).
         if auth.override:
-            MAP_ADMIN = current.session.s3.system_roles.MAP_ADMIN
-            table = db.gis_config
-            query = (table.id == id)
-            db(query).update(owned_by_group = MAP_ADMIN)
+            db(db.gis_config.id == config_id).update(
+                owned_by_group = current.session.s3.system_roles.MAP_ADMIN)
 
         # Locations which are referenced by Map Configs should be owned by MapAdmin.
         # That makes Authenticated no longer an owner, so they only get whatever
         # is permitted by uacl (usually READ).
         if form_vars.region_location_id:
-            MAP_ADMIN = current.session.s3.system_roles.MAP_ADMIN
-            table = db.gis_location
-            query = (table.id == form_vars.region_location_id)
-            db(query).update(owned_by_group = MAP_ADMIN)
+            db(db.gis_location.id == form_vars.region_location_id).update(
+                owned_by_group = current.session.s3.system_roles.MAP_ADMIN)
+
+        if not form_vars.get("temp", None) and not auth.override:
+            settings = current.deployment_settings
+            screenshot = settings.get_gis_config_screenshot()
+            if screenshot is not None:
+                # Save a screenshot
+                width = screenshot[0]
+                height = screenshot[1]
+                filename = current.gis.get_screenshot(config_id,
+                                                      False,
+                                                      height,
+                                                      width)
+                db(db.gis_config.id == config_id).update(image=filename)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2246,30 +2304,147 @@ class S3GISConfigModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
+    def gis_marker_options(options):
+        """
+            Function which takes a list of k/v option tuples and adds an
+            icon URL for S3SelectMenu()
+        """
+
+        marker_ids = []
+        mappend = marker_ids.append
+        for o in options:
+            mappend(o[0])
+        # Do a bulk lookup
+        mtable = current.s3db.gis_marker
+        markers = current.db(mtable.id.belongs(marker_ids)).select(mtable.id,
+                                                                   mtable.image,
+                                                                   mtable.height,
+                                                                   mtable.width,
+                                                                   )
+        markers_lookup = {}
+        base_url = "/%s/static/img/markers/" % current.request.application
+        for m in markers:
+            markers_lookup[str(m.id)] = ("%s%s" % (base_url, m.image),
+                                         m.height,
+                                         m.width,
+                                         )
+
+        new_options = []
+        oappend = new_options.append
+        for (k, v) in options:
+            i = markers_lookup.get(k, None)
+            opt = (k, v, i)
+            oappend(opt)
+
+        return new_options
+
+    # -------------------------------------------------------------------------
+    @staticmethod
     def gis_marker_onvalidation(form):
         """
             Record the size of an Image upon Upload
             Don't wish to resize here as we'd like to use full resolution for printed output
         """
 
-        vars = form.vars
-        image = vars.image
-        if not image or isinstance(image, str):
-            # No Image => CSV import of resources which just need a ref
+        form_vars = form.vars
+        image = form_vars.image
+        if image is None:
+            encoded_file = form_vars.get("imagecrop-data", None)
+            if not encoded_file:
+                # No Image => CSV import of resources which just need a ref
+                return
+            import base64
+            import uuid
+            metadata, encoded_file = encoded_file.split(",")
+            filename, datatype, enctype = metadata.split(";")
+            f = Storage()
+            f.filename = uuid.uuid4().hex + filename
+            import cStringIO
+            f.file = cStringIO.StringIO(base64.decodestring(encoded_file))
+            form_vars.image = image = f
+
+        elif isinstance(image, str):
             # Image = String => Update not a Create, so file not in form
             return
 
+        extension = image.filename.rfind(".")
+        extension = image.filename[extension + 1:].lower()
+        if extension == "jpg":
+            extension = "jpeg"
+        if extension not in ("bmp", "gif", "jpeg", "png"):
+            form.errors.image = current.T("Uploaded file(s) are not Image(s). Supported image formats are '.png', '.jpg', '.bmp', '.gif'.")
+            return
+
+        native = False
         try:
             from PIL import Image
         except ImportError:
-            import Image
+            try:
+                import Image
+            except:
+                # Native Python version
+                native = True
+                import struct
 
-        im = Image.open(image.file)
-        (width, height) = im.size
-        vars.image.file.seek(0)
+        if native:
+            # Fallbacks
+            width = height = -1
+            stream = image.file
+            if extension == "bmp":
+                if stream.read(2) == "BM":
+                    stream.read(16)
+                    width, height = struct.unpack("<LL", stream.read(8))
+            elif extension == "gif":
+                if stream.read(6) in ("GIF87a", "GIF89a"):
+                    stream = stream.read(5)
+                    if len(stream) == 5:
+                        width, height = \
+                            tuple(struct.unpack("<HHB", stream)[:-1])
+            elif extension == "jpeg":
+                if stream.read(2) == "\xFF\xD8":
+                    while True:
+                        (marker, code, length) = \
+                            struct.unpack("!BBH", stream.read(4))
+                        if marker != 0xFF:
+                            break
+                        elif code >= 0xC0 and code <= 0xC3:
+                            width, height = \
+                                tuple(reversed(struct.unpack("!xHH",
+                                                             stream.read(5))))
+                        else:
+                            stream.read(length - 2)
+            elif extension == "png":
+                if stream.read(8) == "\211PNG\r\n\032\n":
+                    stream.read(4)
+                    if stream.read(4) == "IHDR":
+                        width, height = struct.unpack("!LL", stream.read(8))
+        else:
+            # Use PIL
+            try:
+                im = Image.open(image.file)
+            except:
+                width = height = -1
+            else:
+                width, height = im.size
 
-        vars.width = width
-        vars.height = height
+        if width < 1 or height < 1:
+            form.errors.image = current.T("Invalid image!")
+            return
+
+        if width > 50 or height > 50:
+            if native:
+                form.errors.image = current.T("Maximum size 50x50!")
+                return
+            # Resize the Image
+            im.thumbnail((50, 50) , Image.ANTIALIAS)
+            width, height = im.size
+            #im.save(image.file)
+            current.session.warning = current.T("File has been resized")
+
+        image.file.seek(0)
+
+        form_vars.width = width
+        form_vars.height = height
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2281,63 +2456,22 @@ class S3GISConfigModel(S3Model):
           @param item: An S3ImportJob object which includes all the details
                       of the record being imported
 
-          If the record is a duplicate then it will set the job method to update
+          If the record is a duplicate then it will set the item method to update
 
         """
 
-        if item.tablename == "gis_marker" and \
-           "name" in item.data:
-            # Match by name (all-lowercase)
-            table = item.table
-            name = item.data.name
-            query = (table.name.lower() == name.lower())
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
+        name = item.data.get("name")
+        if not name:
+            return
 
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def gis_marker_retrieve(filename, path=None):
-        """
-            custom_retrieve to override web2py DAL's standard retrieve,
-            as that checks filenames for uuids, so doesn't work with
-            pre-populated files in static
-        """
-
-        if not path:
-            path = current.db.gis_marker.image.uploadfolder
-
-        if "/" in filename:
-            _path, filename = filename.split("/")
-            image = open(os.path.join(path, _path, filename), "rb")
-        else:
-            image = open(os.path.join(path, filename), "rb")
-        return (filename, image)
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def gis_marker_retrieve_file_properties(filename, path=None):
-        """
-            Custom method to override web2py DAL's standard
-            retrieve_file_properties, as that checks filenames
-            for uuids, so doesn't work with pre-populated files
-            in static. This method is required for XML exports.
-        """
-
-        if not path:
-            path = current.db.gis_marker.image.uploadfolder
-
-        # @ToDo: should probably use os.sep here rather than "/"
-        if "/" in filename:
-            _path = filename.split("/", 1)
-            if len(_path) > 1:
-                _path, filename = _path
-            else:
-                _path, filename = "", filename
-            path = os.path.join(path, _path)
-        return {"path": path, "filename": filename}
+        # Match by name (all-lowercase)
+        table = item.table
+        query = (table.name.lower() == name.lower())
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2349,20 +2483,21 @@ class S3GISConfigModel(S3Model):
             @param item: An S3ImportItem object which includes all the details
                          of the record being imported
 
-            If the record is a duplicate then it will set the job method to update
+            If the record is a duplicate then it will set the item method to update
         """
 
-        if item.tablename == "gis_projection" and \
-           "epsg" in item.data:
-            # Match by epsg
-            table = item.table
-            epsg = item.data.epsg
-            query = (table.epsg == epsg)
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
+        epsg = item.data.get("epsg")
+        if not epsg:
+            return
+
+        # Match by epsg
+        table = item.table
+        query = (table.epsg == epsg)
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
 # =============================================================================
 class gis_MarkerRepresent(S3Represent):
@@ -2546,9 +2681,7 @@ class S3LayerEntityModel(S3Model):
         # Style is a JSON object with the following structure
         # (only the starred elements are currently parsed)
         # @ToDo: Support elements in a common section (such as prop, graphic)
-        # @ToDo: Popup style
         # @ToDo: Import/Export SLD
-        # @ToDo: Be able to reuse Styles across Layers/Configs
         #Style = [{
         #   prop: string,       //* Attribute used to activate this style rule (otherwise defaults to 'value')
         #   cat: string,        //* Absolute Value used to style the element
@@ -2559,6 +2692,8 @@ class S3LayerEntityModel(S3Model):
         #   fill: string,       //*
         #   fillOpacity: float, //*
         #   stroke: string,     //* (will default to fill, if not set)
+        #   strokeLinecap: string, Stroke cap type: "butt", "round", "square"
+        #   strokeDashstyle: string, //* Encodes a dash pattern as a series of numbers separated by spaces. Odd-indexed numbers (first, third, etc) determine the length in pxiels to draw the line, and even-indexed numbers (second, fourth, etc) determine the length in pixels to blank out the line.
         #   strokeOpacity: float,
         #   strokeWidth: float or int, //* OpenLayers wants int, SLD wants float
         #   label: string,      //* Attribute used to label the element
@@ -2574,7 +2709,11 @@ class S3LayerEntityModel(S3Model):
                      #name_field()(),
                      #desc_field()(),
                      # Optionally restrict to a specific Config
-                     self.gis_config_id(),
+                     self.gis_config_id(
+                        comment = DIV(_class="tooltip",
+                                      _title=T("Leave this blank to apply to all Profiles")
+                                      ),
+                        ),
                      # Optionally link to a specific Layer
                      # Component not Instance
                      self.super_link("layer_id", "gis_layer_entity"),
@@ -2841,6 +2980,7 @@ class S3FeatureLayerModel(S3Model):
                                 #              _title="%s|%s" % (T("Popup Fields"),
                                 #                                T("Used to build onHover Tooltip & 1st field also used in Cluster Popups to differentiate between records."))),
                                 ),
+                          # NB To use complex attributes, use the full-format, e.g. "~.location_id$gis_feature_type"
                           Field("attr_fields", "list:string",
                                 label = T("Attributes"),
                                 comment = DIV(_class="tooltip",
@@ -2860,6 +3000,14 @@ class S3FeatureLayerModel(S3Model):
                                 default = False,
                                 label = T("Style Features Individually?"),
                                 represent = s3_yes_no_represent,
+                                ),
+                          Field("points", "boolean",
+                                default = False,
+                                label = T("Points"),
+                                represent = s3_yes_no_represent,
+                                comment = DIV(_class="tooltip",
+                                              _title="%s|%s" % (T("Points"),
+                                                                T("Whether the resource should be mapped just using Points and not Polygons"))),
                                 ),
                           Field("trackable", "boolean",
                                 default = False,
@@ -2912,21 +3060,6 @@ class S3FeatureLayerModel(S3Model):
                        super_entity = "gis_layer_entity",
                        )
 
-        # Components (already done at Super Entity level)
-        #self.add_components(tablename,
-        #                    # Configs
-        #                    gis_config = {"link": "gis_layer_config",
-        #                                  "pkey": "layer_id",
-        #                                  "joinby": "layer_id",
-        #                                  "key": "config_id",
-        #                                  "actuate": "hide",
-        #                                  "autocomplete": "name",
-        #                                  "autodelete": False,
-        #                                  },
-        #                    # Styles 
-        #                    gis_style = "layer_id",
-        #                    )
-
         # Pass names back to global scope (s3.*)
         return dict()
 
@@ -2960,26 +3093,25 @@ class S3FeatureLayerModel(S3Model):
     @staticmethod
     def gis_layer_feature_deduplicate(item):
 
-        if item.tablename == "gis_layer_feature":
-            # Match if controller, function, filter and name are identical
-            table = item.table
-            data = item.data
-            query = (table.name == data.name)
-            controller = data.controller
-            if controller:
-                query &= (table.controller.lower() == controller.lower())
-            function = data.function
-            if function:
-                query &= (table.function.lower() == function.lower())
-            filter = data.filter
-            if filter:
-                query &= (table.filter == filter)
+        # Match if controller, function, filter and name are identical
+        table = item.table
+        data = item.data
+        query = (table.name == data.name)
+        controller = data.controller
+        if controller:
+            query &= (table.controller.lower() == controller.lower())
+        function = data.function
+        if function:
+            query &= (table.function.lower() == function.lower())
+        filter = data.filter
+        if filter:
+            query &= (table.filter == filter)
 
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
 # =============================================================================
 class S3MapModel(S3Model):
@@ -3014,12 +3146,10 @@ class S3MapModel(S3Model):
         db = current.db
         request = current.request
 
-        #location_id = self.gis_location_id
         marker_id = self.gis_marker_id
         projection_id = self.gis_projection_id
 
         # Shortcuts
-        #add_components = self.add_components
         configure = self.configure
         define_table = self.define_table
 
@@ -3138,19 +3268,6 @@ class S3MapModel(S3Model):
                   super_entity = "gis_layer_entity",
                   )
 
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               )
-
         # ---------------------------------------------------------------------
         # Bing tiles
         #
@@ -3174,20 +3291,6 @@ class S3MapModel(S3Model):
                   super_entity = "gis_layer_entity",
                   )
 
-        # Components
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               )
-
         # ---------------------------------------------------------------------
         # Coordinate grid
         #
@@ -3204,19 +3307,6 @@ class S3MapModel(S3Model):
                   onaccept = gis_layer_onaccept,
                   super_entity = "gis_layer_entity",
                   )
-
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               )
 
         # ---------------------------------------------------------------------
         # Empty (no baselayer, so can display just overlays)
@@ -3235,19 +3325,6 @@ class S3MapModel(S3Model):
                   super_entity = "gis_layer_entity",
                   )
 
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               )
-
         # ---------------------------------------------------------------------
         # GeoJSON
         #
@@ -3258,7 +3335,25 @@ class S3MapModel(S3Model):
                      desc_field()(),
                      Field("url",
                            label = LOCATION,
-                           requires = IS_NOT_EMPTY(),
+                           represent = lambda url: \
+                            url and A(url, _href=url) or NONE,
+                           requires = IS_EMPTY_OR(IS_URL()),
+                           ),
+                     Field("file", "upload", autodelete=False,
+                           #custom_retrieve = gis_marker_retrieve,
+                           #custom_retrieve_file_properties = gis_marker_retrieve_file_properties,
+                           #custom_store?
+                           label = T("File"),
+                           represent = self.gis_layer_geojson_file_represent,
+                           requires = IS_EMPTY_OR(
+                                        IS_UPLOAD_FILENAME(extension="geojson"),
+                                        null = "", # Distinguish from Prepop
+                                        ),
+                           # upload folder needs to be visible to the download() function as well as the upload
+                           uploadfolder = os.path.join(current.request.folder,
+                                                       "static",
+                                                       "cache",
+                                                       "geojson"),
                            ),
                      projection_id(# Nice if we could get this set to epsg field
                                    #default = 4326,
@@ -3271,24 +3366,12 @@ class S3MapModel(S3Model):
                      *s3_meta_fields())
 
         configure(tablename,
-                  onaccept = gis_layer_onaccept,
+                  create_next = URL(args=["[id]", "style"]),
+                  deduplicate = self.gis_layer_geojson_deduplicate,
+                  onaccept = self.gis_layer_geojson_onaccept,
+                  onvalidation = self.gis_layer_geojson_onvalidation,
                   super_entity = "gis_layer_entity",
                   )
-
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               # Styles
-        #               gis_style = "layer_id",
-        #               )
 
         # ---------------------------------------------------------------------
         # GeoRSS
@@ -3326,21 +3409,6 @@ class S3MapModel(S3Model):
                   super_entity = "gis_layer_entity",
                   )
 
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               # Styles
-        #               gis_style = "layer_id",
-        #               )
-
         # ---------------------------------------------------------------------
         # Google tiles
         #
@@ -3365,19 +3433,6 @@ class S3MapModel(S3Model):
                   onaccept = gis_layer_onaccept,
                   super_entity = "gis_layer_entity",
                   )
-
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               )
 
         # ---------------------------------------------------------------------
         # GPX - GPS eXchange format
@@ -3424,19 +3479,6 @@ class S3MapModel(S3Model):
                   super_entity = "gis_layer_entity",
                   )
 
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               )
-
         # ---------------------------------------------------------------------
         # JS
         # - raw JavaScript code for advanced users
@@ -3459,19 +3501,6 @@ class S3MapModel(S3Model):
                   onaccept = gis_layer_onaccept,
                   super_entity = "gis_layer_entity",
                   )
-
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               )
 
         # ---------------------------------------------------------------------
         # KML
@@ -3509,21 +3538,6 @@ class S3MapModel(S3Model):
                   super_entity="gis_layer_entity",
                   )
 
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               # Styles
-        #               gis_style = "layer_id",
-        #               )
-
         # ---------------------------------------------------------------------
         # MGRS
         #
@@ -3546,19 +3560,6 @@ class S3MapModel(S3Model):
                   onaccept = gis_layer_onaccept,
                   super_entity = "gis_layer_entity",
                   )
-
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               )
 
         # ---------------------------------------------------------------------
         # OpenStreetMap tiles
@@ -3608,19 +3609,6 @@ class S3MapModel(S3Model):
                   super_entity = "gis_layer_entity",
                   )
 
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               )
-
         # ---------------------------------------------------------------------
         # OpenWeatherMap
         #
@@ -3644,79 +3632,66 @@ class S3MapModel(S3Model):
                   super_entity = "gis_layer_entity",
                   )
 
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               )
-
         # ---------------------------------------------------------------------
         # Shapefiles
         #
         gis_feature_type_opts = self.gis_feature_type_opts
 
         tablename = "gis_layer_shapefile"
-        table = define_table(tablename,
-                             layer_id,
-                             name_field()(),
-                             desc_field()(),
-                             source_name_field()(),
-                             source_url_field()(),
-                             Field("shape", "upload", autodelete=True,
-                                   label = T("ESRI Shape File"),
-                                   requires = IS_UPLOAD_FILENAME(extension="zip"),
-                                   # upload folder needs to be visible to the download() function as well as the upload
-                                   uploadfolder = os.path.join(request.folder,
-                                                               "uploads",
-                                                               "shapefiles"),
-                                   comment = DIV(_class="tooltip",
-                                                 _title="%s|%s" % (T("ESRI Shape File"),
-                                                                   T("An ESRI Shapefile (zipped)"),
-                                                                   )),
+        define_table(tablename,
+                     layer_id,
+                     name_field()(),
+                     desc_field()(),
+                     source_name_field()(),
+                     source_url_field()(),
+                     Field("shape", "upload", autodelete=True,
+                           label = T("ESRI Shape File"),
+                           requires = IS_UPLOAD_FILENAME(extension="zip"),
+                           # upload folder needs to be visible to the download() function as well as the upload
+                           uploadfolder = os.path.join(request.folder,
+                                                       "uploads",
+                                                       "shapefiles"),
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (T("ESRI Shape File"),
+                                                           T("An ESRI Shapefile (zipped)"),
+                                                           )),
+                           ),
+                     Field("gis_feature_type", "integer",
+                           label = T("Feature Type"),
+                           represent = lambda opt: \
+                           gis_feature_type_opts.get(opt,
+                                                     messages.UNKNOWN_OPT),
+                           requires = IS_EMPTY_OR(
+                                        IS_IN_SET(gis_feature_type_opts,
+                                                  zero=None)),
+                           # Auto-populated by reading Shapefile
+                           writable = False,
+                           ),
+                     # @ToDo: Can we auto-populate this from the layer?
+                     projection_id(# Nice if we could get this set to epsg field without having to do a DB lookup
+                                   #default = 4326,
+                                   empty = False,
                                    ),
-                             Field("gis_feature_type", "integer",
-                                   label = T("Feature Type"),
-                                   represent = lambda opt: \
-                                    gis_feature_type_opts.get(opt,
-                                                              messages.UNKNOWN_OPT),
-                                   requires = IS_EMPTY_OR(
-                                                IS_IN_SET(gis_feature_type_opts,
-                                                          zero=None)),
-                                   # Auto-populated by reading Shapefile
-                                   writable = False,
-                                   ),
-                             # @ToDo: Can we auto-populate this from the layer?
-                             projection_id(# Nice if we could get this set to epsg field without having to do a DB lookup
-                                           #default = 4326,
-                                           empty = False,
-                                           ),
-                             Field("filter",
-                                   label = T("REST Filter"),
-                                   comment = DIV(_class="stickytip",
-                                                 _title="%s|%s" % (T("REST Filter"),
-                                                                   "%s: <a href='http://eden.sahanafoundation.org/wiki/S3XRC/RESTfulAPI/URLFormat#BasicQueryFormat' target='_blank'>Trac</a>" % \
-                                                                     T("Uses the REST Query Format defined in"))),
-                                   ),
-                             # @ToDo: Switch type to "json" & Test
-                             Field("data", "text",
-                                   label = T("Attributes"),
-                                   represent = lambda v: v or NONE,
-                                   # Auto-populated by reading Shapefile
-                                   readable = False,
-                                   writable = False,
-                                   ),
-                             # @ToDo
-                             #gis_refresh()(),
-                             cluster_attribute()(),
-                             s3_role_required(), # Single Role
-                             *s3_meta_fields())
+                     Field("filter",
+                           label = T("REST Filter"),
+                           comment = DIV(_class="stickytip",
+                                         _title="%s|%s" % (T("REST Filter"),
+                                                           "%s: <a href='http://eden.sahanafoundation.org/wiki/S3XRC/RESTfulAPI/URLFormat#BasicQueryFormat' target='_blank'>Trac</a>" % \
+                                                            T("Uses the REST Query Format defined in"))),
+                           ),
+                     # @ToDo: Switch type to "json" & Test
+                     Field("data", "text",
+                           label = T("Attributes"),
+                           represent = lambda v: v or NONE,
+                           # Auto-populated by reading Shapefile
+                           readable = False,
+                           writable = False,
+                           ),
+                     # @ToDo
+                     #gis_refresh()(),
+                     cluster_attribute()(),
+                     s3_role_required(), # Single Role
+                     *s3_meta_fields())
 
         configure(tablename,
                   create_onaccept = self.gis_layer_shapefile_onaccept,
@@ -3724,21 +3699,6 @@ class S3MapModel(S3Model):
                   #update_onaccept = self.gis_layer_shapefile_onaccept_update,
                   super_entity = "gis_layer_entity",
                   )
-
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               # Styles
-        #               gis_style = "layer_id",
-        #               )
 
         # ---------------------------------------------------------------------
         # TMS
@@ -3784,19 +3744,6 @@ class S3MapModel(S3Model):
                   onaccept = gis_layer_onaccept,
                   super_entity = "gis_layer_entity",
                   )
-
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               )
 
         # ---------------------------------------------------------------------
         # WFS
@@ -3884,21 +3831,6 @@ class S3MapModel(S3Model):
                   onaccept = gis_layer_onaccept,
                   super_entity = "gis_layer_entity",
                   )
-
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               # Styles
-        #               gis_style = "layer_id",
-        #               )
 
         # ---------------------------------------------------------------------
         # WMS
@@ -4021,19 +3953,6 @@ class S3MapModel(S3Model):
                   super_entity = "gis_layer_entity",
                   )
 
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               )
-
         # ---------------------------------------------------------------------
         # XYZ
         # - e.g. used by OSM community for JOSM/Potlatch
@@ -4077,19 +3996,6 @@ class S3MapModel(S3Model):
                   onaccept = gis_layer_onaccept,
                   super_entity = "gis_layer_entity",
                   )
-
-        # Components (already done at Super Entity level)
-        #add_components(tablename,
-        #               # Configs
-        #               gis_config = {"link": "gis_layer_config",
-        #                             "pkey": "layer_id",
-        #                             "joinby": "layer_id",
-        #                             "key": "config_id",
-        #                             "actuate": "hide",
-        #                             "autocomplete": "name",
-        #                             "autodelete": False,
-        #                             },
-        #               )
 
         # ---------------------------------------------------------------------
         # GIS Cache
@@ -4147,19 +4053,38 @@ class S3MapModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
+    def gis_layer_geojson_deduplicate(item):
+
+        # Match if name is identical (URL may be empty at this stage)
+        data = item.data
+        name = data.get("name")
+        if not name:
+            return
+
+        table = item.table
+        duplicate = current.db(table.name == name).select(table.id,
+                                                          limitby=(0, 1)
+                                                          ).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
+
+    # -------------------------------------------------------------------------
+    @staticmethod
     def gis_layer_georss_deduplicate(item):
 
-        if item.tablename == "gis_layer_georss":
-            # Match if url is identical
-            table = item.table
-            data = item.data
-            url = data.url
-            query = (table.url == url)
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
+        # Match if url is identical
+        data = item.data
+        url = data.get("url")
+        if not url:
+            return
+
+        table = item.table
+        duplicate = current.db(table.url == url).select(table.id,
+                                                        limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -4168,20 +4093,21 @@ class S3MapModel(S3Model):
           @param item: An S3ImportJob object which includes all the details
                       of the record being imported
 
-          If the record is a duplicate then it will set the job method to update
+          If the record is a duplicate then it will set the item method to update
         """
 
-        if item.tablename == "gis_layer_kml":
-            # Match if url is identical
-            table = item.table
-            data = item.data
-            url = data.url
-            query = (table.url == url)
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
+        # Match if url is identical
+        data = item.data
+        url = data.get("url")
+        if not url:
+            return
+
+        table = item.table
+        duplicate = current.db(table.url == url).select(table.id,
+                                                        limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -4190,20 +4116,22 @@ class S3MapModel(S3Model):
           @param item: An S3ImportJob object which includes all the details
                       of the record being imported
 
-          If the record is a duplicate then it will set the job method to update
+          If the record is a duplicate then it will set the item method to update
         """
 
-        if item.tablename == "gis_layer_openstreetmap":
-            # Match if url1 is identical
-            table = item.table
-            data = item.data
-            url1 = data.url1
-            query = (table.url1 == url1)
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
+        # Match if url1 is identical
+        data = item.data
+        url = data.get("url1")
+        if not url:
+            return
+
+        table = item.table
+        duplicate = current.db(table.url1 == url).select(table.id,
+                                                         limitby=(0, 1)
+                                                         ).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -4212,22 +4140,21 @@ class S3MapModel(S3Model):
           @param item: An S3ImportJob object which includes all the details
                       of the record being imported
 
-          If the record is a duplicate then it will set the job method to update
+          If the record is a duplicate then it will set the item method to update
         """
 
-        if item.tablename == "gis_layer_wfs":
-            # Match if url is identical
-            table = item.table
-            data = item.data
-            featureType = data.featureType
-            url = data.url
-            query = (table.url == url) & \
-                    (table.featureType == featureType)
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
+        # Match if url is identical
+        table = item.table
+        data = item.data
+        featureType = data.featureType
+        url = data.url
+        query = (table.url == url) & \
+                (table.featureType == featureType)
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -4236,20 +4163,81 @@ class S3MapModel(S3Model):
           @param item: An S3ImportJob object which includes all the details
                       of the record being imported
 
-          If the record is a duplicate then it will set the job method to update
+          If the record is a duplicate then it will set the item method to update
         """
 
-        if item.tablename == "gis_layer_shapefile":
-            # Match if name is identical (not ideal)
-            table = item.table
-            data = item.data
-            name = data.name
-            query = (table.name == name)
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
+        # Match if name is identical (not ideal)
+        table = item.table
+        data = item.data
+        name = data.name
+        query = (table.name == name)
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def gis_layer_geojson_file_represent(file):
+        """ File representation """
+
+        if file:
+            try:
+                # Read the filename from the file
+                filename = current.db.gis_layer_geojson.file.retrieve(file)[0]
+            except IOError:
+                return current.T("File not found")
+            else:
+                return A(filename,
+                         _href=URL(c="static", f="cache",
+                                   args=["geojson", file]))
+        else:
+            return current.messages["NONE"]
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def gis_layer_geojson_onvalidation(form):
+        """
+            Check we have either a URL or a file
+        """
+
+        form_vars = form.vars
+        doc = form_vars.file
+
+        if doc is None:
+            # If this is a prepop, then file not in form
+            # Interactive forms with empty doc has this as "" not None
+            return
+
+        if not hasattr(doc, "file") and not doc and not form_vars.url:
+            msg = current.T("Either file upload or URL required.")
+            form.errors.file = msg
+            form.errors.url = msg
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def gis_layer_geojson_onaccept(form):
+        """
+            If we have a file, then set the URL to point to it
+        """
+
+        id = form.vars.id
+
+        table = current.s3db.gis_layer_geojson
+        record = current.db(table.id == id).select(table.id,
+                                                   table.file,
+                                                   limitby=(0, 1)).first()
+        if record and record.file:
+            # Use the filename to build the URL
+            record.update_record(url = URL(c="static", f="cache",
+                                           args=["geojson", record.file]),
+                                 # Set refresh to 0 (static file)
+                                 refresh = 0,
+                                 )
+
+        # Normal Layer onaccept
+        gis_layer_onaccept(form)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -4306,7 +4294,7 @@ class S3MapModel(S3Model):
             # Unzip the file
             import zipfile
             myfile = zipfile.ZipFile(fp)
-            for ext in ["dbf", "prj", "sbn", "sbx", "shp", "shx"]:
+            for ext in ("dbf", "prj", "sbn", "sbx", "shp", "shx"):
                 fileName = "%s.%s" % (layerName, ext)
                 try:
                     file = myfile.read(fileName)
@@ -4642,7 +4630,7 @@ class S3GISThemeModel(S3Model):
         return json.dumps(style)
 
 # =============================================================================
-class S3POIModel(S3Model):
+class S3PoIModel(S3Model):
     """
         Data Model for PoIs (Points of Interest)
     """
@@ -4650,10 +4638,12 @@ class S3POIModel(S3Model):
     names = ("gis_poi_type",
              #"gis_poi_type_tag",
              "gis_poi",
+             "gis_poi_id",
              )
 
     def model(self):
 
+        db = current.db
         T = current.T
         crud_strings = current.response.s3.crud_strings
         define_table = self.define_table
@@ -4661,14 +4651,15 @@ class S3POIModel(S3Model):
         # ---------------------------------------------------------------------
         # PoI Category
         #
+        # @ToDo: Optionally restrict by Feature Type?
+        #
         tablename = "gis_poi_type"
         define_table(tablename,
                      Field("name",
                            label = T("Name"),
                            requires = IS_NOT_EMPTY(),
                            ),
-                     # @ToDo: Write style file onaccept from this
-                     #self.gis_marker_id(),
+                     self.gis_marker_id(),
                      s3_comments(),
                      *s3_meta_fields())
 
@@ -4678,14 +4669,14 @@ class S3POIModel(S3Model):
                                       ondelete = "SET NULL",
                                       represent = represent,
                                       requires = IS_EMPTY_OR(
-                                        IS_ONE_OF(current.db, "gis_poi_type.id",
+                                        IS_ONE_OF(db, "gis_poi_type.id",
                                                   represent)),
                                       sortby = "name",
                                       )
 
         self.configure(tablename,
                        deduplicate = self.gis_poi_type_deduplicate,
-                       #onaccept = self.gis_poi_type_onaccept,
+                       onaccept = self.gis_poi_type_onaccept,
                        )
 
         crud_strings[tablename] = Storage(
@@ -4720,11 +4711,18 @@ class S3POIModel(S3Model):
                          # @ToDo: S3PoIWidget() to allow other resources to pickup the passed Lat/Lon/WKT
                          widget = S3LocationLatLonWidget(),
                      ),
+                     # Enable in Templates as-required
+                     self.org_organisation_id(readable = False,
+                                              writable = False,
+                                              ),
+                     # Enable in Templates as-required
+                     self.pr_person_id(readable = False,
+                                       writable = False,
+                                       ),
                      *s3_meta_fields())
 
-        ADD_POI = T("Create Point of Interest")
         crud_strings[tablename] = Storage(
-            label_create = ADD_POI,
+            label_create = T("Create Point of Interest"),
             title_display = T("Point of Interest Details"),
             title_list = T("Points of Interest"),
             title_update = T("Edit Point of Interest"),
@@ -4736,42 +4734,295 @@ class S3POIModel(S3Model):
             msg_record_deleted = T("Point of Interest deleted"),
             msg_list_empty = T("No Points of Interest currently available"))
 
+        represent = S3Represent(lookup=tablename)
+        poi_id = S3ReusableField("poi_id", "reference %s" % tablename,
+                                 label = T("Point of Interest"),
+                                 ondelete = "RESTRICT",
+                                 represent = represent,
+                                 requires = IS_EMPTY_OR(
+                                                IS_ONE_OF(db, "gis_poi.id",
+                                                          represent)
+                                                ),
+                                 sortby = "name",
+                                 )
+
+        self.configure(tablename,
+                       onaccept = self.gis_poi_onaccept,
+                       )
+
+        # Components
+        self.add_components(tablename,
+                            # Organisation Groups (Coalitions/Networks)
+                            org_group = {"link": "gis_poi_group",
+                                         "joinby": "poi_id",
+                                         "key": "group_id",
+                                         "actuate": "hide",
+                                         },
+                            # Format for InlineComponent/filter_widget
+                            gis_poi_group = "poi_id",
+                            )
+
         # Pass names back to global scope (s3.*)
-        return dict()
+        return dict(gis_poi_id = poi_id,
+                    )
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def gis_poi_type_deduplicate(job):
+    def gis_poi_type_deduplicate(item):
         """
-           If the record is a duplicate then it will set the job method to update
+           If the record is a duplicate then it will set the item method to update
         """
 
-        if job.tablename == "gis_poi_type":
-            table = job.table
-            data = job.data
-            name = data.get("name", None)
+        name = item.data.get("name", None)
+        if not name:
+            return
 
-            if not name:
-                return
+        table = item.table
+        duplicate = current.db(table.name == name).select(table.id,
+                                                          limitby=(0, 1)
+                                                          ).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
-            _duplicate = current.db(table.name == name).select(table.id,
-                                                               limitby=(0, 1)
-                                                               ).first()
-            if _duplicate:
-                job.id = _duplicate.id
-                job.method = job.METHOD.UPDATE
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def gis_poi_onaccept(form):
+        """
+            If the Comments are a Style then create a gis_style record for this
+            and blank the comment. Used for s3csv imports as we have no components & can't use an import_prep as we don't know the record_id
+        """
+
+        form_vars = form.vars
+        comments = form_vars.get("comments")
+        if not comments:
+            # Nothing to do
+            return
+
+        value = comments.replace("'", "\"")
+        try:
+            style = json.loads(value)
+        except:
+            # Not a style
+            return
+
+        db = current.db
+        s3db = current.s3db
+        try:
+            if "dumps" in db._adapter.driver_auto_json:
+                style = value
+            #else:
+            #    Use the JSON version
+        except:
+            # Use the JSON version
+            pass
+
+        # Lookup the PoI Type
+        table = s3db.gis_poi_type
+        poi_type = db(table.id == form_vars.poi_type_id).select(table.name,
+                                                                limitby=(0, 1)
+                                                                ).first()
+        try:
+            poi_type = poi_type.name
+        except:
+            # Bail
+            return
+
+        # Lookup the Layer
+        table = s3db.gis_layer_feature
+        query = (table.controller == "gis") & \
+                (table.function == "poi") & \
+                ((table.filter == None) | \
+                 (table.filter == "poi_type.name__typeof=%s" % poi_type))
+        postgres = current.deployment_settings.get_database_type() == "postgres"
+        if postgres:
+            # None is last
+            orderby = table.filter
+        else:
+            # None is 1st
+            orderby = ~table.filter
+        layer = db(query).select(table.layer_id,
+                                 table.filter,
+                                 limitby=(0, 1),
+                                 orderby = orderby
+                                 ).first()
+        try:
+            layer_id = layer.layer_id
+        except:
+            # No layer to style
+            current.log.warning("Couldn't find a layer to use for this PoI Style")
+            return
+
+        # Create a Style record
+        record_id = form_vars.id
+        table = s3db.gis_style
+        table.insert(layer_id = layer_id,
+                     record_id = record_id,
+                     style = style,
+                     )
+
+        # Cleanup the Comments
+        db(db.gis_poi.id == record_id).update(comments = None)
 
     # -------------------------------------------------------------------------
     @staticmethod
     def gis_poi_type_onaccept(form):
         """
-            @ToDo: Create a Feature Layer for this type
+            Update Style for the PoIs layer
+
+            @ToDo: deployment_setting to add a new Feature Layer for new PoI types
         """
 
-        return
+        db = current.db
+        s3db = current.s3db
+
+        # Read all PoI Types and their Markers
+        ptable = s3db.gis_poi_type
+        mtable = s3db.gis_marker
+        query = (ptable.deleted == False) & \
+                (mtable.id == ptable.marker_id)
+        rows = db(query).select(ptable.name,
+                                mtable.image,
+                                )
+
+        # Build Style File
+        style = []
+        sappend = style.append
+        for row in rows:
+            marker = row["gis_marker.image"]
+            if marker:
+                cat = {"prop": "poi_type_id",
+                       "cat": row["gis_poi_type.name"],
+                       "externalGraphic": "img/markers/%s" % marker
+                       }
+                sappend(cat)
+
+        #try:
+        #    driver_auto_json = current.db._adapter.driver_auto_json
+        #except:
+        #    current.log.warning("Update Web2Py to 2.9.11 to get native JSON support")
+        #    driver_auto_json = []
+        #if "dumps" not in driver_auto_json:
+        #    style = json.dumps(style, separators=SEPARATORS)
+
+        # Find correct Layer record
+        ltable = s3db.gis_layer_feature
+        query = (ltable.controller == "gis") & \
+                (ltable.function == "poi") & \
+                (ltable.filter == None) & \
+                (ltable.deleted == False)
+        row = db(query).select(ltable.layer_id,
+                               limitby=(0, 1)
+                               ).first()
+        if row:
+            layer_id = row.layer_id
+        else:
+            # Create It
+            f_id = ltable.insert(controller = "gis",
+                                 function = "poi",
+                                 attr_fields = ["name", "poi_type_id"],
+                                 name = "PoIs",
+                                 )
+            record = dict(id=f_id)
+            s3db.update_super(ltable, record)
+            layer_id = record["layer_id"]
+
+        # Find correct Style record
+        stable = s3db.gis_style
+        query = (stable.layer_id == layer_id) & \
+                (stable.record_id == None)
+        styles = db(query).select(stable.id,
+                                  stable.config_id,
+                                  )
+        none_excluded = False
+        if len(styles) > 1:
+            # Exclude all rows for different Map Configs
+            config = current.gis.get_config()
+            config_id = config.id
+            styles.exclude(lambda row: (row.config_id == config_id) & \
+                                       (row.config_id != None))
+
+        if len(styles) > 1:
+            # Exclude all rows for the default Map Config
+            # (thus leaving just our own)
+            styles.exclude(lambda row: row.config_id == None)
+            none_excluded = True
+
+        if len(styles) == 1:
+            # Update it
+            _style = styles.first()
+            _style.update_record(style = style)
+
+        elif len(styles) == 0:
+            # Create It
+            data = dict(layer_id = layer_id,
+                        popup_format = "{name} ({poi_type_id})",
+                        style = style,
+                        )
+            if none_excluded:
+                data["config_id"] = config_id
+            stable.insert(**data)
+
+        else:
+            # Can't differentiate
+            current.log.warning("Unable to update GIS PoI Style as there are multiple possible")
 
 # =============================================================================
-class S3POIFeedModel(S3Model):
+class S3PoIOrganisationGroupModel(S3Model):
+    """
+        PoI Organisation Group Model
+
+        This model allows PoIs to link to Organisation Groups
+    """
+
+    names = ("gis_poi_group",
+             )
+
+    def model(self):
+
+        #T = current.T
+
+        # ---------------------------------------------------------------------
+        # PoIs <> Organisation Groups - Link table
+        #
+        tablename = "gis_poi_group"
+        self.define_table(tablename,
+                          self.gis_poi_id(empty = False,
+                                          ondelete = "CASCADE",
+                                          ),
+                          self.org_group_id(empty = False,
+                                            ondelete = "CASCADE",
+                                            ),
+                          *s3_meta_fields())
+
+        self.configure(tablename,
+                       deduplicate = self.gis_poi_group_deduplicate,
+                       )
+
+        # Pass names back to global scope (s3.*)
+        return dict()
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def gis_poi_group_deduplicate(item):
+        """ Import item de-duplication """
+
+        data = item.data
+        poi_id = data.get("poi_id", None)
+        group_id = data.get("group_id", None)
+        if poi_id and group_id:
+            table = item.table
+            query = (table.poi_id == poi_id) & \
+                    (table.group_id == group_id)
+            duplicate = current.db(query).select(table.id,
+                                                 limitby=(0, 1)).first()
+
+            if duplicate:
+                item.id = duplicate.id
+                item.method = item.METHOD.UPDATE
+
+# =============================================================================
+class S3PoIFeedModel(S3Model):
     """ Data Model for PoI feeds """
 
     names = ("gis_poi_feed",)
@@ -4832,7 +5083,7 @@ def gis_opacity():
                            default = 1.0,
                            label = OPACITY,
                            requires = IS_FLOAT_IN_RANGE(0, 1),
-                           widget = S3SliderWidget(0, 1, 0.01, "float"),
+                           widget = S3SliderWidget(0.01, "float"),
                            comment = DIV(_class="tooltip",
                                          _title="%s|%s" % (OPACITY,
                                                            T("Left-side is fully transparent (0), right-side is opaque (1.0)."))),
@@ -4987,66 +5238,23 @@ class gis_LocationRepresent(S3Represent):
         settings = current.deployment_settings
         # Translation uses gis_location_name & not T()
         translate = settings.get_L10n_translate_gis_location()
-
+        language = current.session.s3.language
+        if language == settings.get_L10n_default_language():
+            translate = False
+        # Iframe height(Link)
+        self.iheight = settings.get_gis_map_selector_height()
         address_only = address_only or \
                        settings.get_gis_location_represent_address_only()
         show_marker_icon = True if address_only == "icon" else False
         self.address_only = address_only
         self.show_marker_icon = show_marker_icon
-
         self.sep = sep
-        self.show_name = show_name
-
         if sep:
-            # Separator to place between all elements in the hierarchy
-            fields = ["name",
-                      "level",
-                      "path",
-                      "L0",
-                      "L1",
-                      "L2",
-                      "L3",
-                      "L4",
-                      "L5",
-                      ]
-            self.multi_country = len(current.deployment_settings.get_gis_countries()) != 1
-        elif address_only and not show_marker_icon:
-            fields = ["id",
-                      "name",
-                      "level",
-                      "parent",
-                      "path",
-                      "L0",
-                      "L1",
-                      "L2",
-                      "L3",
-                      "L4",
-                      "L5",
-                      "addr_street",
-                      "addr_postcode",
-                      ]
-        else:
-            fields = ["id",
-                      "name",
-                      "level",
-                      "parent",
-                      "path",
-                      "L0",
-                      "L1",
-                      "L2",
-                      "L3",
-                      "L4",
-                      "L5",
-                      "addr_street",
-                      "addr_postcode",
-                      "inherited",
-                      "lat",
-                      "lon",
-                      ]
+            self.multi_country = len(settings.get_gis_countries()) != 1
+        self.show_name = show_name
 
         super(gis_LocationRepresent,
               self).__init__(lookup="gis_location",
-                             fields=fields,
                              show_link=show_link,
                              translate=translate,
                              multiple=multiple)
@@ -5061,10 +5269,17 @@ class gis_LocationRepresent(S3Represent):
             @param v: the representation of the key
             @param row: the row with this key (unused here)
         """
-
+        if k is None:
+            return "-"
+        settings = current.deployment_settings
+        iheight = settings.get_gis_map_selector_height()
+        popup = settings.get_gis_popup_location_link()
         return A(v,
                  _style="cursor:pointer;cursor:hand",
-                 _onclick="s3_showMap(%i);return false" % k)
+                 _onclick="s3_viewMap(%i,%i,'%s');return false" % (k,
+                                                                   iheight,
+                                                                   popup),
+                 )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -5110,6 +5325,117 @@ class gis_LocationRepresent(S3Represent):
             return text
 
     # -------------------------------------------------------------------------
+    def lookup_rows(self, key, values, fields=None):
+        """
+            Custom lookup method for Location(GIS) rows.Parameters
+            key and fields are not used, but are kept for API
+            compatiblity reasons.
+
+            @param values: the gis_location IDs
+        """
+        db = current.db
+        s3db = current.s3db
+        ltable = s3db.gis_location
+        table = s3db.gis_location_name
+        count = len(values)
+        sep = self.sep
+        translate = self.translate
+
+        # Initialized here to keep the init lightweight
+        fields = [ltable.id,
+                  ltable.name,
+                  ltable.level,
+                  ltable.path,
+                  ltable.L0,
+                  ltable.L1,
+                  ltable.L2,
+                  ltable.L3,
+                  ltable.L4,
+                  ltable.L5,
+                  ]
+        if sep:
+            # Separator to place between all elements in the hierarchy
+            gis_fields = fields
+        elif self.address_only and not self.show_marker_icon:
+            gis_fields = fields + [ltable.parent,
+                                   ltable.addr_street,
+                                   ltable.addr_postcode]
+        else:
+            gis_fields = fields + [ltable.parent,
+                                   ltable.addr_street,
+                                   ltable.addr_postcode,
+                                   ltable.inherited,
+                                   ltable.lat,
+                                   ltable.lon]
+        if count == 1:
+            query = (ltable.id == values[0])
+        else:
+            query = (ltable.id.belongs(values))
+
+        rows = db(query).select(limitby = (0, count),
+                                *gis_fields)
+        location_ids = []
+        paths = self.paths = {}
+        if sep or translate:
+            for row in rows:
+                path = row.path
+                if not path:
+                    path = current.gis.update_location_tree(row)
+                split_path = path.split("/")
+                paths[row.id] = split_path
+                location_ids += split_path
+            location_ids = set(location_ids)
+
+        if translate:
+            query = (table.deleted == False) & \
+                    (table.language == current.session.s3.language)
+            count = len(location_ids)
+            if count == 1:
+                query &= (table.location_id == row.id)
+            else:
+                query &= (table.location_id.belongs(location_ids))
+            self.l10n = db(query).select(table.location_id,
+                                         table.name_l10n,
+                                         limitby = (0, count),
+                                         ).as_dict(key="location_id")
+        return rows
+
+    # -------------------------------------------------------------------------
+    def alt_represent_row(self, row):
+        """
+            Different Entry point for S3LocationSelector(intends to use represent_row)
+            - Lookup L10n, path
+            - then call represent_row
+        """
+        sep = self.sep
+        translate = self.translate
+        self.paths = {}
+
+        if sep or translate:
+            path = row.path
+            if not path:
+                path = current.gis.update_location_tree(row)
+            split_path = path.split("/")
+            self.paths[row.id] = split_path
+            location_ids = set(split_path)
+
+        # Lookup l10n
+        if translate:
+            table = current.s3db.gis_location_name
+            query = (table.deleted == False) & \
+                    (table.language == current.session.s3.language)
+            count = len(location_ids)
+            if count == 1:
+                query &= (table.location_id == row.id)
+            else:
+                query &= (table.location_id.belongs(location_ids))
+            self.l10n = current.db(query).select(table.location_id,
+                                                 table.name_l10n,
+                                                 limitby = (0, count),
+                                                 ).as_dict(key="location_id")
+        return self.represent_row(row)
+
+    # -------------------------------------------------------------------------
     def represent_row(self, row):
         """
             Represent a single Row
@@ -5121,32 +5447,11 @@ class gis_LocationRepresent(S3Represent):
 
         sep = self.sep
         translate = self.translate
-        if sep or translate:
-            path = row.path
-            if not path:
-                path = current.gis.update_location_tree(row)
-            ids = path.split("/")
+        ids = self.paths.get(row.id)
+
         if translate:
-            language = current.session.s3.language
-            if language == current.deployment_settings.get_L10n_default_language():
-                translate = False
-            else:
-                s3db = current.s3db
-                table = s3db.gis_location_name
-                query = (table.deleted == False) & \
-                        (table.language == language)
-                if len(ids) == 1:
-                    query &= (table.location_id == row.id)
-                    limitby = (0, 1)
-                else:
-                    query &= (table.location_id.belongs(ids))
-                    limitby = (0, len(ids))
-                l10n = current.db(query).select(table.location_id,
-                                                table.name_l10n,
-                                                limitby = limitby,
-                                                ).as_dict(key="location_id")
-        if translate:
-            loc = l10n.get(row.id, None)
+            l10n = self.l10n
+            loc = l10n.get(row.id)
             if loc:
                 name = loc["name_l10n"]
             else:
@@ -5276,7 +5581,10 @@ class gis_LocationRepresent(S3Represent):
                     represent = name or "ID: %s" % row.id
 
                 if has_lat_lon and self.show_marker_icon:
-                    script = '''s3_showMap(%i);return false''' % row.id
+                    popup = current.deployment_settings.get_gis_popup_location_link()
+                    script = '''s3_viewMap(%i,%i,'%s');return false''' % (row.id,
+                                                                          self.iheight,
+                                                                          popup)
                     represent = SPAN(s3_unicode(represent),
                                      I(_class="icon icon-map-marker",
                                        _title=self.lat_lon_represent(row),
@@ -5333,6 +5641,50 @@ def gis_layer_represent(id, row=None, show_link=True):
                                 ))
 
     return represent
+
+# =============================================================================
+def gis_marker_retrieve(filename, path=None):
+    """
+        custom_retrieve to override web2py DAL's standard retrieve,
+        as that checks filenames for uuids, so doesn't work with
+        pre-populated files in static
+    """
+
+    if not path:
+        # NB This is also used by gis_config (& not gis_layer_geojson) but path
+        #    always seems to be supplied so no issues so far
+        path = current.db.gis_marker.image.uploadfolder
+
+    if "/" in filename:
+        _path, filename = filename.split("/")
+        image = open(os.path.join(path, _path, filename), "rb")
+    else:
+        image = open(os.path.join(path, filename), "rb")
+    return (filename, image)
+
+# =============================================================================
+def gis_marker_retrieve_file_properties(filename, path=None):
+    """
+        Custom method to override web2py DAL's standard
+        retrieve_file_properties, as that checks filenames
+        for uuids, so doesn't work with pre-populated files
+        in static. This method is required for XML exports.
+    """
+
+    if not path:
+        # NB This is also used by gis_config (& not gis_layer_geojson) but path
+        #    always seems to be supplied so no issues so far
+        path = current.db.gis_marker.image.uploadfolder
+
+    # @ToDo: should probably use os.sep here rather than "/"
+    if "/" in filename:
+        _path = filename.split("/", 1)
+        if len(_path) > 1:
+            _path, filename = _path
+        else:
+            _path, filename = "", filename
+        path = os.path.join(path, _path)
+    return {"path": path, "filename": filename}
 
 # =============================================================================
 def gis_rheader(r, tabs=[]):

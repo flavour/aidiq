@@ -2,7 +2,7 @@
 
 """ S3 Data Model Extensions
 
-    @copyright: 2009-2014 (c) Sahana Software Foundation
+    @copyright: 2009-2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -30,7 +30,6 @@
 __all__ = ("S3Model",)
 
 from gluon import *
-from gluon.dal import Table
 # Here are dependencies listed for reference:
 #from gluon import current
 #from gluon.dal import Field
@@ -38,6 +37,7 @@ from gluon.dal import Table
 from gluon.storage import Storage
 from gluon.tools import callback
 
+from s3dal import Table
 from s3navigation import S3ScriptItem
 from s3resource import S3Resource
 from s3validators import IS_ONE_OF
@@ -322,6 +322,11 @@ class S3Model(object):
             Helper function to load all models
         """
 
+        s3 = current.response.s3
+        if s3.all_models_loaded:
+            # Already loaded
+            return
+
         models = current.models
 
         # Load models
@@ -337,6 +342,8 @@ class S3Model(object):
         S3ImportJob.define_job_table()
         S3ImportJob.define_item_table()
 
+        # Don't do this again within the current request cycle
+        s3.all_models_loaded = True
         return
 
     # -------------------------------------------------------------------------
@@ -508,7 +515,7 @@ class S3Model(object):
                     actuate = None
                     autodelete = False
                     autocomplete = None
-                    values = None
+                    defaults = None
                     multiple = True
                     filterby = None
                     filterfor = None
@@ -539,7 +546,7 @@ class S3Model(object):
                     actuate = link.get("actuate")
                     autodelete = link.get("autodelete", False)
                     autocomplete = link.get("autocomplete")
-                    values = link.get("values")
+                    defaults = link.get("defaults")
                     multiple = link.get("multiple", True)
                     filterby = link.get("filterby")
                     filterfor = link.get("filterfor")
@@ -556,7 +563,7 @@ class S3Model(object):
                                     actuate=actuate,
                                     autodelete=autodelete,
                                     autocomplete=autocomplete,
-                                    values=values,
+                                    defaults=defaults,
                                     multiple=multiple,
                                     filterby=filterby,
                                     filterfor=filterfor)
@@ -646,7 +653,7 @@ class S3Model(object):
                 ltable = None
 
             prefix, name = tn.split("_", 1)
-            component = Storage(values=hook.values,
+            component = Storage(defaults=hook.defaults,
                                 multiple=hook.multiple,
                                 tablename=tn,
                                 table=ctable,
@@ -1199,9 +1206,9 @@ class S3Model(object):
 
             # Delete the super record
             sresource = define_resource(sname, id=value)
-            success = sresource.delete(cascade=True)
+            sresource.delete(cascade=True)
 
-            if not success:
+            if sresource.error:
                 # Restore the super key
                 # @todo: is this really necessary? => caller must roll back
                 #        anyway in this case, which would automatically restore

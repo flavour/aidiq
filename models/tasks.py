@@ -13,38 +13,33 @@ def maintenance(period="daily"):
         - these are read from the template
     """
 
-    mod = "applications.%s.private.templates.%s.maintenance as maintenance" % \
-                    (appname, settings.get_template())
-    try:
-        exec("import %s" % mod)
-    except ImportError, e:
-        # No Custom Maintenance available, use the default
-        exec("import applications.%s.private.templates.default.maintenance as maintenance" % appname)
+    maintenance = None
+    result = "NotImplementedError"
 
-    if period == "daily":
-        result = maintenance.Daily()()
-    else:
-        result = "NotImplementedError"
+    template = settings.get_template()
+    if template != "default":
+        # Try import maintenance routine from template
+        package = "applications.%s.%s.templates.%s" % \
+                  (appname, settings.get_template_location(), template)
+        name = "maintenance"
+        try:
+            maintenance = getattr(__import__(package, fromlist=[name]), name)
+        except (ImportError, AttributeError):
+            pass
+    if maintenance is None:
+        try:
+            # Fallback to default maintenance routine
+            from templates.default import maintenance
+        except ImportError:
+            pass
+    if maintenance is not None:
+        if period == "daily":
+            result = maintenance.Daily()()
+        db.commit()
 
-    db.commit()
     return result
 
 tasks["maintenance"] = maintenance
-
-# -----------------------------------------------------------------------------
-def crop_image(path, x1, y1, x2, y2, width):
-    """
-        Crop Image - used by S3ImageCropWidget through IS_PROCESSED_IMAGE
-    """
-    from PIL import Image
-    image = Image.open(path)
-
-    scale_factor = image.size[0] / float(width)
-
-    points = map(int, map(lambda a: a * scale_factor, (x1, y1, x2, y2)))
-    image.crop(points).save(path)
-
-tasks["crop_image"] = crop_image
 
 # -----------------------------------------------------------------------------
 if settings.has_module("doc"):
@@ -489,6 +484,7 @@ if settings.has_module("setup"):
 
 # --------------------e--------------------------------------------------------
 if settings.has_module("stats"):
+
     def stats_demographic_update_aggregates(records=None, user_id=None):
         """
             Update the stats_demographic_aggregate table for the given
@@ -508,6 +504,7 @@ if settings.has_module("stats"):
 
     tasks["stats_demographic_update_aggregates"] = stats_demographic_update_aggregates
 
+    # -------------------------------------------------------------------------
     def stats_demographic_update_location_aggregate(location_level,
                                                     root_location_id,
                                                     parameter_id,
@@ -540,6 +537,7 @@ if settings.has_module("stats"):
 
     tasks["stats_demographic_update_location_aggregate"] = stats_demographic_update_location_aggregate
 
+    # -------------------------------------------------------------------------
     if settings.has_module("vulnerability"):
 
         def vulnerability_update_aggregates(records=None, user_id=None):
@@ -560,6 +558,7 @@ if settings.has_module("stats"):
 
         tasks["vulnerability_update_aggregates"] = vulnerability_update_aggregates
 
+        # ---------------------------------------------------------------------
         def vulnerability_update_location_aggregate(#location_level,
                                                     root_location_id,
                                                     parameter_id,
@@ -592,10 +591,61 @@ if settings.has_module("stats"):
 
         tasks["vulnerability_update_location_aggregate"] = vulnerability_update_location_aggregate
 
+# --------------------e--------------------------------------------------------
+if settings.has_module("disease"):
+
+    def disease_stats_update_aggregates(records=None, all=False, user_id=None):
+        """
+            Update the disease_stats_aggregate table for the given
+            disease_stats_data record(s)
+
+            @param records: JSON of Rows of disease_stats_data records to
+                            update aggregates for
+            @param user_id: calling request's auth.user.id or None
+        """
+        if user_id:
+            # Authenticate
+            auth.s3_impersonate(user_id)
+        # Run the Task & return the result
+        result = s3db.disease_stats_update_aggregates(records, all)
+        db.commit()
+        return result
+
+    tasks["disease_stats_update_aggregates"] = disease_stats_update_aggregates
+
+    # -------------------------------------------------------------------------
+    def disease_stats_update_location_aggregates(location_id,
+                                                 children,
+                                                 parameter_id,
+                                                 dates,
+                                                 user_id=None):
+        """
+            Update the disease_stats_aggregate table for the given location and parameter
+            - called from within disease_stats_update_aggregates
+
+            @param location_id: location to aggregate at
+            @param children: locations to aggregate from
+            @param parameter_id: parameter to aggregate
+            @param dates: dates to aggregate for
+            @param user_id: calling request's auth.user.id or None
+        """
+        if user_id:
+            # Authenticate
+            auth.s3_impersonate(user_id)
+        # Run the Task & return the result
+        result = s3db.disease_stats_update_location_aggregates(location_id,
+                                                               children,
+                                                               parameter_id,
+                                                               dates,
+                                                               )
+        db.commit()
+        return result
+
+    tasks["disease_stats_update_location_aggregates"] = disease_stats_update_location_aggregates
+
 # -----------------------------------------------------------------------------
 if settings.has_module("sync"):
 
-    # -----------------------------------------------------------------------------
     def sync_synchronize(repository_id, user_id=None, manual=False):
         """
             Run all tasks for a repository, to be called from scheduler

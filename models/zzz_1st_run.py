@@ -141,6 +141,8 @@ if len(pop_list) > 0:
 
     # Override authorization
     auth.override = True
+    # No location tree updates
+    gis.disable_update_location_tree = True
 
     # Load all Models to ensure all DB tables present
     s3db.load_all_models()
@@ -242,19 +244,25 @@ if len(pop_list) > 0:
         if pop_setting == 1:
             # Populate with the default data
             path = path_join(request_folder,
-                             "private",
+                             "modules",
                              "templates",
                              "default")
             bi.perform_tasks(path)
         else:
             path = path_join(request_folder,
-                             "private",
+                             "modules",
                              "templates",
                              pop_setting)
-            if os.path.exists(path):
-                bi.perform_tasks(path)
-            else:
-                print >> sys.stderr, "Unable to install data %s no valid directory found" % pop_setting
+            if not os.path.exists(path):
+                # Legacy template?
+                path = path_join(request_folder,
+                                 "private",
+                                 "templates",
+                                 pop_setting)
+                if not os.path.exists(path):
+                    print >> sys.stderr, "Unable to install data %s no valid directory found" % pop_setting
+                    continue
+            bi.perform_tasks(path)
 
         grandTotalEnd = datetime.datetime.now()
         duration = grandTotalEnd - grandTotalStart
@@ -284,6 +292,8 @@ if len(pop_list) > 0:
 
     # Restore Auth
     auth.override = False
+    # Enable location tree updates
+    gis.disable_update_location_tree = False
 
     # Update Location Tree (disabled during prepop)
     start = datetime.datetime.now()
@@ -293,6 +303,14 @@ if len(pop_list) > 0:
 
     # Countries are only editable by MapAdmin
     db(db.gis_location.level == "L0").update(owned_by_group=map_admin)
+
+    if has_module("disease"):
+        # Populate disease_stats_aggregate (disabled during prepop)
+        # - needs to be done after locations
+        start = datetime.datetime.now()
+        s3db.disease_stats_rebuild_all_aggregates()
+        end = datetime.datetime.now()
+        print >> sys.stdout, "Disease Statistics data aggregation completed in %s" % (end - start)
 
     if has_module("stats"):
         # Populate stats_demographic_aggregate (disabled during prepop)

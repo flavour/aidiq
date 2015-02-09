@@ -2,7 +2,7 @@
 
 """ S3 Profile
 
-    @copyright: 2009-2014 (c) Sahana Software Foundation
+    @copyright: 2009-2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -35,6 +35,7 @@ from gluon.storage import Storage
 from s3crud import S3CRUD
 from s3report import S3Report
 from s3query import FS
+from s3widgets import ICON
 
 # =============================================================================
 class S3Profile(S3CRUD):
@@ -190,8 +191,8 @@ class S3Profile(S3CRUD):
                                         "off": hide,
                                         },
                                 ),
-                           I(" ", _class="icon-down", _style=style_show),
-                           I(" ", _class="icon-up", _style=style_hide),
+                           ICON("down", _style=style_show),
+                           ICON("up", _style=style_hide),
                            data = {"hidden": hidden},
                            _class="form-toggle action-lnk",
                            )
@@ -320,7 +321,7 @@ class S3Profile(S3CRUD):
             label = current.T(label)
         icon = widget.get("icon", "")
         if icon:
-            icon = TAG[""](I(_class=icon), " ")
+            icon = ICON(icon)
 
         _class = self._lookup_class(r, widget)
 
@@ -416,7 +417,7 @@ class S3Profile(S3CRUD):
                         representation="dl")
         data = datalist.html(ajaxurl=ajaxurl,
                              pagesize=pagesize,
-                             empty = P(I(_class="icon-folder-open-alt"),
+                             empty = P(ICON("folder-open-alt"),
                                        BR(),
                                        S3CRUD.crud_string(tablename,
                                                           "msg_no_match"),
@@ -435,7 +436,7 @@ class S3Profile(S3CRUD):
             label = T(label)
         icon = widget.get("icon", "")
         if icon:
-            icon = TAG[""](I(_class=icon), " ")
+            icon = ICON(icon)
 
         if pagesize and numrows > pagesize:
             # Button to display the rest of the records in a Modal
@@ -513,8 +514,6 @@ class S3Profile(S3CRUD):
                                  get_config("list_fields", None))
         if not list_fields:
             list_fields = [f for f in table.fields if table[f].readable]
-            if "id" not in list_fields:
-                list_fields.append("id")
 
         # Widget filter option
         widget_filter = widget.get("filter", None)
@@ -539,8 +538,8 @@ class S3Profile(S3CRUD):
         representation = r.representation
         get_vars = self.request.get_vars
         if representation == "aadata":
-            start = get_vars.get("iDisplayStart", None)
-            limit = get_vars.get("iDisplayLength", 0)
+            start = get_vars.get("displayStart", None)
+            limit = get_vars.get("pageLength", 0)
         else:
             start = get_vars.get("start", None)
             limit = get_vars.get("limit", 0)
@@ -564,12 +563,10 @@ class S3Profile(S3CRUD):
             s3 = current.response.s3
 
             # How many records per page?
-            if s3.dataTable_iDisplayLength:
-                display_length = s3.dataTable_iDisplayLength
+            if s3.dataTable_pageLength:
+                display_length = s3.dataTable_pageLength
             else:
                 display_length = widget.get("pagesize", 10)
-            if not display_length:
-                display_length = 10
 
             # ORDERBY fallbacks: widget->resource->default
             orderby = widget.get("orderby")
@@ -581,8 +578,10 @@ class S3Profile(S3CRUD):
             # Server-side pagination?
             if not s3.no_sspag:
                 dt_pagination = "true"
-                if not limit:
+                if not limit and display_length is not None:
                     limit = 2 * display_length
+                else:
+                    limit = None
             else:
                 dt_pagination = "false"
 
@@ -602,7 +601,7 @@ class S3Profile(S3CRUD):
             empty = DIV(empty_str, _class="empty")
 
             dtargs["dt_pagination"] = dt_pagination
-            dtargs["dt_displayLength"] = display_length
+            dtargs["dt_pageLength"] = display_length
             # @todo: fix base URL (make configurable?) to fix export options
             s3.no_formats = True
             dtargs["dt_base_url"] = r.url(method="", vars={})
@@ -638,7 +637,7 @@ class S3Profile(S3CRUD):
                 label = current.T(label)
             icon = widget.get("icon", "")
             if icon:
-                icon = TAG[""](I(_class=icon), " ")
+                icon = ICON(icon)
 
             _class = self._lookup_class(r, widget)
 
@@ -688,21 +687,21 @@ class S3Profile(S3CRUD):
                 totalrows = displayrows
 
             # Echo
-            sEcho = int(get_vars.sEcho or 0)
+            draw = int(get_vars.draw or 0)
 
             # Representation
             if dt is not None:
                 data = dt.json(totalrows,
                                displayrows,
                                list_id,
-                               sEcho,
+                               draw,
                                **dtargs)
             else:
-                data = '{"iTotalRecords":%s,' \
-                       '"iTotalDisplayRecords":0,' \
+                data = '{"recordsTotal":%s,' \
+                       '"recordsFiltered":0,' \
                        '"dataTable_id":"%s",' \
-                       '"sEcho":%s,' \
-                       '"aaData":[]}' % (totalrows, list_id, sEcho)
+                       '"draw":%s,' \
+                       '"data":[]}' % (totalrows, list_id, draw)
 
             return data
 
@@ -725,7 +724,7 @@ class S3Profile(S3CRUD):
             label = current.T(label)
         icon = widget.get("icon", "")
         if icon:
-            icon = TAG[""](I(_class=icon), " ")
+            icon = ICON(icon)
 
         context = widget.get("context", None)
         tablename = widget.get("tablename", None)
@@ -743,6 +742,8 @@ class S3Profile(S3CRUD):
             readonly = not current.auth.s3_has_permission("create", tablename)
 
         sqlform = widget.get("sqlform", None)
+        if not sqlform:
+            sqlform = resource.get_config("crud_form")
         if not sqlform:
             from s3forms import S3SQLDefaultForm
             sqlform = S3SQLDefaultForm()
@@ -769,7 +770,6 @@ class S3Profile(S3CRUD):
                        onvalidation = onvalidation,
                        onaccept = onaccept,
                        )
-
         _class = self._lookup_class(r, widget)
 
         # Render the widget
@@ -801,7 +801,7 @@ class S3Profile(S3CRUD):
             label = T(label)
         icon = widget.get("icon", "")
         if icon:
-            icon = TAG[""](I(_class=icon), " ")
+            icon = ICON(icon)
 
         context = widget.get("context", None)
         # Map widgets have no separate tablename
@@ -917,7 +917,7 @@ class S3Profile(S3CRUD):
                                    )
 
         # Button to go full-screen
-        fullscreen = A(I(_class="icon icon-fullscreen"),
+        fullscreen = A(ICON("fullscreen"),
                        _href=URL(c="gis", f="map_viewing_client"),
                        _class="gis_fullscreen_map-btn",
                        # If we need to support multiple maps on a page
@@ -982,7 +982,7 @@ class S3Profile(S3CRUD):
             label = current.T(label)
         icon = widget.get("icon", "")
         if icon:
-            icon = TAG[""](I(_class=icon), " ")
+            icon = ICON(icon)
 
         _class = self._lookup_class(r, widget)
 
@@ -1088,7 +1088,7 @@ class S3Profile(S3CRUD):
 
             elif current.deployment_settings.ui.formstyle == "bootstrap":
                 # Bootstrap-style action icon
-                create = A(I(_class="icon icon-plus-sign small-add"),
+                create = A(ICON("plus-sign", _class="small-add"),
                            _href=add_url,
                            _class="s3_modal",
                            _title=label_create,

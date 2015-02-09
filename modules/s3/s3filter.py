@@ -2,7 +2,7 @@
 
 """ Framework for filtered REST requests
 
-    @copyright: 2013-14 (c) Sahana Software Foundation
+    @copyright: 2013-15 (c) Sahana Software Foundation
     @license: MIT
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
@@ -38,6 +38,7 @@ __all__ = ("S3DateFilter",
            "S3LocationFilter",
            "S3OptionsFilter",
            "S3RangeFilter",
+           "S3SliderFilter",
            "S3TextFilter",
            "get_s3_filter_opts",
            )
@@ -68,7 +69,7 @@ from s3rest import S3Method
 from s3query import S3ResourceField, S3ResourceQuery, S3URLQuery
 from s3utils import s3_get_foreign_key, s3_unicode, S3TypeConverter
 from s3validators import *
-from s3widgets import S3DateWidget, S3DateTimeWidget, S3GroupedOptionsWidget, S3MultiSelectWidget, S3HierarchyWidget
+from s3widgets import ICON, S3DateWidget, S3DateTimeWidget, S3GroupedOptionsWidget, S3MultiSelectWidget, S3HierarchyWidget
 
 # Compact JSON encoding
 SEPARATORS = (",", ":")
@@ -281,16 +282,22 @@ class S3FilterWidget(object):
 
         # Extract the URL values to populate the widget
         variable = self.variable(resource, get_vars)
+
+        defaults = {}
+        for k, v in self.values.items():
+            selector = self._prefix(k)
+            defaults[selector] = v
+
         if type(variable) is list:
             values = Storage()
             for k in variable:
-                if k in self.values:
-                    values[k] = self.values[k]
+                if k in defaults:
+                    values[k] = default[k]
                 else:
                     values[k] = self._values(get_vars, k)
         else:
-            if variable in self.values:
-                values = self.values[variable]
+            if variable in defaults:
+                values = defaults[variable]
             else:
                 values = self._values(get_vars, variable)
 
@@ -324,7 +331,7 @@ class S3FilterWidget(object):
                                   "when rendered without resource." % \
                                   self.__class__.__name__)
             flist = self.field
-            if type(flist) is not list:
+            if not isinstance(flist, (list, tuple)):
                 flist = [flist]
             colnames = []
             for f in flist:
@@ -377,12 +384,22 @@ class S3FilterWidget(object):
         """
 
         alias = self.alias
-        if alias is None:
-            alias = "~"
-        if "." not in selector.split("$", 1)[0]:
-            return "%s.%s" % (alias, selector)
+        items = selector.split("$", 0)
+        head = items[0]
+        if "." in head:
+            if alias not in (None, "~"):
+                prefix, key = head.split(".", 1)
+                if prefix == "~":
+                    prefix = alias
+                elif prefix != alias:
+                    prefix = "%s.%s" % (alias, prefix)
+                items[0] = "%s.%s" % (prefix, key)
+                selector = "$".join(items)
         else:
-            return selector
+            if alias is None:
+                alias = "~"
+            selector = "%s.%s" % (alias, selector)
+        return selector
 
     # -------------------------------------------------------------------------
     def _selector(self, resource, fields):
@@ -572,14 +589,13 @@ class S3RangeFilter(S3FilterWidget):
         input_elements = DIV()
         ie_append = input_elements.append
 
+        _id = attr["_id"]
+        _variable = self._variable
         selector = self.selector
 
-        _variable = self._variable
-
-        id = attr["_id"]
         for operator in self.operator:
 
-            input_id = "%s-%s" % (id, operator)
+            input_id = "%s-%s" % (_id, operator)
 
             input_box = INPUT(_name=input_id,
                               _id=input_id,
@@ -726,6 +742,111 @@ class S3DateFilter(S3RangeFilter):
         return input_elements
 
 # =============================================================================
+class S3SliderFilter(S3RangeFilter):
+    """
+        Filter widget for Ranges which is controlled by a Slider instead of
+        INPUTs
+    """
+
+    _class = "slider-filter"
+
+    operator = ["ge", "le"]
+
+    # -------------------------------------------------------------------------
+    def widget(self, resource, values):
+        """
+            Render this widget as HTML helper object(s)
+
+            @param resource: the resource
+            @param values: the search values from the URL query
+        """
+
+        attr = self.attr
+
+        # CSS class and element ID
+        _class = self._class
+        if "_class" in attr and attr["_class"]:
+            _class = "%s %s" % (attr["_class"], _class)
+        else:
+            _class = _class
+        attr["_class"] = _class
+        _id = attr["_id"]
+
+        # Determine the field type
+        if resource:
+            rfield = S3ResourceField(resource, self.field)
+            field = rfield.field
+        else:
+            field = None
+        if not field:
+            # Unresolvable selector
+            return ""
+
+        # Options
+        step = self.opts.get("step", 1)
+        type = self.opts.get("type", "int")
+
+        # Generate the input elements
+        field = str(field)
+        fieldname = field.replace(".", "_")
+        selector = self.selector
+        _variable = self._variable
+        for operator in self.operator:
+            input_id = "%s-%s" % (_id, operator)
+            input = INPUT(_name = input_id,
+                          _disabled = True,
+                          _id = input_id,
+                          _style = "border:0",
+                          )
+            # Populate with the value, if given
+            # if user has not set any of the limits, we get [] in values.
+            variable = _variable(selector, operator)
+            value = values.get(variable, None)
+            if value not in [None, []]:
+                if type(value) is list:
+                    value = value[0]
+                input["_value"] = value
+                input["value"] = value
+
+        slider = DIV(_id="%s_slider" % fieldname, **attributes)
+
+        s3 = current.response.s3
+
+        validator = field.requires
+        if isinstance(validator, IS_EMPTY_OR):
+            validator = validator.other
+        _min = validator.minimum
+        # Max Value depends upon validator type
+        if isinstance(validator, IS_INT_IN_RANGE):
+            _max = validator.maximum - 1
+        elif isinstance(validator, IS_FLOAT_IN_RANGE):
+            _max = validator.maximum
+
+        if values is None:
+            # JSONify
+            value = "null"
+            script = '''i18n.slider_help="%s"''' % \
+                current.T("Click on the slider to choose a value")
+            s3.js_global.append(script)
+
+        if _type == "int":
+            script = '''S3.range_slider('%s',%i,%i,%i,%s)''' % (fieldname,
+                                                                _min,
+                                                                _max,
+                                                                step,
+                                                                values)
+        else:
+            # Float
+            script = '''S3.range_slider('%s',%f,%f,%f,%s)''' % (fieldname,
+                                                                _min,
+                                                                _max,
+                                                                step,
+                                                                values)
+        s3.jquery_ready.append(script)
+
+        return TAG[""](input1, input2, slider)
+
+# =============================================================================
 class S3LocationFilter(S3FilterWidget):
     """
         Hierarchical Location Filter Widget
@@ -836,14 +957,10 @@ class S3LocationFilter(S3FilterWidget):
             # Add one widget per level
             first = True
             hide = True
+            s3 = current.response.s3
             for level in levels:
                 # Dummy field
                 name = "%s-%s" % (base_name, level)
-                options = levels[level]["options"]
-                dummy_field = Storage(name=name,
-                                      type=ftype,
-                                      requires=IS_IN_SET(options,
-                                                         multiple=True))
                 # Unique ID/name
                 attr["_id"] = "%s-%s" % (base_id, level)
                 attr["_name"] = name
@@ -855,13 +972,36 @@ class S3LocationFilter(S3FilterWidget):
                                         noneSelectedText = T("Select %(location)s") % \
                                                              dict(location=levels[level]["label"]))
                 if first:
+                    # Visible Multiselect Widget added to the page
                     attr["_class"] = _class
-                elif hide:
-                    # Hide dropdowns other than first
-                    _class = "%s hide" % _class
-                    attr["_class"] = _class
-                    hide = False
-                widget = w(dummy_field, _values, **attr)
+                    options = levels[level]["options"]
+                    dummy_field = Storage(name=name,
+                                          type=ftype,
+                                          requires=IS_IN_SET(options,
+                                                             multiple=True))
+                    widget = w(dummy_field, _values, **attr)
+                else:
+                    # Hidden, empty dropdown added to the page, whose options and multiselect will be activated when the higher level is selected
+                    if hide:
+                        _class = "%s hide" % _class
+                        attr["_class"] = _class
+                        hide = False
+                    # Store the current jquery_ready
+                    jquery_ready = s3.jquery_ready
+                    # Build the widget with the MultiSelect activation script
+                    s3.jquery_ready = []
+                    dummy_field = Storage(name=name,
+                                          type=ftype,
+                                          requires=IS_IN_SET([],
+                                                             multiple=True))
+                    widget = w(dummy_field, _values, **attr)
+                    # Extract the MultiSelect activation script
+                    script = s3.jquery_ready[0]
+                    # Restore jquery_ready
+                    s3.jquery_ready = jquery_ready
+                    # Wrap the script & reinsert
+                    script = '''S3.%s=function(){%s}''' % (name.replace("-", "_"), script)
+                    s3.js_global.append(script)
                 w_append(widget)
                 first = False
 
@@ -930,47 +1070,47 @@ class S3LocationFilter(S3FilterWidget):
                         o[v] = name_l10n.get(v, v)
                     else:
                         o.append(v)
-            if inject_hierarchy:
-                if i == 0:
-                    h = hierarchy[_level]
-                    if v not in h:
-                        h[v] = {}
-                    parent = v
-                elif i == 1:
-                    h = hierarchy[_level][parent]
-                    if v not in h:
-                        h[v] = {}
-                    grandparent = parent
-                    parent = v
-                elif i == 2:
-                    h = hierarchy[_level][grandparent][parent]
-                    if v not in h:
-                        h[v] = {}
-                    greatgrandparent = grandparent
-                    grandparent = parent
-                    parent = v
-                elif i == 3:
-                    h = hierarchy[_level][greatgrandparent][grandparent][parent]
-                    if v not in h:
-                        h[v] = {}
-                    greatgreatgrandparent = greatgrandparent
-                    greatgrandparent = grandparent
-                    grandparent = parent
-                    parent = v
-                elif i == 4:
-                    h = hierarchy[_level][greatgreatgrandparent][greatgrandparent][grandparent][parent]
-                    if v not in h:
-                        h[v] = {}
-                    greatgreatgreatgrandparent = greatgreatgrandparent
-                    greatgreatgrandparent = greatgrandparent
-                    greatgrandparent = grandparent
-                    grandparent = parent
-                    parent = v
-                elif i == 5:
-                    h = hierarchy[_level][greatgreatgreatgrandparent][greatgreatgrandparent][greatgrandparent][grandparent][parent]
-                    if v not in h:
-                        h[v] = {}
-                i += 1
+                if inject_hierarchy:
+                    if i == 0:
+                        h = hierarchy[_level]
+                        if v not in h:
+                            h[v] = {}
+                        parent = v
+                    elif i == 1:
+                        h = hierarchy[_level][parent]
+                        if v not in h:
+                            h[v] = {}
+                        grandparent = parent
+                        parent = v
+                    elif i == 2:
+                        h = hierarchy[_level][grandparent][parent]
+                        if v not in h:
+                            h[v] = {}
+                        greatgrandparent = grandparent
+                        grandparent = parent
+                        parent = v
+                    elif i == 3:
+                        h = hierarchy[_level][greatgrandparent][grandparent][parent]
+                        if v not in h:
+                            h[v] = {}
+                        greatgreatgrandparent = greatgrandparent
+                        greatgrandparent = grandparent
+                        grandparent = parent
+                        parent = v
+                    elif i == 4:
+                        h = hierarchy[_level][greatgreatgrandparent][greatgrandparent][grandparent][parent]
+                        if v not in h:
+                            h[v] = {}
+                        greatgreatgreatgrandparent = greatgreatgrandparent
+                        greatgreatgrandparent = greatgrandparent
+                        greatgrandparent = grandparent
+                        grandparent = parent
+                        parent = v
+                    elif i == 5:
+                        h = hierarchy[_level][greatgreatgreatgrandparent][greatgreatgrandparent][greatgrandparent][grandparent][parent]
+                        if v not in h:
+                            h[v] = {}
+                    i += 1
 
     # -------------------------------------------------------------------------
     def _options(self, resource, inject_hierarchy=True, values=None):
@@ -1504,7 +1644,8 @@ class S3OptionsFilter(S3FilterWidget):
                             #query = accessible_query("read", ktable)
                         #query &= (key_field == field)
 
-                        query = (key_field == field)
+                        query = accessible_query("read", ktable) & \
+                                (key_field == field)
                         joins = rfield.join
                         for tname in joins:
                             query &= joins[tname]
@@ -1659,14 +1800,14 @@ class S3OptionsFilter(S3FilterWidget):
             opt_list = [(opt_value, s3_unicode(opt_value))
                         for opt_value in opt_keys if opt_value]
 
-        none = opts["none"]
-
-        try:
-            opt_list.sort(key=lambda item: item[1])
-        except:
-            opt_list.sort(key=lambda item: s3_unicode(item[1]))
+        if opts.get("sort", True):
+            try:
+                opt_list.sort(key=lambda item: item[1])
+            except:
+                opt_list.sort(key=lambda item: s3_unicode(item[1]))
         options = []
         empty = False
+        none = opts["none"]
         for k, v in opt_list:
             if k is None:
                 if none:
@@ -1684,6 +1825,12 @@ class S3OptionsFilter(S3FilterWidget):
             if none is True:
                 none = current.messages["NONE"]
             options.append((None, none))
+
+        if not opts.get("multiple") and not self.values:
+            # Browsers automatically select the first option in single-selects,
+            # but that doesn't filter the data, so the first option must be
+            # empty if we don't have a default:
+            options.insert(0, ("", ""))
 
         # Sort the options
         return (ftype, options, None)
@@ -1758,6 +1905,7 @@ class S3HierarchyFilter(S3FilterWidget):
                               represent = opts.get("represent"),
                               multiple = opts.get("multiple", True),
                               leafonly = opts.get("leafonly", True),
+                              filter = opts.get("filter"),
                               )
 
         # Render the widget
@@ -2046,8 +2194,8 @@ class S3FilterForm(object):
                                       },
                               _class="filter-advanced-label",
                               ),
-                         I(" ", _class="icon-down"),
-                         I(" ", _class="icon-up", _style="display:none"),
+                         ICON("down"),
+                         ICON("up", _style="display:none"),
                          _class=_class
                          )
             controls.append(advanced)
@@ -2272,34 +2420,58 @@ class S3FilterForm(object):
         filter_defaults = s3
         for level in ("filter_defaults", tablename):
             if level not in filter_defaults:
-                return None
+                filter_defaults = None
+                break
             filter_defaults = filter_defaults[level]
 
         # Which filter widgets do we need to apply defaults for?
         filter_widgets = resource.get_config("filter_widgets")
         for filter_widget in filter_widgets:
+
             # Do not apply defaults of hidden widgets because they are
             # not visible to the user:
             if filter_widget.opts.hidden:
                 continue
 
-            defaults = {}
+            has_default = False
+            if "default" in filter_widget.opts:
+                has_default = True
+            elif filter_defaults is None:
+                continue
+
+            defaults = set()
             variable = filter_widget.variable(resource, get_vars)
+            multiple = type(variable) is list
 
             # Do we have a corresponding value in get_vars?
-            if type(variable) is list:
+            if multiple:
                 for k in variable:
                     values = filter_widget._values(get_vars, k)
                     if values:
                         filter_widget.values[k] = values
                     else:
-                        defaults[k] = None
+                        defaults.add(k)
             else:
                 values = filter_widget._values(get_vars, variable)
                 if values:
                     filter_widget.values[variable] = values
                 else:
-                    defaults[variable] = None
+                    defaults.add(variable)
+
+            # Extract widget default
+            if has_default:
+                widget_default = filter_widget.opts["default"]
+                if not isinstance(widget_default, dict):
+                    if multiple:
+                        widget_default = dict((k, widget_default)
+                                              for k in variable)
+                    else:
+                        widget_default = {variable: widget_default}
+                for k in widget_default:
+                    if k not in filter_widget.values:
+                        defaults.add(k)
+            else:
+                widget_default = {}
 
             default_filters = {}
             for variable in defaults:
@@ -2307,9 +2479,14 @@ class S3FilterForm(object):
                     selector, operator = variable.split("__", 1)
                 else:
                     selector, operator = variable, None
-                if selector not in filter_defaults:
+
+                if filter_defaults and selector in filter_defaults:
+                    applicable_defaults = filter_defaults[selector]
+                elif variable in widget_default:
+                    applicable_defaults = widget_default[variable]
+                else:
                     continue
-                applicable_defaults = filter_defaults[selector]
+
                 if callable(applicable_defaults):
                     applicable_defaults = applicable_defaults(selector,
                                                               tablename=tablename)
@@ -2322,18 +2499,15 @@ class S3FilterForm(object):
                     default = applicable_defaults
                 else:
                     continue
-                if not isinstance(default, (list, type(None))):
+                if default is None:
+                    # Ignore (return [None] to filter for None)
+                    continue
+                elif not isinstance(default, list):
                     default = [default]
                 filter_widget.values[variable] = [str(v) if v is None else v
                                                   for v in default]
                 default_filters[variable] = ",".join(s3_unicode(v)
                                                      for v in default)
-
-            # @todo: make sure the applied default options are available in
-            #        the filter widget - otherwise the user can not deselect
-            #        them! (critical) Maybe enforce this by adding the default
-            #        values to the available options in S3OptionsFilter and
-            #        S3LocationFilter?
 
             # Apply to resource
             queries = S3URLQuery.parse(resource, default_filters)

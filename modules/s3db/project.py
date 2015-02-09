@@ -2,7 +2,7 @@
 
 """ Sahana Eden Project Model
 
-    @copyright: 2011-2014 (c) Sahana Software Foundation
+    @copyright: 2011-2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -51,6 +51,7 @@ __all__ = ("S3ProjectModel",
            "S3ProjectTaskIReportModel",
            "project_ActivityRepresent",
            "project_activity_year_options",
+           "project_ckeditor",
            "project_rheader",
            "project_task_controller",
            "project_theme_help_fields",
@@ -62,6 +63,7 @@ __all__ = ("S3ProjectModel",
            "project_project_filters",
            "project_project_list_layout",
            "project_task_list_layout",
+           "project_TaskRepresent",
            )
 
 import datetime
@@ -82,9 +84,9 @@ except:
     from gluon.contrib.simplejson.ordered_dict import OrderedDict
 
 from gluon import *
-from gluon.dal import Row
 from gluon.storage import Storage
 
+from s3dal import Row
 from ..s3 import *
 from s3layouts import S3AddResourceLink
 
@@ -182,7 +184,9 @@ class S3ProjectModel(S3Model):
                              label = T("Start Date")
                              ),
                      s3_date("end_date",
-                             label = T("End Date")
+                             label = T("End Date"),
+                             start_field = "project_project_start_date",
+                             default_interval = 12,
                              ),
                      # Free-text field with no validation (used by OCHA template currently)
                      Field("duration",
@@ -553,25 +557,27 @@ class S3ProjectModel(S3Model):
     def project_project_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename == "project_project":
-            data = item.data
+        data = item.data
+        # If we have a code, then assume this is unique, however the same
+        # project name may be used in multiple locations
+        code = data.get("code")
+        if code:
             table = item.table
-            # If we have a code, then assume this is unique, however the same
-            # project name may be used in multiple locations
-            if "code" in data and data.code:
-                query = (table.code.lower() == data.code.lower())
-            elif "name" in data and data.name:
-                query = (table.name.lower() == data.name.lower())
+            query = (table.code.lower() == code.lower())
+        else:
+            name = data.get("name")
+            if name:
+                table = item.table
+                query = (table.name.lower() == name.lower())
             else:
                 # Nothing we can work with
                 return
 
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
-        return
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -800,6 +806,7 @@ class S3ProjectActivityModel(S3Model):
         # ---------------------------------------------------------------------
         # Project Activity
         #
+
         tablename = "project_activity"
         define_table(tablename,
                      # Instance
@@ -821,6 +828,8 @@ class S3ProjectActivityModel(S3Model):
                              ),
                      s3_date("end_date",
                              label = T("End Date"),
+                             start_field = "project_activity_date",
+                             default_interval = 12,
                              ),
                      # Which contact is this?
                      # Implementing Org should be a human_resource_id
@@ -942,16 +951,17 @@ class S3ProjectActivityModel(S3Model):
                                     # Doesn't support translation
                                     #represent = "%(name)s",
                                     ))
-        # @ToDo: deployment_setting
-        filter_widgets.append(
-            S3OptionsFilter("year",
-                            label = T("Year"),
-                            #operator = "anyof",
-                            #options = lambda: \
-                            #    self.stats_year_options("project_activity"),
-                            options = project_activity_year_options,
-                            ),
-            )
+
+        if settings.get_project_activity_filter_year():
+            filter_widgets.append(
+                S3OptionsFilter("year",
+                                label = T("Year"),
+                                #operator = "anyof",
+                                #options = lambda: \
+                                #    self.stats_year_options("project_activity"),
+                                options = project_activity_year_options,
+                                ),
+                )
 
         if use_projects and settings.get_project_mode_drr():
             rappend(("project_id$hazard_project.hazard_id"))
@@ -1142,11 +1152,9 @@ class S3ProjectActivityModel(S3Model):
     def project_activity_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename != "project_activity":
-            return
         data = item.data
-        project_id = data.get("project_id", None)
-        name = data.get("name", None)
+        project_id = data.get("project_id")
+        name = data.get("name")
         # Match activity by project_id and name
         if project_id and name:
             table = item.table
@@ -1359,9 +1367,10 @@ class S3ProjectActivityTypeModel(S3Model):
 # =============================================================================
 class S3ProjectActivityOrganisationModel(S3Model):
     """
-        Project Activity Organization Model
+        Project Activity Organisation Model
 
-        This model links Organisations with Activities
+        This model allows Activities to link to Organisations
+                                           &/or Organisation Groups
         - useful when we don't have the details of the Projects
     """
 
@@ -1432,12 +1441,9 @@ class S3ProjectActivityOrganisationModel(S3Model):
     def project_activity_organisation_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename != "project_activity_organisation":
-            return
-
         data = item.data
-        activity_id = data.get("activity_id", None)
-        organisation_id = data.get("organisation_id", None)
+        activity_id = data.get("activity_id")
+        organisation_id = data.get("organisation_id")
         if activity_id and organisation_id:
             table = item.table
             query = (table.activity_id == activity_id) & \
@@ -1454,12 +1460,9 @@ class S3ProjectActivityOrganisationModel(S3Model):
     def project_activity_group_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename != "project_activity_group":
-            return
-
         data = item.data
-        activity_id = data.get("activity_id", None)
-        group_id = data.get("group_id", None)
+        activity_id = data.get("activity_id")
+        group_id = data.get("group_id")
         if activity_id and group_id:
             table = item.table
             query = (table.activity_id == activity_id) & \
@@ -1510,12 +1513,9 @@ class S3ProjectActivitySectorModel(S3Model):
     def project_sector_activity_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename != "project_sector_activity":
-            return
-
         data = item.data
-        activity_id = data.get("activity_id", None)
-        sector_id = data.get("sector_id", None)
+        activity_id = data.get("activity_id")
+        sector_id = data.get("sector_id")
         if activity_id and sector_id:
             table = item.table
             query = (table.activity_id == activity_id) & \
@@ -1664,6 +1664,7 @@ class S3ProjectBeneficiaryModel(S3Model):
         #
         # @ToDo: Split project_id & project_location_id to separate Link Tables
         #
+
         tablename = "project_beneficiary"
         define_table(tablename,
                      # Instance
@@ -1707,6 +1708,8 @@ class S3ProjectBeneficiaryModel(S3Model):
                      s3_date("end_date",
                              #empty = False,
                              label = T("End Date"),
+                             start_field = "project_beneficiary_date",
+                             default_interval = 12,
                              ),
                      Field("year", "list:integer",
                            compute = lambda row: \
@@ -1844,7 +1847,7 @@ class S3ProjectBeneficiaryModel(S3Model):
             comment = S3AddResourceLink(c="project", f="beneficiary",
                                         title=ADD_BNF,
                                         tooltip=\
-                T("If you don't see the beneficiary in the list, you can add a new one by clicking link 'Add Beneficiary'.")),
+                T("If you don't see the beneficiary in the list, you can add a new one by clicking link 'Add Beneficiaries'.")),
             )
 
         self.add_components(tablename,
@@ -1952,12 +1955,9 @@ class S3ProjectBeneficiaryModel(S3Model):
     def project_beneficiary_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename != "project_beneficiary":
-            return
-
         data = item.data
-        parameter_id = data.get("parameter_id", None)
-        project_location_id = data.get("project_location_id", None)
+        parameter_id = data.get("parameter_id")
+        project_location_id = data.get("project_location_id")
         # Match beneficiary by type and project_location
         if parameter_id and project_location_id:
             table = item.table
@@ -1974,12 +1974,9 @@ class S3ProjectBeneficiaryModel(S3Model):
     def project_beneficiary_activity_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename != "project_beneficiary_activity":
-            return
-
         data = item.data
-        parameter_id = data.get("parameter_id", None)
-        activity_id = data.get("activity_id", None)
+        parameter_id = data.get("parameter_id")
+        activity_id = data.get("activity_id")
         # Match beneficiary by type and activity
         if parameter_id and activity_id:
             table = item.table
@@ -1996,12 +1993,9 @@ class S3ProjectBeneficiaryModel(S3Model):
     def project_beneficiary_activity_type_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename != "project_beneficiary_activity_type":
-            return
-
         data = item.data
-        parameter_id = data.get("parameter_id", None)
-        activity_type_id = data.get("activity_type_id", None)
+        parameter_id = data.get("parameter_id")
+        activity_type_id = data.get("activity_type_id")
         # Match beneficiary by type and activity_type
         if parameter_id and activity_type_id:
             table = item.table
@@ -2111,11 +2105,10 @@ class S3ProjectCampaignModel(S3Model):
                      s3_comments("message",
                                  label = T("Message")),
                      location_id(
-                        widget = S3LocationSelectorWidget2(
-                           catalog_layers = True,
-                           points = False,
-                           polygons = True,
-                        )
+                        widget = S3LocationSelector(catalog_layers = True,
+                                                    points = False,
+                                                    polygons = True,
+                                                    )
                      ),
                      # @ToDo: Allow selection of which channel message should be sent out on
                      #self.msg_channel_id(),
@@ -2271,6 +2264,8 @@ class S3ProjectCampaignModel(S3Model):
                              ),
                      s3_date("end_date",
                              label = T("End Date"),
+                             start_field = "project_campaign_response_summary_date",
+                             default_interval = 1,
                              #empty = False,
                              ),
                      s3_comments(),
@@ -2532,12 +2527,9 @@ class S3ProjectHazardModel(S3Model):
     def project_hazard_project_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename != "project_hazard_project":
-            return
-
         data = item.data
-        project_id = data.get("project_id", None)
-        hazard_id = data.get("hazard_id", None)
+        project_id = data.get("project_id")
+        hazard_id = data.get("hazard_id")
         if project_id and hazard_id:
             table = item.table
             query = (table.project_id == project_id) & \
@@ -2710,14 +2702,14 @@ class S3ProjectLocationModel(S3Model):
                                             writable = False,
                                             ),
                      self.gis_location_id(
-                     widget = S3LocationAutocompleteWidget(),
-                     requires = IS_LOCATION(),
-                     represent = self.gis_LocationRepresent(sep=", "),
-                     comment = S3AddResourceLink(c="gis",
-                                                 f="location",
-                                                 label = T("Create Location"),
-                                                 title=T("Location"),
-                                                 tooltip=messages.AUTOCOMPLETE_HELP),
+                        represent = self.gis_LocationRepresent(sep=", "),
+                        requires = IS_LOCATION(),
+                        widget = S3LocationAutocompleteWidget(),
+                        comment = S3AddResourceLink(c="gis",
+                                                    f="location",
+                                                    label = T("Create Location"),
+                                                    title=T("Location"),
+                                                    tooltip=messages.AUTOCOMPLETE_HELP),
                      ),
                      # % breakdown by location
                      Field("percentage", "decimal(3,2)",
@@ -3036,14 +3028,10 @@ class S3ProjectLocationModel(S3Model):
     def project_location_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename != "project_location":
-            return
-
         data = item.data
-        if "project_id" in data and \
-           "location_id" in data:
-            project_id = data.project_id
-            location_id = data.location_id
+        project_id = data.get("project_id")
+        location_id = data.get("location_id")
+        if project_id and location_id:
             table = item.table
             query = (table.project_id == project_id) & \
                     (table.location_id == location_id)
@@ -3079,7 +3067,13 @@ class S3ProjectOrganisationModel(S3Model):
 
         tablename = "project_organisation"
         self.define_table(tablename,
-                          self.project_project_id(),
+                          self.project_project_id(
+                            comment=S3AddResourceLink(c="project",
+                                                      f="project",
+                                                      vars = dict(prefix="project"),
+                                                      tooltip=T("If you don't see the project in the list, you can add a new one by clicking link 'Create Project'."),
+                                                      )
+                          ),
                           self.org_organisation_id(
                           requires = self.org_organisation_requires(
                                          required=True,
@@ -3146,11 +3140,11 @@ class S3ProjectOrganisationModel(S3Model):
 
         # Resource Configuration
         self.configure(tablename,
+                       deduplicate = self.project_organisation_deduplicate,
+                       onaccept = self.project_organisation_onaccept,
+                       ondelete = self.project_organisation_ondelete,
+                       onvalidation = self.project_organisation_onvalidation,
                        report_options = report_options,
-                       deduplicate=self.project_organisation_deduplicate,
-                       onvalidation=self.project_organisation_onvalidation,
-                       onaccept=self.project_organisation_onaccept,
-                       ondelete=self.project_organisation_ondelete,
                        )
 
         # Pass names back to global scope (s3.*)
@@ -3247,14 +3241,11 @@ class S3ProjectOrganisationModel(S3Model):
     def project_organisation_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename != "project_organisation":
-            return
         data = item.data
-        if "project_id" in data and \
-           "organisation_id" in data:
+        project_id = data.get("project_id")
+        organisation_id = data.get("organisation_id")
+        if project_id and organisation_id:
             table = item.table
-            project_id = data.project_id
-            organisation_id = data.organisation_id
             query = (table.project_id == project_id) & \
                     (table.organisation_id == organisation_id)
             duplicate = current.db(query).select(table.id,
@@ -3324,14 +3315,12 @@ class S3ProjectOutputModel(S3Model):
     def project_output_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename != "project_output":
-            return
         data = item.data
-        name = data.get("name", None)
-        project_id = data.get("project_id", None)
+        name = data.get("name")
         if name:
             table = item.table
             query = (table.name == name)
+            project_id = data.get("project_id")
             if project_id:
                 query &= ((table.project_id == project_id) | \
                           (table.project_id == None))
@@ -3740,12 +3729,9 @@ class S3ProjectThemeModel(S3Model):
     def project_theme_project_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename != "project_theme_project":
-            return
-
         data = item.data
-        project_id = data.get("project_id", None)
-        theme_id = data.get("theme_id", None)
+        project_id = data.get("project_id")
+        theme_id = data.get("theme_id")
         if project_id and theme_id:
             table = item.table
             query = (table.project_id == project_id) & \
@@ -3762,12 +3748,9 @@ class S3ProjectThemeModel(S3Model):
     def project_theme_activity_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename != "project_theme_activity":
-            return
-
         data = item.data
-        activity_id = data.get("activity_id", None)
-        theme_id = data.get("theme_id", None)
+        activity_id = data.get("activity_id")
+        theme_id = data.get("theme_id")
         if activity_id and theme_id:
             table = item.table
             query = (table.activity_id == activity_id) & \
@@ -3792,17 +3775,17 @@ class S3ProjectDRRModel(S3Model):
         T = current.T
 
         hfa_opts = project_hfa_opts()
-        hfa_opts = dict((opt, "HFA %s" % opt) for opt in hfa_opts)
+        options = dict((opt, "HFA %s" % opt) for opt in hfa_opts)
 
         tablename = "project_drr"
         self.define_table(tablename,
                           self.project_project_id(empty=False),
                           Field("hfa", "list:integer",
                                 label = T("HFA Priorities"),
-                                represent = S3Represent(options=hfa_opts,
+                                represent = S3Represent(options=options,
                                                         multiple=True),
                                 requires = IS_EMPTY_OR(IS_IN_SET(
-                                            hfa_opts,
+                                            options,
                                             multiple = True)),
                                 widget = S3GroupedOptionsWidget(
                                             cols=1,
@@ -4064,6 +4047,8 @@ class S3ProjectTaskModel(S3Model):
              "project_tag",
              "project_task",
              "project_task_id",
+             "project_role",
+             "project_member",
              "project_time",
              "project_comment",
              "project_task_project",
@@ -4206,6 +4191,8 @@ class S3ProjectTaskModel(S3Model):
         project_task_status_opts = settings.get_project_task_status_opts()
         # Which options for the Status for a Task count as the task being 'Active'
         project_task_active_statuses = [2, 3, 4, 11]
+        assignee_represent = self.pr_PersonEntityRepresent(show_label = False,
+                                                           show_type = False)
 
         #staff = auth.s3_has_role("STAFF")
         staff = auth.is_logged_in()
@@ -4259,7 +4246,7 @@ class S3ProjectTaskModel(S3Model):
                                 label = T("Assigned to"),
                                 filterby = "instance_type",
                                 filter_opts = ("pr_person", "pr_group", "org_organisation"),
-                                represent = self.project_assignee_represent,
+                                represent = assignee_represent,
                                 # @ToDo: Widget
                                 #widget = S3PentityWidget(),
                                 #comment = DIV(_class="tooltip",
@@ -4587,6 +4574,8 @@ class S3ProjectTaskModel(S3Model):
                                             },
                        # Format for S3SQLInlineComponent
                        project_task_milestone = "task_id",
+                       # Members
+                       project_member = "task_id",
                        # Tags
                        project_tag = {"link": "project_task_tag",
                                       "joinby": "task_id",
@@ -4720,6 +4709,59 @@ class S3ProjectTaskModel(S3Model):
                                  "modified_on"
                                  ],
                   )
+
+        # ---------------------------------------------------------------------
+        # Project Task Roles
+        # - Users can assign themselves roles while working on tasks
+        #
+        tablename = "project_role"
+        define_table(tablename,
+                     Field("role", length=128, notnull=True, unique=True,
+                           label=T("Role"),
+                           requires = IS_NOT_ONE_OF(db,
+                                                    "project_role.role"),
+                           ),
+                     s3_comments(),
+                     *s3_meta_fields())
+        # CRUD Strings
+        crud_strings[tablename] = Storage(
+            label_create = T("Create Role"),
+            title_display = T("Task Role"),
+            title_list = T("Task Roles"),
+            title_update = T("Edit Role"),
+            label_list_button = T("List Roles"),
+            label_delete_button = T("Delete Role"),
+            msg_record_created = T("Role added"),
+            msg_record_modified = T("Role updated"),
+            msg_record_deleted = T("Role deleted"),
+            msg_list_empty = T("No such Role exists"))
+
+        represent = S3Represent(lookup=tablename,
+                                fields=["role"])
+
+        role_id = S3ReusableField("role_id", "reference %s" % tablename,
+                                  ondelete = "CASCADE",
+                                  requires = IS_EMPTY_OR(IS_ONE_OF(db,
+                                                                   "project_role.id",
+                                                                   represent)),
+                                  represent = represent,
+                                  )
+
+        # ---------------------------------------------------------------------
+        # Project Members
+        # - Members for tasks in Project
+        #
+        person_id = self.pr_person_id
+        tablename = "project_member"
+
+        define_table(tablename,
+                     person_id(label = T("Member"),
+                               default = auth.s3_logged_in_person(),
+                               widget = SQLFORM.widgets.options.widget),
+                     role_id(label=T("Role")),
+                     task_id(empty = False,
+                             ondelete = "CASCADE"),
+                     *s3_meta_fields())
 
         # ---------------------------------------------------------------------
         # Project Time
@@ -4922,50 +4964,6 @@ class S3ProjectTaskModel(S3Model):
                 (ltable.milestone_id == mtable.id)
         rows = db(query).select(mtable.id, mtable.name)
         return dict((row.id, row.name) for row in rows)
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def project_assignee_represent(id, row=None):
-        """
-            FK representation
-
-            @ToDo: Migrate to S3Represent
-        """
-
-        if row:
-            id = row.pe_id
-            instance_type = row.instance_type
-        elif id:
-            if isinstance(id, Row):
-                instance_type = id.instance_type
-                id = id.pe_id
-            else:
-                instance_type = None
-        else:
-            return current.messages["NONE"]
-
-        db = current.db
-        s3db = current.s3db
-        if not instance_type:
-            table = s3db.pr_pentity
-            r = db(table._id == id).select(table.instance_type,
-                                           limitby=(0, 1)).first()
-            instance_type = r.instance_type
-
-        if instance_type == "pr_person":
-            # initials?
-            return s3_fullname(pe_id=id) or current.messages.UNKNOWN_OPT
-        elif instance_type in ("pr_group", "org_organisation"):
-            # Team or Organisation
-            table = s3db[instance_type]
-            r = db(table.pe_id == id).select(table.name,
-                                             limitby=(0, 1)).first()
-            try:
-                return r.name
-            except:
-                return current.messages.UNKNOWN_OPT
-        else:
-            return current.messages.UNKNOWN_OPT
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -5243,25 +5241,28 @@ class S3ProjectTaskModel(S3Model):
     # -------------------------------------------------------------------------
     @staticmethod
     def project_milestone_duplicate(item):
-        """ Import item de-duplication """
+        """
+            Import item de-duplication
+            - Duplicate if same Name & Project
+        """
 
-        if item.tablename == "project_milestone":
-            data = item.data
-            table = item.table
-            # Duplicate if same Name & Project
-            if "name" in data and data.name:
-                query = (table.name.lower() == data.name.lower())
-            else:
-                # Nothing we can work with
-                return
-            if "project_id" in data and data.project_id:
-                query &= (table.project_id == data.project_id)
+        data = item.data
+        name = data.get("name")
+        if not name:
+            # Nothing we can work with
+            return
 
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
+        table = item.table
+        query = (table.name.lower() == name.lower())
+        project_id = data.get("project_id")
+        if project_id:
+            query &= (table.project_id == project_id)
+
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -6272,6 +6273,7 @@ def project_task_controller():
                            "location_id",
                            "date_due",
                            "pe_id",
+                           "status",
                            #"organisation_id$logo",
                            "modified_by",
                            ]
@@ -6521,6 +6523,7 @@ def project_project_filters(org_label):
                         ),
         S3OptionsFilter("organisation_id",
                         label = org_label,
+                        # Can be unhidden in customise_xx_resource if there is a need to use a default_filter
                         hidden = True,
                         ),
         S3LocationFilter("location.location_id",
@@ -6652,7 +6655,7 @@ def project_project_list_layout(list_id, item_id, resource, rfields, record,
         vars = {"refresh": list_id,
                 "record": record_id,
                 }
-        edit_btn = A(I(" ", _class="icon icon-edit"),
+        edit_btn = A(ICON("edit"),
                      _href=URL(c="project", f="project",
                                args=[record_id, "update.popup"]
                                ),
@@ -6662,7 +6665,7 @@ def project_project_list_layout(list_id, item_id, resource, rfields, record,
     else:
         edit_btn = ""
     if permit("delete", table, record_id=record_id):
-        delete_btn = A(I(" ", _class="icon icon-trash"),
+        delete_btn = A(ICON("delete"),
                        _class="dl-item-delete",
                        _title=current.response.s3.crud_strings.project_project.label_delete_button,
                        )
@@ -6674,7 +6677,7 @@ def project_project_list_layout(list_id, item_id, resource, rfields, record,
                    )
 
     # Render the item
-    item = DIV(DIV(I(_class="icon icon-%s" % icon),
+    item = DIV(DIV(ICON(icon),
                    SPAN(A(name,
                           _href =  URL(c="project", f="project",
                                        args=[record_id, "profile"])),
@@ -6750,11 +6753,11 @@ def project_task_list_layout(list_id, item_id, resource, rfields, record,
 
     if priority in (1, 2):
         # Urgent / High
-        priority_icon = DIV(I(" ", _class="icon-exclamation"),
+        priority_icon = DIV(ICON("exclamation"),
                             _class="task_priority")
     elif priority == 4:
         # Low
-        priority_icon = DIV(I(" ", _class ="icon-arrow-down"),
+        priority_icon = DIV(ICON("arrow-down"),
                             _class="task_priority")
     else:
         priority_icon = ""
@@ -6765,8 +6768,7 @@ def project_task_list_layout(list_id, item_id, resource, rfields, record,
                           12: "#C6C6C6",
                           }
     active_statuses = current.s3db.project_task_active_statuses
-    status_icon  = DIV(I(" ", _class="icon-check%s" %
-                         ("-empty" if status in active_statuses else "" )),
+    status_icon  = DIV(ICON("active" if status in active_statuses else "inactive"),
                        _class="task_status",
                        _style="background-color:%s" % (status_icon_colour.get(status, "none"))
                        )
@@ -6798,7 +6800,7 @@ def project_task_list_layout(list_id, item_id, resource, rfields, record,
     permit = current.auth.s3_has_permission
     table = current.db.project_task
     if permit("update", table, record_id=record_id):
-        edit_btn = A(I(" ", _class="icon icon-edit"),
+        edit_btn = A(ICON("edit"),
                      _href=URL(c="project", f="task",
                                args=[record_id, "update.popup"],
                                vars={"refresh": list_id,
@@ -6810,7 +6812,7 @@ def project_task_list_layout(list_id, item_id, resource, rfields, record,
     else:
         edit_btn = ""
     if permit("delete", table, record_id=record_id):
-        delete_btn = A(I(" ", _class="icon icon-trash"),
+        delete_btn = A(ICON("delete"),
                        _class="dl-item-delete",
                        _title=current.response.s3.crud_strings.project_task.label_delete_button,
                        )
@@ -6818,7 +6820,7 @@ def project_task_list_layout(list_id, item_id, resource, rfields, record,
         delete_btn = ""
 
     if source_url:
-        source_btn =  A(I(" ", _class="icon icon-link"),
+        source_btn =  A(ICON("link"),
                        _title=source_url,
                        _href=source_url,
                        _target="_blank"
@@ -6833,7 +6835,7 @@ def project_task_list_layout(list_id, item_id, resource, rfields, record,
                    )
 
     # Render the item
-    item = DIV(DIV(I(_class="icon icon-%s" % icon),
+    item = DIV(DIV(ICON(icon),
                    SPAN(location, _class="location-title"),
                    SPAN(date_due, _class="date-title"),
                    edit_bar,

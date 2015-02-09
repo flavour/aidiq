@@ -104,13 +104,13 @@ def person():
     set_method = s3db.set_method
     set_method("pr", resourcename,
                method = "contacts",
-               action = s3db.pr_contacts)
+               action = s3db.pr_Contacts)
 
     # Custom Method for CV
     set_method("pr", "person",
                method = "cv",
                # @ToDo: Allow Members to have a CV without enabling HRM?
-               action = s3db.hrm_cv)
+               action = s3db.hrm_CV)
 
     # Upload for configuration (add replace option)
     s3.importerPrep = lambda: \

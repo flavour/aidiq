@@ -2,7 +2,7 @@
 
 """ S3 Navigation Module
 
-    @copyright: 2011-14 (c) Sahana Software Foundation
+    @copyright: 2011-15 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -82,7 +82,7 @@ class S3NavigationItem(object):
         navigation elements.
 
         For more details, see the S3Navigation wiki page:
-        http://eden.sahanafoundation.org/wiki/S3Navigation
+        http://eden.sahanafoundation.org/wiki/S3/S3Navigation
     """
 
     # -------------------------------------------------------------------------
@@ -254,15 +254,65 @@ class S3NavigationItem(object):
         self.check = check
 
         # Set the renderer (override with set_layout())
+        renderer = None
         if layout is not None:
-            # Custom renderer
-            self.renderer = layout
-        elif hasattr(self.__class__, "layout"):
-            # Class default layout
-            self.renderer = self.layout
+            # Custom layout for this particular instance
+            renderer = layout
+        elif hasattr(self.__class__, "OVERRIDE"):
+            # Theme layout
+            renderer = self.get_layout(self.OVERRIDE)
+        if renderer is None and hasattr(self.__class__, "layout"):
+            # Default layout
+            renderer = self.layout
+        self.renderer = renderer
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def get_layout(name):
+        """
+            Check whether the current theme has a custom layout for this
+            class, and if so, store it in current.layouts
+
+            @param: the name of the custom layout
+            @return: the layout or None if not present
+        """
+
+        if hasattr(current, "layouts"):
+            layouts = current.layouts
         else:
-            # No renderer
-            self.renderer = None
+            layouts = {}
+        if layouts is False:
+            return None
+        if name in layouts:
+            return layouts[name]
+
+        # Try to find custom layout in theme
+        application = current.request.application
+        settings = current.deployment_settings
+        theme = settings.get_theme()
+        template_location = settings.get_template_location()
+        package = "applications.%s.%s.templates.%s.layouts" % \
+                  (application, template_location, theme)
+        try:
+            override = getattr(__import__(package, fromlist=[name]), name)
+        except ImportError:
+            # No layouts in theme - no point to try again
+            current.layouts = False
+            return None
+        except AttributeError:
+            override = None
+
+        if override and \
+           hasattr(override, "layout") and \
+           type(override.layout) == type(lambda:None):
+            layout = override.layout
+        else:
+            layout = None
+
+        layouts[name] = layout
+        current.layouts = layouts
+
+        return layout
 
     # -------------------------------------------------------------------------
     def clone(self):
@@ -418,33 +468,25 @@ class S3NavigationItem(object):
             @param request: the request object, defaults to current.request
         """
 
+        if self.selected is not None:
+            # Already selected
+            return self.selected
         if request is None:
             request = current.request
-
-        # If this is a top-level item, then set the selected path
         if self.parent is None:
+            # If this is the root item, then set the selected path
             branch = self.branch(request)
             if branch is not None:
-                path = branch.path()
-                for item in path:
-                    item.selected = True
+                branch.select()
             if not self.selected:
                 self.selected = False
-
-        elif self.selected is not None:
-            # Selected status has already been set
-            return self.selected
-
         else:
-            # Ensure the root item has been checked
+            # Otherwise: check the root item
             root = self.get_root()
             if root.selected is None:
                 root.check_selected(request)
 
-        # Check status
-        if self.selected:
-            return True
-        return False
+        return True if self.selected else False
 
     # -------------------------------------------------------------------------
     def check_hook(self):
@@ -528,6 +570,46 @@ class S3NavigationItem(object):
         return
 
     # -------------------------------------------------------------------------
+    def select(self, tag=None):
+        """
+            Select an item. If given a tag, this selects the first matching
+            descendant (depth-first search), otherwise selects this item.
+
+            Propagates the selection up the path to the root item (including
+            the root item)
+
+            @param tag: a string
+        """
+
+        selected = None
+        if tag is None:
+            parent = self.parent
+            if parent:
+                parent.select()
+            else:
+                self.deselect_all()
+            selected = True
+        else:
+            for item in self.components:
+                if not selected:
+                    selected = item.select(tag=tag)
+                else:
+                    item.deselect_all()
+            if not selected and tag in self.tags:
+                selected = True
+        self.selected = selected
+        return selected
+
+    # -------------------------------------------------------------------------
+    def deselect_all(self):
+        """ De-select this item and all its descendants """
+
+        self.selected = None
+        for item in self.components:
+            item.deselect_all()
+        return
+
+    # -------------------------------------------------------------------------
     def set_layout(self, layout, recursive=False, tag=None):
         """
             Alter the renderer for a tagged subset of items in the subtree.
@@ -593,7 +675,7 @@ class S3NavigationItem(object):
 
         level = 0
         args = self.args
-        vars = self.vars
+        link_vars = self.vars
 
         if self.application is not None and \
            self.application != request.application:
@@ -669,7 +751,7 @@ class S3NavigationItem(object):
         #   7 = args match and vars match
         if level == 2:
             extra = 1
-            for k, v in vars.iteritems():
+            for k, v in link_vars.iteritems():
                 if k not in rvars or k in rvars and rvars[k] != s3_unicode(v):
                     extra = 0
                     break
@@ -771,10 +853,10 @@ class S3NavigationItem(object):
 
         args = self.args
         if self.vars:
-            vars = Storage(self.vars)
-            vars.update(kwargs)
+            link_vars = Storage(self.vars)
+            link_vars.update(kwargs)
         else:
-            vars = Storage(kwargs)
+            link_vars = Storage(kwargs)
         if extension is None:
             extension = self.extension
         a = self.get("application")
@@ -787,7 +869,7 @@ class S3NavigationItem(object):
         if f is None:
             f = "index"
         f, args = self.__format(f, args, extension)
-        return URL(a=a, c=c, f=f, args=args, vars=vars)
+        return URL(a=a, c=c, f=f, args=args, vars=link_vars)
 
     # -------------------------------------------------------------------------
     def accessible_url(self, extension=None, **kwargs):
@@ -806,10 +888,10 @@ class S3NavigationItem(object):
 
         args = self.args
         if self.vars:
-            vars = Storage(self.vars)
-            vars.update(kwargs)
+            link_vars = Storage(self.vars)
+            link_vars.update(kwargs)
         else:
-            vars = Storage(kwargs)
+            link_vars = Storage(kwargs)
         if extension is None:
             extension = self.extension
         a = self.get("application")
@@ -823,7 +905,7 @@ class S3NavigationItem(object):
             f = "index"
         f, args = self.__format(f, args, extension)
         return aURL(c=c, f=f, p=self.p, a=a, t=self.tablename,
-                    args=args, vars=vars)
+                    args=args, vars=link_vars)
 
     # -------------------------------------------------------------------------
     @staticmethod

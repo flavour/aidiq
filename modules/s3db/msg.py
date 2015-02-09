@@ -2,7 +2,7 @@
 
 """ Sahana Eden Messaging Model
 
-    @copyright: 2009-2014 (c) Sahana Software Foundation
+    @copyright: 2009-2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -1327,15 +1327,14 @@ class S3RSSModel(S3ChannelModel):
             @param item: the S3ImportItem instance
         """
 
-        if item.tablename == "msg_rss":
-            table = item.table
-            from_address = item.data.get("from_address")
-            query = (table.from_address == from_address)
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
+        from_address = item.data.get("from_address")
+        table = item.table
+        query = (table.from_address == from_address)
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
 # =============================================================================
 class S3SMSModel(S3Model):
@@ -1427,11 +1426,15 @@ class S3SMSOutboundModel(S3Model):
 
         configure = self.configure
         define_table = self.define_table
+        settings = current.deployment_settings
 
         # ---------------------------------------------------------------------
         # SMS Outbound Gateway
         # - select which gateway is in active use for which Organisation/Branch
         #
+
+        country_code = settings.get_L10n_default_country_code()
+
         tablename = "msg_sms_outbound_gateway"
         define_table(tablename,
                      self.msg_channel_id(
@@ -1452,9 +1455,9 @@ class S3SMSOutboundModel(S3Model):
                      self.org_organisation_id(),
                      # @ToDo: Allow selection of different gateways based on destination Location
                      #self.gis_location_id(),
-                     # @ToDo: Allow addition of relevant country code (currently in deployment_settings)
-                     #Field("default_country_code", "integer",
-                     #      default = 44),
+                     Field("default_country_code", "integer",
+                           default = country_code,
+                           ),
                      *s3_meta_fields())
 
         # ---------------------------------------------------------------------
@@ -1511,6 +1514,8 @@ class S3SMSOutboundModel(S3Model):
         # @ToDo: Simplified dropdown of services which prepopulates entries & provides nice prompts for the config options
         #        + Advanced mode for raw access to real fields
         #
+        # https://www.twilio.com/docs/api/rest/sending-messages
+        #
         tablename = "msg_sms_webapi_channel"
         define_table(tablename,
                      self.super_link("channel_id", "msg_channel"),
@@ -1519,20 +1524,24 @@ class S3SMSOutboundModel(S3Model):
                      Field("url",
                            default = "https://api.clickatell.com/http/sendmsg", # Clickatell
                            #default = "https://secure.mcommons.com/api/send_message", # Mobile Commons
+                           #default = "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages", # Twilio (Untested)
                            requires = IS_URL(),
                            ),
                      Field("parameters",
                            default = "user=yourusername&password=yourpassword&api_id=yourapiid", # Clickatell
                            #default = "campaign_id=yourid", # Mobile Commons
+                           #default = "From={RegisteredTelNumber}", # Twilio (Untested)
                            ),
                      Field("message_variable", "string",
                            default = "text", # Clickatell
                            #default = "body", # Mobile Commons
+                           #default = "Body", # Twilio (Untested)
                            requires = IS_NOT_EMPTY(),
                            ),
                      Field("to_variable", "string",
                            default = "to", # Clickatell
                            #default = "phone_number", # Mobile Commons
+                           #default = "To", # Twilio (Untested)
                            requires = IS_NOT_EMPTY(),
                            ),
                      Field("max_length", "integer",
@@ -1624,6 +1633,7 @@ class S3TropoModel(S3Model):
 class S3TwilioModel(S3ChannelModel):
     """
         Twilio Inbound SMS channel
+        - for Outbound, use Web API
     """
 
     names = ("msg_twilio_channel",
@@ -2201,37 +2211,38 @@ class S3BaseStationModel(S3Model):
 
         T = current.T
 
-        define_table = self.define_table
-
         # ---------------------------------------------------------------------
         # Base Stations (Cell Towers)
         #
+
+        if current.deployment_settings.get_msg_basestation_code_unique():
+            db = current.db
+            code_unique = IS_EMPTY_OR(IS_NOT_IN_DB(db, "msg_basestation.code"))
+        else:
+            code_unique = None
+
         tablename = "msg_basestation"
-        define_table(tablename,
-                     self.super_link("site_id", "org_site"),
-                     Field("name", notnull=True,
-                           length=64, # Mayon Compatibility
-                           label = T("Name"),
-                           ),
-                     Field("code", length=10, # Mayon compatibility
-                           label = T("Code"),
-                           # Deployments that don't wants site codes can hide them
-                           #readable = False,
-                           #writable = False,
-                           # @ToDo: Deployment Setting to add validator to make these unique
-                           ),
-                     self.org_organisation_id(
-                            label = T("Operator"),
-                            #widget=S3OrganisationAutocompleteWidget(default_from_profile=True),
-                            requires = self.org_organisation_requires(required=True,
-                                                                    updateable=True),
-                            ),
-                     self.gis_location_id(),
-                     s3_comments(),
-                     *s3_meta_fields())
+        self.define_table(tablename,
+                          self.super_link("site_id", "org_site"),
+                          Field("name", notnull=True,
+                                length=64, # Mayon Compatibility
+                                label = T("Name"),
+                                ),
+                          Field("code", length=10, # Mayon compatibility
+                                label = T("Code"),
+                                requires = code_unique,
+                                ),
+                          self.org_organisation_id(
+                                 label = T("Operator"),
+                                 requires = self.org_organisation_requires(required=True,
+                                                                           updateable=True),
+                                 #widget=S3OrganisationAutocompleteWidget(default_from_profile=True),
+                                 ),
+                          self.gis_location_id(),
+                          s3_comments(),
+                          *s3_meta_fields())
 
         # CRUD strings
-        ADD_BASE = T("Create Base Station")
         current.response.s3.crud_strings[tablename] = Storage(
             label_create=T("Create Base Station"),
             title_display=T("Base Station Details"),
@@ -2266,30 +2277,29 @@ class S3BaseStationModel(S3Model):
             @param item: the S3ImportItem instance
         """
 
-        if item.tablename == "msg_basestation":
-            table = item.table
-            name = "name" in item.data and item.data.name
-            query = (table.name.lower() == name.lower())
-            #location_id = None
-            # if "location_id" in item.data:
-                # location_id = item.data.location_id
-                ## This doesn't find deleted records:
-                # query = query & (table.location_id == location_id)
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            # if duplicate is None and location_id:
-                ## Search for deleted basestations with this name
-                # query = (table.name.lower() == name.lower()) & \
-                        # (table.deleted == True)
-                # row = db(query).select(table.id, table.deleted_fk,
-                                       # limitby=(0, 1)).first()
-                # if row:
-                    # fkeys = json.loads(row.deleted_fk)
-                    # if "location_id" in fkeys and \
-                       # str(fkeys["location_id"]) == str(location_id):
-                        # duplicate = row
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
+        name = item.data.get("name")
+        table = item.table
+        query = (table.name.lower() == name.lower())
+        #location_id = None
+        # if "location_id" in item.data:
+            # location_id = item.data.location_id
+            ## This doesn't find deleted records:
+            # query = query & (table.location_id == location_id)
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        # if duplicate is None and location_id:
+            ## Search for deleted basestations with this name
+            # query = (table.name.lower() == name.lower()) & \
+                    # (table.deleted == True)
+            # row = db(query).select(table.id, table.deleted_fk,
+                                   # limitby=(0, 1)).first()
+            # if row:
+                # fkeys = json.loads(row.deleted_fk)
+                # if "location_id" in fkeys and \
+                   # str(fkeys["location_id"]) == str(location_id):
+                    # duplicate = row
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
 # END =========================================================================

@@ -65,9 +65,10 @@ def message():
     s3.postp = postp
 
     s3db.configure(tablename,
-                   deletable=False,
-                   insertable=False,
-                   editable=False)
+                   deletable = False,
+                   editable = False,
+                   insertable = False,
+                   )
 
     return s3_rest_controller()
 
@@ -87,7 +88,7 @@ def mark_sender():
 
     # @ToDo: Replace 2 queries with Join
     srecord = db(mtable.id == mid).select(mtable.from_address,
-                                          limitby=(0,1)
+                                          limitby=(0, 1)
                                           ).first()
     sender = srecord.from_address
     record = db(stable.sender == sender).select(stable.id,
@@ -146,9 +147,10 @@ def outbox():
 
     s3db.configure(tablename,
                    # Permissions-based
-                   #deletable=False,
-                   insertable=False,
-                   editable=False)
+                   #deletable = False,
+                   editable = False,
+                   insertable = False,
+                   )
 
     return s3_rest_controller()
 
@@ -296,10 +298,11 @@ def sms_outbox():
     s3db.configure(tablename,
                    # Permissions-based
                    #deletable = False,
+                   editable = False,
                    insertable = False,
                    listadd = False,
-                   editable = False,
                    list_fields = ["id",
+                                  "date",
                                   "to_address",
                                   "body",
                                   ],
@@ -347,10 +350,11 @@ def twitter_outbox():
     s3db.configure(tablename,
                    # Permissions-based
                    #deletable = False,
+                   editable = False,
                    insertable = False,
                    listadd = False,
-                   editable = False,
                    list_fields = ["id",
+                                  "date",
                                   "to_address",
                                   "body",
                                   ],
@@ -387,9 +391,10 @@ def inbox():
     s3db.configure(tablename,
                    # Permissions-based
                    #deletable = False,
-                   insertable = False,
                    editable = False,
+                   insertable = False,
                    list_fields = ["id",
+                                  "date",
                                   "channel_id",
                                   "from_address",
                                   "body",
@@ -491,9 +496,10 @@ def rss():
     s3db.configure(tablename,
                    # Permissions-based
                    #deletable = False,
-                   insertable = False,
                    editable = False,
+                   insertable = False,
                    list_fields = ["id",
+                                  "date",
                                   "body",
                                   ],
                    )
@@ -529,9 +535,10 @@ def sms_inbox():
     s3db.configure(tablename,
                    # Permissions-based
                    #deletable = False,
-                   insertable = False,
                    editable = False,
+                   insertable = False,
                    list_fields = ["id",
+                                  "date",
                                   "from_address",
                                   "body",
                                   ],
@@ -548,9 +555,10 @@ def twitter():
     """
 
     s3db.configure("msg_twitter",
-                   insertable = False,
                    editable = False,
+                   insertable = False,
                    list_fields = ["id",
+                                  "date",
                                   "from_address",
                                   "to_address",
                                   "body",
@@ -586,9 +594,10 @@ def twitter_inbox():
     )
 
     s3db.configure(tablename,
-                   insertable = False,
                    editable = False,
+                   insertable = False,
                    list_fields = ["id",
+                                  "date",
                                   "from_address",
                                   "body",
                                   ],
@@ -1682,7 +1691,7 @@ def parser():
             import sys
 
             template = settings.get_msg_parser()
-            module_name = "applications.%s.private.templates.%s.parser" % \
+            module_name = "applications.%s.modules.templates.%s.parser" % \
                 (appname, template)
             __import__(module_name)
             mymodule = sys.modules[module_name]

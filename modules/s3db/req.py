@@ -2,7 +2,7 @@
 
 """ Sahana Eden Request Model
 
-    @copyright: 2009-2014 (c) Sahana Software Foundation
+    @copyright: 2009-2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -124,8 +124,8 @@ class S3RequestModel(S3Model):
         req_ref = S3ReusableField("req_ref", "string",
                                   label = T("%(REQ)s Number") % #
                                     dict(REQ=settings.get_req_shortname()),
-                                  writable = False,
                                   represent = self.req_ref_represent,
+                                  writable = False,
                                   )
 
         req_priority_opts = {3: T("High"),
@@ -1216,14 +1216,14 @@ $.filterOptionsS3({
 
         settings = current.deployment_settings
         if settings.get_org_site_inv_req_tabs():
-            s3_has_permission = current.auth.s3_has_permission
+            permit = current.auth.s3_has_permission
             if settings.has_module("req") and \
-               s3_has_permission("read", "req_req", c="req"):
+               permit("read", "req_req", c="req"):
                 T = current.T
                 tabs = [(T("Requests"), "req")]
-                if match and s3_has_permission("read", "req_req",
-                                               c=current.request.controller,
-                                               f="req_match"):
+                if match and permit("read", "req_req",
+                                    c=current.request.controller,
+                                    f="req_match"):
                     tabs.append((T("Match Requests"), "req_match/"))
                 if settings.get_req_use_commit():
                     tabs.append((T("Commit"), "commit"))
@@ -1566,34 +1566,31 @@ $.filterOptionsS3({
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def req_req_duplicate(job):
+    def req_req_duplicate(item):
         """
           This callback will be called when importing records
           it will look to see if the record being imported is a duplicate.
 
-          @param job: An S3ImportJob object which includes all the details
-                      of the record being imported
+          @param item: An S3ImportItem object which includes all the details
+                       of the record being imported
 
-          If the record is a duplicate then it will set the job method to update
+          If the record is a duplicate then it will set the item method to update
 
           Rules for finding a duplicate:
            - If the Request Number exists then it's a duplicate
         """
 
-        if job.tablename == "req_req":
-            table = job.table
-            if "req_ref" in job.data:
-                request_number = job.data.req_ref
-            else:
-                return
+        request_number = item.data.get("req_ref")
+        if not request_number:
+            return
 
-            query = (table.req_ref == request_number)
-            _duplicate = current.db(query).select(table.id,
-                                                  limitby=(0, 1)).first()
-            if _duplicate:
-                job.id = _duplicate.id
-                job.data.id = _duplicate.id
-                job.method = job.METHOD.UPDATE
+        table = item.table
+        query = (table.req_ref == request_number)
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
 # =============================================================================
 class S3RequestItemModel(S3Model):
@@ -1871,64 +1868,56 @@ $.filterOptionsS3({
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def req_item_delete(row):
+    def req_item_duplicate(item):
         """
-            Update the
-        """
-        h
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def req_item_duplicate(job):
-        """
-          This callback will be called when importing records
-          it will look to see if the record being imported is a duplicate.
+            This callback will be called when importing records. It will look
+            to see if the record being imported is a duplicate.
 
-          @param job: An S3ImportJob object which includes all the details
-                      of the record being imported
+            @param item: An S3ImportItem object which includes all the details
+                         of the record being imported
 
-          If the record is a duplicate then it will set the job method to update
+            If the record is a duplicate then it will set the item method to update
 
-          Rules for finding a duplicate:
-           - If the Request Number matches
-           - The item is the same
+            Rules for finding a duplicate:
+                - If the Request Number matches
+                - The item is the same
         """
 
-        if job.tablename == "req_req_item":
-            itable = job.table
-            s3db = current.s3db
-            rtable = s3db.req_req
-            stable = s3db.supply_item
-            req_id = None
-            item_id = None
-            for ref in job.references:
-                if ref.entry.tablename == "req_req":
-                    if ref.entry.id != None:
-                        req_id = ref.entry.id
-                    else:
-                        uuid = ref.entry.item_id
-                        jobitem = job.job.items[uuid]
-                        req_id = jobitem.id
-                elif ref.entry.tablename == "supply_item":
-                    if ref.entry.id != None:
-                        item_id = ref.entry.id
-                    else:
-                        uuid = ref.entry.item_id
-                        jobitem = job.job.items[uuid]
-                        item_id = jobitem.id
+        db = current.db
 
-            if req_id != None and item_id != None:
-                query = (itable.req_id == req_id) & \
-                        (itable.item_id == item_id)
-            else:
-                return
+        itable = item.table
+        rtable = db.req_req
+        stable = db.supply_item
 
-            _duplicate = current.db(query).select(itable.id,
-                                                  limitby=(0, 1)).first()
-            if _duplicate:
-                job.id = _duplicate.id
-                job.data.id = _duplicate.id
-                job.method = job.METHOD.UPDATE
+        req_id = None
+        item_id = None
+        for ref in item.references:
+            if ref.entry.tablename == "req_req":
+                if ref.entry.id != None:
+                    req_id = ref.entry.id
+                else:
+                    uuid = ref.entry.item_id
+                    jobitem = item.job.items[uuid]
+                    req_id = jobitem.id
+            elif ref.entry.tablename == "supply_item":
+                if ref.entry.id != None:
+                    item_id = ref.entry.id
+                else:
+                    uuid = ref.entry.item_id
+                    jobitem = item.job.items[uuid]
+                    item_id = jobitem.id
 
+        if req_id is not None and item_id is not None:
+            query = (itable.req_id == req_id) & \
+                    (itable.item_id == item_id)
+        else:
+            return
+
+        duplicate = db(query).select(itable.id,
+                                     limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
 # =============================================================================
 class S3RequestSkillModel(S3Model):
@@ -2144,24 +2133,6 @@ class S3RequestRecurringModel(S3Model):
         #
         return dict()
 
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def req_recurring_duplicate(job):
-        """
-            De-duplicate Recurring Request Jobs
-        """
-
-        if job.tablename == "req_recurring":
-            table = job.table
-            name = job.data.get("name", None)
-            query = (table.name == name)
-            _duplicate = current.db(query).select(table.id,
-                                                  limitby=(0, 1)).first()
-            if _duplicate:
-                job.id = _duplicate.id
-                job.data.id = _duplicate.id
-                job.method = job.METHOD.UPDATE
-
 # =============================================================================
 class S3RequestSummaryModel(S3Model):
     """
@@ -2357,6 +2328,7 @@ class S3CommitModel(S3Model):
                                           readable = True,
                                           writable = True,
                                           represent = self.org_site_represent,
+                                          updateable = True,
                                           widget = site_widget,
                                           ),
                           self.gis_location_id(
@@ -2460,15 +2432,16 @@ class S3CommitModel(S3Model):
 
         # Reusable Field
         commit_id = S3ReusableField("commit_id", "reference %s" % tablename,
-                                    sortby="date",
+                                    label = T("Commitment"),
+                                    ondelete = "CASCADE",
+                                    represent = self.commit_represent,
                                     requires = IS_EMPTY_OR(
                                                     IS_ONE_OF(db, "req_commit.id",
                                                               self.commit_represent,
                                                               orderby="req_commit.date",
                                                               sort=True)),
-                                    represent = self.commit_represent,
-                                    label = T("Commitment"),
-                                    ondelete = "CASCADE")
+                                    sortby = "date",
+                                    )
 
         self.configure(tablename,
                        context = {"event": "req_id$event_id",
@@ -2502,11 +2475,11 @@ class S3CommitModel(S3Model):
         # Components
         add_components(tablename,
                        # Committed Items
-                       req_commit_item="commit_id",
+                       req_commit_item = "commit_id",
                        # Committed Persons
-                       req_commit_person="commit_id",
+                       req_commit_person = "commit_id",
                        # Committed Skills
-                       req_commit_skill="commit_id",
+                       req_commit_skill = "commit_id",
                       )
 
         # ---------------------------------------------------------------------
@@ -3630,14 +3603,15 @@ def req_rheader(r, check_page=False):
                             query = (table.uuid == site_record.uuid)
                             id = db(query).select(table.id,
                                                   limitby=(0, 1)).first().id
-                            transit_status = SPAN(transit_status,
-                                                  A(T("Incoming Shipments"),
-                                                    _href = URL(c = instance_type.split("_")[0],
-                                                                f = "incoming",
-                                                                vars = {"viewing" : "%s.%s" % (instance_type, id)}
-                                                                )
-                                                    )
-                                                  )
+                            # @ToDo: Create this function!
+                            #transit_status = SPAN(transit_status,
+                            #                      A(T("Incoming Shipments"),
+                            #                        _href = URL(c = instance_type.split("_")[0],
+                            #                                    f = "incoming",
+                            #                                    vars = {"viewing" : "%s.%s" % (instance_type, id)}
+                            #                                    )
+                            #                        )
+                            #                      )
                     except:
                         pass
                     transit_status = (TH("%s: " % T("Transit Status")),
@@ -3710,10 +3684,10 @@ def req_rheader(r, check_page=False):
     return None
 
 # =============================================================================
-def req_match():
+def req_match(rheader=None):
     """
         Function to be called from controller functions to display all
-        requests as a tab for a site.
+        requests for a site as a tab.
     """
 
     T = current.T
@@ -3728,14 +3702,18 @@ def req_match():
     if not viewing:
         return output
     if "." in viewing:
-        tablename, id = viewing.split(".", 1)
+        tablename, record_id = viewing.split(".", 1)
     else:
         return output
 
     table = s3db[tablename]
-    site_id = current.db(table.id == id).select(table.site_id,
-                                                limitby=(0, 1)
-                                                ).first().site_id
+    row = current.db(table.id == record_id).select(table.site_id, 
+                                                   limitby=(0, 1)).first()
+    if row:
+        site_id = row.site_id
+    else:
+        return output
+
     actions = [dict(url = URL(c = "req",
                               f = "req",
                               args = ["[id]", "check"],
@@ -3745,59 +3723,53 @@ def req_match():
                     label = str(T("Check")),
                     )
                ]
-    if settings.get_req_use_commit():
+
+    if current.auth.s3_has_permission("update", tablename, record_id):
+        # @ToDo: restrict to those which we've not already committed/sent?
+        if settings.get_req_use_commit():
+            actions.append(
+                dict(url = URL(c = "req",
+                               f = "commit_req",
+                               args = ["[id]"],
+                               vars = {"site_id": site_id}
+                               ),
+                     _class = "action-btn",
+                     label = str(T("Commit")),
+                     )
+                )
         actions.append(
-            dict(url = URL(c = "req",
-                           f = "commit_req",
-                           args = ["[id]"],
-                           vars = {"site_id": site_id}
-                           ),
-                 _class = "action-btn",
-                 label = str(T("Commit")),
+                dict(url = URL(c = "req",
+                               f = "send_req",
+                               args = ["[id]"],
+                               vars = {"site_id": site_id}
+                               ),
+                     _class = "action-btn dispatch",
+                     label = str(T("Send")),
+                     )
                 )
-            )
-    actions.append(
-            dict(url = URL(c = "req",
-                           f = "send_req",
-                           args = ["[id]"],
-                           vars = {"site_id": site_id}
-                           ),
-                 _class = "action-btn dispatch",
-                 label = str(T("Send")),
-                )
-        )
+
     s3.actions = actions
 
-    if tablename == "org_office":
-        rheader = s3db.org_rheader
-    elif tablename == "org_facility":
-        rheader = s3db.org_facility_rheader
-    elif tablename == "inv_warehouse":
-        rheader = s3db.inv_rheader
-    elif tablename == "cr_shelter":
-        rheader = s3db.cr_shelter_rheader
-    elif tablename == "hms_hospital":
-        rheader = s3db.hms_hospital_rheader
-    else:
-        rheader = None
+    if rheader is None:
+        if tablename == "org_office":
+            rheader = s3db.org_rheader
+        elif tablename == "org_facility":
+            rheader = s3db.org_facility_rheader
+        elif tablename == "inv_warehouse":
+            rheader = s3db.inv_rheader
+        elif tablename == "cr_shelter":
+            rheader = s3db.cr_shelter_rheader
+        elif tablename == "hms_hospital":
+            rheader = s3db.hms_hospital_rheader
 
     s3.filter = (s3db.req_req.site_id != site_id)
-    s3db.configure("req_req", insertable=False)
+    s3db.configure("req_req",
+                   insertable = False)
 
     # Pre-process
     def prep(r):
-        # Plugin OrgRoleManager
-        auth = current.auth
-        if auth.user is not None and \
-           tablename in S3OrgRoleManager.ENTITY_TYPES:
-
-            sr = auth.get_system_roles()
-            realms = auth.user.realms or Storage()
-
-            if sr.ADMIN in realms or sr.ORG_ADMIN in realms and \
-               (realms[sr.ORG_ADMIN] is None or \
-                r.record.pe_id in realms[sr.ORG_ADMIN]):
-                r.set_handler("roles", S3OrgRoleManager())
+        # Plugin OrgRoleManager when appropriate
+        S3OrgRoleManager.set_method(r, entity=tablename, record_id=record_id)
         return True
     s3.prep = prep
 
@@ -3808,7 +3780,8 @@ def req_match():
         return output
     s3.postp = postp
 
-    output = current.rest_controller("req", "req", rheader=rheader)
+    output = current.rest_controller("req", "req",
+                                     rheader = rheader)
     return output
 
 # =============================================================================
@@ -4402,7 +4375,7 @@ def req_customise_commit_fields():
     #field = table.location_id
     #field.represent = s3db.gis_LocationRepresent(sep=" | ")
     # Required
-    #field.requires = IS_LOCATION_SELECTOR2()
+    #field.requires = IS_LOCATION()
 
     field = table.comments
     field.label = T("Donation")

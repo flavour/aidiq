@@ -140,7 +140,7 @@ def human_resource():
                         )
 
     # Filter to just Deployables
-    q = FS("application.active") == True
+    q = FS("application.active") != None
     output = s3db.hrm_human_resource_controller(extra_filter=q)
     return output
 
@@ -185,14 +185,15 @@ def application():
     settings.search.filter_manager = True
 
     def prep(r):
-        if not r.method:
+        if not r.method and r.representation != "s3json":
             r.method = "select"
         if r.method == "select":
             r.custom_action = s3db.deploy_apply
         return True
     s3.prep = prep
 
-    if "delete" in request.args:
+    if "delete" in request.args or \
+       request.env.request_method == "POST" and auth.permission.format=="s3json":
         return s3_rest_controller()
     else:
         #return s3db.hrm_human_resource_controller()
@@ -262,7 +263,7 @@ def assignment():
                 if hr:
                     get_vars = {"mission_id": r.record.mission_id,
                                 }
-                    
+
                     if popup:
                         method = "create.popup"
                         refresh = get_vars.get("refresh", None)
@@ -567,7 +568,7 @@ def email_inbox():
                                     label = T("Attachments"),
                                     fields = ["document_id",
                                               ],
-                                    ),                                                                
+                                    ),
                                 )
 
     s3db.configure(tablename,
@@ -703,6 +704,17 @@ def email_channel():
     s3.postp = postp
 
     return s3_rest_controller("msg")
+
+# =============================================================================
+def alert_recipient():
+    """
+        RESTful CRUD controller for options.s3json lookups
+        - needed for adding recipients
+    """
+
+    s3.prep = lambda r: r.method == "options" and r.representation == "s3json"
+
+    return s3_rest_controller()
 
 # =============================================================================
 # Messaging

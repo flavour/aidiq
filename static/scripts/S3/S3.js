@@ -277,6 +277,34 @@ S3.redraw = function() {
     }
 };
 
+// jQueryUI Icon Menus
+// - http://jqueryui.com/selectmenu/#custom_render
+// - used by S3SelectWidget()
+$.widget('custom.iconselectmenu', $.ui.selectmenu, {
+    _renderItem: function(ul, item) {
+        var li = $('<li>', {text: item.label} );
+
+        if (item.disabled) {
+            li.addClass('ui-state-disabled');
+        }
+
+        var element = item.element;
+        var _class = item.element.attr('data-class');
+        if (_class) {
+            _class = 'ui-icon ' + _class;
+        } else {
+            _class = 'ui-icon';
+        }
+        $('<span>', {
+            'style': element.attr('data-style'),
+            'class': _class
+        })
+          .appendTo(li);
+
+        return li.appendTo(ul);
+    }
+});
+
 // Geolocation
 // - called from Auth.login()
 S3.getClientLocation = function(targetfield) {
@@ -574,21 +602,76 @@ S3.unmask = function(table, field) {
     }
 };
 // ============================================================================
-var s3_viewMap = function(feature_id) {
+var s3_viewMap = function(feature_id, iframe_height, popup) {
     // Display a Feature on a BaseMap within an iframe
-    var url = S3.Ap.concat('/gis/display_feature/') + feature_id;
-    var oldhtml = $('#map').html();
-    var iframe = "<iframe width='640' height='480' src='" + url + "'></iframe>";
-    var closelink = $('<a href=\"#\">' + i18n.close_map + '</a>');
+    var url = S3.Ap.concat('/gis/display_feature/') + feature_id,
+        $map = $('#map'),
+        $iframe_map = $('#iframe-map'),
+        curl = document.location.pathname.split("/"),
+        controller = curl[2],
+        func = curl[3];
 
-    // @ToDo: Also make the represent link act as a close
-    closelink.bind('click', function(evt) {
-        $('#map').html(oldhtml);
-        evt.preventDefault();
-    });
+    url += '?controller=' + controller + '&function=' + func;
+    if (curl.length>4) {
+        // Record id
+        if ($.isNumeric(curl[4])) {
+            url += '&rid=' + curl[4];
+        }
+    }
 
-    $('#map').html(iframe);
-    $('#map').append($("<div style='margin-bottom:10px' />").append(closelink));
+    if ($map.length==0 || popup=='True') {
+        url += '&popup=1';
+        S3.openPopup(url, true);
+    }
+    else {
+        var toggleButton = function() {
+            // Hide/Show the 'Close Map' button
+            var closeMap = $('#close-iframe-map');
+            if ($iframe_map.is(':visible')) {
+                closeMap.css({
+                    'display': ''
+                });
+            }
+            else {
+                closeMap.css({
+                    'display': 'none'
+                });
+            }
+        };
+        var closeMap = function() {
+            // Hide the Map
+            $('#iframe-map').slideUp('medium');
+            $('#close-iframe-map').css({
+                'display': 'none'
+            });
+        };
+
+        if ($iframe_map.length==0) {
+            // 1st iframe to be loaded in 'map'
+            var iframe = $("<iframe id='iframe-map' data-feature='" + feature_id + "' style='border-style:none' width='100%' height='" + iframe_height + "' src='" + url + "' />"),
+                closelink = $("<a class='button tiny' id='close-iframe-map'>" + i18n.close_map + "</a>");
+
+            closelink.bind('click', closeMap);
+            // Display Map
+            $map.slideDown('medium');
+            $map.append(iframe);
+            $map.append($('<div style="margin-bottom:10px" />').append(closelink));
+        }
+        else {
+            fid = $iframe_map.attr('data-feature');
+            if (fid==feature_id) {
+                // Same feature request. Display Map
+                $iframe_map.slideToggle('medium', toggleButton);
+            }
+            else {
+                $iframe_map.attr({
+                    'src': url,
+                    'data-feature': feature_id
+                });
+                $iframe_map.slideDown('medium', toggleButton);
+            }
+        }
+    }
 };
 var s3_viewMapMulti = function(module, resource, instance, jresource) {
     // Display a set of Features on a BaseMap within an iframe
@@ -616,24 +699,6 @@ S3.openPopup = function(url, center) {
         }
         S3.popupWin = window.open(url, 'popupWin', params);
     } else S3.popupWin.focus();
-};
-var s3_showMap = function(feature_id) {
-    // Display a Feature on a BaseMap within an iframe
-    var url = S3.Ap.concat('/gis/display_feature/') + feature_id;
-	// new Ext.Window({
-		// autoWidth: true,
-		// floating: true,
-		// items: [{
-			// xtype: 'component',
-			// autoEl: {
-				// tag: 'iframe',
-				// width: 650,
-				// height: 490,
-				// src: url
-			// }
-		// }]
-	// }).show();
-    S3.openPopup(url, true);
 };
 
 // ============================================================================
@@ -790,7 +855,13 @@ var s3_showMap = function(feature_id) {
                     defaultValue = value;
                 }
                 name = fncRepresent ? fncRepresent(record, prepResult) : record.name;
-                options.push('<option value="' + value + '">' + name + '</option>');
+                // Does the option have an onhover-tooltip?
+                if (record._tooltip) {
+                    title = ' title="' + record._tooltip + '"';
+                } else {
+                    title = ''
+                }
+                options.push('<option' + title + ' value="' + value + '">' + name + '</option>');
             }
             if (settings.optional) {
                 // Add (and default to) empty option
@@ -1004,6 +1075,15 @@ var s3_showMap = function(feature_id) {
                 }
             }
         }
+        var tooltip = settings.tooltip;
+        if (tooltip) {
+            tooltip = 'tooltip=' + tooltip;
+            if (url.indexOf('?') != -1) {
+                url = url.concat('&' + tooltip);
+            } else {
+                url = url.concat('?' + tooltip);
+            }
+        }
 
         var request = null;
         if (!settings.getWidgetHTML) {
@@ -1126,11 +1206,6 @@ var s3_showMap = function(feature_id) {
                     if (!userChange) {
                         S3ClearNavigateAwayConfirm();
                     }
-
-                    // Restore event handlers (@todo: deprecate)
-                    if (S3.inline_checkbox_events) {
-                        S3.inline_checkbox_events();
-                    }
                 }
             });
         }
@@ -1154,13 +1229,22 @@ var s3_showMap = function(feature_id) {
                 triggerField = checkboxesWidget;
             }
         }
-        if (triggerField.length == 1 && !triggerField.hasClass('checkboxes-widget-s3')) {
-            triggerValue = triggerField.val();
-        } else if (triggerField.hasClass('checkboxes-widget-s3')) {
+        if (triggerField.hasClass('checkboxes-widget-s3')) {
             triggerValue = new Array();
             triggerField.find('input:checked').each(function() {
                 triggerValue.push($(this).val());
             });
+        } else if (triggerField.hasClass('s3-hierarchy-input')) {
+            triggerValue = '';
+            var value = triggerField.val();
+            if (value) {
+                value = JSON.parse(value);
+                if (value.length) {
+                    triggerValue = value[0];
+                }
+            }
+        } else if (triggerField.length == 1) {
+            triggerValue = triggerField.val();
         }
         return [triggerField, triggerValue];
     };
@@ -1197,6 +1281,12 @@ var s3_showMap = function(feature_id) {
      * @param {string} settings.msgNoRecords - show this text for the None-option
      * @param {bool} settings.optional - add a None-option (without text) even when options
      *                                   are available (so the user can select None)
+     * @param {string} settings.tooltip - additional tooltip field to request from back-end,
+     *                                    either a field selector or an expression "f(k,v)"
+     *                                    where f is a function name that can be looked up
+     *                                    from s3db, and k,v are field selectors for the row,
+     *                                    f will be called with a list of tuples (k,v) for each
+     *                                    row and is expected to return a dict {k:tooltip}
      */
     $.filterOptionsS3 = function(settings) {
 
@@ -1219,16 +1309,6 @@ var s3_showMap = function(feature_id) {
             targetField,
             targetForm;
 
-        if (!triggerSelector) {
-            return;
-        } else {
-            triggerField = $(triggerSelector);
-            if (!triggerField.length) {
-                return;
-            }
-            triggerForm = triggerField.closest('form');
-        }
-
         if (!targetSelector) {
             return;
         } else {
@@ -1239,6 +1319,16 @@ var s3_showMap = function(feature_id) {
             targetForm = targetField.closest('form');
         }
 
+        if (!triggerSelector) {
+            return;
+        } else {
+            // Trigger must be in the same form as target
+            triggerField = targetForm.find(triggerSelector);
+            if (!triggerField.length) {
+                return;
+            }
+        }
+
         // Initial event-less update of the target(s)
         $(triggerSelector).last().each(function() {
             var trigger = $(this),
@@ -1246,7 +1336,7 @@ var s3_showMap = function(feature_id) {
             if (settings.scope == 'row') {
                 $scope = trigger.closest('.edit-row.inline-form,.add-row.inline-form');
             } else {
-                $scope = triggerForm;
+                $scope = targetForm;
             }
             var triggerData = getTriggerData(trigger),
                 target = $scope.find(targetSelector);
@@ -1254,12 +1344,12 @@ var s3_showMap = function(feature_id) {
         });
 
         // Change-event for the trigger fires trigger-event for the target
-        // form, delegated to triggerForm so it happens also for dynamically
+        // form, delegated to targetForm so it happens also for dynamically
         // inserted triggers (e.g. inline forms)
         var changeEventName = 'change.s3options',
             triggerEventName = 'triggerUpdate.' + triggerName;
-        triggerForm.undelegate(triggerSelector, changeEventName)
-                   .delegate(triggerSelector, changeEventName, function() {
+        targetForm.undelegate(triggerSelector, changeEventName)
+                  .delegate(triggerSelector, changeEventName, function() {
             var triggerData = getTriggerData($(this));
             targetForm.trigger(triggerEventName, triggerData);
         });
@@ -1271,7 +1361,7 @@ var s3_showMap = function(feature_id) {
             if (settings.scope == 'row') {
                 $scope = triggerField.closest('.edit-row.inline-form,.add-row.inline-form');
             } else {
-                $scope = triggerForm;
+                $scope = targetForm;
             }
             // Update all targets within scope
             var target = $scope.find(targetSelector);
@@ -1294,7 +1384,6 @@ var s3_showMap = function(feature_id) {
      * @param {string} url - the URL
      */
     var stripQuery = function(url) {
-
         var newurl = url.split('?')[0].split('#')[0];
         return newurl;
     }
@@ -1305,7 +1394,6 @@ var s3_showMap = function(feature_id) {
      * @param {string} defaultURL - the default URL
      */
     $.cancelButtonS3 = function(defaultURL) {
-
         var cancelButtons = $('.s3-cancel');
         if (!cancelButtons.length) {
             return;
@@ -1381,6 +1469,66 @@ S3.slider = function(fieldname, min, max, step, value) {
     // Enable the field before form is submitted
     real_input.closest('form').submit(function() {
         real_input.prop('disabled', false);
+        // Normal Submit
+        return true;
+    });
+};
+
+/**
+ * Add a Range Slider to a field - used by S3SliderFilter
+ */
+S3.range_slider = function(fieldname, min, max, step, values) {
+    var real_input1 = $('#' + fieldname + '_1');
+    var real_input2 = $('#' + fieldname + '_2');
+    var selector = '#' + fieldname + '_slider';
+    $(selector).slider({
+        range: true,
+        min: min,
+        max: max,
+        step: step,
+        values: values,
+        slide: function (event, ui) {
+            // Set the value of the real inputs
+            real_input1.val(ui.values[0]);
+            real_input2.val(ui.values[1]);
+        },
+        change: function(event, ui) {
+            if (value == null) {
+                // Set a default value
+                // - halfway between min & max
+                value = (min + max) / 2;
+                // - rounded to nearest step
+                var modulo = value % step;
+                if (modulo != 0) {
+                    if (modulo < (step / 2)) {
+                        // round down
+                        value = value - modulo;
+                    } else {
+                        // round up
+                        value = value + modulo;
+                    }
+                }
+                $(selector).slider('option', 'values', values);
+                // Show the control
+                $(selector + ' .ui-slider-handle').show();
+                // Show the value
+                // Hide the help text
+                real_input.show().next().remove();
+            }
+        }
+    });
+    if (values == []) {
+        // Don't show a value until Slider is touched
+        $(selector + ' .ui-slider-handle').hide();
+        // Show help text
+        real_input1.hide();
+        real_input2.hide()
+                   .after('<p>' + i18n.slider_help + '</p>');
+    }
+    // Enable the fields before form is submitted
+    real_input1.closest('form').submit(function() {
+        real_input1.prop('disabled', false);
+        real_input2.prop('disabled', false);
         // Normal Submit
         return true;
     });
@@ -1619,9 +1767,21 @@ S3.reloadWithQueryStringVars = function(queryStringVars) {
                                    .replace(/[^0-9\-\.,]|[\-](?=.)|[\.](?=[0-9]*[\.])/g, '')
                                    .reverse();
         });
+
         // Auto-capitalize first names
         $('input[name="first_name"]').focusout(function() {
             this.value = this.value.charAt(0).toLocaleUpperCase() + this.value.substring(1);
+        });
+
+        // ListCreate Views
+        $('#show-add-btn').click(function() {
+            // Hide the Button
+            $('#show-add-btn').hide(10, function() {
+                // Show the Form
+                $('#list-add').slideDown('medium');
+                // Resize any jQueryUI SelectMenu buttons
+                $('.select-widget').selectmenu('refresh');
+            });
         });
 
         // Resizable textareas
@@ -1734,6 +1894,29 @@ S3.reloadWithQueryStringVars = function(queryStringVars) {
                                .siblings().toggle();
                     });
                 });
+        });
+
+        // Options Menu Toggle on mobile
+        $('#menu-options-toggle,#list-filter-toggle').on('click', function(e) {
+            e.stopPropagation();
+            var $this = $(this);
+            var status = $this.data('status'),
+                menu;
+            if (this.id == '#menu-options-toggle') {
+                menu = $('#menu-options');
+            } else {
+                menu = $('#list-filter');
+            }
+            if (status == 'off') {
+                menu.hide().removeClass('hide-for-small').slideDown(400, function() {
+                    $this.data('status', 'on').text($this.data('on'));
+                });
+            } else {
+                menu.slideUp(400, function() {
+                    menu.addClass('hide-for-small').show();
+                    $this.data('status', 'off').text($this.data('off'));
+                });
+            }
         });
     });
 

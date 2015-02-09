@@ -2,7 +2,7 @@
 
 """ Sahana Eden Supply Model
 
-    @copyright: 2009-2014 (c) Sahana Software Foundation
+    @copyright: 2009-2015 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -46,10 +46,10 @@ __all__ = ("S3SupplyModel",
 import re
 
 from gluon import *
-from gluon.dal import Row
 from gluon.storage import Storage
 
 from ..s3 import *
+from s3dal import Row
 from s3layouts import S3AddResourceLink
 
 # @ToDo: Put the most common patterns at the top to optimise
@@ -116,7 +116,7 @@ class S3SupplyModel(S3Model):
                     }
             s3.js_global.append('''i18n.in_inv="%s"''' % i18n["in_inv"])
             s3.js_global.append('''i18n.no_packs="%s"''' % i18n["no_packs"])
-            
+
         # =====================================================================
         # Brand
         #
@@ -220,6 +220,7 @@ class S3SupplyModel(S3Model):
         # Item Category
         #
         asset = settings.has_module("asset")
+        telephone = settings.get_asset_telephones()
         vehicle = settings.has_module("vehicle")
 
         item_category_represent = supply_ItemCategoryRepresent()
@@ -238,8 +239,8 @@ class S3SupplyModel(S3Model):
                      Field("parent_item_category_id",
                            "reference supply_item_category",
                            label = T("Parent"),
-                           represent = parent_represent,
                            ondelete = "RESTRICT",
+                           represent = parent_represent,
                            ),
                      Field("code", length=16,
                            label = T("Code"),
@@ -249,18 +250,25 @@ class S3SupplyModel(S3Model):
                            label = T("Name"),
                            ),
                      Field("can_be_asset", "boolean",
-                           default=True,
-                           readable=asset,
-                           writable=asset,
+                           default = True,
+                           label = T("Items in Category can be Assets"),
                            represent = s3_yes_no_represent,
-                           label=T("Items in Category can be Assets"),
+                           readable = asset,
+                           writable = asset,
+                           ),
+                     Field("is_telephone", "boolean",
+                           default = False,
+                           label = T("Items in Category are Telephones"),
+                           represent = s3_yes_no_represent,
+                           readable = telephone,
+                           writable = telephone,
                            ),
                      Field("is_vehicle", "boolean",
-                           default=False,
-                           readable=vehicle,
-                           writable=vehicle,
+                           default = False,
+                           label = T("Items in Category are Vehicles"),
                            represent = s3_yes_no_represent,
-                           label=T("Items in Category are Vehicles"),
+                           readable = vehicle,
+                           writable = vehicle,
                            ),
                      s3_comments(),
                      *s3_meta_fields())
@@ -319,18 +327,9 @@ $.filterOptionsS3({
                        supply_item_category = "parent_item_category_id",
                        )
 
-        def supply_item_category_onvalidate(form):
-            """
-                Checks that either a Code OR a Name are entered
-            """
-            # If there is a tracking number check that it is unique within the org
-            if not (form.vars.code or form.vars.name):
-                error = form.errors
-                errors.code = errors.name = T("An Item Category must have a Code OR a Name.")
-
         configure(tablename,
                   deduplicate = self.supply_item_category_duplicate,
-                  onvalidation = supply_item_category_onvalidate,
+                  onvalidation = self.supply_item_category_onvalidate,
                   )
 
         # =====================================================================
@@ -350,12 +349,12 @@ $.filterOptionsS3({
                            label = T("Name"),
                            ),
                      Field("code", length=16,
-                           represent = lambda v: v or NONE,
                            label = T("Code"),
+                           represent = lambda v: v or NONE,
                            ),
                      Field("um", length=128, notnull=True,
+                           default = "piece",
                            label = T("Unit of Measure"),
-                           default = "piece"
                            ),
                      brand_id(),
                      Field("kit", "boolean",
@@ -365,37 +364,37 @@ $.filterOptionsS3({
                                        (opt and [T("Yes")] or [NONE])[0],
                            ),
                      Field("model", length=128,
-                           represent = lambda v: v or NONE,
                            label = T("Model/Type"),
+                           represent = lambda v: v or NONE,
                            ),
                      Field("year", "integer",
+                           label = T("Year of Manufacture"),
                            represent = lambda v: v or NONE,
-                           label = T("Year of Manufacture")
                            ),
                      Field("weight", "double",
                            label = T("Weight (kg)"),
                            represent = lambda v: \
-                                       float_represent(v, precision=2)
+                                       float_represent(v, precision=2),
                            ),
                      Field("length", "double",
                            label = T("Length (m)"),
                            represent = lambda v: \
-                                       float_represent(v, precision=2)
+                                       float_represent(v, precision=2),
                            ),
                      Field("width", "double",
                            label = T("Width (m)"),
                            represent = lambda v: \
-                                       float_represent(v, precision=2)
+                                       float_represent(v, precision=2),
                            ),
                      Field("height", "double",
                            label = T("Height (m)"),
                            represent = lambda v: \
-                                       float_represent(v, precision=2)
+                                       float_represent(v, precision=2),
                            ),
                      Field("volume", "double",
                            label = T("Volume (m3)"),
                            represent = lambda v: \
-                                       float_represent(v, precision=2)
+                                       float_represent(v, precision=2),
                            ),
                      # These comments do *not* pull through to an Inventory's Items or a Request's Items
                      s3_comments(),
@@ -551,7 +550,6 @@ $.filterOptionsS3({
                      *s3_meta_fields())
 
         # CRUD strings
-        ADD_ITEM = T("Add Item to Catalog")
         crud_strings[tablename] = Storage(
             label_create = T("Create Catalog Item"),
             title_display = T("Item Catalog Details"),
@@ -572,7 +570,7 @@ $.filterOptionsS3({
         filter_widgets = [
             S3TextFilter([#These lines are causing issues...very slow - perhaps broken
                           #"comments",
-                          #"item_category_id$code", 
+                          #"item_category_id$code",
                           #"item_category_id$name",
                           #"item_id$brand_id$name",
                           #"item_category_id$parent_item_category_id$code"
@@ -582,26 +580,26 @@ $.filterOptionsS3({
                           "item_id$model",
                           "item_id$comments"
                          ],
-                         label=T("Search"),
-                         comment= T("Search for an item by its code, name, model and/or comment."),
+                         label = T("Search"),
+                         comment = T("Search for an item by its code, name, model and/or comment."),
                         ),
             S3OptionsFilter("catalog_id",
-                            label=T("Catalog"),
-                            comment=T("Search for an item by catalog."),
+                            label = T("Catalog"),
+                            comment = T("Search for an item by catalog."),
                             #represent ="%(name)s",
                             cols = 3,
                             hidden = True,
                            ),
             S3OptionsFilter("item_category_id",
-                            label=T("Category"),
-                            comment=T("Search for an item by category."),
+                            label = T("Category"),
+                            comment = T("Search for an item by category."),
                             represent = item_category_represent_nocodes,
                             cols = 3,
                             hidden = True,
                            ),
             S3OptionsFilter("item_id$brand_id",
-                            label=T("Brand"),
-                            comment=T("Search for an item by brand."),
+                            label = T("Brand"),
+                            comment = T("Search for an item by brand."),
                             #represent ="%(name)s",
                             cols = 3,
                             hidden = True,
@@ -622,15 +620,15 @@ $.filterOptionsS3({
         define_table(tablename,
                      supply_item_id(empty=False),
                      Field("name", length=128,
-                           default = T("piece"),
                            notnull=True, # Ideally this would reference another table for normalising Pack names
+                           default = T("piece"),
                            label = T("Name"),
                            ),
                      Field("quantity", "double", notnull=True,
                            default = 1,
                            label = T("Quantity"),
                            represent = lambda v: \
-                           float_represent(v, precision=2)
+                                       float_represent(v, precision=2),
                            ),
                      s3_comments(),
                      *s3_meta_fields())
@@ -651,9 +649,10 @@ $.filterOptionsS3({
 
         # ---------------------------------------------------------------------
         # Reusable Field
-        item_pack_represent = self.item_pack_represent
+        item_pack_represent = supply_ItemPackRepresent(lookup="supply_item_pack")
         item_pack_id = S3ReusableField("item_pack_id", "reference %s" % tablename,
                     label = T("Pack"),
+                    ondelete = "RESTRICT",
                     represent = item_pack_represent,
                     # Do not display any packs initially
                     # will be populated by filterOptionsS3
@@ -666,12 +665,6 @@ $.filterOptionsS3({
                                          # filterby = "item_id",
                                          # filter_opts = (....),
                                          ),
-                    sortby = "name",
-                    #comment=S3AddResourceLink(c="supply",
-                    #                          f="item_pack",
-                    #                          label=ADD_ITEM_PACK,
-                    #                          title=T("Item Packs"),
-                    #                          tooltip=T("The way in which an item is normally distributed")),
                     script = '''
 $.filterOptionsS3({
  'trigger':'item_id',
@@ -682,10 +675,17 @@ $.filterOptionsS3({
  'fncPrep':S3.supply.fncPrepItem,
  'fncRepresent':S3.supply.fncRepresentItem
 })''',
-                    ondelete = "RESTRICT")
+                    sortby = "name",
+                    #comment=S3AddResourceLink(c="supply",
+                    #                          f="item_pack",
+                    #                          label=ADD_ITEM_PACK,
+                    #                          title=T("Item Packs"),
+                    #                          tooltip=T("The way in which an item is normally distributed")),
+                    )
 
         configure(tablename,
-                  deduplicate = self.supply_item_pack_duplicate)
+                  deduplicate = self.supply_item_pack_duplicate,
+                  )
 
         # Components
         add_components(tablename,
@@ -702,13 +702,15 @@ $.filterOptionsS3({
         define_table(tablename,
                      supply_item_id("parent_item_id",
                                     label = T("Parent Item"),
-                                    comment = None),
+                                    comment = None,
+                                    ),
                      supply_item_id("item_id",
-                                    label = T("Kit Item")),
+                                    label = T("Kit Item"),
+                                    ),
                      Field("quantity", "double",
                            label = T("Quantity"),
                            represent = lambda v: \
-                           float_represent(v, precision=2)
+                                       float_represent(v, precision=2),
                            ),
                      item_pack_id(),
                      s3_comments(),
@@ -723,27 +725,25 @@ $.filterOptionsS3({
         tablename = "supply_item_alt"
         define_table(tablename,
                      supply_item_id(notnull=True),
-                     Field("quantity", "double",
+                     Field("quantity", "double", notnull=True,
+                           default = 1,
                            label = T("Quantity"),
+                           represent = lambda v: \
+                                       float_represent(v, precision=2),
                            comment = DIV(_class = "tooltip",
                                          _title = "%s|%s" %
                                                   (T("Quantity"),
                                                    T("The number of Units of Measure of the Alternative Items which is equal to One Unit of Measure of the Item")
-                                                  )
+                                                   )
                                          ),
-                           default = 1,
-                           notnull=True,
-                           represent = lambda v: \
-                           float_represent(v, precision=2)
                            ),
                      supply_item_id("alt_item_id", notnull=True),
                      s3_comments(),
                      *s3_meta_fields())
 
         # CRUD strings
-        ADD_ALT_ITEM = T("Create Alternative Item")
         crud_strings[tablename] = Storage(
-            label_create = ADD_ALT_ITEM,
+            label_create = T("Create Alternative Item"),
             title_display = T("Alternative Item Details"),
             title_list = T("Alternative Items"),
             title_update = T("Edit Alternative Item"),
@@ -775,8 +775,8 @@ $.filterOptionsS3({
                           supply_item_id(),
                           item_pack_id(),
                           Field("quantity", "double", notnull=True,
-                                label = T("Quantity"),
                                 default = 1.0,
+                                label = T("Quantity"),
                                 ),
                           *s3_ownerstamp())
 
@@ -795,33 +795,32 @@ $.filterOptionsS3({
 
         # Filter Widgets
         filter_widgets = [
-            S3TextFilter(
-                        name="item_entity_search_text",
-                        label=T("Search"),
-                        comment=T("Search for an item by text."),
-                        field=[ "item_id$name",
-                                #"item_id$item_category_id$name",
-                                #"site_id$name"
-                                ]
-                      ),
+            S3TextFilter(name = "item_entity_search_text",
+                         label = T("Search"),
+                         comment = T("Search for an item by text."),
+                         field = ["item_id$name",
+                                  #"item_id$item_category_id$name",
+                                  #"site_id$name"
+                                  ]
+                         ),
             S3OptionsFilter("item_id$item_category_id",
-                            label=T("Code Share"),
-                            comment=T("If none are selected, then all are searched."),
-                            #represent ="%(name)s",
+                            label = T("Code Share"),
+                            comment = T("If none are selected, then all are searched."),
+                            #represent = "%(name)s",
                             cols = 2,
-                           ),
+                            ),
             #S3OptionsFilter("country",
-            #                label=current.messages.COUNTRY,
-            #                comment=T("If none are selected, then all are searched."),
-            #                #represent ="%(name)s",
+            #                label = current.messages.COUNTRY,
+            #                comment = T("If none are selected, then all are searched."),
+            #                #represent = "%(name)s",
             #                cols = 2,
             #               ),
         ]
-        
+
         # Configuration
         configure(tablename,
                   filter_widgets = filter_widgets,
-                 )
+                  )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
@@ -857,6 +856,18 @@ $.filterOptionsS3({
                     supply_item_pack_id = item_pack_id,
                     supply_item_pack_quantity = lambda tablename: lambda row: 0,
                     )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def supply_item_category_onvalidate(form):
+        """
+            Checks that either a Code OR a Name are entered
+        """
+
+        # If there is a tracking number check that it is unique within the org
+        if not (form.vars.code or form.vars.name):
+            errors = form.errors
+            errors.code = errors.name = current.T("An Item Category must have a Code OR a Name.")
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -923,38 +934,6 @@ $.filterOptionsS3({
 
         return item_str
 
-    # ---------------------------------------------------------------------
-    @staticmethod
-    def item_pack_represent(id, row=None):
-        """
-            Represent an Item Pack
-            @ToDo: Migrate to S3Represent
-        """
-
-        if row:
-            # @ToDo: Optimised query where we don't need to do the join
-            id = row.id
-        elif not id:
-            return current.messages["NONE"]
-
-        db = current.db
-        table = db.supply_item_pack
-        query = (table.id == id) & \
-                (table.item_id == db.supply_item.id)
-        record = db(query).select(table.name,
-                                  table.quantity,
-                                  db.supply_item.um,
-                                  limitby = (0, 1)).first()
-        try:
-            if record.supply_item_pack.quantity == 1:
-                return record.supply_item_pack.name
-            else:
-                return "%s (%s x %s)" % (record.supply_item_pack.name,
-                                         record.supply_item_pack.quantity,
-                                         record.supply_item.um)
-        except:
-            return current.messages.UNKNOWN_OPT
-
     # -------------------------------------------------------------------------
     @staticmethod
     def supply_item_duplicate(item):
@@ -965,43 +944,42 @@ $.filterOptionsS3({
             @param item: the S3ImportItem to check
         """
 
-        if item.tablename == "supply_item":
-            db = current.db
-            data = item.data
+        data = item.data
+        code = data.get("code")
+        if code:
+            # Same Code => definitely duplicate
             table = item.table
-            query = (table.deleted != True)
-            code = data.get("code", None)
-            if code:
-                # Same Code => definitely duplicate
-                query = query & (table.code.lower() == code.lower())
-                row = db(query).select(table.id,
-                                       limitby=(0, 1)).first()
-                if row:
-                    item.id = row.id
-                    item.method = item.METHOD.UPDATE
-                    return
-            else:
-                name = data.get("name", None)
-                if not name:
-                    # No way to match
-                    return
-                um = data.get("um", None)
-                if not um:
-                    # Try to extract UM from Name
-                    name, um = item_um_from_name(name)
-                if name:
-                    query = query & (table.name.lower() == name.lower())
-                if um:
-                    query = query & (table.um.lower() == um.lower())
-                catalog_id = data.get("catalog_id", None)
-                if catalog_id:
-                    query = query & (table.catalog_id == catalog_id)
+            query = (table.deleted != True) & \
+                    (table.code.lower() == code.lower())
+            duplicate = current.db(query).select(table.id,
+                                                 limitby=(0, 1)).first()
+            if duplicate:
+                item.id = duplicate.id
+                item.method = item.METHOD.UPDATE
+                return
+        else:
+            name = data.get("name")
+            if not name:
+                # No way to match
+                return
+            um = data.get("um")
+            if not um:
+                # Try to extract UM from Name
+                name, um = item_um_from_name(name)
+            table = item.table
+            query = (table.deleted != True) & \
+                    (table.name.lower() == name.lower())
+            if um:
+                query &= (table.um.lower() == um.lower())
+            catalog_id = data.get("catalog_id")
+            if catalog_id:
+                query &= (table.catalog_id == catalog_id)
 
-                row = db(query).select(table.id,
-                                       limitby=(0, 1)).first()
-                if row:
-                    item.id = row.id
-                    item.method = item.METHOD.UPDATE
+            duplicate = current.db(query).select(table.id,
+                                                 limitby=(0, 1)).first()
+            if duplicate:
+                item.id = duplicate.id
+                item.method = item.METHOD.UPDATE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1013,27 +991,26 @@ $.filterOptionsS3({
             @param item: the S3ImportItem to check
         """
 
-        if item.tablename == "supply_item_category":
-            data = item.data
-            table = item.table
-            query = (table.deleted != True)
-            name = data.get("name", None)
-            if name:
-                query = query & (table.name.lower() == name.lower())
-            code = data.get("code", None)
-            if code:
-                query = query & (table.code.lower() == code.lower())
-            catalog_id = data.get("catalog_id", None)
-            if catalog_id:
-                query = query & (table.catalog_id == catalog_id)
-            parent_category_id = data.get("parent_category_id", None)
-            if parent_category_id:
-                query = query & (table.parent_category_id == parent_category_id)
-            row = current.db(query).select(table.id,
-                                           limitby=(0, 1)).first()
-            if row:
-                item.id = row.id
-                item.method = item.METHOD.UPDATE
+        data = item.data
+        table = item.table
+        query = (table.deleted != True)
+        name = data.get("name")
+        if name:
+            query &= (table.name.lower() == name.lower())
+        code = data.get("code")
+        if code:
+            query &= (table.code.lower() == code.lower())
+        catalog_id = data.get("catalog_id")
+        if catalog_id:
+            query &= (table.catalog_id == catalog_id)
+        parent_category_id = data.get("parent_category_id")
+        if parent_category_id:
+            query &= (table.parent_category_id == parent_category_id)
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1045,24 +1022,23 @@ $.filterOptionsS3({
             @param item: the S3ImportItem to check
         """
 
-        if item.tablename == "supply_catalog_item":
-            data = item.data
-            table = item.table
-            query = (table.deleted != True)
-            item_id = data.get("item_id", None)
-            if item_id:
-                query = query & (table.item_id == item_id)
-            catalog_id = data.get("catalog_id", None)
-            if catalog_id:
-                query = query & (table.catalog_id == catalog_id)
-            item_category_id = data.get("item_category_id", None)
-            if item_category_id:
-                query = query & (table.item_category_id == item_category_id)
-            row = current.db(query).select(table.id,
-                                           limitby=(0, 1)).first()
-            if row:
-                item.id = row.id
-                item.method = item.METHOD.UPDATE
+        data = item.data
+        table = item.table
+        query = (table.deleted != True)
+        item_id = data.get("item_id")
+        if item_id:
+            query &= (table.item_id == item_id)
+        catalog_id = data.get("catalog_id")
+        if catalog_id:
+            query &= (table.catalog_id == catalog_id)
+        item_category_id = data.get("item_category_id")
+        if item_category_id:
+            query &= (table.item_category_id == item_category_id)
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1074,24 +1050,23 @@ $.filterOptionsS3({
             @param item: the S3ImportItem to check
         """
 
-        if item.tablename == "supply_item_pack":
-            data = item.data
-            table = item.table
-            query = (table.deleted != True)
-            name = data.get("name", None)
-            if name:
-                query = query & (table.name.lower() == name.lower())
-            item_id = data.get("item_id", None)
-            if item_id:
-                query = query & (table.item_id == item_id)
-            quantity = data.get("quantity", None)
-            if quantity:
-                query = query & (table.quantity == quantity)
-            row = current.db(query).select(table.id,
-                                           limitby=(0, 1)).first()
-            if row:
-                item.id = row.id
-                item.method = item.METHOD.UPDATE
+        data = item.data
+        table = item.table
+        query = (table.deleted != True)
+        name = data.get("name")
+        if name:
+            query &= (table.name.lower() == name.lower())
+        item_id = data.get("item_id")
+        if item_id:
+            query &= (table.item_id == item_id)
+        quantity = data.get("quantity")
+        if quantity:
+            query &= (table.quantity == quantity)
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1256,6 +1231,8 @@ class S3SupplyDistributionModel(S3Model):
                      s3_date("end_date",
                              #empty = False,
                              label = T("End Date"),
+                             start_field = "supply_distribution_date",
+                             default_interval = 12,
                              ),
                      #self.stats_source_id(),
                      Field.Method("year", self.supply_distribution_year),
@@ -1331,7 +1308,7 @@ class S3SupplyDistributionModel(S3Model):
         filter_widgets = [
             #S3TextFilter([#"item_id$name",
             #          if settings.get_project_projects():
-            #              "activity_id$project_id$name", 
+            #              "activity_id$project_id$name",
             #              "activity_id$project_id$code",
             #              "location_id",
             #              "comments"
@@ -1482,13 +1459,10 @@ class S3SupplyDistributionModel(S3Model):
     def supply_distribution_deduplicate(item):
         """ Import item de-duplication """
 
-        if item.tablename != "supply_distribution":
-            return
-
         data = item.data
-        activity_id = data.get("activity_id", None)
-        location_id = data.get("location_id", None)
-        parameter_id = data.get("parameter_id", None)
+        activity_id = data.get("activity_id")
+        location_id = data.get("location_id")
+        parameter_id = data.get("parameter_id")
 
         if activity_id and location_id and parameter_id:
             # Match distribution by activity, item and location
@@ -1501,7 +1475,6 @@ class S3SupplyDistributionModel(S3Model):
             if duplicate:
                 item.id = duplicate.id
                 item.method = item.METHOD.UPDATE
-        return
 
     # ---------------------------------------------------------------------
     @staticmethod
@@ -1630,7 +1603,7 @@ class supply_ItemRepresent(S3Represent):
             key and fields are not used, but are kept for API
             compatibility reasons.
 
-            @param values: the organisation IDs
+            @param values: the supply_item IDs
         """
 
         db = current.db
@@ -1681,6 +1654,74 @@ class supply_ItemRepresent(S3Represent):
         return s3_unicode(name)
 
 # =============================================================================
+class supply_ItemPackRepresent(S3Represent):
+    """ Representation of Supply Item Packs """
+
+    # -------------------------------------------------------------------------
+    def lookup_rows(self, key, values, fields=[]):
+        """
+            Custom lookup method for item_pack rows, does a left join with
+            the item.
+
+            @param key: the primary key of the lookup table
+            @param values: the supply_item_pack IDs
+            @param fields: the fields to lookup (unused in this class,
+                           retained for API compatibility)
+        """
+
+        db = current.db
+
+        table = self.table
+        itable = db.supply_item
+
+        qty = len(values)
+        if qty == 1:
+            query = (key == values[0])
+        else:
+            query = (key.belongs(values))
+
+        left = itable.on(table.item_id == itable.id)
+        rows = db(query).select(table.id,
+                                table.name,
+                                table.quantity,
+                                itable.um,
+                                left=left,
+                                limitby=(0, qty),
+                                )
+        self.queries += 1
+
+        return rows
+
+    # -------------------------------------------------------------------------
+    def represent_row(self, row):
+        """
+            Represent a single Row
+
+            @param row: the Row (usually joined supply_item_pack/supply_item)
+
+            @todo: implement translate option
+        """
+
+        try:
+            item = row.supply_item
+            pack = row.supply_item_pack
+        except AttributeError:
+            # Missing join (external query?)
+            item = {"um": "Piece"}
+            pack = row
+
+        name = pack.get("name")
+        if not name:
+            return current.messages.UNKNOWN_OPT
+
+        quantity = pack.get("quantity")
+        if quantity == 1 or quantity is None:
+            return name
+        else:
+            # Include pack description (quantity x units of measurement)
+            return "%s (%s x %s)" % (name, quantity, item.get("um"))
+
+# =============================================================================
 class supply_ItemCategoryRepresent(S3Represent):
     """ Representation of Supply Item Categories """
 
@@ -1719,7 +1760,7 @@ class supply_ItemCategoryRepresent(S3Represent):
             key and fields are not used, but are kept for API
             compatibility reasons.
 
-            @param values: the organisation IDs
+            @param values: the supply_item_category IDs
         """
 
         db = current.db
@@ -1924,7 +1965,7 @@ class SupplyItemPackQuantity(object):
             item_pack_id = row.item_pack_id
         except AttributeError:
             return default
-            
+
         if item_pack_id:
             return item_pack_id.quantity
         else:
@@ -1945,7 +1986,7 @@ def supply_item_entity_category(row):
 
     table = current.s3db.supply_item
     query = (table.id == item_id)
-    
+
     record = current.db(query).select(table.item_category_id,
                                       limitby=(0, 1)).first()
     if record:
@@ -1956,17 +1997,17 @@ def supply_item_entity_category(row):
 # -------------------------------------------------------------------------
 def supply_item_entity_country(row):
     """ Virtual field: country """
-    
+
     if hasattr(row, "supply_item_entity"):
         row = row.supply_item_entity
     else:
         return None
-        
+
     s3db = current.s3db
     etable = s3db.supply_item_entity
 
     ekey = etable._id.name
-    
+
     try:
         instance_type = row.instance_type
     except AttributeError:
@@ -1975,21 +2016,21 @@ def supply_item_entity_country(row):
         entity_id = row[ekey]
     except AttributeError:
         return None
-    
+
     itable = s3db[instance_type]
     ltable = s3db.gis_location
-    
+
     if instance_type == "inv_inv_item":
-        
+
         stable = s3db.org_site
         query = (itable[ekey] == entity_id) & \
                 (stable.site_id == itable.site_id) & \
                 (ltable.id == stable.location_id)
         record = current.db(query).select(ltable.L0,
                                           limitby=(0, 1)).first()
-            
+
     elif instance_type == "inv_track_item":
-        
+
         rtable = s3db.inv_recv
         stable = s3db.org_site
         query = (itable[ekey] == entity_id) & \
@@ -1998,9 +2039,9 @@ def supply_item_entity_country(row):
                 (ltable.id == stable.location_id)
         record = current.db(query).select(ltable.L0,
                                           limitby=(0, 1)).first()
-            
+
     elif instance_type == "proc_plan_item":
-        
+
         ptable = s3db.proc_plan
         stable = s3db.org_site
         query = (itable[ekey] == entity_id) & \
@@ -2009,7 +2050,7 @@ def supply_item_entity_country(row):
                 (ltable.id == stable.location_id)
         record = current.db(query).select(ltable.L0,
                                           limitby=(0, 1)).first()
-           
+
     else:
         # @ToDo: Assets and req_items
         record = None
@@ -2044,7 +2085,7 @@ def supply_item_entity_organisation(row):
 
     organisation_represent = s3db.org_OrganisationRepresent(acronym=False)
     itable = s3db[instance_type]
-    
+
     if instance_type == "inv_inv_item":
 
         stable = s3db.org_site
@@ -2052,9 +2093,9 @@ def supply_item_entity_organisation(row):
                 (stable.site_id == itable.site_id)
         record = current.db(query).select(stable.organisation_id,
                                           limitby=(0, 1)).first()
-                                          
+
     elif instance_type == "proc_plan_item":
-        
+
         rtable = s3db.proc_plan
         stable = s3db.org_site
         query = (itable[ekey] == entity_id) & \
@@ -2062,9 +2103,9 @@ def supply_item_entity_organisation(row):
                 (stable.site_id == rtable.site_id)
         record = current.db(query).select(stable.organisation_id,
                                           limitby=(0, 1)).first()
-                                          
+
     elif instance_type == "inv_track_item":
-        
+
         rtable = s3db.inv_recv
         stable = s3db.org_site
         query = (itable[ekey] == entity_id) & \
@@ -2072,7 +2113,7 @@ def supply_item_entity_organisation(row):
                 (stable.site_id == rtable.site_id)
         record = current.db(query).select(stable.organisation_id,
                                           limitby=(0, 1)).first()
-                                          
+
     else:
         # @ToDo: Assets and req_items
         record = None
@@ -2085,7 +2126,7 @@ def supply_item_entity_organisation(row):
 # -------------------------------------------------------------------------
 def supply_item_entity_contacts(row):
     """ Virtual field: contacts (site_id) """
-    
+
     if hasattr(row, "supply_item_entity"):
         row = row.supply_item_entity
     else:
@@ -2113,17 +2154,17 @@ def supply_item_entity_contacts(row):
         query = (itable[ekey] == entity_id)
         record = db(query).select(itable.site_id,
                                   limitby=(0, 1)).first()
-                                          
+
     elif instance_type == "inv_track_item":
-        
+
         rtable = s3db.inv_recv
         query = (itable[ekey] == entity_id) & \
                 (rtable.id == itable.recv_id)
         record = db(query).select(rtable.site_id,
                                   limitby=(0, 1)).first()
-                                  
+
     elif instance_type == "proc_plan_item":
-        
+
         ptable = s3db.proc_plan
         query = (itable[ekey] == entity_id) & \
                 (ptable.id == itable.plan_id)
@@ -2151,24 +2192,24 @@ def supply_item_entity_contacts(row):
                 return office.comments
             else:
                 return default
-                
+
         elif office.comments:
             comments = s3_comments_represent(office.comments,
                                              show_link=False)
         else:
             comments = default
-            
+
         return A(comments,
                  _href = URL(f="office", args = [office.id]))
-                 
+
     else:
         return default
-                                      
+
 
 # -------------------------------------------------------------------------
 def supply_item_entity_status(row):
     """ Virtual field: status """
-    
+
     if hasattr(row, "supply_item_entity"):
         row = row.supply_item_entity
     else:
@@ -2192,9 +2233,9 @@ def supply_item_entity_status(row):
     itable = s3db[instance_type]
 
     status = None
-    
+
     if instance_type == "inv_inv_item":
-        
+
         query = (itable[ekey] == entity_id)
         record = current.db(query).select(itable.expiry_date,
                                           limitby=(0, 1)).first()
@@ -2205,7 +2246,7 @@ def supply_item_entity_status(row):
                           dict(date=record.expiry_date)
             else:
                 status = T("In Stock")
-                
+
     elif instance_type == "proc_plan_item":
 
 
@@ -2220,9 +2261,9 @@ def supply_item_entity_status(row):
                 status = T("Planned %(date)s") % dict(date=record.eta)
             else:
                 status = T("Planned Procurement")
-                
+
     elif instance_type == "inv_track_item":
-        
+
         rtable = s3db.inv_recv
         query = (itable[ekey] == entity_id) & \
                 (rtable.id == itable.send_inv_item_id)
@@ -2234,7 +2275,7 @@ def supply_item_entity_status(row):
                 status = T("Order Due %(date)s") % dict(date=record.eta)
             else:
                 status = T("On Order")
-                
+
     else:
         # @ToDo: Assets and req_items
         return current.messages["NONE"]

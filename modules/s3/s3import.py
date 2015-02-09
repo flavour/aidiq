@@ -2,7 +2,7 @@
 
 """ Resource Import Tools
 
-    @copyright: 2011-14 (c) Sahana Software Foundation
+    @copyright: 2011-15 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -756,6 +756,10 @@ class S3Importer(S3Method):
                                 for k, v in options:
                                     if k == str(data):
                                         value = v
+                                        break
+                                if hasattr(value, "m"):
+                                    # Don't translate - XSLT expects English
+                                    value = value.m
                     elif value is None:
                         continue
                     self.csv_extra_data[label] = value
@@ -1233,11 +1237,11 @@ class S3Importer(S3Method):
                In ajax this will be a json response
 
                In addition the following values will be made available:
-               totalRecords         Number of records in the filtered data set
-               totalDisplayRecords  Number of records to display
+               recordsTotal         Number of records in the filtered data set
+               recordsFiltered  Number of records to display
                start                Start point in the ordered data set
                limit                Number of records in the ordered set
-               NOTE: limit - totalDisplayRecords = total cached
+               NOTE: limit - recordsFiltered = total cached
         """
 
         from s3data import S3DataTable
@@ -1265,9 +1269,9 @@ class S3Importer(S3Method):
         # Start/Limit
         if representation == "aadata":
             get_vars = request.get_vars
-            start = get_vars.get("iDisplayStart", None)
-            limit = get_vars.get("iDisplayLength", None)
-            sEcho = int(get_vars.sEcho or 0)
+            start = get_vars.get("displayStart", None)
+            limit = get_vars.get("pageLength", None)
+            draw = int(get_vars.draw or 0)
         else: # catch all
             start = 0
             limit = s3.ROWSPERPAGE
@@ -1313,7 +1317,7 @@ class S3Importer(S3Method):
             output = dt.json(totalrows,
                              displayrows,
                              datatable_id,
-                             sEcho,
+                             draw,
                              dt_bulk_actions = [current.T("Import")])
         else:
             # Initial HTML response
@@ -1811,7 +1815,7 @@ class S3ImportItem(object):
             table = s3db.table(tablename)
             if table is None:
                 self.error = current.ERROR.BAD_RESOURCE
-                element.set(ERROR, str(self.error))
+                element.set(ERROR, s3_unicode(self.error))
                 return False
 
         self.table = table
@@ -1830,7 +1834,7 @@ class S3ImportItem(object):
             self.error = current.ERROR.VALIDATION_ERROR
             self.accepted = False
             if not element.get(ERROR, False):
-                element.set(ERROR, str(self.error))
+                element.set(ERROR, s3_unicode(self.error))
             return False
 
         self.data = data
@@ -2174,7 +2178,7 @@ class S3ImportItem(object):
                 parent.error = VALIDATION_ERROR
                 element = parent.element
                 if not element.get(ATTRIBUTE.error, False):
-                    element.set(ATTRIBUTE.error, str(parent.error))
+                    element.set(ATTRIBUTE.error, s3_unicode(parent.error))
 
             return ignore_errors
 
@@ -3346,7 +3350,7 @@ class S3ImportJob():
                 element = item.element
                 if element is not None:
                     if not element.get(ATTRIBUTE.error, False):
-                        element.set(ATTRIBUTE.error, str(self.error))
+                        element.set(ATTRIBUTE.error, s3_unicode(self.error))
                     if not logged:
                         self.error_tree.append(deepcopy(element))
 
@@ -3630,9 +3634,16 @@ class S3BulkImporter(object):
                 (csvPath, csvFile) = os.path.split(csvFileName)
                 if csvPath != "":
                     path = os.path.join(request.folder,
-                                        "private",
+                                        "modules",
                                         "templates",
                                         csvPath)
+                    # @todo: deprecate this block once migration completed
+                    if not os.path.exists(path):
+                        # Non-standard location (legacy template)?
+                        path = os.path.join(current.request.folder,
+                                            "private",
+                                            "templates",
+                                            csvPath)
                 csv = os.path.join(path, csvFile)
 
             xslFileName = details[3].strip('" ')
@@ -3679,9 +3690,16 @@ class S3BulkImporter(object):
                 (csvPath, csvFile) = os.path.split(fileName)
                 if csvPath != "":
                     path = os.path.join(current.request.folder,
-                                        "private",
+                                        "modules",
                                         "templates",
                                         csvPath)
+                    # @todo: deprecate this block once migration completed
+                    if not os.path.exists(path):
+                        # Non-standard location (legacy template)?
+                        path = os.path.join(current.request.folder,
+                                            "private",
+                                            "templates",
+                                            csvPath)
                 csv = os.path.join(path, csvFile)
         extraArgs = None
         if len(details) >= 4:
@@ -4079,48 +4097,54 @@ class S3BulkImporter(object):
                 current.log.error("Unable to create temp folder %s!" % tempPath)
                 return
 
-        # Set the current working directory
-        os.chdir(tempPath)
-
-        try:
-            _file = fetch(url)
-        except urllib2.URLError, exception:
-            current.log.error(exception)
-            # Revert back to the working directory as before.
-            os.chdir(cwd)
-            return
-
-        fp = StringIO(_file)
+        filename = url.split("/")[-1]
         if extension == "zip":
-            # Need to unzip
-            import zipfile
+            filename = filename.replace(".zip", ".csv")
+        if os.path.exists(os.path.join(tempPath, filename)):
+            current.log.warning("Using cached copy of %s" % filename)
+        else:
+            # Download if we have no cached copy
+            # Set the current working directory
+            os.chdir(tempPath)
             try:
-                myfile = zipfile.ZipFile(fp)
-            except zipfile.BadZipfile, exception:
-                # e.g. trying to download through a captive portal
+                _file = fetch(url)
+            except urllib2.URLError, exception:
                 current.log.error(exception)
                 # Revert back to the working directory as before.
                 os.chdir(cwd)
                 return
-            files = myfile.infolist()
-            for f in files:
-                filename = f.filename
-                extension = filename.split(".")[-1]
-                if extension == "csv":
-                    _file = myfile.read(filename)
-                    _f = open(filename, "w")
-                    _f.write(_file)
-                    _f.close()
-                    break
-            myfile.close()
-        else:
-            filename = url.split("/")[-1]
-            f = open(filename, "w")
-            f.write(_file)
-            f.close()
 
-        # Revert back to the working directory as before.
-        os.chdir(cwd)
+            fp = StringIO(_file)
+
+            if extension == "zip":
+                # Need to unzip
+                import zipfile
+                try:
+                    myfile = zipfile.ZipFile(fp)
+                except zipfile.BadZipfile, exception:
+                    # e.g. trying to download through a captive portal
+                    current.log.error(exception)
+                    # Revert back to the working directory as before.
+                    os.chdir(cwd)
+                    return
+                files = myfile.infolist()
+                for f in files:
+                    filename = f.filename
+                    extension = filename.split(".")[-1]
+                    if extension == "csv":
+                        _file = myfile.read(filename)
+                        _f = open(filename, "w")
+                        _f.write(_file)
+                        _f.close()
+                        break
+                myfile.close()
+            else:
+                f = open(filename, "w")
+                f.write(_file)
+                f.close()
+
+            # Revert back to the working directory as before.
+            os.chdir(cwd)
 
         task = [1, prefix, resource,
                 os.path.join(tempPath, filename),
@@ -4149,8 +4173,10 @@ class S3BulkImporter(object):
         from gluon.restricted import restricted
 
         environment = build_environment(current.request, current.response, current.session)
+        environment["current"] = current
         environment["auth"] = current.auth
         environment["db"] = current.db
+        environment["gis"] = current.gis
         environment["s3db"] = current.s3db
         environment["settings"] = current.deployment_settings
 

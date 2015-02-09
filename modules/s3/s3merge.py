@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2012-14 (c) Sahana Software Foundation
+    @copyright: 2012-15 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -30,7 +30,6 @@
 """
 
 from gluon import *
-from gluon.dal import Field
 #from gluon.html import BUTTON
 from gluon.storage import Storage
 
@@ -259,9 +258,9 @@ class S3Merge(S3Method):
         # Start/Limit
         get_vars = r.get_vars
         if representation == "aadata":
-            start = get_vars.get("iDisplayStart", None)
-            limit = get_vars.get("iDisplayLength", None)
-            sEcho = int(get_vars.sEcho or 0)
+            start = get_vars.get("displayStart", None)
+            limit = get_vars.get("pageLength", None)
+            draw = int(get_vars.draw or 0)
         else: # catch all
             start = 0
             limit = s3.ROWSPERPAGE
@@ -274,8 +273,8 @@ class S3Merge(S3Method):
                 limit = None # use default
         else:
             start = None # use default
-        if s3.dataTable_iDisplayLength:
-            display_length = s3.dataTable_iDisplayLength
+        if s3.dataTable_pageLength:
+            display_length = s3.dataTable_pageLength
         else:
             display_length = 25
         if limit is None:
@@ -290,7 +289,15 @@ class S3Merge(S3Method):
                 totalrows = resource.count()
                 resource.add_filter(searchq)
         else:
-            orderby, left = None, None
+            dt_sorting = {"iSortingCols": "1", "sSortDir_0": "asc"}
+            if len(list_fields) > 1:
+                dt_sorting["bSortable_0"] = "false"
+                dt_sorting["iSortCol_0"] = "1"
+            else:
+                dt_sorting["bSortable_0"] = "true"
+                dt_sorting["iSortCol_0"] = "0"
+            orderby, left = resource.datatable_filter(list_fields,
+                                                      dt_sorting)[1:]
 
         # Get the records
         data = resource.select(list_fields,
@@ -315,7 +322,7 @@ class S3Merge(S3Method):
             output = dt.json(totalrows,
                              displayrows,
                              datatable_id,
-                             sEcho,
+                             draw,
                              dt_bulk_actions = [(current.T("Merge"),
                                                  "merge", "pair-action")])
 
@@ -333,9 +340,10 @@ class S3Merge(S3Method):
                              displayrows,
                              datatable_id,
                              dt_ajax_url=url,
-                             dt_displayLength=display_length,
                              dt_bulk_actions = [(T("Merge"),
-                                                 "merge", "pair-action")])
+                                                 "merge", "pair-action")],
+                             dt_pageLength=display_length,
+                             )
 
             output["items"] = items
             s3.actions = [{"label": str(T("View")),
@@ -710,7 +718,7 @@ class S3Merge(S3Method):
                 #inp = widgets.upload.widget(field, value,
                                             #download_url=download_url, **attr)
         elif field.widget:
-            if isinstance(field.widget, (S3LocationSelectorWidget, S3LocationSelectorWidget2)):
+            if isinstance(field.widget, S3LocationSelectorWidget):
                 # Workaround - location selector does not support
                 # renaming of the fields => switch to dropdown
                 level = None
@@ -912,6 +920,10 @@ class S3RecordMerger(object):
         s3db = current.s3db
         if main:
             s3db.load_all_models()
+        if db._lazy_tables:
+            # Must roll out all lazy tables to detect dependencies
+            for tn in db._LAZY_TABLES.keys():
+                db[tn]
 
         # Get the records
         original = None

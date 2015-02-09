@@ -1,2 +1,0 @@
-Name,Service,Script,Option:to,Option:subject,Option:message,Option:reply_to,Comments
-Round Trip,Email,email_round_trip,remote@example.com,TEST ROUND TRIP,This is a test message to be collected by the parser and replied to,local@example.com,
