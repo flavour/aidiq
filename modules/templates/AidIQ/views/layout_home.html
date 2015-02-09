@@ -1,0 +1,67 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="{{=T.accepted_language or "en"}}">
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+<title>{{try:}}{{=title}}{{except:}}{{=response.title or settings.get_system_name_short()}}{{pass}}</title>
+{{if response.refresh:}}{{=XML(response.refresh)}}{{pass}}
+<meta name="application-name" content="{{=appname}}" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<link rel="shortcut icon" href="/{{=appname}}/static/favicon.ico" type="image/x-icon" />
+{{if s3.debug:}}{{=s3base.s3_include_debug_css()}}{{else:}}
+<link href="/{{=appname}}/static/themes/AidIQ/eden.min.css" rel="stylesheet" type="text/css" />{{pass}}
+{{include "scripts_top.html"}}
+</head>
+<body>
+ <div id='container'>
+  <div id='header'>
+   <div id='logo'><a href='/{{=appname}}/default/index' title='Return to Home Page'></a></div>
+   <div id='slogan'>Providing Intelligent Business Solutions</br>to the Humanitarian and Development Community</div>
+   <div id='personal-menu'>
+    {{if auth.is_logged_in():}}
+    <div class='fright'>{{=A(auth.user.email, _href=URL(c="default", f="user", args="logout"))}}</div>
+    {{pass}}
+   </div>
+  </div>
+  <div id='menu_wrapper'>
+   <div id='menu_modules'>
+    <ul id='modulenav'>
+     <li><div><a {{="class=active " if not request.vars and not request.args else ""}}href='/{{=appname}}/default/index'>Home</a></div></li>
+     <li><div><a {{="class=active " if "page" in request.vars and request.vars.page == "solutions" else ""}}href='/{{=appname}}/default/index?page=solutions'>Solutions</a></div></li>
+     <li><div><a {{="class=active " if "page" in request.vars and request.vars.page == "projects" else ""}}href='/{{=appname}}/default/index?page=projects'>Projects</a></div></li>
+     <li><div><a {{="class=active " if "page" in request.vars and request.vars.page == "people" else ""}}href='/{{=appname}}/default/index?page=people'>Our People</a></div></li>
+     <li><div><a {{="class=active " if request.args(0) == "contact" else ""}}href='/{{=appname}}/default/index/contact'>Contact Us</a></div></li>
+    </ul>
+   </div>
+  </div>
+  <div class='colmask fullpage'>
+   <div>
+    <div class='col1'>
+    <div id='alert-space'>
+     {{if response.error:}}<div class='alert alert-error'>{{=response.error}}</div>{{pass}}
+     {{if response.warning:}}<div class='alert alert-warning'>{{=response.warning}}</div>{{pass}}
+     {{if response.information:}}<div class='alert alert-info'>{{=response.information}}</div>{{pass}}
+     {{if response.confirmation:}}<div class='alert alert-success'>{{=response.confirmation}}</div>{{pass}}
+     {{if response.flash:}}<div class='alert alert-success'>{{=response.flash}}</div>{{pass}}
+    </div>
+     <div id='content' class='cf'>
+      {{include}}
+     </div>
+    </div>
+  {{if request.vars.page is None and "contact" not in request.args:}}
+    <style type="text/css">#container .col1 {width: 672px;}</style>
+    <div class='col2'>
+        <a class='twitter-timeline' width='300px' height='466px' href='https://twitter.com/aidiq' data-widget-id='258810520616976384'>Tweets by @aidiq</a>
+        <script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0];if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src='//platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js,fjs);}}(document,'script','twitter-wjs');</script>
+    </div>
+  {{pass}}
+   </div>
+  </div>
+  <div id='footer'>
+   {{include "../modules/templates/AidIQ/views/footer.html"}}
+   {{if s3.debug:}}{{=s3.toolbar()}}{{pass}}
+  </div>
+ </div>
+{{include "scripts.html"}}
+</body>
+</html>
