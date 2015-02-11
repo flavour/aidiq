@@ -22,10 +22,12 @@ class index(S3CustomController):
         if page:
             vars = {"page":page}
             table = current.s3db.cms_post
-            row = current.db(table.name == page).select(table.id,
-                                                        table.title,
-                                                        table.body,
-                                                        limitby=(0, 1)).first()
+            query = (table.name == page) & \
+                    (table.deleted != True)
+            row = current.db(query).select(table.id,
+                                           table.title,
+                                           table.body,
+                                           limitby=(0, 1)).first()
         else:
             module = "default"
             vars = {"module":module}
