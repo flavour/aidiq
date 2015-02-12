@@ -740,11 +740,18 @@ input.date.hasDatepicker {
 
 .row.home-top {
   padding: 10px;
+  background-color: #fffefc;
   border-bottom: 1px solid #eeeeee;
 }
 
 .row.home-middle {
   padding: 20px 10px;
+  background-color: #fffefc;
+  background: -webkit-linear-gradient(#2CA1DB, #fffefc);
+  background: -o-linear-gradient(#2CA1DB, #fffefc);
+  background: -moz-linear-gradient(#2CA1DB, #fffefc);
+  background: linear-gradient(#2CA1DB, #fffefc);
+  min-height: 800px;
 }
 
 #logo, #slogan {
@@ -759,6 +766,11 @@ input.date.hasDatepicker {
 #slogan {
   margin-top: 10px;
   font-weight: bold;
+}
+
+#contents {
+  background-color: #fffefc;
+  padding: 0.8rem;
 }
 
 #poweredby {
