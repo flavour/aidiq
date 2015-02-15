@@ -1,0 +1,35 @@
+Series,Name,Title,Body,Module
+,team,Team | AidIQ.com,"<div class='row'>
+ <h4 style='background-color:#f7f8f9;padding:0.1rem 0.3rem;'>Our Team</h4>
+</div>
+<div class='row'>
+ <div class='small-12 columns panel' style='background:transparent;'>
+  <img alt='Fran Boon' src='/eden/static/themes/AidIQ/img/fran.png' style='float:left;width:228px;height:250px;margin:0 20px 20px 0;' />
+  <h2>Fran Boon</h2>
+  <p>
+   Fran is passionate about applying technology to solve the world's problems.
+   Since graduating from Oxford University, he has spent 20 years working with
+   Oxfam, NetHope, Tactical Technology Collective, Sahana, Inveneo,
+   Asterisk & OpenStreetMap. He has travelled extensively implementing
+   systems & facilitating training courses & workshops including during major
+   humanitarian disasters, such as Haiti & Indonesia, & longer-term sustainable
+   development projects. Fran is the Managing Director for AidIQ & chair of the
+   Sahana Eden Project Management Committee. His specific technology interests
+   include Mapping (GIS) & Mobile solutions.
+</p>
+</div>
+</div>
+<div class='row'>
+<div class='small-12 columns panel' style='background:transparent;'>
+<img alt='Dominic K&ouml;nig' src='/eden/static/themes/AidIQ/img/dominic.png' style='width: 225px; height: 250px; margin: 0 0 20px 20px; float: right;' />
+<h2>Dominic K&ouml;nig</h2>
+<p>
+    Dominic is a software developer from Sweden and Technical Director for
+    AidIQ. He has developed large parts of the Sahana Eden core, and is
+    a member of the Sahana Eden project management committee. His specialities
+    include database design, open data standards and systems interoperability.
+    Dominic is also a passionate nurse with 17 years of experience in intensive
+    care.
+</p>
+</div>
+</div>",

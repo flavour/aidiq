@@ -1,0 +1,44 @@
+Series,Name,Title,Body,Module
+,home,AidIQ.com | Providing Intelligent Business Solutions to the Humanitarian and Development Community,"<div class='row'>
+<div class='medium-7 columns'>
+ <h4 style='background-color:#f7f8f9;padding:0.1rem 0.2rem'>Business Solutions for the Humanitarian Community</h4>
+ <p style='padding:0.2rem'>
+  AidIQ provides solutions to organisations in the humanitarian, development, disaster and emergency management sectors.
+ </p>
+ <p style='padding:0.2rem'>
+  We have extensive experience working for NGOs in both the field and headquarters and bring together a unique combination of experience in humanitarian response, disaster management, human resources and software development.
+ </p>
+</div>
+<div class='medium-5 columns'>
+ <img style='width:100%;float:right;' src='/eden/static/themes/AidIQ/img/drmp.jpg'>
+</div>
+</div>
+<div class='row' style='margin-top:10px'>
+ <div class='medium-7 small-12 columns'>
+  <div class='panel' style='background:transparent;'>
+   <p>
+    We provide a full range of services to clients to ensure that solutions are implement effectively and sustainably:
+   </p>
+   <ul style='list-style-type:none;line-height:2.0;'>
+    <li><i class='icon icon-check'></i>Business Analysis</li>
+    <li><i class='icon icon-check'></i>Process Design</li>
+    <li><i class='icon icon-check'></i>Software Development</li>
+    <li><i class='icon icon-check'></i>Training Design</li>
+    <li><i class='icon icon-check'></i>Capacity Building</li>
+    <li><i class='icon icon-check'></i>Human Resources</li>
+   </ul>
+  </div>
+ </div>
+ <div class='medium-5 small-12 columns'>
+  <div class='panel'>
+   <p>
+    We believe in using participatory methodologies in all of our work to ensure we deliver sustainable solutions which empower people.
+   </p>
+  </div>
+  <div class='panel'>
+   <div>AidIQ actively supports of the free and open source</div>
+   <div><img style='width:30px;margin:0.2rem' src='/eden/static/themes/AidIQ/img/sunflower.png'><a href='http://eden.sahanafoundation.org' target='blank'><span style='font-weight:bold;'>SAHANA</span> Disaster Management Software</a></div>
+   <div>and specializes in developing solutions using Sahana Eden.</div>
+  </div>
+ </div>
+</div>",default
