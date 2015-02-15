@@ -69,7 +69,7 @@ class index(S3CustomController):
 
         self._view(THEME, "index.html")
         return dict(content=item)
-        
+
 # =============================================================================
 class contact(S3CustomController):
     """ Contact Form """
@@ -83,41 +83,53 @@ class contact(S3CustomController):
             # Processs Form
             vars = request.post_vars
             result = current.msg.send_email(
-                    to=current.deployment_settings.get_mail_approver(),
-                    subject=vars.subject,
-                    message=vars.message,
-                    reply_to=vars.address,
+                        to=current.deployment_settings.get_mail_approver(),
+                        subject=vars.subject,
+                        message=vars.message,
+                        reply_to=vars.address,
                 )
             if result:
                 response.confirmation = "Thankyou for your message - we'll be in touch shortly"
-            
-        #T = current.T
 
+        from gluon import Field, SQLFORM
+        from s3 import s3_mark_required, S3StringWidget
+
+        T = current.T
+        formstyle = current.deployment_settings.get_ui_formstyle()
+
+        fields = [Field("name",
+                        label = T("Your name"),
+                        required = True,
+                        ),
+                  Field("address",
+                        label = T("Your e-mail address"),
+                        required = True,
+                        #widget = S3StringWidget(placeholder="name@example.com"),
+                        ),
+                  Field("subject",
+                        label = T("Subject"),
+                        required = True,
+                        ),
+                  Field("message", "text",
+                        label = T("Message"),
+                        required = True,
+                        ),
+                  ]
+
+        labels, required = s3_mark_required(fields)
+        response.form_label_separator = ""
+        form = SQLFORM.factory(formstyle = formstyle,
+                               labels = labels,
+                               submit_button = T("Send Message"),
+                               *fields)
+        form["_id"] = "mailform"
         form = DIV(
                 H1("Contact Us"),
                 P("You can leave a message using the contact form below."),
-                FORM(TABLE(
-                        TR(LABEL("Your name:",
-                              SPAN(" *", _class="req"),
-                              _for="name")),
-                        TR(INPUT(_name="name", _type="text", _size=62, _maxlength="255")),
-                        TR(LABEL("Your e-mail address:",
-                              SPAN(" *", _class="req"),
-                              _for="address")),
-                        TR(INPUT(_name="address", _type="text", _size=62, _maxlength="255")),
-                        TR(LABEL("Subject:",
-                              SPAN(" *", _class="req"),
-                              _for="subject")),
-                        TR(INPUT(_name="subject", _type="text", _size=62, _maxlength="255")),
-                        TR(LABEL("Message:",
-                              SPAN(" *", _class="req"),
-                              _for="name")),
-                        TR(TEXTAREA(_name="message", _class="resizable", _rows=5, _cols=62)),
-                        TR(INPUT(_type="submit", _value="Send e-mail")),
-                        ),
-                    _id="mailform"
-                    )
+                form,
+                _class="form-container",
                 )
+
         appname = request.application
         s3 = response.s3
         sappend = s3.scripts.append
@@ -126,7 +138,7 @@ class contact(S3CustomController):
                 sappend("http://ajax.aspnetcdn.com/ajax/jquery.validate/1.11.1/jquery.validate.js")
             else:
                 sappend("http://ajax.aspnetcdn.com/ajax/jquery.validate/1.11.1/jquery.validate.min.js")
-               
+
         else:
             if s3.debug:
                 sappend("/%s/static/scripts/jquery.validate.js" % appname)
