@@ -782,7 +782,9 @@ input.date.hasDatepicker {
   margin-left: 8px;
 }
 .top-bar li.menu-home a {
-  text-indent: 200%;
-  white-space: nowrap;
-  overflow: hidden;
+  visibility: hidden;
+}
+
+.icon {
+  margin-right: 0.3rem;
 }

@@ -124,7 +124,7 @@ class contact(S3CustomController):
                                *fields)
         form["_id"] = "mailform"
         form = DIV(
-                H1("Contact Us"),
+                H4("Contact Us", _style="background-color:#f7f8f9;padding:0.1rem 0.3rem"),
                 P("You can leave a message using the contact form below."),
                 form,
                 _class="form-container",
