@@ -194,6 +194,12 @@ def config(settings):
     # Uncomment to disable responsive behavior of datatables
     settings.ui.datatables_responsive = False
 
+    settings.ui.custom_icons = {
+        "male": "icon-male",
+        "female": "icon-female",
+        "medical": "icon-plus-sign-alt",
+    }
+
     settings.gis.map_height = 600
     settings.gis.map_width = 869
     # Display Resources recorded to Admin-Level Locations on the map
@@ -1395,6 +1401,7 @@ def config(settings):
                 widgets = []
                 append_widget = widgets.append
                 profile_widgets = get_config("profile_widgets")
+                contacts_filter = None
                 while profile_widgets:
                     widget = profile_widgets.pop(0)
                     if widget["tablename"] == "hrm_competency":
@@ -1412,6 +1419,36 @@ def config(settings):
                         append_widget(new_widget)
                     else:
                         append_widget(widget)
+                    if widget["tablename"] == "pr_contact":
+                        contacts_filter = widget["filter"]
+
+                # Emergency contacts
+                if contacts_filter is not None:
+                    emergency_widget = {"label": "Emergency Contacts",
+                                        "label_create": "Add Emergency Contact",
+                                        "tablename": "pr_contact_emergency",
+                                        "type": "datalist",
+                                        "filter": contacts_filter,
+                                        "icon": "phone",
+                                        }
+                    append_widget(emergency_widget)
+
+                if r.record:
+                    widgets.insert(0, {"label": "Personal Details",
+                                       "tablename": "pr_person",
+                                       "type": "datalist",
+                                       "insert": False,
+                                       "list_fields": ["first_name",
+                                                       "middle_name",
+                                                       "last_name",
+                                                       "date_of_birth",
+                                                       "gender",
+                                                       "person_details.nationality",
+                                                       "physical_description.blood_type",
+                                                       ],
+                                       "filter": FS("id") == r.record.person_id,
+                                       "icon": "user",
+                                       })
 
                 # Remove unneeded filters widgets
                 filters = []
@@ -1679,11 +1716,21 @@ def config(settings):
     def member_membership_paid(row):
         """
             Simplified variant of the original function in s3db/member.py,
-            with just "paid" and "unpaid" as possible values
+            with just "paid"/"unpaid"/"exempted" as possible values
         """
+
+        T = current.T
 
         if hasattr(row, "member_membership"):
             row = row.member_membership
+
+        try:
+            exempted = row.fee_exemption
+        except AttributeError:
+            exempted = False
+        if exempted:
+            return T("exempted")
+
         try:
             start_date = row.start_date
         except AttributeError:
@@ -1693,17 +1740,18 @@ def config(settings):
         except AttributeError:
             paid_date = None
         if start_date:
-            T = current.T
-            PAID = T("paid")
-            UNPAID = T("unpaid")
             now = current.request.utcnow.date()
             if not paid_date:
-                due = datetime.date(start_date.year + 1, start_date.month, start_date.day)
+                due = datetime.date(start_date.year + 1,
+                                    start_date.month,
+                                    start_date.day)
             else:
-                due = datetime.date(paid_date.year, start_date.month, start_date.day)
+                due = datetime.date(paid_date.year,
+                                    start_date.month,
+                                    start_date.day)
                 if due < paid_date:
                     due = datetime.date(paid_date.year + 1, due.month, due.day)
-            result = PAID if now < due else UNPAID
+            result = T("paid") if now < due else T("unpaid")
         else:
             result = current.messages["NONE"]
         return result
@@ -1780,6 +1828,7 @@ def config(settings):
                 table["paid"] = Field.Method("paid", member_membership_paid)
                 filter_options = {T("paid"): T("paid"),
                                   T("unpaid"): T("unpaid"),
+                                  T("exempted"): T("exempted"),
                                   }
                 filter_widgets = r.resource.get_config("filter_widgets")
                 if filter_widgets:
@@ -2590,6 +2639,36 @@ def config(settings):
                     # Hide confirming organisation (defaults to VNRC)
                     ctable.organisation_id.readable = False
 
+                elif component_name == "membership":
+                    field = s3db.member_membership.fee_exemption
+                    field.readable = field.writable = True
+                    PROGRAMMES = T("Programmes")
+                    from s3 import S3SQLCustomForm, S3SQLInlineLink
+                    crud_form = S3SQLCustomForm("organisation_id",
+                                                "code",
+                                                "membership_type_id",
+                                                "start_date",
+                                                "end_date",
+                                                "membership_fee",
+                                                "membership_paid",
+                                                "fee_exemption",
+                                                S3SQLInlineLink("programme",
+                                                                field="programme_id",
+                                                                label=PROGRAMMES,
+                                                                ),
+                                                )
+                    list_fields = ["organisation_id",
+                                   "membership_type_id",
+                                   "start_date",
+                                   (T("Paid"), "paid"),
+                                   (T("Email"), "email.value"),
+                                   (T("Phone"), "phone.value"),
+                                   (PROGRAMMES, "membership_programme.programme_id"),
+                                   ]
+                    s3db.configure("member_membership",
+                                   crud_form = crud_form,
+                                   list_fields = list_fields,
+                                   )
             return True
         s3.prep = custom_prep
 

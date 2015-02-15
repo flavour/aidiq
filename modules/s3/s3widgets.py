@@ -822,12 +822,11 @@ class S3AddPersonWidget2(FormWidget):
         id = "%s_title" % fieldname
         label = field.label
         label = LABEL(label, _for=id)
-        # @ToDo: Style these icons in non-Bootstrap themes
         # @ToDo: Check Permissions for existing person records to know whether we can edit the person or simply select a different one
-        widget = DIV(A(I(" ", _class="icon icon-edit"),
+        widget = DIV(A(ICON("edit"),
                        _title=T("Edit Entry"), # "Edit Selection"
                        ),
-                     A(I(" ", _class="icon icon-remove"),
+                     A(ICON("remove"),
                        _title=T("Revert Entry"), # "Clear Selection"
                        ),
                      _class="add_person_edit_bar hide",
@@ -5459,12 +5458,11 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
         # Initialize the values dict
         if values is None:
             values = {}
-        for key in ("L0", "L1", "L2", "L3", "L4", "L5", "specific"):
+        for key in ("L0", "L1", "L2", "L3", "L4", "L5", "specific", "parent"):
             if key not in values:
                 values[key] = None
 
         values["id"] = record_id
-        values["parent"] = None
 
         if not record_id:
             return values
@@ -6312,6 +6310,11 @@ class S3HierarchyWidget(FormWidget):
         if widget_id == None:
             widget_id = attr["_id"] = "%s-hierarchy" % selector
 
+        # Field name
+        name = attr.get("_name")
+        if not name:
+            name = field.name
+
         # Get the lookup table
         lookup = self.lookup
         if not lookup:
@@ -6342,7 +6345,7 @@ class S3HierarchyWidget(FormWidget):
         # Generate the widget
         widget = DIV(INPUT(_type = "hidden",
                            _multiple = "multiple",
-                           _name = field.name,
+                           _name = name,
                            _class = "s3-hierarchy-input",
                            requires = self.parse),
                      DIV(h.html("%s-tree" % widget_id),
@@ -6432,8 +6435,8 @@ class S3HierarchyWidget(FormWidget):
             value = json.loads(value)
         except ValueError:
             return default, None
-        if not self.multiple and value and isinstance(value, list):
-            value = value[0]
+        if not self.multiple and isinstance(value, list):
+            value = value[0] if value else None
         return value, None
 
 # =============================================================================
@@ -7603,6 +7606,7 @@ class ICON(I):
             "active": "icon-check",
             "add": "icon-plus",
             "arrow-down": "icon-arrow-down",
+            "attachment": "icon-paper-clip",
             "bar-chart": "icon-bar-chart",
             "book": "icon-book",
             "bookmark": "icon-bookmark",
@@ -7614,8 +7618,8 @@ class ICON(I):
             "delete": "icon-trash",
             "down": "icon-caret-down",
             "edit": "icon-edit",
-            "envelope-alt": "icon-envelope-alt",
             "exclamation": "icon-exclamation",
+            "facebook": "icon-facebook",
             "file": "icon-file",
             "file-alt": "icon-file-alt",
             "folder-open-alt": "icon-folder-open-alt",
@@ -7623,17 +7627,22 @@ class ICON(I):
             "globe": "icon-globe",
             "home": "icon-home",
             "inactive": "icon-check-empty",
-            "link": "icon-link",
+            "link": "icon-external-link",
             "list": "icon-list",
+            "mail": "icon-envelope-alt",
             "map-marker": "icon-map-marker",
             "offer": "icon-truck",
+            "other": "icon-circle",
             "paper-clip": "icon-paper-clip",
             "phone": "icon-phone",
             "plus": "icon-plus",
             "plus-sign": "icon-plus-sign",
+            "radio": "icon-microphone",
             "remove": "icon-remove",
             "request": "icon-flag",
+            "rss": "icon-rss",
             "sitemap": "icon-sitemap",
+            "skype": "icon-skype",
             "star": "icon-star",
             "table": "icon-table",
             "tag": "icon-tag",
@@ -7642,6 +7651,7 @@ class ICON(I):
             "time": "icon-time",
             "trash": "icon-trash",
             "truck": "icon-truck",
+            "twitter": "icon-twitter",
             "up": "icon-caret-up",
             "user": "icon-user",
             "wrench": "icon-wrench",
@@ -7654,6 +7664,7 @@ class ICON(I):
             #"active": "fa-check",
             #"add": "fa-plus",
             #"arrow-down": "fa-arrow-down",
+            #"attachment": "fa-paper-clip",
             #"bar-chart": "fa-bar-chart",
             #"book": "fa-book",
             #"bookmark": "fa-bookmark",
@@ -7665,8 +7676,8 @@ class ICON(I):
             #"delete": "fa-trash",
             #"down": "fa-caret-down",
             #"edit": "fa-edit",
-            #"envelope-alt": "fa-envelope-o",
             #"exclamation": "fa-exclamation",
+            #"facebook": "fa-facebook",
             #"file": "fa-file",
             #"file-alt": "fa-file-alt",
             #"folder-open-alt": "fa-folder-open-o",
@@ -7674,17 +7685,22 @@ class ICON(I):
             #"globe": "fa-globe",
             #"home": "fa-home",
             #"inactive": "fa-check-empty",
-            #"link": "fa-link",
+            #"link": "fa-external-link",
             #"list": "fa-list",
+            #"mail": "fa-envelope-o",
             #"map-marker": "fa-map-marker",
             #"offer": "fa-truck",
+            #"other": "fa-circle",
             #"paper-clip": "fa-paper-clip",
             #"phone": "fa-phone",
             #"plus": "fa-plus",
             #"plus-sign": "fa-plus-sign",
+            #"radio": "fa-microphone",
             #"remove": "fa-remove",
             #"request": "fa-flag",
+            #"rss": "fa-rss",
             #"sitemap": "fa-sitemap",
+            #"skype": "fa-skype",
             #"star": "fa-star",
             #"table": "fa-table",
             #"tag": "fa-tag",
@@ -7693,6 +7709,7 @@ class ICON(I):
             #"time": "fa-time",
             #"trash": "fa-trash",
             #"truck": "fa-truck",
+            #"twitter": "fa-twitter",
             #"up": "fa-caret-up",
             #"user": "fa-user",
             #"wrench": "fa-wrench",
@@ -7703,6 +7720,7 @@ class ICON(I):
             "active": "fi-check",
             "add": "fi-plus",
             "arrow-down": "fi-arrow-down",
+            "attachment": "fi-paperclip",
             "bar-chart": "fi-graph-bar",
             "book": "fi-book",
             "bookmark": "fi-bookmark",
@@ -7712,8 +7730,8 @@ class ICON(I):
             "comment-alt": "fi-comment",
             "delete": "fi-trash",
             "edit": "fi-page-edit",
-            "envelope-alt": "fi-mail",
             "exclamation": "fi-alert",
+            "facebook": "fi-social-facebook",
             "file": "fi-page-filled",
             "file-alt": "fi-page",
             "folder-open-alt": "fi-folder",
@@ -7721,16 +7739,21 @@ class ICON(I):
             "globe": "fi-map",
             "home": "fi-home",
             "inactive": "fi-x",
-            "link": "fi-link",
+            "link": "fi-web",
             "list": "fi-list",
+            "mail": "fi-mail",
             "map-marker": "fi-marker",
             "offer": "fi-burst",
+            "other": "fi-asterisk",
             "paper-clip": "fi-paperclip",
             "phone": "fi-telephone",
             "plus": "fi-plus",
             "plus-sign": "fi-plus",
+            "radio": "fi-microphone",
             "remove": "fi-x",
             "request": "fi-flag",
+            "rss": "fi-rss",
+            "skype": "fi-social-skype",
             "star": "fi-star",
             "table": "fi-list-thumbnails",
             "tag": "fi-price-tag",
@@ -7738,6 +7761,7 @@ class ICON(I):
             "tasks": "fi-clipboard-notes",
             "time": "fi-clock",
             "trash": "fi-trash",
+            "twitter": "fi-social-twitter",
             "user": "fi-torso",
             "wrench": "fi-wrench",
             "zoomin": "fi-zoom-in",

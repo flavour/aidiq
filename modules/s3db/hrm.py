@@ -4127,6 +4127,7 @@ class S3HRProgrammeModel(S3Model):
 
     names = ("hrm_programme",
              "hrm_programme_hours",
+             "hrm_programme_id",
              )
 
     def model(self):
@@ -4321,7 +4322,8 @@ class S3HRProgrammeModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return dict(hrm_programme_id = programme_id,
+                    )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -6503,7 +6505,7 @@ def hrm_human_resource_controller(extra_filter=None):
                                type = "datalist",
                                tablename = "doc_document",
                                filter = FS("doc_id") == record.doc_id,
-                               icon = "paper-clip",
+                               icon = "attachment",
                                # Default renderer:
                                #list_layout = s3db.doc_document_list_layout,
                                )
@@ -7139,8 +7141,7 @@ def hrm_training_controller():
     s3db = current.s3db
 
     def prep(r):
-        if r.interactive or \
-           r.extension == "aadata":
+        if r.interactive or r.representation == "aadata":
             # Suitable list_fields
             T = current.T
             list_fields = ["course_id",
@@ -7155,7 +7156,7 @@ def hrm_training_controller():
                            list_fields = list_fields,
                            )
 
-            if r.method in ("create", "create.popup", "update", "update.popup"):
+            if r.method in ("create", "update"):
                 # Coming from Profile page?
                 person_id = r.get_vars.get("~.person_id", None)
                 if person_id:
@@ -7163,15 +7164,8 @@ def hrm_training_controller():
                     field.default = person_id
                     field.readable = field.writable = False
 
-            elif r.method == "report":
-                s3db.configure("hrm_training",
-                               extra_fields=["date"])
-                table = s3db.hrm_training
-                table.year = Field.Method("year", hrm_training_year)
-                table.month = Field.Method("month", hrm_training_month)
-
             # @ToDo: Complete
-            #elif r.method in ("import", "import.popup"):
+            #elif r.method == "import":
             #    # Allow course to be populated onaccept from training_event_id
             #    table = s3db.hrm_training
             #    s3db.configure("hrm_training",
@@ -7184,6 +7178,13 @@ def hrm_training_controller():
             #        f.default = training_event_id
             #    else:
             #        f.writable = True
+
+        if r.method == "report":
+            # Configure virtual fields for reports
+            s3db.configure("hrm_training", extra_fields=["date"])
+            table = s3db.hrm_training
+            table.year = Field.Method("year", hrm_training_year)
+            table.month = Field.Method("month", hrm_training_month)
 
         return True
     current.response.s3.prep = prep
@@ -7533,8 +7534,11 @@ class hrm_Record(S3Method):
                 ]
 
             if controller == "vol":
+                widget_filter = FS("type") == 2
                 label = "Volunteer Record"
+            #elif controller = "hrm":
             else:
+                widget_filter = FS("type") == 1
                 label = "Staff Record"
 
             table = s3db.hrm_human_resource
@@ -7543,6 +7547,7 @@ class hrm_Record(S3Method):
                      type = "form",
                      tablename = "hrm_human_resource",
                      context = "person",
+                     filter = widget_filter,
                      )
                 ]
 
