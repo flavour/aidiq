@@ -17,7 +17,7 @@ Series,Name,Title,Body,Module
  <div class='medium-7 small-12 columns'>
   <div class='panel' style='background:transparent;'>
    <p>
-    We provide a full range of services to clients to ensure that solutions are implement effectively and sustainably:
+    We provide a full range of services to clients to ensure that solutions are implemented effectively and sustainably:
    </p>
    <ul style='list-style-type:none;line-height:2.0;'>
     <li><i class='icon icon-check'></i>Business Analysis</li>
@@ -36,7 +36,7 @@ Series,Name,Title,Body,Module
    </p>
   </div>
   <div class='panel'>
-   <div>AidIQ actively supports of the free and open source</div>
+   <div>AidIQ is an active supporter of the free and open source</div>
    <div><img style='width:30px;margin:0.2rem' src='/eden/static/themes/AidIQ/img/sunflower.png'><a href='http://eden.sahanafoundation.org' target='blank'><span style='font-weight:bold;'>SAHANA</span> Disaster Management Software</a></div>
    <div>and specializes in developing solutions using Sahana Eden.</div>
   </div>
