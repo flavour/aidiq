@@ -101,6 +101,7 @@ def config(settings):
                                 pr_education = PID,
                                 pr_note = PID,
                                 hrm_human_resource = SID,
+                                hrm_training = PID,
                                 inv_recv = SID,
                                 inv_send = SID,
                                 inv_track_item = "track_org_id",
@@ -167,6 +168,28 @@ def config(settings):
                                      limitby=(0, 1)).first()
             if otype and otype.name != "Red Cross / Red Crescent":
                 use_user_organisation = True
+
+        elif tablename == "hrm_training":
+            # Inherit realm entity from the related HR record
+            htable = s3db.hrm_human_resource
+            query = (table.id == row.id) & \
+                    (htable.person_id == table.person_id) & \
+                    (htable.deleted != True)
+            rows = db(query).select(htable.realm_entity, limitby=(0, 2))
+            if len(rows) == 1:
+                realm_entity = rows.first().realm_entity
+            else:
+                # Ambiguous => try course organisation
+                ctable = s3db.hrm_course
+                otable = s3db.org_organisation
+                query = (table.id == row.id) & \
+                        (ctable.id == table.course_id) & \
+                        (otable.id == ctable.organisation_id)
+                row = db(query).select(otable.pe_id,
+                                       limitby=(0, 1)).first()
+                if row:
+                    realm_entity = row.pe_id
+                # otherwise: inherit from the person record
 
         # Groups are owned by the user's organisation
         #elif tablename in ("pr_group",):
@@ -1253,14 +1276,15 @@ def config(settings):
         # Organisation
         comments = table.organisation_id.represent(record.organisation_id)
 
+        from s3 import s3_unicode
+        from gluon.html import A, DIV, H2, LABEL, P, SPAN
+
         # Add job title if present
         job_title_id = record.job_title_id
         if job_title_id:
             comments = (SPAN("%s, " % \
                              s3_unicode(table.job_title_id.represent(job_title_id))),
                              comments)
-
-        from gluon.html import A, DIV, H2, LABEL, P, SPAN
 
         # Determine the current roster membership status (active/inactive)
         atable = current.s3db.deploy_application
