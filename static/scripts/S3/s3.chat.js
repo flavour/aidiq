@@ -1,4 +1,4 @@
-require(['converse'], function (converse) {
+require(['converse'], function(converse) {
     converse.initialize({
         allow_otr: true,
         auto_list_rooms: true,
@@ -7,7 +7,7 @@ require(['converse'], function (converse) {
         debug: true ,
         hide_muc_server: false,
         // @ToDo: Support other locales
-        i18n: geti18nSetting(),
+        i18n: geti18nSetting,
         prebind: false,
         show_controlbox_by_default: true,
         xhr_user_search: false

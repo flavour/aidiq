@@ -2,7 +2,7 @@
 
 """ S3 Navigation Module
 
-    @copyright: 2011-15 (c) Sahana Software Foundation
+    @copyright: 2011-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -92,8 +92,8 @@ class S3NavigationItem(object):
                  label=None,
                  c=None,
                  f=None,
-                 args=[],
-                 vars={},
+                 args=None,
+                 vars=None,
                  extension=None,
                  a=None,
                  r=None,
@@ -290,9 +290,11 @@ class S3NavigationItem(object):
         application = current.request.application
         settings = current.deployment_settings
         theme = settings.get_theme()
-        template_location = settings.get_template_location()
-        package = "applications.%s.%s.templates.%s.layouts" % \
-                  (application, template_location, theme)
+        theme_location = current.response.s3.theme_location
+        if theme_location:
+            theme_location = "%s." % theme_location[:-1]
+        package = "applications.%s.modules.templates.%s%s.layouts" % \
+                  (application, theme_location, theme)
         try:
             override = getattr(__import__(package, fromlist=[name]), name)
         except ImportError:
@@ -743,6 +745,7 @@ class S3NavigationItem(object):
         # Args and vars
         # Match levels (=order of preference):
         #   0 = args mismatch
+        #   1 = last arg mismatch (numeric instead of method)
         #   2 = no args in item and vars mismatch
         #   3 = no args and no vars in item
         #   4 = no args in item but vars match
@@ -765,7 +768,12 @@ class S3NavigationItem(object):
                        all([args[i] == largs[i] for i in xrange(len(args))]):
                         level = 5
                     else:
-                        return 0
+                        if len(rargs) >= len(args) > 0 and \
+                           rargs[len(args)-1].isdigit() and \
+                           not str(args[-1]).isdigit():
+                            level = 1
+                        else:
+                            return 0
                 else:
                     level = 3
             elif args:
@@ -1504,8 +1512,16 @@ class S3ComponentTabs(object):
 
 # =============================================================================
 class S3ComponentTab(object):
+    """ Class representing a single Component Tab """
 
     def __init__(self, tab):
+        """
+            Constructor
+
+            @param tab: the component tab configuration as tuple
+                        (label, component_alias, {get_vars}), where the
+                        get_vars dict is optional.
+        """
 
         title, component = tab[:2]
         if component and component.find("/") > 0:
@@ -1537,6 +1553,11 @@ class S3ComponentTab(object):
 
     # -------------------------------------------------------------------------
     def active(self, r):
+        """
+            Check whether the this tab is active
+
+            @param r: the S3Request
+        """
 
         s3db = current.s3db
 
@@ -1554,12 +1575,15 @@ class S3ComponentTab(object):
         component = self.component
         if component:
             clist = get_components(resource.table, names=[component])
+            is_component = False
             if component in clist:
-                return True
+                is_component = True
             elif tablename:
                 clist = get_components(tablename, names=[component])
                 if component in clist:
-                    return True
+                    is_component = True
+            if is_component:
+                return self.authorised(clist[component])
             handler = get_method(resource.prefix,
                                  resource.name,
                                  method=component)
@@ -1574,7 +1598,35 @@ class S3ComponentTab(object):
         return True
 
     # -------------------------------------------------------------------------
+    def authorised(self, hook):
+        """
+            Check permissions for component tabs (in order to deactivate
+            tabs the user is not permitted to access)
+
+            @param hook: the component hook
+        """
+
+        READ = "read"
+        has_permission = current.auth.s3_has_permission
+
+        # Must have access to the link table (if any):
+        if hook.linktable and not has_permission(READ, hook.linktable):
+            return False
+
+        # ...and to the component table itself:
+        if has_permission(READ, hook.tablename):
+            return True
+
+        return False
+
+    # -------------------------------------------------------------------------
     def vars_match(self, r):
+        """
+            Check whether the request GET vars match the GET vars in
+            the URL of this tab
+
+            @param r: the S3Request
+        """
 
         get_vars = r.get_vars
         if self.vars is None:
@@ -1734,23 +1786,27 @@ class S3ResourceHeader:
                             fn = f
                             if "." in fn:
                                 fn = f.split(".", 1)[1]
-                                if fn not in table.fields or \
-                                   fn not in record:
-                                    continue
+                            if fn not in record or fn not in table:
+                                continue
                             field = table[fn]
                             value = record[fn]
+                            # Field.Method?
+                            if callable(value):
+                                value = value()
                         elif isinstance(f, Field) and f.name in record:
                             field = f
                             value = record[f.name]
                     if field is not None:
                         if not label:
                             label = field.label
-                        if field.represent is not None:
+                        if hasattr(field, "represent") and \
+                           field.represent is not None:
                             value = field.represent(value)
-                    tr.append(TH("%s: " % label))
+                    if label is not None:
+                        tr.append(TH("%s: " % label))
                     v = value
                     if not isinstance(v, basestring) and \
-                       not isinstance(value, A):
+                       not isinstance(value, DIV):
                         try:
                             v = unicode(v)
                         except:

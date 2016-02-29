@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -232,6 +232,8 @@ def formstyle_foundation_inline(form, fields, *args, **kwargs):
                                      comment,
                                      _class="inline-tooltip tooltip",
                                      )
+            if hasattr(comment, "add_class"):
+                comment.add_class("inline-tooltip")
             controls_col.append(comment)
 
         _class = "form-row row hide" if hidden else "form-row row"

@@ -31,7 +31,7 @@ def config(settings):
     # ["default", "default/users"]
     # Unless doing a manual DB migration, where prepopulate = 0
     # In Production, prepopulate = 0 (to save 1x DAL hit every page)
-    #settings.base.prepopulate = 1
+    settings.base.prepopulate.append("default")
 
     # Theme (folder to use for views/layout.html)
     #settings.base.theme = "default"
@@ -90,6 +90,8 @@ def config(settings):
     # The key 0 implies not realm restricted
     # The keys "organisation_id" and "site_id" can be used to indicate the user's "organisation_id" and "site_id"
     #settings.auth.registration_roles = { 0: ["STAFF", "PROJECT_EDIT"]}
+    # Define which entity types to use as realm entities in role manager
+    #settings.auth.realm_entity_types = ("org_organisation",)
     # Uncomment to activate entity role manager tabs for OrgAdmins
     #settings.auth.entity_role_manager = True
     # Define modules for entity role manager
@@ -136,7 +138,8 @@ def config(settings):
     #    ("km", "ភាសាខ្មែរ"),
     #    ("ko", "한국어"),
     #    ("mn", "Монгол хэл"), # Mongolian
-    #    ("ne", "नेपाली"),                         #  Nepali
+    #    ("my", "မြန်မာစာ"),       # Burmese
+    #    ("ne", "नेपाली"),                               #  Nepali
     #    ("prs", "دری"),       # Dari
     #    ("ps", "پښتو"),       # Pashto
     #    ("pt", "Português"),
@@ -155,7 +158,7 @@ def config(settings):
     # Uncomment to Hide the language toolbar
     #settings.L10n.display_toolbar = False
     # Default timezone for users
-    #settings.L10n.utc_offset = "UTC +0000"
+    #settings.L10n.utc_offset = "+0000"
     # Uncomment these to use US-style dates in English
     #settings.L10n.date_format = "%m-%d-%Y"
     #settings.L10n.time_format = "%H:%M:%S"
@@ -190,12 +193,14 @@ def config(settings):
     #settings.L10n.name_alt_gis_location = True
     # Uncomment this to Translate Organisation Names/Acronyms
     #settings.L10n.translate_org_organisation = True
+    # Uncomment this to Translate Site Names
+    #settings.L10n.translate_org_site = True
 
     # Finance settings
     #settings.fin.currencies = {
-    #    "EUR" : T("Euros"),
-    #    "GBP" : T("Great British Pounds"),
-    #    "USD" : T("United States Dollars"),
+    #    "EUR" : "Euros",
+    #    "GBP" : "Great British Pounds",
+    #    "USD" : "United States Dollars",
     #}
     #settings.fin.currency_default = "USD"
     #settings.fin.currency_writable = False # False currently breaks things
@@ -205,6 +210,9 @@ def config(settings):
     #settings.base.paper_size = T("Letter")
     # Location of Logo used in pdfs headers
     #settings.ui.pdf_logo = "static/img/mylogo.png"
+
+    #Uncomment to add a title row to XLS exports
+    #settings.base.xls_title_row = True
 
     # GIS (Map) settings
     # Size of the Embedded Map
@@ -369,6 +377,11 @@ def config(settings):
     # Uncomment to Disable the Postcode selector in the LocationSelector
     #settings.gis.postcode_selector = False
 
+    # Increase these if having scalability issues or slow connections
+    #settings.ui.autocomplete_delay = 800
+    #settings.ui.autocomplete_min_chars = 2
+    #settings.ui.filter_auto_submit = 800
+    #settings.ui.report_auto_submit = 800
     # Enable this for a UN-style deployment
     #settings.ui.cluster = True
     # Enable this to use the label 'Camp' instead of 'Shelter'
@@ -428,6 +441,8 @@ def config(settings):
 
     # -------------------------------------------------------------------------
     # CMS
+    # Uncomment this to hide CMS from module index pages
+    #settings.cms.hide_index = True
     # Uncomment to use Bookmarks in Newsfeed
     #settings.cms.bookmarks = True
     # Uncomment to use have Filter form in Newsfeed be open by default
@@ -460,6 +475,8 @@ def config(settings):
     #settings.cr.shelter_population_dynamic = True
     # Uncomment to disable people registration in shelters
     #settings.cr.people_registration = False
+    # Uncomment to use Tags for Shelters
+    #settings.cr.tags = True
 
     # -------------------------------------------------------------------------
     # Events
@@ -467,6 +484,8 @@ def config(settings):
     #settings.event.types_hierarchical = True
     # Make Incident Types Hierarchical
     #settings.event.incident_types_hierarchical = True
+    # Show tab with teams assigned for incidents
+    #settings.event.incident_teams_tab = True
 
     # -------------------------------------------------------------------------
     # Members
@@ -477,6 +496,8 @@ def config(settings):
     # Persons
     # Uncomment to allow person imports to match even without email addresses
     #settings.pr.import_update_requires_email = False
+    # Uncomment this to enable support for third gender
+    #settings.pr.hide_third_gender = False
     # Uncomment to a fuzzy search for duplicates in the new AddPersonWidget2
     #settings.pr.lookup_duplicates = True
     # Uncomment to hide fields in S3AddPersonWidget[2]
@@ -492,6 +513,8 @@ def config(settings):
     #settings.pr.search_shows_hr_details = False
     # Uncomment to hide Emergency Contacts in Person Contacts page
     #settings.pr.show_emergency_contacts = False
+    # Uncomment to hide the Address tab in person details
+    #settings.pr.use_address = False
     # Show separate Public and Private Contacts Tabs
     #settings.pr.contacts_tabs = ("public", "private")
 
@@ -499,6 +522,8 @@ def config(settings):
     # Organisations
     # Uncomment to use an Autocomplete for Organisation lookup fields
     #settings.org.autocomplete = True
+    # Enable the Organisation Sector field
+    #settings.org.sector = True
     # Enable the use of Organisation Branches
     #settings.org.branches = True
     # Show branches as tree rather than as table
@@ -556,6 +581,8 @@ def config(settings):
     #settings.org.office_code_unique = True
     # Uncomment to make Facility codes unique
     #settings.org.facility_code_unique = True
+    # Uncomment to use Tags for Organisations, Offices & Facilities
+    #settings.org.tags = True
 
     # -------------------------------------------------------------------------
     # Human Resource Management
@@ -600,8 +627,8 @@ def config(settings):
     #settings.hrm.show_organisation = True
     # Uncomment to consolidate tabs into a single CV
     #settings.hrm.cv_tab = True
-    # Uncomment to consolidate tabs into Staff Record
-    #settings.hrm.record_tab = True
+    # Uncomment to consolidate tabs into Staff Record (set to False to hide the tab)
+    #settings.hrm.record_tab = "record"
     # Uncomment to disable the use of Volunteer Awards
     #settings.hrm.use_awards = False
     # Uncomment to disable the use of HR Certificates
@@ -611,7 +638,7 @@ def config(settings):
     # Uncomment to disable the use of HR Credentials
     #settings.hrm.use_credentials = False
     # Uncomment to disable the use of HR Description
-    #settings.hrm.use_description = False
+    #settings.hrm.use_description = None
     # Uncomment to enable the use of HR Education
     #settings.hrm.use_education = True
     # Uncomment to disable the use of HR ID Tab
@@ -626,6 +653,10 @@ def config(settings):
     #settings.hrm.teams = False
     # Uncomment to disable the use of HR Trainings
     #settings.hrm.use_trainings = False
+    # Uncomment this to configure tracking of internal/external training instructors
+    #settings.hrm.training_instructors = "external"
+    # Uncomment this to have Pass marks defined by Course
+    #settings.hrm.course_pass_marks = True
     # Uncomment to use activity types in experience record, specify as {"code":"label", ...}
     #settings.hrm.activity_types = {"rdrt": "RDRT Mission"}
 
@@ -689,6 +720,8 @@ def config(settings):
     #settings.req.type_hrm_label = "Volunteers"
     # Label for Requester
     #settings.req.requester_label = "Site Contact"
+    # Uncomment to disable Recurring Request
+    #settings.req.recurring = False
     #settings.req.requester_optional = True
     # Uncomment if the User Account logging the Request is NOT normally the Requester
     #settings.req.requester_is_author = False
@@ -712,6 +745,8 @@ def config(settings):
     #settings.req.commit_value = True
     # Uncomment to allow Donations to be made without a matching Request
     #settings.req.commit_without_request = True
+    # Uncomment to Commit Named People rather than simply Anonymous Skills
+    #settings.req.commit_people = True
     # Uncomment if the User Account logging the Commitment is NOT normally the Committer
     #settings.req.comittter_is_author = False
     # Should Requests ask whether Security is required?
@@ -784,14 +819,20 @@ def config(settings):
     #settings.project.codes = True
     # Uncomment this to call project locations 'Communities'
     #settings.project.community = True
+    # Uncomment this to enable Demographics in 3W projects
+    #settings.project.demographics = True
     # Uncomment this to enable Hazards in 3W projects
     #settings.project.hazards = True
+    # Uncomment this to enable Indicators in projects
+    #settings.project.indicators = True
     # Uncomment this to enable Milestones in projects
     #settings.project.milestones = True
     # Uncomment this to use Projects for Activities & Tasks
     #settings.project.projects = True
     # Uncomment this to disable Sectors in projects
     #settings.project.sectors = False
+    # Uncomment this to enable Programmes in projects
+    #settings.project.programmes = True
     # Uncomment this to use Tags in Tasks
     #settings.project.task_tag = True
     # Uncomment this to enable Themes in 3W projects
@@ -934,10 +975,10 @@ def config(settings):
             module_type = 2,
         )),
         ("cms", Storage(
-        name_nice = T("Content Management"),
-        #description = "Content Management System",
-        restricted = True,
-        module_type = 10,
+            name_nice = T("Content Management"),
+            #description = "Content Management System",
+            restricted = True,
+            module_type = 10,
         )),
         ("doc", Storage(
             name_nice = T("Documents"),
@@ -1116,6 +1157,12 @@ def config(settings):
         #    restricted = True,
         #    module_type = 10
         #)),
+        #("po", Storage(
+        #    name_nice = T("Population Outreach"),
+        #    #description = "Population Outreach",
+        #    restricted = True,
+        #    module_type = 10
+        #)),
         #("security", Storage(
         #   name_nice = T("Security"),
         #   #description = "Security Management System",
@@ -1166,6 +1213,12 @@ def config(settings):
         #("ocr", Storage(
         #   name_nice = T("Optical Character Recognition"),
         #   #description = "Optical Character Recognition for reading the scanned handwritten paper forms.",
+        #   restricted = False,
+        #   module_type = None,
+        #)),
+        #("work", Storage(
+        #   name_nice = T("Jobs"),
+        #   #description = "Simple Volunteer Jobs Management",
         #   restricted = False,
         #   module_type = None,
         #)),

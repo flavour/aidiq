@@ -5,7 +5,7 @@
     <!-- **********************************************************************
          CAP Export Templates
 
-         Copyright (c) 2011-14 Sahana Software Foundation
+         Copyright (c) 2011-15 Sahana Software Foundation
 
          Permission is hereby granted, free of charge, to any person
          obtaining a copy of this software and associated documentation
@@ -62,7 +62,7 @@
                         <xsl:choose>
                             <!-- @todo: ISO Format -->
                             <xsl:when test="data[@field='sent']!=''">
-                                <xsl:value-of select="data[@field='sent']"/>
+                                <xsl:value-of select="data[@field='sent']/@value"/>
                             </xsl:when>
                             <xsl:otherwise>
                                 <xsl:value-of select="@created_on"/>
@@ -73,10 +73,10 @@
             </sent>
 
             <status>
-                <xsl:value-of select="data[@field='status']"/>
+                <xsl:value-of select="translate(data[@field='status']/@value, '&quot;', '')"/>
             </status>
             <msgType>
-                <xsl:value-of select="data[@field='msg_type']"/>
+                <xsl:value-of select="translate(data[@field='msg_type']/@value, '&quot;', '')"/>
             </msgType>
             
             <xsl:if test="data[@field='source']!=''">
@@ -84,7 +84,7 @@
             </xsl:if>
 
             <scope>
-                <xsl:value-of select="data[@field='scope']"/>
+                <xsl:value-of select="translate(data[@field='scope']/@value, '&quot;', '')"/>
             </scope>
 
             <xsl:if test="data[@field='scope']='Restricted'">
@@ -102,11 +102,10 @@
             </xsl:if>
 
             <xsl:if test="data[@field='codes']">
-                <xsl:call-template name="key-value-pairs">
-                    <xsl:with-param name="string">
-                        <xsl:value-of select="data[@field='codes']"/>
+                <xsl:call-template name="split-into-nodes">
+                    <xsl:with-param name="string"><xsl:value-of select="data[@field='codes']"/>
                     </xsl:with-param>
-                    <xsl:with-param name="arg">code</xsl:with-param>
+                    <xsl:with-param name="node-name">code</xsl:with-param>
                 </xsl:call-template>
             </xsl:if>
 
@@ -114,7 +113,13 @@
                 <note><xsl:value-of select="data[@field='note']"/></note>
             </xsl:if>
 
-            <xsl:if test="data[@field='incidents']">
+            <xsl:if test="data[@field='reference']!=''">
+            	<reference>
+            		<xsl:value-of select="data[@field='reference']"/>
+            	</reference>
+            </xsl:if>
+
+            <xsl:if test="data[@field='incidents']!=''">
                 <incidents>
                     <xsl:call-template name="make-space-delimited">
                         <xsl:with-param name="string">
@@ -138,7 +143,8 @@
 
             <xsl:if test="data[@field='category']">
                 <xsl:call-template name="split-into-nodes">
-                    <xsl:with-param name="string"><xsl:value-of select="translate(data[@field='category']/@value, '&quot;][', '')"/>
+                    <xsl:with-param name="string">
+                    	<xsl:value-of select="translate(data[@field='category']/@value, '&quot;][', '')"/>
                     </xsl:with-param>
                     <xsl:with-param name="node-name">category</xsl:with-param>
                 </xsl:call-template>
@@ -148,15 +154,24 @@
 
             <xsl:if test="data[@field='response_type']">
                 <xsl:call-template name="split-into-nodes">
-                    <xsl:with-param name="string"><xsl:value-of select="translate(data[@field='response_type']/@value, '&quot;][', '')"/>
+                    <xsl:with-param name="string">
+                    	<xsl:value-of select="translate(data[@field='response_type']/@value, '&quot;][', '')"/>
                     </xsl:with-param>
                     <xsl:with-param name="node-name">responseType</xsl:with-param>
                 </xsl:call-template>
             </xsl:if>
 
-            <urgency><xsl:value-of select="data[@field='urgency']"/></urgency>
-            <severity><xsl:value-of select="data[@field='severity']"/></severity>
-            <certainty><xsl:value-of select="data[@field='certainty']"/></certainty>
+            <urgency>
+            	<xsl:value-of select="translate(data[@field='urgency']/@value, '&quot;', '')"/>
+            </urgency>
+
+            <severity>
+            	<xsl:value-of select="translate(data[@field='severity']/@value, '&quot;', '')"/>
+            </severity>
+
+            <certainty>
+            	<xsl:value-of select="translate(data[@field='certainty']/@value, '&quot;', '')"/>
+            </certainty>
 
             <xsl:if test="data[@field='audience']!=''">
                 <audience><xsl:value-of select="data[@field='audience']"/></audience>
@@ -164,7 +179,8 @@
 
             <xsl:if test="data[@field='event_code']">
                 <xsl:call-template name="key-value-pairs">
-                    <xsl:with-param name="string"><xsl:value-of select="data[@field='event_code']"/>
+                    <xsl:with-param name="string">
+                        <xsl:value-of select="translate(data[@field='event_code']/@value, '&quot;[\]', '')"/>
                     </xsl:with-param>
                     <xsl:with-param name="arg">eventCode</xsl:with-param>
                 </xsl:call-template>
@@ -174,7 +190,7 @@
                 <effective>
                     <xsl:call-template name="add-timezone">
                         <xsl:with-param name="time">
-                            <xsl:value-of select="data[@field='effective']"/>
+                            <xsl:value-of select="data[@field='effective']/@value"/>
                         </xsl:with-param>
                     </xsl:call-template>
                 </effective>
@@ -184,7 +200,7 @@
                 <onset>
                     <xsl:call-template name="add-timezone">
                         <xsl:with-param name="time">
-                            <xsl:value-of select="data[@field='onset']"/>
+                            <xsl:value-of select="data[@field='onset']/@value"/>
                         </xsl:with-param>
                     </xsl:call-template>
                 </onset>
@@ -194,7 +210,7 @@
                 <expires>
                     <xsl:call-template name="add-timezone">
                         <xsl:with-param name="time">
-                            <xsl:value-of select="data[@field='expires']"/>
+                            <xsl:value-of select="data[@field='expires']/@value"/>
                         </xsl:with-param>
                     </xsl:call-template>
                 </expires>
@@ -224,25 +240,51 @@
                 <contact><xsl:value-of select="data[@field='contact']"/></contact>
             </xsl:if>
 
+            <xsl:if test="reference[@field='event_type_id']!=''">
+            	<parameter>
+                	<valueName>event type</valueName>
+                	<value><xsl:value-of select="reference[@field='event_type_id']"/></value>
+                </parameter>
+            </xsl:if>
+
+            <xsl:if test="reference[@field='priority']!=''">
+            	<parameter>
+                	<valueName>warning priority</valueName>
+                	<value><xsl:value-of select="reference[@field='priority']"/></value>
+                </parameter>
+            </xsl:if>
+
             <xsl:if test="data[@field='parameter']">
                 <xsl:call-template name="key-value-pairs">
                     <xsl:with-param name="string">
-                        <xsl:value-of select="data[@field='parameter']"/>
+                        <xsl:value-of select="translate(data[@field='parameter']/@value, '&quot;[\]', '')"/>
                     </xsl:with-param>
                     <xsl:with-param name="arg">parameter</xsl:with-param>
                 </xsl:call-template>
             </xsl:if>
-            <xsl:variable name="uuid" select="@uuid"/>
 
-            <!-- Areas -->
-            <!-- Include all Areas within this Info & all that are global to the Alert -->
-            <xsl:apply-templates select="../resource[@name='cap_area'][reference[@field='info_id' and @uuid=$uuid]]|
-                                         ../resource[@name='cap_area'][not(reference[@field='info_id'])]"/>
+            <parameter>
+                <valueName>tweet</valueName>
+                <value>
+                    <xsl:value-of select="translate(../data[@field='status']/@value, '&quot;', '')"/><xsl:text>: </xsl:text><xsl:value-of select="data[@field='headline']"/>
+                    <xsl:text>&#x0A;</xsl:text>
+                    <xsl:text>Sender: </xsl:text><xsl:value-of select="../data[@field='sender']"/>
+                    <xsl:text>&#x0A;</xsl:text>
+                    <xsl:text>Website: </xsl:text><xsl:value-of select="data[@field='web']"/>
+                </value>
+            </parameter>
+
+            <xsl:variable name="uuid" select="@uuid"/>
 
             <!-- Resources -->
             <!-- Include all Resources within this Info & all that are global to the Alert -->
             <xsl:apply-templates select="../resource[@name='cap_resource'][reference[@field='info_id' and @uuid=$uuid]]|
                                          ../resource[@name='cap_resource'][not(reference[@field='info_id'])]"/>
+                                         
+            <!-- Areas -->
+            <!-- Include all Areas within this Info & all that are global to the Alert -->
+            <xsl:apply-templates select="../resource[@name='cap_area'][reference[@field='info_id' and @uuid=$uuid]]|
+                                         ../resource[@name='cap_area'][not(reference[@field='info_id'])]"/>
         </info>
     </xsl:template>
 
@@ -250,7 +292,7 @@
     <!-- cap_area -->
     <xsl:template match="resource[@name='cap_area']">
         <xsl:variable name="altitude">
-            <xsl:value-of select="data[@name='altitude']" />
+            <xsl:value-of select="data[@field='altitude']" />
         </xsl:variable>
         <xsl:variable name="elevation">
             <!-- @ToDo: Fix -->
@@ -260,19 +302,7 @@
 
         <area>
             <areaDesc><xsl:value-of select="data[@field='name']"/></areaDesc>
-            <xsl:choose>
-                <!-- Use the info altitude if-available -->
-                <xsl:when test="$altitude!=''">
-                    <altitude><xsl:value-of select="$altitude"/></altitude>
-                    <xsl:if test="data[@field='ceiling']!=''">
-                        <ceiling><xsl:value-of select="data[@name='ceiling']"/></ceiling>
-                    </xsl:if>
-                </xsl:when>
-                <xsl:when test="$elevation!=''">
-                    <altitude><xsl:value-of select="$elevation"/></altitude>
-                </xsl:when>
-            </xsl:choose>
-            <xsl:apply-templates select="resource[@name='cap_area_tag']" />
+
             <xsl:for-each select="../resource[@name='cap_area_location'][reference[@field='area_id' and @uuid=$area_uuid]]/reference[@field='location_id']">
                 <xsl:variable name="location_uuid">
                     <xsl:value-of select="@uuid" />
@@ -282,6 +312,27 @@
             <!--
             <xsl:apply-templates select="resource[@name='cap_area_location']//resource[@name='gis_location_tag']" />
             -->
+
+            <xsl:for-each select="../resource[@name='cap_area_tag'][reference[@field='area_id' and @uuid=$area_uuid]]">
+            	<xsl:variable name="tag_uuid">
+            		<xsl:value-of select="@uuid"/>
+            	</xsl:variable>
+            	<xsl:apply-templates select="//resource[@name='cap_area_tag' and @uuid=$tag_uuid]" />
+            </xsl:for-each>
+
+            <xsl:choose>
+                <!-- Use the info altitude if-available -->
+                <xsl:when test="$altitude!=''">
+                    <altitude><xsl:value-of select="$altitude"/></altitude>
+                    <xsl:if test="data[@field='ceiling']!=''">
+                        <ceiling><xsl:value-of select="data[@field='ceiling']"/></ceiling>
+                    </xsl:if>
+                </xsl:when>
+                <xsl:when test="$elevation!=''">
+                    <altitude><xsl:value-of select="$elevation"/></altitude>
+                </xsl:when>
+            </xsl:choose>
+            
         </area>
     </xsl:template>
 
@@ -469,25 +520,27 @@
     <!-- ****************************************************************** -->
     <!-- cap_resource -->
     <xsl:template match="resource[@name='cap_resource']">
-        <resource>
-            <resourceDesc><xsl:value-of select="data[@field='resource_desc']"/></resourceDesc>
-            <mimeType><xsl:value-of select="data[@field='mime_type']"/></mimeType>
-            <xsl:if test="data[@field='size']!=''">
-                <size><xsl:value-of select="data[@field='size']"/></size>
-            </xsl:if>
-            <xsl:if test="data[@name='size']!=''">
-                <size><xsl:value-of select="data[@name='size']"/></size>
-            </xsl:if>
-            <xsl:if test="data[@name='uri']!=''">
-                <uri><xsl:value-of select="data[@name='uri']"/></uri>
-            </xsl:if>
-            <xsl:if test="data[@name='deref_uri']!=''">
-                <derefUri><xsl:value-of select="data[@name='deref_uri']"/></derefUri>
-            </xsl:if>
-            <xsl:if test="data[@name='digest']!=''">
-                <digest><xsl:value-of select="data[@name='digest']"/></digest>
-            </xsl:if>
-        </resource>
+        <xsl:if test="data[@field='mime_type']!=''">
+            <resource>
+                <resourceDesc><xsl:value-of select="data[@field='resource_desc']"/></resourceDesc>
+                <mimeType><xsl:value-of select="data[@field='mime_type']"/></mimeType>
+                <xsl:if test="data[@field='size']!=''">
+                    <size><xsl:value-of select="data[@field='size']"/></size>
+                </xsl:if>
+                <xsl:if test="data[@name='size']!=''">
+                    <size><xsl:value-of select="data[@name='size']"/></size>
+                </xsl:if>
+                <xsl:if test="data[@name='uri']!=''">
+                    <uri><xsl:value-of select="data[@name='uri']"/></uri>
+                </xsl:if>
+                <xsl:if test="data[@name='deref_uri']!=''">
+                    <derefUri><xsl:value-of select="data[@name='deref_uri']"/></derefUri>
+                </xsl:if>
+                <xsl:if test="data[@name='digest']!=''">
+                    <digest><xsl:value-of select="data[@name='digest']"/></digest>
+                </xsl:if>
+            </resource>
+        </xsl:if>
     </xsl:template>
 
     <!-- ****************************************************************** -->
@@ -529,9 +582,25 @@
             </xsl:when>
 
             <xsl:when test="starts-with($arg, '`')">
+                <xsl:variable name="valueName">
+                    <xsl:if test="contains(substring-before($item, ','), 'key:')">
+                        <xsl:value-of select="normalize-space(substring-after(substring-before($item, ','), 'key:'))"/>
+                    </xsl:if>
+                    <xsl:if test="contains(substring-after($item, ','), 'key:')">
+                        <xsl:value-of select="normalize-space(substring-after(substring-after($item, ','), 'key:'))"/>
+                    </xsl:if>
+                </xsl:variable>
+                <xsl:variable name="value">
+                    <xsl:if test="contains(substring-before($item, ','), 'value:')">
+                        <xsl:value-of select="normalize-space(substring-after(substring-before($item, ','), 'value:'))"/>
+                    </xsl:if>
+                    <xsl:if test="contains(substring-after($item, ','), 'value:')">
+                        <xsl:value-of select="normalize-space(substring-after(substring-after($item, ','), 'value:'))"/>
+                    </xsl:if>
+                </xsl:variable>
                 <xsl:element name="{substring-after($arg, '`')}">
-                    <valueName><xsl:value-of select="substring-before($item, ':')"/></valueName>
-                    <value><xsl:value-of select="substring-after($item, ':')"/></value>
+                    <valueName><xsl:value-of select="$valueName"/></valueName>
+                    <value><xsl:value-of select="$value"/></value>
                 </xsl:element>
             </xsl:when>
 
@@ -585,28 +654,6 @@
     </xsl:template>
 
     <!-- ****************************************************************** -->
-    <!-- convert a key-value pair field to <valueName> <value> pairs
-
-         @param string: the comma-separated string
-         @param arg: the name of the node to enclose these pairs in
-    -->
-    <xsl:template name="key-value-pairs">
-        <xsl:param name="string"/>
-        <xsl:param name="arg"/>
-
-        <xsl:call-template name="splitList">
-            <xsl:with-param name="list">
-                <xsl:value-of select="$string"/>
-            </xsl:with-param>
-            <xsl:with-param name="listsep">,</xsl:with-param>
-            <xsl:with-param name="arg">
-                <xsl:text>`</xsl:text>
-                <xsl:value-of select="$arg"/>
-            </xsl:with-param>
-        </xsl:call-template>
-    </xsl:template>
-
-    <!-- ****************************************************************** -->
     <!-- add timezone to iso timestamp
 
          @param time: the iso string without timezone
@@ -617,6 +664,66 @@
         <xsl:value-of select="$time"/>
         <!-- our time is in UTC so we just append +00:00 -->
         <xsl:text>+00:00</xsl:text>
+    </xsl:template>
+
+    <!-- ****************************************************************** -->
+    <!-- convert a key-value pair field to <valueName> <value> pairs
+
+         @param string: key-value pairs of form {key1:value1},{key2:value2},...
+         @param arg: the name of the node to enclose these pairs in
+    -->
+    <xsl:template name="key-value-pairs">
+        <xsl:param name="string"/>
+        <xsl:param name="arg"/>
+
+        <xsl:call-template name="key-value-processor">
+            <xsl:with-param name="key-value-col">
+                <xsl:value-of select="$string"/>
+            </xsl:with-param>
+            <xsl:with-param name="key-value-start-sep">{</xsl:with-param>
+            <xsl:with-param name="key-value-end-sep">}</xsl:with-param>
+            <xsl:with-param name="arg">
+                <xsl:text>`</xsl:text>
+                <xsl:value-of select="$arg"/>
+            </xsl:with-param>
+        </xsl:call-template>
+    </xsl:template>
+
+    <!-- ****************************************************************** -->
+    <!-- process key-value-collections
+
+        @param key-value-col: key-value pairs of form {key1:value1},{key2:value2},...
+        @param key-value-start-sep: The start separator for the key-value collection
+        @param key-value-end-sep: The ending separator for the key-value collection
+        @param arg: argument to be passed on to the "resource" template
+                    to allow differentiation
+    -->
+    <xsl:template name="key-value-processor">
+        <xsl:param name="key-value-col"/>
+        <xsl:param name="key-value-start-sep"/>
+        <xsl:param name="key-value-end-sep"/>
+        <xsl:param name="arg"/>
+
+        <xsl:choose>
+            <xsl:when test="contains($key-value-col, $key-value-start-sep) and contains($key-value-col, $key-value-end-sep)">
+                <xsl:variable name="kvpairs">
+                    <xsl:value-of select="substring-before(substring-after($key-value-col, $key-value-start-sep), $key-value-end-sep)"/>
+                </xsl:variable>
+                <xsl:variable name="remaining-kv-pairs">
+                    <xsl:value-of select="substring-after($key-value-col, $kvpairs)"/>
+                </xsl:variable>
+                <xsl:call-template name="resource">
+                    <xsl:with-param name="item" select="normalize-space($kvpairs)"/>
+                    <xsl:with-param name="arg" select="$arg"/>
+                </xsl:call-template>
+                <xsl:call-template name="key-value-processor">
+                    <xsl:with-param name="key-value-col" select="$remaining-kv-pairs"/>
+                    <xsl:with-param name="key-value-start-sep" select="$key-value-start-sep"/>
+                    <xsl:with-param name="key-value-end-sep" select="$key-value-end-sep"/>
+                    <xsl:with-param name="arg" select="$arg"/>
+                </xsl:call-template>
+            </xsl:when>
+        </xsl:choose>
     </xsl:template>
 
 </xsl:stylesheet>

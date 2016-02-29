@@ -2,7 +2,7 @@
 
 """ Sahana Eden Members Model
 
-    @copyright: 2012-15 (c) Sahana Software Foundation
+    @copyright: 2012-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -36,7 +36,7 @@ import datetime
 from gluon import *
 from gluon.storage import Storage
 from ..s3 import *
-from s3layouts import S3AddResourceLink
+from s3layouts import S3PopupLink
 
 # =============================================================================
 class S3MembersModel(S3Model):
@@ -117,10 +117,11 @@ class S3MembersModel(S3Model):
                                                                       filterby="organisation_id",
                                                                       filter_opts=filter_opts)),
                                              sortby = "name",
-                                             comment=S3AddResourceLink(f="membership_type",
-                                                                       label=ADD_MEMBERSHIP_TYPE,
-                                                                       title=ADD_MEMBERSHIP_TYPE,
-                                                                       tooltip=T("Add a new membership type to the catalog.")),
+                                             comment=S3PopupLink(f = "membership_type",
+                                                                 label = ADD_MEMBERSHIP_TYPE,
+                                                                 title = ADD_MEMBERSHIP_TYPE,
+                                                                 tooltip = T("Add a new membership type to the catalog."),
+                                                                 ),
                                              )
 
         configure(tablename,
@@ -152,9 +153,11 @@ class S3MembersModel(S3Model):
                       # History
                       s3_date("start_date",
                               label = T("Date Joined"),
+                              set_min = "#member_membership_end_date",
                               ),
                       s3_date("end_date",
                               label = T("Date resigned"),
+                              set_max = "#member_membership_start_date",
                               start_field = "member_membership_start_date",
                               default_interval = 12,
                               ),
@@ -442,7 +445,7 @@ class S3MembersModel(S3Model):
         db = current.db
         s3db = current.s3db
         auth = current.auth
-        setting = current.deployment_settings
+        settings = current.deployment_settings
 
         utable = current.auth.settings.table_user
         ptable = s3db.pr_person
@@ -470,7 +473,7 @@ class S3MembersModel(S3Model):
         # realm_entity for the pr_person record
         person_id = record.person_id
         person = Storage(id = person_id)
-        if setting.get_auth_person_realm_member_org():
+        if settings.get_auth_person_realm_member_org():
             # Set pr_person.realm_entity to the human_resource's organisation pe_id
             organisation_id = record.organisation_id
             entity = s3db.pr_get_pe_id("org_organisation", organisation_id)

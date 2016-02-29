@@ -23,7 +23,7 @@ def config(settings):
     # System Settings
     # -------------------------------------------------------------------------
     # Pre-Populate
-    settings.base.prepopulate = ("ARC", "ARC/Demo", "default/users")
+    settings.base.prepopulate += ("ARC", "ARC/Demo", "default/users")
 
     settings.base.system_name = T("Resource Management System")
     settings.base.system_name_short = T("ARC Demo")
@@ -232,7 +232,7 @@ def config(settings):
     # Default Language
     settings.L10n.default_language = "en"
     # Default timezone for users
-    settings.L10n.utc_offset = "UTC -0500"
+    settings.L10n.utc_offset = "-0500"
     # Number formats (defaults to ISO 31-0)
     # Decimal separator for numbers (defaults to ,)
     settings.L10n.decimal_separator = "."
@@ -262,13 +262,11 @@ def config(settings):
     # -------------------------------------------------------------------------
     # Finance settings
     settings.fin.currencies = {
-        #"AUD" : T("Australian Dollars"),
-        "CAD" : T("Canadian Dollars"),
-        "EUR" : T("Euros"),
-        "GBP" : T("Great British Pounds"),
-        #"PHP" : T("Philippine Pesos"),
-        "CHF" : T("Swiss Francs"),
-        "USD" : T("United States Dollars"),
+        "CAD" : "Canadian Dollars",
+        "EUR" : "Euros",
+        "GBP" : "Great British Pounds",
+        "CHF" : "Swiss Francs",
+        "USD" : "United States Dollars",
     }
 
     # -------------------------------------------------------------------------
@@ -394,8 +392,8 @@ def config(settings):
     #settings.hrm.organisation_label = "National Society / Branch"
     # Uncomment to consolidate tabs into a single CV
     settings.hrm.cv_tab = True
-    # Uncomment to consolidate tabs into Staff Record
-    settings.hrm.record_tab = True
+    # Uncomment to consolidate tabs into Staff Record (set to False to hide the tab)
+    settings.hrm.record_tab = "record"
 
     # Uncomment to do a search for duplicates in the new AddPersonWidget2
     settings.pr.lookup_duplicates = True
@@ -698,15 +696,16 @@ def config(settings):
         # Comment
         if (Admin or s3_has_role("ORG_ADMIN")):
             # Need to do import after setting Theme
-            from s3layouts import S3AddResourceLink
+            from s3layouts import S3PopupLink
             from s3 import S3ScriptItem
-            add_link = S3AddResourceLink(c="org", f="organisation",
-                                         vars={"organisation_type.name":"Red Cross / Red Crescent"},
-                                         label=T("Create ARC Branch"),
-                                         title=T("ARC Branch"),
-                                         )
+            add_link = S3PopupLink(c = "org",
+                                   f = "organisation",
+                                   vars = {"organisation_type.name":"Red Cross / Red Crescent"},
+                                   label = T("Create ARC Branch"),
+                                   title = T("ARC Branch"),
+                                   )
             comment = f.comment
-            if not comment or isinstance(comment, S3AddResourceLink):
+            if not comment or isinstance(comment, S3PopupLink):
                 f.comment = add_link
             elif isinstance(comment[1], S3ScriptItem):
                 # Don't overwrite scripts
@@ -1683,7 +1682,7 @@ def config(settings):
                                          4: T("Accepted"),
                                          5: T("Blocked"),
                                          6: T("On Hold"),
-                                         7: T("Cancelled"),
+                                         7: T("Canceled"),
                                          8: T("Duplicate"),
                                          9: T("Ready"),
                                         10: T("Verified"),

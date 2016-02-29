@@ -2,7 +2,7 @@
 
 """ Sahana Eden Supply Model
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -50,7 +50,7 @@ from gluon.storage import Storage
 
 from ..s3 import *
 from s3dal import Row
-from s3layouts import S3AddResourceLink
+from s3layouts import S3PopupLink
 
 # @ToDo: Put the most common patterns at the top to optimise
 um_patterns = ["\sper\s?(.*)$",                         # CHOCOLATE, per 100g
@@ -154,10 +154,12 @@ class S3SupplyModel(S3Model):
                                   sort=True)
                         ),
             sortby = "name",
-            comment = S3AddResourceLink(c="supply", f="brand",
-                                        label=ADD_BRAND,
-                                        title=T("Brand"),
-                                        tooltip=T("The list of Brands are maintained by the Administrators.")),
+            comment = S3PopupLink(c = "supply",
+                                  f = "brand",
+                                  label = ADD_BRAND,
+                                  title = T("Brand"),
+                                  tooltip = T("The list of Brands are maintained by the Administrators."),
+                                  ),
             )
 
         # =====================================================================
@@ -201,11 +203,12 @@ class S3SupplyModel(S3Model):
                                   updateable=True,
                                   )),
             sortby = "name",
-            comment=S3AddResourceLink(c="supply",
-                                      f="catalog",
-                                      label=ADD_CATALOG,
-                                      title=T("Catalog"),
-                                      tooltip=T("The list of Catalogs are maintained by the Administrators.")),
+            comment=S3PopupLink(c = "supply",
+                                f = "catalog",
+                                label = ADD_CATALOG,
+                                title = T("Catalog"),
+                                tooltip = T("The list of Catalogs are maintained by the Administrators."),
+                                ),
             )
 
         # Components
@@ -294,12 +297,12 @@ class S3SupplyModel(S3Model):
                                               sort=True)
                                     )
 
-        item_category_comment = S3AddResourceLink(c="supply",
-                                                  f="item_category",
-                                                  label=ADD_ITEM_CATEGORY,
-                                                  title=T("Item Category"),
-                                                  tooltip=ADD_ITEM_CATEGORY
-                                                  )
+        item_category_comment = S3PopupLink(c = "supply",
+                                            f = "item_category",
+                                            label = ADD_ITEM_CATEGORY,
+                                            title = T("Item Category"),
+                                            tooltip = ADD_ITEM_CATEGORY,
+                                            )
 
         # @todo: make lazy_table
         table = db[tablename]
@@ -435,11 +438,12 @@ $.filterOptionsS3({
                                  sort=True),
             sortby = "name",
             widget = S3AutocompleteWidget("supply", "item"),
-            comment=S3AddResourceLink(c="supply",
-                                      f="item",
-                                      label=ADD_ITEM,
-                                      title=T("Item"),
-                                      tooltip=T("Type the name of an existing catalog item OR Click 'Create Item' to add an item which is not in the catalog.")),
+            comment=S3PopupLink(c = "supply",
+                                f = "item",
+                                label = ADD_ITEM,
+                                title = T("Item"),
+                                tooltip = T("Type the name of an existing catalog item OR Click 'Create Item' to add an item which is not in the catalog."),
+                                ),
             )
 
         # ---------------------------------------------------------------------
@@ -676,11 +680,12 @@ $.filterOptionsS3({
  'fncRepresent':S3.supply.fncRepresentItem
 })''',
                     sortby = "name",
-                    #comment=S3AddResourceLink(c="supply",
-                    #                          f="item_pack",
-                    #                          label=ADD_ITEM_PACK,
-                    #                          title=T("Item Packs"),
-                    #                          tooltip=T("The way in which an item is normally distributed")),
+                    #comment=S3PopupLink(c = "supply",
+                    #                    f = "item_pack",
+                    #                    label = ADD_ITEM_PACK,
+                    #                    title = T("Item Packs"),
+                    #                    tooltip = T("The way in which an item is normally distributed"),
+                    #                    ),
                     )
 
         configure(tablename,
@@ -715,6 +720,19 @@ $.filterOptionsS3({
                      item_pack_id(),
                      s3_comments(),
                      *s3_meta_fields())
+
+        # CRUD strings
+        crud_strings[tablename] = Storage(
+            label_create = T("Add Item to Kit"),
+            title_display = T("Kit Item Details"),
+            title_list = T("Kit Items"),
+            title_update = T("Edit Kit Item"),
+            label_list_button = T("List Kit Items"),
+            label_delete_button = T("Remove Item from Kit"),
+            msg_record_created = T("Item added to Kit"),
+            msg_record_modified = T("Kit Item updated"),
+            msg_record_deleted = T("Item removed from Kit"),
+            msg_list_empty = T("No Items currently in this Kit"))
 
         # =====================================================================
         # Alternative Items
@@ -844,6 +862,9 @@ $.filterOptionsS3({
         supply_item_id = S3ReusableField("item_id", "integer",
                                          writable=False,
                                          readable=False)
+        supply_item_category_id = S3ReusableField("item_category_id", "integer",
+                                                  writable=False,
+                                                  readable=False)
         item_id = S3ReusableField("item_entity_id", "integer",
                                   writable=False,
                                   readable=False)()
@@ -852,6 +873,7 @@ $.filterOptionsS3({
                                        readable=False)
 
         return dict(supply_item_id = supply_item_id,
+                    supply_item_category_id = supply_item_category_id,
                     supply_item_entity_id = item_id,
                     supply_item_pack_id = item_pack_id,
                     supply_item_pack_quantity = lambda tablename: lambda row: 0,
@@ -1077,13 +1099,11 @@ $.filterOptionsS3({
         """
 
         db = current.db
-        auth = current.auth
 
         vars = form.vars
         item_id = vars.id
         catalog_id = vars.catalog_id
         catalog_item_id = None
-
 
         citable = db.supply_catalog_item
         query = (citable.item_id == item_id) & \
@@ -1105,7 +1125,7 @@ $.filterOptionsS3({
                             item_category_id = vars.item_category_id,
                             item_id = item_id
                             )
-        #auth.s3_set_record_owner(citable, catalog_item_id, force_update=True)
+        #current.auth.s3_set_record_owner(citable, catalog_item_id, force_update=True)
 
         # Update UM
         um = vars.um or db.supply_item.um.default
@@ -1147,7 +1167,7 @@ class S3SupplyDistributionModel(S3Model):
         settings = current.deployment_settings
         if not settings.has_module("stats"):
             # Distribution Model needs Stats module enabling
-            return dict()
+            return {}
 
         T = current.T
         db = current.db
@@ -1159,17 +1179,21 @@ class S3SupplyDistributionModel(S3Model):
         super_link = self.super_link
 
         # ---------------------------------------------------------------------
-        # Distribution Item
+        # Distribution Item: supply items which can be distributed
         #
         tablename = "supply_distribution_item"
         define_table(tablename,
                      super_link("parameter_id", "stats_parameter"),
                      self.supply_item_entity_id,
                      self.supply_item_id(ondelete = "RESTRICT",
-                                         required = True),
+                                         required = True,
+                                         ),
                      Field("name", length=128, unique=True,
+                           label = T("Distribution Item Name"),
                            requires = IS_NOT_IN_DB(db,
-                                                   "supply_distribution_item.name")),
+                                                   "supply_distribution_item.name",
+                                                   ),
+                           ),
                      *s3_meta_fields())
 
         # CRUD Strings
@@ -1193,7 +1217,7 @@ class S3SupplyDistributionModel(S3Model):
                   )
 
         # ---------------------------------------------------------------------
-        # Distribution
+        # Distribution: actual distribution of a supply item
         #
         tablename = "supply_distribution"
         define_table(tablename,
@@ -1212,17 +1236,19 @@ class S3SupplyDistributionModel(S3Model):
                                 readable = True,
                                 writable = True,
                                 empty = False,
-                                comment = S3AddResourceLink(c="supply",
-                                                            f="distribution_item",
-                                                            vars = dict(child = "parameter_id"),
-                                                            title=ADD_ITEM),
+                                comment = S3PopupLink(c = "supply",
+                                                      f = "distribution_item",
+                                                      vars = {"prefix": "supply",
+                                                              "child": "parameter_id"},
+                                                      title=ADD_ITEM,
+                                                      ),
                                 ),
                      self.gis_location_id(),
                      Field("value", "integer",
                            label = T("Quantity"),
-                           requires = IS_INT_IN_RANGE(0, 99999999),
+                           requires = IS_INT_IN_RANGE(0, None),
                            represent = lambda v: \
-                           IS_INT_AMOUNT.represent(v),
+                                       IS_INT_AMOUNT.represent(v),
                            ),
                      s3_date("date",
                              #empty = False,
@@ -1432,7 +1458,7 @@ class S3SupplyDistributionModel(S3Model):
                   )
 
         # Pass names back to global scope (s3.*)
-        return dict()
+        return {}
 
     # ---------------------------------------------------------------------
     @staticmethod
@@ -1448,10 +1474,12 @@ class S3SupplyDistributionModel(S3Model):
         record_id = form.vars.id
         query = (dtable.id == record_id) & \
                 (ltable.id == dtable.item_id)
-        item = db(query).select(ltable.name,
+        item = db(query).select(dtable.name,
+                                ltable.name,
                                 limitby=(0, 1)).first()
-        if item:
-            db(dtable.id == record_id).update(name = item.name)
+
+        if item and not item[dtable.name]:
+            db(dtable.id == record_id).update(name = item[ltable.name])
         return
 
     # ---------------------------------------------------------------------
@@ -1651,7 +1679,7 @@ class supply_ItemRepresent(S3Represent):
             um = row["supply_item.um"]
             if um:
                 name = "%s (%s)" % (name, um)
-        return s3_unicode(name)
+        return s3_str(name)
 
 # =============================================================================
 class supply_ItemPackRepresent(S3Represent):
@@ -1861,7 +1889,7 @@ class supply_ItemCategoryRepresent(S3Represent):
         if catalog:
             name = "%s > %s" % (catalog, name)
 
-        return s3_unicode(name)
+        return s3_str(name)
 
 # =============================================================================
 def item_um_from_name(name):
@@ -2612,6 +2640,6 @@ def supply_get_shipping_code(type, site_id, field):
             ref = ref_row(field)
             number = int(ref[-6:])
 
-    return "%s%06d" % (code, number+1)
+    return "%s%06d" % (code, number + 1)
 
 # END =========================================================================

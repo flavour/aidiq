@@ -17,7 +17,7 @@ from s3 import s3_avatar_represent
 
 def config(settings):
     """
-        Template for Puget Sound Common Maritime Operating Picture (MCOP)
+        Template for Washington Common Operating Picture (WA-COP)
 
         http://psmcop.org
     """
@@ -27,9 +27,9 @@ def config(settings):
 
     # -----------------------------------------------------------------------------
     # Pre-Populate
-    settings.base.prepopulate = ("MCOP", "default/users")
+    settings.base.prepopulate += ("MCOP", "default/users")
 
-    settings.base.system_name = T("Sahana: Puget Sound Common Maritime Operating Picture (MCOP)")
+    settings.base.system_name = T("Sahana: Washington Common Operating Picture (WA-COP)")
     settings.base.system_name_short = T("Sahana")
 
     # =============================================================================
@@ -102,7 +102,7 @@ def config(settings):
     # Default Language
     settings.L10n.default_language = "en"
     # Default timezone for users
-    settings.L10n.utc_offset = "UTC -0800"
+    settings.L10n.utc_offset = "-0800"
     # Unsortable 'pretty' date format
     settings.L10n.date_format = "%b %d %Y"
     # Number formats (defaults to ISO 31-0)
@@ -164,7 +164,7 @@ def config(settings):
     # MCOP sets these to match Wrike
     settings.project.task_status_opts = {2: T("Active"),
                                          6: T("Deferred"),
-                                         7: T("Cancelled"),
+                                         7: T("Canceled"),
                                         12: T("Completed"),
                                         }
     # -----------------------------------------------------------------------------
@@ -492,6 +492,14 @@ def config(settings):
 
         # Custom Form
         location_id_field = table.location_id
+        from s3 import IS_LOCATION, S3LocationSelector
+        location_id_field.requires = IS_LOCATION()
+        location_id_field.widget = S3LocationSelector(levels=levels,
+                                                      show_address=True,
+                                                      show_map=True,
+                                                      points = True,
+                                                      polygons = True,
+                                                      )
         # Don't add new Locations here
         location_id_field.comment = None
 
@@ -1137,7 +1145,17 @@ def config(settings):
         table.name.label = T("Name")
         table.description.label = T("Description")
         table.description.comment = None
-        table.location_id.readable = table.location_id.writable = True
+
+        location_id_field = table.location_id
+        location_id_field.readable = location_id_field.writable = True
+        from s3 import IS_LOCATION, S3LocationSelector
+        location_id_field.requires = IS_LOCATION()
+        location_id_field.widget = S3LocationSelector(levels=levels,
+                                                      show_address=True,
+                                                      show_map=True,
+                                                      points = True,
+                                                      polygons = True,
+                                                      )
         from s3 import S3SQLCustomForm, S3SQLInlineComponent
         crud_fields = ["source_url",
                        "status",
@@ -1311,12 +1329,14 @@ def config(settings):
                                         represent,
                                         orderby = "org_site.name")
 
-        from s3layouts import S3AddResourceLink
-        site_field.comment = S3AddResourceLink(c="org", f="facility",
-                                               vars={"child": "site_id"},
-                                               label=T("Create Facility"),
-                                               title=T("Facility"),
-                                               tooltip=T("If you don't see the Facility in the list, you can add a new one by clicking link 'Create Facility'."))
+        from s3layouts import S3PopupLink
+        site_field.comment = S3PopupLink(c = "org",
+                                         f = "facility",
+                                         vars = {"child": "site_id"},
+                                         label = T("Create Facility"),
+                                         title = T("Facility"),
+                                         tooltip = T("If you don't see the Facility in the list, you can add a new one by clicking link 'Create Facility'."),
+                                         )
 
         # ImageCrop widget doesn't currently work within an Inline Form
         image_field = s3db.pr_image.image

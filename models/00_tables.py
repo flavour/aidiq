@@ -41,6 +41,7 @@ import s3db.msg
 import s3db.ocr
 import s3db.org
 import s3db.patient
+import s3db.po
 import s3db.pr
 import s3db.sit
 import s3db.proc
@@ -56,12 +57,14 @@ import s3db.support
 import s3db.survey
 import s3db.sync
 import s3db.tour
+import s3db.tr
 import s3db.translate
 import s3db.transport
 import s3db.vehicle
 import s3db.vol
 import s3db.vulnerability
 import s3db.water
+import s3db.work
 
 current.s3db = s3db = S3Model()
 

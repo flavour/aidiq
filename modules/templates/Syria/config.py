@@ -27,7 +27,7 @@ def config(settings):
 
     # -----------------------------------------------------------------------------
     # Pre-Populate
-    settings.base.prepopulate = ("Syria", "default/users")
+    settings.base.prepopulate += ("Syria", "default/users")
 
     settings.base.system_name = T("IFRC MENA 4W Portal")
     settings.base.system_name_short = T("IFRC MENA 4W")
@@ -95,7 +95,7 @@ def config(settings):
     # Default Language
     settings.L10n.default_language = "en"
     # Default timezone for users
-    settings.L10n.utc_offset = "UTC +0200"
+    settings.L10n.utc_offset = "+0200"
     # Unsortable 'pretty' date format
     settings.L10n.date_format = "%d %b %Y"
     # Number formats (defaults to ISO 31-0)
@@ -122,10 +122,10 @@ def config(settings):
     # -----------------------------------------------------------------------------
     # Finance settings
     settings.fin.currencies = {
-        "CHF" : T("Swiss Francs"),
-        "EUR" : T("Euros"),
-        "GBP" : T("Great British Pounds"),
-        "USD" : T("United States Dollars"),
+        "CHF" : "Swiss Francs",
+        "EUR" : "Euros",
+        "GBP" : "Great British Pounds",
+        "USD" : "United States Dollars",
     }
 
     # -----------------------------------------------------------------------------
@@ -644,7 +644,12 @@ def config(settings):
                     s3.dl_rowsize = 2
 
                     # Just show specific Countries
-                    s3.filter = (table.name.belongs("Syrian Arab Republic", "Jordan", "Iraq", "Lebanon", "Turkey"))
+                    r.resource.add_filter(table.name.belongs("Syrian Arab Republic",
+                                                             "Jordan",
+                                                             "Iraq",
+                                                             "Lebanon",
+                                                             "Turkey",
+                                                             ))
                     # Default 5 triggers an AJAX call, we should load all by default
                     s3.dl_pagelength = 13
 
@@ -1133,12 +1138,14 @@ def config(settings):
                                                 represent,
                                                 orderby = "org_site.name")
 
-                from s3layouts import S3AddResourceLink
-                site_field.comment = S3AddResourceLink(c="org", f="office",
-                                                       vars={"child": "site_id"},
-                                                       label=T("Create Office"),
-                                                       title=T("Office"),
-                                                       tooltip=T("If you don't see the Office in the list, you can add a new one by clicking link 'Create Office'."))
+                from s3layouts import S3PopupLink
+                site_field.comment = S3PopupLink(c = "org",
+                                                 f = "office",
+                                                 vars = {"child": "site_id"},
+                                                 label = T("Create Office"),
+                                                 title = T("Office"),
+                                                 tooltip = T("If you don't see the Office in the list, you can add a new one by clicking link 'Create Office'."),
+                                                 )
 
                 # Best to have no labels when only 1 field in the row
                 s3db.pr_contact.value.label = ""

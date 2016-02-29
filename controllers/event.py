@@ -25,7 +25,7 @@ def index_alt():
     """
 
     # Just redirect to the list of Events
-    redirect(URL(f="event"))
+    s3_redirect_default(URL(f="event"))
 
 # -----------------------------------------------------------------------------
 def create():
@@ -62,17 +62,7 @@ def event():
         return True
     s3.prep = prep
 
-    def postp(r, output):
-        if r.interactive:
-            if not r.component:
-                # Set the minimum end_date to the same as the start_date
-                s3.jquery_ready.append(
-'''S3.start_end_date('event_event_start_date','event_event_end_date')''')
-        return output
-    s3.postp = postp
-
-    output = s3_rest_controller(rheader = s3db.event_rheader)
-    return output
+    return s3_rest_controller(rheader = s3db.event_rheader)
 
 # -----------------------------------------------------------------------------
 def event_type():
@@ -207,12 +197,12 @@ def resource():
 
                 get_vars = r.get_vars
                 # Context from a Profile page?"
-                #location_id = get_vars.get("(location)", None)
+                #location_id = get_vars.get("(location)")
                 #if location_id:
                 #    field = table.location_id
                 #    field.default = location_id
                 #    field.readable = field.writable = False
-                incident_id = get_vars.get("~.(incident)", None)
+                incident_id = get_vars.get("~.(incident)")
                 if incident_id:
                     field = table.incident_id
                     field.default = incident_id
@@ -236,6 +226,59 @@ def person():
     s3.prep = prep
 
     return s3_rest_controller("pr", "person")
+
+# -----------------------------------------------------------------------------
+def group():
+    """
+        Module-specific controller for Teams
+
+        @note: currently for development/testing/demo purposes only (WIP),
+               may be replaced by hrm_group controller in future
+    """
+
+    def prep(r):
+        # Make the team status visible in list/read views
+        if r.interactive or r.representation == "aadata":
+            resource = r.resource
+            list_fields = ["name",
+                           "description",
+                           "team_status_team.status_id",
+                           "comments",
+                           ]
+            resource.configure(list_fields = list_fields)
+        if r.interactive:
+            from s3 import S3SQLCustomForm, S3SQLInlineComponent
+            crud_fields = ["name",
+                           "description",
+                           S3SQLInlineComponent("team_status_team",
+                                                fields = [("", "status_id")],
+                                                label = T("Status"),
+                                                multiple = False,
+                                                ),
+                           "comments",
+                           ]
+            crud_form = S3SQLCustomForm(*crud_fields)
+            r.resource.configure(crud_form = crud_form)
+        return True
+    s3.prep = prep
+
+    return s3_rest_controller("pr", "group")
+
+# -----------------------------------------------------------------------------
+def team():
+    """ Controller for event_team option lookups (popups) """
+
+    # /options.s3json only
+    s3.prep = lambda r: r.method == "options" and \
+                        r.representation == "s3json"
+
+    return s3_rest_controller("event", "team")
+
+# -----------------------------------------------------------------------------
+def team_status():
+    """ Team status taxonomy controller (for Admin and lookups) """
+
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def compose():

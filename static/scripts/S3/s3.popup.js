@@ -27,7 +27,7 @@ function s3_popup_refresh_main_form() {
         } else {
             // Refresh dataTable
             try {
-                selector.dataTable().reloadAjax();
+                selector.dataTable().fnReloadAjax();
             } catch(e) {}
         }
         // Update the layer on the Maps (if appropriate)
@@ -119,7 +119,7 @@ function s3_popup_refresh_main_form() {
         return;
     }
 
-    // Modal opened from a form (e.g. S3AddResourceLink)?
+    // Modal opened from a form (e.g. S3PopupLink)?
     // => update the respective form field (=the caller)
 
     var level = $_GET['level'];

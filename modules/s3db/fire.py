@@ -2,7 +2,7 @@
 
 """ Sahana Eden Fire Models
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -35,7 +35,7 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
-from s3layouts import S3AddResourceLink
+from s3layouts import S3PopupLink
 
 # =============================================================================
 class S3FireModel(S3Model):
@@ -104,10 +104,11 @@ class S3FireModel(S3Model):
                                                    zone_type_represent,
                                                    sort=True)),
                            represent = zone_type_represent,
-                           comment = S3AddResourceLink(c="fire",
-                                                       f="zone_type",
-                                                       label=ADD_ZONE_TYPE,
-                                                       tooltip=T("Select a Zone Type from the list or click 'Add Zone Type'")),
+                           comment = S3PopupLink(c = "fire",
+                                                 f = "zone_type",
+                                                 label = ADD_ZONE_TYPE,
+                                                 tooltip = T("Select a Zone Type from the list or click 'Add Zone Type'"),
+                                                 ),
                            label=T("Type")),
                      self.gis_location_id(
                        widget = S3LocationSelector(catalog_layers = True,
@@ -135,7 +136,7 @@ class S3FireModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -197,7 +198,9 @@ class S3FireStationModel(S3Model):
                      Field("name", notnull=True, length=64,
                            label = T("Name"),
                            ),
-                     Field("code", unique=True, length=64,
+                     Field("code", length=10,
+                           # @ToDo: code_requires based on deployment_setting
+                           unique=True,
                            label = T("Code"),
                            ),
                      Field("facility_type", "integer",
@@ -507,12 +510,11 @@ class S3FireStationModel(S3Model):
             req = r.factory(prefix="irs",
                             name="ireport_vehicle",
                             args=["report"],
-                            vars=Storage(
-                              rows = "asset_id",
-                              cols = "ireport_id",
-                              fact = "minutes",
-                              aggregate = "sum")
-                           )
+                            vars=Storage(rows = "asset_id",
+                                         cols = "ireport_id",
+                                         fact = "sum(minutes)",
+                                         ),
+                            )
             req.set_handler("report", S3Report())
             req.resource.add_filter(query)
             return req(rheader=rheader)

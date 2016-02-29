@@ -2,7 +2,7 @@
 
 """ Sahana Eden Patient Model
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -67,7 +67,6 @@ class S3PatientModel(S3Model):
                                     requires = IS_ADD_PERSON_WIDGET2(),
                                     widget = S3AddPersonWidget2(),
                                     ),
-                          #person_id(empty=False, label = T("Patient")),
                           Field("country",
                                 label = T("Current Location Country"),
                                 represent = lambda code: \
@@ -83,6 +82,10 @@ class S3PatientModel(S3Model):
                                 ),
                           Field("phone", requires=s3_phone_requires,
                                 label = T("Current Location Phone Number"),
+                                ),
+                          Field("injuries", "text",
+                                label = T("Injuries"),
+                                widget = s3_comments_widget,
                                 ),
                           s3_date("treatment_date",
                                   label = T("Date of Treatment"),
@@ -228,7 +231,7 @@ class S3PatientModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
 # =============================================================================
 class patient_PatientRepresent(S3Represent):

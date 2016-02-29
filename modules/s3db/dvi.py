@@ -2,7 +2,7 @@
 
 """ Sahana Eden Disaster Victim Identification Model
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -32,7 +32,7 @@ __all__ = ("S3DVIModel",)
 from gluon import *
 from gluon.storage import Storage
 from ..s3 import *
-from s3layouts import S3AddResourceLink
+from s3layouts import S3PopupLink
 
 # =============================================================================
 class S3DVIModel(S3Model):
@@ -273,7 +273,7 @@ class S3DVIModel(S3Model):
                             options=dvi_id_status_filteropts,
                             none=True),
         ]
-        
+
         # Resource configuration
         configure(tablename,
                   super_entity=("pr_pentity", "sit_trackable"),
@@ -410,7 +410,7 @@ class S3DVIModel(S3Model):
                                        dvi_id_methods.get(opt, UNKNOWN_OPT)),
                      Field("comment", "text"),
                      *s3_meta_fields())
- 
+
         # CRUD Strings
         crud_strings[tablename] = Storage(
             label_create = T("Create Identification Report"),
@@ -462,12 +462,13 @@ class S3DVIModel(S3Model):
         c_comment = T("Type the first few characters of one of the Person's names.")
 
         ADD_PERSON = T("Add Person")
-        return S3AddResourceLink(c="pr",
-                                 f="person",
-                                 vars=dict(child=fieldname),
-                                 label=ADD_PERSON,
-                                 title=c_title,
-                                 tooltip=c_comment)
+        return S3PopupLink(c = "pr",
+                           f = "person",
+                           vars = {"child": fieldname},
+                           label = ADD_PERSON,
+                           title = c_title,
+                           tooltip = c_comment,
+                           )
 
     # -------------------------------------------------------------------------
     @staticmethod

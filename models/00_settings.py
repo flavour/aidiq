@@ -81,7 +81,7 @@ ERROR["PARSE_ERROR"] = "XML parse error"
 ERROR["TRANSFORMATION_ERROR"] = "XSLT transformation error"
 ERROR["UNAUTHORISED"] = "Not Authorized"
 ERROR["VALIDATION_ERROR"] = "Validation error"
-        
+
 # To get included in <HEAD>
 s3.stylesheets = []
 s3.external_stylesheets = []
@@ -248,6 +248,7 @@ ANONYMOUS = system_roles.ANONYMOUS
 EDITOR = system_roles.EDITOR
 MAP_ADMIN = system_roles.MAP_ADMIN
 ORG_ADMIN = system_roles.ORG_ADMIN
+ORG_GROUP_ADMIN = system_roles.ORG_GROUP_ADMIN
 
 if s3.debug:
     # Add the developer toolbar from modules/s3/s3utils.py
@@ -257,10 +258,12 @@ if s3.debug:
 # CRUD
 
 s3_formstyle = settings.get_ui_formstyle()
+s3_formstyle_read = settings.get_ui_formstyle_read()
 s3_formstyle_mobile = s3_formstyle
 submit_button = T("Save")
 _crud = s3.crud
 _crud.formstyle = s3_formstyle
+_crud.formstyle_read = s3_formstyle_read
 _crud.submit_button = submit_button
 # Optional class for Submit buttons
 #_crud.submit_style = "submit-button"
@@ -291,9 +294,8 @@ s3.ROWSPERPAGE = 20
 s3.IMAGE_EXTENSIONS = ["png", "PNG", "jpg", "JPG", "jpeg", "JPEG"]
 
 # Default CRUD strings
-ADD_RECORD = T("Add Record")
 s3.crud_strings = Storage(
-    label_create = ADD_RECORD,
+    label_create = T("Add Record"),
     title_display = T("Record Details"),
     title_list = T("Records"),
     title_update = T("Edit Record"),
@@ -307,7 +309,6 @@ s3.crud_strings = Storage(
     msg_list_empty = T("No Records currently available"),
     msg_match = T("Matching Records"),
     msg_no_match = T("No Matching Records"),
-    name_nice = T("Record"),
-    name_nice_plural = T("Records"))
+    )
 
 # END =========================================================================

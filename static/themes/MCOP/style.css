@@ -46,8 +46,6 @@
     /*text-shadow: 2px 2px 1px black;*/
 }
 
-
-
 .sahana_logo {
     float: left;
     height: 100px;
@@ -61,19 +59,18 @@
     padding: 20px 0 0;
 }
 
-.mcop_logo {
+.wa_cop_logo {
     float: left;
     clear: left;
-    width: 150px;
-    margin: 0 5px 10px 15px;
+    height: 100px;
 }
 
 .header h2 {
     float: left;
-    font-size: 20px;
-    line-height: 25px;
+    font-size: 25px;
+    line-height: 30px;
+    margin: 20px 0 0 10px;
     padding: 0;
-    margin: 0 0 0 10px;
 }
 
 h1, h2, h3 {
@@ -97,7 +94,7 @@ h3 {
 }
 
 .header {
-    background: url('../../img/semi_white_75.png');
+    background-color: white;
     margin: 0;
 }
 
@@ -191,11 +188,11 @@ div.link {
 
 /* Customise Datalist Cards */
 #cms_post_datalist .card-title,
-.card-header > .icon, 
+.card-header > .icon,
 .homepage .card-header > .icon,
 #profile-list-project_project-3 .card-header > .icon,
 #profile-list-org_resource-2 img,
-#profile-list-project_project-3 img, 
+#profile-list-project_project-3 img,
 #profile-list-project_task-0 .task_project_title {
     display: none;
 }
@@ -293,6 +290,10 @@ h2 {
     position: static;
 }
 
+.media-body {
+    clear: left;
+}
+
 .dl-row {
     padding-right: 12px;
 }
@@ -306,6 +307,10 @@ h2 {
 .card-holder {
     display: block;
     width: auto;
+}
+
+.add_person_edit_bar {
+    float: right;
 }
 
 .s3_add_resource_link,

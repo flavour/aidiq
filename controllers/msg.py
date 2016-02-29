@@ -308,7 +308,7 @@ def sms_outbox():
                                   ],
                    )
 
-    return s3_rest_controller(module, "outbox")
+    return s3_rest_controller(module, "sms")
 
 # -----------------------------------------------------------------------------
 def twitter_outbox():
@@ -360,7 +360,7 @@ def twitter_outbox():
                                   ],
                    )
 
-    return s3_rest_controller(module, "outbox")
+    return s3_rest_controller(module, "twitter")
 
 # =============================================================================
 def inbox():
@@ -427,7 +427,7 @@ def email_inbox():
                                     label = T("Attachments"),
                                     fields = ["document_id",
                                               ],
-                                    ),                                                                
+                                    ),
                                 )
 
     tablename = "msg_email"
@@ -1546,13 +1546,13 @@ def twitter_result():
 
     filter_widgets = [
         S3DateFilter("date",
-                     label=T("Tweeted On"),
+                     label=T("Tweeted on"),
                      hide_time=True,
                      _class="date-filter-class",
                      comment=T("Filter Tweets by the date they were tweeted on"),
                      ),
         S3TextFilter("from_address",
-                     label=T("Tweeted By"),
+                     label=T("Tweeted by"),
                      _class="tweeter-filter-class",
                      comment=T("Filter Tweets by who tweeted them"),
                      )
@@ -1586,7 +1586,7 @@ def twitter_result():
             # Display the Tweet as an Embedded tweet
             record = output["item"].record
             # Tweet link
-            twitter_url = "https://twitter.com/%s/statuses/%s" % (record.from_address, 
+            twitter_url = "https://twitter.com/%s/statuses/%s" % (record.from_address,
                                                                   record.tweet_id)
             script_url = "https://platform.twitter.com/widgets.js"
             # Themeable Throbber
@@ -1604,17 +1604,17 @@ def twitter_result():
                           "_data-conversation": "none",
                           "_class": "twitter-tweet",
                           "lang": record.lang,
-                          } 
+                          }
             tweet = TAG["blockquote"](tweet_container,
                                       tweet_user,
                                       SCRIPT(_src = script_url,
                                              _charset = "utf-8"),
                                       **attributes
-                                      ) 
-            # Insert tweet 
+                                      )
+            # Insert tweet
             output["item"] = tweet
         return output
-    
+
     s3.postp = postp
 
     return s3_rest_controller()

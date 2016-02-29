@@ -8,6 +8,249 @@ S3.search = {};
 (function() {
 
     /**
+     * Rewrite the Ajax options for a filtered GET, converting into a POST
+     *
+     * @param {object} s - the Ajax options dict
+     */
+    var searchRewriteAjaxOptions = function(s, method) {
+
+        // Rewrite only GET
+        if (s.type != 'GET') {
+            return;
+        } else {
+            s.type = 'POST';
+        }
+
+        // Helper function to check whether a URL variable is a filter expression
+        var isFilterKey = function(k) {
+            var k0 = k[0];
+            return (k == '$filter' || k0 != '_' && (k.search(/\./) != -1 || k0 == '(' && k.search(/\)/) != -1));
+        };
+
+        var parts = s.url.split('#'),
+            path = parts[0],
+            fragment = null,
+            query = null;
+
+        // Split the URL into path, query and fragment
+        if (parts.length > 1) {
+            fragment = parts[1];
+        }
+        parts = path.split('?');
+        path = parts[0];
+        if (parts.length > 1) {
+            query = parts[1];
+        }
+
+        var ajaxData = s.data,
+            postData = {},
+            queryDict = {},
+            queryItem,
+            valueCount,
+            itemCount,
+            i,
+            j,
+            k,
+            v;
+
+        // Helper function to add a query item to a query item dict
+        var addQueryItem = function(items, key, val) {
+            if (Array.isArray(val)) {
+                for (j = 0, valueCount = val.length; j < valueCount; j++) {
+                    addQueryItem(items, key, val[j]);
+                }
+                return;
+            }
+            if (!items.hasOwnProperty(key)) {
+                items[key] = val;
+            } else if (Array.isArray(items[key])) {
+                items[key].push(val);
+            } else {
+                items[key] = [items[key], val];
+            }
+        };
+
+        // Add the original ajaxData to the queryDict
+        if (ajaxData) {
+            for (i = 0, itemCount = ajaxData.length; i < itemCount; i++) {
+                queryItem = ajaxData[i];
+                addQueryItem(queryDict, queryItem.name, queryItem.value);
+            }
+        }
+
+        // Parse the query string, add filter expressions to the
+        // postData, and other query items to the queryDict
+        if (query) {
+            var items = S3.queryString.parse(query);
+            for (k in items) {
+                v = items[k];
+                if (isFilterKey(k)) {
+                    addQueryItem(postData, k, v);
+                } else {
+                    addQueryItem(queryDict, k, v);
+                }
+            }
+        }
+        if (method == "ajax") {
+            s.data = JSON.stringify(postData);
+        } else {
+            s.data = postData;
+        }
+        s.processData = false;
+
+        // Construct new Ajax URL
+        var ajaxURL = path + '?$search=' + method;
+
+        // Stringify and append queryDict
+        var queryString = S3.queryString.stringify(queryDict);
+        if (queryString) {
+            ajaxURL += '&' + queryString;
+        }
+
+        // Append fragment
+        if (fragment !== null) {
+            ajaxURL += '#' + fragment;
+        }
+        s.url = ajaxURL;
+    };
+
+    /**
+     * Default options for $.searchS3
+     */
+    var searchS3Defaults = {
+        timeout : 10000,
+        retryLimit: 5,
+        dataType: 'json',
+        contentType: 'application/json; charset=utf-8',
+        processData: false,
+        async: true,
+        type: 'POST'
+    };
+
+    /**
+     * Ajax search request method, converts GET into POST, encoding
+     * URL filters as JSON request body, thus allowing arbitrary
+     * length of filter options as well as TLS encryption of filters
+     *
+     * @param {object} s - the Ajax options
+     * @prop {string} s.url - the Ajax URL
+     * @prop {Array} s.data - GET variables as array of dicts {name: k, value: v},
+     *                        will be appended to the POST URL
+     * @prop {function} s.done - the done-callback (alternatively s.success)
+     * @prop {function} s.fail - the fail-callback (alternatively s.error)
+     *
+     * @note: only GET requests will be converted, while POST requests
+     *        will be sent unmodified (=equivalent to $.AjaxS3)
+     */
+    $.searchS3 = function(s) {
+
+        var message,
+            options = $.extend({}, searchS3Defaults, s),
+            doneCallback = null,
+            failCallback = null;
+
+        if (s.done) {
+            doneCallback = s.done;
+        } else if (s.success) {
+            doneCallback = s.success;
+        }
+        if (s.fail) {
+            failCallback = s.fail;
+        } else if (s.error) {
+            failCallback = s.error;
+        }
+
+        // Prevent callbacks from being executed twice
+        options.done = null;
+        options.success = null;
+        options.fail = null;
+        options.error = null;
+
+        // Retry-counter
+        options.tryCount = 0;
+
+        // Rewrite the Ajax options
+        searchRewriteAjaxOptions(options, 'ajax');
+
+        if (s.message) {
+            message = i18n.ajax_get + ' ' + (s.message ? s.message : i18n.ajax_fmd) + '...';
+            S3.showAlert(message, 'info');
+        }
+        $.ajax(
+            options
+        ).done(function(data, status) {
+            S3.hideAlerts();
+            this.tryCount = 0;
+            if (data && data.message) {
+                S3.showAlert(data.message, 'success');
+            }
+            // Call done/success callback:
+            if (doneCallback) {
+                doneCallback(data, status);
+            }
+        }).fail(function(jqXHR, textStatus, errorThrown) {
+            if (textStatus == 'timeout') {
+                this.tryCount++;
+                if (this.tryCount <= this.retryLimit) {
+                    // Try again
+                    message = i18n.ajax_get + ' ' + (s.message ? s.message : i18n.ajax_fmd) + '... ' + i18n.ajax_rtr + ' ' + this.tryCount;
+                    S3.showAlert(message, 'warning');
+                    $.ajax(this);
+                    return;
+                }
+                message = i18n.ajax_wht + ' ' + (this.retryLimit + 1) + ' ' + i18n.ajax_gvn;
+                S3.showAlert(message, 'error');
+            } else if (jqXHR.status == 500) {
+                S3.showAlert(i18n.ajax_500, 'error');
+            } else {
+                S3.showAlert(i18n.ajax_dwn, 'error');
+            }
+            // Call fail/error callback:
+            if (failCallback) {
+                failCallback(jqXHR, textStatus, errorThrown);
+            }
+        });
+    };
+
+    /**
+     * Non-Ajax search request method, converts GET into POST, encoding
+     * URL filters as form data, thus allowing arbitrary length of filter
+     * options as well as TLS encryption of filters. Opens the filtered URL
+     * in the window specified by target (default: _self)
+     *
+     * @param {string} url: the request URL
+     * @param {string} target: the target window
+     */
+    $.searchDownloadS3 = function(url, target) {
+
+        var options = $.extend({}, searchS3Defaults, {url: url}),
+            form = document.createElement("form");
+
+        options.type = 'GET';
+        searchRewriteAjaxOptions(options, 'form');
+
+        form.action = options.url;
+        form.method = 'POST';
+        form.target = target || '_self';
+        form.enctype = 'multipart/form-data';
+
+        var data = options.data;
+        if (data) {
+            var key,
+                input;
+            for (key in data) {
+                input = document.createElement('textarea');
+                input.name = key;
+                input.value = JSON.stringify(data[key]);
+                form.appendChild(input);
+            }
+        }
+        form.style.display = 'none';
+        document.body.appendChild(form);
+        form.submit();
+    };
+
+    /**
      * pendingTargets: targets which were invisible during last filter-submit
      */
     var pendingTargets = {};
@@ -65,19 +308,19 @@ S3.search = {};
 
         // Temporarily disable auto-submit
         form.data('noAutoSubmit', 1);
- 
+
         form.find('.text-filter').each(function() {
             $(this).val('');
         });
         form.find('.options-filter, .location-filter').each(function() {
-            $this = $(this);
+            var $this = $(this);
             if (this.tagName.toLowerCase() == 'select') {
                 $this.val('');
-                if ($this.hasClass('groupedopts-filter-widget') && 
+                if ($this.hasClass('groupedopts-filter-widget') &&
                     $this.groupedopts('instance')) {
                     $this.groupedopts('refresh');
                 } else
-                if ($this.hasClass('multiselect-filter-widget') && 
+                if ($this.hasClass('multiselect-filter-widget') &&
                     $this.multiselect('instance')) {
                     $this.multiselect('refresh');
                 }
@@ -95,7 +338,7 @@ S3.search = {};
             $(this).val('');
         });
         form.find('.date-filter-input').each(function() {
-            $(this).val('');
+            $(this).calendarWidget('clear');
         });
         // Hierarchy filter widget (experimental)
         form.find('.hierarchy-filter').each(function() {
@@ -131,31 +374,44 @@ S3.search = {};
      */
     var getCurrentFilters = function(form) {
 
-        form = typeof form !== 'undefined' ? form : $('body').find('form.filter-form').first();
+        // Fall back to first filter form in page
+        if (typeof form == 'undefined') {
+            form = $('body').find('form.filter-form').first();
+        }
 
         var i,
             id,
             queries = [],
             $this,
-            url_var,
+            urlVar,
             value,
-            values;
+            values,
+            operator;
 
         // Text widgets
         form.find('.text-filter:visible').each(function() {
             $this = $(this);
             id = $this.attr('id');
-            url_var = $('#' + id + '-data').val();
+            urlVar = $('#' + id + '-data').val();
             value = $this.val();
             if (value) {
                 values = value.split(' ');
-                var v;
+                var match = $this.data('match'),
+                    quoted,
+                    anyValue = [];
                 for (i=0; i < values.length; i++) {
-                    v = '*' + values[i] + '*';
-                    queries.push([url_var, quoteValue(v)]);
+                    quoted = quoteValue('*' + values[i] + '*');
+                    if (match == "any") {
+                        anyValue.push(quoted);
+                    } else {
+                        queries.push([urlVar, quoted]);
+                    }
+                }
+                if (match == "any") {
+                    queries.push([urlVar, anyValue.join(',')])
                 }
             } else {
-                queries.push([url_var, null]);
+                queries.push([urlVar, null]);
             }
         });
 
@@ -172,23 +428,22 @@ S3.search = {};
         .each(function() {
             $this = $(this);
             id = $this.attr('id');
-            url_var = $('#' + id + '-data').val();
-            var operator = $("input:radio[name='" + id + "_filter']:checked").val();
+            urlVar = $('#' + id + '-data').val();
+            operator = $("input:radio[name='" + id + "_filter']:checked").val();
+
             var contains = /__contains$/;
             var anyof = /__anyof$/;
-            if (operator == 'any' && url_var.match(contains)) {
-                url_var = url_var.replace(contains, '__anyof');
-            } else if (operator == 'all' && url_var.match(anyof)) {
-                url_var = url_var.replace(anyof, '__contains');
+            if (operator == 'any' && urlVar.match(contains)) {
+                urlVar = urlVar.replace(contains, '__anyof');
+            } else if (operator == 'all' && urlVar.match(anyof)) {
+                urlVar = urlVar.replace(anyof, '__contains');
             }
             if (this.tagName.toLowerCase() == 'select') {
                 // Standard SELECT
                 value = '';
                 values = $this.val();
                 if (values) {
-                    if (values instanceof Array) {
-                        // multiple=True
-                    } else {
+                    if (!(values instanceof Array)) {
                         // multiple=False, but a single option may contain multiple
                         values = values.split(',');
                     }
@@ -214,73 +469,67 @@ S3.search = {};
                 });
             }
             if ((value === '') || (value == '*')) {
-                queries.push([url_var, null]);
+                queries.push([urlVar, null]);
             } else {
-                queries.push([url_var, value]);
+                queries.push([urlVar, value]);
             }
         });
 
         // Numerical range widgets -- each widget has two inputs.
         form.find('.range-filter-input:visible').each(function() {
-            $this = $(this);
+
+            $this = $(this),
             id = $this.attr('id');
-            url_var = $('#' + id + '-data').val();
+            urlVar = $('#' + id + '-data').val();
             value = $this.val();
+
             if (value) {
-                queries.push([url_var, value]);
+                queries.push([urlVar, value]);
             } else {
-                queries.push([url_var, null]);
+                queries.push([urlVar, null]);
             }
         });
 
         // Date(time) range widgets -- each widget has two inputs.
         form.find('.date-filter-input:visible').each(function() {
-            $this = $(this);
-            id = $this.attr('id');
-            url_var = $('#' + id + '-data').val();
+
+            $this = $(this),
+            id = $this.attr('id'),
+            urlVar = $('#' + id + '-data').val();
             value = $this.val();
-            var pad = function (val, len) {
-                val = String(val);
-                len = len || 2;
-                while (val.length < len) val = "0" + val;
-                return val;
-            };
-            var iso = function(dt) {
-                return dt.getFullYear() + '-' +
-                       pad(dt.getMonth()+1, 2) + '-' +
-                       pad(dt.getDate(), 2) + 'T' +
-                       pad(dt.getHours(), 2) + ':' +
-                       pad(dt.getMinutes(), 2) + ':' +
-                       pad(dt.getSeconds(), 2);
-            };
-            var dt, dtstr;
-            if (value) {
-                if ($this.hasClass('datetimepicker')) {
-                    if ($this.hasClass('hide-time')) {
-                        dt = $this.datepicker('getDate');
-                        var op = id.split('-').pop();
-                        if (op == 'le' || op == 'gt') {
-                            dt.setHours(23, 59, 59, 0);
-                        } else {
-                            dt.setHours(0, 0, 0, 0);
-                        }
-                    } else {
-                        dt = $this.datetimepicker('getDate');
-                    }
-                    dt_str = iso(dt);
-                } else {
-                    dt = Date.parse(value);
-                    if (isNaN(dt)) {
-                        // Unsupported format (e.g. US MM-DD-YYYY), pass
-                        // as string, and hope the server can parse this
-                        dt_str = '"'+ value + '"';
-                    } else {
-                        dt_str = iso(new Date(dt));
-                    }
-                }
-                queries.push([url_var, dt_str]);
+
+            operator = id.split('-').pop();
+
+            // Helper to convert a JS Date into an ISO format string
+            var isoFormat;
+            if ($this.hasClass('datetimepicker')) {
+                isoFormat = function(dt) {
+                    return dt.getFullYear() + '-' +
+                           ('0' + (dt.getMonth() + 1)).slice(-2) + '-' +
+                           ('0' + dt.getDate()).slice(-2) + 'T' +
+                           ('0' + dt.getHours()).slice(-2) + ':' +
+                           ('0' + dt.getMinutes()).slice(-2) + ':' +
+                           ('0' + dt.getSeconds()).slice(-2);
+                };
             } else {
-                queries.push([url_var, null]);
+                isoFormat = function(dt) {
+                    return dt.getFullYear() + '-' +
+                           ('0' + (dt.getMonth() + 1)).slice(-2) + '-' +
+                           ('0' + dt.getDate()).slice(-2);
+                };
+            }
+
+            if (value) {
+                var end = false;
+                if (operator == 'le') {
+                    end = true;
+                }
+                var jsDate = $this.calendarWidget('getJSDate', end),
+                    urlValue = isoFormat(jsDate);
+                queries.push([urlVar, urlValue]);
+            } else {
+                // Remove the filter (explicit null)
+                queries.push([urlVar, null]);
             }
         });
 
@@ -295,13 +544,18 @@ S3.search = {};
                   '.location-filter.multiselect-filter-widget.active' /*+
           ',.location-filter.multiselect-filter-bootstrap.active'*/)))
         .each(function() {
-            id = $(this).attr('id');
-            url_var = $('#' + id + '-data').val();
-            var operator = $("input:radio[name='" + id + "_filter']:checked").val();
+
+            $this = $(this);
+            id = $this.attr('id');
+            urlVar = $('#' + id + '-data').val();
+            value = '';
+
+            operator = $("input:radio[name='" + id + "_filter']:checked").val();
+
             if (this.tagName.toLowerCase() == 'select') {
                 // Standard SELECT
-                value = '';
                 values = $(this).val();
+                var v;
                 if (values) {
                     for (i=0; i < values.length; i++) {
                         v = quoteValue(values[i]);
@@ -314,7 +568,6 @@ S3.search = {};
                 }
             } else {
                 // Checkboxes widget
-                value = '';
                 $("input[name='" + id + "']:checked").each(function() {
                     if (value === '') {
                         value = quoteValue($(this).val());
@@ -324,19 +577,21 @@ S3.search = {};
                 });
             }
             if (value === '') {
-                queries.push([url_var, null]);
+                queries.push([urlVar, null]);
             } else {
-                queries.push([url_var, value]);
+                queries.push([urlVar, value]);
             }
         });
 
         // Hierarchy filter (experimental)
         form.find('.hierarchy-filter:visible').each(function() {
+
             $this = $(this);
             id = $this.attr('id');
-            url_var = $('#' + id + '-data').val();
-            values = $this.hierarchicalopts('get');
+            urlVar = $('#' + id + '-data').val();
             value = '';
+
+            values = $this.hierarchicalopts('get');
             if (values) {
                 for (i=0; i < values.length; i++) {
                     if (value === '') {
@@ -347,9 +602,9 @@ S3.search = {};
                 }
             }
             if (value === '') {
-                queries.push([url_var, null]);
+                queries.push([urlVar, null]);
             } else {
-                queries.push([url_var, value]);
+                queries.push([urlVar, value]);
             }
         });
 
@@ -469,7 +724,7 @@ S3.search = {};
                         $this.groupedopts('instance')) {
                         $this.groupedopts('refresh');
                     } else
-                    if ($this.hasClass('multiselect-filter-widget') && 
+                    if ($this.hasClass('multiselect-filter-widget') &&
                         $this.multiselect('instance')) {
                         $this.multiselect('refresh');
                     }
@@ -478,7 +733,7 @@ S3.search = {};
         });
 
         // Numerical range widgets
-        form.find('.range-filter-input:visible').each(function() {
+        form.find('.range-filter-input').each(function() {
             $this = $(this);
             id = $this.attr('id');
             expression = $('#' + id + '-data').val();
@@ -496,31 +751,30 @@ S3.search = {};
         });
 
         // Date(time) range widgets
-        form.find('.date-filter-input:visible').each(function() {
-            $this = $(this);
-            id = $this.attr('id');
-            expression = $('#' + id + '-data').val();
+        form.find('.date-filter-input').each(function() {
+
+            var $this = $(this),
+                expression = $('#' + $this.attr('id') + '-data').val(),
+                selector = expression.split('__')[0],
+                values = false;
+
             if (q.hasOwnProperty(expression)) {
+                values = q[expression];
+            } else if (q.hasOwnProperty(selector)) {
+                // Match isolated selector if no operator-specific expression present
+                values = q[selector];
+            }
+            if (values !== false) {
                 if (!$this.is(':visible') && !$this.hasClass('active')) {
                     toggleAdvanced(form);
                 }
-                values = q[expression];
                 if (values) {
-                    value = new Date(values[0]);
-                    if ($this.hasClass('datetimepicker')) {
-                        if ($this.hasClass('hide-time')) {
-                            $this.datepicker('setDate', value);
-                        } else {
-                            $this.datetimepicker('setDate', value);
-                        }
-                    } else if ($this.hasClass('hasDatepicker')) {
-                        $this.datepicker('setDate', value);
-                    } else {
-                        $this.val('');
-                        // @todo: format required!
-                    }
+                    // Add the 'T' separator to the date string so it
+                    // can be parsed by the Date constructor:
+                    var dtString = values[0].replace(' ', 'T');
+                    $this.calendarWidget('setJSDate', new Date(dtString));
                 } else {
-                    $this.val('');
+                    $this.calendarWidget('clear');
                 }
             }
         });
@@ -556,11 +810,11 @@ S3.search = {};
                         toggleAdvanced(form);
                     }
                     $this.val(values);
-                    if ($this.hasClass('groupedopts-filter-widget') && 
+                    if ($this.hasClass('groupedopts-filter-widget') &&
                         $this.groupedopts('instance')) {
                         $this.groupedopts('refresh');
                     } else
-                    if ($this.hasClass('multiselect-filter-widget') && 
+                    if ($this.hasClass('multiselect-filter-widget') &&
                         $this.multiselect('instance')) {
                         $this.multiselect('refresh');
                     }
@@ -703,7 +957,7 @@ S3.search = {};
             k = q[0];
             v = q[1];
             if (update[k]) {
-                query.push(k + '=' + v);
+                query.push(k + '=' + encodeURIComponent(v));
             }
         }
 
@@ -787,11 +1041,11 @@ S3.search = {};
                         }
 
                         // Refresh UI widgets
-                        if (widget.hasClass('groupedopts-filter-widget') && 
+                        if (widget.hasClass('groupedopts-filter-widget') &&
                             widget.groupedopts('instance')) {
                             widget.groupedopts('refresh');
                         } else
-                        if (widget.hasClass('multiselect-filter-widget') && 
+                        if (widget.hasClass('multiselect-filter-widget') &&
                             widget.multiselect('instance')) {
                             widget.multiselect('refresh');
                         }
@@ -863,7 +1117,7 @@ S3.search = {};
      *                       last filter-submit, reload page if required
      */
     var updatePendingTargets = function(form) {
-        
+
         var url = $('#' + form).find('input.filter-submit-url[type="hidden"]')
                                .first().val(),
             targets = pendingTargets[form],
@@ -914,17 +1168,19 @@ S3.search = {};
             t = $('#' + target_id);
             if (t.hasClass('dl')) {
                 t.datalist('ajaxReload', target_data['queries']);
-//                 dlAjaxReload(target_id, target_data['queries']);
             } else if (t.hasClass('dataTable')) {
-                var dt = t.dataTable();
                 // Refresh Data
-                dt.reloadAjax(target_data['ajaxurl']);
+                var dt = t.dataTable(),
+                    dtAjaxURL = target_data['ajaxurl'];
+                dt.fnReloadAjax(dtAjaxURL);
                 updateFormatURLs(dt, queries);
                 $('#' + dt[0].id + '_dataTable_filterURL').each(function() {
-                    $(this).val(target_data['ajaxurl']);
+                    $(this).val(dtAjaxURL);
                 });
             } else if (t.hasClass('map_wrapper')) {
                 S3.gis.refreshLayer('search_results');
+            } else if (t.hasClass('gi-container')) {
+                t.groupedItems('reload', null, target_data['queries']);
             } else if (t.hasClass('pt-container')) {
                 t.pivottable('reload', null, target_data['queries']);
             } else if (t.hasClass('tp-container')) {
@@ -997,6 +1253,7 @@ S3.search = {};
                 }
                 t = $('#' + target_id);
                 if (t.hasClass('dl') ||
+                    t.hasClass('gi-container') ||
                     t.hasClass('pt-container') ||
                     t.hasClass('tp-container') ||
                     t.hasClass('map_wrapper')) {
@@ -1150,7 +1407,7 @@ S3.search = {};
             }
         }
     };
-    
+
     /**
      * Initialise Map for an S3Map page
      * - in global scope as called from callback to Map Loader
@@ -1222,7 +1479,7 @@ S3.search = {};
         widget.options3 = [];
         widget.options4 = [];
         widget.options5 = [];
-        var new_level, opt, _opt, i;
+        var new_level, opt, _opt, i, option;
         if (hierarchy.hasOwnProperty('L' + level)) {
             // Top-level
             var _hierarchy = hierarchy['L' + level];
@@ -1308,7 +1565,7 @@ S3.search = {};
                                     }
                                     // @ToDo: Read the options for subsequent levels
                                 }
-                            }                            
+                            }
                         }
                     } else {
                         for (i in _values) {
@@ -1381,13 +1638,13 @@ S3.search = {};
                     }
                 }
                 select.html(_options);
-                if (select.hasClass('groupedopts-filter-widget') && 
+                if (select.hasClass('groupedopts-filter-widget') &&
                     select.groupedopts('instance')) {
                     try {
                         select.groupedopts('refresh');
                     } catch(e) { }
                 } else
-                if (select.hasClass('multiselect-filter-widget') && 
+                if (select.hasClass('multiselect-filter-widget') &&
                     select.multiselect('instance')) {
                     select.multiselect('refresh');
                 }
@@ -1476,6 +1733,9 @@ S3.search = {};
                 } else if (t.hasClass('cms_content')) {
                     // CMS widgets do not need page reload
                     needs_reload = false;
+                } else if (t.hasClass('gi-container')) {
+                    // GroupedItems do not need page reload
+                    needs_reload = false;
                 } else if (t.hasClass('pt-container')) {
                     // PivotTables do not need page reload
                     needs_reload = false;
@@ -1512,16 +1772,18 @@ S3.search = {};
                     continue;
                 } else if (t.hasClass('dl')) {
                     t.datalist('ajaxReload', queries);
-//                     dlAjaxReload(target_id, queries);
                 } else if (t.hasClass('dataTable')) {
-                    var dt = t.dataTable();
-                    dt.reloadAjax(dt_ajaxurl[target_id]);
+                    var dt = t.dataTable(),
+                        dtAjaxURL = dt_ajaxurl[target_id];
+                    dt.fnReloadAjax(dtAjaxURL);
                     updateFormatURLs(dt, queries);
                     $('#' + dt[0].id + '_dataTable_filterURL').each(function() {
-                        $(this).val(dt_ajaxurl[target_id]);
+                        $(this).val(dtAjaxURL);
                     });
                 } else if (t.hasClass('map_wrapper')) {
                     S3.gis.refreshLayer('search_results', queries);
+                } else if (t.hasClass('gi-container')) {
+                    t.groupedItems('reload', null, queries);
                 } else if (t.hasClass('pt-container')) {
                     t.pivottable('reload', null, queries);
                 } else if (t.hasClass('tp-container')) {
@@ -1538,7 +1800,7 @@ S3.search = {};
     var toggleAdvanced = function(form) {
 
         var $form = $(form), hidden;
-        
+
         $form.find('.advanced').each(function() {
             var widget = $(this);
             // Ignoring .multiselect-filter-bootstrap as not used & to be deprecated
@@ -1548,7 +1810,7 @@ S3.search = {};
                 widget.removeClass('hide')
                         .show()
                         .find(selectors).each( function() {
-                            selector = $(this)
+                            selector = $(this);
                             // Mark them as Active
                             selector.addClass('active');
                             // Refresh the contents
@@ -1572,7 +1834,7 @@ S3.search = {};
                 hidden = false;
             }
         });
-        
+
         var $btn = $($form.find('.filter-advanced-label'));
         if (hidden) {
             // Change label to label_off
@@ -1581,7 +1843,7 @@ S3.search = {};
             // Change label to label_on
             $btn.text($btn.data('on')).siblings().toggle();
         }
-        
+
     };
 
     /**
@@ -1739,7 +2001,7 @@ S3.search = {};
          * refresh: re-draw contents
          */
         refresh: function() {
-            
+
             var id = this.id,
                 el = this.element.val(''),
                 options = this.options;
@@ -1799,14 +2061,14 @@ S3.search = {};
             if (options.deleteTooltip) {
                 this.delete_btn.attr('title', options.deleteTooltip);
             }
-            
+
             // Throbber
             if (this.throbber) {
                 this.throbber.remove();
             }
             this.throbber = $('<div class="inline-throbber" id="fm-throbber-' + id + '">')
                             .css({'float': 'left'});
-            
+
             // ACCEPT button for create-dialog
             if (this.accept_btn) {
                 this.accept_btn.remove();
@@ -1845,7 +2107,7 @@ S3.search = {};
             // Hide selector and buttons
             var el = this.element.hide(),
                 fm = this;
-                
+
             this._hideCRUDButtons();
 
             // Show accept/cancel
@@ -1895,13 +2157,13 @@ S3.search = {};
             var el = this.element,
                 fm = this,
                 title = this.input.val();
-                
+
             if (!$(this.input).hasClass('changed') || !title) {
                 return;
             } else {
                 $(this.input).removeClass('changed');
             }
-            
+
             // Hide accept/cancel
             this.accept_btn.hide();
             this.cancel_btn.hide();
@@ -1914,13 +2176,14 @@ S3.search = {};
                 title: title,
                 query: S3.search.getCurrentFilters($(el).closest('form')),
                 url: this._getFilterURL()
-            }
+            };
 
             // Ajax-save
             $.ajaxS3({
                 'url': this.options.ajaxURL,
                 'type': 'POST',
                 'dataType': 'json',
+                'contentType': 'application/json; charset=utf-8',
                 'data': JSON.stringify(filter),
                 'success': function(data) {
                     var new_id = data.created;
@@ -1950,7 +2213,7 @@ S3.search = {};
                 opts = this.options;
 
             var id = $(el).val();
-            
+
             if (!id || opts.confirmUpdate && !confirm(opts.confirmUpdate)) {
                 return;
             }
@@ -1966,13 +2229,14 @@ S3.search = {};
                 id: id,
                 query: S3.search.getCurrentFilters($(el).closest('form')),
                 url: this._getFilterURL()
-            }
+            };
 
             // Ajax-update current filter
             $.ajaxS3({
                 'url': this.options.ajaxURL,
                 'type': 'POST',
                 'dataType': 'json',
+                'contentType': 'application/json; charset=utf-8',
                 'data': JSON.stringify(filter),
                 'success': function() {
                     fm.options.filters[id] = filter.query;
@@ -2022,6 +2286,7 @@ S3.search = {};
                 'url': url,
                 'type': 'POST',
                 'dataType': 'json',
+                'contentType': 'application/json; charset=utf-8',
                 'data': JSON.stringify(filter),
                 'success': function() {
                     // Remove options from element
@@ -2056,7 +2321,7 @@ S3.search = {};
             // Show selector and buttons
             var el = this.element.show(),
                 opts = this.options;
-            
+
             // Disable selector if no filters
             var options = $(el).find('option');
             if (options.length == 1 && options.first().hasClass('filter-manager-prompt')) {
@@ -2102,7 +2367,7 @@ S3.search = {};
          * _showCRUDButtons: show (unhide) load/save/delete buttons
          */
         _showCRUDButtons: function() {
-            
+
             var opts = this.options;
 
             this._hideCRUDButtons();
@@ -2124,12 +2389,12 @@ S3.search = {};
                 }
             }
         },
-        
+
         /**
          * _hideCRUDButtons: hide load/save/delete buttons
          */
         _hideCRUDButtons: function() {
-            
+
             this.create_btn.hide();
             this.load_btn.hide();
             this.delete_btn.hide();
@@ -2140,7 +2405,7 @@ S3.search = {};
          * _getFilterURL: get the page URL of the filter form
          */
         _getFilterURL: function() {
-            
+
             var url = $(this.element).closest('form')
                                      .find('input.filter-submit-url[type="hidden"]');
             if (url.length) {
@@ -2154,16 +2419,16 @@ S3.search = {};
          * _bindEvents: bind events to generated elements (after refresh)
          */
         _bindEvents: function() {
-            
+
             var fm = this;
-            
+
             // @todo: don't bind create if readOnly
             this.create_btn.click(function() {
                 fm._newFilter();
             });
             this.accept_btn.click(function() {
                 fm._accept();
-            })
+            });
             this.cancel_btn.click(function() {
                 fm._cancel();
             });

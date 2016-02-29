@@ -9,7 +9,7 @@
     Messages get sent to the Outbox (& Log)
     From there, the Scheduler tasks collect them & send them
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -41,6 +41,7 @@ __all__ = ("S3Msg",
 
 import base64
 import datetime
+import re
 import string
 import urllib
 import urllib2
@@ -70,6 +71,7 @@ from gluon.html import *
 
 from s3codec import S3Codec
 from s3crud import S3CRUD
+from s3datetime import s3_decode_iso_datetime
 from s3forms import S3SQLDefaultForm
 from s3utils import s3_unicode
 from s3validators import IS_IN_SET, IS_ONE_OF
@@ -83,6 +85,8 @@ NOTTWITTERCHARS = ALLCHARS.translate(IDENTITYTRANS,
 TWITTER_MAX_CHARS = 140
 TWITTER_HAS_NEXT_SUFFIX = u' \u2026'
 TWITTER_HAS_PREV_PREFIX = u'\u2026 '
+
+SENDER = re.compile("(.*)\s*\<(.+@.+)\>\s*")
 
 # =============================================================================
 class S3Msg(object):
@@ -122,7 +126,7 @@ class S3Msg(object):
         self.CONTACT_OPTS = {"EMAIL":       T("Email"),
                              "FACEBOOK":    T("Facebook"),
                              "FAX":         T("Fax"),
-                             "HOME_PHONE":  T("Home phone"),
+                             "HOME_PHONE":  T("Home Phone"),
                              "RADIO":       T("Radio Callsign"),
                              "RSS":         T("RSS Feed"),
                              "SKYPE":       T("Skype"),
@@ -649,6 +653,15 @@ class S3Msg(object):
                                (ptable.deleted != True)),
                      ]
 
+            etable = s3db.hrm_training_event
+            ttable = s3db.hrm_training
+            tleft = [ttable.on((ttable.training_event_id == etable.id) & \
+                               (ttable.person_id != None) & \
+                               (ttable.deleted != True)),
+                     ptable.on((ptable.id == ttable.person_id) & \
+                               (ptable.deleted != True)),
+                     ]
+
             atable = s3db.table("deploy_alert")
             if atable:
                 ltable = db.deploy_alert_recipient
@@ -737,6 +750,21 @@ class S3Msg(object):
                     chainrun = True
                 status = True
 
+            elif entity_type == "hrm_training_event":
+                # Re-queue the message for each participant
+                equery = (etable.pe_id == pe_id)
+                recipients = db(equery).select(ptable.pe_id, left=tleft)
+                pe_ids = set(r.pe_id for r in recipients)
+                pe_ids.discard(None)
+                if pe_ids:
+                    for pe_id in pe_ids:
+                        outbox.insert(message_id=message_id,
+                                      pe_id=pe_id,
+                                      contact_method=contact_method,
+                                      system_generated=True)
+                    chainrun = True
+                status = True
+
             elif atable and entity_type == "deploy_alert":
                 # Re-queue the message for each HR in the group
                 aquery = (atable.pe_id == pe_id)
@@ -805,6 +833,7 @@ class S3Msg(object):
 
         if not sender:
             sender = default_sender
+        sender = self.sanitize_sender(sender)
 
         limit = settings.get_mail_limit()
         if limit:
@@ -838,6 +867,30 @@ class S3Msg(object):
             current.session.error = None
 
         return result
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def sanitize_sender(sender):
+        """
+            Sanitize the email sender string to prevent MIME-encoding
+            of the from-address (RFC2047)
+
+            @param: the sender-string
+            @returns: the sanitized sender-string
+        """
+
+        if not sender:
+            return sender
+        match = SENDER.match(sender)
+        if match:
+            sender_name, from_address = match.groups()
+            if any(32 > ord(c) or ord(c) > 127 for c in sender_name):
+                from email.header import Header
+                sender_name = Header(sender_name.strip(), "utf-8")
+            else:
+                sender_name = sender_name.strip()
+            sender = "%s <%s>" % (sender_name, from_address.strip())
+        return sender
 
     # -------------------------------------------------------------------------
     def send_email_by_pe_id(self,
@@ -1222,16 +1275,37 @@ class S3Msg(object):
         if not channel_id:
             # Try the 1st enabled one in the DB
             query = (table.enabled == True)
+            limitby = None
         else:
             query = (table.channel_id == channel_id)
+            limitby = (0, 1)
 
-        c = current.db(query).select(table.twitter_account,
-                                     table.consumer_key,
-                                     table.consumer_secret,
-                                     table.access_token,
-                                     table.access_token_secret,
-                                     limitby=(0, 1)
-                                     ).first()
+        rows = current.db(query).select(table.login,
+                                        table.twitter_account,
+                                        table.consumer_key,
+                                        table.consumer_secret,
+                                        table.access_token,
+                                        table.access_token_secret,
+                                        limitby=limitby
+                                        )
+        if len(rows) == 1:
+            c = rows.first()
+        elif not len(rows):
+            current.log.error("s3msg", "No Twitter channels configured")
+            return None
+        else:
+            # Filter to just the login channel
+            rows.exclude(lambda row: row.login != True)
+            if len(rows) == 1:
+                c = rows.first()
+            elif not len(rows):
+                current.log.error("s3msg", "No Twitter channels configured for login")
+                return None
+
+        if not c.consumer_key:
+            current.log.error("s3msg", "Twitter channel has no consumer key")
+            return None
+
         try:
             oauth = tweepy.OAuthHandler(c.consumer_key,
                                         c.consumer_secret)
@@ -1546,6 +1620,10 @@ class S3Msg(object):
                 sinsert(channel_id=channel_id,
                         status=error)
                 return error
+            except poplib.error_proto, e:
+                # Something else went wrong - probably transient (have seen '-ERR EOF' here)
+                current.log.error("Email poll failed: %s" % e)
+                return
 
             try:
                 # Attempting APOP authentication...
@@ -1683,7 +1761,7 @@ class S3Msg(object):
             mtable = s3db.msg_sms
             minsert = mtable.insert
             update_super = s3db.update_super
-            decode = S3Codec.decode_iso_datetime
+            decode = s3_decode_iso_datetime
 
             # Is this channel connected to a parser?
             parser = s3db.msg_parser_enabled(channel_id)
@@ -1747,7 +1825,9 @@ class S3Msg(object):
             error = "Error: %s" % e.code
             current.log.error(error)
             # Store status in the DB
-            db(table.channel_id == channel_id).update(status=error)
+            S3Msg.update_channel_status(channel_id,
+                                        status=error,
+                                        period=(300, 3600))
             return error
         else:
             sms_list = json.loads(smspage.read())
@@ -1869,7 +1949,7 @@ class S3Msg(object):
             else:
                 location_id = None
 
-            title = entry.title
+            title = entry.get("title")
 
             content = entry.get("content", None)
             if content:
@@ -1904,12 +1984,12 @@ class S3Msg(object):
                 try:
                     query = (gtable.lat == lat) &\
                             (gtable.lon == lon)
-                    exists = db(query).select(gtable.id,
-                                              limitby=(0, 1),
-                                              orderby=gtable.level,
-                                              ).first()
-                    if exists:
-                        location_id = exists.id
+                    lexists = db(query).select(gtable.id,
+                                               limitby=(0, 1),
+                                               orderby=gtable.level,
+                                               ).first()
+                    if lexists:
+                        location_id = lexists.id
                     else:
                         data = dict(lat=lat,
                                     lon=lon,
@@ -1947,7 +2027,7 @@ class S3Msg(object):
 
             else:
                 _id = minsert(channel_id = channel_id,
-                              title = entry.title,
+                              title = title,
                               from_address = link,
                               body = content,
                               author = entry.get("author", None),
@@ -1980,20 +2060,40 @@ class S3Msg(object):
         """
             Function  to call to fetch tweets into msg_twitter table
             - called via Scheduler or twitter_inbox controller
+
+            http://tweepy.readthedocs.org/en/v3.3.0/api.html
         """
 
-        # Initialize Twitter API
-        twitter_settings = S3Msg.get_twitter_api(channel_id)
-        if not twitter_settings:
-            # Abort
+        try:
+            import tweepy
+        except ImportError:
+            current.log.error("s3msg", "Tweepy not available, so non-Tropo Twitter support disabled")
             return False
-
-        import tweepy
-
-        twitter_api = twitter_settings[0]
 
         db = current.db
         s3db = current.s3db
+
+        # Initialize Twitter API
+        twitter_settings = S3Msg.get_twitter_api(channel_id)
+        if twitter_settings:
+            # This is an account with login info, so pull DMs
+            dm = True
+        else:
+            # This is can account without login info, so pull public tweets
+            dm = False
+            table = s3db.msg_twitter_channel
+            channel = db(table.channel_id == channel_id).select(table.twitter_account,
+                                                                limitby=(0, 1)
+                                                                ).first()
+            screen_name = channel.twitter_account
+            # Authenticate using login account
+            twitter_settings = S3Msg.get_twitter_api()
+            if twitter_settings is None:
+                # Cannot authenticate
+                return False
+
+        twitter_api = twitter_settings[0]
+
         table = s3db.msg_twitter
 
         # Get the latest Twitter message ID to use it as since_id
@@ -2005,12 +2105,22 @@ class S3Msg(object):
                                   ).first()
 
         try:
-            if latest:
-                messages = twitter_api.direct_messages(since_id=latest.msg_id)
+            if dm:
+                if latest:
+                    messages = twitter_api.direct_messages(since_id=latest.msg_id)
+                else:
+                    messages = twitter_api.direct_messages()
             else:
-                messages = twitter_api.direct_messages()
+                if latest:
+                    messages = twitter_api.user_timeline(screen_name=screen_name,
+                                                         since_id=latest.msg_id)
+                else:
+                    messages = twitter_api.user_timeline(screen_name=screen_name)
         except tweepy.TweepError as e:
-            error = e.message[0]["message"]
+            error = e.message
+            if isinstance(error, (tuple, list)):
+                # Older Tweepy?
+                error = e.message[0]["message"]
             current.log.error("Unable to get the Tweets for the user: %s" % error)
             return False
 
@@ -2019,10 +2129,16 @@ class S3Msg(object):
         tinsert = table.insert
         update_super = s3db.update_super
         for message in messages:
+            if dm:
+                from_address = message.sender_screen_name
+                to_address = message.recipient_screen_name
+            else:
+                from_address = message.author.screen_name
+                to_address = message.in_reply_to_screen_name
             _id = tinsert(channel_id = channel_id,
                           body = message.text,
-                          from_address = message.sender_screen_name,
-                          to_address = message.recipient_screen_name,
+                          from_address = from_address,
+                          to_address = to_address,
                           date = message.created_at,
                           inbound = True,
                           msg_id = message.id,
@@ -2327,7 +2443,7 @@ class S3Compose(S3CRUD):
         if self.method == "compose":
             output = dict(form=form)
         else:
-            r.error(501, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         # Complete the page
         if r.representation == "html":

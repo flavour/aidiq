@@ -7,7 +7,7 @@
     @requires: U{B{I{gluon}} <http://web2py.com>}
     @requires: U{B{I{lxml}} <http://codespeak.net/lxml>}
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -54,6 +54,7 @@ from gluon.languages import lazyT
 from gluon.storage import Storage
 from gluon.tools import callback
 
+from s3datetime import S3DateTime
 from s3export import S3Exporter
 from s3forms import S3SQLDefaultForm
 from s3rest import S3Method
@@ -344,6 +345,7 @@ class S3CRUD(S3Method):
                         post_vars["created_by"] = current.auth.user.id
                     else:
                         post_vars["created_by"] = None
+                post_vars["_undelete"] = True
                 post_vars["_formname"] = formname
                 post_vars["id"] = original
                 request.vars.update(**post_vars)
@@ -373,7 +375,8 @@ class S3CRUD(S3Method):
                                           hierarchy=hierarchy,
                                           message=message,
                                           subheadings=subheadings,
-                                          format=representation)
+                                          format=representation,
+                                          )
 
             # Navigate-away confirmation
             if self.settings.navigate_away_confirm:
@@ -458,7 +461,7 @@ class S3CRUD(S3Method):
             return results
 
         else:
-            r.error(501, current.ERROR.BAD_FORMAT)
+            r.error(415, current.ERROR.BAD_FORMAT)
 
         return output
 
@@ -541,8 +544,7 @@ class S3CRUD(S3Method):
                                     name="label_create",
                                     icon="add",
                                     _id="add-btn")
-                if buttons:
-                    output["buttons"] = {"add_btn": add_btn}
+                output["buttons"] = {"add_btn": add_btn}
 
         view = self._view(r, "listadd.html")
         output = XML(response.render(view, output))
@@ -575,21 +577,10 @@ class S3CRUD(S3Method):
 
         _config = self._config
         editable = _config("editable", True)
-        list_fields = _config("list_fields")
-
-        # List fields
-        if not list_fields:
-            fields = resource.readable_fields()
-        else:
-            fields = [table[f] for f in list_fields if f in table.fields]
-        if not fields:
-            fields = []
-        if fields[0].name != table.fields[0]:
-            fields.insert(0, table[table.fields[0]])
 
         # Get the target record ID
         record_id = self.record_id
-        
+
         if r.interactive:
 
             # If this is a single-component and no record exists,
@@ -602,11 +593,11 @@ class S3CRUD(S3Method):
                     return self.create(r, **attr)
                 else:
                     return self.select(r, **attr)
-                    
+
             # Redirect to update if user has permission unless
             # a method has been specified in the URL
             # MH: Is this really desirable? Many users would prefer to open as read
-            if not r.method or r.method == "review":
+            if not r.method: #or r.method == "review":
                 authorised = self._permitted("update")
                 if authorised and representation == "html" and editable:
                     return self.update(r, **attr)
@@ -743,32 +734,30 @@ class S3CRUD(S3Method):
 
         elif representation == "csv":
             exporter = S3Exporter().csv
-            return exporter(resource)
+            output = exporter(resource)
 
         #elif representation == "map":
         #    exporter = S3Map()
-        #    return exporter(r, **attr)
+        #    output = exporter(r, **attr)
 
         elif representation == "pdf":
             exporter = S3Exporter().pdf
-            return exporter(resource, request=r, **attr)
+            output = exporter(resource, request=r, **attr)
 
         elif representation == "shp":
+            list_fields = resource.list_fields()
             exporter = S3Exporter().shp
-            return exporter(resource,
-                            list_fields=list_fields,
-                            **attr)
+            output = exporter(resource, list_fields=list_fields, **attr)
 
         elif representation == "svg":
+            list_fields = resource.list_fields()
             exporter = S3Exporter().svg
-            return exporter(resource,
-                            list_fields=list_fields,
-                            **attr)
+            output = exporter(resource, list_fields=list_fields, **attr)
 
         elif representation == "xls":
-            list_fields = _config("list_fields")
+            list_fields = resource.list_fields()
             exporter = S3Exporter().xls
-            return exporter(resource, list_fields=list_fields)
+            output = exporter(resource, list_fields=list_fields)
 
         elif representation == "json":
             exporter = S3Exporter().json
@@ -780,10 +769,10 @@ class S3CRUD(S3Method):
             else:
                 tooltip = None
 
-            return exporter(resource, tooltip=tooltip)
+            output = exporter(resource, tooltip=tooltip)
 
         else:
-            r.error(501, current.ERROR.BAD_FORMAT)
+            r.error(415, current.ERROR.BAD_FORMAT)
 
         return output
 
@@ -813,7 +802,7 @@ class S3CRUD(S3Method):
                        _config("onvalidation")
         onaccept = _config("update_onaccept") or \
                    _config("onaccept")
-                   
+
         # Get the target record ID
         record_id = self.record_id
         if r.interactive and not record_id:
@@ -970,7 +959,7 @@ class S3CRUD(S3Method):
             return self.import_url(r)
 
         else:
-            r.error(501, current.ERROR.BAD_FORMAT)
+            r.error(415, current.ERROR.BAD_FORMAT)
 
         return output
 
@@ -1096,7 +1085,7 @@ class S3CRUD(S3Method):
             @param r: the S3Request
             @param attr: dictionary of parameters for the method handler
         """
-        
+
         resource = self.resource
 
         tablename = resource.tablename
@@ -1281,24 +1270,18 @@ class S3CRUD(S3Method):
             start, limit = self._limits(get_vars)
 
             # Render extra "_tooltip" field for each row?
-            if "tooltip" in get_vars:
-                tooltip = get_vars["tooltip"]
-            else:
-                tooltip = None
+            tooltip = get_vars.get("tooltip", None)
 
-            fields = resource.list_fields(id_column=True)
-            rfields = resource.resolve_selectors(fields,
-                                                 extra_fields=False)[0]
-            fields = [rfield.fname for rfield in rfields
-                                   if rfield.tname == tablename]
-            orderby = get_config("orderby", None)
+            # Represent?
+            represent = get_vars.get("represent", False)
+            if represent and represent != "0":
+                represent = True
 
             exporter = S3Exporter().json
             return exporter(resource,
                             start=start,
                             limit=limit,
-                            fields=fields,
-                            orderby=orderby,
+                            represent=represent,
                             tooltip=tooltip)
 
         elif representation == "pdf":
@@ -1344,7 +1327,7 @@ class S3CRUD(S3Method):
                 r.error(405, current.ERROR.BAD_METHOD)
 
         else:
-            r.error(501, current.ERROR.BAD_FORMAT)
+            r.error(415, current.ERROR.BAD_FORMAT)
 
     # -------------------------------------------------------------------------
     def _datatable(self, r, **attr):
@@ -1392,10 +1375,6 @@ class S3CRUD(S3Method):
 
         # Initialize output
         output = {}
-
-        # Filter
-        if s3.filter is not None:
-            resource.add_filter(s3.filter)
 
         # Linkto
         if not linkto:
@@ -1511,7 +1490,7 @@ class S3CRUD(S3Method):
                 totalrows = displayrows
 
             # Echo
-            draw = int(get_vars.draw or 0)
+            draw = int(get_vars.get("draw", 0))
 
             # Representation
             if dt is not None:
@@ -1528,7 +1507,7 @@ class S3CRUD(S3Method):
                          '"data":[]}' % (totalrows, list_id, draw)
 
         else:
-            r.error(501, current.ERROR.BAD_FORMAT)
+            r.error(415, current.ERROR.BAD_FORMAT)
 
         return output
 
@@ -1558,7 +1537,10 @@ class S3CRUD(S3Method):
                                attr.get("list_id", "datalist"))
 
         # List fields
-        list_fields = resource.list_fields()
+        if hasattr(layout, "list_fields"):
+            list_fields = layout.list_fields
+        else:
+            list_fields = resource.list_fields()
 
         # Default orderby
         orderby = get_config("list_orderby",
@@ -1611,10 +1593,6 @@ class S3CRUD(S3Method):
 
         # Initialize output
         output = {}
-
-        # Filter
-        if s3.filter is not None:
-            resource.add_filter(s3.filter)
 
         # Prepare data list
         representation = r.representation
@@ -1682,8 +1660,10 @@ class S3CRUD(S3Method):
             # Render the list (even if empty => Ajax-section is required
             # in any case to be able to Ajax-refresh e.g. after adding
             # new records or changing the filter)
+            if representation == "dl" or not limit:
+                limit = numrows
             dl = datalist.html(start = start if start else 0,
-                               limit = limit if limit else numrows,
+                               limit = limit,
                                pagesize = pagelength,
                                rowsize = rowsize,
                                ajaxurl = ajax_url)
@@ -1692,7 +1672,7 @@ class S3CRUD(S3Method):
             #    dl.insert(0, DIV(empty, _class="empty"))
             data = dl
         else:
-            r.error(501, current.ERROR.BAD_FORMAT)
+            r.error(415, current.ERROR.BAD_FORMAT)
 
 
         if representation == "html":
@@ -1902,7 +1882,7 @@ class S3CRUD(S3Method):
                          '"data": []}' % (totalrows, list_id, draw)
 
         else:
-            r.error(501, current.ERROR.BAD_FORMAT)
+            r.error(415, current.ERROR.BAD_FORMAT)
 
         return output
 
@@ -1933,18 +1913,25 @@ class S3CRUD(S3Method):
                 approve = FORM(INPUT(_value=T("Approve"),
                                     _type="submit",
                                     _name="approve-btn",
-                                    _id="approve-btn"))
+                                    _id="approve-btn",
+                                    _class="action-btn"))
 
                 reject = FORM(INPUT(_value=T("Reject"),
                                     _type="submit",
                                     _name="reject-btn",
-                                    _id="reject-btn"))
+                                    _id="reject-btn",
+                                    _class="action-btn"))
+
+                edit = A(T("Edit"),
+                         _href=r.url(id=r.id, method="update",
+                                     vars={"_next": r.url(id=r.id, method="review")}),
+                         _class="action-btn")
 
                 cancel = A(T("Cancel"),
                            _href=r.url(id=0),
                            _class="action-lnk")
 
-                output["approve_form"] = DIV(TABLE(TR(approve, reject, cancel)),
+                output["approve_form"] = DIV(TABLE(TR(approve, reject, edit, cancel)),
                                              _id="approve_form")
 
                 reviewing = False
@@ -1992,7 +1979,7 @@ class S3CRUD(S3Method):
             current.response.view = "review.html"
 
         else:
-            r.error(501, current.ERROR.BAD_FORMAT)
+            r.error(415, current.ERROR.BAD_FORMAT)
 
         return output
 
@@ -2036,7 +2023,7 @@ class S3CRUD(S3Method):
         """
 
         if r.representation != "json":
-            r.error(501, current.ERROR.BAD_FORMAT)
+            r.error(415, current.ERROR.BAD_FORMAT)
 
         resource = self.resource
 
@@ -2282,15 +2269,19 @@ class S3CRUD(S3Method):
     # -------------------------------------------------------------------------
     def last_update(self):
         """
-            Get the last update meta-data
+            Get the last update meta-data of the current record
+
+            @return: a dict {modified_by: <user>, modified_on: <datestr>},
+                     depending on which of these attributes are available
+                     in the current record
         """
 
-        output = dict()
+        output = {}
         record_id = self.record_id
         if record_id:
-            T = current.T
-            table = self.table
+            record = None
             fields = []
+            table = self.table
             if "modified_on" in table.fields:
                 fields.append(table.modified_on)
             if "modified_by" in table.fields:
@@ -2300,20 +2291,23 @@ class S3CRUD(S3Method):
                 query = (table._id == record_id)
                 record = current.db(query).select(limitby=(0, 1),
                                                   *fields).first()
-
-                if record:
-                    if "modified_by" in record:
-                        if not record.modified_by:
-                            modified_by = T("anonymous user")
-                        else:
-                            modified_by = \
-                                table.modified_by.represent(record.modified_by)
-                        output["modified_by"] = T("by %(person)s") % \
-                                                  dict(person = modified_by)
-                    if "modified_on" in record:
-                        output["modified_on"] = T("on %(date)s") % \
-                                                dict(date = record.modified_on)
-
+            if record:
+                T = current.T
+                if "modified_by" in record:
+                    if not record.modified_by:
+                        modified_by = T("anonymous user")
+                    else:
+                        modified_by = \
+                            table.modified_by.represent(record.modified_by)
+                    output["modified_by"] = T("by %(person)s") % \
+                                             {"person": modified_by}
+                if "modified_on" in record:
+                    modified_on = \
+                        S3DateTime.datetime_represent(record.modified_on,
+                                                      utc=True,
+                                                      )
+                    output["modified_on"] = T("on %(date)s") % \
+                                             {"date": modified_on}
         return output
 
     # -------------------------------------------------------------------------
@@ -2448,7 +2442,7 @@ class S3CRUD(S3Method):
         """
 
         link = dict(attr)
-        link["label"] = str(label)
+        link["label"] = str(label) #s3_unicode(label).encode("utf8")
         link["url"] = url
         if icon and current.deployment_settings.get_ui_use_button_icons():
             link["icon"] = ICON.css_class(icon)
@@ -2995,17 +2989,19 @@ class S3CRUD(S3Method):
                                       ))
                 else:
                     args = [record_id]
+                    # Don't forward get_vars, except "viewing"
+                    get_vars = Storage()
+                    if "viewing" in r.get_vars:
+                        get_vars.viewing = r.get_vars["viewing"]
                     if update:
                         url = str(URL(r=r, c=c, f=f,
-                                      args=args + ["update"],
-                                      # Don't forward all vars unconditionally
-                                      #vars=r.get_vars
+                                      args = args + ["update"],
+                                      vars = get_vars
                                       ))
                     else:
                         url = str(URL(r=r, c=c, f=f,
-                                      args=args + ["read"],
-                                      # Don't forward all vars unconditionally
-                                      #vars=r.get_vars
+                                      args = args + ["read"],
+                                      vars = get_vars
                                       ))
             if iframe_safe:
                 url = iframe_safe(url)

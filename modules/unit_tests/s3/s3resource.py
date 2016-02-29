@@ -23,7 +23,7 @@ class ComponentJoinConstructionTests(unittest.TestCase):
         """ Master resource has no join """
 
         resource = current.s3db.resource("pr_person")
-        
+
         self.assertEqual(resource.get_join(), None)
 
     # -------------------------------------------------------------------------
@@ -37,7 +37,7 @@ class ComponentJoinConstructionTests(unittest.TestCase):
         ctable = component.table
         expected = (ctable.person_id == rtable.id) & \
                    (ctable.deleted != True)
-                   
+
         join = component.get_join()
         self.assertEqual(str(join), str(expected))
 
@@ -47,12 +47,12 @@ class ComponentJoinConstructionTests(unittest.TestCase):
 
         resource = current.s3db.resource("pr_person")
         component = resource.components["contact"]
-        
+
         rtable = resource.table
         ctable = component.table
         expected = (rtable.pe_id == ctable.pe_id) & \
                    (ctable.deleted != True)
-                   
+
         join = component.get_join()
         self.assertEqual(str(join), str(expected))
 
@@ -63,14 +63,14 @@ class ComponentJoinConstructionTests(unittest.TestCase):
 
         resource = current.s3db.resource("project_project")
         component = resource.components["task"]
-        
+
         project_project = resource.table
         project_task_project = component.link.table
         project_task = component.table
         expected = (((project_task_project.project_id == project_project.id) &
                    (project_task_project.deleted != True)) &
                    (project_task_project.task_id == project_task.id))
-                   
+
         join = component.get_join()
         self.assertEqual(str(join), str(expected))
 
@@ -89,6 +89,9 @@ class ComponentLeftJoinConstructionTests(unittest.TestCase):
     def testGetLeftJoinSimpleComponent(self):
         """ Left Join for a simple component """
 
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
+
         resource = current.s3db.resource("pr_person")
         component = resource.components["identity"]
 
@@ -98,48 +101,54 @@ class ComponentLeftJoinConstructionTests(unittest.TestCase):
                              (ctable.deleted != True))
 
         ljoin = component.get_left_join()
-        self.assertTrue(isinstance(ljoin, list))
-        self.assertEqual(len(ljoin), 1)
-        self.assertEqual(str(ljoin[0]), str(expected))
+        assertTrue(isinstance(ljoin, list))
+        assertEqual(len(ljoin), 1)
+        assertEqual(str(ljoin[0]), str(expected))
 
     # -------------------------------------------------------------------------
     def testGetLeftJoinSuperComponent(self):
         """ Left Join for a super-component """
 
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
+
         resource = current.s3db.resource("pr_person")
         component = resource.components["contact"]
-        
+
         rtable = resource.table
         ctable = component.table
         expected = ctable.on((rtable.pe_id == ctable.pe_id) &
                              (ctable.deleted != True))
 
         ljoin = component.get_left_join()
-        self.assertTrue(isinstance(ljoin, list))
-        self.assertEqual(len(ljoin), 1)
-        self.assertEqual(str(ljoin[0]), str(expected))
+        assertTrue(isinstance(ljoin, list))
+        assertEqual(len(ljoin), 1)
+        assertEqual(str(ljoin[0]), str(expected))
 
     # -------------------------------------------------------------------------
     @unittest.skipIf(not current.deployment_settings.has_module("project"), "project module disabled")
     def testGetLeftJoinLinkTableComponent(self):
         """ Left Join for a link-table component """
 
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
+
         resource = current.s3db.resource("project_project")
         component = resource.components["task"]
-        
+
         rtable = resource.table
         ltable = component.link.table
         ctable = component.table
-        
+
         expected_l = ltable.on((ltable.project_id == rtable.id) &
                                (ltable.deleted != True))
         expected_r = ctable.on(ltable.task_id == ctable.id)
 
         ljoin = component.get_left_join()
-        self.assertTrue(isinstance(ljoin, list))
-        self.assertEqual(len(ljoin), 2)
-        self.assertEqual(str(ljoin[0]), str(expected_l))
-        self.assertEqual(str(ljoin[1]), str(expected_r))
+        assertTrue(isinstance(ljoin, list))
+        assertEqual(len(ljoin), 2)
+        assertEqual(str(ljoin[0]), str(expected_l))
+        assertEqual(str(ljoin[1]), str(expected_r))
 
 # =============================================================================
 class ResourceAxisFilterTests(unittest.TestCase):
@@ -147,6 +156,9 @@ class ResourceAxisFilterTests(unittest.TestCase):
 
     def testListTypeFilter(self):
         """ Test list:type axis value filtering """
+
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
 
         tablename = "axis_filter"
         db = current.db
@@ -170,9 +182,9 @@ class ResourceAxisFilterTests(unittest.TestCase):
             rfield = S3ResourceField(resource, "facility_type_id")
 
             values, ignore = af.values(rfield)
-            self.assertTrue("1" in values)
-            self.assertFalse("2" in values)
-            self.assertTrue("3" in values)
+            assertTrue("1" in values)
+            assertFalse("2" in values)
+            assertTrue("3" in values)
 
             resource = s3db.resource(tablename)
             q = (FS("facility_type_id").contains([1,2,3])) & \
@@ -182,9 +194,9 @@ class ResourceAxisFilterTests(unittest.TestCase):
             af = S3AxisFilter(query.as_dict(flat=True), tablename)
 
             values, ignore = af.values(rfield)
-            self.assertTrue("1" in values)
-            self.assertTrue("2" in values)
-            self.assertTrue("3" in values)
+            assertTrue("1" in values)
+            assertTrue("2" in values)
+            assertTrue("3" in values)
 
             resource = s3db.resource(tablename)
             q = (FS("facility_type_id").contains([1,2,3])) | \
@@ -194,9 +206,9 @@ class ResourceAxisFilterTests(unittest.TestCase):
             af = S3AxisFilter(query.as_dict(flat=True), tablename)
 
             values, ignore = af.values(rfield)
-            self.assertTrue("1" in values)
-            self.assertTrue("2" in values)
-            self.assertTrue("3" in values)
+            assertTrue("1" in values)
+            assertTrue("2" in values)
+            assertTrue("3" in values)
 
             resource = s3db.resource(tablename)
             q = (FS("facility_type_id").contains([1,2,3])) | \
@@ -206,10 +218,10 @@ class ResourceAxisFilterTests(unittest.TestCase):
             af = S3AxisFilter(query.as_dict(flat=True), tablename)
 
             values, ignore = af.values(rfield)
-            self.assertTrue("1" in values)
-            self.assertTrue("2" in values)
-            self.assertTrue("3" in values)
-            
+            assertTrue("1" in values)
+            assertTrue("2" in values)
+            assertTrue("3" in values)
+
         finally:
             try:
                 table.drop()
@@ -223,7 +235,7 @@ class ResourceDataTableFilterTests(unittest.TestCase):
     # -------------------------------------------------------------------------
     def testDataTableFilterStandard(self):
         """ Test Standard Data Table """
-        
+
         resource = current.s3db.resource("hrm_certificate_skill")
         vars = Storage({"bSortable_0": "false",
                         "bSortable_1": "true",
@@ -241,7 +253,7 @@ class ResourceDataTableFilterTests(unittest.TestCase):
     # -------------------------------------------------------------------------
     def testDataTableFilterWithBulkColumn(self):
         """ Test De-Duplicator Data Table """
-        
+
         resource = current.s3db.resource("hrm_certificate_skill")
         vars = Storage({"bSortable_0": "false",
                         "bSortable_1": "false",
@@ -260,7 +272,7 @@ class ResourceDataTableFilterTests(unittest.TestCase):
     # -------------------------------------------------------------------------
     def testDataTableFilterOther(self):
         """ Test Other Data Table """
-        
+
         resource = current.s3db.resource("hrm_certificate_skill")
         vars = Storage({"bSortable_0": "false",
                         "bSortable_1": "true",
@@ -275,7 +287,7 @@ class ResourceDataTableFilterTests(unittest.TestCase):
                                                             "competency_id"],
                                                             vars)
         self.assertEqual(orderby, "hrm_competency_rating.priority desc")
-        
+
 # =============================================================================
 class ResourceExportTests(unittest.TestCase):
     """ Test XML export of resources """
@@ -284,11 +296,14 @@ class ResourceExportTests(unittest.TestCase):
     def testExportTree(self):
         """ Test export of a resource as element tree """
 
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
+
         xml = current.xml
         auth = current.auth
 
         auth.override = True
-        
+
         xmlstr = """
 <s3xml>
     <resource name="org_organisation">
@@ -308,22 +323,22 @@ class ResourceExportTests(unittest.TestCase):
             tree = resource.export_tree(start=0, limit=1, dereference=False)
 
             root = tree.getroot()
-            self.assertEqual(root.tag, xml.TAG.root)
+            assertEqual(root.tag, xml.TAG.root)
 
             attrib = root.attrib
-            self.assertEqual(len(attrib), 5)
-            self.assertEqual(attrib["success"], "true")
-            self.assertEqual(attrib["start"], "0")
-            self.assertEqual(attrib["limit"], "1")
-            self.assertEqual(attrib["results"], "1")
-            self.assertTrue("url" in attrib)
+            assertEqual(len(attrib), 5)
+            assertEqual(attrib["success"], "true")
+            assertEqual(attrib["start"], "0")
+            assertEqual(attrib["limit"], "1")
+            assertEqual(attrib["results"], "1")
+            assertTrue("url" in attrib)
 
-            self.assertEqual(len(root), 1)
+            assertEqual(len(root), 1)
             for child in root:
-                self.assertEqual(child.tag, xml.TAG.resource)
+                assertEqual(child.tag, xml.TAG.resource)
                 attrib = child.attrib
-                self.assertEqual(attrib["name"], "org_office")
-                self.assertTrue("uuid" in attrib)
+                assertEqual(attrib["name"], "org_office")
+                assertTrue("uuid" in attrib)
         finally:
             current.db.rollback()
             auth.override = False
@@ -331,6 +346,9 @@ class ResourceExportTests(unittest.TestCase):
     # -------------------------------------------------------------------------
     def testExportTreeWithMaxBounds(self):
         """ Text XML output with max bounds """
+
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
 
         xml = current.xml
         auth = current.auth
@@ -359,22 +377,21 @@ class ResourceExportTests(unittest.TestCase):
                                         maxbounds=True)
             root = tree.getroot()
             attrib = root.attrib
-            self.assertEqual(len(attrib), 9)
-            self.assertTrue("latmin" in attrib)
-            self.assertTrue("latmax" in attrib)
-            self.assertTrue("lonmin" in attrib)
-            self.assertTrue("lonmax" in attrib)
+            assertEqual(len(attrib), 9)
+            assertTrue("latmin" in attrib)
+            assertTrue("latmax" in attrib)
+            assertTrue("lonmin" in attrib)
+            assertTrue("lonmax" in attrib)
 
         finally:
             current.db.rollback()
             auth.override = False
 
     # -------------------------------------------------------------------------
-    @unittest.skipIf(current.deployment_settings.get_database_type() == "postgres", "not working for postgres")
     def testExportTreeWithMSince(self):
         """ Test automatic ordering of export items by mtime if msince is given """
-        
-        # FIXME: functionality works in postgres, but test fails
+
+        assertEqual = self.assertEqual
 
         auth = current.auth
         auth.override = True
@@ -395,39 +412,51 @@ class ResourceExportTests(unittest.TestCase):
             resource.import_xml(xmltree)
 
             resource = current.s3db.resource(resource,
-                                            uid=["ORDERTESTHOSPITAL1",
-                                                "ORDERTESTHOSPITAL2"])
+                                             uid=["ORDERTESTHOSPITAL1",
+                                                  "ORDERTESTHOSPITAL2",
+                                                  ])
+
+            # Load the records without orderby
             resource.load(limit=2)
-            self.assertEqual(len(resource), 2)
+            assertEqual(len(resource), 2)
+
+            # Determine which comes first and which last without orderby
             first = resource._rows[0]["uuid"]
             last = resource._rows[1]["uuid"]
 
-            import time
-            time.sleep(2) # Wait 2 seconds to change mtime
-            resource._rows[0].update_record(name="OrderTestHospital1")
+            # Make first older than last
+            now = datetime.datetime.utcnow()
+            ts = now - datetime.timedelta(seconds=5)
+            resource._rows[0].update_record(created_on = ts,
+                                            modified_on = ts,
+                                            )
+            resource._rows[1].update_record(created_on = now,
+                                            modified_on = now,
+                                            )
 
+            # Without msince, elements should have same order as in load
             msince = msince=datetime.datetime.utcnow() - datetime.timedelta(days=1)
-
             tree = resource.export_tree(start=0,
                                         limit=1,
                                         dereference=False)
             root = tree.getroot()
-            self.assertEqual(len(root), 1)
+            assertEqual(len(root), 1)
 
             child = root[0]
             uuid = child.get("uuid", None)
-            self.assertEqual(uuid, first)
+            assertEqual(uuid, first)
 
+            # With msince, elements should be ordered by age
             tree = resource.export_tree(start=0,
                                         limit=1,
                                         msince=msince,
                                         dereference=False)
             root = tree.getroot()
-            self.assertEqual(len(root), 1)
+            assertEqual(len(root), 1)
 
             child = root[0]
             uuid = child.get("uuid", None)
-            self.assertEqual(uuid, last)
+            assertEqual(uuid, last)
 
         finally:
             current.db.rollback()
@@ -437,9 +466,13 @@ class ResourceExportTests(unittest.TestCase):
     def testExportXMLWithSyncFilters(self):
         """ Test XML Export with Sync Filters """
 
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
+
         auth = current.auth
         s3db = current.s3db
-        
+
         auth.override = True
 
         xmlstr = """
@@ -484,26 +517,26 @@ class ResourceExportTests(unittest.TestCase):
             resource = s3db.resource(resource,
                                      uid=["SFO1", "SFO2", "SFO3"])
 
-            filters = {"org_organisation": {"organisation.name__like": "Sync1%"}}
+            filters = {"org_organisation": {"organisation.name__like": "Sync1*"}}
 
             xmlexport = resource.export_xml(filters=filters,
                                             mcomponents=["org_office"],
                                             dereference=False)
-                                            
+
             xmltree = etree.ElementTree(etree.fromstring(xmlexport))
             orgs = xmltree.xpath("resource[@name='org_organisation']")
-            self.assertEqual(len(orgs), 1)
-            self.assertEqual(orgs[0].get("uuid"), "SFO1")
+            assertEqual(len(orgs), 1)
+            assertEqual(orgs[0].get("uuid"), "SFO1")
 
             offices = xmltree.xpath("//resource[@name='org_office']")
-            self.assertEqual(len(offices), 1)
-            self.assertEqual(offices[0].get("uuid"), "S1FO1")
+            assertEqual(len(offices), 1)
+            assertEqual(offices[0].get("uuid"), "S1FO1")
 
             # Filter master by component field
             resource = s3db.resource(resource,
                                      uid=["SFO1", "SFO2", "SFO3"])
 
-            filters = {"org_organisation": {"office.name__like": "Sync2%"}}
+            filters = {"org_organisation": {"office.name__like": "Sync2*"}}
 
             xmlexport = resource.export_xml(filters=filters,
                                             mcomponents=["org_office"],
@@ -511,18 +544,18 @@ class ResourceExportTests(unittest.TestCase):
 
             xmltree = etree.ElementTree(etree.fromstring(xmlexport))
             orgs = xmltree.xpath("resource[@name='org_organisation']")
-            self.assertEqual(len(orgs), 1)
-            self.assertEqual(orgs[0].get("uuid"), "SFO3")
+            assertEqual(len(orgs), 1)
+            assertEqual(orgs[0].get("uuid"), "SFO3")
 
             offices = xmltree.xpath("//resource[@name='org_office']")
-            self.assertEqual(len(offices), 1)
-            self.assertEqual(offices[0].get("uuid"), "S2FO1")
+            assertEqual(len(offices), 1)
+            assertEqual(offices[0].get("uuid"), "S2FO1")
 
             # Filter component by component field
             resource = s3db.resource(resource,
                                      uid=["SFO1", "SFO2", "SFO3"])
 
-            filters = {"org_office": {"office.name__like": "Sync1%"}}
+            filters = {"org_office": {"office.name__like": "Sync1*"}}
 
             xmlexport = resource.export_xml(filters=filters,
                                             mcomponents=["org_office"],
@@ -530,19 +563,19 @@ class ResourceExportTests(unittest.TestCase):
             xmltree = etree.ElementTree(etree.fromstring(xmlexport))
 
             orgs = xmltree.xpath("resource[@name='org_organisation']")
-            self.assertEqual(len(orgs), 3)
+            assertEqual(len(orgs), 3)
             uids = [org.get("uuid") for org in orgs]
-            self.assertTrue("SFO1" in uids)
-            self.assertTrue("SFO2" in uids)
-            self.assertTrue("SFO3" in uids)
-            
+            assertTrue("SFO1" in uids)
+            assertTrue("SFO2" in uids)
+            assertTrue("SFO3" in uids)
+
             offices = xmltree.xpath("//resource[@name='org_office']")
-            self.assertEqual(len(offices), 3)
+            assertEqual(len(offices), 3)
             uids = [office.get("uuid") for office in offices]
-            self.assertTrue("S1FO1" in uids)
-            self.assertTrue("S1FO2" in uids)
-            self.assertTrue("S1FO3" in uids)
-            self.assertFalse("S2FO1" in uids)
+            assertTrue("S1FO1" in uids)
+            assertTrue("S1FO2" in uids)
+            assertTrue("S1FO3" in uids)
+            assertFalse("S2FO1" in uids)
 
             # Filter referenced table
             resource = s3db.resource(resource,
@@ -553,23 +586,23 @@ class ResourceExportTests(unittest.TestCase):
             xmltree = etree.ElementTree(etree.fromstring(xmlexport))
 
             types = xmltree.xpath("resource[@name='org_office_type']")
-            self.assertEqual(len(types), 2)
+            assertEqual(len(types), 2)
             uids = [t.get("uuid") for t in types]
-            self.assertTrue("SFT1" in uids)
-            self.assertTrue("SFT2" in uids)
+            assertTrue("SFT1" in uids)
+            assertTrue("SFT2" in uids)
 
             resource = s3db.resource(resource,
                                      uid=["SFO1", "SFO2"])
 
-            filters = {"org_office_type": {"office_type.name__like": "SFT1%"}}
+            filters = {"org_office_type": {"office_type.name__like": "SFT1*"}}
 
             xmlexport = resource.export_xml(filters=filters,
                                             mcomponents=["org_office"])
             xmltree = etree.ElementTree(etree.fromstring(xmlexport))
 
             types = xmltree.xpath("resource[@name='org_office_type']")
-            self.assertEqual(len(types), 1)
-            self.assertEqual(types[0].get("uuid"), "SFT1")
+            assertEqual(len(types), 1)
+            assertEqual(types[0].get("uuid"), "SFT1")
 
         finally:
             current.db.rollback()
@@ -587,6 +620,9 @@ class ResourceImportTests(unittest.TestCase):
     # -------------------------------------------------------------------------
     def testImportXML(self):
         """ Test JSON message after XML import """
+
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
 
         xmlstr = """
 <s3xml>
@@ -613,19 +649,19 @@ class ResourceImportTests(unittest.TestCase):
 </s3xml>"""
 
         xmltree = etree.ElementTree(etree.fromstring(xmlstr))
-        
+
         resource = current.s3db.resource("pr_person")
         msg = resource.import_xml(xmltree)
-        
+
         from gluon.contrib import simplejson as json
         msg = json.loads(msg)
 
-        self.assertEqual(msg["status"], "success")
-        self.assertEqual(msg["statuscode"], "200")
-        self.assertEqual(msg["records"], 1)
-        self.assertTrue("created" in msg)
-        self.assertTrue(isinstance(msg["created"], list))
-        self.assertTrue(len(msg["created"]) == 1)
+        assertEqual(msg["status"], "success")
+        assertEqual(msg["statuscode"], "200")
+        assertEqual(msg["records"], 1)
+        assertTrue("created" in msg)
+        assertTrue(isinstance(msg["created"], list))
+        assertTrue(len(msg["created"]) == 1)
 
     # -------------------------------------------------------------------------
     def testImportXMLWithMTime(self):
@@ -646,8 +682,8 @@ class ResourceImportTests(unittest.TestCase):
         xmltree = etree.ElementTree(etree.fromstring(xmlstr))
         resource = current.s3db.resource("hms_hospital")
         resource.import_xml(xmltree)
-        self.assertEqual(current.xml.as_utc(resource.mtime),
-                         current.xml.as_utc(datetime.datetime(2012, 4, 21, 0, 0, 0)))
+        self.assertEqual(s3_utc(resource.mtime),
+                         s3_utc(datetime.datetime(2012, 4, 21, 0, 0, 0)))
 
     # -------------------------------------------------------------------------
     def testImportXMLWithoutMTime(self):
@@ -666,8 +702,8 @@ class ResourceImportTests(unittest.TestCase):
         resource.import_xml(xmltree)
         # Can't compare with exactly utcnow as these would be milliseconds apart,
         # assume equal dates are sufficient for this test
-        self.assertEqual(current.xml.as_utc(resource.mtime).date(),
-                         current.xml.as_utc(datetime.datetime.utcnow()).date())
+        self.assertEqual(s3_utc(resource.mtime).date(),
+                         s3_utc(datetime.datetime.utcnow()).date())
 
     # -------------------------------------------------------------------------
     def testImportXMLWithPartialMTime(self):
@@ -687,8 +723,8 @@ class ResourceImportTests(unittest.TestCase):
         xmltree = etree.ElementTree(etree.fromstring(xmlstr))
         resource = current.s3db.resource("hms_hospital")
         resource.import_xml(xmltree)
-        self.assertEqual(current.xml.as_utc(resource.mtime).date(),
-                         current.xml.as_utc(datetime.datetime.utcnow()).date())
+        self.assertEqual(s3_utc(resource.mtime).date(),
+                         s3_utc(datetime.datetime.utcnow()).date())
 
     # -------------------------------------------------------------------------
     @classmethod
@@ -705,22 +741,30 @@ class ResourceDataObjectAPITests (unittest.TestCase):
     def testLoadStatusIndication(self):
         """ Test load status indication by value of _rows """
 
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+
         # A newly created resource has _rows=None
         resource = current.s3db.resource("project_time")
-        self.assertEqual(resource._rows, None)
+        assertEqual(resource._rows, None)
 
         # After load(), this must always be a list
         resource.load()
-        self.assertNotEqual(resource._rows, None)
-        self.assertTrue(isinstance(resource._rows, list))
+        assertNotEqual(resource._rows, None)
+        assertTrue(isinstance(resource._rows, list))
 
         # After clear(), this must be None again
         resource.clear()
-        self.assertEqual(resource._rows, None)
+        assertEqual(resource._rows, None)
 
     # -------------------------------------------------------------------------
     def testLoadFieldSelection(self):
         """ Test selection of fields in load() with fields and skip """
+
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
 
         s3db = current.s3db
         auth = current.auth
@@ -748,72 +792,72 @@ class ResourceDataObjectAPITests (unittest.TestCase):
 
             # Restrict field selection
             rows = resource.load(fields=["name"])
-            self.assertEqual(len(rows), 1)
+            assertEqual(len(rows), 1)
             row = rows[0]
-            self.assertTrue(hasattr(row, "id"))
-            self.assertTrue(hasattr(row, "name"))
-            self.assertTrue(hasattr(row, "created_on")) # meta-field
-            self.assertTrue(hasattr(row, "pe_id")) # super-key
-            self.assertFalse(hasattr(row, "organisation_id"))
+            assertTrue(hasattr(row, "id"))
+            assertTrue(hasattr(row, "name"))
+            assertTrue(hasattr(row, "created_on")) # meta-field
+            assertTrue(hasattr(row, "pe_id")) # super-key
+            assertFalse(hasattr(row, "organisation_id"))
 
             # Skip field
             rows = resource.load(skip=["name"])
-            self.assertEqual(len(rows), 1)
+            assertEqual(len(rows), 1)
             row = rows[0]
-            self.assertTrue(hasattr(row, "id"))
-            self.assertFalse(hasattr(row, "name"))
-            self.assertTrue(hasattr(row, "created_on"))
-            self.assertTrue(hasattr(row, "pe_id"))
-            self.assertTrue(hasattr(row, "organisation_id"))
+            assertTrue(hasattr(row, "id"))
+            assertFalse(hasattr(row, "name"))
+            assertTrue(hasattr(row, "created_on"))
+            assertTrue(hasattr(row, "pe_id"))
+            assertTrue(hasattr(row, "organisation_id"))
 
             # skip overrides fields
             rows = resource.load(fields=["name", "organisation_id"],
                                  skip=["organisation_id"])
-            self.assertEqual(len(rows), 1)
+            assertEqual(len(rows), 1)
             row = rows[0]
-            self.assertTrue(hasattr(row, "id"))
-            self.assertTrue(hasattr(row, "name"))
-            self.assertTrue(hasattr(row, "created_on"))
-            self.assertTrue(hasattr(row, "pe_id"))
-            self.assertFalse(hasattr(row, "organisation_id"))
+            assertTrue(hasattr(row, "id"))
+            assertTrue(hasattr(row, "name"))
+            assertTrue(hasattr(row, "created_on"))
+            assertTrue(hasattr(row, "pe_id"))
+            assertFalse(hasattr(row, "organisation_id"))
 
             # Can't skip meta-fields
             rows = resource.load(fields=["name", "organisation_id"],
                                  skip=["created_on"])
-            self.assertEqual(len(rows), 1)
+            assertEqual(len(rows), 1)
             row = rows[0]
-            self.assertTrue(hasattr(row, "id"))
-            self.assertTrue(hasattr(row, "name"))
-            self.assertTrue(hasattr(row, "created_on"))
-            self.assertTrue(hasattr(row, "pe_id"))
-            self.assertTrue(hasattr(row, "organisation_id"))
+            assertTrue(hasattr(row, "id"))
+            assertTrue(hasattr(row, "name"))
+            assertTrue(hasattr(row, "created_on"))
+            assertTrue(hasattr(row, "pe_id"))
+            assertTrue(hasattr(row, "organisation_id"))
 
             # Can't skip record ID
             rows = resource.load(fields=["name", "organisation_id"],
                                  skip=["id"])
-            self.assertEqual(len(rows), 1)
+            assertEqual(len(rows), 1)
             row = rows[0]
-            self.assertTrue(hasattr(row, "id"))
-            self.assertTrue(hasattr(row, "name"))
-            self.assertTrue(hasattr(row, "created_on"))
-            self.assertTrue(hasattr(row, "pe_id"))
-            self.assertTrue(hasattr(row, "organisation_id"))
+            assertTrue(hasattr(row, "id"))
+            assertTrue(hasattr(row, "name"))
+            assertTrue(hasattr(row, "created_on"))
+            assertTrue(hasattr(row, "pe_id"))
+            assertTrue(hasattr(row, "organisation_id"))
 
             # Can't skip super-keys
             rows = resource.load(fields=["name", "organisation_id"],
                                  skip=["pe_id"])
-            self.assertEqual(len(rows), 1)
+            assertEqual(len(rows), 1)
             row = rows[0]
-            self.assertTrue(hasattr(row, "id"))
-            self.assertTrue(hasattr(row, "name"))
-            self.assertTrue(hasattr(row, "created_on"))
-            self.assertTrue(hasattr(row, "pe_id"))
-            self.assertTrue(hasattr(row, "organisation_id"))
+            assertTrue(hasattr(row, "id"))
+            assertTrue(hasattr(row, "name"))
+            assertTrue(hasattr(row, "created_on"))
+            assertTrue(hasattr(row, "pe_id"))
+            assertTrue(hasattr(row, "organisation_id"))
 
         finally:
             auth.override = False
             current.db.rollback()
-        
+
 # =============================================================================
 class MergeOrganisationsTests(unittest.TestCase):
     """ Test merging org_organisation records """
@@ -853,37 +897,42 @@ class MergeOrganisationsTests(unittest.TestCase):
     def testMerge(self):
         """ Test merge """
 
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
+
         success = self.resource.merge(self.id1, self.id2)
-        self.assertTrue(success)
+        assertTrue(success)
         org1, org2 = self.get_records()
 
-        self.assertNotEqual(org1, None)
-        self.assertNotEqual(org2, None)
+        assertNotEqual(org1, None)
+        assertNotEqual(org2, None)
 
-        self.assertFalse(org1.deleted)
-        self.assertTrue(org2.deleted)
-        self.assertEqual(str(self.id1), str(org2.deleted_rb))
+        assertFalse(org1.deleted)
+        assertTrue(org2.deleted)
+        assertEqual(str(self.id1), str(org2.deleted_rb))
 
-        self.assertEqual(org1.name, "Merge Test Organisation")
-        self.assertEqual(org1.acronym, "MTO")
-        self.assertEqual(org1.country, "UK")
-        self.assertEqual(org1.website, "http://www.example.org")
+        assertEqual(org1.name, "Merge Test Organisation")
+        assertEqual(org1.acronym, "MTO")
+        assertEqual(org1.country, "UK")
+        assertEqual(org1.website, "http://www.example.org")
 
-        self.assertEqual(org2.name, "Merger Test Organisation")
-        self.assertEqual(org2.acronym, "MTOrg")
-        self.assertEqual(org2.country, "US")
-        self.assertEqual(org2.website, "http://www.example.com")
+        assertEqual(org2.name, "Merger Test Organisation")
+        assertEqual(org2.acronym, "MTOrg")
+        assertEqual(org2.country, "US")
+        assertEqual(org2.website, "http://www.example.com")
 
     # -------------------------------------------------------------------------
     def testMergeMissingOriginalSE(self):
         """ Test merge where original record lacks SEs """
 
-        resource = self.resource
-        get_records = self.get_records
-
         assertEqual = self.assertEqual
         assertNotEqual = self.assertNotEqual
         assertTrue = self.assertTrue
+
+        resource = self.resource
+        get_records = self.get_records
 
         org1, org2 = get_records()
         success = current.s3db.delete_super(resource.table, org1)
@@ -908,12 +957,13 @@ class MergeOrganisationsTests(unittest.TestCase):
     def testMergeMissingDuplicateSE(self):
         """ Test merge where duplicate record lacks SEs """
 
-        resource = self.resource
-        get_records = self.get_records
-
         assertEqual = self.assertEqual
         assertNotEqual = self.assertNotEqual
         assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
+
+        resource = self.resource
+        get_records = self.get_records
 
         org1, org2 = get_records()
         success = current.s3db.delete_super(resource.table, org2)
@@ -928,7 +978,7 @@ class MergeOrganisationsTests(unittest.TestCase):
         assertNotEqual(org1, None)
         assertNotEqual(org2, None)
 
-        self.assertFalse(org1.deleted)
+        assertFalse(org1.deleted)
         assertTrue(org2.deleted)
         assertEqual(str(self.id1), str(org2.deleted_rb))
 
@@ -938,12 +988,13 @@ class MergeOrganisationsTests(unittest.TestCase):
     def testMergeMissingSE(self):
         """ Test merge where both records lack SEs """
 
-        resource = self.resource
-        get_records = self.get_records
-
         assertEqual = self.assertEqual
         assertNotEqual = self.assertNotEqual
         assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
+
+        resource = self.resource
+        get_records = self.get_records
 
         org1, org2 = get_records()
         success = current.s3db.delete_super(resource.table, org1)
@@ -960,7 +1011,7 @@ class MergeOrganisationsTests(unittest.TestCase):
         assertNotEqual(org1, None)
         assertNotEqual(org2, None)
 
-        self.assertFalse(org1.deleted)
+        assertFalse(org1.deleted)
         assertTrue(org2.deleted)
         assertEqual(str(self.id1), str(org2.deleted_rb))
 
@@ -971,77 +1022,73 @@ class MergeOrganisationsTests(unittest.TestCase):
     def testMergeReplace(self):
         """ Test merge with replace """
 
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
+
         success = self.resource.merge(self.id1, self.id2,
                                       replace = ["acronym", "website"])
-        self.assertTrue(success)
+        assertTrue(success)
         org1, org2 = self.get_records()
 
-        self.assertNotEqual(org1, None)
-        self.assertNotEqual(org2, None)
+        assertNotEqual(org1, None)
+        assertNotEqual(org2, None)
 
-        self.assertFalse(org1.deleted)
-        self.assertTrue(org2.deleted)
-        self.assertEqual(str(self.id1), str(org2.deleted_rb))
+        assertFalse(org1.deleted)
+        assertTrue(org2.deleted)
+        assertEqual(str(self.id1), str(org2.deleted_rb))
 
-        self.assertEqual(org1.name, "Merge Test Organisation")
-        self.assertEqual(org1.acronym, "MTOrg")
-        self.assertEqual(org1.country, "UK")
-        self.assertEqual(org1.website, "http://www.example.com")
+        assertEqual(org1.name, "Merge Test Organisation")
+        assertEqual(org1.acronym, "MTOrg")
+        assertEqual(org1.country, "UK")
+        assertEqual(org1.website, "http://www.example.com")
 
-        self.assertEqual(org2.name, "Merger Test Organisation")
-        self.assertEqual(org2.acronym, "MTOrg")
-        self.assertEqual(org2.country, "US")
-        self.assertEqual(org2.website, "http://www.example.com")
-
-    # -------------------------------------------------------------------------
-    def testMergeReplaceUnique(self):
-        """ Test merge with replace of a unique-field """
-
-        success = self.resource.merge(self.id1, self.id2,
-                                      replace = ["name"])
-        self.assertTrue(success)
-        org1, org2 = self.get_records()
-
-        self.assertNotEqual(org1, None)
-        self.assertNotEqual(org2, None)
-
-        self.assertFalse(org1.deleted)
-        self.assertTrue(org2.deleted)
-        self.assertEqual(str(self.id1), str(org2.deleted_rb))
-
-        self.assertEqual(org1.name, "Merger Test Organisation")
-        self.assertEqual(org2.name, "Merge Test Organisation")
+        assertEqual(org2.name, "Merger Test Organisation")
+        assertEqual(org2.acronym, "MTOrg")
+        assertEqual(org2.country, "US")
+        assertEqual(org2.website, "http://www.example.com")
 
     # -------------------------------------------------------------------------
     def testMergeReplaceAndUpdate(self):
         """ Test merge with replace and Update"""
 
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
+
         success = self.resource.merge(self.id1, self.id2,
                                       replace = ["acronym"],
                                       update = Storage(website = "http://www.example.co.uk"))
-        self.assertTrue(success)
+        assertTrue(success)
         org1, org2 = self.get_records()
 
-        self.assertNotEqual(org1, None)
-        self.assertNotEqual(org2, None)
+        assertNotEqual(org1, None)
+        assertNotEqual(org2, None)
 
-        self.assertFalse(org1.deleted)
-        self.assertTrue(org2.deleted)
-        self.assertEqual(str(self.id1), str(org2.deleted_rb))
+        assertFalse(org1.deleted)
+        assertTrue(org2.deleted)
+        assertEqual(str(self.id1), str(org2.deleted_rb))
 
-        self.assertEqual(org1.name, "Merge Test Organisation")
-        self.assertEqual(org1.acronym, "MTOrg")
-        self.assertEqual(org1.country, "UK")
-        self.assertEqual(org1.website, "http://www.example.co.uk")
+        assertEqual(org1.name, "Merge Test Organisation")
+        assertEqual(org1.acronym, "MTOrg")
+        assertEqual(org1.country, "UK")
+        assertEqual(org1.website, "http://www.example.co.uk")
 
-        self.assertEqual(org2.name, "Merger Test Organisation")
-        self.assertEqual(org2.acronym, "MTOrg")
-        self.assertEqual(org2.country, "US")
-        self.assertEqual(org2.website, "http://www.example.com")
+        assertEqual(org2.name, "Merger Test Organisation")
+        assertEqual(org2.acronym, "MTOrg")
+        assertEqual(org2.country, "US")
+        assertEqual(org2.website, "http://www.example.com")
 
     # -------------------------------------------------------------------------
     def testMergeLinkTable(self):
         """ Test merge of link table entries """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
 
         db = current.db
         s3db = current.s3db
@@ -1057,44 +1104,48 @@ class MergeOrganisationsTests(unittest.TestCase):
 
         branch1 = Storage(name="TestBranch1")
         branch1_id = otable.insert(**branch1)
-        self.assertNotEqual(branch1_id, None)
+        assertNotEqual(branch1_id, None)
+
         branch1.update(id=branch1_id)
         s3db.update_super(otable, branch1)
         branch1_pe_id = s3db.pr_get_pe_id(otable, branch1_id)
-        self.assertNotEqual(branch1_pe_id, None)
+        assertNotEqual(branch1_pe_id, None)
+
         link1 = Storage(organisation_id=self.id1, branch_id=branch1_id)
         link1_id = btable.insert(**link1)
         s3db.pr_update_affiliations(btable, link1_id)
         ancestors = s3db.pr_get_ancestors(branch1_pe_id)
-        self.assertEqual(ancestors, [str(org1_pe_id)])
+        assertEqual(ancestors, [str(org1_pe_id)])
 
         branch2 = Storage(name="TestBranch2")
         branch2_id = otable.insert(**branch2)
-        self.assertNotEqual(branch2_id, None)
+        assertNotEqual(branch2_id, None)
+
         branch2.update(id=branch2_id)
         s3db.update_super(otable, branch2)
         branch2_pe_id = s3db.pr_get_pe_id("org_organisation", branch2_id)
-        self.assertNotEqual(branch2_pe_id, None)
+        assertNotEqual(branch2_pe_id, None)
+
         link2 = Storage(organisation_id=self.id2, branch_id=branch2_id)
         link2_id = btable.insert(**link2)
         s3db.pr_update_affiliations(btable, link2_id)
         ancestors = s3db.pr_get_ancestors(branch2_pe_id)
-        self.assertEqual(ancestors, [str(org2_pe_id)])
+        assertEqual(ancestors, [str(org2_pe_id)])
 
         success = self.resource.merge(self.id1, self.id2)
-        self.assertTrue(success)
+        assertTrue(success)
 
         link1 = db(btable._id == link1_id).select(limitby=(0, 1)).first()
         link2 = db(btable._id == link2_id).select(limitby=(0, 1)).first()
 
-        self.assertEqual(str(link1.organisation_id), str(self.id1))
-        self.assertEqual(str(link2.organisation_id), str(self.id1))
+        assertEqual(str(link1.organisation_id), str(self.id1))
+        assertEqual(str(link2.organisation_id), str(self.id1))
 
         ancestors = s3db.pr_get_ancestors(branch1_pe_id)
-        self.assertEqual(ancestors, [str(org1_pe_id)])
+        assertEqual(ancestors, [str(org1_pe_id)])
 
         ancestors = s3db.pr_get_ancestors(branch2_pe_id)
-        self.assertEqual(ancestors, [str(org1_pe_id)])
+        assertEqual(ancestors, [str(org1_pe_id)])
 
     # -------------------------------------------------------------------------
     def testMergeVirtualReference(self):
@@ -1120,6 +1171,9 @@ class MergeOrganisationsTests(unittest.TestCase):
     def testMergeRealms(self):
         """ Test merge of realms when merging two person entities """
 
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
+
         org1, org2 = self.get_records()
 
         s3db = current.s3db
@@ -1132,13 +1186,13 @@ class MergeOrganisationsTests(unittest.TestCase):
         person_id = ptable.insert(**person)
 
         person = ptable[person_id]
-        self.assertEqual(person.realm_entity, org2_pe_id)
+        assertEqual(person.realm_entity, org2_pe_id)
 
         success = self.resource.merge(self.id1, self.id2)
-        self.assertTrue(success)
+        assertTrue(success)
 
         person = ptable[person_id]
-        self.assertEqual(person.realm_entity, org1_pe_id)
+        assertEqual(person.realm_entity, org1_pe_id)
 
     # -------------------------------------------------------------------------
     def get_records(self):
@@ -1198,7 +1252,7 @@ class MergePersonsTests(unittest.TestCase):
     # -------------------------------------------------------------------------
     def testPermissionError(self):
         """ Check for exception if not authorized """
-        
+
         db = current.db
         auth = current.auth
         s3db = current.s3db
@@ -1208,9 +1262,9 @@ class MergePersonsTests(unittest.TestCase):
         auth.override = False
         auth.s3_impersonate(None)
 
-        self.assertRaises(current.auth.permission.error,
-                          self.resource.merge, self.id1, self.id2)
-                          
+        with self.assertRaises(current.auth.permission.error):
+            self.resource.merge(self.id1, self.id2)
+
         # Check for proper rollback
         ptable = s3db.pr_person
         query = ptable._id.belongs((self.id1, self.id2))
@@ -1220,12 +1274,14 @@ class MergePersonsTests(unittest.TestCase):
     # -------------------------------------------------------------------------
     def testOriginalNotFoundError(self):
         """ Check for exception if record not found """
-        
+
         db = current.db
         s3db = current.s3db
         deployment_settings = current.deployment_settings
 
-        self.assertRaises(KeyError, self.resource.merge, 0, self.id2)
+        with self.assertRaises(KeyError):
+            self.resource.merge(0, self.id2)
+
         # Check for proper rollback
         ptable = s3db.pr_person
         query = ptable._id.belongs((self.id1, self.id2))
@@ -1235,12 +1291,14 @@ class MergePersonsTests(unittest.TestCase):
     # -------------------------------------------------------------------------
     def testNotDuplicateFoundError(self):
         """ Check for exception if record not found """
-        
+
         db = current.db
         s3db = current.s3db
         deployment_settings = current.deployment_settings
 
-        self.assertRaises(KeyError, self.resource.merge, self.id1, 0)
+        with self.assertRaises(KeyError):
+            self.resource.merge(self.id1, 0)
+
         # Check for proper rollback
         ptable = s3db.pr_person
         query = ptable._id.belongs((self.id1, self.id2))
@@ -1251,52 +1309,67 @@ class MergePersonsTests(unittest.TestCase):
     def testMerge(self):
         """ Test merge """
 
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
+
         # Merge records
         success = self.resource.merge(self.id1, self.id2)
-        self.assertTrue(success)
+        assertTrue(success)
 
         # Check the merged records
         person1, person2 = self.get_records()
-        self.assertNotEqual(person1, None)
-        self.assertNotEqual(person2, None)
+        assertNotEqual(person1, None)
+        assertNotEqual(person2, None)
 
         # Check deleted status
-        self.assertFalse(person1.deleted)
-        self.assertTrue(person2.deleted)
-        self.assertEqual(str(self.id1), str(person2.deleted_rb))
+        assertFalse(person1.deleted)
+        assertTrue(person2.deleted)
+        assertEqual(str(self.id1), str(person2.deleted_rb))
 
         # Check values
-        self.assertEqual(person1.first_name, "Test")
-        self.assertEqual(person1.last_name, "Person")
+        assertEqual(person1.first_name, "Test")
+        assertEqual(person1.last_name, "Person")
 
-        self.assertEqual(person2.first_name, "Test")
-        self.assertEqual(person2.last_name, "Person")
+        assertEqual(person2.first_name, "Test")
+        assertEqual(person2.last_name, "Person")
 
     # -------------------------------------------------------------------------
     def testMergeWithUpdate(self):
         """ Test merge with update """
 
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
+
         success = self.resource.merge(self.id1, self.id2,
                                       update = Storage(first_name = "Changed"))
-        self.assertTrue(success)
+        assertTrue(success)
         person1, person2 = self.get_records()
 
-        self.assertNotEqual(person1, None)
-        self.assertNotEqual(person2, None)
+        assertNotEqual(person1, None)
+        assertNotEqual(person2, None)
 
-        self.assertFalse(person1.deleted)
-        self.assertTrue(person2.deleted)
-        self.assertEqual(str(self.id1), str(person2.deleted_rb))
+        assertFalse(person1.deleted)
+        assertTrue(person2.deleted)
+        assertEqual(str(self.id1), str(person2.deleted_rb))
 
-        self.assertEqual(person1.first_name, "Changed")
-        self.assertEqual(person1.last_name, "Person")
+        assertEqual(person1.first_name, "Changed")
+        assertEqual(person1.last_name, "Person")
 
-        self.assertEqual(person2.first_name, "Test")
-        self.assertEqual(person2.last_name, "Person")
+        assertEqual(person2.first_name, "Test")
+        assertEqual(person2.last_name, "Person")
 
     # -------------------------------------------------------------------------
     def testMergeSingleComponent(self):
         """ Test merge of single-component """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
 
         db = current.db
         s3db = current.s3db
@@ -1321,22 +1394,27 @@ class MergePersonsTests(unittest.TestCase):
         success = self.resource.merge(self.id1, self.id2,
                                       replace = ["physical_description.blood_type"])
 
-        self.assertTrue(success)
+        assertTrue(success)
 
         pd1 = db(dtable._id == pd1_id).select(limitby=(0, 1)).first()
-        self.assertNotEqual(pd1, None)
-        self.assertFalse(pd1.deleted)
-        self.assertEqual(pd1.blood_type, "B-")
-        self.assertEqual(pd1.pe_id, person1.pe_id)
+        assertNotEqual(pd1, None)
+        assertFalse(pd1.deleted)
+        assertEqual(pd1.blood_type, "B-")
+        assertEqual(pd1.pe_id, person1.pe_id)
 
         pd2 = db(dtable._id == pd2_id).select(limitby=(0, 1)).first()
-        self.assertNotEqual(pd2, None)
-        self.assertTrue(pd2.deleted)
-        self.assertEqual(str(pd2.deleted_rb), str(pd1.id))
+        assertNotEqual(pd2, None)
+        assertTrue(pd2.deleted)
+        assertEqual(str(pd2.deleted_rb), str(pd1.id))
 
     # -------------------------------------------------------------------------
     def testMergeMultiComponent(self):
         """ Test merge of multiple-component """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
 
         db = current.db
         s3db = current.s3db
@@ -1361,17 +1439,17 @@ class MergePersonsTests(unittest.TestCase):
         s3db.update_super(itable, id2)
 
         success = self.resource.merge(self.id1, self.id2)
-        self.assertTrue(success)
+        assertTrue(success)
 
         id1 = db(itable._id == id1_id).select(limitby=(0, 1)).first()
-        self.assertNotEqual(id1, None)
-        self.assertFalse(id1.deleted)
-        self.assertEqual(id1.person_id, self.id1)
+        assertNotEqual(id1, None)
+        assertFalse(id1.deleted)
+        assertEqual(id1.person_id, self.id1)
 
         id2 = db(itable._id == id2_id).select(limitby=(0, 1)).first()
-        self.assertNotEqual(id2, None)
-        self.assertFalse(id2.deleted)
-        self.assertEqual(id2.person_id, self.id1)
+        assertNotEqual(id2, None)
+        assertFalse(id2.deleted)
+        assertEqual(id2.person_id, self.id1)
 
     # -------------------------------------------------------------------------
     def get_records(self):
@@ -1425,23 +1503,32 @@ class MergeLocationsTests(unittest.TestCase):
     def testMerge(self):
         """ Test merge """
 
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
+
         success = self.resource.merge(self.id1, self.id2)
-        self.assertTrue(success)
+        assertTrue(success)
         location1, location2 = self.get_records()
 
-        self.assertNotEqual(location1, None)
-        self.assertNotEqual(location2, None)
+        assertNotEqual(location1, None)
+        assertNotEqual(location2, None)
 
-        self.assertFalse(location1.deleted)
-        self.assertTrue(location2.deleted)
-        self.assertEqual(str(self.id1), str(location2.deleted_rb))
+        assertFalse(location1.deleted)
+        assertTrue(location2.deleted)
+        assertEqual(str(self.id1), str(location2.deleted_rb))
 
-        self.assertEqual(location1.name, "TestLocation")
-        self.assertEqual(location2.name, "TestLocation")
+        assertEqual(location1.name, "TestLocation")
+        assertEqual(location2.name, "TestLocation")
 
     # -------------------------------------------------------------------------
     def testMergeSimpleReference(self):
         """ Test merge of a simple reference including super-entity """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
 
         db = current.db
         s3db = current.s3db
@@ -1456,18 +1543,18 @@ class MergeLocationsTests(unittest.TestCase):
 
         # Merge location 2 into 1
         success = self.resource.merge(self.id1, self.id2)
-        self.assertTrue(success)
+        assertTrue(success)
 
         # Check the location_id in office is now location 1
         office = db(otable._id == office.id).select(limitby=(0, 1)).first()
-        self.assertNotEqual(office, None)
-        self.assertEqual(office.location_id, self.id1)
+        assertNotEqual(office, None)
+        assertEqual(office.location_id, self.id1)
 
         # Check the location_id in the org_site super record is also location 1
         stable = s3db.org_site
         site = db(stable.site_id == office.site_id).select(limitby=(0, 1)).first()
-        self.assertNotEqual(site, None)
-        self.assertEqual(site.location_id, self.id1)
+        assertNotEqual(site, None)
+        assertEqual(site.location_id, self.id1)
 
     # -------------------------------------------------------------------------
     #def testMergeLocationHierarchy(self):
@@ -1502,18 +1589,103 @@ class MergeLocationsTests(unittest.TestCase):
         current.auth.override = False
 
 # =============================================================================
+class MergeUniqueFieldTest(unittest.TestCase):
+    """ Test merge of records with a unique field """
+
+    tablename = "test_merge_unique"
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def setUpClass(cls):
+
+        current.db.define_table(cls.tablename,
+                                Field("name", length=64, unique=True),
+                                *s3_meta_fields())
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def tearDownClass(cls):
+
+        try:
+            current.db[cls.tablename].drop()
+        except:
+            pass
+
+    # -------------------------------------------------------------------------
+    def setUp(self):
+
+        current.auth.override = True
+
+        db = current.db
+        tablename = self.tablename
+        table = db[tablename]
+
+        self.id1 = table.insert(name="TestRecord1")
+        self.id2 = table.insert(name="TestRecord2")
+
+        if not self.id1 or not self.id2:
+            raise RuntimeError("Could not create test records")
+
+    # -------------------------------------------------------------------------
+    def tearDown(self):
+
+        current.db.rollback()
+        current.auth.override = False
+
+    # -------------------------------------------------------------------------
+    def testMergeReplaceUnique(self):
+        """ Test merge with replace of a unique-field """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
+
+        tablename = self.tablename
+
+        resource = current.s3db.resource(tablename)
+        success = resource.merge(self.id1, self.id2, replace = ["name"])
+
+        assertTrue(success)
+
+        db = current.db
+        table = db[tablename]
+
+        row1 = db(table.id == self.id1).select(table.name,
+                                               table.deleted,
+                                               table.deleted_rb,
+                                               limitby=(0, 1),
+                                               ).first()
+        row2 = db(table.id == self.id2).select(table.name,
+                                               table.deleted,
+                                               table.deleted_rb,
+                                               limitby=(0, 1),
+                                               ).first()
+
+        assertNotEqual(row1, None)
+        assertNotEqual(row2, None)
+
+        assertFalse(row1.deleted)
+        assertTrue(row2.deleted)
+
+        assertEqual(str(self.id1), str(row2.deleted_rb))
+
+        assertEqual(row1.name, "TestRecord2")
+        assertEqual(row2.name, "TestRecord1")
+
+# =============================================================================
 class MergeReferenceListsTest(unittest.TestCase):
 
     # -------------------------------------------------------------------------
     def setUp(self):
-        
+
         tablename = self.tablename = "merge_list_reference"
         db = current.db
         db.define_table(tablename,
                         Field("facility_type_id",
                               "list:reference org_facility_type"),
                         *s3_meta_fields())
-                                
+
         xmlstr = """
 <s3xml>
     <resource name="org_facility_type" uuid="TESTMERGEFACTYPE1">
@@ -1536,14 +1708,16 @@ class MergeReferenceListsTest(unittest.TestCase):
     # -------------------------------------------------------------------------
     def testMergeListReference(self):
 
+        assertEqual = self.assertEqual
+
         s3db = current.s3db
-    
+
         resource = s3db.resource("org_facility_type",
                                  uid=["TESTMERGEFACTYPE1", "TESTMERGEFACTYPE2"])
 
         rows = resource.select(["id"], limit=2, as_rows=True)
-        self.assertEqual(len(rows), 2)
-        
+        assertEqual(len(rows), 2)
+
         original = rows[0].id
         duplicate = rows[1].id
         resource.merge(original, duplicate)
@@ -1552,8 +1726,8 @@ class MergeReferenceListsTest(unittest.TestCase):
                                  uid="TESTMERGEFACILITY")
         rows = resource.select(["id", "facility_type_id"],
                                limit=None, as_rows=True)
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0].facility_type_id, [original])
+        assertEqual(len(rows), 1)
+        assertEqual(rows[0].facility_type_id, [original])
 
     # -------------------------------------------------------------------------
     def tearDown(self):
@@ -1610,15 +1784,19 @@ class ResourceGetTests(unittest.TestCase):
     def testGetMaster(self):
         """ get() with an ID returns the record, if accessible """
 
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+
         resource = current.s3db.resource("org_organisation",
                                          uid="GETTESTORG")
         record = resource.get(self.org_id)
-        self.assertNotEqual(record, None)
+        assertNotEqual(record, None)
 
-        self.assertTrue(isinstance(record, Row))
-        self.assertEqual(record.id, self.org_id)
-        self.assertEqual(record.uuid, "GETTESTORG")
-        self.assertEqual(record.name, "GetTestOrg")
+        assertTrue(isinstance(record, Row))
+        assertEqual(record.id, self.org_id)
+        assertEqual(record.uuid, "GETTESTORG")
+        assertEqual(record.name, "GetTestOrg")
 
     # -------------------------------------------------------------------------
     def testGetMasterFail(self):
@@ -1626,23 +1804,29 @@ class ResourceGetTests(unittest.TestCase):
 
         resource = current.s3db.resource("org_organisation",
                                          uid="OTHERTESTORG")
-        self.assertRaises(KeyError, resource.get, self.org_id)
+
+        with self.assertRaises(KeyError):
+            resource.get(self.org_id)
 
     # -------------------------------------------------------------------------
     def testGetComponent(self):
         """ get() with ID and component alias returns the components records """
 
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+
         resource = current.s3db.resource("org_organisation",
                                          uid="GETTESTORG")
         records = resource.get(self.org_id, "office")
-        self.assertNotEqual(records, None)
+        assertNotEqual(records, None)
 
-        self.assertTrue(len(records), 1)
+        assertTrue(len(records), 1)
         record = records[0]
-        self.assertTrue(isinstance(record, Row))
-        self.assertEqual(record.organisation_id, self.org_id)
-        self.assertEqual(record.uuid, "GETTESTOFFICE")
-        self.assertEqual(record.name, "GetTestOffice")
+        assertTrue(isinstance(record, Row))
+        assertEqual(record.organisation_id, self.org_id)
+        assertEqual(record.uuid, "GETTESTOFFICE")
+        assertEqual(record.name, "GetTestOffice")
 
     # -------------------------------------------------------------------------
     @classmethod
@@ -1650,6 +1834,464 @@ class ResourceGetTests(unittest.TestCase):
 
         current.db.rollback()
         current.auth.override = False
+
+# =============================================================================
+class ResourceSelectTests(unittest.TestCase):
+    """ Tests for S3Resource.select """
+
+    test_data = (
+        ("select0", "C"),
+        ("select1", "A"),
+        ("select2", "B"),
+        ("select3", "A"),
+        ("select4", "A"),
+        ("select5", "C"),
+        ("select6", "B"),
+        ("select7", "A"),
+        ("select8", "B"),
+        ("select9", "A"),
+    )
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def setUpClass(cls):
+
+        s3db = current.s3db
+
+        # Create a simple table
+        s3db.define_table("select_master",
+                          Field("name"),
+                          Field("status"),
+                          *s3_meta_fields())
+
+        # Insert test records
+        table = s3db.select_master
+        for name, status in cls.test_data:
+            table.insert(name=name, status=status)
+
+        # Define a virtual field
+        table.code = Field.Method("code", lambda row: row["select_master.status"])
+
+        current.db.commit()
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def tearDownClass(cls):
+
+        db = current.db
+
+        # Drop the table
+        db.select_master.drop()
+        db.commit()
+
+    # -------------------------------------------------------------------------
+    def setUp(self):
+
+        current.auth.override = True
+
+    # -------------------------------------------------------------------------
+    def tearDown(self):
+
+        current.auth.override = False
+
+    # -------------------------------------------------------------------------
+    def testSelectAll(self):
+        """ Test selecting all records """
+
+        s3db = current.s3db
+
+        assertTrue = self.assertTrue
+        assertEqual = self.assertEqual
+
+        # Number of expected matches
+        numitems = len(self.test_data)
+
+        # Define resource
+        resource = s3db.resource("select_master")
+
+        # Simple select
+        data = resource.select(["name", "status"])
+        assertEqual(len(data.rows), numitems)
+
+        # Select with counting
+        data = resource.select(["name", "status"], count=True)
+        assertEqual(len(data.rows), numitems)
+        assertEqual(data.numrows, numitems)
+
+        # Select with getids
+        data = resource.select(["id", "name", "status"], getids=True)
+        rows = data.rows
+        ids = data.ids
+        assertEqual(len(rows), numitems)
+        assertEqual(len(ids), numitems)
+        assertTrue(all(row["select_master.id"] in ids for row in rows))
+
+    # -------------------------------------------------------------------------
+    def testSelectFilter(self):
+        """ Test selection with filter """
+
+        s3db = current.s3db
+
+        assertTrue = self.assertTrue
+        assertEqual = self.assertEqual
+
+        # Number of expected matches
+        numitems = len([item for item in self.test_data if item[1] == "A"])
+
+        # Define resource
+        query = FS("status") == "A"
+        resource = s3db.resource("select_master", filter=query)
+
+        # Simple select
+        data = resource.select(["name", "status"])
+        rows = data.rows
+        # - Rows properly filtered
+        assertEqual(len(rows), numitems)
+        assertTrue(all(row["select_master.status"] == "A" for row in rows))
+
+        # Select with counting
+        data = resource.select(["name", "status"], count=True)
+        # - Rows correctly counted
+        assertEqual(len(data.rows), data.numrows)
+
+        # Select with getids
+        data = resource.select(["id", "name", "status"], getids=True)
+        rows = data.rows
+        ids = data.ids
+        # - ids complete
+        assertEqual(len(rows), len(ids))
+        # - ...and in same order as the rows
+        for index, row in enumerate(rows):
+            assertEqual(row["select_master.id"], ids[index])
+
+    # -------------------------------------------------------------------------
+    def testSelectVirtualFilter(self):
+        """ Test selection with virtual filter """
+
+        s3db = current.s3db
+
+        assertTrue = self.assertTrue
+        assertEqual = self.assertEqual
+
+        # Number of expected matches
+        numitems = len([item for item in self.test_data if item[1] == "A"])
+
+        # Define resource
+        query = FS("code") == "A"
+        resource = s3db.resource("select_master", filter=query)
+
+        # Simple select
+        data = resource.select(["name", "status"])
+        rows = data.rows
+        # - Rows properly filtered
+        assertEqual(len(rows), numitems)
+        assertTrue(all(row["select_master.status"] == "A" for row in rows))
+
+        # Select with counting
+        data = resource.select(["name", "status"], count=True)
+        # - Rows correctly counted
+        assertEqual(len(data.rows), data.numrows)
+
+        # Select with getids
+        data = resource.select(["id", "name", "status"], getids=True)
+        rows = data.rows
+        ids = data.ids
+        # - ids complete
+        assertEqual(len(rows), len(ids))
+        # - ...and in same order as the rows
+        for index, row in enumerate(rows):
+            assertEqual(row["select_master.id"], ids[index])
+
+    # -------------------------------------------------------------------------
+    def testSelectSubset(self):
+        """ Test selection of unfiltered subset (pagination) """
+
+        s3db = current.s3db
+
+        assertTrue = self.assertTrue
+        assertEqual = self.assertEqual
+
+        # Define subset
+        subset = self.test_data
+        numitems = len(subset)
+        names = [item[0] for item in subset]
+
+        # Define resource
+        resource = s3db.resource("select_master")
+
+        # Page limits
+        start = 2
+        limit = 2
+        subset_names = names[start:start+limit]
+
+        # Simple select
+        data = resource.select(["name", "status"],
+                               start = start,
+                               limit = limit,
+                               orderby = "select_master.name",
+                               )
+        # - returns only rows in page
+        rows = data.rows
+        assertEqual(len(rows), min(numitems - start, limit))
+        assertTrue(all(row["select_master.name"] in subset_names for row in rows))
+
+        # Page with only start
+        start = 2
+        limit = None
+        subset_names = names[start:]
+
+        # Simple select
+        data = resource.select(["name", "status"],
+                               start = start,
+                               limit = limit,
+                               orderby = "select_master.name",
+                               )
+        # - returns only rows in page
+        rows = data.rows
+        assertEqual(len(rows), numitems - start)
+        assertTrue(all(row["select_master.name"] in subset_names for row in rows))
+
+        # Page with only limit
+        start = None
+        limit = 3
+        subset_names = names[:limit]
+
+        # Simple select
+        data = resource.select(["name", "status"],
+                               start = start,
+                               limit = limit,
+                               orderby = "select_master.name",
+                               )
+        # - returns only rows in page
+        rows = data.rows
+        assertEqual(len(rows), limit)
+        assertTrue(all(row["select_master.name"] in subset_names for row in rows))
+
+        # Page limits
+        start = 4
+        limit = 5
+        subset_names = names[start:start+limit]
+
+        # Select with counting
+        data = resource.select(["name", "status"],
+                               start = start,
+                               limit = limit,
+                               count = True,
+                               orderby = "select_master.name",
+                               )
+        # - returns only rows in page
+        rows = data.rows
+        assertEqual(len(rows), min(numitems - start, limit))
+        assertTrue(all(row["select_master.name"] in subset_names for row in rows))
+        # - counts all matching records, however
+        assertEqual(data.numrows, numitems)
+
+        # Select with getids
+        data = resource.select(["id", "name", "status"],
+                               start = start,
+                               limit = limit,
+                               getids = True,
+                               orderby = "select_master.name",
+                               )
+        # - returns only rows in page
+        rows = data.rows
+        assertEqual(len(rows), min(numitems - start, limit))
+        assertTrue(all(row["select_master.name"] in subset_names for row in rows))
+        # - returns all matching record ids, however
+        assertEqual(len(data.ids), numitems)
+
+        # Page beyond subset
+        start = numitems
+        limit = 10
+
+        # Select with counting
+        data = resource.select(["name", "status"],
+                               start = start,
+                               limit = limit,
+                               count = True,
+                               orderby = "select_master.name",
+                               )
+        # - gives no rows
+        assertEqual(len(data.rows), 0)
+        # - counts all matching records, however
+        assertEqual(data.numrows, numitems)
+
+        # Select with getids
+        data = resource.select(["id", "name", "status"],
+                               start = start,
+                               limit = limit,
+                               getids = True,
+                               orderby = "select_master.name",
+                               )
+        # - gives no rows
+        assertEqual(len(data.rows), 0)
+        # - returns all matching record ids, however
+        assertEqual(len(data.ids), numitems)
+
+    # -------------------------------------------------------------------------
+    def testSelectSubsetFilter(self):
+        """ Test selection of filtered subset (pagination) """
+
+        s3db = current.s3db
+
+        assertTrue = self.assertTrue
+        assertEqual = self.assertEqual
+
+        # Define subset
+        subset = [item for item in self.test_data if item[1] == "A"]
+        numitems = len(subset)
+        names = [item[0] for item in subset]
+
+        # Define resource
+        query = (FS("status") == "A")
+        resource = s3db.resource("select_master",
+                                 filter = query,
+                                 )
+
+        # Page limits
+        start = 2
+        limit = 2
+        subset_names = names[start:start+limit]
+
+        # Simple select
+        data = resource.select(["name", "status"],
+                               start = start,
+                               limit = limit,
+                               orderby = "select_master.name",
+                               )
+        # - returns only rows in page
+        rows = data.rows
+        assertEqual(len(rows), min(numitems - start, limit))
+        assertTrue(all(row["select_master.name"] in subset_names for row in rows))
+
+        # Page limits
+        start = 4
+        limit = 5
+        subset_names = names[start:start+limit]
+
+        # Select with counting
+        data = resource.select(["name", "status"],
+                               start = start,
+                               limit = limit,
+                               count = True,
+                               orderby = "select_master.name",
+                               )
+        # - returns only rows in page
+        rows = data.rows
+        assertEqual(len(rows), min(numitems - start, limit))
+        assertTrue(all(row["select_master.name"] in subset_names for row in rows))
+        # - counts all matching records, however
+        assertEqual(data.numrows, numitems)
+
+        # Select with getids
+        data = resource.select(["id", "name", "status"],
+                               start = start,
+                               limit = limit,
+                               getids = True,
+                               orderby = "select_master.name",
+                               )
+        # - returns only rows in page
+        rows = data.rows
+        assertEqual(len(rows), min(numitems - start, limit))
+        assertTrue(all(row["select_master.name"] in subset_names for row in rows))
+        # - returns all matching record ids, however
+        assertEqual(len(data.ids), numitems)
+
+        # Page beyond subset
+        start = numitems
+        limit = 10
+
+        # Select with counting
+        data = resource.select(["name", "status"],
+                               start = start,
+                               limit = limit,
+                               count = True,
+                               orderby = "select_master.name",
+                               )
+        # - gives no rows
+        assertEqual(len(data.rows), 0)
+        # - counts all matching records, however
+        assertEqual(data.numrows, numitems)
+
+        # Select with getids
+        data = resource.select(["id", "name", "status"],
+                               start = start,
+                               limit = limit,
+                               getids = True,
+                               orderby = "select_master.name",
+                               )
+        # - gives no rows
+        assertEqual(len(data.rows), 0)
+        # - returns all matching record ids, however
+        assertEqual(len(data.ids), numitems)
+
+    # -------------------------------------------------------------------------
+    def testSelectSubsetVirtualFilter(self):
+        """ Test selection of subset (pagination) with virtual filter """
+
+        s3db = current.s3db
+
+        assertTrue = self.assertTrue
+        assertEqual = self.assertEqual
+
+        # Define subset
+        subset = [item for item in self.test_data if item[1] == "A"]
+        numitems = len(subset)
+        names = [item[0] for item in subset]
+
+        # Define resource
+        query = (FS("code") == "A")
+        resource = s3db.resource("select_master",
+                                 filter = query,
+                                 )
+
+        # Page limits
+        start = 2
+        limit = 2
+        subset_names = names[start:start+limit]
+
+        # Simple select
+        data = resource.select(["name", "status"],
+                               start = start,
+                               limit = limit,
+                               orderby = "select_master.name",
+                               )
+        # - returns only rows in the page
+        rows = data.rows
+        assertEqual(len(rows), min(numitems - start, limit))
+        assertTrue(all(row["select_master.name"] in subset_names for row in rows))
+
+        # Page limits:
+        start = 1
+        limit = 3
+        subset_names = names[start:start+limit]
+
+        # Select with counting
+        data = resource.select(["name", "status"],
+                               start = start,
+                               limit = limit,
+                               count = True,
+                               orderby = "select_master.name",
+                               )
+        # - returns only rows in the page
+        rows = data.rows
+        assertEqual(len(rows), min(numitems - start, limit))
+        assertTrue(all(row["select_master.name"] in subset_names for row in rows))
+        # - counts all matching records, however
+        assertEqual(data.numrows, numitems)
+
+        # Select with getids
+        data = resource.select(["id", "name", "status"],
+                               start = start,
+                               limit = limit,
+                               getids = True,
+                               orderby = "select_master.name",
+                               )
+        # - returns only rows in the page
+        assertEqual(len(data.rows), min(numitems - start, limit))
+        assertTrue(all(row["select_master.name"] in subset_names for row in rows))
+        # - returns all matching record ids, however
+        assertEqual(len(data.ids), numitems)
 
 # =============================================================================
 class ResourceLazyVirtualFieldsSupportTests(unittest.TestCase):
@@ -1682,18 +2324,23 @@ class ResourceLazyVirtualFieldsSupportTests(unittest.TestCase):
             can be properly resolved
         """
 
+        assertEqual = self.assertEqual
+
         resource = current.s3db.resource("pr_person")
 
         from s3 import S3ResourceField
         rfield = S3ResourceField(resource, "name")
-        self.assertEqual(rfield.field, None)
-        self.assertEqual(rfield.ftype, "virtual")
+        assertEqual(rfield.field, None)
+        assertEqual(rfield.ftype, "virtual")
 
     # -------------------------------------------------------------------------
     def testLazyVirtualFieldsExtract(self):
         """
             Test whether values for lazy virtual fields can be extracted
         """
+
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
 
         self.record_id = None
 
@@ -1703,27 +2350,30 @@ class ResourceLazyVirtualFieldsSupportTests(unittest.TestCase):
         rows = resource.select(["name", "first_name", "last_name"],
                                limit=1, as_rows=True)
         row = rows[0]
-        self.assertTrue("name" in row)
-        self.assertTrue(callable(row["name"]))
+        assertTrue("name" in row)
+        assertTrue(callable(row["name"]))
         # lazy field not called
-        self.assertEqual(self.record_id, None)
+        assertEqual(self.record_id, None)
 
         name = "%s %s" % (row.first_name, row.last_name)
 
         # Select with value extraction
         data = resource.select(["name"], limit=1)
         item = data["rows"][0]
-        self.assertTrue("pr_person.name" in item)
+        assertTrue("pr_person.name" in item)
         # lazy field called
-        self.assertEqual(self.record_id, row.id)
+        assertEqual(self.record_id, row.id)
 
-        self.assertEqual(item["pr_person.name"], name)
+        assertEqual(item["pr_person.name"], name)
 
     # -------------------------------------------------------------------------
     def testLazyVirtualFieldsFilter(self):
         """
             Test whether S3ResourceQueries work with lazy virtual fields
         """
+
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
 
         resource = current.s3db.resource("pr_person")
 
@@ -1735,17 +2385,20 @@ class ResourceLazyVirtualFieldsSupportTests(unittest.TestCase):
                                limit=None)
         rows = data["rows"]
         for item in rows:
-            self.assertTrue("pr_person.name" in item)
-            self.assertEqual(item["pr_person.name"][:5], "Admin")
-            self.assertEqual(item["pr_person.name"], "%s %s" % (
-                             item["pr_person.first_name"],
-                             item["pr_person.last_name"]))
+            assertTrue("pr_person.name" in item)
+            assertEqual(item["pr_person.name"][:5], "Admin")
+            assertEqual(item["pr_person.name"], "%s %s" % (
+                        item["pr_person.first_name"],
+                        item["pr_person.last_name"]))
 
     # -------------------------------------------------------------------------
     def testLazyVirtualFieldsURLFilter(self):
         """
             Test whether URL filters work with lazy virtual fields
         """
+
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
 
         vars = Storage({"person.name__like": "Admin*"})
         resource = current.s3db.resource("pr_person", vars=vars)
@@ -1754,11 +2407,11 @@ class ResourceLazyVirtualFieldsSupportTests(unittest.TestCase):
                                limit=None)
         rows = data["rows"]
         for item in rows:
-            self.assertTrue("pr_person.name" in item)
-            self.assertEqual(item["pr_person.name"][:5], "Admin")
-            self.assertEqual(item["pr_person.name"], "%s %s" % (
-                             item["pr_person.first_name"],
-                             item["pr_person.last_name"]))
+            assertTrue("pr_person.name" in item)
+            assertEqual(item["pr_person.name"][:5], "Admin")
+            assertEqual(item["pr_person.name"], "%s %s" % (
+                        item["pr_person.first_name"],
+                        item["pr_person.last_name"]))
 
     # -------------------------------------------------------------------------
     def tearDown(self):
@@ -1772,6 +2425,8 @@ class ResourceFilteredComponentTests(unittest.TestCase):
     @unittest.skipIf(not current.deployment_settings.has_module("org"), "org module disabled")
     def testAttachFilteredComponent(self):
         """ Test instantiation of filtered component """
+
+        assertEqual = self.assertEqual
 
         s3db = current.s3db
 
@@ -1790,11 +2445,11 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         # Check the component
         component = resource.components["test"]
         table = component.table
-        self.assertEqual(component.tablename, "org_office")
-        self.assertEqual(component._alias, "org_test_office")
-        self.assertEqual(table._tablename, "org_test_office")
-        self.assertEqual(str(component.filter),
-                         str((table.office_type_id == 5)))
+        assertEqual(component.tablename, "org_office")
+        assertEqual(component._alias, "org_test_office")
+        assertEqual(table._tablename, "org_test_office")
+        assertEqual(str(component.filter),
+                    str((table.office_type_id == 5)))
 
         # Define a filtered component with single value in list
         s3db.add_components("org_organisation",
@@ -1807,8 +2462,8 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         resource = s3db.resource("org_organisation", components=["test"])
         component = resource.components["test"]
         table = component.table
-        self.assertEqual(str(component.filter),
-                         str((table.office_type_id == 5)))
+        assertEqual(str(component.filter),
+                    str((table.office_type_id == 5)))
 
         # Define a filtered component with value list
         s3db.add_components("org_organisation",
@@ -1821,8 +2476,8 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         resource = s3db.resource("org_organisation", components=["test"])
         component = resource.components["test"]
         table = component.table
-        self.assertEqual(str(component.filter),
-                         str((table.office_type_id.belongs(4,5))))
+        assertEqual(str(component.filter),
+                    str((table.office_type_id.belongs(4,5))))
 
         # Define a filtered component with empty filter value list
         s3db.add_components("org_organisation",
@@ -1834,7 +2489,7 @@ class ResourceFilteredComponentTests(unittest.TestCase):
                            )
         resource = s3db.resource("org_organisation", components=["test"])
         component = resource.components["test"]
-        self.assertEqual(component.filter, None)
+        assertEqual(component.filter, None)
 
         # Remove the component hook
         del current.model.components["org_organisation"]["test"]
@@ -1843,6 +2498,8 @@ class ResourceFilteredComponentTests(unittest.TestCase):
     @unittest.skipIf(not current.deployment_settings.has_module("org"), "org module disabled")
     def testResolveSelectorWithFilteredComponent(self):
         """ Test resolution of field selectors for filtered components """
+
+        assertEqual = self.assertEqual
 
         s3db = current.s3db
 
@@ -1861,8 +2518,8 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         # Make sure an S3ResourceField of the component is using the
         # correct table alias (critical for data extraction from Rows)
         rfield = S3ResourceField(resource, "test.name")
-        self.assertEqual(rfield.tname, "org_test_office")
-        self.assertEqual(rfield.colname, "org_test_office.name")
+        assertEqual(rfield.tname, "org_test_office")
+        assertEqual(rfield.colname, "org_test_office.name")
 
         # Remove the component hook
         del current.model.components["org_organisation"]["test"]
@@ -1872,9 +2529,11 @@ class ResourceFilteredComponentTests(unittest.TestCase):
     def testURLQueryWithFilteredComponent(self):
         """ Test resolution of URL queries for fields in filtered components """
 
+        assertEqual = self.assertEqual
+
         auth = current.auth
         s3db = current.s3db
-        
+
         org_organisation = s3db.org_organisation
         org_test_office = s3db.org_office.with_alias("org_test_office")
 
@@ -1893,8 +2552,8 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         # Translate a URL query into a DAL query, check that
         # the correct table alias is used
         query = S3URLQuery.parse(resource, {"test.name__like": "xyz*"})
-        self.assertEqual(str(query.test[0].query(resource)),
-                         str(org_test_office.name.lower().like("xyz%")))
+        assertEqual(str(query.test[0].query(resource)),
+                    str(org_test_office.name.lower().like("xyz%")))
 
         # Add the query to the resource
         auth.override = True
@@ -1906,14 +2565,14 @@ class ResourceFilteredComponentTests(unittest.TestCase):
                         ((org_test_office.organisation_id == org_organisation.id) &
                          (org_test_office.deleted != True)) &
                         (org_test_office.office_type_id == 5))
-        self.assertEqual(str(rfilter.get_joins(left=True)[0]), str(expected))
-        
+        assertEqual(str(rfilter.get_joins(left=True)[0]), str(expected))
+
         # ...and the effective query of the master contains the filter
         # and is using the correct alias
         expected = (((org_organisation.deleted != True) &
                      (org_organisation.id > 0)) &
                     (org_test_office.name.lower().like("xyz%")))
-        self.assertEqual(str(resource.get_query()), str(expected))
+        assertEqual(str(resource.get_query()), str(expected))
 
         # Check the query of the component
         component = resource.components["test"]
@@ -1922,14 +2581,14 @@ class ResourceFilteredComponentTests(unittest.TestCase):
                     (((org_organisation.deleted != True) &
                     (org_organisation.id > 0)) &
                     (org_test_office.name.lower().like("xyz%"))))
-        self.assertEqual(str(component.get_query()), str(expected))
-        
+        assertEqual(str(component.get_query()), str(expected))
+
         rfilter = component.rfilter
         expected = org_organisation.on(
                         (org_test_office.organisation_id == org_organisation.id) &
                         (org_test_office.office_type_id == 5))
-        self.assertEqual(str(rfilter.get_joins(left=True)[0]), str(expected))
-        
+        assertEqual(str(rfilter.get_joins(left=True)[0]), str(expected))
+
         # Remove the component hook
         del current.model.components["org_organisation"]["test"]
 
@@ -1942,7 +2601,9 @@ class ResourceFilteredComponentTests(unittest.TestCase):
             Test translation of datatable filter/sorting for fields in
             filtered components
         """
-        
+
+        assertEqual = self.assertEqual
+
         s3db = current.s3db
 
         org_organisation = s3db.org_organisation
@@ -1974,11 +2635,10 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         expected = (((org_organisation.name.lower().like("%test%")) |
                      (org_test_office.name.lower().like("%test%"))) |
                     (org_office_type.name.lower().like("%test%")))
-        self.assertEqual(str(searchq), str(expected))
-        self.assertEqual(orderby,
-                         "org_test_office.name asc, "
-                         "org_office_type.name desc")
-        
+        assertEqual(str(searchq), str(expected))
+        assertEqual(orderby,
+                    "org_test_office.name asc, org_office_type.name desc")
+
         # Remove the component hook
         del current.model.components["org_organisation"]["test"]
 
@@ -1986,10 +2646,13 @@ class ResourceFilteredComponentTests(unittest.TestCase):
     @unittest.skipIf(not current.deployment_settings.has_module("org"), "org module disabled")
     def testSelectWithFilteredComponent(self):
         """ Test S3Resource.select with fields in a filtered component """
-    
+
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
+
         s3db = current.s3db
         auth = current.auth
-        
+
         xmlstr = """
 <s3xml>
     <resource name="org_organisation" uuid="FCTESTORG">
@@ -2008,7 +2671,7 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         xmltree = etree.ElementTree(etree.fromstring(xmlstr))
 
         auth.override = True
-        
+
         resource = s3db.resource("org_organisation")
         resource.import_xml(xmltree)
 
@@ -2023,20 +2686,20 @@ class ResourceFilteredComponentTests(unittest.TestCase):
                                           "filterfor": type_id,
                                          },
                            )
-        
+
         resource = current.s3db.resource("org_organisation", uid="FCTESTORG")
         fields = ["id", "name", "test.name", "test.office_type_id$name"]
         data = resource.select(fields, limit=None)
         result = data["rows"]
 
-        self.assertEqual(len(result), 1)
+        assertEqual(len(result), 1)
         result = result[0]
-        self.assertTrue("org_organisation.name" in result)
-        self.assertEqual(result["org_organisation.name"], "FilteredComponentsTestOrg")
-        self.assertTrue("org_test_office.name" in result)
-        self.assertEqual(result["org_test_office.name"], "FilteredComponentsTestOffice")
-        self.assertTrue("org_office_type.name" in result)
-        self.assertEqual(result["org_office_type.name"], "FilteredComponentsTestType")
+        assertTrue("org_organisation.name" in result)
+        assertEqual(result["org_organisation.name"], "FilteredComponentsTestOrg")
+        assertTrue("org_test_office.name" in result)
+        assertEqual(result["org_test_office.name"], "FilteredComponentsTestOffice")
+        assertTrue("org_office_type.name" in result)
+        assertEqual(result["org_office_type.name"], "FilteredComponentsTestType")
 
         # Remove the component hook
         del current.model.components["org_organisation"]["test"]
@@ -2048,6 +2711,8 @@ class ResourceFilteredComponentTests(unittest.TestCase):
     @unittest.skipIf(not current.deployment_settings.has_module("hrm"), "hrm module disabled")
     def testGetJoinLinkTableComponentAlias(self):
         """ Join for a link-table component with alias """
+
+        assertEqual = self.assertEqual
 
         s3db = current.s3db
 
@@ -2064,7 +2729,7 @@ class ResourceFilteredComponentTests(unittest.TestCase):
                    (pr_person.deleted != True)) &
                    ((pr_person.pe_id == pr_email_contact.pe_id) &
                    (pr_email_contact.contact_method == "EMAIL")))
-        self.assertEqual(str(join), str(expected))
+        assertEqual(str(join), str(expected))
 
         component = resource.components["phone"]
         join = component.get_join()
@@ -2072,16 +2737,19 @@ class ResourceFilteredComponentTests(unittest.TestCase):
                    (pr_person.deleted != True)) &
                    ((pr_person.pe_id == pr_phone_contact.pe_id) &
                    (pr_phone_contact.contact_method == "SMS")))
-        self.assertEqual(str(join), str(expected))
+        assertEqual(str(join), str(expected))
 
     # -------------------------------------------------------------------------
     @unittest.skipIf(not current.deployment_settings.has_module("hrm"), "hrm module disabled")
     def testGetLeftJoinLinkTableComponentAlias(self):
         """ Left Join for a link-table component with alias """
 
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
+
         s3db = current.s3db
         resource = s3db.resource("hrm_human_resource")
-        
+
         pr_person = s3db.pr_person
         hrm_human_resource = s3db.hrm_human_resource
         pr_contact = s3db.pr_contact
@@ -2089,30 +2757,30 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         component = resource.components["email"]
         pr_email_contact = pr_contact.with_alias("pr_email_contact")
         ljoin = component.get_left_join()
-        
-        self.assertTrue(isinstance(ljoin, list))
-        self.assertEqual(len(ljoin), 2)
-        self.assertEqual(str(ljoin[0]), str(pr_person.on(
-                            (hrm_human_resource.person_id == pr_person.id) &
-                            (pr_person.deleted != True))))
-                            
-        self.assertEqual(str(ljoin[1]), str(pr_email_contact.on(
-                                (pr_person.pe_id == pr_email_contact.pe_id) &
-                                (pr_email_contact.contact_method == "EMAIL"))))
+
+        assertTrue(isinstance(ljoin, list))
+        assertEqual(len(ljoin), 2)
+        assertEqual(str(ljoin[0]), str(pr_person.on(
+                        (hrm_human_resource.person_id == pr_person.id) &
+                        (pr_person.deleted != True))))
+
+        assertEqual(str(ljoin[1]), str(pr_email_contact.on(
+                        (pr_person.pe_id == pr_email_contact.pe_id) &
+                        (pr_email_contact.contact_method == "EMAIL"))))
 
         component = resource.components["phone"]
         pr_phone_contact = pr_contact.with_alias("pr_phone_contact")
         ljoin = component.get_left_join()
-        
-        self.assertTrue(isinstance(ljoin, list))
-        self.assertEqual(len(ljoin), 2)
-        self.assertEqual(str(ljoin[0]), str(pr_person.on(
-                            (hrm_human_resource.person_id == pr_person.id) &
-                            (pr_person.deleted != True))))
-                                        
-        self.assertEqual(str(ljoin[1]), str(pr_phone_contact.on(
-                                (pr_person.pe_id == pr_phone_contact.pe_id) &
-                                (pr_phone_contact.contact_method == "SMS"))))
+
+        assertTrue(isinstance(ljoin, list))
+        assertEqual(len(ljoin), 2)
+        assertEqual(str(ljoin[0]), str(pr_person.on(
+                        (hrm_human_resource.person_id == pr_person.id) &
+                        (pr_person.deleted != True))))
+
+        assertEqual(str(ljoin[1]), str(pr_phone_contact.on(
+                        (pr_person.pe_id == pr_phone_contact.pe_id) &
+                        (pr_phone_contact.contact_method == "SMS"))))
 
     # -------------------------------------------------------------------------
     # Disabled - @todo: must create test records (otherwise component can be
@@ -2121,6 +2789,9 @@ class ResourceFilteredComponentTests(unittest.TestCase):
     @unittest.skipIf(not current.deployment_settings.has_module("org"), "org module disabled")
     def testExportTreeWithComponentAlias(self):
         """ Test export of a resource that has components from the same table but different aliases """
+
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
 
         current.auth.override = True
         s3db = current.s3db
@@ -2137,22 +2808,22 @@ class ResourceFilteredComponentTests(unittest.TestCase):
                                           },
                                          ),
                            )
-                           
+
         resource = s3db.resource("org_organisation")
-        self.assertEqual(str(resource.components.fieldoffice.filter), \
-                         "(org_fieldoffice_office.office_type_id = 5)")
-        self.assertEqual(str(resource.components.hq.filter), \
-                         "(org_hq_office.office_type_id = 4)")
-        
+        assertEqual(str(resource.components.fieldoffice.filter), \
+                    "(org_fieldoffice_office.office_type_id = 5)")
+        assertEqual(str(resource.components.hq.filter), \
+                    "(org_hq_office.office_type_id = 4)")
+
         tree = resource.export_tree(mcomponents=["fieldoffice","hq"])
-        self.assertTrue(resource.components.fieldoffice._length > 0)
-        self.assertTrue(resource.components.hq._length > 0)
-        self.assertTrue(resource.components.office._length is None)
-        
+        assertTrue(resource.components.fieldoffice._length > 0)
+        assertTrue(resource.components.hq._length > 0)
+        assertTrue(resource.components.office._length is None)
+
         tree = resource.export_tree(mcomponents=["org_office","fieldoffice","hq"])
-        self.assertTrue(resource.components.office._length > 0)
-        self.assertTrue(resource.components.fieldoffice._length is None)
-        self.assertTrue(resource.components.hq._length is None)
+        assertTrue(resource.components.office._length > 0)
+        assertTrue(resource.components.fieldoffice._length is None)
+        assertTrue(resource.components.hq._length is None)
 
 # =============================================================================
 class ResourceDeleteTests(unittest.TestCase):
@@ -2226,7 +2897,7 @@ class ResourceDeleteTests(unittest.TestCase):
         db(db.del_master._id>0).delete()
         db(db.del_super._id>0).delete()
         db.commit()
-        
+
         current.auth.override = False
 
     # -------------------------------------------------------------------------
@@ -2235,7 +2906,7 @@ class ResourceDeleteTests(unittest.TestCase):
 
         self.master_deleted = row.id
         return
-        
+
     # -------------------------------------------------------------------------
     def super_ondelete(self, row):
         """ Dummy ondelete-callback """
@@ -2254,26 +2925,29 @@ class ResourceDeleteTests(unittest.TestCase):
     def testArchiveSimple(self):
         """ Test archiving of a record """
 
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
+
         s3db = current.s3db
         s3db.clear_config("del_master", "super_entity")
-        
+
         master_id = self.master_id
 
         # Delete the master record
         resource = s3db.resource("del_master", id=master_id)
         success = resource.delete()
-        self.assertEqual(success, 1)
-        self.assertEqual(resource.error, None)
+        assertEqual(success, 1)
+        assertEqual(resource.error, None)
 
         # Master record is deleted
         table = s3db.del_master
         record = table[master_id]
-        self.assertTrue(record.deleted)
+        assertTrue(record.deleted)
 
         # Check callbacks
-        self.assertEqual(self.master_deleted, master_id)
-        self.assertEqual(self.super_deleted, 0)
-        self.assertEqual(self.component_deleted, 0)
+        assertEqual(self.master_deleted, master_id)
+        assertEqual(self.super_deleted, 0)
+        assertEqual(self.component_deleted, 0)
 
     # -------------------------------------------------------------------------
     def testArchiveCascade(self):
@@ -2281,6 +2955,10 @@ class ResourceDeleteTests(unittest.TestCase):
             Test archiving of a record which is referenced by
             other records
         """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
 
         s3db = current.s3db
         s3db.clear_config("del_master", "super_entity")
@@ -2301,29 +2979,29 @@ class ResourceDeleteTests(unittest.TestCase):
             # Create a component record
             component_id = component.insert(del_master_id=master_id)
             component_record = component[component_id]
-            self.assertNotEqual(component_record, None)
+            assertNotEqual(component_record, None)
             current.db.commit()
 
             # Delete the master record
             resource = s3db.resource("del_master", id=master_id)
             success = resource.delete()
-            self.assertEqual(success, 1)
-            self.assertEqual(resource.error, None)
+            assertEqual(success, 1)
+            assertEqual(resource.error, None)
 
             # Master record is deleted
             table = s3db.del_master
             record = table[master_id]
-            self.assertTrue(record.deleted)
+            assertTrue(record.deleted)
 
             # Component record is deleted and unlinked
             component_record = component[component_id]
-            self.assertTrue(component_record.deleted)
-            self.assertEqual(component_record.del_master_id, None)
+            assertTrue(component_record.deleted)
+            assertEqual(component_record.del_master_id, None)
 
             # Check callbacks
-            self.assertEqual(self.master_deleted, master_id)
-            self.assertEqual(self.super_deleted, 0)
-            self.assertEqual(self.component_deleted, component_id)
+            assertEqual(self.master_deleted, master_id)
+            assertEqual(self.super_deleted, 0)
+            assertEqual(self.component_deleted, component_id)
 
         finally:
             component.drop()
@@ -2335,6 +3013,11 @@ class ResourceDeleteTests(unittest.TestCase):
             Test archiving of a record which is referenced by
             other records
         """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
 
         s3db = current.s3db
         s3db.clear_config("del_master", "super_entity")
@@ -2355,29 +3038,29 @@ class ResourceDeleteTests(unittest.TestCase):
             # Create a component record
             component_id = component.insert(del_master_id=master_id)
             component_record = component[component_id]
-            self.assertNotEqual(component_record, None)
+            assertNotEqual(component_record, None)
             current.db.commit()
 
             # Delete the master record
             resource = s3db.resource("del_master", id=master_id)
             success = resource.delete()
-            self.assertEqual(success, 1)
-            self.assertEqual(resource.error, None)
+            assertEqual(success, 1)
+            assertEqual(resource.error, None)
 
             # Master record is deleted
             table = s3db.del_master
             record = table[master_id]
-            self.assertTrue(record.deleted)
+            assertTrue(record.deleted)
 
             # Component record is not deleted, but unlinked
             component_record = component[component_id]
-            self.assertFalse(component_record.deleted)
-            self.assertEqual(component_record.del_master_id, None)
-            
+            assertFalse(component_record.deleted)
+            assertEqual(component_record.del_master_id, None)
+
             # Check callbacks
-            self.assertEqual(self.master_deleted, master_id)
-            self.assertEqual(self.super_deleted, 0)
-            self.assertEqual(self.component_deleted, 0)
+            assertEqual(self.master_deleted, master_id)
+            assertEqual(self.super_deleted, 0)
+            assertEqual(self.component_deleted, 0)
 
         finally:
             component.drop()
@@ -2390,6 +3073,10 @@ class ResourceDeleteTests(unittest.TestCase):
             other records
         """
 
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
 
         s3db = current.s3db
         s3db.clear_config("del_master", "super_entity")
@@ -2410,39 +3097,42 @@ class ResourceDeleteTests(unittest.TestCase):
             # Create a component record
             component_id = component.insert(del_master_id=master_id)
             component_record = component[component_id]
-            self.assertNotEqual(component_record, None)
+            assertNotEqual(component_record, None)
             current.db.commit()
 
             # Delete the master record
             resource = s3db.resource("del_master", id=master_id)
             success = resource.delete()
-            self.assertEqual(success, 0)
-            self.assertEqual(resource.error, current.ERROR.INTEGRITY_ERROR)
+            assertEqual(success, 0)
+            assertEqual(resource.error, current.ERROR.INTEGRITY_ERROR)
 
             # Master record is not deleted
             table = s3db.del_master
             record = table[master_id]
-            self.assertFalse(record.deleted)
+            assertFalse(record.deleted)
 
             # Component record is not deleted and still linked
             component_record = component[component_id]
-            self.assertFalse(component_record.deleted)
-            self.assertEqual(component_record.del_master_id, master_id)
+            assertFalse(component_record.deleted)
+            assertEqual(component_record.del_master_id, master_id)
 
             # Check callbacks
-            self.assertEqual(self.master_deleted, 0)
-            self.assertEqual(self.super_deleted, 0)
-            self.assertEqual(self.component_deleted, 0)
+            assertEqual(self.master_deleted, 0)
+            assertEqual(self.super_deleted, 0)
+            assertEqual(self.component_deleted, 0)
 
         finally:
             component.drop()
             del current.model.components["del_master"]["component"]
-            
+
     # -------------------------------------------------------------------------
     def testArchiveSuper(self):
         """
             Test archiving of a super-entity instance record
         """
+
+        assertEqual = self.assertEqual
+        assertTrue = self.assertTrue
 
         s3db = current.s3db
 
@@ -2456,23 +3146,23 @@ class ResourceDeleteTests(unittest.TestCase):
         # Delete the master record
         resource = s3db.resource("del_master", id=master_id)
         success = resource.delete()
-        self.assertEqual(success, 1)
-        self.assertEqual(resource.error, None)
+        assertEqual(success, 1)
+        assertEqual(resource.error, None)
 
         # Master record is deleted
         record = table[master_id]
-        self.assertTrue(record.deleted)
-        self.assertEqual(record.del_super_id, None)
+        assertTrue(record.deleted)
+        assertEqual(record.del_super_id, None)
 
         # Super-record is deleted
         stable = s3db.del_super
         srecord = stable[super_id]
-        self.assertTrue(srecord.deleted)
+        assertTrue(srecord.deleted)
 
         # Check callbacks
-        self.assertEqual(self.master_deleted, master_id)
-        self.assertEqual(self.super_deleted, super_id)
-        self.assertEqual(self.component_deleted, 0)
+        assertEqual(self.master_deleted, master_id)
+        assertEqual(self.super_deleted, super_id)
+        assertEqual(self.component_deleted, 0)
 
     # -------------------------------------------------------------------------
     def testArchiveSuperCascade(self):
@@ -2481,6 +3171,10 @@ class ResourceDeleteTests(unittest.TestCase):
             where the super-record is referenced by other records
             with CASCADE constraint
         """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
 
         s3db = current.s3db
 
@@ -2505,34 +3199,34 @@ class ResourceDeleteTests(unittest.TestCase):
             # Create a component record
             component_id = component.insert(del_super_id=super_id)
             component_record = component[component_id]
-            self.assertNotEqual(component_record, None)
+            assertNotEqual(component_record, None)
             current.db.commit()
 
             # Delete the master record
             resource = s3db.resource("del_master", id=master_id)
             success = resource.delete()
-            self.assertEqual(success, 1)
-            self.assertEqual(resource.error, None)
+            assertEqual(success, 1)
+            assertEqual(resource.error, None)
 
             # Master record is deleted
             record = table[master_id]
-            self.assertTrue(record.deleted)
-            self.assertEqual(record.del_super_id, None)
+            assertTrue(record.deleted)
+            assertEqual(record.del_super_id, None)
 
             # Super-record is deleted
             stable = s3db.del_super
             srecord = stable[super_id]
-            self.assertTrue(srecord.deleted)
+            assertTrue(srecord.deleted)
 
             # Component record is deleted
             crecord = component[component_id]
-            self.assertTrue(crecord.deleted)
-            self.assertEqual(crecord.del_super_id, None)
-            
+            assertTrue(crecord.deleted)
+            assertEqual(crecord.del_super_id, None)
+
             # Check callbacks
-            self.assertEqual(self.master_deleted, master_id)
-            self.assertEqual(self.super_deleted, super_id)
-            self.assertEqual(self.component_deleted, component_id)
+            assertEqual(self.master_deleted, master_id)
+            assertEqual(self.super_deleted, super_id)
+            assertEqual(self.component_deleted, component_id)
 
         finally:
             component.drop()
@@ -2545,6 +3239,11 @@ class ResourceDeleteTests(unittest.TestCase):
             where the super-record is referenced by other records
             with SET NULL constraint
         """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
 
         s3db = current.s3db
 
@@ -2569,34 +3268,34 @@ class ResourceDeleteTests(unittest.TestCase):
             # Create a component record
             component_id = component.insert(del_super_id=super_id)
             component_record = component[component_id]
-            self.assertNotEqual(component_record, None)
+            assertNotEqual(component_record, None)
             current.db.commit()
 
             # Delete the master record
             resource = s3db.resource("del_master", id=master_id)
             success = resource.delete()
-            self.assertEqual(success, 1)
-            self.assertEqual(resource.error, None)
+            assertEqual(success, 1)
+            assertEqual(resource.error, None)
 
             # Master record is deleted
             record = table[master_id]
-            self.assertTrue(record.deleted)
-            self.assertEqual(record.del_super_id, None)
+            assertTrue(record.deleted)
+            assertEqual(record.del_super_id, None)
 
             # Super-record is deleted
             stable = s3db.del_super
             srecord = stable[super_id]
-            self.assertTrue(srecord.deleted)
+            assertTrue(srecord.deleted)
 
             # Component record is not deleted, but unlinked
             crecord = component[component_id]
-            self.assertFalse(crecord.deleted)
-            self.assertEqual(crecord.del_super_id, None)
-            
+            assertFalse(crecord.deleted)
+            assertEqual(crecord.del_super_id, None)
+
             # Check callbacks
-            self.assertEqual(self.master_deleted, master_id)
-            self.assertEqual(self.super_deleted, super_id)
-            self.assertEqual(self.component_deleted, 0)
+            assertEqual(self.master_deleted, master_id)
+            assertEqual(self.super_deleted, super_id)
+            assertEqual(self.component_deleted, 0)
 
         finally:
             component.drop()
@@ -2609,6 +3308,11 @@ class ResourceDeleteTests(unittest.TestCase):
             where the super-record is referenced by other records
             with RESTRICT constraint
         """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+        assertFalse = self.assertFalse
 
         s3db = current.s3db
 
@@ -2633,39 +3337,97 @@ class ResourceDeleteTests(unittest.TestCase):
             # Create a component record
             component_id = component.insert(del_super_id=super_id)
             component_record = component[component_id]
-            self.assertNotEqual(component_record, None)
+            assertNotEqual(component_record, None)
             current.db.commit()
 
             # Delete the master record
             resource = s3db.resource("del_master", id=master_id)
             success = resource.delete()
-            self.assertEqual(success, 0)
-            self.assertEqual(resource.error, current.ERROR.INTEGRITY_ERROR)
+            assertEqual(success, 0)
+            assertEqual(resource.error, current.ERROR.INTEGRITY_ERROR)
 
             # Master record is not deleted
             record = table[master_id]
-            self.assertFalse(record.deleted)
-            self.assertEqual(record.del_super_id, super_id)
+            assertFalse(record.deleted)
+            assertEqual(record.del_super_id, super_id)
 
             # Super-record is not deleted
             stable = s3db.del_super
             srecord = stable[super_id]
-            self.assertFalse(srecord.deleted)
+            assertFalse(srecord.deleted)
 
             # Component record is not deleted and still unlinked
             crecord = component[component_id]
-            self.assertFalse(crecord.deleted)
-            self.assertEqual(crecord.del_super_id, super_id)
-            
+            assertFalse(crecord.deleted)
+            assertEqual(crecord.del_super_id, super_id)
+
             # Check callbacks
-            self.assertEqual(self.master_deleted, 0)
-            self.assertEqual(self.super_deleted, 0)
-            self.assertEqual(self.component_deleted, 0)
+            assertEqual(self.master_deleted, 0)
+            assertEqual(self.super_deleted, 0)
+            assertEqual(self.component_deleted, 0)
 
         finally:
             component.drop()
             del current.model.components["del_super"]["component"]
-            
+
+    # -------------------------------------------------------------------------
+    def testArchiveWithJoinedExtraFields(self):
+        """
+            Test archiving if there are mandatory extra fields
+            which require a join
+        """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+        assertTrue = self.assertTrue
+
+        s3db = current.s3db
+
+        master_id = self.master_id
+
+        # Define component table
+        # @note: not really a component relationship here, but
+        #        using component table for its foreign key in
+        #        order to construct an extra_fields join
+        s3db.define_table("del_component",
+                          Field("del_master_id",
+                                s3db.del_master,
+                                ondelete="CASCADE"),
+                          *s3_meta_fields())
+        component = s3db["del_component"]
+
+        # Define joined extra fields
+        s3db.configure("del_component",
+                       extra_fields = ["del_master_id$id"],
+                       )
+
+        try:
+            # Create a component record
+            component_id = component.insert(del_master_id=master_id)
+            component_record = component[component_id]
+            assertNotEqual(component_record, None)
+            current.db.commit()
+
+            # Delete the component record
+            # => this crashes if delete doesn't catch joined Rows
+            resource = s3db.resource("del_component", id=component_id)
+            success = resource.delete()
+            assertEqual(success, 1)
+            assertEqual(resource.error, None)
+
+            # Component record is deleted and unlinked
+            component_record = component[component_id]
+            assertTrue(component_record.deleted)
+            assertEqual(component_record.del_master_id, None)
+
+            # Check callbacks
+            # => this fails if the callback doesn't receive
+            #    the correct sub-Row (...instead of the joined Row)
+            assertEqual(self.component_deleted, component_id)
+
+        finally:
+            component.drop()
+
     ## -------------------------------------------------------------------------
     #def testDeleteSimple(self):
         #""" Test hard deletion of a record """
@@ -2678,7 +3440,7 @@ class ResourceDeleteTests(unittest.TestCase):
             #Test hard deletion of a record which is referenced by
             #other records
         #"""
-        
+
         #raise NotImplementedError
 
     ## -------------------------------------------------------------------------
@@ -2708,11 +3470,11 @@ class LinkDeletionTests(unittest.TestCase):
         # Define master table
         s3db.define_table("link_master",
                           *s3_meta_fields())
-                          
+
         # Define component table
         s3db.define_table("link_component",
                           *s3_meta_fields())
-                          
+
         # Define link table
         s3db.define_table("link_link",
                           Field("master_id", "reference link_master"),
@@ -2779,54 +3541,55 @@ class LinkDeletionTests(unittest.TestCase):
     def testLinkDeletion(self):
         """ Test deletion of link table entry """
 
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+
         db = current.db
         resource = current.s3db.resource("link_master")
 
         # Filter for a particular component record
         query = FS("component.id") == self.component1
         resource.add_filter(query)
-        
+
         link = resource.links["link"]
 
         # Test resolution of field selector
         rfield = link.resolve_selector("component.id")
         msg = "Link table could not resolve component field selector"
-        self.assertNotEqual(rfield.field, None, msg=msg)
-        self.assertEqual(rfield.colname, "link_component.id", msg=msg)
+        assertNotEqual(rfield.field, None, msg=msg)
+        assertEqual(rfield.colname, "link_component.id", msg=msg)
 
         # Delete the link
         result = link.delete()
 
         # Should delete exactly one link
-        self.assertEqual(result, 1)
+        assertEqual(result, 1)
 
         # Should have deleted the link for component1, but not for component2
         table = db.link_link
         row = db((table.component_id == self.component1) & \
                  (table.deleted != True)).select(table.id,
                                                  limitby=(0, 1)).first()
-        self.assertEqual(row, None,
-                         msg = "Link not deleted")
+        assertEqual(row, None, msg = "Link not deleted")
 
         row = db((table.component_id == self.component2) & \
                  (table.deleted != True)).select(table.id,
                                                  limitby=(0, 1)).first()
-        self.assertNotEqual(row, None,
-                            msg = "Unrelated link deleted")
+        assertNotEqual(row, None, msg = "Unrelated link deleted")
 
         # The component records should still be available
         table = db.link_component
         row = db((table.id == self.component1) & \
                  (table.deleted != True)).select(table.id,
                                                  limitby=(0, 1)).first()
-        self.assertNotEqual(row, None,
-                            msg = "Component record deleted instead of just unlinking it")
-        
+        assertNotEqual(row, None,
+                       msg = "Component record deleted instead of just unlinking it")
+
         row = db((table.id == self.component2) & \
                  (table.deleted != True)).select(table.id,
                                                  limitby=(0, 1)).first()
-        self.assertNotEqual(row, None,
-                            msg = "Unrelated component record deleted")
+        assertNotEqual(row, None,
+                       msg = "Unrelated component record deleted")
 
 # =============================================================================
 def run_suite(*test_classes):
@@ -2842,7 +3605,7 @@ def run_suite(*test_classes):
     return
 
 if __name__ == "__main__":
-    
+
     run_suite(
         ComponentJoinConstructionTests,
         ComponentLeftJoinConstructionTests,
@@ -2855,7 +3618,7 @@ if __name__ == "__main__":
         ResourceDataTableFilterTests,
         ResourceGetTests,
         #ResourceInsertTest,
-        #ResourceSelectTests,
+        ResourceSelectTests,
         #ResourceUpdateTests,
         ResourceDeleteTests,
 
@@ -2866,6 +3629,7 @@ if __name__ == "__main__":
         MergeOrganisationsTests,
         MergePersonsTests,
         MergeLocationsTests,
+        MergeUniqueFieldTest,
         MergeReferenceListsTest,
 
         ResourceExportTests,

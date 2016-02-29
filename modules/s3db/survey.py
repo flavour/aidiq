@@ -2,7 +2,7 @@
 
 """ Sahana Eden Survey Tool
 
-    @copyright: 2011-2015 (c) Sahana Software Foundation
+    @copyright: 2011-2016 (c) Sahana Software Foundation
     @license: MIT
 
     ADAT - Assessment Data Analysis Tool
@@ -30,6 +30,11 @@
     WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
     OTHER DEALINGS IN THE SOFTWARE.
+
+    @todo: PEP8
+    @todo: naming conventions!
+    @todo: remove unnecessary wrappers
+    @todo: docstrings
 """
 
 __all__ = ("S3SurveyTemplateModel",
@@ -65,13 +70,20 @@ __all__ = ("S3SurveyTemplateModel",
            "survey_serieslist_dataTable_post",
            "survey_answerlist_dataTable_pre",
            "survey_answerlist_dataTable_post",
-           "survey_json2py",
-           "survey_json2list",
+           "survey_LayoutBlocks",
+           "survey_MatrixElement",
+           "survey_DataMatrix",
+           "survey_DataMatrixBuilder",
+           "survey_getMatrix",
+           "survey_S3AnalysisPriority",
+           "survey_question_type",
+           "survey_analysis_type",
+           "survey_T",
            )
 
 try:
     from cStringIO import StringIO    # Faster, where available
-except:
+except ImportError:
     from StringIO import StringIO
 
 try:
@@ -79,57 +91,24 @@ try:
 except ImportError:
     try:
         import simplejson as json # try external module
-    except:
+    except ImportError:
         import gluon.contrib.simplejson as json # fallback to pure-Python module
 
 from gluon import *
 from gluon.storage import Storage
+from gluon.sqlhtml import *
 
 from ..s3 import *
-from s3dal import Row
 from s3chart import S3Chart
-from s3survey import survey_question_type, \
-                     survey_analysis_type, \
-                     _debug
 
-# =============================================================================
-def json2py(jsonstr):
-    """
-        Utility function to convert a string in json to a python structure
-    """
-
-    from xml.sax.saxutils import unescape
-
-    if not isinstance(jsonstr, str):
-        return jsonstr
-    try:
-        jsonstr = unescape(jsonstr, {"u'": '"'})
-        jsonstr = unescape(jsonstr, {"'": '"'})
-        pythonStructure = json.loads(jsonstr)
-    except:
-        _debug("ERROR: attempting to convert %s using modules/s3db/survey/json2py.py" % (jsonstr))
-        return jsonstr
-    else:
-        return pythonStructure
-survey_json2py = json2py
-
-# =============================================================================
-def json2list(jsonstr):
-    """
-        Used to modify a json string to a python list.
-    """
-
-    if jsonstr == "":
-        valueList = []
-    else:
-        if jsonstr[0] == "[":
-            valueList = json2py(jsonstr)
-        else:
-            valueList = jsonstr.split(",")
-        if not isinstance(valueList, list):
-            valueList = [valueList]
-    return valueList
-survey_json2list = json2list
+DEBUG = False
+if DEBUG:
+    import sys
+    print >> sys.stderr, "S3Survey: DEBUG MODE"
+    def _debug(m):
+        print >> sys.stderr, m
+else:
+    _debug = lambda m: None
 
 # =============================================================================
 class S3SurveyTemplateModel(S3Model):
@@ -255,8 +234,16 @@ class S3SurveyTemplateModel(S3Model):
                    action = survey_TranslateDownload,
                    )
 
+        filter_widgets = [
+            S3TextFilter("name",
+                         label = T("Search")),
+            S3OptionsFilter("status",
+                         label = T("Status")),
+            ]
+
         configure(tablename,
                   deduplicate = self.survey_template_duplicate,
+                  filter_widgets = filter_widgets,
                   onaccept = self.template_onaccept,
                   onvalidation = self.template_onvalidate,
                   )
@@ -333,32 +320,33 @@ class S3SurveyTemplateModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def addQuestion(template_id, name, code, notes, type, posn, metadata={}):
+    def add_question(template_id, name, code, notes, qtype, posn, metadata={}):
         """
+            Adds a question to the template corresponding to template_id
         """
 
         db = current.db
         s3db = current.s3db
 
         # Add the question to the database if it's not already there
-        qstntable = s3db.survey_question
-        query = (qstntable.name == name) & \
-                (qstntable.code == code)
-        record = db(query).select(qstntable.id, limitby=(0, 1)).first()
+        qtable = s3db.survey_question
+        query = (qtable.name == name) & \
+                (qtable.code == code)
+        record = db(query).select(qtable.id, limitby=(0, 1)).first()
         if record:
             qstn_id = record.id
         else:
-            qstn_id = qstntable.insert(name = name,
-                                       code = code,
-                                       notes = notes,
-                                       type = type
-                                      )
+            qstn_id = qtable.insert(name = name,
+                                    code = code,
+                                    notes = notes,
+                                    type = qtype,
+                                    )
             qstn_metadata_table = s3db.survey_question_metadata
             for (descriptor, value) in metadata.items():
                 qstn_metadata_table.insert(question_id = qstn_id,
                                            descriptor = descriptor,
-                                           value = value
-                                          )
+                                           value = value,
+                                           )
         # Add these questions to the section: "Background Information"
         sectable = s3db.survey_section
         section_name = "Background Information"
@@ -373,16 +361,16 @@ class S3SurveyTemplateModel(S3Model):
                                          posn = 0 # special section with no position
                                          )
         # Add the question to the list of questions in the template
-        qstn_list_table = s3db.survey_question_list
-        query = (qstn_list_table.question_id == qstn_id) & \
-                (qstn_list_table.template_id == template_id)
-        record = db(query).select(qstntable.id, limitby=(0, 1)).first()
+        qltable = s3db.survey_question_list
+        query = (qltable.question_id == qstn_id) & \
+                (qltable.template_id == template_id)
+        record = db(query).select(qtable.id, limitby=(0, 1)).first()
         if not record:
-            qstn_list_table.insert(question_id = qstn_id,
-                                   template_id = template_id,
-                                   section_id = section_id,
-                                   posn = posn
-                                   )
+            qltable.insert(question_id = qstn_id,
+                           template_id = template_id,
+                           section_id = section_id,
+                           posn = posn,
+                           )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -406,37 +394,37 @@ class S3SurveyTemplateModel(S3Model):
         else:
             return
 
-        addQuestion = S3SurveyTemplateModel.addQuestion
+        add_question = S3SurveyTemplateModel.add_question
         if form_vars.competion_qstn != None:
             name = form_vars.competion_qstn
             code = "STD-WHO"
             notes = "Who completed the assessment"
-            type = "String"
+            qtype = "String"
             posn = -10 # negative used to force these question to appear first
-            addQuestion(template_id, name, code, notes, type, posn)
+            add_question(template_id, name, code, notes, qtype, posn)
         if form_vars.date_qstn != None:
             name = form_vars.date_qstn
             code = "STD-DATE"
             notes = "Date the assessment was completed"
-            type = "Date"
+            qtype = "Date"
             posn += 1
-            addQuestion(template_id, name, code, notes, type, posn)
+            add_question(template_id, name, code, notes, qtype, posn)
         if form_vars.time_qstn != None:
             name = form_vars.time_qstn
             code = "STD-TIME"
             notes = "Time the assessment was completed"
-            type = "Time"
+            qtype = "Time"
             posn += 1
-            addQuestion(template_id, name, code, notes, type, posn)
+            add_question(template_id, name, code, notes, qtype, posn)
         if form_vars.location_detail != None:
-            locationList = json2py(form_vars.location_detail)
-            if len(locationList) > 0:
+            location_list = json2py(form_vars.location_detail)
+            if len(location_list) > 0:
                 name = "The location P-code"
                 code = "STD-P-Code"
-                type = "String"
+                qtype = "String"
                 posn += 1
-                addQuestion(template_id, name, code, None, type, posn)
-            for loc in locationList:
+                add_question(template_id, name, code, None, qtype, posn)
+            for loc in location_list:
                 if loc == "Lat":
                     name = "Latitude"
                 elif loc == "Lon":
@@ -445,13 +433,13 @@ class S3SurveyTemplateModel(S3Model):
                     name = loc
                 code = "STD-%s" % loc
                 if loc == "Lat" or loc == "Lon":
-                    type = "Numeric"
+                    qtype = "Numeric"
                     metadata = {"Format": "nnn.nnnnnn"}
                 else:
-                    type = "Location"
+                    qtype = "Location"
                     metadata = {}
                 posn += 1
-                addQuestion(template_id, name, code, "", type, posn, metadata)
+                add_question(template_id, name, code, "", qtype, posn, metadata)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -463,7 +451,7 @@ class S3SurveyTemplateModel(S3Model):
 
         name = item.data.get("name")
         table = item.table
-        query =  table.name.lower().like('%%%s%%' % name.lower())
+        query = table.name.lower().like('%%%s%%' % name.lower())
         duplicate = current.db(query).select(table.id,
                                              limitby=(0, 1)).first()
         if duplicate:
@@ -495,23 +483,23 @@ class S3SurveyTemplateModel(S3Model):
             item.method = item.METHOD.UPDATE
 
 # =============================================================================
-def survey_template_represent(id, row=None):
+def survey_template_represent(template_id, row=None):
     """
         Display the template name rather than the id
     """
 
     if row:
         return row.name
-    elif not id:
+    elif not template_id:
         return current.messages["NONE"]
 
     table = current.s3db.survey_template
-    query = (table.id == id)
+    query = (table.id == template_id)
     record = current.db(query).select(table.name,
                                       limitby=(0, 1)).first()
     try:
         return record.name
-    except:
+    except AttributeError:
         return current.messages.UNKNOWN_OPT
 
 # =============================================================================
@@ -530,39 +518,39 @@ def survey_template_rheader(r, tabs=[]):
 
             # Tabs
             tabs = [(T("Basic Details"), "read"),
-                    (T("Question Details"),"templateRead/"),
-                    (T("Question Summary"),"templateSummary/"),
+                    (T("Question Details"), "template_read/"),
+                    (T("Question Summary"), "template_summary/"),
                     #(T("Sections"), "section"),
                     ]
             if current.auth.s3_has_permission("create", "survey_translate"):
-                tabs.append((T("Translate"),"translate"))
+                tabs.append((T("Translate"), "translate"))
 
             rheader_tabs = s3_rheader_tabs(r, tabs)
 
-            sectionTable = s3db.survey_section
-            qlistTable = s3db.survey_question_list
+            stable = s3db.survey_section
+            qltable = s3db.survey_question_list
             viewing = current.request.get_vars.get("viewing", None)
             if viewing:
                 dummy, template_id = viewing.split(".")
             else:
                 template_id = r.id
 
-            query = (qlistTable.template_id == template_id) & \
-                    (qlistTable.section_id == sectionTable.id)
-            rows = current.db(query).select(sectionTable.id,
-                                            sectionTable.name,
-                                            orderby = qlistTable.posn)
+            query = (qltable.template_id == template_id) & \
+                    (qltable.section_id == stable.id)
+            rows = current.db(query).select(stable.id,
+                                            stable.name,
+                                            orderby = qltable.posn)
             tsection = TABLE(_class="survey-section-list")
-            lblSection = SPAN(T("Sections that are part of this template"),
-                              _style="font-weight:bold;")
+            label_section = SPAN(T("Sections that are part of this template"),
+                                 _style="font-weight:bold;")
             if (rows.__len__() == 0):
                 rsection = SPAN(T("As of yet, no sections have been added to this template."))
             else:
                 rsection = TR()
                 count = 0
-                lastSection = ""
+                last_section = ""
                 for section in rows:
-                    if section.name == lastSection:
+                    if section.name == last_section:
                         continue
                     rsection.append(TD(section.name))
                     # Comment out the following until templates can be built online
@@ -570,11 +558,11 @@ def survey_template_rheader(r, tabs=[]):
                     #                     _href=URL(c="survey",
                     #                               f="section",
                     #                               args="%s" % section.id))))
-                    lastSection = section.name
+                    last_section = section.name
                     count += 1
                     if count % 4 == 0:
                         tsection.append(rsection)
-                        rsection=TR()
+                        rsection = TR()
             tsection.append(rsection)
 
             rheader = DIV(TABLE(TR(TH("%s: " % T("Name")),
@@ -583,7 +571,7 @@ def survey_template_rheader(r, tabs=[]):
                                    s3db.survey_template_status[record.status],
                                    ),
                                 ),
-                          lblSection,
+                          label_section,
                           tsection,
                           rheader_tabs,
                           )
@@ -614,25 +602,25 @@ def survey_getAllWidgetsForTemplate(template_id):
     """
 
     s3db = current.s3db
-    q_ltable = s3db.survey_question_list
-    qsntable = s3db.survey_question
-    query = (q_ltable.template_id == template_id) & \
-            (q_ltable.question_id == qsntable.id)
-    rows = current.db(query).select(qsntable.id,
-                                    qsntable.code,
-                                    qsntable.type,
-                                    q_ltable.posn,
+    qltable = s3db.survey_question_list
+    qtable = s3db.survey_question
+    query = (qltable.template_id == template_id) & \
+            (qltable.question_id == qtable.id)
+    rows = current.db(query).select(qtable.id,
+                                    qtable.code,
+                                    qtable.type,
+                                    qltable.posn,
                                     )
     widgets = {}
     for row in rows:
         sqrow = row.survey_question
-        qstnType = sqrow.type
+        qstn_type = sqrow.type
         qstn_id = sqrow.id
         qstn_code = sqrow.code
         qstn_posn = row.survey_question_list.posn
-        widgetObj = survey_question_type[qstnType](qstn_id)
-        widgets[qstn_code] = widgetObj
-        widgetObj.question["posn"] = qstn_posn
+        widget_obj = survey_question_type[qstn_type](qstn_id)
+        widgets[qstn_code] = widget_obj
+        widget_obj.question["posn"] = qstn_posn
         question = {}
     return widgets
 
@@ -704,9 +692,9 @@ def survey_getWidgetFromQuestion(question_id):
     question = current.db(qtable.id == question_id).select(qtable.type,
                                                            limitby=(0, 1)
                                                            ).first()
-    qstnType = question.type
-    widgetObj = survey_question_type[qstnType](question_id)
-    return widgetObj
+    question_type = question.type
+    widget_obj = survey_question_type[question_type](question_id)
+    return widget_obj
 
 # =============================================================================
 def buildQuestionsForm(questions, complete_id=None, readOnly=False):
@@ -716,45 +704,50 @@ def buildQuestionsForm(questions, complete_id=None, readOnly=False):
 
     form = FORM()
     table = None
-    sectionTitle = ""
+    section_title = ""
     for question in questions:
-        if sectionTitle != question["section"]:
-            if sectionTitle != "":
+        if section_title != question["section"]:
+            if section_title != "":
                 form.append(P())
                 form.append(HR(_width="90%"))
                 form.append(P())
-            div = DIV(_class="survey_scrollable")
+            div = DIV()
             table = TABLE()
             div.append(table)
             form.append(div)
             table.append(TR(TH(question["section"],
                                _colspan="2"),
                             _class="survey_section"))
-            sectionTitle = question["section"]
-        widgetObj = survey_getWidgetFromQuestion(question["qstn_id"])
+            section_title = question["section"]
+        widget_obj = survey_getWidgetFromQuestion(question["qstn_id"])
         if readOnly:
             table.append(TR(TD(question["code"]),
-                            TD(widgetObj.type_represent()),
+                            TD(widget_obj.type_represent()),
                             TD(question["name"])
                             )
                          )
         else:
             if complete_id != None:
-                widgetObj.loadAnswer(complete_id, question["qstn_id"])
-            widget = widgetObj.display(question_id = question["qstn_id"])
+                widget_obj.loadAnswer(complete_id, question["qstn_id"])
+            widget = widget_obj.display(question_id = question["qstn_id"])
             if widget != None:
                 if isinstance(widget, TABLE):
                     table.append(TR(TD(widget, _colspan=2)))
                 else:
                     table.append(widget)
     if not readOnly:
-        button = INPUT(_type="submit", _name="Save", _value=current.T("Save"))
+        button = INPUT(_type="submit", _name="Save", _value=current.T("Save"),
+                       _class="small primary button")
         form.append(button)
     return form
 
 # =============================================================================
 def survey_build_template_summary(template_id):
     """
+        Returns a table of details of a particular template
+
+        @param template_id: ID corresponding to the template for which
+                            the summary is to be built
     """
 
     from s3.s3data import S3DataTable
@@ -762,56 +755,56 @@ def survey_build_template_summary(template_id):
 
     table = TABLE(_id="template_summary",
                   _class="dataTable display")
-    hr = TR(TH(T("Position")), TH(T("Section")))
-    qstnTypeList = {}
+    table_header = TR(TH(T("Position")), TH(T("Section")))
+    question_type_list = {}
     posn = 1
-    for (key, type) in survey_question_type.items():
+    for (key, qtype) in survey_question_type.items():
         if key == "Grid" or key == "GridChild":
             continue
-        hr.append(TH(type().type_represent()))
-        qstnTypeList[key] = posn
+        table_header.append(TH(qtype().type_represent()))
+        question_type_list[key] = posn
         posn += 1
-    hr.append(TH(T("Total")))
-    header = THEAD(hr)
+    table_header.append(TH(T("Total")))
+    header = THEAD(table_header)
 
-    numOfQstnTypes = len(survey_question_type) - 1 # exclude the grid questions
+    num_of_question_types = len(survey_question_type) - 1 # exclude the grid questions
     questions = survey_getAllQuestionsForTemplate(template_id)
-    sectionTitle = ""
+    section_title = ""
     line = []
     body = TBODY()
     section = 0
-    total = ["", T("Total")] + [0]*numOfQstnTypes
+    total = ["", T("Total")] + [0] * num_of_question_types
     for question in questions:
-        if sectionTitle != question["section"]:
+        if section_title != question["section"]:
             if line != []:
-                br = TR()
+                temp_row = TR()
                 for cell in line:
-                    br.append(cell)
-                body.append(br)
+                    temp_row.append(cell)
+                body.append(temp_row)
             section += 1
-            sectionTitle = question["section"]
-            line = [section, sectionTitle] + [0]*numOfQstnTypes
+            section_title = question["section"]
+            line = [section, section_title] + [0] * num_of_question_types
         if question["type"] == "Grid":
             continue
         if question["type"] == "GridChild":
             # get the real grid question type
-            widgetObj = survey_getWidgetFromQuestion(question["qstn_id"])
-            question["type"] = widgetObj.typeDescription
-        line[qstnTypeList[question["type"]]+1] += 1
-        line[numOfQstnTypes+1] += 1
-        total[qstnTypeList[question["type"]]+1] += 1
-        total[numOfQstnTypes+1] += 1
+            widget_obj = survey_getWidgetFromQuestion(question["qstn_id"])
+            question["type"] = widget_obj.typeDescription
+        line[question_type_list[question["type"]]+1] += 1
+        line[num_of_question_types+1] += 1
+        total[question_type_list[question["type"]]+1] += 1
+        total[num_of_question_types+1] += 1
     # Add the trailing row
-    br = TR()
+    empty_row = TR()
     for cell in line:
-        br.append(cell)
-    body.append(br)
+        empty_row.append(cell)
+    body.append(empty_row)
     # Add the footer to the table
     foot = TFOOT()
-    tr = TR()
+    footer_row = TR()
     for cell in total:
-        tr.append(TD(B(cell))) # don't use TH() otherwise dataTables will fail
-    foot.append(tr)
+        footer_row.append(TD(B(cell))) # don't use TH() otherwise dataTables will fail
+    foot.append(footer_row)
 
     table.append(header)
     table.append(body)
@@ -877,7 +870,7 @@ class S3SurveyQuestionModel(S3Model):
 
         tablename = "survey_question"
         define_table(tablename,
-                     Field("name", length=200,
+                     Field("name", length=400,
                            notnull = True,
                            represent = self.qstn_name_represent,
                            ),
@@ -1007,7 +1000,7 @@ class S3SurveyQuestionModel(S3Model):
             @todo: add the full name if it is a grid question BUT not displayed
                   as part of a grid,
                   e.g. "Currently known Displaced", rather than just "Displaced"
-                  see controller... templateRead() for an example not in the grid
+                  see controller... template_read() for an example not in the grid
         """
 
         if value == "L0" or value == "L1" or \
@@ -1043,18 +1036,18 @@ class S3SurveyQuestionModel(S3Model):
 
         """
 
-        vars = form.vars
-        if vars.metadata is None:
+        form_vars = form.vars
+        if form_vars.metadata is None:
             return
-        if vars.id:
-            record = current.s3db.survey_question[vars.id]
+        if form_vars.id:
+            record = current.s3db.survey_question[form_vars.id]
         else:
             return
-        if vars.metadata and \
-           vars.metadata != "":
+        if form_vars.metadata and \
+           form_vars.metadata != "":
             survey_updateMetaData(record,
-                                  vars.type,
-                                  vars.metadata
+                                  form_vars.type,
+                                  form_vars.metadata
                                   )
 
     # -------------------------------------------------------------------------
@@ -1084,7 +1077,7 @@ class S3SurveyQuestionModel(S3Model):
 
         data = item.data
         question = data.get("question_id")
-        descriptor  = data.get("descriptor")
+        descriptor = data.get("descriptor")
         table = item.table
         query = (table.descriptor == descriptor) & \
                 (table.question_id == question)
@@ -1104,33 +1097,30 @@ class S3SurveyQuestionModel(S3Model):
 
         qstntable = current.s3db.survey_question
         try:
-            vars = form.vars
-            question_id = vars.question_id
-            template_id = vars.template_id
-            section_id = vars.section_id
-            posn = vars.posn
-        except:
+            form_vars = form.vars
+            question_id = form_vars.question_id
+            template_id = form_vars.template_id
+            section_id = form_vars.section_id
+            posn = form_vars.posn
+        except AttributeError:
             return
         record = qstntable[question_id]
-        try:
-            type = record.type
-        except:
-            _debug("survey question missing type: %s" % record)
-            return
-        if type == "Grid":
-            widgetObj = survey_question_type["Grid"]()
-            widgetObj.insertChildrenToList(question_id,
-                                           template_id,
-                                           section_id,
-                                           posn,
-                                           )
-        if type == "Location":
-            widgetObj = survey_question_type["Location"]()
-            widgetObj.insertChildrenToList(question_id,
-                                           template_id,
-                                           section_id,
-                                           posn,
-                                           )
+        qtype = record.type
+
+        if qtype == "Grid":
+            widget_obj = survey_question_type["Grid"]()
+            widget_obj.insertChildrenToList(question_id,
+                                            template_id,
+                                            section_id,
+                                            posn,
+                                            )
+        if qtype == "Location":
+            widget_obj = survey_question_type["Location"]()
+            widget_obj.insertChildrenToList(question_id,
+                                            template_id,
+                                            section_id,
+                                            posn,
+                                            )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1182,11 +1172,11 @@ def survey_getQuestionFromCode(code, series_id=None):
                                       limitby=(0, 1)).first()
     question = {}
     if record != None:
-        sq = record.survey_question
-        question["qstn_id"] = sq.id
-        question["code"] = sq.code
-        question["name"] = sq.name
-        question["type"] = sq.type
+        question_row = record.survey_question
+        question["qstn_id"] = question_row.id
+        question["code"] = question_row.code
+        question["name"] = question_row.name
+        question["type"] = question_row.type
         question["posn"] = record.survey_question_list.posn
     return question
 
@@ -1218,11 +1208,11 @@ def survey_getAllQuestionsForTemplate(template_id):
     questions = []
     for row in rows:
         question = {}
-        sq = row.survey_question
-        question["qstn_id"] = sq.id
-        question["code"] = sq.code
-        question["name"] = s3db.survey_qstn_name_represent(sq.name)
-        question["type"] = sq.type
+        question_row = row.survey_question
+        question["qstn_id"] = question_row.id
+        question["code"] = question_row.code
+        question["name"] = s3db.survey_qstn_name_represent(question_row.name)
+        question["type"] = question_row.type
         question["posn"] = row.survey_question_list.posn
         question["section"] = row.survey_section.name
         questions.append(question)
@@ -1267,23 +1257,27 @@ def survey_getAllQuestionsForComplete(complete_id):
     return (questions, series_id)
 
 # =============================================================================
-def survey_get_series_questions_of_type(questionList, type):
+def survey_get_series_questions_of_type(question_list, qtype):
     """
+        Get questions of a particular question type
+
+        @param question_list: List of questions
+        @param qtype: Questions of this type to be returned
     """
 
-    if isinstance(type, (list, tuple)):
-        types = type
+    if isinstance(qtype, (list, tuple)):
+        types = qtype
     else:
-        types = (type)
+        types = (qtype)
     questions = []
-    for question in questionList:
+    for question in question_list:
         if question["type"] in types:
             questions.append(question)
         elif question["type"] == "Link" or \
              question["type"] == "GridChild":
-            widgetObj = survey_getWidgetFromQuestion(question["qstn_id"])
-            if widgetObj.getParentType() in types:
-                question["name"] = widgetObj.fullName()
+            widget_obj = survey_getWidgetFromQuestion(question["qstn_id"])
+            if widget_obj.getParentType() in types:
+                question["name"] = widget_obj.fullName()
                 questions.append(question)
     return questions
 
@@ -1312,47 +1306,53 @@ def survey_getQuestionFromName(name, series_id):
         # Unable to get the record from the question name
         # It could be because the question is a location
         # So get the location names and then check
-        locList = current.gis.get_all_current_levels()
-        for row in locList.items():
+        loc_list = current.gis.get_all_current_levels()
+        for row in loc_list.items():
             if row[1] == name:
-                return survey_getQuestionFromName(row[0],series_id)
+                return survey_getQuestionFromName(row[0], series_id)
 
     question = {}
-    sq = record.survey_question
-    question["qstn_id"] = sq.id
-    question["code"] = sq.code
-    question["name"] = sq.name
-    question["type"] = sq.type
+    question_row = record.survey_question
+    question["qstn_id"] = question_row.id
+    question["code"] = question_row.code
+    question["name"] = question_row.name
+    question["type"] = question_row.type
     question["posn"] = record.survey_question_list.posn
     return question
 
 # =============================================================================
-def survey_updateMetaData (record, type, metadata):
+def survey_updateMetaData(record, qtype, metadata):
     """
+        Function to update the metadata of a question
+        corresponding to the record
+
+        @param record: The record for the question to be updated
+        @param qtype: Question Type
+        @param metadata: The metadata to be updated with
     """
 
     metatable = current.s3db.survey_question_metadata
-    id = record.id
+    question_id = record.id
     # the metadata can either be passed in as a JSON string
     # or as a parsed map. If it is a string load the map.
     if isinstance(metadata, str):
-        metadataList = json2py(metadata)
+        metadata_list = json2py(metadata)
     else:
-        metadataList = metadata
-    for (desc, value) in metadataList.items():
-            desc = desc.strip()
-            if not isinstance(value, str):
-                # web2py stomps all over a list so convert back to a string
-                # before inserting it on the database
-                value = json.dumps(value)
-            value = value.strip()
-            metatable.insert(question_id = id,
-                             descriptor = desc,
-                             value = value
-                            )
-    if type == "Grid":
-        widgetObj = survey_question_type["Grid"]()
-        widgetObj.insertChildren(record, metadataList)
+        metadata_list = metadata
+    for (desc, value) in metadata_list.items():
+        desc = desc.strip()
+        if not isinstance(value, str):
+            # web2py stomps all over a list so convert back to a string
+            # before inserting it on the database
+            value = json.dumps(value)
+        value = value.strip()
+        metatable.insert(question_id = question_id,
+                         descriptor = desc,
+                         value = value,
+                         )
+    if qtype == "Grid":
+        widget_obj = survey_question_type["Grid"]()
+        widget_obj.insertChildren(record, metadata_list)
 
 # =============================================================================
 class S3SurveyFormatterModel(S3Model):
@@ -1431,7 +1431,7 @@ class S3SurveyFormatterModel(S3Model):
                        )
 
         # ---------------------------------------------------------------------
-        return dict()
+        return {}
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1443,13 +1443,13 @@ class S3SurveyFormatterModel(S3Model):
 
         s3db = current.s3db
         section_id = form.vars.section_id
-        sectionTbl = s3db.survey_section
-        section_name = sectionTbl[section_id].name
+        stable = s3db.survey_section
+        section_name = stable[section_id].name
         if section_name == "Background Information":
             col1 = []
             # Add the default layout
-            templateTbl = s3db.survey_template
-            template = templateTbl[form.vars.template_id]
+            ttable = s3db.survey_template
+            template = ttable[form.vars.template_id]
             if template.competion_qstn != "":
                 col1.append("STD-WHO")
             if template.date_qstn != "":
@@ -1458,14 +1458,14 @@ class S3SurveyFormatterModel(S3Model):
                 col1.append("STD-TIME")
             if "location_detail" in template:
                 col2 = ["STD-P-Code"]
-                locationList = json2py(template.location_detail)
-                for loc in locationList:
+                location_list = json2py(template.location_detail)
+                for loc in location_list:
                     col2.append("STD-%s" % loc)
                 col = [col1, col2]
                 rule = [{"columns":col}]
-                ruleList = json2py(form.vars.rules)
-                ruleList[:0] = rule
-                rules = json.dumps(ruleList)
+                rule_list = json2py(form.vars.rules)
+                rule_list[:0] = rule
+                rules = json.dumps(rule_list)
                 db = current.db
                 ftable = db.survey_formatter
                 db(ftable.id == form.vars.id).update(rules = rules)
@@ -1491,10 +1491,7 @@ class S3SurveyFormatterModel(S3Model):
             item.method = item.METHOD.UPDATE
 
 # =============================================================================
-def survey_getQstnLayoutRules(template_id,
-                              section_id,
-                              method = 1
-                              ):
+def survey_getQstnLayoutRules(template_id, section_id, method = 1):
     """
         This will return the rules for laying out the questions for
         the given section within the template.
@@ -1529,24 +1526,24 @@ def survey_getQstnLayoutRules(template_id,
             drules = row.rules
     if rules == None and drules != None:
         rules = drules
-    rowList = []
+    row_list = []
     if rules is None or rules == "":
         # get the rules from survey_question_list
-        q_ltable = s3db.survey_question_list
-        qsntable = s3db.survey_question
-        query = (q_ltable.template_id == template_id) & \
-                (q_ltable.section_id == section_id) & \
-                (q_ltable.question_id == qsntable.id)
-        rows = db(query).select(qsntable.code,
-                                q_ltable.posn,
-                                orderby=(q_ltable.posn))
-        append = rowList.append
-        for qstn in rows:
-            append([qstn.survey_question.code])
+        qltable = s3db.survey_question_list
+        qtable = s3db.survey_question
+        query = (qltable.template_id == template_id) & \
+                (qltable.section_id == section_id) & \
+                (qltable.question_id == qtable.id)
+        rows = db(query).select(qtable.code,
+                                qltable.posn,
+                                orderby=qltable.posn)
+        append = row_list.append
+        for question in rows:
+            append([question.survey_question.code])
     else:
         # convert the JSON rules to python
-        rowList = json2py(rules)
-    return rowList
+        row_list = json2py(rules)
+    return row_list
 
 # =============================================================================
 class S3SurveySeriesModel(S3Model):
@@ -1630,9 +1627,11 @@ class S3SurveySeriesModel(S3Model):
                                 ),
                           s3_date("start_date",
                                   label = T("Start Date"),
+                                  set_min = "#survey_series_end_date",
                                   ),
                           s3_date("end_date",
                                   label = T("End Date"),
+                                  set_max = "#survey_series_start_date",
                                   start_field = "survey_series_start_date",
                                   default_interval = 1,
                                   ),
@@ -1659,10 +1658,20 @@ class S3SurveySeriesModel(S3Model):
             msg_record_deleted = T("Disaster Assessment deleted"),
             msg_list_empty = T("No Disaster Assessments"))
 
+        filter_widgets = [
+            S3TextFilter("name",
+                         label = T("Search")),
+            S3OptionsFilter("organisation_id",
+                         label = T("Organization")),
+            S3DateFilter("start_date",
+                         label = T("Start Date")),
+            ]
+
         self.configure(tablename,
-                       create_next = URL(f="newAssessment",
+                       create_next = URL(f="new_assessment",
                                          vars={"viewing":"survey_series.[id]"}),
                        deduplicate = self.survey_series_duplicate,
+                       filter_widgets = filter_widgets,
                        onaccept = self.series_onaccept,
                        )
 
@@ -1720,7 +1729,7 @@ class S3SurveySeriesModel(S3Model):
 
         name = item.data.get("name")
         table = item.table
-        query =  table.name.lower().like('%%%s%%' % name.lower())
+        query = table.name.lower().like('%%%s%%' % name.lower())
         duplicate = current.db(query).select(table.id,
                                              limitby=(0, 1)).first()
         if duplicate:
@@ -1731,6 +1740,7 @@ class S3SurveySeriesModel(S3Model):
     @staticmethod
     def seriesSummary(r, **attr):
         """
+            Build summary of series corresponding to the record in r
         """
 
         s3db = current.s3db
@@ -1744,20 +1754,20 @@ class S3SurveySeriesModel(S3Model):
             rheader = rheader(r)
             output = dict(rheader=rheader)
         else:
-            output = dict()
+            output = {}
         if r.env.request_method == "POST" \
            or "mode" in r.vars:
             # This means that the user has selected the questions and
             # Wants to display the details of the selected questions
             crud_strings = s3.crud_strings["survey_complete"]
             question_ids = []
-            vars = r.vars
+            rvars = r.vars
 
-            if "mode" in vars:
-                mode = vars["mode"]
+            if "mode" in rvars:
+                mode = rvars["mode"]
                 series_id = r.id
-                if "selected" in vars:
-                    selected = vars["selected"].split(",")
+                if "selected" in rvars:
+                    selected = rvars["selected"].split(",")
                 else:
                     selected = []
                 q_ltable = s3db.survey_question_list
@@ -1792,13 +1802,13 @@ class S3SurveySeriesModel(S3Model):
                 url_pdf = URL(c="survey", f="series",
                               args=[series_id, "summary.pdf"],
                               vars = {"mode": mode,
-                                      "selected": vars["selected"]}
-                             )
+                                      "selected": rvars["selected"]},
+                              )
                 url_xls = URL(c="survey", f="series",
                               args=[series_id, "summary.xls"],
                               vars = {"mode": mode,
-                                      "selected": vars["selected"]}
-                             )
+                                      "selected": rvars["selected"]},
+                              )
                 s3.formats["pdf"] = url_pdf
                 s3.formats["xls"] = url_xls
             else:
@@ -1834,19 +1844,20 @@ class S3SurveySeriesModel(S3Model):
         """
 
         import hashlib
-        vars = current.request.vars
-        end_part = "%s_%s" % (vars.numericQuestion,
-                              vars.labelQuestion)
+        rvars = current.request.vars
+        end_part = "%s_%s" % (rvars.numericQuestion,
+                              rvars.labelQuestion)
         h = hashlib.sha256()
         h.update(end_part)
         encoded_part = h.hexdigest()
-        chartName = "survey_series_%s_%s" % (vars.series, encoded_part)
-        return chartName
+        chart_name = "survey_series_%s_%s" % (rvars.series, encoded_part)
+        return chart_name
 
     # -------------------------------------------------------------------------
     @staticmethod
     def seriesChartDownload(r, **attr):
         """
+            Helper function to download a Chart
         """
 
         from gluon.contenttype import contenttype
@@ -1857,23 +1868,23 @@ class S3SurveySeriesModel(S3Model):
         response.headers["Content-Type"] = contenttype(".png")
         response.headers["Content-disposition"] = "attachment; filename=\"%s\"" % filename
 
-        chartFile = S3SurveySeriesModel.getChartName()
-        cached = S3Chart.getCachedFile(chartFile)
+        chart_file = S3SurveySeriesModel.getChartName()
+        cached = S3Chart.getCachedFile(chart_file)
         if cached:
             return cached
 
         # The cached version doesn't exist so regenerate it
-        output = dict()
-        vars = current.request.get_vars
-        if "labelQuestion" in vars:
-            labelQuestion = vars.labelQuestion
-        if "numericQuestion" in vars:
-            numQstnList = vars.numericQuestion
-            if not isinstance(numQstnList, (list, tuple)):
-                numQstnList = [numQstnList]
-        if (numQstnList != None) and (labelQuestion != None):
-            S3SurveySeriesModel.drawChart(output, r.id, numQstnList,
-                                          labelQuestion, outputFormat="png")
+        output = {}
+        get_vars = current.request.get_vars
+        if "labelQuestion" in get_vars:
+            label_question = get_vars.labelQuestion
+        if "numericQuestion" in get_vars:
+            numeric_question_list = get_vars.numericQuestion
+            if not isinstance(numeric_question_list, (list, tuple)):
+                numeric_question_list = [numeric_question_list]
+        if (numeric_question_list != None) and (label_question != None):
+            S3SurveySeriesModel.drawChart(output, r.id, numeric_question_list,
+                                          label_question, outputFormat="png")
         return output["chart"]
 
     # -------------------------------------------------------------------------
@@ -1896,32 +1907,32 @@ class S3SurveySeriesModel(S3Model):
         s3 = current.response.s3
 
         # Draw the chart
-        output = dict()
-        vars = r.vars
-        if "viewing" in vars:
-            dummy, series_id = vars.viewing.split(".")
-        elif "series" in vars:
-            series_id = vars.series
+        output = {}
+        rvars = r.vars
+        if "viewing" in rvars:
+            dummy, series_id = rvars.viewing.split(".")
+        elif "series" in rvars:
+            series_id = rvars.series
         else:
             series_id = r.id
-        chartFile = S3SurveySeriesModel.getChartName()
-        cachePath = S3Chart.getCachedPath(chartFile)
-        if cachePath and r.ajax:
-            return IMG(_src=cachePath)
+        chart_file = S3SurveySeriesModel.getChartName()
+        cache_path = S3Chart.getCachedPath(chart_file)
+        if cache_path and r.ajax:
+            return IMG(_src=cache_path)
         else:
-            numQstnList = None
-            labelQuestion = None
+            numeric_question_list = None
+            label_question = None
             post_vars = r.post_vars
             if post_vars is not None:
                 if "labelQuestion" in post_vars:
-                    labelQuestion = post_vars.labelQuestion
+                    label_question = post_vars.labelQuestion
                 if "numericQuestion" in post_vars:
-                    numQstnList = post_vars.numericQuestion
-                    if not isinstance(numQstnList, (list, tuple)):
-                        numQstnList = [numQstnList]
-                if (numQstnList != None) and (labelQuestion != None):
-                    S3SurveySeriesModel.drawChart(output, series_id, numQstnList,
-                                                  labelQuestion)
+                    numeric_question_list = post_vars.numericQuestion
+                    if not isinstance(numeric_question_list, (list, tuple)):
+                        numeric_question_list = [numeric_question_list]
+                if (numeric_question_list != None) and (label_question != None):
+                    S3SurveySeriesModel.drawChart(output, series_id, numeric_question_list,
+                                                  label_question)
         if r.ajax == True and "chart" in output:
             return output["chart"]
 
@@ -1932,71 +1943,73 @@ class S3SurveySeriesModel(S3Model):
             output["rheader"] = rheader
 
         # ---------------------------------------------------------------------
-        def addQstnChkboxToTR(numQstnList, qstn):
+        def addQstnChkboxToTR(numeric_question_list, question):
             """
                 Build the form
             """
 
             tr = TR()
-            if numQstnList != None and qstn["code"] in numQstnList:
+            if numeric_question_list != None and \
+               question["code"] in numeric_question_list:
                 tr.append(INPUT(_type="checkbox",
                                 _name="numericQuestion",
-                                _value=qstn["code"],
+                                _value=question["code"],
                                 value=True,
                                 )
                           )
             else:
                 tr.append(INPUT(_type="checkbox",
                                 _name="numericQuestion",
-                                _value=qstn["code"],
+                                _value=question["code"],
                                 )
                           )
-            tr.append(LABEL(qstn["name"]))
+            tr.append(LABEL(question["name"]))
             return tr
 
         if series_id == None:
             return output
-        allQuestions = survey_getAllQuestionsForSeries(series_id)
-        labelTypeList = ("String",
-                         "Option",
-                         "YesNo",
-                         "YesNoDontKnow",
-                         "Location",
-                         )
-        labelQuestions = survey_get_series_questions_of_type(allQuestions,
-                                                             labelTypeList)
-        lblQstns = []
-        for question in labelQuestions:
-            lblQstns.append(question["name"])
-        numericTypeList = ("Numeric")
+
+        all_questions = survey_getAllQuestionsForSeries(series_id)
+        label_type_list = ("String",
+                           "Option",
+                           "YesNo",
+                           "YesNoDontKnow",
+                           "Location",
+                           )
+        label_questions = survey_get_series_questions_of_type(all_questions,
+                                                              label_type_list)
+        question_labels = []
+        for question in label_questions:
+            question_labels.append(question["name"])
+        numeric_type_list = ("Numeric")
 
         form = FORM(_id="mapGraphForm")
         table = TABLE()
 
-        labelQstn = SELECT(lblQstns, _name="labelQuestion", value=labelQuestion)
+        label_question = SELECT(question_labels, _name="labelQuestion", value=label_question)
         table.append(TR(TH("%s:" % T("Select Label Question")),
                         _class="survey_question"))
-        table.append(labelQstn)
+        table.append(label_question)
 
         table.append(TR(TH(T("Select Numeric Questions (one or more):")),
                         _class="survey_question"))
         # First add the special questions
-        specialQuestions = [{"code": "Count",
-                             "name": T("Number of Completed Assessment Forms"),
-                             }]
-        innerTable = TABLE()
-        for qstn in specialQuestions:
-            tr = addQstnChkboxToTR(numQstnList, qstn)
-            innerTable.append(tr)
-        table.append(innerTable)
+        special_questions = [{"code": "Count",
+                              "name": T("Number of Completed Assessment Forms"),
+                              }]
+        inner_table = TABLE()
+        for question in special_questions:
+            tr = addQstnChkboxToTR(numeric_question_list, question)
+            inner_table.append(tr)
+        table.append(inner_table)
         # Now add the numeric questions
-        numericQuestions = survey_get_series_questions_of_type(allQuestions,
-                                                               numericTypeList)
-        innerTable = TABLE()
-        for qstn in numericQuestions:
-            tr = addQstnChkboxToTR(numQstnList, qstn)
-            innerTable.append(tr)
-        table.append(innerTable)
+        numeric_questions = survey_get_series_questions_of_type(all_questions,
+                                                                numeric_type_list)
+        inner_table = TABLE()
+        for question in numeric_questions:
+            tr = addQstnChkboxToTR(numeric_question_list, question)
+            inner_table.append(tr)
+        table.append(inner_table)
         form.append(table)
 
         series = INPUT(_type="hidden",
@@ -2008,6 +2021,7 @@ class S3SurveySeriesModel(S3Model):
                        _id="chart_btn",
                        _name="Chart",
                        _value=T("Display Chart"),
+                       _class="small primary button",
                        )
         form.append(series)
         form.append(button)
@@ -2033,77 +2047,83 @@ $('#chart_btn').click(function(){
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def drawChart(output, series_id, numQstnList, labelQuestion, outputFormat=None):
+    def drawChart(output,
+                  series_id,
+                  numeric_question_list,
+                  label_question,
+                  outputFormat=None):
         """
+            Helper function to create/draw Chart
         """
 
         T = current.T
 
-        getAnswers = survey_getAllAnswersForQuestionInSeries
-        gqstn = survey_getQuestionFromName(labelQuestion, series_id)
+        get_answers = survey_getAllAnswersForQuestionInSeries
+        gqstn = survey_getQuestionFromName(label_question, series_id)
         gqstn_id = gqstn["qstn_id"]
-        ganswers = getAnswers(gqstn_id, series_id)
-        dataList = []
-        legendLabels = []
-        for numericQuestion in numQstnList:
-            if numericQuestion == "Count":
+        ganswers = get_answers(gqstn_id, series_id)
+        data_list = []
+        legend_labels = []
+        for numeric_question in numeric_question_list:
+            if numeric_question == "Count":
                 # get the count of replies for the label question
                 gqstn_type = gqstn["type"]
-                analysisTool = survey_analysis_type[gqstn_type](gqstn_id, ganswers)
-                map = analysisTool.uniqueCount()
-                label = map.keys()
-                data = map.values()
-                legendLabels.append(T("Count of Question"))
+                analysis_tool = survey_analysis_type[gqstn_type](gqstn_id, ganswers)
+                mapdict = analysis_tool.uniqueCount()
+                label = mapdict.keys()
+                data = mapdict.values()
+                legend_labels.append(T("Count of Question"))
             else:
-                qstn = survey_getQuestionFromCode(numericQuestion, series_id)
+                qstn = survey_getQuestionFromCode(numeric_question, series_id)
                 qstn_id = qstn["qstn_id"]
                 qstn_type = qstn["type"]
-                answers = getAnswers(qstn_id, series_id)
-                analysisTool = survey_analysis_type[qstn_type](qstn_id, answers)
-                label = analysisTool.qstnWidget.fullName()
+                answers = get_answers(qstn_id, series_id)
+                analysis_tool = survey_analysis_type[qstn_type](qstn_id, answers)
+                label = analysis_tool.qstnWidget.fullName()
                 if len(label) > 20:
                     label = "%s..." % label[0:20]
-                legendLabels.append(label)
-                grouped = analysisTool.groupData(ganswers)
+                legend_labels.append(label)
+                grouped = analysis_tool.groupData(ganswers)
                 aggregate = "Sum"
-                filtered = analysisTool.filter(aggregate, grouped)
-                (label, data) = analysisTool.splitGroupedData(filtered)
+                filtered = analysis_tool.filter(aggregate, grouped)
+                (label, data) = analysis_tool.splitGroupedData(filtered)
             if data != []:
-                dataList.append(data)
+                data_list.append(data)
 
-        if dataList == []:
+        if data_list == []:
             output["chart"] = H4(T("There is insufficient data to draw a chart from the questions selected"))
         else:
-            chartFile = S3SurveySeriesModel.getChartName()
-            chart = S3Chart(path=chartFile, width=7.2)
+            chart_file = S3SurveySeriesModel.getChartName()
+            chart = S3Chart(path=chart_file, width=7.2)
             chart.asInt = True
-            chart.survey_bar(labelQuestion,
-                             dataList,
+            chart.survey_bar(label_question,
+                             data_list,
                              label,
-                             legendLabels)
+                             legend_labels)
             if outputFormat == None:
                 image = chart.draw()
             else:
                 image = chart.draw(output=outputFormat)
             output["chart"] = image
             request = current.request
-            chartLink = A(T("Download"),
-                          _href=URL(c="survey",
-                                    f="series",
-                                    args=request.args,
-                                    vars=request.vars
-                                    )
-                          )
-            output["chartDownload"] = chartLink
+            chart_link = A(T("Download"),
+                           _href=URL(c="survey",
+                                     f="series",
+                                     args=request.args,
+                                     vars=request.vars
+                                     )
+                           )
+            output["chartDownload"] = chart_link
 
     # -------------------------------------------------------------------------
     @staticmethod
     def seriesMap(r, **attr):
         """
+            Helper function to show a map with markers on the places
+            where assessments are carried out
         """
 
         import math
-        from s3survey import S3AnalysisPriority
 
         T = current.T
         response = current.response
@@ -2116,7 +2136,7 @@ $('#chart_btn').click(function(){
             rheader = rheader(r)
             output = dict(rheader=rheader)
         else:
-            output = dict()
+            output = {}
         crud_strings = s3.crud_strings["survey_series"]
         viewing = r.get_vars.get("viewing", None)
         if viewing:
@@ -2144,80 +2164,79 @@ $('#chart_btn').click(function(){
         bounds = {}
 
         # Build the drop down list of priority questions
-        allQuestions = survey_getAllQuestionsForSeries(series_id)
-        numericTypeList = ("Numeric")
-        numericQuestions = survey_get_series_questions_of_type(allQuestions,
-                                                               numericTypeList)
-        numQstns = []
-        for question in numericQuestions:
-            numQstns.append(question["name"])
+        all_questions = survey_getAllQuestionsForSeries(series_id)
+        numeric_type_list = ("Numeric")
+        numeric_questions = survey_get_series_questions_of_type(all_questions,
+                                                                numeric_type_list)
+        num_questions = []
+        for question in numeric_questions:
+            num_questions.append(question["name"])
 
         form = FORM(_id="mapQstnForm")
         table = TABLE()
 
         if pqstn:
-            priorityQstn = SELECT(numQstns, _name="pqstn_name",
+            priority_question = SELECT(num_questions, _name="pqstn_name",
                                   value=pqstn_name)
         else:
-            priorityQstn = None
+            priority_question = None
 
         # Set up the legend
-        priorityObj = S3AnalysisPriority(range=[-.66, .66],
-                                         colour={-1:"#888888", # grey
-                                                  0:"#008000", # green
-                                                  1:"#FFFF00", # yellow
-                                                  2:"#FF0000", # red
-                                                  },
-                                         # Make Higher-priority show up more clearly
-                                         opacity={-1:0.5,
-                                                   0:0.6,
-                                                   1:0.7,
-                                                   2:0.8,
-                                                   },
-                                         image={-1:"grey",
-                                                 0:"green",
-                                                 1:"yellow",
-                                                 2:"red",
-                                                 },
-                                         desc={-1:"No Data",
-                                                0:"Low",
-                                                1:"Average",
-                                                2:"High",
-                                                },
-                                          zero = True)
+        priority_object = survey_S3AnalysisPriority(range=[-.66, .66],
+                                                    colour={-1:"#888888", # grey
+                                                             0:"#008000", # green
+                                                             1:"#FFFF00", # yellow
+                                                             2:"#FF0000", # red
+                                                            },
+                                                    # Make Higher-priority show up more clearly
+                                                    opacity={-1:0.5,
+                                                              0:0.6,
+                                                              1:0.7,
+                                                              2:0.8,
+                                                             },
+                                                    image={-1:"grey",
+                                                            0:"green",
+                                                            1:"yellow",
+                                                            2:"red",
+                                                           },
+                                                    desc={-1:"No Data",
+                                                           0:"Low",
+                                                           1:"Average",
+                                                           2:"High",
+                                                          },
+                                                    zero = True)
         for series_id in series:
             series_name = series[series_id]
             response_locations = getLocationList(series_id)
             if pqstn == {} and pqstn_name:
-                for question in numericQuestions:
+                for question in numeric_questions:
                     if pqstn_name == question["name"]:
                         pqstn = question
             if pqstn != {}:
                 pqstn_id = pqstn["qstn_id"]
                 answers = survey_getAllAnswersForQuestionInSeries(pqstn_id,
                                                                   series_id)
-                analysisTool = survey_analysis_type["Numeric"](pqstn_id,
-                                                               answers)
-                analysisTool.advancedResults()
+                analysis_tool = survey_analysis_type["Numeric"](pqstn_id,
+                                                                answers)
+                analysis_tool.advancedResults()
             else:
-                analysisTool = None
-            if analysisTool != None and not math.isnan(analysisTool.mean):
-                pBand = analysisTool.priorityBand(priorityObj)
-                legend = TABLE(
-                           TR (TH(T("Marker Levels"), _colspan=3),
+                analysis_tool = None
+            if analysis_tool != None and not math.isnan(analysis_tool.mean):
+                priority_band = analysis_tool.priorityBand(priority_object)
+                legend = TABLE(TR(TH(T("Marker Levels"), _colspan=3),
                                _class= "survey_question"),
-                           )
-                for key in priorityObj.image.keys():
-                    tr = TR(TD(priorityObj.imageURL(r.application,
+                               )
+                for key in priority_object.image.keys():
+                    tr = TR(TD(priority_object.imageURL(r.application,
                                                     key)),
-                            TD(priorityObj.desc(key)),
-                            TD(priorityObj.rangeText(key, pBand)),
-                           )
+                            TD(priority_object.desc(key)),
+                            TD(priority_object.rangeText(key, priority_band)),
+                            )
                     legend.append(tr)
                 output["legend"] = legend
 
             if len(response_locations) > 0:
-                for i in range(0, len(response_locations)):
+                for i in xrange(len(response_locations)):
                     location = response_locations[i]
                     complete_id = location.complete_id
                     # Insert how we want this to appear on the map
@@ -2231,13 +2250,13 @@ $('#chart_btn').click(function(){
                               )
                     location.shape = "circle"
                     location.size = 5
-                    if analysisTool is None:
+                    if analysis_tool is None:
                         priority = -1
                     else:
-                        priority = analysisTool.priority(complete_id,
-                                                         priorityObj)
-                    location.colour = priorityObj.colour[priority]
-                    location.opacity = priorityObj.opacity[priority]
+                        priority = analysis_tool.priority(complete_id,
+                                                          priority_object)
+                    location.colour = priority_object.colour[priority]
+                    location.opacity = priority_object.opacity[priority]
                     location.popup_url = url
                     location.popup_label = response_locations[i].name
                 feature_queries.append({ "name": "%s: Assessments" % series_name,
@@ -2251,13 +2270,13 @@ $('#chart_btn').click(function(){
                     bounds = merge_bounds([bounds, new_bounds])
         if bounds == {}:
             bounds = gis.get_bounds()
-        map = gis.show_map(feature_queries = feature_queries,
-                           #height = 600,
-                           #width = 720,
-                           bbox = bounds,
-                           #collapsed = True,
-                           catalogue_layers = True,
-                           )
+        gismap = gis.show_map(feature_queries = feature_queries,
+                              #height = 600,
+                              #width = 720,
+                              bbox = bounds,
+                              #collapsed = True,
+                              catalogue_layers = True,
+                              )
         series = INPUT(_type="hidden",
                        _id="selectSeriesID",
                        _name="series",
@@ -2265,12 +2284,14 @@ $('#chart_btn').click(function(){
                        )
         table.append(TR(TH("%s:" % T("Display Question on Map")),
                         _class="survey_question"))
-        table.append(priorityQstn)
+        table.append(priority_question)
         table.append(series)
         form.append(table)
 
         button = INPUT(_type="submit", _name="Chart",
-                       _value=T("Update Map"))
+                       _value=T("Update Map"),
+                       _class="small primary button",
+                       )
         # REMOVED until we have dynamic loading of maps.
         #button = INPUT(_type="button", _id="map_btn", _name="Map_Btn", _value=T("Select the Question"))
         #jurl = URL(c=r.prefix, f=r.function, args=r.args)
@@ -2302,15 +2323,16 @@ def survey_serieslist_dataTable_post(r):
         Replace the Action Buttons
     """
 
-    #S3CRUD.action_buttons(r)
-    current.response.s3.actions = [
-                   dict(label=current.messages.UPDATE,
-                        _class="action-btn edit",
-                        url=URL(c="survey", f="series",
-                                args=["[id]", "summary"]
-                                )
-                       ),
-                  ]
+    current.response.s3.actions = [{"label": str(current.messages.UPDATE),
+                                    "_class": "action-btn edit",
+                                    "url": URL(c="survey",
+                                               f="series",
+                                               args=["[id]",
+                                                     "summary",
+                                                     ],
+                                               ),
+                                    },
+                                   ]
 
 # =============================================================================
 def survey_series_rheader(r):
@@ -2343,59 +2365,59 @@ def survey_series_rheader(r):
                     (T("Map"), "map"),
                     ]
             if current.auth.s3_has_permission("create", "survey_complete"):
-                tabs.insert(1, (T("Enter Completed Assessment"), "newAssessment/"))
+                tabs.insert(1, (T("Enter Completed Assessment"), "new_assessment/"))
 
             rheader_tabs = s3_rheader_tabs(r, tabs)
 
-            completeTable = s3db.survey_complete
-            qty = db(completeTable.series_id == record.id).count()
+            ctable = s3db.survey_complete
+            qty = db(ctable.series_id == record.id).count()
             tsection = TABLE(_class="survey-complete-list")
-            lblSection = T("Number of Completed Assessment Forms")
-            rsection = TR(TH(lblSection), TD(qty))
+            label_section = T("Number of Completed Assessment Forms")
+            rsection = TR(TH(label_section), TD(qty))
             tsection.append(rsection)
 
             urlexport = URL(c="survey", f="series_export_formatted",
                             args=[record.id])
-            tranForm = FORM(_action=urlexport)
-            translationList = survey_getAllTranslationsForSeries(record.id)
-            if len(translationList) > 0:
-                tranTable = TABLE()
+            translate_form = FORM(_action=urlexport)
+            translation_list = survey_getAllTranslationsForSeries(record.id)
+            if len(translation_list) > 0:
+                translation_table = TABLE()
                 tr = TR(INPUT(_type='radio',
-                              _name='translationLanguage',
+                              _name='translation_language',
                               _value="Default",
                               _checked=True,
                               ),
                         LABEL("Default"))
-                colCnt = 1
-                for translation in translationList:
+                column_count = 1
+                for translation in translation_list:
                     # include a maximum of 4 translation languages per row
-                    if colCnt == 4:
-                        tranTable.append(tr)
+                    if column_count == 4:
+                        translation_table.append(tr)
                         tr = TR()
-                        colCnt = 0
+                        column_count = 0
                     tr.append(INPUT(_type="radio",
-                                    _name="translationLanguage",
+                                    _name="translation_language",
                                     _value=translation["code"],
                                    ))
                     tr.append(LABEL(translation["language"]))
-                    colCnt += 1
-                if colCnt != 0:
-                    tranTable.append(tr)
-                tranForm.append(tranTable)
+                    column_count += 1
+                if column_count != 0:
+                    translation_table.append(tr)
+                translate_form.append(translation_table)
             export_xls_btn = INPUT(_type="submit",
                                    _id="export_xls_btn",
                                    _name="Export_Spreadsheet",
                                    _value=T("Download Assessment Form Spreadsheet"),
                                    _class="action-btn"
                                   )
-            tranForm.append(export_xls_btn)
+            translate_form.append(export_xls_btn)
             export_rtf_btn = INPUT(_type="submit",
                                    _id="export_rtf_btn",
                                    _name="Export_Word",
                                    _value=T("Download Assessment Form Document"),
                                    _class="action-btn"
                                    )
-            tranForm.append(export_rtf_btn)
+            translate_form.append(export_rtf_btn)
             urlimport = URL(c="survey",
                             f="series",
                             args=[record.id, "export_responses"],
@@ -2407,17 +2429,16 @@ def survey_series_rheader(r):
                             ),
                           )
 
-            rheader = DIV(TABLE(
-                          TR(TH("%s: " % T("Template")),
-                             survey_template_represent(record.template_id),
-                             TH("%s: " % T("Name")),
-                             record.name,
-                             TH("%s: " % T("Status")),
-                             s3db.survey_series_status[record.status],
-                             ),
-                              ),
+            rheader = DIV(TABLE(TR(TH("%s: " % T("Template")),
+                                   survey_template_represent(record.template_id),
+                                   TH("%s: " % T("Name")),
+                                   record.name,
+                                   TH("%s: " % T("Status")),
+                                   s3db.survey_series_status[record.status],
+                                   ),
+                                ),
                           tsection,
-                          tranForm,
+                          translate_form,
                           buttons,
                           rheader_tabs)
             return rheader
@@ -2437,7 +2458,7 @@ def survey_buildQuestionnaireFromSeries(series_id, complete_id=None):
     return buildQuestionsForm(questions, complete_id)
 
 # =============================================================================
-def survey_save_answers_for_series(series_id, complete_id, vars):
+def survey_save_answers_for_series(series_id, complete_id, rvars):
     """
         function to save the list of answers for a completed series
 
@@ -2445,25 +2466,26 @@ def survey_save_answers_for_series(series_id, complete_id, vars):
     """
 
     questions = survey_getAllQuestionsForSeries(series_id)
-    return saveAnswers(questions, series_id, complete_id, vars)
+    return saveAnswers(questions, series_id, complete_id, rvars)
 
 # =============================================================================
-def saveAnswers(questions, series_id, complete_id, vars):
+def saveAnswers(questions, series_id, complete_id, rvars):
     """
+        Insert/Update a record in survey_complete
     """
 
     text = ""
     table = current.s3db.survey_complete
     for question in questions:
         code = question["code"]
-        if (code in vars) and vars[code] != "":
-            line = '"%s","%s"\n' % (code, vars[code])
+        if (code in rvars) and rvars[code] != "":
+            line = '"%s","%s"\n' % (code, rvars[code])
             text += line
     if complete_id == None:
         # Insert into database
-        id = table.insert(series_id = series_id, answer_list = text)
-        S3SurveyCompleteModel.completeOnAccept(id)
-        return id
+        record_id = table.insert(series_id = series_id, answer_list = text)
+        S3SurveyCompleteModel.completeOnAccept(record_id)
+        return record_id
     else:
         # Update the complete_id record
         current.db(table.id == complete_id).update(answer_list = text)
@@ -2473,12 +2495,14 @@ def saveAnswers(questions, series_id, complete_id, vars):
 # =============================================================================
 def survey_getPriorityQuestionForSeries(series_id):
     """
+        Get the Priority Question for series corresponding to series_id
     """
 
-    templateRec = survey_getTemplateFromSeries(series_id)
-    if templateRec != None:
-        priorityQstnCode = templateRec["priority_qstn"]
-        question = survey_getQuestionFromCode(priorityQstnCode, series_id)
+    template_rec = survey_getTemplateFromSeries(series_id)
+    if template_rec != None:
+        priority_question_code = template_rec["priority_qstn"]
+        question = survey_getQuestionFromCode(priority_question_code,
+                                              series_id)
         return question
     else:
         return None
@@ -2486,6 +2510,8 @@ def survey_getPriorityQuestionForSeries(series_id):
 # =============================================================================
 def buildSeriesSummary(series_id, posn_offset):
     """
+        Build series summary with questions and number of replies for
+        each question in the template
     """
 
     from s3.s3data import S3DataTable
@@ -2508,7 +2534,7 @@ def buildSeriesSummary(series_id, posn_offset):
         if question["type"] == "Grid":
             continue
         question_id = question["qstn_id"]
-        widgetObj = survey_getWidgetFromQuestion(question_id)
+        widget_object = survey_getWidgetFromQuestion(question_id)
         br = TR()
         posn = int(question["posn"])+posn_offset
         br.append(TD(INPUT(_id="select%s" % posn,
@@ -2516,21 +2542,21 @@ def buildSeriesSummary(series_id, posn_offset):
                            _class="bulkcheckbox",
                            )))
         br.append(posn) # add an offset to make all id's +ve
-        br.append(widgetObj.fullName())
+        br.append(widget_object.fullName())
         #br.append(question["name"])
-        type = widgetObj.type_represent()
+        qtype = widget_object.type_represent()
         answers = survey_getAllAnswersForQuestionInSeries(question_id,
                                                           series_id)
-        analysisTool = survey_analysis_type[question["type"]](question_id,
-                                                              answers)
-        chart = analysisTool.chartButton(series_id)
+        analysis_tool = survey_analysis_type[question["type"]](question_id,
+                                                               answers)
+        chart = analysis_tool.chartButton(series_id)
         cell = TD()
-        cell.append(type)
+        cell.append(qtype)
         if chart:
             cell.append(chart)
         br.append(cell)
-        analysisTool.count()
-        br.append(analysisTool.summary())
+        analysis_tool.count()
+        br.append(analysis_tool.summary())
 
         body.append(br)
 
@@ -2552,7 +2578,7 @@ def buildSeriesSummary(series_id, posn_offset):
                                   **attr
                                   )
     series = INPUT(_type="hidden", _id="selectSeriesID", _name="series",
-                _value="%s" % series_id)
+                   _value="%s" % series_id)
     form.append(series)
     return form
 
@@ -2662,7 +2688,7 @@ class S3SurveyCompleteModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def extractAnswerFromAnswerList(answerList, qstnCode):
+    def extractAnswerFromAnswerList(answer_list, question_code):
         """
             function to extract the answer for the question code
             passed in from the list of answers. This is in a CSV
@@ -2670,12 +2696,12 @@ class S3SurveyCompleteModel(S3Model):
             saveAnswers()
         """
 
-        start = answerList.find(qstnCode)
+        start = answer_list.find(question_code)
         if start == -1:
             return None
-        start = start + len(qstnCode) + 3
-        end = answerList.find('"', start)
-        answer = answerList[start:end]
+        start = start + len(question_code) + 3
+        end = answer_list.find('"', start)
+        answer = answer_list[start:end]
         return answer
 
     # -------------------------------------------------------------------------
@@ -2685,21 +2711,21 @@ class S3SurveyCompleteModel(S3Model):
         """
 
         T = current.T
-        vars = form.vars
-        if "series_id" not in vars or vars.series_id == None:
+        form_vars = form.vars
+        if "series_id" not in form_vars or form_vars.series_id == None:
             form.errors.series_id = T("Series details missing")
             return False
-        if "answer_list" not in vars or vars.answer_list == None:
+        if "answer_list" not in form_vars or form_vars.answer_list == None:
             form.errors.answer_list = T("The answers are missing")
             return False
-        series_id = vars.series_id
-        answer_list = vars.answer_list
+        series_id = form_vars.series_id
+        answer_list = form_vars.answer_list
         qstn_list = survey_getAllQuestionsForSeries(series_id)
         qstns = []
         for qstn in qstn_list:
             qstns.append(qstn["code"])
-        answerList = answer_list.splitlines(True)
-        for answer in answerList:
+        temp_answer_list = answer_list.splitlines(True)
+        for answer in temp_answer_list:
             qstn_code = answer[1:answer.find('","')]
             if qstn_code not in qstns:
                 msg = "%s: %s" % (T("Unknown question code"), qstn_code)
@@ -2722,13 +2748,15 @@ class S3SurveyCompleteModel(S3Model):
             defined by the template and store this in the location field
         """
 
-        if form.vars.id:
-            S3SurveyCompleteModel.completeOnAccept(form.vars.id)
+        complete_id = form.vars.id
+        if complete_id:
+            S3SurveyCompleteModel.completeOnAccept(complete_id)
 
     # -------------------------------------------------------------------------
     @staticmethod
     def completeOnAccept(complete_id):
         """
+            Helper function for complete_onaccept
         """
 
         # Get the basic data that is needed
@@ -2737,30 +2765,30 @@ class S3SurveyCompleteModel(S3Model):
         atable = s3db.survey_answer
         record = rtable[complete_id]
         series_id = record.series_id
-        purgePrefix = "survey_series_%s" % series_id
-        S3Chart.purgeCache(purgePrefix)
+        purge_prefix = "survey_series_%s" % series_id
+        S3Chart.purgeCache(purge_prefix)
         if series_id == None:
             return
-        # Save all the answers from answerList in the survey_answer table
-        answerList = record.answer_list
-        S3SurveyCompleteModel.importAnswers(complete_id, answerList)
+        # Save all the answers from answer_list in the survey_answer table
+        answer_list = record.answer_list
+        S3SurveyCompleteModel.importAnswers(complete_id, answer_list)
         # Extract the default template location question and save the
         # answer in the location field
-        templateRec = survey_getTemplateFromSeries(series_id)
-        locDetails = templateRec["location_detail"]
-        if not locDetails:
+        template_record = survey_getTemplateFromSeries(series_id)
+        location_details = template_record["location_detail"]
+        if not location_details:
             return
-        widgetObj = get_default_location(complete_id)
-        if widgetObj:
-            current.db(rtable.id == complete_id).update(location = widgetObj.repr())
+        widget_obj = get_default_location(complete_id)
+        if widget_obj:
+            current.db(rtable.id == complete_id).update(location = widget_obj.repr())
         locations = get_location_details(complete_id)
         S3SurveyCompleteModel.importLocations(locations)
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def importAnswers(id, list):
+    def importAnswers(complete_id, question_list):
         """
-            private function used to save the answer_list stored in
+            Private function used to save the answer_list stored in
             survey_complete into answer records held in survey_answer
         """
 
@@ -2768,14 +2796,14 @@ class S3SurveyCompleteModel(S3Model):
         import os
 
         strio = StringIO()
-        strio.write(list)
+        strio.write(question_list)
         strio.seek(0)
         answer = []
         append = answer.append
         reader = csv.reader(strio)
         for row in reader:
             if row != None:
-                row.insert(0, id)
+                row.insert(0, complete_id)
                 append(row)
 
         from tempfile import TemporaryFile
@@ -2800,36 +2828,36 @@ class S3SurveyCompleteModel(S3Model):
     @staticmethod
     def importLocations(location_dict):
         """
-            private function used to save the locations to gis.location
+            Private function used to save the locations to gis.location
         """
 
         import csv
         import os
 
-        lastLocWidget = None
-        codeList = ["STD-L0","STD-L1","STD-L2","STD-L3","STD-L4"]
-        headingList = ["Country",
-                       "ADM1_NAME",
-                       "ADM2_NAME",
-                       "ADM3_NAME",
-                       "ADM4_NAME"
-                      ]
-        cnt = 0
+        last_loc_widget = None
+        code_list = ["STD-L0", "STD-L1", "STD-L2", "STD-L3", "STD-L4"]
+        heading_list = ["Country",
+                        "ADM1_NAME",
+                        "ADM2_NAME",
+                        "ADM3_NAME",
+                        "ADM4_NAME",
+                        ]
+
         answer = []
         headings = []
         aappend = answer.append
         happend = headings.append
-        for loc in codeList:
-            if loc in location_dict:
-                aappend(location_dict[loc].repr())
-                lastLocWidget = location_dict[loc]
-                happend(headingList[cnt])
-            cnt += 1
+        for position, location in enumerate(code_list):
+            if location in location_dict:
+                aappend(location_dict[location].repr())
+                last_loc_widget = location_dict[location]
+                happend(heading_list[position])
+
         # Check that we have at least one location question answered
-        if lastLocWidget == None:
+        if last_loc_widget == None:
             return
-        codeList = ["STD-P-Code","STD-Lat","STD-Lon"]
-        for loc in codeList:
+        code_list = ["STD-P-Code", "STD-Lat", "STD-Lon"]
+        for loc in code_list:
             if loc in location_dict:
                 aappend(location_dict[loc].repr())
             else:
@@ -2850,7 +2878,7 @@ class S3SurveyCompleteModel(S3Model):
                            "gis",
                            "location.xsl")
         resource = current.s3db.resource("gis_location")
-        resource.import_xml(csvfile, stylesheet = xsl, format="csv",)
+        resource.import_xml(csvfile, stylesheet = xsl, format="csv")
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2865,7 +2893,7 @@ class S3SurveyCompleteModel(S3Model):
         query = (table.answer_list == answers)
         try:
             duplicate = current.db(query).select(table.id,
-                                                limitby=(0, 1)).first()
+                                                 limitby=(0, 1)).first()
             if duplicate:
                 item.id = duplicate.id
                 item.method = item.METHOD.UPDATE
@@ -2888,12 +2916,12 @@ class S3SurveyCompleteModel(S3Model):
             complete_id = form_vars.complete_id
             question_id = form_vars.question_id
             value = form_vars.value
-            widgetObj = survey_getWidgetFromQuestion(question_id)
-            newValue = widgetObj.onaccept(value)
-            if newValue != value:
+            widget_obj = survey_getWidgetFromQuestion(question_id)
+            new_value = widget_obj.onaccept(value)
+            if new_value != value:
                 query = (atable.question_id == question_id) & \
                         (atable.complete_id == complete_id)
-                current.db(query).update(value = newValue)
+                current.db(query).update(value = new_value)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2932,14 +2960,18 @@ def survey_answerlist_dataTable_post(r):
         Replace Action Buttons
     """
 
-    #S3CRUD.action_buttons(r)
-    current.response.s3.actions = [
-                   dict(label=current.messages["UPDATE"],
-                        _class="action-btn edit",
-                        url=URL(c="survey", f="series",
-                                args=[r.id, "complete", "[id]", "update"])
-                       ),
-                  ]
+    current.response.s3.actions = [{"label": str(current.messages.UPDATE),
+                                    "_class": "action-btn edit",
+                                    "url": URL(c="survey",
+                                               f="series",
+                                               args=[r.id,
+                                                     "complete",
+                                                     "[id]",
+                                                     "update",
+                                                     ],
+                                               ),
+                                    },
+                                   ]
 
 # =============================================================================
 def survey_answer_list_represent(value):
@@ -2952,13 +2984,13 @@ def survey_answer_list_represent(value):
     db = current.db
     qtable = current.s3db.survey_question
     answer_text = value
-    list = answer_text.splitlines()
+    answer_list = answer_text.splitlines()
     result = TABLE()
     questions = {}
     xml_decode = S3Codec.xml_decode
-    for line in list:
+    for line in answer_list:
         line = xml_decode(line)
-        (question, answer) = line.split(",",1)
+        (question, answer) = line.split(",", 1)
         question = question.strip("\" ")
         if question in questions:
             question = questions[question]
@@ -2985,21 +3017,21 @@ def get_location_details(complete_id):
     s3db = current.s3db
 
     locations = {}
-    comtable = s3db.survey_complete
-    qsntable = s3db.survey_question
-    answtable = s3db.survey_answer
-    query = (answtable.question_id == qsntable.id) & \
-            (answtable.complete_id == comtable.id)
-    codeList = ["STD-P-Code",
-                "STD-L0", "STD-L1", "STD-L2", "STD-L3", "STD-L4",
-                "STD-Lat", "STD-Lon"]
-    for locCode in codeList:
-        record = db(query & (qsntable.code == locCode)).select(qsntable.id,
-                                                               limitby=(0, 1)).first()
+    ctable = s3db.survey_complete
+    qtable = s3db.survey_question
+    atable = s3db.survey_answer
+    query = (atable.question_id == qtable.id) & \
+            (atable.complete_id == ctable.id)
+    code_list = ["STD-P-Code",
+                 "STD-L0", "STD-L1", "STD-L2", "STD-L3", "STD-L4",
+                 "STD-Lat", "STD-Lon"]
+    for location_code in code_list:
+        record = db(query & (qtable.code == location_code)).select(qtable.id,
+                                                                   limitby=(0, 1)).first()
         if record:
-            widgetObj = survey_getWidgetFromQuestion(record.id)
-            widgetObj.loadAnswer(complete_id, record.id)
-            locations[locCode] = widgetObj
+            widget_obj = survey_getWidgetFromQuestion(record.id)
+            widget_obj.loadAnswer(complete_id, record.id)
+            locations[location_code] = widget_obj
     return locations
 
 # =============================================================================
@@ -3012,21 +3044,21 @@ def get_default_location(complete_id):
     db = current.db
     s3db = current.s3db
 
-    comtable = s3db.survey_complete
-    qsntable = s3db.survey_question
-    answtable = s3db.survey_answer
-    query = (answtable.question_id == qsntable.id) & \
-            (answtable.complete_id == comtable.id)
-    codeList = ["STD-L4", "STD-L3", "STD-L2", "STD-L1", "STD-L0"]
-    for locCode in codeList:
-        record = db(query & (qsntable.code == locCode)).select(qsntable.id,
-                                                               limitby=(0, 1)).first()
+    ctable = s3db.survey_complete
+    qtable = s3db.survey_question
+    atable = s3db.survey_answer
+    query = (atable.question_id == qtable.id) & \
+            (atable.complete_id == ctable.id)
+    code_list = ["STD-L4", "STD-L3", "STD-L2", "STD-L1", "STD-L0"]
+    for location_code in code_list:
+        record = db(query & (qtable.code == location_code)).select(qtable.id,
+                                                                   limitby=(0, 1)).first()
         if record:
-            widgetObj = survey_getWidgetFromQuestion(record.id)
+            widget_obj = survey_getWidgetFromQuestion(record.id)
             break
     if record:
-        widgetObj.loadAnswer(complete_id, record.id)
-        return widgetObj
+        widget_obj.loadAnswer(complete_id, record.id)
+        return widget_obj
     else:
         return None
 
@@ -3056,12 +3088,13 @@ def survey_getAllAnswersForQuestionInSeries(question_id, series_id):
     return answers
 
 # =============================================================================
-def buildTableFromCompletedList(dataSource):
+def buildTableFromCompletedList(data_source):
     """
+        Build a table to display completed list
     """
 
-    headers = dataSource[0]
-    items = dataSource[2:]
+    headers = data_source[0]
+    items = data_source[2:]
 
     table = TABLE(_id="completed_list",
                   _class="dataTable display")
@@ -3116,17 +3149,17 @@ def buildCompletedList(series_id, question_id_list):
     types = []
     items = []
     qstn_posn = 0
-    rowLen = len(question_id_list)
+    row_len = len(question_id_list)
     complete_lookup = {}
     for question_id in question_id_list:
         answers = survey_getAllAnswersForQuestionInSeries(question_id,
                                                           series_id)
-        widgetObj = survey_getWidgetFromQuestion(question_id)
+        widget_obj = survey_getWidgetFromQuestion(question_id)
 
         question = db(qtable.id == question_id).select(qtable.name,
                                                        limitby=(0, 1)).first()
         happend(question.name)
-        types.append(widgetObj.db_type())
+        types.append(widget_obj.db_type())
 
         for answer in answers:
             complete_id = answer["complete_id"]
@@ -3134,9 +3167,9 @@ def buildCompletedList(series_id, question_id_list):
                 row = complete_lookup[complete_id]
             else:
                 row = len(complete_lookup)
-                complete_lookup[complete_id]=row
-                items.append([''] * rowLen)
-            items[row][qstn_posn] = widgetObj.repr(answer["value"])
+                complete_lookup[complete_id] = row
+                items.append([''] * row_len)
+            items[row][qstn_posn] = widget_obj.repr(answer["value"])
         qstn_posn += 1
 
     return [headers] + [types] + items
@@ -3149,7 +3182,7 @@ def getLocationList(series_id):
 
     response_locations = []
     rappend = response_locations.append
-    codeList = ["STD-L4", "STD-L3", "STD-L2", "STD-L1", "STD-L0"]
+    code_list = ["STD-L4", "STD-L3", "STD-L2", "STD-L1", "STD-L0"]
 
     table = current.s3db.survey_complete
     rows = current.db(table.series_id == series_id).select(table.id,
@@ -3163,13 +3196,13 @@ def getLocationList(series_id):
         for line in answer_list:
             (question, answer) = line.split(",", 1)
             question = question.strip('"')
-            if question in codeList:
+            if question in code_list:
                 # Store to get the name
                 answer_dict[question] = answer.strip('"')
             elif question == "STD-Lat":
                 try:
                     lat = float(answer.strip('"'))
-                except:
+                except ValueError:
                     pass
                 else:
                     if lat < -90.0 or lat > 90.0:
@@ -3177,7 +3210,7 @@ def getLocationList(series_id):
             elif question == "STD-Lon":
                 try:
                     lon = float(answer.strip('"'))
-                except:
+                except ValueError:
                     pass
                 else:
                     if lon < -180.0 or lon > 180.0:
@@ -3186,12 +3219,14 @@ def getLocationList(series_id):
                 # Not relevant here
                 continue
 
-        for locCode in codeList:
+        for loc_code in code_list:
             # Retrieve the name of the lowest Lx
-            if locCode in answer_dict:
-                name = answer_dict[locCode]
+            if loc_code in answer_dict:
+                name = answer_dict[loc_code]
                 break
+
         if lat and lon:
+            from s3dal import Row
             # We have sufficient data to display on the map
             location = Row()
             location.lat = lat
@@ -3201,14 +3236,14 @@ def getLocationList(series_id):
             rappend(location)
         else:
             # The lat & lon were not added to the assessment so try and get one
-            locWidget = get_default_location(row.id)
-            if locWidget:
-                complete_id = locWidget.question["complete_id"]
-                if "answer" not in locWidget.question:
+            loc_widget = get_default_location(row.id)
+            if loc_widget:
+                complete_id = loc_widget.question["complete_id"]
+                if "answer" not in loc_widget.question:
                     continue
-                answer = locWidget.question["answer"]
-                if locWidget != None:
-                    record = locWidget.getLocationRecord(complete_id, answer)
+                answer = loc_widget.question["answer"]
+                if loc_widget != None:
+                    record = loc_widget.getLocationRecord(complete_id, answer)
                     if len(record.records) == 1:
                         location = record.records[0].gis_location
                         location.complete_id = complete_id
@@ -3241,7 +3276,7 @@ class S3SurveyTranslateModel(S3Model):
                           self.survey_template_id(),
                           Field("language",
                                 comment = DIV(_class="tooltip",
-                                                _title="%s|%s" % (T("Language"),
+                                              _title="%s|%s" % (T("Language"),
                                                                 LANG_HELP))
                                 ),
                           Field("code",
@@ -3250,7 +3285,9 @@ class S3SurveyTranslateModel(S3Model):
                                                                 CODE_HELP))
                                 ),
                           Field("file", "upload",
-                                autodelete=True),
+                                autodelete = True,
+                                length = current.MAX_FILENAME_LENGTH,
+                                ),
                           Field("filename",
                                 readable = False,
                                 writable = False,
@@ -3265,7 +3302,7 @@ class S3SurveyTranslateModel(S3Model):
                        onaccept = self.translate_onaccept,
                        )
         # ---------------------------------------------------------------------
-        return dict()
+        return {}
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -3288,50 +3325,50 @@ class S3SurveyTranslateModel(S3Model):
             from gluon.languages import read_dict, write_dict
 
             T = current.T
-            request =  current.request
+            request = current.request
             response = current.response
 
-            msgNone = T("No translations exist in spreadsheet")
+            msg_none = T("No translations exist in spreadsheet")
             upload_file = request.post_vars.file
             upload_file.file.seek(0)
-            openFile = upload_file.file.read()
+            open_file = upload_file.file.read()
             lang = form.record.language
             code = form.record.code
             try:
-                workbook = xlrd.open_workbook(file_contents=openFile)
-            except:
+                workbook = xlrd.open_workbook(file_contents=open_file)
+            except IOError:
                 msg = T("Unable to open spreadsheet")
                 response.error = msg
                 response.flash = None
                 return
             try:
-                sheetL = workbook.sheet_by_name(lang)
-            except:
+                language_sheet = workbook.sheet_by_name(lang)
+            except IOError:
                 msg = T("Unable to find sheet %(sheet_name)s in uploaded spreadsheet") % \
                     dict(sheet_name=lang)
                 response.error = msg
                 response.flash = None
                 return
-            if sheetL.ncols == 1:
-                response.warning = msgNone
+            if language_sheet.ncols == 1:
+                response.warning = msg_none
                 response.flash = None
                 return
             count = 0
-            lang_fileName = "applications/%s/uploads/survey/translations/%s.py" % \
+            lang_filename = "applications/%s/uploads/survey/translations/%s.py" % \
                 (request.application, code)
             try:
-                strings = read_dict(lang_fileName)
-            except:
-                strings = dict()
-            for row in xrange(1, sheetL.nrows):
-                original = sheetL.cell_value(row, 0)
-                translation = sheetL.cell_value(row, 1)
+                strings = read_dict(lang_filename)
+            except IOError:
+                strings = {}
+            for row in xrange(1, language_sheet.nrows):
+                original = language_sheet.cell_value(row, 0)
+                translation = language_sheet.cell_value(row, 1)
                 if (original not in strings) or translation != "":
                     strings[original] = translation
                     count += 1
-            write_dict(lang_fileName, strings)
+            write_dict(lang_filename, strings)
             if count == 0:
-                response.warning = msgNone
+                response.warning = msg_none
                 response.flash = None
             else:
                 response.flash = T("%(count_of)d translations have been imported to the %(language)s language file") % \
@@ -3374,7 +3411,7 @@ class survey_TranslateDownload(S3Method):
         """
 
         if r.representation != "xls":
-            r.error(501, current.ERROR.BAD_FORMAT)
+            r.error(415, current.ERROR.BAD_FORMAT)
 
         template_id = r.id
         template = r.record
@@ -3383,7 +3420,7 @@ class survey_TranslateDownload(S3Method):
 
         T = current.T
         try:
-           import xlwt
+            import xlwt
         except ImportError:
             r.error(501, T("xlwt not installed, so cannot export as a Spreadsheet"))
 
@@ -3399,56 +3436,55 @@ class survey_TranslateDownload(S3Method):
             r.error(404, current.ERROR.BAD_RECORD)
 
         code = record.code
-        from s3survey import S3QuestionTypeOptionWidget
-        lang_fileName = "applications/%s/languages/%s.py" % (r.application,
+        lang_filename = "applications/%s/languages/%s.py" % (r.application,
                                                              code)
         try:
             from gluon.languages import read_dict
-            strings = read_dict(lang_fileName)
+            strings = read_dict(lang_filename)
         except IOError:
-            strings = dict()
+            strings = {}
 
         output = StringIO()
 
         book = xlwt.Workbook(encoding="utf-8")
         sheet = book.add_sheet(record.language)
-        qstnList = s3db.survey_getAllQuestionsForTemplate(template_id)
+        question_list = s3db.survey_getAllQuestionsForTemplate(template_id)
         original = {}
         original[template.name] = True
         if template.description != "":
             original[template.description] = True
 
-        for qstn in qstnList:
+        for qstn in question_list:
             original[qstn["name"]] = True
-            widgetObj = survey_question_type[qstn["type"]](question_id = qstn["qstn_id"])
-            if isinstance(widgetObj, S3QuestionTypeOptionWidget):
-                optionList = widgetObj.getList()
-                for option in optionList:
+            widget_obj = survey_question_type[qstn["type"]](question_id = qstn["qstn_id"])
+            if isinstance(widget_obj, S3QuestionTypeOptionWidget):
+                option_list = widget_obj.getList()
+                for option in option_list:
                     original[option] = True
         sections = s3db.survey_getAllSectionsForTemplate(template_id)
 
         for section in sections:
             original[section["name"]] = True
             section_id = section["section_id"]
-            layoutRules = s3db.survey_getQstnLayoutRules(template_id, section_id)
-            layoutStr = str(layoutRules)
-            posn = layoutStr.find("heading")
+            layout_rules = s3db.survey_getQstnLayoutRules(template_id, section_id)
+            layout_str = str(layout_rules)
+            posn = layout_str.find("heading")
             while posn != -1:
                 start = posn + 11
-                end = layoutStr.find("}", start)
-                original[layoutStr[start:end]] = True
-                posn = layoutStr.find("heading", end)
+                end = layout_str.find("}", start)
+                original[layout_str[start:end]] = True
+                posn = layout_str.find("heading", end)
 
         row = 0
         sheet.write(row, 0, u"Original")
         sheet.write(row, 1, u"Translation")
-        originalList = original.keys()
-        originalList.sort()
+        original_list = original.keys()
+        original_list.sort()
 
-        for text in originalList:
+        for text in original_list:
             row += 1
-            original = unicode(text)
-            sheet.write(row, 0, s3_unicode(original))
+            original = s3_unicode(text)
+            sheet.write(row, 0, original)
             if (original in strings):
                 sheet.write(row, 1, s3_unicode(strings[original]))
 
@@ -3479,7 +3515,7 @@ class survey_ExportResponses(S3Method):
         """
 
         if r.representation != "xls":
-            r.error(501, current.error.BAD_FORMAT)
+            r.error(415, current.error.BAD_FORMAT)
 
         series_id = self.record_id
         if series_id is None:
@@ -3493,7 +3529,7 @@ class survey_ExportResponses(S3Method):
         except ImportError:
             r.error(501, T("xlwt not installed, so cannot export as a Spreadsheet"))
 
-        sectionBreak = False
+        section_break = False
         try:
             filename = "%s_All_responses.xls" % r.record.name
         except AttributeError:
@@ -3504,48 +3540,48 @@ class survey_ExportResponses(S3Method):
         book = xlwt.Workbook(encoding="utf-8")
         # Get all questions and write out as a heading
         col = 0
-        completeRow = {}
-        nextRow = 2
-        qstnList = s3db.survey_getAllQuestionsForSeries(series_id)
-        if len(qstnList) > 256:
-            sectionList = s3db.survey_getAllSectionsForSeries(series_id)
-            sectionBreak = True
-        if sectionBreak:
+        complete_row = {}
+        next_row = 2
+        question_list = s3db.survey_getAllQuestionsForSeries(series_id)
+        if len(question_list) > 256:
+            section_list = s3db.survey_getAllSectionsForSeries(series_id)
+            section_break = True
+        if section_break:
             sheets = {}
             cols = {}
-            for section in sectionList:
-                sheetName = section["name"].split(" ")[0]
-                if sheetName not in sheets:
-                    sheets[sheetName] = book.add_sheet(sheetName)
-                    cols[sheetName] = 0
+            for section in section_list:
+                sheet_name = section["name"].split(" ")[0]
+                if sheet_name not in sheets:
+                    sheets[sheet_name] = book.add_sheet(sheet_name)
+                    cols[sheet_name] = 0
         else:
-            sheet = book.add_sheet(T("Responses", lazy = False))
-        for qstn in qstnList:
-            if sectionBreak:
-                sheetName = qstn["section"].split(" ")[0]
-                sheet = sheets[sheetName]
-                col = cols[sheetName]
+            sheet = book.add_sheet(s3_unicode(T("Responses")))
+        for qstn in question_list:
+            if section_break:
+                sheet_name = qstn["section"].split(" ")[0]
+                sheet = sheets[sheet_name]
+                col = cols[sheet_name]
             row = 0
             sheet.write(row, col, s3_unicode(qstn["code"]))
             row += 1
-            widgetObj = s3db.survey_getWidgetFromQuestion(qstn["qstn_id"])
-            sheet.write(row, col, s3_unicode(widgetObj.fullName()))
+            widget_obj = s3db.survey_getWidgetFromQuestion(qstn["qstn_id"])
+            sheet.write(row, col, s3_unicode(widget_obj.fullName()))
             # For each question get the response
-            allResponses = s3db.survey_getAllAnswersForQuestionInSeries(qstn["qstn_id"],
-                                                                        series_id)
-            for answer in allResponses:
+            all_responses = s3db.survey_getAllAnswersForQuestionInSeries(qstn["qstn_id"],
+                                                                         series_id)
+            for answer in all_responses:
                 value = answer["value"]
                 complete_id = answer["complete_id"]
-                if complete_id in completeRow:
-                    row = completeRow[complete_id]
+                if complete_id in complete_row:
+                    row = complete_row[complete_id]
                 else:
-                    completeRow[complete_id] = nextRow
-                    row = nextRow
-                    nextRow += 1
+                    complete_row[complete_id] = next_row
+                    row = next_row
+                    next_row += 1
                 sheet.write(row, col, s3_unicode(value))
             col += 1
-            if sectionBreak:
-                cols[sheetName] += 1
+            if section_break:
+                cols[sheet_name] += 1
         sheet.panes_frozen = True
         sheet.horz_split_pos = 2
 
@@ -3559,5 +3595,4063 @@ class survey_ExportResponses(S3Method):
 
         output.seek(0)
         return output.read()
+
+# =============================================================================
+class survey_LayoutBlocks():
+    """
+        Class that hold details of the layout blocks.
+
+        This is used when resizing the layout to make the final layout uniform.
+    """
+
+    def __init__(self):
+        """
+            Constructor
+        """
+
+        self.startPosn = [0, 0]
+        self.endPosn = [0, 0]
+        self.contains = []
+        self.temp = []
+        self.widgetList = []
+        self.growToWidth = 0
+        self.growToHeight = 0
+
+    # -------------------------------------------------------------------------
+    class RowBlocks():
+        """
+            Class the holds blocks that belong on the same row
+        """
+        def __init__(self, block):
+            self.blocks = [block]
+            self.startRow = block.startPosn[0]
+            self.maxHeight = block.endPosn[0]
+            self.maxWidth = block.endPosn[1]
+            self.cnt = 1
+
+        def add(self, block):
+            self.blocks.append(block)
+            if block.endPosn[0] > self.maxHeight:
+                self.maxHeight = block.endPosn[0]
+            if block.endPosn[1] > self.maxWidth:
+                self.maxWidth = block.endPosn[1]
+            self.cnt += 1
+        # end of class RowBlocks
+
+    # -------------------------------------------------------------------------
+    def growTo (self, width=None, height=None):
+        """ @todo: docstring """
+
+        if width != None:
+            self.growToWidth = width
+        if height != None:
+            self.growToHeight = height
+
+    # -------------------------------------------------------------------------
+    def growBy(self, width=None, height=None):
+        """ @todo: docstring """
+
+        if width != None:
+            self.growToWidth = self.endPosn[1] + width
+        if height != None:
+            self.growToHeight = self.endPosn[0] + height
+
+    # -------------------------------------------------------------------------
+    def setPosn(self, start, end):
+        """ @todo: docstring """
+
+        if self.startPosn[0] == 0 or \
+           start[0] < self.startPosn[0]:
+            self.startPosn[0] = start[0]
+
+        if self.startPosn[1] == 0 or \
+           start[1] > self.startPosn[1]:
+            self.startPosn[1] = start[1]
+
+        if end[0] > self.endPosn[0]:
+            self.endPosn[0] = end[0]
+
+        if end[1] > self.endPosn[1]:
+            self.endPosn[1] = end[1]
+
+        self.growToWidth = self.endPosn[1]
+        self.growToHeight = self.endPosn[0]
+
+    # -------------------------------------------------------------------------
+    def slideHorizontally(self, colAdjust):
+        """ @todo: docstring """
+
+        self.startPosn[1] += colAdjust
+        self.endPosn[1] += colAdjust
+        for block in self.contains:
+            block.slideHorizontally(colAdjust)
+
+    # -------------------------------------------------------------------------
+    def setWidgets(self, widgets):
+        """ @todo: docstring """
+
+        rowList = {}
+        colList = {}
+        for widget in widgets:
+            startCol = widget.startPosn[1]
+            startRow = widget.startPosn[0]
+            if startCol in colList:
+                colList[startCol] += 1
+            else:
+                colList[startCol] = 1
+            if startRow in rowList:
+                rowList[startRow] += 1
+            else:
+                rowList[startRow] = 1
+        if len(colList) > 1:
+            self.action = "columns"
+        else:
+            self.action = "rows"
+        self.widgetList = widgets
+
+    # -------------------------------------------------------------------------
+    def widthShortfall(self):
+        """ @todo: docstring """
+
+        return self.growToWidth - self.endPosn[1]
+
+    # -------------------------------------------------------------------------
+    def heightShortfall(self):
+        """ @todo: docstring """
+
+        return self.growToHeight - self.endPosn[0]
+
+    # -------------------------------------------------------------------------
+    def addBlock(self, start, end, widgets=[]):
+        """ @todo: docstring """
+
+        lb = survey_LayoutBlocks()
+        lb.setPosn(start, end)
+        lb.setWidgets(widgets)
+        length = len(self.contains)
+        temp = []
+        if length > 0 and self.contains[length - 1].startPosn == start:
+            lb.contains.append(self.contains.pop())
+        for element in self.temp:
+            if element.startPosn[0] < start[0] or element.startPosn[1] < start[1]:
+                temp.append(element)
+            else:
+                lb.contains.append(element)
+        self.temp = []
+        for element in temp:
+            self.temp.append(element)
+        if self.temp != []:
+            self.temp.append(lb)
+        else:
+            self.contains.append(lb)
+
+    # -------------------------------------------------------------------------
+    def addTempBlock(self, start, end, widgets):
+        """ @todo: docstring """
+
+        lb = survey_LayoutBlocks()
+        lb.setPosn(start, end)
+        lb.setWidgets(widgets)
+        self.temp.append(lb)
+
+    # -------------------------------------------------------------------------
+    def __repr__(self):
+        """ @todo: docstring """
+
+        indent = ""
+        data = self.display(indent)
+        return data
+
+    # -------------------------------------------------------------------------
+    def display(self, indent):
+        """ @todo: docstring """
+
+        widgets = ""
+        for widget in self.widgetList:
+            widgets += "%s " % widget.question.code
+        data = "%s%s, %s grow to [%s, %s]- %s\n" %(indent,
+                                                   self.startPosn,
+                                                   self.endPosn,
+                                                   self.growToHeight,
+                                                   self.growToWidth,
+                                                   widgets
+                                                   )
+        indent = indent + "  "
+        for lb in self.contains:
+            data += lb.display(indent)
+        return data
+
+    # -------------------------------------------------------------------------
+    def align(self):
+        """
+            Method to align the widgets up with each other.
+
+            This means that blocks that are adjacent to each other will be
+            spaced to ensure that they have the same height. And blocks on top
+            of each other will have the same width.
+        """
+        formWidth = self.endPosn[1]
+        self.realign(formWidth)
+
+    # -------------------------------------------------------------------------
+    def realign(self, formWidth):
+        """
+            Recursive method to ensure all widgets line up
+
+            @todo: parameter description
+        """
+
+        rowList = {}
+        # Put all of the blocks into rows
+        for block in self.contains:
+            startRow = block.startPosn[0]
+            endRow = block.endPosn[0]
+            # Exact match
+            if startRow in rowList:
+                rowList[startRow].add(block)
+                continue
+            # look for an overlap
+            else:
+                overlap = False
+                for storedBlock in rowList.values():
+                    if (startRow < storedBlock.startRow \
+                        and endRow >= storedBlock.startRow) \
+                    or (startRow < storedBlock.maxHeight \
+                        and endRow >= storedBlock.maxHeight) \
+                    or (startRow > storedBlock.startRow) \
+                        and (endRow <= storedBlock.maxHeight):
+                        storedBlock.add(block)
+                        overlap = True
+                        break
+                if overlap:
+                    continue
+            # no overlap
+            rowList[startRow] = self.RowBlocks(block)
+        # Now set up the grow to sizes for each block
+        for row in rowList.values():
+            # if their is only one row then
+            # it just needs to expand to fill the form width
+            if row.cnt == 1:
+                row.blocks[0].growTo(formWidth)
+            # The amount that each block needs to expand to reach the form width
+            # needs to be calculated by sharing the shortfall between each block
+            # and if any block needs to grow vertically this needs to be added
+            # additionally the start position my need adjusting
+            else:
+                widthShortfall = formWidth - row.maxWidth
+                widthShortfallPart = widthShortfall / row.cnt
+                colAdjust = 0
+                for block in row.blocks:
+                    if widthShortfall > 0:
+                        widthShortfall -= widthShortfallPart
+                        block.slideHorizontally(colAdjust)
+                        block.growBy(widthShortfallPart)
+                        colAdjust += widthShortfallPart
+                    if block.endPosn[0] < row.maxHeight:
+                        block.growTo(height = row.maxHeight)
+                colAdjust = 0
+                for block in row.blocks:
+                    if widthShortfall == 0:
+                        break
+                    block.growBy()
+                    widthShortfall -= 1
+                    block.slideHorizontally(colAdjust)
+                    colAdjust += 1
+                rowCnt = len(row.blocks)
+                if rowCnt > 1:
+                    rowCntList = {}
+                    for block in row.blocks:
+                        rowCntList[block.startPosn[0]] = True
+                    if len(rowCntList) == 1:
+                        formWidth = self.growToWidth
+        # The growto parameters have been set. Now grow any widgets
+        # @todo: add modulo tests for blkCnt to cater for uneven results
+        blkCnt = len(self.contains)
+        for block in self.contains:
+            if block.widgetList == []:
+                block.realign(self.growToWidth)
+            else:
+                self.alignBlock(block, blkCnt)
+
+    # -------------------------------------------------------------------------
+    def alignBlock(self, block, blkCnt):
+        """ @todo: docstring """
+
+        if block.action == "rows":
+            widthShortfall = block.widthShortfall()
+            self.alignRow(block, widthShortfall)
+        else:
+            heightShortfall = block.heightShortfall()
+            widthShortfall = block.widthShortfall()
+            self.alignCol(block, heightShortfall, widthShortfall)
+
+    # -------------------------------------------------------------------------
+    def alignRow(self, block, widthShortfall):
+        """
+            Method to align the widgets laid out in a single row.
+
+            The horizontal spacing will be fixed. Identify all widgets
+            that can grow horizontally and let them do so. If their are
+            multiple widgets that can grow then they will all grow by the
+            same amount.
+
+            Any space that is left over will be added to a margin between
+            the widgets
+
+            @todo: parameter description
+        """
+
+        canGrowCount = 0
+        for widget in block.widgetList:
+            if widget.canGrowHorizontal():
+                canGrowCount += 1
+        if canGrowCount > 0:
+            growBy = widthShortfall / canGrowCount
+            if growBy > 0:
+                for widget in block.widgetList:
+                    if widget.canGrowHorizontal():
+                        widget.growHorizontal(growBy)
+                        widthShortfall -= growBy
+        # Add any unallocated space as margins between the widgets
+        if widthShortfall > 0:
+            marginGrow = widthShortfall / len(block.widgetList)
+            if marginGrow > 0:
+                for widget in block.widgetList:
+                    widget.addToHorizontalMargin(marginGrow)
+                    widthShortfall -= marginGrow
+        if widthShortfall > 0:
+            for widget in block.widgetList:
+                widget.addToHorizontalMargin(1)
+                widthShortfall -= 1
+                if widthShortfall == 0:
+                    break
+        # Now sort out any vertical shortfall
+        for widget in block.widgetList:
+            widgetHeight = block.startPosn[0] + widget.getMatrixSize()[0]
+            heightShortfall = block.growToHeight - widgetHeight
+            if heightShortfall > 0:
+                if widget.canGrowVertical():
+                    widget.growVertical(heightShortfall)
+                else:
+                    widget.addToVerticalMargin(heightShortfall)
+
+    # -------------------------------------------------------------------------
+    def alignCol(self, block, heightShortfall, widthShortfall):
+        """
+            Method to align the widgets laid out different rows
+
+            @todo: parameter description
+        """
+
+        # Stretch the columns to fill the maximum width
+        for widget in block.widgetList:
+            widgetWidth = block.startPosn[1] + widget.getMatrixSize()[1]
+            widthShortfall = block.growToWidth - widgetWidth
+            # Now grow the columns to align evenly
+            if widthShortfall == 0:
+                continue
+            if widget.canGrowHorizontal():
+                widget.growHorizontal(widthShortfall)
+            else:
+                widget.addToHorizontalMargin(widthShortfall)
+        # Now grow the rows to align evenly
+        if heightShortfall == 0:
+            return
+        # See if the widgets can grow
+        canGrowCount = 0
+        for widget in block.widgetList:
+            if widget.canGrowVertical():
+                canGrowCount += 1
+        if canGrowCount > 0:
+            growBy = heightShortfall / canGrowCount
+            if growBy > 0:
+                for widget in block.widgetList:
+                    if widget.canGrowVertical():
+                        widget.growVertical(growBy)
+                        heightShortfall -= growBy
+        # Add any unallocated space as margins between the widgets
+        if heightShortfall > 0:
+            marginGrow = heightShortfall / len(block.widgetList)
+            if marginGrow > 0:
+                for widget in block.widgetList:
+                    widget.addToVerticalMargin(marginGrow)
+                    heightShortfall -= marginGrow
+        if heightShortfall > 0:
+            for widget in block.widgetList:
+                widget.addToVerticalMargin(1)
+                heightShortfall -= 1
+                if heightShortfall == 0:
+                    break
+
+# =============================================================================
+class survey_DataMatrix():
+    """
+        Class that sets the data up ready for export to a specific format,
+        such as a spreadsheet or a PDF document.
+
+        It holds the data in a matrix with each element holding details on:
+         * A unique position
+         * The actual text to be displayed
+         * Any style to be applied to the data
+    """
+
+    def __init__(self):
+        """
+            Constructor
+        """
+
+        self.matrix = {}
+        self.lastRow = 0
+        self.lastCol = 0
+        self.fixedWidthRepr = False
+        self.fixedWidthReprLen = 1
+
+    # -------------------------------------------------------------------------
+    def __repr__(self):
+        """ @todo: docstring """
+
+        repr = ""
+        for row in xrange(self.lastRow+1):
+            for col in xrange(self.lastCol+1):
+                posn = survey_MatrixElement.getPosn(row, col)
+                if posn in self.matrix:
+                    cell = self.matrix[posn]
+                    data = str(cell)
+                else:
+                    cell = None
+                    data = "-"
+                if self.fixedWidthRepr:
+                    xposn = 0
+                    if cell != None:
+                        if cell.joinedWith != None:
+                            parentPosn = cell.joinedWith
+                            (prow, pcol) = parentPosn.split(",")
+                            xposn = col - int(pcol)
+                            data = str(self.matrix[parentPosn])
+                        if xposn >= len(data):
+                            data = "*"
+                    if len(data) > self.fixedWidthReprLen:
+                        data = data[xposn:xposn+self.fixedWidthReprLen]
+                    else:
+                        data = data + " " * (self.fixedWidthReprLen - len(data))
+                repr += data
+            repr += "\n"
+        return repr
+
+    # -------------------------------------------------------------------------
+    def addCell(self, row, col, data, style, horizontal=0, vertical=0):
+        """ @todo: docstring """
+
+        cell = survey_MatrixElement(row, col, data, style)
+        if horizontal != 0 or vertical != 0:
+            cell.merge(horizontal, vertical)
+        try:
+            self.addElement(cell)
+        except Exception as msg:
+            current.log.error(msg)
+        return (row + 1 + vertical,
+                col + 1 + horizontal)
+
+    # -------------------------------------------------------------------------
+    def addElement(self, element):
+        """
+            Add an element to the matrix, checking that the position is unique.
+
+            @todo: parameter description
+        """
+
+        posn = element.posn()
+        if posn in self.matrix:
+            msg = "Attempting to add data %s at posn %s. This is already taken with data %s" % \
+                        (element, posn, self.matrix[posn])
+            raise Exception(msg)
+        self.matrix[posn] = element
+        element.parents.append(self)
+        if element.merged():
+            self.joinElements(element)
+        if element.row + element.mergeV > self.lastRow:
+            self.lastRow = element.row + element.mergeV
+        if element.col + element.mergeH > self.lastCol:
+            self.lastCol = element.col + element.mergeH
+
+    # -------------------------------------------------------------------------
+    def joinedElementStyles(self, rootElement):
+        """
+            Return a list of all the styles used by all the elements joined
+            to the root element
+
+            @todo: parameter description
+        """
+
+        styleList = []
+        row = rootElement.row
+        col = rootElement.col
+        for v in xrange(rootElement.mergeV + 1):
+            for h in xrange(rootElement.mergeH + 1):
+                newPosn = "%s,%s" % (row + v, col + h)
+                styleList += self.matrix[newPosn].styleList
+        return styleList
+
+    # -------------------------------------------------------------------------
+    def joinElements(self, rootElement):
+        """
+            This will set the joinedWith property to the posn of rootElement
+            for all the elements that rootElement joins with to make a single
+            large merged element.
+
+            @todo: parameter description
+        """
+
+        row = rootElement.row
+        col = rootElement.col
+        posn = rootElement.posn()
+        for v in xrange(rootElement.mergeV + 1):
+            for h in xrange(rootElement.mergeH + 1):
+                newPosn = "%s,%s" % (row + v, col + h)
+                if newPosn == posn:
+                    continue
+                if newPosn in self.matrix:
+                    if self.matrix[newPosn].joinedWith == posn:
+                        continue
+                    msg = "Attempting to merge element at posn %s. The following data will be lost %s" % \
+                                (newPosn, self.matrix[newPosn])
+                    self.matrix[newPosn].joinedWith = posn
+                else:
+                    childElement = survey_MatrixElement(row, col, "", [])
+                    childElement.joinedWith = posn
+                    self.matrix[newPosn] = childElement
+
+    # -------------------------------------------------------------------------
+    def boxRange(self, startrow, startcol, endrow, endcol, width=1):
+        """
+            Function to add a bounding box around the elements contained by
+            the elements (startrow, startcol) and (endrow, endcol)
+
+            This uses standard style names:
+            boxL, boxB, boxR, boxT
+            for Left, Bottom, Right and Top borders respectively
+
+            @todo: parameter description
+        """
+
+        for r in xrange(startrow, endrow):
+            posn = "%s,%s" % (r, startcol)
+            if posn in self.matrix:
+                self.matrix[posn].styleList.append("boxL%s"%width)
+            else:
+                self.addElement(survey_MatrixElement(r, startcol, "", "boxL%s"%width))
+            posn = "%s,%s" % (r, endcol)
+            if posn in self.matrix:
+                self.matrix[posn].styleList.append("boxR%s"%width)
+            else:
+                self.addElement(survey_MatrixElement(r, endcol, "", "boxR%s"%width))
+
+        for c in xrange(startcol, endcol + 1):
+            posn = "%s,%s" % (startrow, c)
+            if posn in self.matrix:
+                self.matrix[posn].styleList.append("boxT%s"%width)
+            else:
+                self.addElement(survey_MatrixElement(startrow, c, "", "boxT%s"%width))
+            posn = "%s,%s" % (endrow - 1, c)
+            if posn in self.matrix:
+                self.matrix[posn].styleList.append("boxB%s"%width)
+            else:
+                self.addElement(survey_MatrixElement(endrow - 1, c, "", "boxB%s"%width))
+
+# =============================================================================
+class survey_MatrixElement():
+    """
+        Class that holds the details of a single element in the matrix
+
+        * posn - row & col
+        * text - the actual data that will be displayed at the given position
+        * style - a list of styles that will be applied to this location
+    """
+
+    def __init__(self, row, col, data, style):
+        """
+            Constructor
+
+            @todo: parameter description
+        """
+
+        self.row = row
+        self.col = col
+        self.text = data
+        self.mergeH = 0
+        self.mergeV = 0
+        self.joinedWith = None
+        self.parents = []
+        if isinstance(style, list):
+            self.styleList = style
+        else:
+            self.styleList = [style]
+
+    # -------------------------------------------------------------------------
+    def __repr__(self):
+        """ @todo: docstring """
+
+        return self.text
+
+    # -------------------------------------------------------------------------
+    def merge(self, horizontal=0, vertical=0):
+        """ @todo: docstring """
+
+        self.mergeH = horizontal
+        self.mergeV = vertical
+        for parent in self.parents:
+            parent.joinElements(self)
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def getPosn(row, col):
+        """
+            Standard representation of the position
+
+            @todo: parameter description
+        """
+
+        return "%s,%s" % (row, col)
+
+    # -------------------------------------------------------------------------
+    def posn(self):
+        """
+            Standard representation of the position
+        """
+
+        return self.getPosn(self.row, self.col)
+
+    # -------------------------------------------------------------------------
+    def nextX(self):
+        """ @todo: docstring """
+
+        return self.row + self.mergeH + 1
+
+    # -------------------------------------------------------------------------
+    def nextY(self):
+        """ @todo: docstring """
+
+        return self.col + self.mergeV + 1
+
+    # -------------------------------------------------------------------------
+    def merged(self):
+        """ @todo: docstring """
+
+        if self.mergeH > 0 or self.mergeV > 0:
+            return True
+        return False
+
+    # -------------------------------------------------------------------------
+    def joined(self):
+        """ @todo: docstring """
+
+        if self.joinedWith == None:
+            return False
+        else:
+            return True
+
+# =============================================================================
+class survey_DataMatrixBuilder():
+    """ @todo: docstring """
+
+    def __init__(self,
+                 primaryMatrix,
+                 layout=None,
+                 widgetList = [],
+                 secondaryMatrix=None,
+                 langDict = None,
+                 addMethod=None):
+        """
+            Constructor
+
+            @todo: parameter description
+        """
+
+        self.matrix = primaryMatrix
+        self.layout = layout
+        self.widgetList = widgetList
+        self.widgetsInList = []
+        self.answerMatrix = secondaryMatrix
+        self.langDict = langDict
+        if addMethod == None:
+            self.addMethod = self.addData
+        else:
+            self.addMethod = addMethod
+        self.labelLeft = None
+        self.boxOpen = False
+        self.postponeLayoutUpdate = False
+
+    # -------------------------------------------------------------------------
+    def processRule(self, rules, row, col, matrix):
+        """ @todo: docstring """
+
+        startcol = col
+        startrow = row
+        endcol = col
+        endrow = row
+        action = "rows"
+        self.widgetsInList = []
+        for element in rules:
+            row = endrow
+            col = startcol
+            self.nextrow = row
+            self.nextcol = col
+            if isinstance(element, list):
+                (endrow, endcol) = self.processList(element, row, col, matrix, action)
+            elif isinstance(element, dict):
+                (endrow, endcol) = self.processDict(element, rules, row, col, matrix, action)
+            if self.layout != None:
+                if self.widgetsInList == []:
+                    self.layout.addBlock((row, col), (endrow, endcol))
+                else:
+                    self.layout.addTempBlock((row, col), (endrow, endcol), self.widgetsInList)
+                    self.widgetsInList = []
+        return (endrow, endcol)
+
+    # -------------------------------------------------------------------------
+    def processList(self, rules, row, col, matrix, action="rows"):
+        """ @todo: docstring """
+
+        startcol = col
+        startrow = row
+        endcol = col
+        endrow = row
+        for element in rules:
+            if action == "rows":
+                row = startrow
+                col = endcol
+            elif action == "columns":
+                row = endrow
+                col = startcol
+            # If the rule is a list then step through each element
+            if isinstance(element, list):
+                (endrow, endcol) = self.processList(element, row, col, matrix, action)
+            elif isinstance(element, dict):
+                (endrow, endcol) = self.processDict(element, rules, row, col, matrix, action)
+            else:
+                (endrow, endcol) = self.addMethod(self, element, row, col)
+            if endrow > self.nextrow:
+                self.nextrow = endrow
+            if endcol > self.nextcol:
+                self.nextcol = endcol
+        self.addToLayout(startrow, startcol)
+        return (self.nextrow, self.nextcol)
+
+    # -------------------------------------------------------------------------
+    def processDict(self, rules, parent, row, col, matrix, action="rows"):
+        """ @todo: docstring """
+
+        startcol = col
+        startrow = row
+        endcol = col
+        endrow = row
+        if "boxOpen" in rules:
+            return self.processBox(rules, row, col, matrix, action)
+        if "heading" in rules:
+            text = rules["heading"]
+            if len(parent) == 1:
+                width = min(len(text), matrix.lastCol) + 1
+                height = 1
+                styleName = "styleSectionHeading"
+            else:
+                width = 11
+                height = len(text) / (2 * width) + 1
+                styleName = "styleSubHeader"
+            cell = survey_MatrixElement(row, col, text, style = styleName)
+            cell.merge(horizontal = width - 1, vertical = height - 1)
+            try:
+                matrix.addElement(cell)
+            except Exception as msg:
+                current.log.error(msg)
+                return (row, col)
+            endrow = row + height
+            endcol = col + width
+            if "hint" in rules:
+                text = rules["hint"]
+                cell = survey_MatrixElement(endrow, startcol, text,
+                                            style="styleHint")
+                height = int(((len(text) / (2 * width)) * 0.75) + 0.5) + 1
+                cell.merge(horizontal = width - 1, vertical = height - 1)
+                try:
+                    matrix.addElement(cell)
+                except Exception as msg:
+                    current.log.error(msg)
+                    return (row, col)
+                endrow = endrow + height
+        if "labelLeft" in rules:
+            self.labelLeft = rules["labelLeft"]
+        if "columns" in rules:
+            value = rules["columns"]
+            maxrow = startrow
+            for rules in value:
+                row = startrow
+                self.nextrow = startrow
+                col = endcol
+                if isinstance(rules, list):
+                    (endrow, endcol) = self.processList(rules, row, col, matrix, "columns")
+                elif isinstance(rules, dict):
+                    (endrow, endcol) = self.processDict(rules, value, row, col, matrix, "columns")
+                if endrow > maxrow:
+                    maxrow = endrow
+                if endcol > self.nextcol:
+                    self.nextcol = endcol
+            self.nextrow = maxrow
+            endrow = self.nextrow
+            endcol = self.nextcol
+        return (endrow, endcol)
+
+    # -------------------------------------------------------------------------
+    def processBox(self, rules, row, col, matrix, action="rows"):
+        """ @todo: docstring """
+
+        startcol = col
+        startrow = row
+        endcol = col
+        endrow = row
+        headingrow = row
+        self.addToLayout(startrow, startcol, andThenPostpone = True)
+        if "heading" in rules:
+            row += 1
+        if "data" in rules:
+            self.boxOpen = True
+            value = rules["data"]
+            (endrow, endcol) = self.processList(value, row, col, matrix, action)
+            self.boxOpen = False
+        if "heading" in rules:
+            value = rules["heading"]
+            (row, endcol) = self.addLabel(value, headingrow, col, endcol - col, 1)
+        self.matrix.boxRange(startrow, startcol, endrow, endcol - 1)
+        self.addToLayout(startrow, startcol, endPostpone = True)
+        return (endrow, endcol)
+
+    # -------------------------------------------------------------------------
+    def addToLayout(self, startrow, startcol, andThenPostpone = None, endPostpone = None):
+        """ @todo: docstring """
+
+        if endPostpone != None:
+            self.postponeLayoutUpdate = not endPostpone
+        if not self.postponeLayoutUpdate \
+        and self.layout != None \
+        and (startrow != self.nextrow or startcol != self.nextcol):
+            if self.widgetsInList != []:
+                self.layout.addTempBlock((startrow, startcol), (self.nextrow, self.nextcol), self.widgetsInList)
+                self.widgetsInList = []
+        if andThenPostpone != None:
+            self.postponeLayoutUpdate = andThenPostpone
+
+    # -------------------------------------------------------------------------
+    def addArea(self, element, row, col):
+        """ @todo: docstring """
+
+        try:
+            widgetObj = self.widgetList[element]
+        except:
+            _debug("Unable to find element %s in the template" % element)
+            return self.matrix.addCell(row, col, "", [])
+        widgetObj.startPosn = (col, row)
+        if self.labelLeft:
+            widgetObj.labelLeft = (self.labelLeft == "True")
+            self.labelLeft = None
+        self.widgetsInList.append(widgetObj)
+        (vert, horiz) = widgetObj.getMatrixSize()
+        return self.matrix.addCell(row,
+                                   col,
+                                   element,
+                                   [],
+                                   horizontal=horiz - 1,
+                                   vertical=vert - 1,
+                                  )
+
+    # -------------------------------------------------------------------------
+    def addLabel(self, label, row, col, width=11,
+                 height=None,
+                 style="styleSubHeader"):
+        """ @todo: docstring """
+
+        cell = survey_MatrixElement(row, col, label, style=style)
+        if height == None:
+            height = len(label) / (2 * width) + 1
+        cell.merge(horizontal=width - 1, vertical=height - 1)
+        try:
+            self.matrix.addElement(cell)
+        except Exception as msg:
+            current.log.error(msg)
+            return (row, col)
+        endrow = row + height
+        endcol = col + width
+        return (endrow, endcol)
+
+    # -------------------------------------------------------------------------
+    def addData(self, element, row, col):
+        """ @todo: docstring """
+
+        try:
+            widgetObj = self.widgetList[element]
+        except:
+            _debug("Unable to find element %s in the template" % element)
+            return self.matrix.addCell(row, col, "", [])
+        widgetObj.startPosn = (col, row)
+        self.widgetsInList.append(widgetObj)
+        if self.labelLeft:
+            widgetObj.labelLeft = (self.labelLeft == "True")
+            self.labelLeft = None
+        try:
+            (endrow, endcol) = widgetObj.writeToMatrix(self.matrix,
+                                                       row,
+                                                       col,
+                                                       answerMatrix=self.answerMatrix,
+                                                       langDict = self.langDict
+                                                      )
+        except Exception as msg:
+            current.log.error(msg)
+            return (row, col)
+        #if question["type"] == "Grid":
+        if self.boxOpen == False:
+            self.matrix.boxRange(row, col, endrow, endcol - 1)
+        return (endrow, endcol)
+
+# =============================================================================
+def survey_getMatrix(title,
+                     logo,
+                     layout,
+                     widgetList,
+                     secondaryMatrix,
+                     langDict,
+                     showSectionLabels=True,
+                     layoutBlocks=None):
+    """
+        @todo: docstring
+    """
+
+    matrix = survey_DataMatrix()
+    if secondaryMatrix:
+        secondaryMatrix = survey_DataMatrix()
+    else:
+        secondaryMatrix = None
+    matrix.fixedWidthRepr = True
+    if layoutBlocks == None:
+        addMethod = survey_DataMatrixBuilder.addData
+    else:
+        addMethod = survey_DataMatrixBuilder.addArea
+    builder = survey_DataMatrixBuilder(matrix,
+                                       layoutBlocks,
+                                       widgetList,
+                                       secondaryMatrix = secondaryMatrix,
+                                       langDict = langDict,
+                                       addMethod=addMethod
+                                       )
+    row = 2
+    for (section, rules) in layout:
+        col = 0
+        if showSectionLabels:
+            row += 1
+            (row, nextCol) = matrix.addCell(row,
+                                            col,
+                                            section,
+                                            ["styleHeader"],
+                                            len(section)
+                                            )
+        (row, col) = builder.processRule(rules, row, col, matrix)
+    row = 0
+    col = 0
+    logoWidth = 0
+    if logo != None:
+        logoWidth = 6
+        (nextRow, col) = matrix.addCell(row, col, "", [], logoWidth - 1, 1)
+    titleWidth = max(len(title), matrix.lastCol - logoWidth)
+    (row, col) = matrix.addCell(row, col, title, ["styleTitle"], titleWidth, 1)
+    if layoutBlocks != None:
+        maxCol = col
+        for block in layoutBlocks.contains:
+            if block.endPosn[1] > maxCol:
+                maxCol = block.endPosn[1]
+        layoutBlocks.setPosn((0, 0), (row, maxCol))
+    matrix.boxRange(0, 0, matrix.lastRow + 1, matrix.lastCol, 2)
+    if secondaryMatrix:
+        return (matrix, secondaryMatrix)
+    else:
+        return matrix
+
+# =============================================================================
+# Question Types
+# @todo: get rid of the wrapper functions!
+#
+def survey_stringType(question_id = None):
+    return S3QuestionTypeStringWidget(question_id)
+
+def survey_textType(question_id = None):
+    return S3QuestionTypeTextWidget(question_id)
+
+def survey_numericType(question_id = None):
+    return S3QuestionTypeNumericWidget(question_id)
+
+def survey_dateType(question_id = None):
+    return S3QuestionTypeDateWidget(question_id)
+
+def survey_timeType(question_id = None):
+    return S3QuestionTypeTimeWidget(question_id)
+
+def survey_optionType(question_id = None):
+    return S3QuestionTypeOptionWidget(question_id)
+
+def survey_ynType(question_id = None):
+    return S3QuestionTypeOptionYNWidget(question_id)
+
+def survey_yndType(question_id = None):
+    return S3QuestionTypeOptionYNDWidget(question_id)
+
+def survey_optionOtherType(question_id = None):
+    return S3QuestionTypeOptionOtherWidget(question_id)
+
+def survey_multiOptionType(question_id = None):
+    return S3QuestionTypeMultiOptionWidget(question_id)
+
+def survey_locationType(question_id = None):
+    return S3QuestionTypeLocationWidget(question_id)
+
+def survey_linkType(question_id = None):
+    return S3QuestionTypeLinkWidget(question_id)
+
+def survey_ratingType(question_id = None):
+    pass
+
+def survey_gridType(question_id = None):
+    return S3QuestionTypeGridWidget(question_id)
+
+def survey_gridChildType(question_id = None):
+    return S3QuestionTypeGridChildWidget(question_id)
+
+survey_question_type = {"String": survey_stringType,
+                        "Text": survey_textType,
+                        "Numeric": survey_numericType,
+                        "Date": survey_dateType,
+                        "Time": survey_timeType,
+                        "Option": survey_optionType,
+                        "YesNo": survey_ynType,
+                        "YesNoDontKnow": survey_yndType,
+                        "OptionOther": survey_optionOtherType,
+                        "MultiOption" : survey_multiOptionType,
+                        "Location": survey_locationType,
+                        "Link" : survey_linkType,
+                        #"Rating": survey_ratingType,
+                        "Grid" : survey_gridType,
+                        "GridChild" : survey_gridChildType,
+                        }
+
+# =============================================================================
+class S3QuestionTypeAbstractWidget(FormWidget):
+    """
+        Abstract Question Type widget
+
+        A QuestionTypeWidget can have three basic states:
+
+        The first is as a descriptor for the type of question.
+        In this state it will hold the information about what this type of
+        question may look like.
+
+        The second state is when it is associated with an actual question
+        on the database. Then it will additionally hold information about what
+        this actual question looks like.
+
+        The third state is when the widget of an actual question is
+        associated with a single answer to that question. If that happens then
+        the self.question record from the database is extended to hold
+        the actual answer and the complete_id of that answer.
+
+        For example: A numeric question type has a metadata value of "Format"
+        this can be used to describe how the data could be formatted to
+        represent a number. When this question type is associated with an
+        actual numeric question then the metadata might be "Format" : n, which
+        would mean that it is an integer value.
+
+        The general instance variables:
+
+        @ivar metalist: A list of all the valid metadata descriptors. This would
+                        be used by a UI when designing a question
+        @ivar attr: Any HTML/CSS attributes passed in by the call to display
+        @ivar webwidget: The web2py widget that should be used to display the
+                         question type
+        @ivar typeDescription: The description of the type when it is displayed
+                               on the screen such as in reports
+
+        The instance variables when the widget is associated with a question:
+
+        @ivar id: The id of the question from the survey_question table
+        @ivar question: The question record from the database.
+                        Note this variable can be extended to include the
+                        answer taken from the complete_id, allowing the
+                        question to hold a single answer. This is needed when
+                        updating responses.
+        @ivar qstn_metadata: The actual metadata for this question taken from
+                             the survey_question_metadata table and then
+                             stored as a descriptor value pair
+        @ivar field: The field object from metadata table, which can be used
+                     by the widget to add additional rules (such as a requires)
+                     before setting up the UI when inputing data
+    """
+
+    def __init__(self,
+                 question_id,
+                 ):
+
+        self.ANSWER_VALID = 0
+        self.ANSWER_MISSING = 1
+        self.ANSWER_PARTLY_VALID = 2
+        self.ANSWER_INVALID = 3
+
+        T = current.T
+        s3db = current.s3db
+        # The various database tables that the widget may want access to
+        self.qtable = s3db.survey_question
+        self.mtable = s3db.survey_question_metadata
+        self.qltable = s3db.survey_question_list
+        self.ctable = s3db.survey_complete
+        self.atable = s3db.survey_answer
+        # the general instance variables
+        self.metalist = ["Help message"]
+        self.attr = {}
+        self.webwidget = StringWidget
+        self.typeDescription = None
+        self.startPosn = (0, 0)
+        self.xlsWidgetSize = (6, 0)
+        self.xlsMargin = [0, 0]
+        self.langDict = {}
+        self.label = True
+        self.labelLeft = True
+        # The instance variables when the widget is associated with a question
+        self.id = question_id
+        self.question = None
+        self.qstn_metadata = {}
+        # Initialise the metadata from the question_id
+        self._store_metadata()
+        self.field = self.mtable.value
+
+        try:
+            from xlwt.Utils import rowcol_to_cell
+        except:
+            current.log.error("WARNING: S3Survey: xlwt module needed for XLS export")
+        else:
+            self.rowcol_to_cell = rowcol_to_cell
+
+    # -------------------------------------------------------------------------
+    def _store_metadata(self, qstn_id=None, update=False):
+        """
+            This will store the question id in self.id,
+            the question data in self.question, and
+            the metadata for this specific question in self.qstn_metadata
+
+            It will only get the data from the db if it hasn't already been
+            retrieved, or if the update flag is True
+        """
+        if qstn_id != None:
+            if self.id != qstn_id:
+                self.id = qstn_id
+                # The id has changed so force an update
+                update = True
+        if self.id == None:
+            self.question = None
+            self.qstn_metadata = {}
+            return
+        if self.question == None or update:
+            db = current.db
+            s3 = current.response.s3
+            # Get the question from the database
+            query = (self.qtable.id == self.id)
+            self.question = db(query).select(limitby=(0, 1)).first()
+            if self.question == None:
+                raise Exception("no question with id %s in database" % self.id)
+            # Get the metadata from the database and store in qstn_metadata
+            self.question.name = s3.survey_qstn_name_represent(self.question.name)
+            query = (self.mtable.question_id == self.id)
+            self.rows = db(query).select()
+            for row in self.rows:
+                # Remove any double quotes from around the data before storing
+                self.qstn_metadata[row.descriptor] = row.value.strip('"')
+
+    # -------------------------------------------------------------------------
+    def get(self, value, default=None):
+        """
+            This will return a single metadata value held by the widget
+        """
+        if value in self.qstn_metadata:
+            return self.qstn_metadata[value]
+        else:
+            return default
+
+    # -------------------------------------------------------------------------
+    def set(self, value, data):
+        """
+            This will store a single metadata value
+        """
+        self.qstn_metadata[value] = data
+
+
+    # -------------------------------------------------------------------------
+    def getAnswer(self):
+        """
+            Return the value of the answer for this question
+        """
+        if "answer" in self.question:
+            answer = self.question.answer
+        else:
+            answer = ""
+        return answer
+
+    # -------------------------------------------------------------------------
+    def repr(self, value=None):
+        """
+            function to format the answer, which can be passed in
+        """
+        if value == None:
+            value = self.getAnswer()
+        return value
+
+    # -------------------------------------------------------------------------
+    def loadAnswer(self, complete_id, question_id, forceDB=False):
+        """
+            This will return a value held by the widget
+            The value can be held in different locations
+            1) In the widget itself:
+            2) On the database: table.survey_complete
+        """
+        value = None
+        self._store_metadata(question_id)
+        if "answer" in self.question and \
+           self.question.complete_id == complete_id and \
+           forceDB == False:
+            answer = self.question.answer
+        else:
+            query = (self.atable.complete_id == complete_id) & \
+                    (self.atable.question_id == question_id)
+            row = current.db(query).select(limitby=(0, 1)).first()
+            if row != None:
+                value = row.value
+                self.question["answer"] = value
+            self.question["complete_id"] = complete_id
+        return value
+
+    # -------------------------------------------------------------------------
+    def initDisplay(self, **attr):
+        """
+            This method set's up the variables that will be used by all
+            display methods of fields for the question type.
+            It uses the metadata to define the look of the field
+        """
+        if "question_id" in attr:
+            self.id = attr["question_id"]
+        if self.id == None:
+            raise Exception("Need to specify the question_id for this QuestionType")
+        qstn_id = self.id
+        self._store_metadata(qstn_id)
+        attr["_name"] = self.question.code
+        self.attr = attr
+
+    # -------------------------------------------------------------------------
+    def display(self, **attr):
+        """
+            This displays the widget on a web form. It uses the layout
+            function to control how the widget is displayed
+        """
+        self.initDisplay(**attr)
+        value = self.getAnswer()
+        input = self.webwidget.widget(self.field, value, **self.attr)
+        return self.layout(self.question.name, input, **attr)
+
+    # -------------------------------------------------------------------------
+    def fullName(self):
+        if "parentCode" in self.question:
+            db = current.db
+            query = db(self.qtable.code == self.question.parentCode)
+            record = query.select(self.qtable.id,
+                                  self.qtable.name,
+                                  limitby=(0, 1)).first()
+            if record != None:
+                parentWidget = survey_question_type["Grid"](record.id)
+                subHeading = parentWidget.getHeading(self.question.parentNumber)
+                return "%s (%s)" % (self.question.name,
+                                    subHeading)
+        return self.question.name
+
+    # -------------------------------------------------------------------------
+    def layout(self, label, widget, **attr):
+        """
+            This lays the label widget that is passed in on the screen.
+
+            Currently it has a single default layout mechanism but in the
+            future it will be possible to add more which will be controlled
+            vis the attr passed into display and stored in self.attr
+        """
+        if "display" in attr:
+            display = attr["display"]
+        else:
+            display = "Default"
+        if display == "Default":
+            elements = []
+            elements.append(TR(TH(label), TD(widget),
+                               _class="survey_question"))
+            return TAG[""](elements)
+        elif display == "Control Only":
+            return TD(widget)
+
+    # -------------------------------------------------------------------------
+    def onaccept(self, value):
+        """
+            Method to format the value that has just been put on the database
+        """
+        return value
+
+    # -------------------------------------------------------------------------
+    def type_represent(self):
+        """
+            Display the type in a DIV for displaying on the screen
+        """
+        return DIV(self.typeDescription, _class="surveyWidgetType")
+
+    # -------------------------------------------------------------------------
+    def db_type(self):
+        """
+            Return the real database table type for this question
+            This assumes that the value is valid
+        """
+        return "string"
+
+    # -------------------------------------------------------------------------
+    def _Tquestion(self, langDict):
+        """
+            Function to translate the question using the dictionary passed in
+        """
+        return survey_T(self.question["name"], langDict)
+
+    # -------------------------------------------------------------------------
+    def getLabelSize(self, maxWidth = 20):
+        """
+            Function to return the size of the label, in terms of merged
+            MatrixElements
+        """
+        labelSize = (0, 0)
+        if self.label:
+            labelWidth = maxWidth/2
+            if not self.labelLeft:
+                labelWidth = self.xlsWidgetSize[0] + 1
+            _TQstn = self._Tquestion(self.langDict)
+            labelSize = (labelWidth, len(_TQstn)/(4 * labelWidth / 3) + 1)
+        return labelSize
+
+    # -------------------------------------------------------------------------
+    def getWidgetSize(self, maxWidth = 20):
+        """
+            function to return the size of the input control, in terms of merged
+            MatrixElements
+        """
+        return (self.xlsWidgetSize[0] + 1, self.xlsWidgetSize[1] + 1)
+
+    # -------------------------------------------------------------------------
+    def getMatrixSize(self):
+        """
+            function to return the size of the widget
+        """
+        labelSize = self.getLabelSize()
+        widgetSize = self.getWidgetSize()
+        if self.labelLeft:
+            return (max(labelSize[1], widgetSize[1]) + self.xlsMargin[1],
+                    labelSize[0] + widgetSize[0] + self.xlsMargin[0])
+        else:
+            return (labelSize[1] + widgetSize[1] + self.xlsMargin[1],
+                    max(labelSize[0], widgetSize[0]) + self.xlsMargin[0])
+
+    # -------------------------------------------------------------------------
+    def canGrowHorizontal(self):
+        return False
+
+    # -------------------------------------------------------------------------
+    def canGrowVertical(self):
+        return False
+
+    # -------------------------------------------------------------------------
+    def growHorizontal(self, amount):
+        if self.canGrowHorizontal():
+            self.xlsWidgetSize[0] += amount
+
+    # -------------------------------------------------------------------------
+    def growVertical(self, amount):
+        if self.canGrowHorizontal():
+            self.xlsWidgetSize[1] += amount
+
+    # -------------------------------------------------------------------------
+    def addToHorizontalMargin(self, amount):
+        self.xlsMargin[0] += amount
+
+    # -------------------------------------------------------------------------
+    def addToVerticalMargin(self, amount):
+        self.xlsMargin[1] += amount
+
+    # -------------------------------------------------------------------------
+    def addPaddingAroundWidget(self, matrix, startrow, startcol,
+                               lWidth, lHeight, wWidth, wHeight):
+
+        if self.labelLeft:
+            # Add padding below the input boxes
+            if lHeight > wHeight:
+                cellPadding = survey_MatrixElement(startrow + wHeight,
+                                                   startcol + lWidth, "",
+                                                   style="styleText")
+                cellPadding.merge(wWidth - 1, lHeight - wHeight - 1)
+                matrix.addElement(cellPadding)
+
+            # Add padding below the label
+            if lHeight < wHeight:
+                cellPadding = survey_MatrixElement(startrow + lHeight,
+                                                   startcol, "",
+                                                   style="styleText")
+                cellPadding.merge(lWidth - 1, wHeight - lHeight - 1)
+                matrix.addElement(cellPadding)
+                height = wHeight + 1
+        else:
+            # Add padding to make the widget the same width as the label
+            if lWidth > wWidth:
+                cellPadding = survey_MatrixElement(startrow + lHeight,
+                                                   startcol + wWidth, "",
+                                                   style="styleText")
+                cellPadding.merge(lWidth - wWidth - 1, lHeight - 1)
+                matrix.addElement(cellPadding)
+            # Add padding to make the label the same width as the widget
+            if lWidth < wWidth:
+                cellPadding = survey_MatrixElement(startrow,
+                                                   startcol + lWidth, "",
+                                                   style="styleText")
+                cellPadding.merge(wWidth - lWidth - 1, wHeight - 1)
+                matrix.addElement(cellPadding)
+
+    # -------------------------------------------------------------------------
+    def addPaddingToCell(self,
+                         matrix,
+                         startrow,
+                         startcol,
+                         endrow,
+                         endcol,
+                         ):
+        # Add widget padding
+        if self.xlsMargin[0] > 0:
+            cellPadding = survey_MatrixElement(startrow,
+                                               endcol, "",
+                                               style="styleText")
+            cellPadding.merge(self.xlsMargin[0] - 1,
+                              endrow - startrow - 1)
+            matrix.addElement(cellPadding)
+        if self.xlsMargin[1] > 0:
+            cellPadding = survey_MatrixElement(endrow,
+                                               startcol, "",
+                                               style="styleText")
+            cellPadding.merge(endcol - startcol + self.xlsMargin[0] - 1,
+                              self.xlsMargin[1] - 1)
+            matrix.addElement(cellPadding)
+
+    # -------------------------------------------------------------------------
+    def writeToMatrix(self,
+                      matrix,
+                      row,
+                      col,
+                      langDict={},
+                      answerMatrix=None
+                      ):
+        """
+            Function to write out basic details to the matrix object
+        """
+        self._store_metadata()
+        startrow = row
+        startcol = col
+        mergeLH = 0
+        mergeLV = 0
+        height = 0
+        width = 0
+        if self.label:
+            _TQstn = self._Tquestion(langDict)
+            cell = survey_MatrixElement(row,
+                                        col,
+                                        _TQstn,
+                                        style="styleSubHeader")
+            (width, height) = self.getLabelSize()
+            mergeLH = width - 1
+            mergeLV = height - 1
+            cell.merge(mergeLH, mergeLV)
+            matrix.addElement(cell)
+            if self.labelLeft:
+                col += 1 + mergeLH
+            else:
+                row += 1 + mergeLV
+        cell = survey_MatrixElement(row, col, "", style="styleInput")
+        mergeWH = self.xlsWidgetSize[0]
+        mergeWV = self.xlsWidgetSize[1]
+        cell.merge(mergeWH, mergeWV)
+        matrix.addElement(cell)
+        if self.labelLeft:
+            height = max(height, mergeWV + 1)
+            width += mergeWH + 1
+        else:
+            height += mergeWV + 1
+            width = max(width, mergeWH + 1)
+        self.addPaddingAroundWidget(matrix, startrow, startcol, mergeLH+1, mergeLV+1, mergeWH+1, mergeWV+1)
+        # Add widget padding
+        self.addPaddingToCell(matrix, startrow, startcol, startrow + height, startcol + width)
+        height += self.xlsMargin[1]
+        width += self.xlsMargin[0]
+        # Add details to the answerMatrix (if required)
+        if answerMatrix != None:
+            answerRow = answerMatrix.lastRow+1
+            cell = survey_MatrixElement(answerRow, 0, self.question["code"],
+                                        style="styleSubHeader")
+            answerMatrix.addElement(cell)
+            cell = survey_MatrixElement(answerRow, 3,
+                                        self.rowcol_to_cell(row, col),
+                                        style="styleText")
+            answerMatrix.addElement(cell)
+        endcol = startcol+width
+        endrow = startrow+height
+        if DEBUG:
+            # Only for debugging purposes
+            self.verifyCoords(endrow, endcol)
+        return (endrow, endcol)
+        #if self.labelLeft:
+        #    return (row+self.xlsMargin[1]+height, col+self.xlsMargin[0]+mergeWH)
+        #else:
+        #    return (row+self.xlsMargin[1]+mergeLV+mergeWV, col+self.xlsMargin[0]+max(mergeLH,mergeWH))
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _writeToRTF(ss, langDict, full_name, paragraph=None,
+                    para_list=[],
+                    question_name=""):
+        """
+            Function to write the basic question details to a rtf document.
+
+            The basic details will be written to Cell objects that can be
+            added to a row in a table object.
+
+            @param ss: StyleSheet object
+            @param langDict: Dictionary of languages
+            @param full_name: Question name(label)
+            @param paragraph: Add paragraph from S3QuestionTypeTextWidget
+            @param para_list: List of paragraphs from S3QuestionTypeOptionWidget
+            @param question_name: Name of question from S3QuestionTypeGridWidget
+        """
+        from gluon.contrib.pyrtf.Elements import Paragraph, Cell, B
+        from gluon.contrib.pyrtf.PropertySets import BorderPS, FramePS
+
+        thin_edge = BorderPS(width=20, style=BorderPS.SINGLE)
+        thin_frame = FramePS(thin_edge, thin_edge, thin_edge, thin_edge)
+        line = []
+
+        if question_name:
+            p = Paragraph(ss.ParagraphStyles.NormalCentre)
+            p.append(B(question_name))
+            line.append(Cell(p, thin_frame, span = 2))
+            return line
+
+        p = Paragraph(ss.ParagraphStyles.Normal)
+        p.append(B(str(full_name)))
+
+        if paragraph:
+            line.append(Cell(p, paragraph, paragraph, paragraph, thin_frame))
+        else:
+            line.append(Cell(p, thin_frame))
+
+        if para_list:
+            paras = []
+            for option in para_list:
+                p = Paragraph(ss.ParagraphStyles.Normal)
+                p.append(survey_T(option, langDict))
+                paras.append(p)
+            line.append(Cell(thin_frame, *paras))
+        else:
+            p = Paragraph(ss.ParagraphStyles.NormalGrey)
+            p.append("")
+            line.append(Cell(p, thin_frame))
+
+        return line
+
+    # -------------------------------------------------------------------------
+    def writeQuestionToRTF(self, ss, langDict):
+        """
+            Wrapper function for _writeToRTF
+
+            @param ss: StyleSheet object
+            @param langDict: Dictionary of languages
+        """
+        full_name = self.fullName()
+        return self._writeToRTF(ss, langDict, full_name)
+
+    # -------------------------------------------------------------------------
+    def verifyCoords(self, endrow, endcol):
+        (width, height) = self.getMatrixSize()
+        calcrow = self.startPosn[1] + width
+        calccol = self.startPosn[0] + height
+        error = False
+        if calcrow != endrow:
+            error = True
+        if calccol != endcol:
+            error = True
+        if error:
+            w_code = self.question["code"]
+            msg = "Coord Verification Error for widget %s, startPosn:(%s, %s), expected:(%s, %s), observed:(%s, %s)" % (w_code, self.startPosn[1], self.startPosn[0], endrow, endcol, calcrow, calccol)
+            current.log.error(msg)
+
+    ######################################################################
+    # Functions not fully implemented or used
+    ######################################################################
+    def validate(self, valueList, qstn_id):
+        """
+            This will validate the data passed in to the widget
+
+            NOTE: Not currently used but will be used when the UI supports the
+                  validation of data entered in to the web form
+        """
+        if len(valueList) == 0:
+            return self.ANSWER_MISSING
+        data = value(valueList, 0)
+        if data == None:
+            return self.ANSWER_MISSING
+        length = self.get("Length")
+        if length != None and length(data) > length:
+            return ANSWER_PARTLY_VALID
+        return self.ANSWER_VALID
+
+    # -------------------------------------------------------------------------
+    def metadata(self, **attr):
+        """
+            Create the input fields for the metadata for the QuestionType
+
+            NOTE: Not currently used but will be used when the UI supports the
+                  creation of the template and specifically the questions in
+                  the template
+        """
+        if "question_id" in attr:
+            self._store_metadata(attr["question_id"])
+        elements = []
+        for fieldname in self.metalist:
+            value = self.get(fieldname, "")
+            input = StringWidget.widget(self.field, value, **attr)
+            elements.append(TR(TD(fieldname), TD(input)))
+        return TAG[""](elements)
+
+# =============================================================================
+class S3QuestionTypeTextWidget(S3QuestionTypeAbstractWidget):
+    """
+        Text Question Type widget
+
+        provides a widget for the survey module that will manage plain
+        text questions.
+
+        Available metadata for this class:
+        Help message: A message to help with completing the question
+    """
+
+    def __init__(self,
+                 question_id = None,
+                 ):
+        T = current.T
+        S3QuestionTypeAbstractWidget.__init__(self, question_id)
+        self.webwidget = TextWidget
+        self.typeDescription = T("Long Text")
+        self.xlsWidgetSize = [12, 5]
+
+    # -------------------------------------------------------------------------
+    def canGrowHorizontal(self):
+        return True
+
+    # -------------------------------------------------------------------------
+    def canGrowVertical(self):
+        return True
+
+    # -------------------------------------------------------------------------
+    def writeQuestionToRTF(self, ss, langDict):
+        """
+            Function to write the basic question details to a rtf document.
+
+            The basic details will be written to Cell objects that can be
+            added to a row in a table object.
+
+            @param ss: StyleSheet object
+            @param langDict: Dictionary of languages
+        """
+        from gluon.contrib.pyrtf.Elements import Paragraph
+        paragraph = Paragraph(ss.ParagraphStyles.Normal)
+        full_name = self.fullName()
+
+        return self._writeToRTF(ss, langDict, full_name,
+                                paragraph=paragraph)
+
+# =============================================================================
+class S3QuestionTypeStringWidget(S3QuestionTypeAbstractWidget):
+    """
+        String Question Type widget
+
+        provides a widget for the survey module that will manage plain
+        string questions (text with a limited length).
+
+        Available metadata for this class:
+        Help message: A message to help with completing the question
+        Length:       The number of characters
+    """
+    def __init__(self,
+                 question_id = None
+                 ):
+        S3QuestionTypeAbstractWidget.__init__(self, question_id)
+        T = current.T
+        self.metalist.append("Length")
+        self.typeDescription = T("Short Text")
+        self.xlsWidgetSize = [12, 0]
+
+    # -------------------------------------------------------------------------
+    def canGrowHorizontal(self):
+        return True
+
+    # -------------------------------------------------------------------------
+    def display(self, **attr):
+        if "length" in self.qstn_metadata:
+            length = self.qstn_metadata["length"]
+            attr["_size"] = length
+            attr["_maxlength"] = length
+        return S3QuestionTypeAbstractWidget.display(self, **attr)
+
+# =============================================================================
+class S3QuestionTypeNumericWidget(S3QuestionTypeAbstractWidget):
+    """
+        Numeric Question Type widget
+
+        provides a widget for the survey module that will manage simple
+        numerical questions.
+
+        Available metadata for this class:
+        Help message: A message to help with completing the question
+        Length:       The length if the number, default length of 10 characters
+        Format:       Describes the makeup of the number, as follows:
+                      n    integer
+                      n.   floating point
+                      n.n  floating point, the number of decimal places defined
+                           by the number of n's that follow the decimal point
+    """
+    def __init__(self,
+                 question_id = None,
+                 ):
+        S3QuestionTypeAbstractWidget.__init__(self, question_id)
+        T = current.T
+        self.metalist.append("Length")
+        self.metalist.append("Format")
+        self.typeDescription = T("Numeric")
+
+    # -------------------------------------------------------------------------
+    def display(self, **attr):
+        length = self.get("Length", 10)
+        attr["_size"] = length
+        attr["_maxlength"] = length
+        return S3QuestionTypeAbstractWidget.display(self, **attr)
+
+    # -------------------------------------------------------------------------
+    def onaccept(self, value):
+        """
+            Method to format the value that has just been put on the database
+        """
+        return str(self.formattedAnswer(value))
+
+    # -------------------------------------------------------------------------
+    def formattedAnswer(self, data, format=None):
+        if format == None:
+            format = self.get("Format", "n")
+        parts = format.partition(".")
+        try:
+            result = float(data)
+        except:
+            result = 0
+        if parts[1] == "": # No decimal point so must be a whole number
+            return int(result)
+        else:
+            if parts[2] == "": # No decimal places specified
+                return result
+            else:
+                return round(result, len(parts[2]))
+
+    # -------------------------------------------------------------------------
+    def db_type(self):
+        """
+            Return the real database table type for this question
+            This assumes that the value is valid
+        """
+        format = self.get("Format", "n")
+        if format == "n":
+            return "integer"
+        else:
+            return "double"
+
+    ######################################################################
+    # Functions not fully implemented or used
+    ######################################################################
+    def validate(self, valueList, qstn_id):
+        """
+            This will validate the data passed in to the widget
+        """
+        result = S3QuestionTypeAbstractWidget.validate(self, valueList)
+        if result != ANSWER_VALID:
+            return result
+        length = self.get("Length", 10)
+        format = self.get("Format")
+        data = value(valueList, 0)
+        if format != None:
+            try:
+                self.formattedValue(data, format)
+                return self.ANSWER_VALID
+            except exceptions.ValueError:
+                return self.ANSWER_INVALID
+
+        return self.ANSWER_VALID
+
+# =============================================================================
+class S3QuestionTypeDateWidget(S3QuestionTypeAbstractWidget):
+    """
+        Date Question Type widget
+
+        provides a widget for the survey module that will manage simple
+        date questions.
+
+        Available metadata for this class:
+        Help message: A message to help with completing the question
+    """
+    def __init__(self,
+                 question_id = None,
+                 ):
+        T = current.T
+        S3QuestionTypeAbstractWidget.__init__(self, question_id)
+        self.typeDescription = T("Date")
+
+    # -------------------------------------------------------------------------
+    def display(self, **attr):
+        S3QuestionTypeAbstractWidget.initDisplay(self, **attr)
+        from s3.s3widgets import S3DateWidget
+        widget = S3DateWidget()
+        value = self.getAnswer()
+        self.attr["_id"] = self.question.code
+        input = widget(self.field, value, **self.attr)
+        return self.layout(self.question.name, input, **attr)
+
+    # -------------------------------------------------------------------------
+    def formattedAnswer(self, data):
+        """
+            This will take a string and do it's best to return a Date object
+            It will try the following in order
+            * Convert using the ISO format:
+            * look for a month in words a 4 digit year and a day (1 or 2 digits)
+            * a year and month that matches the date now and NOT a future date
+            * a year that matches the current date and the previous month
+        """
+        rawDate = data
+        date = None
+        try:
+            # First convert any non-numeric to a hyphen
+            isoDate = ""
+            addHyphen = False
+            for char in rawDate:
+                if char.isdigit:
+                    if addHyphen == True and isoDate != "":
+                        iscDate += "-"
+                    isoDate += char
+                    addHyphen = False
+                else:
+                    addHyphen = True
+            # @ToDo: Use deployment_settings.get_L10n_date_format()
+            date = datetime.strptime(rawDate, "%Y-%m-%d")
+            return date
+        except ValueError:
+            try:
+                for month in monthList:
+                    if month in rawDate:
+                        search = re, search("\D\d\d\D", rawDate)
+                        if search:
+                            day = search.group()
+                        else:
+                            search = re, search("^\d\d\D", rawDate)
+                            if search:
+                                day = search.group()
+                            else:
+                                search = re, search("\D\d\d$", rawDate)
+                                if search:
+                                    day = search.group()
+                                else:
+                                    search = re, search("\D\d\D", rawDate)
+                                    if search:
+                                        day = "0" + search.group()
+                                    else:
+                                        search = re, search("^\d\D", rawDate)
+                                        if search:
+                                            day = "0" + search.group()
+                                        else:
+                                            search = re, search("\D\d$", rawDate)
+                                            if search:
+                                                day = "0" + search.group()
+                                            else:
+                                                raise ValueError
+                        search = re, search("\D\d\d\d\d\D", rawDate)
+                        if search:
+                            year = search.group()
+                        else:
+                            search = re, search("^\d\d\d\d\D", rawDate)
+                            if search:
+                                year = search.group()
+                            else:
+                                search = re, search("\D\d\d\d\d$", rawDate)
+                                if search:
+                                    year = search.group()
+                                else:
+                                    raise ValueError
+                    # @ToDo: Use deployment_settings.get_L10n_date_format()
+                    testDate = "%s-%s-%s" % (day, month, year)
+                    if len(month) == 3:
+                        format == "%d-%b-%Y"
+                    else:
+                        format == "%d-%B-%Y"
+                    date = datetime.strptime(format, testDate)
+                    return date
+            except ValueError:
+                return date
+
+
+    ######################################################################
+    # Functions not fully implemented or used
+    ######################################################################
+    def validate(self, valueList, qstn_id):
+        """
+            This will validate the data passed in to the widget
+        """
+        result = S3QuestionTypeAbstractWidget.validate(self, valueList)
+        if result != ANSWER_VALID:
+            return result
+        length = self.get("length", 10)
+        format = self.get("format")
+        data = value(valueList, 0)
+        if format != None:
+            try:
+                self.formattedValue(data, format)
+                return self.ANSWER_VALID
+            except exceptions.ValueError:
+                return self.ANSWER_INVALID
+
+        return self.ANSWER_VALID
+
+# =============================================================================
+class S3QuestionTypeTimeWidget(S3QuestionTypeAbstractWidget):
+    """
+        Time Question Type widget
+
+        provides a widget for the survey module that will manage simple
+        time questions.
+
+        Available metadata for this class:
+        Help message: A message to help with completing the question
+    """
+    def __init__(self,
+                 question_id = None,
+                 ):
+        T = current.T
+        S3QuestionTypeAbstractWidget.__init__(self, question_id)
+        self.typeDescription = T("Time")
+
+    # -------------------------------------------------------------------------
+    def display(self, **attr):
+        S3QuestionTypeAbstractWidget.initDisplay(self, **attr)
+        value = self.getAnswer()
+        self.attr["_id"] = self.question.code
+        input = TimeWidget.widget(self.field, value, **self.attr)
+        return self.layout(self.question.name, input, **attr)
+
+
+# =============================================================================
+class S3QuestionTypeOptionWidget(S3QuestionTypeAbstractWidget):
+    """
+        Option Question Type widget
+
+        provides a widget for the survey module that will manage simple
+        option questions.
+
+        Available metadata for this class:
+        Help message: A message to help with completing the question
+        Length:       The number of options
+        #:            A number one for each option
+    """
+    def __init__(self,
+                 question_id = None,
+                 ):
+        S3QuestionTypeAbstractWidget.__init__(self, question_id)
+        T = current.T
+        self.selectionInstructions = "Type x to mark box. Select just one option"
+        self.metalist.append("Length")
+        self.webwidget = RadioWidget
+        self.typeDescription = T("Option")
+        self.labelLeft = False
+        self.singleRow = False
+        self.xlsWidgetSize = [10, 0]
+
+    # -------------------------------------------------------------------------
+    def display(self, **attr):
+        S3QuestionTypeAbstractWidget.initDisplay(self, **attr)
+        self.field.requires = IS_IN_SET(self.getList())
+        value = self.getAnswer()
+        self.field.name = self.question.code
+        input = RadioWidget.widget(self.field, value, **self.attr)
+        self.field.name = "value"
+        return self.layout(self.question.name, input, **attr)
+
+    # -------------------------------------------------------------------------
+    def getList(self):
+        list = []
+        length = self.get("Length")
+        if length == None:
+            raise Exception("Need to have the options specified")
+        for i in xrange(int(length)):
+            list.append(self.get(str(i + 1)))
+        return list
+
+    # -------------------------------------------------------------------------
+    def getWidgetSize(self, maxWidth = 20):
+        """
+            function to return the size of the input control
+        """
+        # calculate the size required for the instructions
+        instHeight = 1 + len(self.selectionInstructions)/maxWidth
+        if self.singleRow:
+            widgetHeight = 1
+        else:
+            widgetHeight = len(self.getList())
+        return (maxWidth/2, instHeight + widgetHeight)
+
+    # -------------------------------------------------------------------------
+    def writeToMatrix(self,
+                      matrix,
+                      row,
+                      col,
+                      langDict={},
+                      answerMatrix=None
+                      ):
+        """
+            Function to write out basic details to the matrix object
+        """
+        self._store_metadata()
+        startrow = row
+        startcol = col
+        mergeLH = 0
+        mergeLV = 0
+        maxWidth = 20
+        endrow = row
+        endcol = col
+        lwidth = 10
+        lheight = 1
+        iwidth = 0
+        iheight = 0
+        if self.label:
+            _TQstn = self._Tquestion(langDict)
+            cell = survey_MatrixElement(row,
+                                        col,
+                                        _TQstn,
+                                        style="styleSubHeader"
+                                        )
+            (lwidth, lheight) = self.getLabelSize()
+            mergeLH = lwidth - 1
+            mergeLV = lheight - 1
+            cell.merge(mergeLH, mergeLV)
+            matrix.addElement(cell)
+            if self.labelLeft:
+                col += lwidth
+            else:
+                row += lheight
+            endrow = startrow + lheight
+            endcol = startcol + lwidth
+            if self.selectionInstructions != None:
+                cell = survey_MatrixElement(row,
+                                            col,
+                                            survey_T(self.selectionInstructions,
+                                                     langDict),
+                                            style="styleInstructions")
+                iheight = len(self.selectionInstructions) / maxWidth + 1
+                mergeIV = iheight - 1
+                cell.merge(mergeLH, mergeIV)
+                matrix.addElement(cell)
+                row += iheight
+        list = self.getList()
+        if answerMatrix != None:
+            answerRow = answerMatrix.lastRow+1
+            cell = survey_MatrixElement(answerRow, 0, self.question["code"],
+                                        style="styleSubHeader")
+            answerMatrix.addElement(cell)
+            cell = survey_MatrixElement(answerRow,
+                                        1,
+                                        len(list),
+                                        style="styleSubHeader")
+            answerMatrix.addElement(cell)
+            cell = survey_MatrixElement(answerRow, 2, "|#|".join(list),
+                                        style="styleSubHeader")
+            answerMatrix.addElement(cell)
+            answerCol = 3
+        wwidth = lwidth
+        mergeWH = lwidth - 1
+        wheight = len(list)
+        if self.singleRow:
+            wwidthpart = (wwidth - len(list)) / len(list)
+            mergeWH = wwidthpart - 1
+            wheight = 1
+        for option in list:
+            _TQstn = survey_T(option, langDict)
+            cell = survey_MatrixElement(row,
+                                        col,
+                                        _TQstn,
+                                        style="styleText")
+            oheight = len(_TQstn) / maxWidth + 1
+            cell.merge(mergeWH - 1, oheight - 1)
+            matrix.addElement(cell)
+            cell = survey_MatrixElement(row, col + mergeWH, "",
+                                        style="styleInput")
+            matrix.addElement(cell)
+            if answerMatrix != None:
+                cell = survey_MatrixElement(answerRow, answerCol,
+                                            self.rowcol_to_cell(row, col + mergeWH),
+                                            style="styleText")
+                answerMatrix.addElement(cell)
+                answerCol += 1
+            if self.singleRow:
+                col += 1 + wwidthpart
+            else:
+                row += oheight
+        if self.singleRow:
+            if endrow < row + 1:
+                endrow = row + 1
+            if endcol < col:
+                endcol = col
+        else:
+            if endrow < row:
+                endrow = row
+            if endcol < col + 1 + mergeWH:
+                endcol = col + 1 + mergeWH
+        self.addPaddingAroundWidget(matrix, startrow, startcol, lwidth, lheight, wwidth, iheight+wheight)
+        self.addPaddingToCell(matrix, startrow, startcol, endrow, endcol)
+        endrow += self.xlsMargin[1]
+        endcol += self.xlsMargin[0]
+        if DEBUG:
+            # Only for debugging purposes
+            self.verifyCoords(endrow, endcol)
+        return (endrow, endcol)
+
+    # -------------------------------------------------------------------------
+    def writeQuestionToRTF(self, ss, langDict):
+        """
+            Function to write the basic question details to a rtf document.
+
+            The basic details will be written to Cell objects that can be
+            added to a row in a table object.
+
+            @param ss: StyleSheet object
+            @param langDict: Dictionary of languages
+        """
+        para_list = self.getList()
+        full_name = self.fullName()
+
+        return self._writeToRTF(ss, langDict, full_name,
+                                para_list=para_list)
+
+    ######################################################################
+    # Functions not fully implemented or used
+    ######################################################################
+    def validate(self, valueList, qstn_id):
+        """
+            This will validate the data passed in to the widget
+        """
+        if len(valueList) == 0:
+            return self.ANSWER_MISSING
+        data = valueList[0]
+        if data == None:
+            return self.ANSWER_MISSING
+        self._store_metadata(qstn_id)
+        if data in self.getList():
+            return self.ANSWER_VALID
+        else:
+            return self.ANSWER_VALID
+        return self.ANSWER_INVALID
+
+# =============================================================================
+class S3QuestionTypeOptionYNWidget(S3QuestionTypeOptionWidget):
+    """
+        YN Question Type widget
+
+        provides a widget for the survey module that will manage simple
+        yes no questions.
+
+        Available metadata for this class:
+        Help message: A message to help with completing the question
+    """
+    def __init__(self,
+                 question_id = None,
+                 ):
+        T = current.T
+        S3QuestionTypeOptionWidget.__init__(self, question_id)
+        self.selectionInstructions = "Type x to mark box."
+        self.typeDescription = T("Yes, No")
+        self.qstn_metadata["Length"] = 2
+        self.singleRow = True
+
+    # -------------------------------------------------------------------------
+    def getList(self):
+        return ["Yes", "No"]
+
+# =============================================================================
+class S3QuestionTypeOptionYNDWidget(S3QuestionTypeOptionWidget):
+    """
+        Yes, No, Don't Know: Question Type widget
+
+        provides a widget for the survey module that will manage simple
+        yes no questions.
+
+        Available metadata for this class:
+        Help message: A message to help with completing the question
+    """
+    def __init__(self,
+                 question_id = None,
+                 ):
+        T = current.T
+        S3QuestionTypeOptionWidget.__init__(self, question_id)
+        self.selectionInstructions = "Type x to mark box."
+        self.typeDescription = T("Yes, No, Don't Know")
+        self.qstn_metadata["Length"] = 3
+
+    # -------------------------------------------------------------------------
+    def getList(self):
+        #T = current.T
+        #return [T("Yes"), T("No"), T("Don't Know")]
+        return ["Yes", "No", "Don't Know"]
+
+# =============================================================================
+class S3QuestionTypeOptionOtherWidget(S3QuestionTypeOptionWidget):
+    """
+        Option Question Type widget with a final other option attached
+
+        provides a widget for the survey module that will manage simple
+        yes no questions.
+
+        Available metadata for this class:
+        Help message: A message to help with completing the question
+        Length:       The number of options
+        #:            A number one for each option
+        Other:        The question type the other option should be
+    """
+    def __init__(self,
+                 question_id = None,
+                 ):
+        T = current.T
+        S3QuestionTypeOptionWidget.__init__(self, question_id)
+        self.typeDescription = T("Option Other")
+
+    # -------------------------------------------------------------------------
+    def getList(self):
+        list = S3QuestionTypeOptionWidget.getList(self)
+        list.append("Other")
+        return list
+
+
+# =============================================================================
+class S3QuestionTypeMultiOptionWidget(S3QuestionTypeOptionWidget):
+    """
+        Multi Option Question Type widget
+
+        provides a widget for the survey module that will manage options
+        questions, where more than one answer can be provided.
+
+        Available metadata for this class:
+        Help message: A message to help with completing the question
+    """
+    def __init__(self,
+                 question_id = None,
+                 ):
+        S3QuestionTypeOptionWidget.__init__(self, question_id)
+        self.selectionInstructions = "Type x to mark box. Select all applicable options"
+        self.typeDescription = current.T("Multi-Option")
+
+    # -------------------------------------------------------------------------
+    def display(self, **attr):
+        """ @todo: docstring """
+
+        S3QuestionTypeAbstractWidget.initDisplay(self, **attr)
+        self.field.requires = IS_IN_SET(self.getList())
+        value = self.getAnswer()
+        valueList = json2list(value)
+
+        self.field.name = self.question.code
+        input = CheckboxesWidget.widget(self.field, valueList, **self.attr)
+        self.field.name = "value"
+        return self.layout(self.question.name, input, **attr)
+
+# =============================================================================
+class S3QuestionTypeLocationWidget(S3QuestionTypeAbstractWidget):
+    """
+        ***************************************
+        **** MULTIPLE CHANGES HAVE OCCURRED ***
+        **** REALLY NEEDS TO BE REWRITTEN  ****
+        ***************************************
+        Location widget: Question Type widget
+
+        provides a widget for the survey module that will link to the
+        gis_location table, and provide the record if a match exists.
+
+        Available metadata for this class:
+        Help message: A message to help with completing the question
+        Parent:    Indicates which question is used to indicate the parent
+                   This is used as a simplified Hierarchy.
+    """
+    def __init__(self,
+                 question_id = None,
+                 ):
+        T = current.T
+        S3QuestionTypeAbstractWidget.__init__(self, question_id)
+        self.typeDescription = T("Location")
+        self.xlsWidgetSize = [12, 0]
+
+    # -------------------------------------------------------------------------
+    def canGrowHorizontal(self):
+        return True
+
+    # -------------------------------------------------------------------------
+    def display(self, **attr):
+        """
+            This displays the widget on a web form. It uses the layout
+            function to control how the widget is displayed
+        """
+        return S3QuestionTypeAbstractWidget.display(self, **attr)
+
+    # -------------------------------------------------------------------------
+    def getLocationRecord(self, complete_id, location):
+        """
+            Return the location record from the database
+        """
+        record = Storage()
+        if location != None:
+            gtable = current.s3db.gis_location
+            query = (gtable.name == location)
+            record = current.db(query).select(gtable.name,
+                                              gtable.lat,
+                                              gtable.lon,
+                                             )
+            record.complete_id = complete_id
+            record.key = location
+            if len(record.records) == 0:
+                msg = "Unknown Location %s, %s, %s" %(location, query, record.key)
+                _debug(msg)
+            return record
+        else:
+            return None
+
+    # -------------------------------------------------------------------------
+    def onaccept(self, value):
+        """
+            Method to format the value that has just been put on the database
+        """
+
+        return value
+
+    # -------------------------------------------------------------------------
+    def getAnswerListFromJSON(self, answer):
+        """
+            If the answer is stored as a JSON value return the data as a map
+
+            If it is not valid JSON then an exception will be raised,
+            and must be handled by the calling function
+        """
+
+        answerList = json2py(answer)
+        return answerList
+
+    ######################################################################
+    # Functions not fully implemented or used
+    ######################################################################
+    def validate(self, valueList, qstn_id):
+        """
+            This will validate the data passed in to the widget
+        """
+        result = S3QuestionTypeAbstractWidget.validate(self, valueList)
+        if result != ANSWER_VALID:
+            return result
+        length = self.get("length", 10)
+        format = self.get("format")
+        data = value(valueList, 0)
+        if format != None:
+            try:
+                self.formattedValue(data, format)
+                return self.ANSWER_VALID
+            except exceptions.ValueError:
+                return self.ANSWER_INVALID
+
+        return self.ANSWER_VALID
+
+# =============================================================================
+class S3QuestionTypeLinkWidget(S3QuestionTypeAbstractWidget):
+    """
+        Link widget: Question Type widget
+
+        provides a widget for the survey module that has a link with another
+        question.
+
+        Available metadata for this class:
+        Help message: A message to help with completing the question
+        Parent: The question it links to
+        Type: The type of question it really is (another question type)
+        Relation: How it relates to the parent question
+                  groupby: answers should be grouped by the value of the parent
+    """
+    def __init__(self,
+                 question_id = None,
+                 ):
+        T = current.T
+        S3QuestionTypeAbstractWidget.__init__(self, question_id)
+        self.metalist.append("Parent")
+        self.metalist.append("Type")
+        self.metalist.append("Relation")
+        try:
+            self._store_metadata()
+            type = self.get("Type")
+            parent = self.get("Parent")
+            if type == None or parent == None:
+                self.typeDescription = T("Link")
+            else:
+                self.typeDescription = T("%s linked to %s") % (type, parent)
+        except:
+            self.typeDescription = T("Link")
+
+    # -------------------------------------------------------------------------
+    def realWidget(self):
+        type = self.get("Type")
+        realWidget = survey_question_type[type]()
+        realWidget.question = self.question
+        realWidget.qstn_metadata = self.qstn_metadata
+        return realWidget
+
+    # -------------------------------------------------------------------------
+    def display(self, **attr):
+        return self.realWidget().display(**attr)
+
+    # -------------------------------------------------------------------------
+    def onaccept(self, value):
+        """
+            Method to format the value that has just been put on the database
+        """
+        type = self.get("Type")
+        return self.realWidget().onaccept(value)
+
+    # -------------------------------------------------------------------------
+    def getParentType(self):
+        self._store_metadata()
+        return self.get("Type")
+
+    # -------------------------------------------------------------------------
+    def getParentQstnID(self):
+        parent = self.get("Parent")
+        query = (self.qtable.code == parent)
+        row = current.db(query).select(limitby=(0, 1)).first()
+        return row.id
+
+    # -------------------------------------------------------------------------
+    def fullName(self):
+        return self.question.name
+
+    # -------------------------------------------------------------------------
+    def db_type(self):
+        """
+            Return the real database table type for this question
+            This assumes that the value is valid
+        """
+        return self.realWidget().db_type()
+
+    ######################################################################
+    # Functions not fully implemented or used
+    ######################################################################
+    def validate(self, valueList, qstn_id):
+        """
+            This will validate the data passed in to the widget
+        """
+        result = S3QuestionTypeAbstractWidget.validate(self, valueList)
+        type = self.get("Type")
+        realWidget = survey_question_type[type]()
+        return realWidget.validate(valueList, qstn_id)
+
+# =============================================================================
+class S3QuestionTypeGridWidget(S3QuestionTypeAbstractWidget):
+    """
+        Grid widget: Question Type widget
+
+        provides a widget for the survey module that hold a grid of related
+        questions.
+
+        Available metadata for this class:
+        Help message: A message to help with completing the question
+        Subtitle: The text for the 1st column and 1st row of the grid
+        QuestionNo: The number of the first question, used for the question code
+        col-cnt:  The number of data columns in the grid
+        row-cnt:  The number of data rows in the grid
+        columns:  An array of headings for each data column
+        rows:     An array of headings for each data row
+        data:     A matrix of widgets for each data cell
+    """
+    def __init__(self,
+                 question_id = None,
+                 ):
+        S3QuestionTypeAbstractWidget.__init__(self, question_id)
+        self.metalist.append("Subtitle")
+        self.metalist.append("QuestionNo")
+        self.metalist.append("col-cnt")
+        self.metalist.append("row-cnt")
+        self.metalist.append("columns")
+        self.metalist.append("rows")
+        self.metalist.append("data")
+        self.typeDescription = current.T("Grid")
+
+    # -------------------------------------------------------------------------
+    def getMetaData(self, qstn_id=None):
+        self._store_metadata(qstn_id=qstn_id, update=True)
+        self.subtitle = self.get("Subtitle")
+        self.qstnNo = int(self.get("QuestionNo", 1))
+        self.colCnt = self.get("col-cnt")
+        self.rowCnt = self.get("row-cnt")
+        self.columns = json.loads(self.get("columns"))
+        self.rows = json.loads(self.get("rows"))
+        self.data = json.loads(self.get("data"))
+
+    # -------------------------------------------------------------------------
+    def getHeading(self, number):
+        self.getMetaData()
+        col = (number - self.qstnNo) % int(self.colCnt)
+        return self.columns[col]
+
+    # -------------------------------------------------------------------------
+    def display(self, **attr):
+        S3QuestionTypeAbstractWidget.display(self, **attr)
+        complete_id = None
+        if "complete_id" in self.question:
+            complete_id = self.question.complete_id
+        self.getMetaData()
+        table = TABLE()
+        if self.data != None:
+            tr = TR(_class="survey_question")
+            if self.subtitle == None:
+                tr.append("")
+            else:
+                tr.append(TH(self.subtitle))
+            for col in self.columns:
+                if col == None:
+                    tr.append("")
+                else:
+                    tr.append(TH(col))
+            table.append(tr)
+            posn = 0
+            codeNum = self.qstnNo
+            for row in self.data:
+                tr = TR(_class="survey_question")
+                tr.append(TH(self.rows[posn]))
+                for cell in row:
+                    if cell == "Blank":
+                        tr.append("")
+                    else:
+                        code = "%s%s" % (self.question["code"], codeNum)
+                        codeNum += 1
+                        childWidget = self.getChildWidget(code)
+                        if complete_id != None:
+                            childWidget.loadAnswer(complete_id,
+                                                   childWidget.id)
+                        tr.append(childWidget.subDisplay())
+                table.append(tr)
+                posn += 1
+        return TABLE(table, _border=3)
+
+    # -------------------------------------------------------------------------
+    def getMatrixSize(self, maxWidth = 20):
+        self._store_metadata()
+        self.getMetaData()
+        width = 0
+        height = 0
+        # Add space for the sub heading
+        height = 1
+        codeNum = self.qstnNo
+        labelWidth = maxWidth/2
+        for line in xrange(int(self.rowCnt)):
+            label = survey_T(self.rows[line], self.langDict)
+            (lwidth, lheight) = (labelWidth, len(label) / (4 * labelWidth / 3) + 1)
+            for cell in xrange(int(self.colCnt)):
+                code = "%s%s" % (self.question["code"], codeNum)
+                codeNum += 1
+                childWidget = self.getChildWidget(code)
+                type = childWidget.get("Type")
+                realWidget = survey_question_type[type](childWidget.id)
+                (cwidth, cheight) = realWidget.getWidgetSize(maxWidth)
+                lwidth += cwidth
+                if cheight > lheight:
+                    lheight = cheight
+            height += lheight
+            if lwidth > width:
+                width = lwidth
+        _debug("%s (%s,%s)" % (self.question["code"], height, width))
+        self.xlsWidgetSize = (width, height)
+        return (height, width)
+
+    # -------------------------------------------------------------------------
+    def writeToMatrix(self,
+                      matrix,
+                      row,
+                      col,
+                      langDict={},
+                      answerMatrix=None,
+                      ):
+        """
+            Function to write out basic details to the matrix object
+        """
+        self._store_metadata()
+        self.getMetaData()
+        startrow = row
+        startcol = col
+        endrow = row
+        endcol = col
+        maxWidth = 20
+        labelWidth = maxWidth / 2
+        codeNum = self.qstnNo
+        row += 1
+        needHeading = True
+        # Merge the top left cells
+        subtitle = survey_T(self.subtitle, self.langDict)
+        cell = survey_MatrixElement(startrow,
+                                    startcol,
+                                    subtitle,
+                                    style="styleSubHeader"
+                                    )
+        cell.merge(labelWidth - 1, 0)
+        matrix.addElement(cell)
+        for line in xrange(int(self.rowCnt)):
+            # Add the label
+            label = survey_T(self.rows[line], self.langDict)
+            (lwidth, lheight) = (labelWidth, len(label)/(4 * labelWidth / 3) + 1)
+            cell = survey_MatrixElement(row,
+                                        col,
+                                        label,
+                                        style="styleSubHeader"
+                                        )
+            cell.merge(lwidth - 1, lheight - 1)
+            matrix.addElement(cell)
+            maxrow = row + lheight
+            endcol = col + lwidth
+            for cell in xrange(int(self.colCnt)):
+                code = "%s%s" % (self.question["code"], codeNum)
+                codeNum += 1
+                childWidget = self.getChildWidget(code)
+                type = childWidget.get("Type")
+                realWidget = survey_question_type[type](childWidget.id)
+                realWidget.label = False
+                #realWidget.xlsMargin = (0,0)
+                col = endcol
+                realWidget.startPosn = (col, row)
+                (endrow, endcol) = realWidget.writeToMatrix(matrix,
+                                                             row,
+                                                             col,
+                                                             langDict,
+                                                             answerMatrix
+                                                            )
+                if endrow > maxrow:
+                    maxrow = endrow
+                if needHeading:
+                    # Now add the heading for this column
+                    label = survey_T(self.columns[cell], self.langDict)
+                    cell = survey_MatrixElement(startrow,
+                                                col,
+                                                label,
+                                                style="styleSubHeader"
+                                                )
+                    cell.merge(endcol - col - 1, 0)
+                    matrix.addElement(cell)
+            row = maxrow
+            col = startcol
+            needHeading = False
+        # Add widget padding
+        self.addPaddingToCell(matrix, startrow, startcol, row, endcol)
+        row += self.xlsMargin[1]
+        endcol += self.xlsMargin[0]
+        return (row, endcol)
+
+    # -------------------------------------------------------------------------
+    def writeQuestionToRTF(self, ss, langDict):
+        """
+            Function to write the basic question details to a rtf document.
+
+            This will just display the grid name, following this will be the
+            grid child objects.
+
+            @param ss: StyleSheet object
+            @param langDict: Dictionary of languages
+        """
+        question_name = self.question.name
+        full_name = self.fullName()
+
+        return self._writeToRTF(ss, langDict, full_name,
+                                question_name=question_name)
+
+    # -------------------------------------------------------------------------
+    def insertChildren(self, record, metadata):
+        self.id = record.id
+        self.question = record
+        self.qstn_metadata = metadata
+        self.getMetaData()
+        if self.data != None:
+            posn = 0
+            qstnNo = self.qstnNo
+            parent_id = self.id
+            parent_code = self.question["code"]
+            for row in self.data:
+                name = self.rows[posn]
+                posn += 1
+                for cell in row:
+                    if cell == "Blank":
+                        continue
+                    else:
+                        type = cell
+                        code = "%s%s" % (parent_code, qstnNo)
+                        qstnNo += 1
+                        childMetadata = self.get(code)
+                        if childMetadata == None:
+                            childMetadata = {}
+                        else:
+                            childMetadata = json.loads(childMetadata)
+                        childMetadata["Type"] = type
+                        # web2py stomps all over a list so convert back to a string
+                        # before inserting it on the database
+                        metadata = json.dumps(childMetadata)
+                        try:
+                            id = self.qtable.insert(name = name,
+                                                    code = code,
+                                                    type = "GridChild",
+                                                    metadata = metadata,
+                                                   )
+                        except:
+                            record = self.qtable(code = code)
+                            id = record.id
+                            record.update_record(name = name,
+                                                 code = code,
+                                                 type = "GridChild",
+                                                 metadata = metadata,
+                                                )
+                        record = self.qtable(id)
+                        current.s3db.survey_updateMetaData(record,
+                                                           "GridChild",
+                                                           childMetadata)
+
+    # -------------------------------------------------------------------------
+    def insertChildrenToList(self, question_id, template_id, section_id,
+                             qstn_posn):
+        self.getMetaData(question_id)
+        if self.data != None:
+            posn = 0
+            qstnNo = self.qstnNo
+            qstnPosn = 1
+            parent_id = self.id
+            parent_code = self.question["code"]
+            for row in self.data:
+                name = self.rows[posn]
+                posn += 1
+                for cell in row:
+                    if cell == "Blank":
+                        continue
+                    else:
+                        code = "%s%s" % (parent_code, qstnNo)
+                        qstnNo += 1
+                        record = self.qtable(code = code)
+                        id = record.id
+                        try:
+                            self.qltable.insert(question_id = id,
+                                                template_id = template_id,
+                                                section_id = section_id,
+                                                posn = qstn_posn+qstnPosn,
+                                               )
+                            qstnPosn += 1
+                        except:
+                            pass # already on the database no change required
+
+    # -------------------------------------------------------------------------
+    def getChildWidget(self, code):
+        # Get the question from the database
+        query = (self.qtable.code == code)
+        question = current.db(query).select(limitby=(0, 1)).first()
+        if question == None:
+            raise Exception("no question with code %s in database" % code)
+        cellWidget = survey_question_type["GridChild"](question.id)
+        return cellWidget
+
+# =============================================================================
+class S3QuestionTypeGridChildWidget(S3QuestionTypeAbstractWidget):
+    """
+        GridChild widget: Question Type widget
+
+        provides a widget for the survey module that is held by a grid question
+        type an provides a link to the true question type.
+
+        Available metadata for this class:
+        Type:     The type of question it really is (another question type)
+    """
+    def __init__(self,
+                 question_id = None,
+                 ):
+        T = current.T
+        S3QuestionTypeAbstractWidget.__init__(self, question_id)
+        if self.question != None and "code" in self.question:
+            # Expect the parent code to be the same as the child with the number
+            # removed. This means that the parent code must end with a hyphen.
+            end = self.question.code.rfind("-")+1
+            parentCode = self.question.code[0:end]
+            parentNumber = self.question.code[end:]
+            self.question.parentCode = parentCode
+            self.question.parentNumber = int(parentNumber)
+        self.metalist.append("Type")
+        self.typeDescription = self.qstn_metadata["Type"]
+        self.xlsWidgetSize = (0, 0)
+
+    # -------------------------------------------------------------------------
+    def display(self, **attr):
+        return None
+
+    # -------------------------------------------------------------------------
+    def realWidget(self):
+        type = self.get("Type")
+        realWidget = survey_question_type[type]()
+        realWidget.question = self.question
+        realWidget.qstn_metadata = self.qstn_metadata
+        return realWidget
+
+    # -------------------------------------------------------------------------
+    def subDisplay(self, **attr):
+        S3QuestionTypeAbstractWidget.display(self, **attr)
+        return self.realWidget().display(question_id=self.id, display = "Control Only")
+
+    # -------------------------------------------------------------------------
+    def getParentType(self):
+        self._store_metadata()
+        return self.get("Type")
+
+    # -------------------------------------------------------------------------
+    def db_type(self):
+        """
+            Return the real database table type for this question
+            This assumes that the value is valid
+        """
+        return self.realWidget().db_type()
+
+    # -------------------------------------------------------------------------
+    def writeToMatrix(self,
+                      matrix,
+                      row,
+                      col,
+                      langDict={},
+                      answerMatrix=None,
+                      style={}
+                     ):
+        """
+            Dummy function that doesn't write anything to the matrix,
+            because it is handled by the Grid question type
+        """
+        return (row, col)
+
+    # -------------------------------------------------------------------------
+    def writeQuestionToRTF(self, ss, langDict):
+        """
+            Function to write the basic question details to a rtf document.
+
+            The basic details will be written to Cell objects that can be
+            added to a row in a table object.
+
+            @param ss: StyleSheet object
+            @param langDict: Dictionary of languages
+        """
+        return self.realWidget().writeQuestionToRTF(ss, langDict)
+
+
+###############################################################################
+###  Classes for analysis
+###    will work with a list of answers for the same question
+###############################################################################
+
+# *****************************************************************************
+# Analysis Types
+# @todo: get rid of the wrapper functions!
+#
+def analysis_stringType(question_id, answerList):
+    return S3StringAnalysis("String", question_id, answerList)
+
+def analysis_textType(question_id, answerList):
+    return S3TextAnalysis("Text", question_id, answerList)
+
+def analysis_numericType(question_id, answerList):
+    return S3NumericAnalysis("Numeric", question_id, answerList)
+
+def analysis_dateType(question_id, answerList):
+    return S3DateAnalysis("Date", question_id, answerList)
+
+def analysis_timeType(question_id, answerList):
+    return S3TimeAnalysis("Date", question_id, answerList)
+
+def analysis_optionType(question_id, answerList):
+    return S3OptionAnalysis("Option", question_id, answerList)
+
+def analysis_ynType(question_id, answerList):
+    return S3OptionYNAnalysis("YesNo", question_id, answerList)
+
+def analysis_yndType(question_id, answerList):
+    return S3OptionYNDAnalysis("YesNoDontKnow", question_id, answerList)
+
+def analysis_optionOtherType(question_id, answerList):
+    return S3OptionOtherAnalysis("OptionOther", question_id, answerList)
+
+def analysis_multiOptionType(question_id, answerList):
+    return S3MultiOptionAnalysis("MultiOption", question_id, answerList)
+
+def analysis_locationType(question_id, answerList):
+    return S3LocationAnalysis("Location", question_id, answerList)
+
+def analysis_linkType(question_id, answerList):
+    return S3LinkAnalysis("Link", question_id, answerList)
+
+def analysis_gridType(question_id, answerList):
+    return S3GridAnalysis("Grid", question_id, answerList)
+
+def analysis_gridChildType(question_id, answerList):
+    return S3GridChildAnalysis("GridChild", question_id, answerList)
+
+#def analysis_ratingType(answerList):
+#    return S3RatingAnalysis(answerList)
+#    pass
+
+survey_analysis_type = {"String": analysis_stringType,
+                        "Text": analysis_textType,
+                        "Numeric": analysis_numericType,
+                        "Date": analysis_dateType,
+                        "Time": analysis_timeType,
+                        "Option": analysis_optionType,
+                        "YesNo": analysis_ynType,
+                        "YesNoDontKnow": analysis_yndType,
+                        "OptionOther": analysis_optionOtherType,
+                        "MultiOption" : analysis_multiOptionType,
+                        "Location": analysis_locationType,
+                        "Link": analysis_linkType,
+                        "Grid": analysis_gridType,
+                        "GridChild" : analysis_gridChildType,
+                        #"Rating": analysis_ratingType,
+                        }
+
+# =============================================================================
+class survey_S3AnalysisPriority():
+    """ @todo: docstring """
+
+    def __init__(self,
+                 range=[-1, -0.5, 0, 0.5, 1],
+                 colour={-1:"#888888", # grey
+                          0:"#000080", # blue
+                          1:"#008000", # green
+                          2:"#FFFF00", # yellow
+                          3:"#FFA500", # orange
+                          4:"#FF0000", # red
+                          5:"#880088", # purple
+                         },
+                 # Make Higher-priority show up more clearly
+                 opacity={-1:0.5,
+                           0:0.6,
+                           1:0.6,
+                           2:0.7,
+                           3:0.7,
+                           4:0.8,
+                           5:0.8,
+                          },
+                 image={-1:"grey",
+                         0:"blue",
+                         1:"green",
+                         2:"yellow",
+                         3:"orange",
+                         4:"red",
+                         5:"purple",
+                        },
+                 desc={-1:"No Data",
+                        0:"Very Low",
+                        1:"Low",
+                        2:"Medium Low",
+                        3:"Medium High",
+                        4:"High",
+                        5:"Very High",
+                       },
+                 zero = True,
+                 ):
+        """
+            Constructor
+
+            @todo: do not use lists or dicts as parameter defaults!
+            @todo: parameter description
+        """
+        self.range = range
+        self.colour = colour
+        self.opacity = opacity
+        self.image = image
+        self.description = desc
+
+    # -------------------------------------------------------------------------
+    def imageURL(self, app, key):
+        """ @todo: docstring """
+
+        T = current.T
+        base_url = "/%s/static/img/survey/" % app
+        dot_url = base_url + "%s-dot.png" % self.image[key]
+        image = IMG(_src=dot_url,
+                    _alt=T(self.image[key]),
+                    _height=12,
+                    _width=12,
+                   )
+        return image
+
+    # -------------------------------------------------------------------------
+    def desc(self, key):
+        """ @todo: docstring """
+
+        T = current.T
+        return T(self.description[key])
+
+    # -------------------------------------------------------------------------
+    def rangeText(self, key, pBand):
+        """ @todo: docstring """
+
+        T = current.T
+        if key == -1:
+            return ""
+        elif key == 0:
+            return T("At or below %s") % (pBand[1])
+        elif key == len(pBand)-1:
+            return T("Above %s") % (pBand[len(pBand)-1])
+        else:
+            return "%s - %s" % (pBand[key], pBand[key+1])
+
+# -----------------------------------------------------------------------------
+class S3AbstractAnalysis():
+    """
+        Abstract class used to hold all the responses for a single question
+        and perform some simple analysis on the data.
+
+        This class holds the main functions for:
+         * displaying tables of results
+         * displaying charts
+         * grouping the data.
+
+        Properties
+        ==========
+        question_id    - The id from the database
+        answerList     - A list of answers, taken from the survey_answer
+                         id, complete_id and value
+                         See models/survey.py getAllAnswersForQuestionInSeries()
+        valueList      - A list of validated & sanitised values
+        result         - A list of results before formatting
+        type           - The question type
+        qstnWidget     - The question Widget for this question
+        priorityGroup  - The type of priority group to use in the map
+        priorityGroups - The priority data used to colour the markers on the map
+    """
+
+    def __init__(self,
+                 type,
+                 question_id,
+                 answerList):
+        """
+            Constructor
+
+            @todo: parameter description
+        """
+
+        self.question_id = question_id
+        self.answerList = answerList
+        self.valueList = []
+        self.result = []
+        self.type = type
+        self.qstnWidget = survey_question_type[self.type](question_id = question_id)
+        self.priorityGroup = "zero" # Ensures that it doesn't go negative
+        self.priorityGroups = {"default" : [-1, -0.5, 0, 0.5, 1],
+                               "standard" : [-2, -1, 0, 1, 2],
+                               }
+        for answer in self.answerList:
+            if self.valid(answer):
+                try:
+                    cast = self.castRawAnswer(answer["complete_id"],
+                                              answer["value"])
+                    if cast != None:
+                        self.valueList.append(cast)
+                except:
+                    if DEBUG:
+                        raise
+                    pass
+
+        self.basicResults()
+
+    # -------------------------------------------------------------------------
+    def valid(self, answer):
+        """
+            Used to validate a single answer
+
+            @todo: parameter description
+            @todo: raise exception if abstract and override is mandatory
+        """
+
+        # @todo add validation here
+        # widget = S3QuestionTypeNumericWidget()
+        # widget.validate(answer)
+        # if widget.ANSWER_VALID:
+        return True
+
+    # -------------------------------------------------------------------------
+    def castRawAnswer(self, complete_id, answer):
+        """
+            Used to modify the answer from its raw text format.
+            Where necessary, this will function be overridden.
+
+            @todo: parameter description
+            @todo: raise exception if abstract and override is mandatory
+        """
+
+        return answer
+
+    # -------------------------------------------------------------------------
+    def basicResults(self):
+        """
+            Perform basic analysis of the answer set.
+            Where necessary, this will function be overridden.
+
+            @todo: parameter description
+            @todo: raise exception if abstract and override is mandatory
+        """
+
+        pass
+
+    # -------------------------------------------------------------------------
+    def chartButton(self, series_id):
+        """
+            This will display a button which when pressed will display a chart
+            When a chart is not appropriate then the subclass will override this
+            function with a nul function.
+
+            @todo: parameter description
+            @todo: make a class property rather than overriding in subclasses
+        """
+
+        if len(self.valueList) == 0:
+            return None
+        if series_id is None:
+            return None
+        src = URL(f="completed_chart",
+                  vars={"question_id": self.question_id,
+                        "series_id" : series_id,
+                        "type" : self.type
+                        }
+                  )
+        link = A(current.T("Chart"), _href=src, _target="blank",
+                 _class="action-btn")
+        return DIV(link, _class="surveyChart%sWidget" % self.type)
+
+    # -------------------------------------------------------------------------
+    def getChartName(self, series_id):
+        """
+            Get chart name for series_id
+
+            @todo: parameter description
+        """
+
+        import hashlib
+        h = hashlib.sha256()
+        h.update(self.qstnWidget.question.code)
+        encoded_part = h.hexdigest()
+        chartName = "survey_series_%s_%s" % (series_id, encoded_part)
+
+        return chartName
+
+    # -------------------------------------------------------------------------
+    def drawChart(self,
+                  series_id,
+                  output=None,
+                  data=None,
+                  label=None,
+                  xLabel=None,
+                  yLabel=None):
+        """
+            This function will draw the chart using the answer set.
+
+            This function must be overridden by the subclass.
+
+            @todo: parameter description
+            @todo: raise NotImplementedException if override is mandatory
+        """
+
+        msg = "Programming Error: No chart for %sWidget" % self.type
+        output = StringIO()
+        output.write(msg)
+        current.response.body = output
+
+    # -------------------------------------------------------------------------
+    def summary(self):
+        """
+            Calculate a summary of basic data.
+
+            Where necessary, this will function be overridden.
+        """
+
+        self.result = []
+        return self.count()
+
+    # -------------------------------------------------------------------------
+    def count(self):
+        """
+            Create a basic count of the data set.
+
+            Where necessary, this will function be overridden.
+        """
+
+        self.result.append(([current.T("Replies")], len(self.answerList)))
+        return self.format()
+
+    # -------------------------------------------------------------------------
+    def format(self):
+        """
+            This function will take the results and present them in a
+            HTML table
+
+            @todo: rename into "formatted"
+        """
+
+        table = TABLE()
+        for (key, value) in self.result:
+            table.append(TR(TD(B(key)), TD(value)))
+        return table
+
+    # -------------------------------------------------------------------------
+    def uniqueCount(self):
+        """
+            Calculate the number of occurances of each value
+
+            @todo: do not override Python built-in functions (e.g. "map")
+        """
+
+        map = {}
+        for answer in self.valueList:
+            if answer in map:
+                map[answer] += 1
+            else:
+                map[answer] = 1
+        return map
+
+    # -------------------------------------------------------------------------
+    def groupData(self, groupAnswer):
+        """
+            method to group the answers by the categories passed in
+            The categories will belong to another question.
+
+            For example the categories might be an option question which has
+            responses from High, Medium and Low. So all the responses that
+            correspond to the High category will go into one group, the Medium
+            into a second group and Low into the final group.
+
+            Later these may go through a filter which could calculate the
+            sum, or maybe the mean. Finally the result will be split.
+
+            See controllers/survey.py - series_graph()
+
+            @todo: parameter description
+        """
+
+        grouped = {}
+        answers = {}
+        for answer in self.answerList:
+            # hold the raw value (filter() will pass the value through castRawAnswer()
+            answers[answer["complete_id"]] = answer["value"]
+        # Step through each of the responses on the categories question
+        for ganswer in groupAnswer:
+            gcode = ganswer["complete_id"]
+            greply = ganswer["value"]
+            # If response to the group question also has a response to the main question
+            # Then store the response in value, otherwise return an empty list for this response
+            if gcode in answers:
+                value = answers[gcode]
+                if greply in grouped:
+                    grouped[greply].append(value)
+                else:
+                    grouped[greply] = [value]
+            else:
+                if greply not in grouped:
+                    grouped[greply] = []
+        return grouped
+
+    # -------------------------------------------------------------------------
+    def filter(self, filterType, groupedData):
+        """
+            Filter the data within the groups by the filter type
+
+            @todo: indicate whether this is meant to be overwritten by
+                   subclass (if not: remove it!)
+            @todo: parameter description
+        """
+
+        return groupedData
+
+    # -------------------------------------------------------------------------
+    def splitGroupedData(self, groupedData):
+        """
+            Split the data set by the groups
+
+            @todo: parameter description
+        """
+
+        keys = []
+        values = []
+        for (key, value) in groupedData.items():
+            keys.append(key)
+            values.append(value)
+        return (keys, values)
+
+# =============================================================================
+class S3StringAnalysis(S3AbstractAnalysis):
+    """
+        @todo: docstring
+        @todo: use class property rather than overriding chartButton method
+               (=only enable chartButton when needed rather than overriding
+                 with return None => lots of unnecessary calls!)
+    """
+
+    def chartButton(self, series_id):
+        return None
+
+# =============================================================================
+class S3TextAnalysis(S3AbstractAnalysis):
+    """
+        @todo: docstring
+        @todo: use class property rather than overriding chartButton method
+               (=only enable chartButton when needed rather than overriding
+                 with return None => lots of unnecessary calls!)
+    """
+
+    def chartButton(self, series_id):
+        return None
+
+# =============================================================================
+class S3DateAnalysis(S3AbstractAnalysis):
+    """
+        @todo: docstring
+        @todo: use class property rather than overriding chartButton method
+               (=only enable chartButton when needed rather than overriding
+                 with return None => lots of unnecessary calls!)
+    """
+
+    def chartButton(self, series_id):
+        return None
+
+# -----------------------------------------------------------------------------
+class S3TimeAnalysis(S3AbstractAnalysis):
+    """
+        @todo: docstring
+        @todo: use class property rather than overriding chartButton method
+               (=only enable chartButton when needed rather than overriding
+                 with return None => lots of unnecessary calls!)
+    """
+
+    def chartButton(self, series_id):
+        return None
+
+# =============================================================================
+class S3NumericAnalysis(S3AbstractAnalysis):
+    """
+        @todo: docstring
+    """
+
+    def __init__(self, type, question_id, answerList):
+
+        S3AbstractAnalysis.__init__(self, type, question_id, answerList)
+        self.histCutoff = 10
+
+    # -------------------------------------------------------------------------
+    def castRawAnswer(self, complete_id, answer):
+        """ @todo: docstring """
+
+        try:
+            return float(answer)
+        except ValueError:
+            return None
+
+    # -------------------------------------------------------------------------
+    def summary(self):
+        """ @todo: docstring """
+
+        T = current.T
+        widget = S3QuestionTypeNumericWidget()
+        fmt = widget.formattedAnswer
+        if self.sum:
+            self.result.append(([T("Total")], fmt(self.sum)))
+        if self.average:
+            self.result.append(([T("Average")], fmt(self.average)))
+        if self.max:
+            self.result.append(([T("Maximum")], fmt(self.max)))
+        if self.min:
+            self.result.append(([T("Minimum")], fmt(self.min)))
+        return self.format()
+
+    # -------------------------------------------------------------------------
+    def count(self):
+        """ @todo: docstring """
+
+        T = current.T
+        self.result.append((T("Replies"), len(self.answerList)))
+        self.result.append((T("Valid"), self.cnt))
+        return self.format()
+
+    # -------------------------------------------------------------------------
+    def basicResults(self):
+        """ @todo: docstring """
+
+        self.cnt = 0
+        if len(self.valueList) == 0:
+            self.sum = None
+            self.average = None
+            self.max = None
+            self.min = None
+            return
+        self.sum = 0
+        self.max = self.valueList[0]
+        self.min = self.valueList[0]
+        for answer in self.valueList:
+            self.cnt += 1
+            self.sum += answer
+            if answer > self.max:
+                self.max = answer
+            if answer < self.min:
+                self.min = answer
+        self.average = self.sum / float(self.cnt)
+
+    # -------------------------------------------------------------------------
+    def advancedResults(self):
+        """ @todo: docstring """
+
+        try:
+            from numpy import array
+        except:
+            current.log.error("ERROR: S3Survey requires numpy library installed.")
+
+        array = array(self.valueList)
+        self.std = array.std()
+        self.mean = array.mean()
+        self.zscore = {}
+        for answer in self.answerList:
+            complete_id = answer["complete_id"]
+            try:
+                value = self.castRawAnswer(complete_id, answer["value"])
+            except:
+                continue
+            if value != None:
+                self.zscore[complete_id] = (value - self.mean) / self.std
+
+    # -------------------------------------------------------------------------
+    def priority(self, complete_id, priorityObj):
+        """ @todo: docstring """
+
+        priorityList = priorityObj.range
+        priority = 0
+        try:
+            zscore = self.zscore[complete_id]
+            for limit in priorityList:
+                if zscore <= limit:
+                    return priority
+                priority += 1
+            return priority
+        except:
+            return -1
+
+    # -------------------------------------------------------------------------
+    def priorityBand(self, priorityObj):
+        """ @todo: docstring """
+
+        priorityList = priorityObj.range
+        priority = 0
+        band = [""]
+        cnt = 0
+        for limit in priorityList:
+            value = int(self.mean + limit * self.std)
+            if value < 0:
+                value = 0
+                priorityList[cnt] = - self.mean / self.std
+            band.append(value)
+            cnt += 1
+        return band
+
+    # -------------------------------------------------------------------------
+    def chartButton(self, series_id):
+        """ @todo: docstring """
+
+        # At the moment only draw charts for integers
+        if self.qstnWidget.get("Format", "n") != "n":
+            return None
+        if len(self.valueList) < self.histCutoff:
+            return None
+        return S3AbstractAnalysis.chartButton(self, series_id)
+
+    # -------------------------------------------------------------------------
+    def drawChart(self,
+                  series_id,
+                  output="xml",
+                  data=None,
+                  label=None,
+                  xLabel=None,
+                  yLabel=None):
+        """ @todo: docstring """
+
+        chartFile = self.getChartName(series_id)
+        cached = S3Chart.getCachedFile(chartFile)
+        if cached:
+            return cached
+
+        chart = S3Chart(path=chartFile)
+        chart.asInt = True
+        if data == None:
+            chart.survey_hist(self.qstnWidget.question.name,
+                              self.valueList,
+                              10,
+                              0,
+                              self.max,
+                              xlabel = self.qstnWidget.question.name,
+                              ylabel = current.T("Count")
+                             )
+        else:
+            chart.survey_bar(self.qstnWidget.question.name,
+                             data,
+                             label,
+                             []
+                            )
+        image = chart.draw(output=output)
+        return image
+
+    # -------------------------------------------------------------------------
+    def filter(self, filterType, groupedData):
+        """ @todo: docstring """
+
+        filteredData = {}
+        if filterType == "Sum":
+            for (key, valueList) in groupedData.items():
+                sum = 0
+                for value in valueList:
+                    try:
+                        sum += self.castRawAnswer(None, value)
+                    except:
+                        pass
+                filteredData[key] = sum
+            return filteredData
+        return groupedData
+
+# =============================================================================
+class S3OptionAnalysis(S3AbstractAnalysis):
+    """ @todo: docstring """
+
+    # -------------------------------------------------------------------------
+    def summary(self):
+        """ @todo: docstring """
+
+        T = current.T
+        for (key, value) in self.listp.items():
+            self.result.append((T(key), value))
+        return self.format()
+
+    # -------------------------------------------------------------------------
+    def basicResults(self):
+        """ @todo: docstring """
+
+        self.cnt = 0
+        self.list = {}
+        for answer in self.valueList:
+            self.cnt += 1
+            if answer in self.list:
+                self.list[answer] += 1
+            else:
+                self.list[answer] = 1
+        self.listp = {}
+        if self.cnt != 0:
+            for (key, value) in self.list.items():
+                self.listp[key] = "%3.1f%%" % round((100.0 * value) / self.cnt, 1)
+
+    # -------------------------------------------------------------------------
+    def drawChart(self,
+                  series_id,
+                  output="xml",
+                  data=None,
+                  label=None,
+                  xLabel=None,
+                  yLabel=None):
+        """ @todo: docstring """
+
+        chartFile = self.getChartName(series_id)
+        cached = S3Chart.getCachedFile(chartFile)
+        if cached:
+            return cached
+
+        chart = S3Chart(path=chartFile)
+        data = []
+        label = []
+        for (key, value) in self.list.items():
+            data.append(value)
+            label.append(key)
+        chart.survey_pie(self.qstnWidget.question.name,
+                         data,
+                         label)
+        image = chart.draw(output=output)
+        return image
+
+# =============================================================================
+class S3OptionYNAnalysis(S3OptionAnalysis):
+    """ @todo: docstring """
+
+    # -------------------------------------------------------------------------
+    def summary(self):
+        """ @todo: docstring """
+
+        T = current.T
+        self.result.append((T("Yes"), self.yesp))
+        self.result.append((T("No"), self.nop))
+        return self.format()
+
+
+    # -------------------------------------------------------------------------
+    def basicResults(self):
+        """ @todo: docstring """
+
+        S3OptionAnalysis.basicResults(self)
+        T = current.T
+        if "Yes" in self.listp:
+            self.yesp = self.listp["Yes"]
+        else:
+            if self.cnt == 0:
+                self.yesp = "" # No replies so can't give a percentage
+            else:
+                self.list["Yes"] = 0
+                self.yesp = T("0%")
+        if "No" in self.listp:
+            self.nop = self.listp["No"]
+        else:
+            if self.cnt == 0:
+                self.nop = "" # No replies so can't give a percentage
+            else:
+                self.list["No"] = 0
+                self.nop = T("0%")
+
+# =============================================================================
+class S3OptionYNDAnalysis(S3OptionAnalysis):
+    """ @todo: docstring """
+
+    # -------------------------------------------------------------------------
+    def summary(self):
+        """ @todo: docstring """
+
+        T = current.T
+        self.result.append((T("Yes"), self.yesp))
+        self.result.append((T("No"), self.nop))
+        self.result.append((T("Don't Know"), self.dkp))
+        return self.format()
+
+    # -------------------------------------------------------------------------
+    def basicResults(self):
+        """ @todo: docstring """
+
+        S3OptionAnalysis.basicResults(self)
+        T = current.T
+        if "Yes" in self.listp:
+            self.yesp = self.listp["Yes"]
+        else:
+            if self.cnt == 0:
+                self.yesp = "" # No replies so can't give a percentage
+            else:
+                self.list["Yes"] = 0
+                self.yesp = T("0%")
+        if "No" in self.listp:
+            self.nop = self.listp["No"]
+        else:
+            if self.cnt == 0:
+                self.nop = "" # No replies so can't give a percentage
+            else:
+                self.list["No"] = 0
+                self.nop = T("0%")
+        if "Don't Know" in self.listp:
+            self.dkp = self.listp["Don't Know"]
+        else:
+            if self.cnt == 0:
+                self.dkp = "" # No replies so can't give a percentage
+            else:
+                self.list["Don't Know"] = 0
+                self.dkp = T("0%")
+
+# =============================================================================
+class S3OptionOtherAnalysis(S3OptionAnalysis):
+    """
+        @todo: docstring
+        @todo: remove if not needed
+    """
+
+    pass
+
+# =============================================================================
+class S3MultiOptionAnalysis(S3OptionAnalysis):
+    """ @todo: docstring """
+
+    # -------------------------------------------------------------------------
+    def castRawAnswer(self, complete_id, answer):
+        """
+            Used to modify the answer from its raw text format.
+            Where necessary, this function will be overridden.
+        """
+
+        valueList = json2list(answer)
+        return valueList
+
+    # -------------------------------------------------------------------------
+    def basicResults(self):
+        """ @todo: docstring """
+
+        self.cnt = 0
+        self.list = {}
+        for answer in self.valueList:
+            if isinstance(answer, list):
+                answerList = answer
+            else:
+                answerList = [answer]
+            self.cnt += 1
+            for answer in answerList:
+                if answer in self.list:
+                    self.list[answer] += 1
+                else:
+                    self.list[answer] = 1
+        self.listp = {}
+        if self.cnt != 0:
+            for (key, value) in self.list.items():
+                self.listp[key] = "%s%%" %((100 * value) / self.cnt)
+
+    # -------------------------------------------------------------------------
+    def drawChart(self,
+                  series_id,
+                  output="xml",
+                  data=None,
+                  label=None,
+                  xLabel=None,
+                  yLabel=None):
+        """ @todo: docstring """
+
+        chartFile = self.getChartName(series_id)
+        cached = S3Chart.getCachedFile(chartFile)
+        if cached:
+            return cached
+
+        chart = S3Chart(path=chartFile)
+        data = []
+        label = []
+        for (key, value) in self.list.items():
+            data.append(value)
+            label.append(key)
+        chart.survey_bar(self.qstnWidget.question.name,
+                         data,
+                         label,
+                         None
+                         )
+        image = chart.draw(output=output)
+        return image
+
+# =============================================================================
+class S3LocationAnalysis(S3AbstractAnalysis):
+    """
+        Widget for analysing Location type questions
+
+        The analysis will compare the location values provided with
+        data held on the gis_location table.
+
+        The data held can be in its raw form (the actual value imported) or
+        in a more refined state, which may include the actual location id
+        held on the database or an alternative value which is a string.
+
+        The raw value may be a local name for the place whilst the altervative
+        value should be the actual value held on the database.
+        The alternative value is useful for matching duplicate responses that
+        are using the same local name.
+    """
+
+    # -------------------------------------------------------------------------
+    def castRawAnswer(self, complete_id, answer):
+        """
+            Convert the answer for the complete_id into a database record.
+
+            This can have one of three type of return values.
+            A single record: The actual location
+            Multiple records: The set of location, on of which is the location
+            None: No match is found on the database.
+        """
+
+        records = self.qstnWidget.getLocationRecord(complete_id, answer)
+        return records
+
+    # -------------------------------------------------------------------------
+    def summary(self):
+        """
+            Returns a summary table
+        """
+
+        T = current.T
+        self.result.append((T("Known Locations"), self.kcnt))
+        self.result.append((T("Duplicate Locations"), self.dcnt))
+        self.result.append((T("Unknown Locations"), self.ucnt))
+        return self.format()
+
+    # -------------------------------------------------------------------------
+    def count(self):
+        """
+            Returns a table of basic results
+        """
+
+        T = current.T
+        self.result.append((T("Total Locations"), len(self.valueList)))
+        self.result.append((T("Unique Locations"), self.cnt))
+        return self.format()
+
+    # -------------------------------------------------------------------------
+    def basicResults(self):
+        """
+            Calculate the basic results, which consists of a number of list
+            related to the locations
+
+            LISTS (dictionaries)
+            ====================
+            All maps are keyed on the value used in the database lookup
+            locationList - holding the number of times the value exists
+            complete_id  - a list of complete_id at this location
+            duplicates   - a list of duplicate records
+            known        - The record from the database
+
+            Calculated Values
+            =================
+            cnt  - The number of unique locations
+            dcnt - The number of locations with duplicate values
+            kcnt - The number of known locations (single match on the database)
+            ucnt - The number of unknown locations
+            dper - The percentage of locations with duplicate values
+            kper - The percentage of known locations
+            NOTE: Percentages are calculated from the unique locations
+                  and not from the total responses.
+        """
+
+        self.locationList = {}
+        self.duplicates = {}
+        self.known = {}
+        self.complete_id = {}
+        for answer in self.valueList:
+            if answer != None:
+                key = answer.key
+                if key in self.locationList:
+                    self.locationList[key] += 1
+                else:
+                    self.locationList[key] = 1
+                    if key in self.complete_id:
+                        self.complete_id[key].append(answer.complete_id)
+                    else:
+                        self.complete_id[key] = [answer.complete_id]
+                    result = answer.records
+                    if len(result) > 1:
+                        self.duplicates[key] = result
+                    if len(result) == 1:
+                        self.known[key] = result[0]
+        self.cnt = len(self.locationList)
+        self.dcnt = len(self.duplicates)
+        self.kcnt = len(self.known)
+        if self.cnt == 0:
+            self.dper = "0%%"
+            self.kper = "0%%"
+        else:
+            self.dper = "%s%%" %((100 * self.dcnt) / self.cnt)
+            self.kper = "%s%%" %((100 * self.kcnt) / self.cnt)
+        self.ucnt = self.cnt - self.kcnt - self.dcnt
+
+    # -------------------------------------------------------------------------
+    def chartButton(self, series_id):
+        """
+            Ensures that no button is set up
+
+            @todo: use a class property rather than calling just to get a None
+        """
+
+        return None
+
+    # -------------------------------------------------------------------------
+    def uniqueCount(self):
+        """
+            Calculate the number of occurances of each value
+        """
+
+        map = {}
+        for answer in self.valueList:
+            if answer.key in map:
+                map[answer.key] += 1
+            else:
+                map[answer.key] = 1
+        return map
+
+# =============================================================================
+class S3LinkAnalysis(S3AbstractAnalysis):
+    """ @todo: docstring """
+
+    def __init__(self, type, question_id, answerList):
+        """ @todo: docstring """
+
+        S3AbstractAnalysis.__init__(self, type, question_id, answerList)
+        linkWidget = S3QuestionTypeLinkWidget(question_id)
+        parent = linkWidget.get("Parent")
+        relation = linkWidget.get("Relation")
+        type = linkWidget.get("Type")
+        parent_qid = linkWidget.getParentQstnID()
+        valueMap = {}
+        for answer in self.answerList:
+            complete_id = answer["complete_id"]
+            parent_answer = linkWidget.loadAnswer(complete_id,
+                                                  parent_qid,
+                                                  forceDB=True
+                                                  )
+            if relation == "groupby":
+                # @todo: check for different values
+                valueMap.update({parent_answer:answer})
+        valueList = []
+        for answer in valueMap.values():
+            valueList.append(answer)
+        self.widget = survey_analysis_type[type](question_id, valueList)
+
+    # -------------------------------------------------------------------------
+    def summary(self):
+        """ @todo: docstring """
+
+        return self.widget.summary()
+
+    # -------------------------------------------------------------------------
+    def count(self):
+        """ @todo: docstring """
+
+        return self.widget.count()
+
+    # -------------------------------------------------------------------------
+    def chartButton(self, series_id):
+        """ @todo: docstring """
+
+        return self.widget.chartButton(series_id)
+
+    # -------------------------------------------------------------------------
+    def filter(self, filterType, groupedData):
+        """ @todo: docstring """
+
+        return self.widget.filter(filterType, groupedData)
+
+    # -------------------------------------------------------------------------
+    def drawChart(self,
+                  series_id,
+                  output="xml",
+                  data=None,
+                  label=None,
+                  xLabel=None,
+                  yLabel=None):
+        """ @todo: docstring """
+
+        return self.widget.drawChart(data, series_id, label, xLabel, yLabel)
+
+# =============================================================================
+class S3GridAnalysis(S3AbstractAnalysis):
+    """
+        @todo: docstring
+        @todo: remove if not needed
+    """
+
+    pass
+
+# =============================================================================
+class S3GridChildAnalysis(S3AbstractAnalysis):
+    """ @todo: docstring """
+
+    def __init__(self, type, question_id, answerList):
+        """ @todo: docstring """
+
+        S3AbstractAnalysis.__init__(self, type, question_id, answerList)
+        childWidget = S3QuestionTypeLinkWidget(question_id)
+        trueType = childWidget.get("Type")
+        for answer in self.answerList:
+            if self.valid(answer):
+                try:
+                    self.valueList.append(trueType.castRawAnswer(answer["complete_id"],
+                                                                 answer["value"]))
+                except:
+                    pass
+        self.widget = survey_analysis_type[trueType](question_id, self.answerList)
+
+    # -------------------------------------------------------------------------
+    def drawChart(self,
+                  series_id,
+                  output="xml",
+                  data=None,
+                  label=None,
+                  xLabel=None,
+                  yLabel=None):
+        """ @todo: docstring """
+
+        return self.widget.drawChart(series_id, output, data, label, xLabel, yLabel)
+
+    # -------------------------------------------------------------------------
+    def filter(self, filterType, groupedData):
+        """ @todo: docstring """
+
+        return self.widget.filter(filterType, groupedData)
+
+# =============================================================================
+# Utilities
+#
+def json2py(jsonstr):
+    """
+        Utility function to convert a string in json to a python structure
+    """
+
+    from xml.sax.saxutils import unescape
+
+    if not isinstance(jsonstr, str):
+        return jsonstr
+    try:
+        jsonstr = unescape(jsonstr, {"u'": '"'})
+        jsonstr = unescape(jsonstr, {"'": '"'})
+        python_structure = json.loads(jsonstr)
+    except ValueError:
+        _debug("ERROR: attempting to convert %s using modules/s3db/survey/json2py.py" % (jsonstr))
+        return jsonstr
+    else:
+        return python_structure
+
+# -----------------------------------------------------------------------------
+def json2list(jsonstr):
+    """
+        Used to modify a json string to a python list.
+    """
+
+    if jsonstr == "":
+        value_list = []
+    else:
+        if jsonstr[0] == "[":
+            value_list = json2py(jsonstr)
+        else:
+            value_list = jsonstr.split(",")
+        if not isinstance(value_list, list):
+            value_list = [value_list]
+    return value_list
+
+# -----------------------------------------------------------------------------
+def survey_T(phrase, langDict):
+    """
+        Function to translate a phrase using the dictionary passed in
+
+        @todo: parameter description
+    """
+
+    if phrase in langDict and langDict[phrase] != "":
+        return langDict[phrase]
+    else:
+        return phrase
 
 # END =========================================================================

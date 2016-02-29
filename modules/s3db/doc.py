@@ -2,7 +2,7 @@
 
 """ Sahana Eden Document Library
 
-    @copyright: 2011-2015 (c) Sahana Software Foundation
+    @copyright: 2011-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -29,6 +29,7 @@
 
 __all__ = ("S3DocumentLibrary",
            "S3DocSitRepModel",
+           "S3CKEditorModel",
            "doc_image_represent",
            "doc_document_list_layout",
            )
@@ -74,6 +75,7 @@ class S3DocumentLibrary(S3Model):
         # Document-referencing entities
         #
         entity_types = Storage(asset_asset=T("Asset"),
+                               cap_resource=T("CAP Resource"),
                                cms_post=T("Post"),
                                cr_shelter=T("Shelter"),
                                deploy_mission=T("Mission"),
@@ -94,6 +96,7 @@ class S3DocumentLibrary(S3Model):
                                org_office=T("Office"),
                                org_facility=T("Facility"),
                                org_group=T("Organization Group"),
+                               req_req=T("Request"),
                                # @ToDo: Deprecate
                                stats_people=T("People"),
                                vulnerability_document=T("Vulnerability Document"),
@@ -124,6 +127,7 @@ class S3DocumentLibrary(S3Model):
                      super_link("site_id", "org_site"),
                      Field("file", "upload",
                            autodelete = True,
+                           length = current.MAX_FILENAME_LENGTH,
                            represent = self.doc_file_represent,
                            # upload folder needs to be visible to the download() function as well as the upload
                            uploadfolder = os.path.join(folder,
@@ -214,7 +218,7 @@ class S3DocumentLibrary(S3Model):
 
         # Reusable field
         represent = doc_DocumentRepresent(lookup = tablename,
-                                          fields = ["name", "file", "url"],
+                                          fields = ("name", "file", "url"),
                                           labels = "%(name)s",
                                           show_link = True)
 
@@ -248,6 +252,7 @@ class S3DocumentLibrary(S3Model):
                      super_link("site_id", "org_site"), # @ToDo: Remove since Site Instances are doc entities?
                      Field("file", "upload",
                            autodelete = True,
+                           length = current.MAX_FILENAME_LENGTH,
                            represent = doc_image_represent,
                            requires = IS_EMPTY_OR(
                                         IS_IMAGE(extensions=(s3.IMAGE_EXTENSIONS)),
@@ -324,7 +329,7 @@ class S3DocumentLibrary(S3Model):
     # -------------------------------------------------------------------------
     def defaults(self):
         """ Safe defaults if the module is disabled """
-        
+
         document_id = S3ReusableField("document_id", "integer",
                                       readable=False, writable=False)
 
@@ -462,10 +467,10 @@ class S3DocumentLibrary(S3Model):
         """
             Build a full-text index
         """
-        
+
         form_vars = form.vars
         doc = form_vars.file
-       
+
         table = current.db.doc_document
 
         document = json.dumps(dict(filename=doc,
@@ -482,7 +487,7 @@ class S3DocumentLibrary(S3Model):
         """
             Remove the full-text index
         """
-        
+
         db = current.db
         table = db.doc_document
         record = db(table.id == row.id).select(table.file,
@@ -491,7 +496,7 @@ class S3DocumentLibrary(S3Model):
         document = json.dumps(dict(filename=record.file,
                                    id=row.id,
                                    ))
-        
+
         current.s3task.async("document_delete_index",
                              args = [document])
 
@@ -565,7 +570,7 @@ def doc_document_list_layout(list_id, item_id, resource, rfields, record):
             doc_name = current.messages["NONE"]
         doc_url = URL(c="default", f="download",
                       args=[file])
-        body = P(I(_class="icon-paperclip"),
+        body = P(ICON("attachment"),
                  " ",
                  SPAN(A(doc_name,
                         _href=doc_url,
@@ -575,7 +580,7 @@ def doc_document_list_layout(list_id, item_id, resource, rfields, record):
                  _class="card_1_line",
                  )
     elif url:
-        body = P(I(_class="icon-globe"),
+        body = P(ICON("link"),
                  " ",
                  SPAN(A(url,
                         _href=url,
@@ -591,7 +596,7 @@ def doc_document_list_layout(list_id, item_id, resource, rfields, record):
     permit = current.auth.s3_has_permission
     table = current.s3db.doc_document
     if permit("update", table, record_id=record_id):
-        edit_btn = A(I(" ", _class="icon icon-edit"),
+        edit_btn = A(ICON("edit"),
                      _href=URL(c="doc", f="document",
                                args=[record_id, "update.popup"],
                                vars={"refresh": list_id,
@@ -602,7 +607,7 @@ def doc_document_list_layout(list_id, item_id, resource, rfields, record):
     else:
         edit_btn = ""
     if permit("delete", table, record_id=record_id):
-        delete_btn = A(I(" ", _class="icon icon-trash"),
+        delete_btn = A(ICON("delete"),
                        _class="dl-item-delete",
                        )
     else:
@@ -613,7 +618,7 @@ def doc_document_list_layout(list_id, item_id, resource, rfields, record):
                    )
 
     # Render the item
-    item = DIV(DIV(I(_class="icon"),
+    item = DIV(DIV(ICON("icon"),
                    SPAN(" %s" % title,
                         _class="card-title"),
                    edit_bar,
@@ -808,5 +813,79 @@ class S3DocSitRepModel(S3Model):
 
         return dict(doc_sitrep_id = lambda **attr: dummy("sitrep_id"),
                     )
+
+# =============================================================================
+class S3CKEditorModel(S3Model):
+    """
+        Storage for Images used by CKEditor
+        - and hence the s3_richtext_widget
+
+        Based on https://github.com/timrichardson/web2py_ckeditor4
+    """
+
+    names = ("doc_ckeditor",
+             "doc_filetype",
+             )
+
+    def model(self):
+
+        #T = current.T
+
+        # ---------------------------------------------------------------------
+        # Images
+        #
+        tablename = "doc_ckeditor"
+        self.define_table(tablename,
+                          Field("title", length=255),
+                          Field("filename", length=255),
+                          Field("flength", "integer"),
+                          Field("mime_type", length=128),
+                          Field("upload", "upload",
+                                #uploadfs = self.settings.uploadfs,
+                                requires = [IS_NOT_EMPTY(),
+                                            IS_LENGTH(maxsize=10485760, # 10 Mb
+                                                      minsize=0)],
+                                ),
+                          *s3_meta_fields())
+
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        #
+        return dict(doc_filetype = self.doc_filetype,
+                    )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def doc_filetype(filename):
+        """
+            Takes a filename and returns a category based on the file type.
+            Categories: word, excel, powerpoint, flash, pdf, image, video, audio, archive, other.
+        """
+
+        parts = os.path.splitext(filename)
+        if len(parts) < 2:
+            return "other"
+        else:
+            ext = parts[1][1:].lower()
+            if ext in ("png", "jpg", "jpeg", "gif"):
+                return "image"
+            elif ext in ("avi", "mp4", "m4v", "ogv", "wmv", "mpg", "mpeg"):
+                return "video"
+            elif ext in ("mp3", "m4a", "wav", "ogg", "aiff"):
+                return "audio"
+            elif ext in ("zip", "7z", "tar", "gz", "tgz", "bz2", "rar"):
+                return "archive"
+            elif ext in ("doc", "docx", "dot", "dotx", "rtf"):
+                return "word"
+            elif ext in ("xls", "xlsx", "xlt", "xltx", "csv"):
+                return "excel"
+            elif ext in ("ppt", "pptx"):
+                return "powerpoint"
+            elif ext in ("flv", "swf"):
+                return "flash"
+            elif ext == "pdf":
+                return "pdf"
+            else:
+                return "other"
 
 # END =========================================================================

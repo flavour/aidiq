@@ -2,7 +2,7 @@
 
 """ S3 RESTful API
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -54,23 +54,15 @@ except ImportError:
 from gluon import *
 # Here are dependencies listed for reference:
 #from gluon.globals import current
-#from gluon.html import A, DIV, URL
+#from gluon.html import URL
 #from gluon.http import HTTP, redirect
-#from gluon.validators import IS_EMPTY_OR, IS_NOT_IN_DB, IS_DATE, IS_TIME
 from gluon.storage import Storage
 
+from s3datetime import s3_parse_datetime
 from s3resource import S3Resource
 from s3utils import s3_get_extension, s3_remove_last_record_id, s3_store_last_record_id
 
 REGEX_FILTER = re.compile(".+\..+|.*\(.+\).*")
-
-DEBUG = False
-if DEBUG:
-    print >> sys.stderr, "S3REST: DEBUG MODE"
-    def _debug(m):
-        print >> sys.stderr, m
-else:
-    _debug = lambda m: None
 
 # =============================================================================
 class S3Request(object):
@@ -112,6 +104,8 @@ class S3Request(object):
                    current web2py request object
         """
 
+        auth = current.auth
+
         # Common settings
 
         # XSLT Paths
@@ -129,7 +123,6 @@ class S3Request(object):
             if extension is None:
                 extension = ext
         if c or f:
-            auth = current.auth
             if not auth.permission.has_permission("read",
                                                   c=self.controller,
                                                   f=self.function):
@@ -212,12 +205,21 @@ class S3Request(object):
         if components is None:
             components = cnames
 
-        if self.method == "review":
+        tablename = "%s_%s" % (self.prefix, self.name)
+
+        if not current.deployment_settings.get_auth_record_approval():
+            # Record Approval is off
+            approved, unapproved = True, False
+        elif self.method == "review":
             approved, unapproved = False, True
+        elif auth.s3_has_permission("review", tablename, self.id):
+            # Approvers should be able to edit records during review
+            # @ToDo: deployment_setting to allow Filtering out from
+            #        multi-record methods even for those with Review permission
+            approved, unapproved = True, True
         else:
             approved, unapproved = True, False
 
-        tablename = "%s_%s" % (self.prefix, self.name)
         self.resource = S3Resource(tablename,
                                    id=self.id,
                                    filter=_filter,
@@ -514,7 +516,83 @@ class S3Request(object):
             self.representation = representation
         else:
             self.representation = self.DEFAULT_REPRESENTATION
-        return
+
+        # Check for special URL variable $search, indicating
+        # that the request body contains filter queries:
+        if self.http == "POST" and "$search" in self.get_vars:
+            self.__search()
+
+    # -------------------------------------------------------------------------
+    def __search(self):
+        """
+            Process filters in POST, interprets URL filter expressions
+            in POST vars (if multipart), or from JSON request body (if
+            not multipart or $search=ajax).
+
+            NB: overrides S3Request method as GET (r.http) to trigger
+                the correct method handlers, but will not change
+                current.request.env.request_method
+        """
+
+        get_vars = self.get_vars
+        content_type = self.env.get("content_type") or ""
+
+        mode = get_vars.get("$search")
+
+        # Override request method
+        if mode:
+            self.http = "GET"
+
+        # Retrieve filters from request body
+        if mode == "ajax" or content_type[:10] != "multipart/":
+            # Read body JSON (from $.searchS3)
+            s = self.body
+            s.seek(0)
+            try:
+                filters = json.load(s)
+            except ValueError:
+                filters = {}
+            if not isinstance(filters, dict):
+                filters = {}
+            decode = None
+        else:
+            # Read POST vars JSON (from $.searchDownloadS3)
+            filters = self.post_vars
+            decode = json.loads
+
+        # Move filters into GET vars
+        get_vars = Storage(get_vars)
+        post_vars = Storage(self.post_vars)
+
+        del get_vars["$search"]
+        for k, v in filters.items():
+            k0 = k[0]
+            if k == "$filter" or \
+               k0 != "_" and ("." in k or k0 == "(" and ")" in k):
+                try:
+                    value = decode(v) if decode else v
+                except ValueError:
+                    continue
+                # Catch any non-str values
+                if type(value) is list:
+                    value = [str(item)
+                             if not isinstance(item, basestring) else item
+                             for item in value
+                             ]
+                elif not isinstance(value, basestring):
+                    value = str(value)
+                get_vars[k] = value
+                # Remove filter expression from POST vars
+                if k in post_vars:
+                    del post_vars[k]
+
+        # Override self.get_vars and self.post_vars
+        self.get_vars = get_vars
+        self.post_vars = post_vars
+
+        # Update combined vars
+        self.vars = get_vars.copy()
+        self.vars.update(self.post_vars)
 
     # -------------------------------------------------------------------------
     # REST Interface
@@ -788,13 +866,7 @@ class S3Request(object):
         # msince
         msince = get_vars.get("msince")
         if msince is not None:
-            tfmt = current.xml.ISOFORMAT
-            try:
-                (y, m, d, hh, mm, ss, t0, t1, t2) = \
-                    time.strptime(msince, tfmt)
-                msince = datetime.datetime(y, m, d, hh, mm, ss)
-            except ValueError:
-                msince = None
+            msince = s3_parse_datetime(msince)
 
         # Show IDs (default: False)
         if "show_ids" in get_vars:
@@ -890,19 +962,25 @@ class S3Request(object):
                                                       default)
 
         # Export the resource
-        output = r.resource.export_xml(start=start,
-                                       limit=limit,
-                                       msince=msince,
-                                       fields=fields,
-                                       dereference=True,
-                                       # maxdepth in args
-                                       references=references,
-                                       mcomponents=mcomponents,
-                                       rcomponents=rcomponents,
-                                       stylesheet=stylesheet,
-                                       as_json=as_json,
-                                       maxbounds=maxbounds,
-                                       **args)
+        resource = r.resource
+        target = r.target()[3]
+        if target == resource.tablename:
+            # Master resource targetted
+            target = None
+        output = resource.export_xml(start=start,
+                                     limit=limit,
+                                     msince=msince,
+                                     fields=fields,
+                                     dereference=True,
+                                     # maxdepth in args
+                                     references=references,
+                                     mcomponents=mcomponents,
+                                     rcomponents=rcomponents,
+                                     stylesheet=stylesheet,
+                                     as_json=as_json,
+                                     maxbounds=maxbounds,
+                                     target= target,
+                                     **args)
         # Transformation error?
         if not output:
             r.error(400, "XSLT Transformation Error: %s " % current.xml.error)
@@ -1088,7 +1166,7 @@ class S3Request(object):
                                               as_json=True)
             content_type = "application/json"
         else:
-            r.error(501, current.ERROR.BAD_FORMAT)
+            r.error(415, current.ERROR.BAD_FORMAT)
         response = current.response
         response.headers["Content-Type"] = content_type
         return output
@@ -1142,7 +1220,7 @@ class S3Request(object):
             as_json = True
             content_type = "application/json"
         else:
-            r.error(501, current.ERROR.BAD_FORMAT)
+            r.error(415, current.ERROR.BAD_FORMAT)
 
         component = r.component_name
         output = r.resource.export_options(component=component,
@@ -1569,7 +1647,6 @@ class S3Request(object):
             customise = current.deployment_settings.customise_resource(tablename)
             if customise:
                 customise(self, tablename)
-        return
 
 # =============================================================================
 class S3Method(object):
@@ -1809,26 +1886,32 @@ class S3Method(object):
             @param r: the S3Request
         """
 
+        master_id = r.id
+
         if r.component:
-            # Component
+
             component = r.component
-            if not component.multiple and not r.component_id:
+            component_id = r.component_id
+            link = r.link
+
+            if not component.multiple and not component_id:
+                # Enforce first component record
                 table = component.table
                 pkey = table._id.name
                 component.load(start=0, limit=1)
                 if len(component):
-                    r.component_id = component.records().first()[pkey]
-            component_id = r.component_id
-            if not r.link:
+                    component_id = component.records().first()[pkey]
+                    if link and master_id:
+                        r.link_id = link.link_id(master_id, component_id)
+                    r.component_id = component_id
+                    component.add_filter(table._id == component_id)
+
+            if not link or r.actuate_link():
                 return component_id
-            elif r.id and component_id:
-                if r.actuate_link():
-                    return component_id
-                elif r.link_id:
-                    return r.link_id
+            else:
+                return r.link_id
         else:
-            # Master record
-            return r.id
+            return master_id
 
         return None
 
@@ -1981,7 +2064,7 @@ class S3Method(object):
 def s3_request(*args, **kwargs):
     """
         Helper function to generate S3Request instances
-        
+
         @param args: arguments for the S3Request
         @param kwargs: keyword arguments for the S3Request
 

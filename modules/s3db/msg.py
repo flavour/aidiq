@@ -2,7 +2,7 @@
 
 """ Sahana Eden Messaging Model
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -152,8 +152,9 @@ class S3ChannelModel(S3Model):
         define_table(tablename,
                      channel_id(),
                      Field("status",
-                           #label = T("Status")
+                           #label = T("Status"),
                            #represent = s3_yes_no_represent,
+                           represent = lambda v: v or current.messages["NONE"],
                            ),
                      *s3_meta_fields())
 
@@ -245,7 +246,7 @@ class S3ChannelModel(S3Model):
 
             CLI API for shell scripts & to be called by S3Method
         """
-    
+
         db = current.db
         s3db = current.s3db
         table = s3db.table(tablename)
@@ -306,7 +307,7 @@ class S3ChannelModel(S3Model):
 
         if form.record:
             # Update form
-            # process of changed
+            # Process if changed
             if form.record.enabled and not form.vars.enabled:
                 current.s3db.msg_channel_disable(form.table._tablename,
                                                  form.vars.channel_id)
@@ -552,7 +553,7 @@ class S3MessageAttachmentModel(S3Model):
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
-        return dict()
+        return {}
 
 # =============================================================================
 class S3EmailModel(S3ChannelModel):
@@ -680,8 +681,8 @@ class S3EmailModel(S3ChannelModel):
                             )
 
         # ---------------------------------------------------------------------
-        return dict()
-        
+        return {}
+
 # =============================================================================
 class S3FacebookModel(S3ChannelModel):
     """
@@ -892,7 +893,7 @@ class S3MCommonsModel(S3ChannelModel):
                    action = self.msg_channel_poll)
 
         # ---------------------------------------------------------------------
-        return dict()
+        return {}
 
 # =============================================================================
 class S3ParsingModel(S3Model):
@@ -1131,7 +1132,7 @@ class S3ParsingModel(S3Model):
 
             CLI API for shell scripts & to be called by S3Method
         """
-    
+
         db = current.db
         s3db = current.s3db
         table = s3db.msg_parser
@@ -1316,7 +1317,7 @@ class S3RSSModel(S3ChannelModel):
                        )
 
         # ---------------------------------------------------------------------
-        return dict()
+        return {}
 
     # ---------------------------------------------------------------------
     @staticmethod
@@ -1399,7 +1400,7 @@ class S3SMSModel(S3Model):
                        )
 
         # ---------------------------------------------------------------------
-        return dict()
+        return {}
 
 # =============================================================================
 class S3SMSOutboundModel(S3Model):
@@ -1522,25 +1523,32 @@ class S3SMSOutboundModel(S3Model):
                      Field("name"),
                      Field("description"),
                      Field("url",
+                           #default = "http://sms1.cardboardfish.com:9001/HTTPSMS?", # Cardboardfish
                            default = "https://api.clickatell.com/http/sendmsg", # Clickatell
                            #default = "https://secure.mcommons.com/api/send_message", # Mobile Commons
+                           #default =  "https://www.textmagic.com/app/api", # Text Magic
                            #default = "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages", # Twilio (Untested)
                            requires = IS_URL(),
                            ),
                      Field("parameters",
+                           #default = "S=H&UN=yourusername&P=yourpassword&SA=Sahana", # Cardboardfish
                            default = "user=yourusername&password=yourpassword&api_id=yourapiid", # Clickatell
                            #default = "campaign_id=yourid", # Mobile Commons
+                           #default = "username=yourusername&password=yourpassword&cmd=send&unicode=1", # Text Magic
                            #default = "From={RegisteredTelNumber}", # Twilio (Untested)
                            ),
                      Field("message_variable", "string",
-                           default = "text", # Clickatell
+                           #default = "M", # Cardboardfish
+                           default = "text", # Clickatell, Text Magic
                            #default = "body", # Mobile Commons
                            #default = "Body", # Twilio (Untested)
                            requires = IS_NOT_EMPTY(),
                            ),
                      Field("to_variable", "string",
+                           #default = "DA", # Cardboardfish
                            default = "to", # Clickatell
                            #default = "phone_number", # Mobile Commons
+                           #default = "phone", # Text Magic
                            #default = "To", # Twilio (Untested)
                            requires = IS_NOT_EMPTY(),
                            ),
@@ -1560,7 +1568,7 @@ class S3SMSOutboundModel(S3Model):
                   )
 
         # ---------------------------------------------------------------------
-        return dict()
+        return {}
 
 # =============================================================================
 class S3TropoModel(S3Model):
@@ -1627,7 +1635,7 @@ class S3TropoModel(S3Model):
                      )
 
         # ---------------------------------------------------------------------
-        return dict()
+        return {}
 
 # =============================================================================
 class S3TwilioModel(S3ChannelModel):
@@ -1704,7 +1712,7 @@ class S3TwilioModel(S3ChannelModel):
                      *s3_meta_fields())
 
         # ---------------------------------------------------------------------
-        return dict()
+        return {}
 
 # =============================================================================
 class S3TwitterModel(S3Model):
@@ -1732,30 +1740,46 @@ class S3TwitterModel(S3Model):
                      self.super_link("channel_id", "msg_channel"),
                      # @ToDo: Allow different Twitter accounts for different PEs (Orgs / Teams)
                      #self.pr_pe_id(),
-                     Field("name"),
-                     Field("description"),
+                     Field("name",
+                           label = T("Name"),
+                           ),
+                     Field("description",
+                           label = T("Description"),
+                           ),
                      Field("enabled", "boolean",
                            default = True,
                            label = T("Enabled?"),
                            represent = s3_yes_no_represent,
                            ),
-                     Field("twitter_account"),
-                     Field("consumer_key", "password", 
+                     Field("login", "boolean",
+                           default = False,
+                           label = T("Use for Login?"),
+                           represent = s3_yes_no_represent,
+                           ),
+                     Field("twitter_account",
+                           label = T("Twitter Account"),
+                           ),
+                     # Get these from https://apps.twitter.com
+                     Field("consumer_key", "password",
+                           label = T("Consumer Key"),
                            widget = password_widget,
                            ),
                      Field("consumer_secret", "password",
+                           label = T("Consumer Secret"),
                            widget = password_widget,
                            ),
                      Field("access_token", "password",
+                           label = T("Access Token"),
                            widget = password_widget,
                            ),
                      Field("access_token_secret", "password",
+                           label = T("Access Token Secret"),
                            widget = password_widget,
                            ),
                      *s3_meta_fields())
 
         configure(tablename,
-                  onaccept = self.msg_channel_onaccept,
+                  onaccept = self.twitter_channel_onaccept,
                   #onvalidation = self.twitter_channel_onvalidation
                   super_entity = "msg_channel",
                   )
@@ -1822,7 +1846,7 @@ class S3TwitterModel(S3Model):
                   )
 
         # ---------------------------------------------------------------------
-        return dict()
+        return {}
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1857,6 +1881,17 @@ class S3TwitterModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
+    def twitter_channel_onaccept(form):
+
+        if form.vars.login:
+            # Ensure only a single account used for Login
+            current.db(current.s3db.msg_twitter_channel.id != form.vars.id).update(login = False)
+
+        # Normal onaccept processing
+        S3ChannelModel.channel_onaccept(form)
+
+    # -------------------------------------------------------------------------
+    @staticmethod
     def twitter_channel_onvalidation(form):
         """
             Complete oauth: take tokens from session + pin from form,
@@ -1867,9 +1902,9 @@ class S3TwitterModel(S3Model):
         session = current.session
         settings = current.deployment_settings.msg
         s3 = session.s3
-        vars = form.vars
+        form_vars = form.vars
 
-        if vars.pin and s3.twitter_request_key and s3.twitter_request_secret:
+        if form_vars.pin and s3.twitter_request_key and s3.twitter_request_secret:
             try:
                 import tweepy
             except:
@@ -1880,18 +1915,19 @@ class S3TwitterModel(S3Model):
             oauth.set_request_token(s3.twitter_request_key,
                                     s3.twitter_request_secret)
             try:
-                oauth.get_access_token(vars.pin)
-                vars.oauth_key = oauth.access_token.key
-                vars.oauth_secret = oauth.access_token.secret
+                oauth.get_access_token(form_vars.pin)
+                form_vars.oauth_key = oauth.access_token.key
+                form_vars.oauth_secret = oauth.access_token.secret
                 twitter = tweepy.API(oauth)
-                vars.twitter_account = twitter.me().screen_name
-                vars.pin = "" # we won't need it anymore
+                form_vars.twitter_account = twitter.me().screen_name
+                form_vars.pin = "" # we won't need it anymore
                 return
             except tweepy.TweepError:
                 session.error = T("Settings were reset because authenticating with Twitter failed")
+
         # Either user asked to reset, or error - clear everything
         for k in ["oauth_key", "oauth_secret", "twitter_account"]:
-            vars[k] = None
+            form_vars[k] = None
         for k in ["twitter_request_key", "twitter_request_secret"]:
             s3[k] = ""
 
@@ -2042,7 +2078,7 @@ class S3TwitterSearchModel(S3ChannelModel):
                   )
 
         # ---------------------------------------------------------------------
-        return dict()
+        return {}
 
     # -----------------------------------------------------------------------------
     @staticmethod
@@ -2194,7 +2230,7 @@ class S3XFormsModel(S3Model):
                           )
 
         # ---------------------------------------------------------------------
-        return dict()
+        return {}
 
 # =============================================================================
 class S3BaseStationModel(S3Model):
@@ -2265,7 +2301,7 @@ class S3BaseStationModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
     # ---------------------------------------------------------------------
     @staticmethod

@@ -2,7 +2,7 @@
 
 """ S3 Framework Tables
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -34,25 +34,24 @@ from ..s3 import *
 
 # =============================================================================
 class S3HierarchyModel(S3Model):
-    """ Model for stored object hierarchies, experimental """
+    """ Model for stored object hierarchies """
 
     names = ("s3_hierarchy",)
 
     def model(self):
 
-        define_table = self.define_table
-        
         # -------------------------------------------------------------------------
         # Stored Object Hierarchy
         #
         tablename = "s3_hierarchy"
-        define_table(tablename,
-                     Field("tablename",
-                           length=64),
-                     Field("dirty", "boolean",
-                           default=False),
-                     Field("hierarchy", "json"),
-                     *s3_timestamp())
+        self.define_table(tablename,
+                          Field("tablename",
+                                length=64),
+                          Field("dirty", "boolean",
+                                default=False),
+                          Field("hierarchy", "json"),
+                          *s3_timestamp())
+
         # ---------------------------------------------------------------------
         # Return global names to s3.*
         #

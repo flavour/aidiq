@@ -33,9 +33,9 @@ migrate = settings.get_base_migrate()
 fake_migrate = settings.get_base_fake_migrate()
 
 if migrate:
-    check_reserved = ["mysql", "postgres"]
+    check_reserved = ("mysql", "postgres")
 else:
-    check_reserved = None
+    check_reserved = []
 
 (db_string, pool_size) = settings.get_database_string()
 if db_string.find("sqlite") != -1:
@@ -142,6 +142,9 @@ s3_has_role = auth.s3_has_role
 s3_has_permission = auth.s3_has_permission
 s3_logged_in_person = auth.s3_logged_in_person
 
+# Calendar
+current.calendar = s3base.S3Calendar()
+
 # CRUD
 s3.crud = Storage()
 
@@ -149,6 +152,7 @@ s3.crud = Storage()
 # namespace in order to access them without the s3base namespace prefix
 s3_action_buttons = s3base.S3CRUD.action_buttons
 s3_fullname = s3base.s3_fullname
+s3_redirect_default = s3base.s3_redirect_default
 S3ResourceHeader = s3base.S3ResourceHeader
 from s3.s3navigation import s3_rheader_tabs
 from s3.s3validators import *

@@ -22,7 +22,7 @@ def config(settings):
 
     # -------------------------------------------------------------------------
     # Pre-Populate
-    settings.base.prepopulate = ("OCHAROCCA", "default/users")
+    settings.base.prepopulate += ("OCHAROCCA", "default/users")
 
     settings.base.system_name = T("OCHA Regional Office of Caucasus and Central Asia (ROCCA) Humanitarian Data Platform")
     settings.base.system_name_short = T("Humanitarian Data Platform")
@@ -87,7 +87,7 @@ def config(settings):
     # Default Language
     settings.L10n.default_language = "en"
     # Default timezone for users
-    settings.L10n.utc_offset = "UTC +0600"
+    settings.L10n.utc_offset = "+0600"
     # Unsortable 'pretty' date format
     settings.L10n.date_format = "%d %b %Y"
     # Number formats (defaults to ISO 31-0)

@@ -17,7 +17,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2011-15 (c) Sahana Software Foundation
+    @copyright: 2011-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -57,9 +57,9 @@ except ImportError:
 from gluon import current, HTTP, IS_EMPTY_OR
 from gluon.storage import Storage
 
-from s3utils import S3DateTime
+from s3datetime import S3DateTime
 from s3validators import IS_TIME_INTERVAL_WIDGET, IS_UTC_DATETIME
-from s3widgets import S3DateTimeWidget, S3TimeIntervalWidget
+from s3widgets import S3CalendarWidget, S3TimeIntervalWidget
 
 # -----------------------------------------------------------------------------
 class S3Task(object):
@@ -122,22 +122,22 @@ class S3Task(object):
 
         table.times_failed.readable = False
 
-        field = table.start_time
-        field.represent = lambda dt: \
-            S3DateTime.datetime_represent(dt, utc=True)
-        field.widget = S3DateTimeWidget(past=0)
-        field.requires = IS_UTC_DATETIME(
-                format=current.deployment_settings.get_L10n_datetime_format()
-                )
-
-        field = table.stop_time
-        field.represent = lambda dt: \
-            S3DateTime.datetime_represent(dt, utc=True)
-        field.widget = S3DateTimeWidget(past=0)
-        field.requires = IS_EMPTY_OR(
-                            IS_UTC_DATETIME(
-                format=current.deployment_settings.get_L10n_datetime_format()
-                ))
+        # Configure start/stop time fields
+        for fn in ("start_time", "stop_time"):
+            field = table[fn]
+            field.represent = lambda dt: \
+                            S3DateTime.datetime_represent(dt, utc=True)
+            field.requires = IS_UTC_DATETIME()
+            set_min = set_max = None
+            if fn == "start_time":
+                set_min = "#scheduler_task_stop_time"
+            elif fn == "stop_time":
+                set_max = "#scheduler_task_start_time"
+            field.widget = S3CalendarWidget(past = 0,
+                                            set_min = set_min,
+                                            set_max = set_max,
+                                            timepicker = True,
+                                            )
 
         if not task:
             import uuid
@@ -173,7 +173,7 @@ class S3Task(object):
         field.widget = S3TimeIntervalWidget.widget
         field.requires = IS_TIME_INTERVAL_WIDGET(table.period)
         field.represent = S3TimeIntervalWidget.represent
-        field.comment = None
+        field.comment = T("seconds")
 
         table.timeout.default = 600
         table.timeout.represent = lambda opt: \
@@ -243,7 +243,7 @@ class S3Task(object):
             @param timeout: The length of time available for the task to complete
                             - default 300s (5 mins)
         """
-        
+
         if args is None:
             args = []
         if vars is None:
@@ -323,8 +323,8 @@ class S3Task(object):
             @param start_time: start_time for the scheduled task
             @param next_run_time: next_run_time for the the scheduled task
             @param stop_time: stop_time for the the scheduled task
-            @param repeats: number of times the task to be repeated
-            @param period: time period between two consecutive runs
+            @param repeats: number of times the task to be repeated (0=unlimited)
+            @param period: time period between two consecutive runs (seconds)
             @param timeout: set timeout for a running task
             @param enabled: enabled flag for the scheduled task
             @param group_name: group_name for the scheduled task
@@ -336,6 +336,11 @@ class S3Task(object):
             args = []
         if vars is None:
             vars = {}
+
+        if not ignore_duplicate and self._duplicate_task_exists(task, args, vars):
+            # if duplicate task exists, do not insert a new one
+            current.log.warning("Duplicate Task, Not Inserted", value=task)
+            return False
 
         kwargs = {}
 
@@ -375,11 +380,6 @@ class S3Task(object):
 
         if group_name:
             kwargs["group_name"] = group_name
-
-        if not ignore_duplicate and self._duplicate_task_exists(task, args, vars):
-            # if duplicate task exists, do not insert a new one
-            current.log.warning("Duplicate Task, Not Inserted", value=task)
-            return False
 
         if sync_output != 0:
             kwargs["sync_output"] = sync_output

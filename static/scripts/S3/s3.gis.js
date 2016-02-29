@@ -1,4 +1,5 @@
 /**
+/**
  * Used by the Map (modules/s3/s3gis.py)
  * This script is in Static to allow caching
  * Dynamic constants (e.g. Internationalised strings) are set in server-generated script
@@ -107,7 +108,7 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
         var s3 = map.s3;
 
         // Allow more room for Features
-        map.Z_INDEX_BASE.Popup = 800;
+        map.Z_INDEX_BASE.Popup = 900;
 
         // Resize the Map when the Browser window is resized
         var map_div = $('#' + map_id + '_panel');
@@ -284,7 +285,7 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
         map.zoomToExtent(bounds);
     }
 
-    // Pass to Global scope to be called from s3.locationselector.widget2.js
+    // Pass to Global scope to be called from s3.ui.locationselector.js
     S3.gis.zoomBounds = zoomBounds;
 
     /**
@@ -333,6 +334,7 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
      * Parameters:
      * layer_id - {String} ID of the layer to be refreshed
      * queries - {Array} Optional list of Queries to be applied to the Layer
+     *                   [[key, value], [key, value], ...]
      */
     S3.gis.refreshLayer = function(layer_id, queries) {
         var maps = S3.gis.maps;
@@ -367,7 +369,8 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
                             // Reload the layer
                             for (j=0; j < jlen; j++) {
                                 strategy = strategies[j];
-                                if (strategy.CLASS_NAME == 'OpenLayers.Strategy.BBOX') {
+                                if (strategy.CLASS_NAME == 'OpenLayers.Strategy.BBOX' ||
+                                    strategy.CLASS_NAME == 'OpenLayers.Strategy.ZoomBBOX') {
                                     // Set bounds to maxExtent so that filter doesn't apply
                                     strategy.bounds = null;
                                     strategy.triggerRead();
@@ -777,6 +780,14 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
                     var active = false;
                 }
                 addPolygonControl(map, null, active, true);
+            }
+            if (options.draw_circle) {
+                if (options.draw_circle == 'active') {
+                    var active = true;
+                } else {
+                    var active = false;
+                }
+                addCircleControl(map, null, active);
             }
             addThrobber(map);
         }
@@ -1760,7 +1771,7 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
             }
         }
         // Draft Layers
-        if (options.features || options.draw_feature || options.draw_polygon || navigator.geolocation) {
+        if (options.features || options.draw_feature || options.draw_polygon || options.draw_circle || navigator.geolocation) {
             var draftLayer = addDraftLayer(map);
         }
         // Simple Features
@@ -1817,6 +1828,11 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
         } else {
             var isBaseLayer = false;
         }
+        if (undefined != layer.format) {
+            var format = layer.format;
+        } else {
+            var format = 'png';
+        }
         if (undefined != layer.transparent) {
             var transparent = layer.transparent;
         } else {
@@ -1835,6 +1851,7 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
                 layers: 'show:' + layers,
                 isBaseLayer: isBaseLayer,
                 transparent: transparent,
+                format: format,
                 dir: dir,
                 // This is used to Save State
                 s3_layer_id: layer.id,
@@ -3905,27 +3922,38 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
         var line_pressed,
             pan_pressed,
             point_pressed,
-            polygon_pressed;
+            polygon_pressed,
+            circle_pressed;
         if (options.draw_polygon == 'active') {
             polygon_pressed = true;
             line_pressed = false;
             pan_pressed = false;
             point_pressed = false;
+            circle_pressed = false;
         } else if (options.draw_line == 'active') {
             line_pressed = true;
             point_pressed = false;
             pan_pressed = false;
             polygon_pressed = false;
+            circle_pressed = false;
         } else if (options.draw_feature == 'active') {
             point_pressed = true;
             line_pressed = false;
             pan_pressed = false;
             polygon_pressed = false;
-        } else {
+            circle_pressed = false;
+        } else if (options.draw_circle == 'active') {
+            point_pressed = false;
+            line_pressed = false;
+            pan_pressed = false;
+            polygon_pressed = false;
+            circle_pressed = true;
+        }else {
             pan_pressed = true;
             line_pressed = false;
             point_pressed = false;
             polygon_pressed = false;
+            circle_pressed = false;
         }
 
         // Controls for Draft Features (unused)
@@ -4077,7 +4105,7 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
             addPdfControl(toolbar);
         }
 
-        if (options.draw_feature || options.draw_line || options.draw_polygon) {
+        if (options.draw_feature || options.draw_line || options.draw_polygon || options.draw_circle) {
             // Draw Controls
             toolbar.addSeparator();
             //toolbar.add(selectButton);
@@ -4150,6 +4178,20 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
                 } else {
                     // Add a generic button
                     addPolygonControl(map, toolbar, polygon_pressed, true);
+                }
+            }
+            if (options.draw_circle) {
+                if (poi_resources) {
+                    // Add a button per circle resource
+                    for (i = 0; i < len; i++) {
+                        resource = poi_resources[i];
+                        if (resource['t'] == 'circle') {
+                            addCircleControl(map, toolbar, circle_pressed, resource);
+                        }
+                    }
+                } else {
+                    // Add a generic button
+                    addCircleControl(map, toolbar, circle_pressed);
                 }
             }
             if (options.color_picker) {
@@ -4952,7 +4994,7 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
                 var wkt_field = $('#gis_location_wkt');
                 if (wkt_field.length) {
                     // Update form fields in S3LocationSelectorWidget
-                    // (S3LocationSelectorWidget2 does this in s3.locationselector.widget2.js, which is a better design)
+                    // (S3LocationSelector does this in s3.ui.locationselector.js, which is a better design)
                     var WKT = feature.geometry.transform(map.getProjectionObject(), proj4326).toString();
                     wkt_field.val(WKT);
                     $('#gis_location_lat').val('');
@@ -5025,6 +5067,151 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
             }
         }
     };
+    
+    // Enable this once CIRCULARSTRING is fully supported
+    // Get the points on the circumference of the circle
+    /*var getCircumferencePoints = function(lat_center, lon_center, radius) {
+        var angles = [0, 90, 180, 270]
+        var lon = []
+        var lat = []
+        for (var i = 0; i < angles.length; i++) {
+            var lon_ = radius*Math.cos(angles[i]) + lon_center;
+            lon[i] = lon_;
+            var lat_ = radius*Math.sin(angles[i]) + lat_center;
+            lat[i] = lat_;
+        }
+        return [lon, lat];
+    };*/
+    
+    // Circle Control to draw circles on the Map
+    var addCircleControl = function(map, toolbar, active, config) {
+        var draftLayer = map.s3.draftLayer;
+        var control = new OpenLayers.Control.DrawFeature(draftLayer, OpenLayers.Handler.RegularPolygon, {
+                handlerOptions: {
+                     sides: 1000
+                }, 
+            // custom Callback
+            'featureAdded': function(feature) {
+                // Remove previous circle
+                if (map.s3.lastDraftFeature) {
+                    map.s3.lastDraftFeature.destroy();
+                } else if (draftLayer.features.length > 1) {
+                    // Clear the one from the Current Location in S3LocationSelector
+                    draftLayer.features[0].destroy();
+                }
+                // Enable this if adding Circle tool support to S3LocationSelectorWidget
+                /*var wkt_field = $('#gis_location_wkt');
+                if (wkt_field.length) {
+                    // Update form fields in S3LocationSelectorWidget
+                    // (S3LocationSelector does this in s3.ui.locationselector.js, which is a better design)
+                    var WKT = feature.geometry.transform(map.getProjectionObject(), proj4326).toString();
+                    var linearRing = new OpenLayers.Geometry.LinearRing(feature.geometry.components[0].components);
+                    var polygon = new OpenLayers.Geometry.Polygon([linearRing]);
+                    var polygonFeature = new OpenLayers.Feature.Vector(polygon, null);
+                    var polygonBounds = polygonFeature.geometry.getBounds();
+                    var minX = polygonBounds.left;
+                    var minY = polygonBounds.bottom;
+                    var maxX = polygonBounds.right;
+                    var maxY = polygonBounds.top;
+
+                    // Calculate the center coordinates
+                    var startX = (minX + maxX) / 2;
+                    var startY = (minY + maxY) / 2;
+
+                    // Calculate Radius
+                    var startPoint = new OpenLayers.Geometry.Point(startX, startY);
+                    var endPoint = new OpenLayers.Geometry.Point(maxX, startY);
+                    var radius = new OpenLayers.Geometry.LineString([startPoint, endPoint]);
+                    var length = Math.round(radius.getLength()).toString();
+                    var lengthMeter = Math.round(radius.getGeodesicLength()).toString();
+                    
+                    // Get the circumference points on the circle
+                    var circumferencePoints = getCircumferencePoints(startX, startY, length);
+                    
+                    // Prepare the circular string
+                    // Enable this once CIRCULARSTRING is fully supported
+                    var circularstring = '';
+                    for (var i = 0; i < circumferencePoints[0].length; i++) {
+                        var lon = circumferencePoints[0][i].toString();
+                        var lat = circumferencePoints[1][i].toString();
+                        if (i == circumferencePoints[0].length-1) {
+                            var point = lon.concat(" ", lat);
+                        } else {
+                            var point = lon.concat(" ", lat, ",");    
+                        }
+                        circularstring = circularstring.concat(point);
+                    }
+                    var comment = ''.concat('CIRCULARSTRING(', circularstring, ')');
+                    
+                    // Data mapped to db field
+                    // Note the POLYGON wkt is stored in wkt field
+                    // we can use once CIRCULARSTRING is fully supported
+                    wkt_field.val(WKT);
+                    $('#gis_location_lat').val(startY);
+                    $('#gis_location_lon').val(startX); 
+                    $('#gis_location_radius').val(parseFloat(lengthMeter));
+                    $('#gis_location_comments').val(comment);
+                }*/
+                // Destroy all popups
+                while (map.popups.length > 0) {
+                    map.removePopup(map.popups[0]);
+                }
+                if (undefined != map.s3.pointPlaced) {
+                    // Call Custom Call-back
+                    map.s3.pointPlaced(feature, config);
+                }
+                // Prepare in case user draws a new circle
+                map.s3.lastDraftFeature = feature;
+            }
+        });
+
+        if (toolbar) {
+            // Toolbar Button
+            if (config && config.l) {
+                var tooltip = config.l;
+            } else {
+                var tooltip = i18n.gis_draw_circle;
+            }
+            var map_id = map.s3.id;
+            var circleButton = new GeoExt.Action({
+                control: control,
+                handler: function() {
+                    if (circleButton.items[0].pressed) {
+                        $('#' + map_id + '_panel .olMapViewport').addClass('crosshair');
+                        var colorpicker = $('#' + map_id + '_panel .gis_colorpicker');
+                        if (colorpicker.length) {
+                            colorpicker.spectrum('enable');
+                        }
+                    } else {
+                        $('#' + map_id + '_panel .olMapViewport').removeClass('crosshair');
+                        var colorpicker = $('#' + map_id + '_panel .gis_colorpicker');
+                        if (colorpicker.length) {
+                            colorpicker.spectrum('disable');
+                        }
+                    }
+                },
+                map: map,
+                iconCls: 'drawcircle-on',
+                tooltip: tooltip,
+                allowDepress: true,
+                enableToggle: true,
+                toggleGroup: 'controls',
+                pressed: active,
+                activateOnEnable: true,
+                deactivateOnDisable: true
+            });
+            toolbar.add(circleButton);
+            // Pass to Global scope for LocationSelectorWidget
+            map.s3.circleButton = circleButton;
+        } else {
+            // Simply add straight to the map
+            map.addControl(control);
+            if (active) {
+                control.activate();
+                $('#' + map.s3.id + '_panel .olMapViewport').addClass('crosshair');
+            }
+        }
+    };
 
     /**
      * Check that Map UI is Loaded
@@ -5064,7 +5251,7 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
     }
 
     // ColorPicker to style Features
-    // - currently used just by S3LocationSelectorWidget2
+    // - currently used just by S3LocationSelector
     // - need to pickup in postprocess
     var addColorPickerControl = function(map, toolbar) {
         var s3 = map.s3;
@@ -5402,7 +5589,7 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
             zoom: zoom || state.zoom,
             layers: layersStr,
             plugins: pluginsStr
-        }
+        };
         var options = s3.options;
         if (options.pe_id) {
             json_data['pe_id'] = options.pe_id;
@@ -5519,6 +5706,9 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
             }
             if (key.s3_style) {
                 layer_config['style'] = key.s3_style;
+            }
+            if (key.dir) {
+                layer_config['dir'] = key.dir;
             }
             layers.push(layer_config);
         });

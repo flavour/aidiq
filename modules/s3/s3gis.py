@@ -80,18 +80,18 @@ from gluon.languages import lazyT, regex_translate
 from gluon.storage import Storage
 
 from s3dal import Rows
+from s3datetime import s3_format_datetime, s3_parse_datetime
 from s3fields import s3_all_meta_field_names
 from s3rest import S3Method
 from s3track import S3Trackable
-from s3utils import s3_include_ext, s3_unicode
+from s3utils import s3_include_ext, s3_unicode #, S3ModuleDebug
 
-DEBUG = False
-if DEBUG:
-    print >> sys.stderr, "S3GIS: DEBUG MODE"
-    def _debug(m):
-        print >> sys.stderr, m
-else:
-    _debug = lambda m: None
+#DEBUG = False
+#if DEBUG:
+#    print >> sys.stderr, "S3GIS: DEBUG MODE"
+#    _debug = S3ModuleDebug.on
+#else:
+#    _debug = S3ModuleDebug.off
 
 # Map WKT types to db types
 GEOM_TYPES = {"point": 1,
@@ -268,6 +268,8 @@ class GIS(object):
         self.max_allowed_level_num = 4
 
         self.relevant_hierarchy_levels = None
+
+        self.google_geocode_retry = True
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -515,11 +517,33 @@ class GIS(object):
 
         from geopy import geocoders
 
-        if geocoder == "google":
+        if geocoder == "google" or geocoder is True:
             g = geocoders.GoogleV3()
+            if current.gis.google_geocode_retry:
+                # Retry when reaching maximum requests per second
+                import time
+                from geopy.geocoders.googlev3 import GTooManyQueriesError
+                def geocode_(names, g=g, **kwargs):
+                    attempts = 0
+                    while attempts < 3:
+                        try:
+                            result = g.geocode(names, **kwargs)
+                        except GTooManyQueriesError:
+                            if attempts == 2:
+                                # Daily limit reached
+                                current.gis.google_geocode_retry = False
+                                raise
+                            time.sleep(1)
+                        else:
+                            break
+                        attempts += 1
+                    return result
+            else:
+                geocode_ = lambda names, g=g, **kwargs: g.geocode(names, **kwargs)
         elif geocoder == "yahoo":
             apikey = current.deployment_settings.get_gis_api_yahoo()
             g = geocoders.Yahoo(apikey)
+            geocode_ = lambda names, g=g, **kwargs: g.geocode(names, **kwargs)
         else:
             # @ToDo
             raise NotImplementedError
@@ -576,13 +600,13 @@ class GIS(object):
                 Lx = Lx.as_dict()
 
         try:
-            results = g.geocode(location, exactly_one=False)
+            results = geocode_(location, exactly_one=False)
             if len(results) == 1:
                 place, (lat, lon) = results[0]
                 if Lx:
                     output = None
                     # Check Results are for a specific address & not just that for the City
-                    results = g.geocode(Lx_names, exactly_one=False)
+                    results = geocode_(Lx_names, exactly_one=False)
                     if not results:
                         output = "Can't check that these results are specific enough"
                     for result in results:
@@ -685,14 +709,8 @@ class GIS(object):
     @staticmethod
     def geocode_r(lat, lon):
         """
-            Geocode an Address
+            Reverse Geocode a Lat/Lon
             - used by S3LocationSelector
-                      settings.get_gis_geocode_imported_addresses
-
-            @param address: street address
-            @param postcode: postcode
-            @param Lx_ids: list of ancestor IDs
-            @param geocoder: which geocoder service to use
         """
 
         if not lat or not lon:
@@ -1335,6 +1353,7 @@ class GIS(object):
                     mtable.on(mtable.id == stable.marker_id),
                     )
             row = db(query).select(*fields,
+                                   left=left,
                                    limitby=(0, 1)).first()
             if not row:
                 # No configs found at all
@@ -2246,7 +2265,7 @@ class GIS(object):
             - used by GIS.get_location_data() and S3PivotTable.geojson()
 
             @ToDo: Support multiple locations for a single resource
-                   (e.g. a Project wworking in multiple Communities)
+                   (e.g. a Project working in multiple Communities)
         """
 
         db = current.db
@@ -2271,13 +2290,21 @@ class GIS(object):
                     rows = db(query).select(table.id,
                                             gtable.the_geom.st_simplify(tolerance).st_asgeojson(precision=4).with_alias("geojson"))
                 for row in rows:
-                    output[row[tablename].id] = row.geojson
+                    key = row[tablename].id
+                    if key in output:
+                        output[key].append(row.geojson)
+                    else:
+                        output[key] = [row.geojson]
             else:
                 # Do the Simplify direct from the DB
                 rows = db(query).select(table.id,
                                         gtable.the_geom.st_simplify(tolerance).st_astext().with_alias("wkt"))
                 for row in rows:
-                    output[row[tablename].id] = row.wkt
+                    key = row[tablename].id
+                    if key in output:
+                        output[key].append(row.wkt)
+                    else:
+                        output[key] = [row.wkt]
         else:
             rows = db(query).select(table.id,
                                     gtable.wkt)
@@ -2290,14 +2317,20 @@ class GIS(object):
                                      tolerance=tolerance,
                                      output="geojson")
                         if g:
-                            output[row[tablename].id] = g
+                            key = row[tablename].id
+                            if key in output:
+                                output[key].append(g)
+                            else:
+                                output[key] = [g]
                 else:
+                    # gis_location: always single
                     for row in rows:
                         g = simplify(row.wkt,
                                      tolerance=tolerance,
                                      output="geojson")
                         if g:
                             output[row.id] = g
+
             else:
                 # Simplify the polygon to reduce download size
                 # & also to work around the recursion limit in libxslt
@@ -2306,17 +2339,23 @@ class GIS(object):
                     for row in rows:
                         wkt = simplify(row["gis_location"].wkt)
                         if wkt:
-                            output[row[tablename].id] = wkt
+                            key = row[tablename].id
+                            if key in output:
+                                output[key].append(wkt)
+                            else:
+                                output[key] = [wkt]
                 else:
+                    # gis_location: always single
                     for row in rows:
                         wkt = simplify(row.wkt)
                         if wkt:
                             output[row.id] = wkt
+
         return output
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def get_location_data(resource, attr_fields=None):
+    def get_location_data(resource, attr_fields=None, count=None):
         """
             Returns the locations, markers and popup tooltips for an XML export
             e.g. Feature Layers or Search results (Feature Resources)
@@ -2326,12 +2365,50 @@ class GIS(object):
             @param: resource - S3Resource instance (required)
             @param: attr_fields - list of attr_fields to use instead of reading
                                   from get_vars or looking up in gis_layer_feature
+            @param: count - total number of features
+                           (can actually be more if features have multiple locations)
         """
 
         tablename = resource.tablename
         if tablename == "gis_feature_query":
             # Requires no special handling: XSLT uses normal fields
-            return dict()
+            return {}
+
+        format = current.auth.permission.format
+        geojson = format == "geojson"
+        if geojson:
+            if count and \
+               count > current.deployment_settings.get_gis_max_features():
+                headers = {"Content-Type": "application/json"}
+                message = "Too Many Records"
+                status = 509
+                raise HTTP(status,
+                           body=current.xml.json_message(success=False,
+                                                         statuscode=status,
+                                                         message=message),
+                           web2py_error=message,
+                           **headers)
+            # Lookups per layer not per record
+            if len(tablename) > 19 and \
+               tablename.startswith("gis_layer_shapefile"):
+                # GIS Shapefile Layer
+                location_data = GIS.get_shapefile_geojson(resource) or {}
+                return location_data
+            elif tablename == "gis_theme_data":
+                # GIS Theme Layer
+                location_data = GIS.get_theme_geojson(resource) or {}
+                return location_data
+            else:
+                # e.g. GIS Feature Layer
+                # e.g. Search results
+                # Lookup Data using this function
+                pass
+        elif format in ("georss", "kml", "gpx"):
+            # Lookup Data using this function
+            pass
+        else:
+            # @ToDo: Bulk lookup of LatLons for S3XML.latlon()
+            return {}
 
         NONE = current.messages["NONE"]
         #if DEBUG:
@@ -2419,7 +2496,6 @@ class GIS(object):
         _pkey = table[pkey]
         # Ensure there are no ID represents to confuse things
         _pkey.represent = None
-        geojson = current.auth.permission.format == "geojson"
         if geojson:
             # Build the Attributes now so that representations can be
             # looked-up in bulk rather than as a separate lookup per record
@@ -2437,12 +2513,12 @@ class GIS(object):
 
                 data = resource.select(fields,
                                        limit = None,
+                                       raw_data = True,
                                        represent = True,
                                        show_links = False)
 
-                rfields = data["rfields"]
                 attr_cols = {}
-                for f in rfields:
+                for f in data["rfields"]:
                     fname = f.fname
                     selector = f.selector
                     if fname in attr_fields or selector in attr_fields:
@@ -2453,17 +2529,21 @@ class GIS(object):
                         except AttributeError:
                             # FieldMethod
                             ftype = None
+                        except KeyError:
+                            from s3utils import s3_debug
+                            s3_debug("SGIS", "Field %s doesn't exist in table %s" % (fname, tname))
+                            continue
                         attr_cols[fieldname] = (ftype, fname)
 
                 _pkey = str(_pkey)
-                rows = data["rows"]
-                for row in rows:
+                for row in data["rows"]:
                     record_id = int(row[_pkey])
                     if attr_cols:
                         attribute = {}
                         for fieldname in attr_cols:
                             represent = row[fieldname]
-                            if represent and represent != NONE:
+                            if represent is not None and \
+                               represent not in (NONE, ""):
                                 # Skip empty fields
                                 _attr = attr_cols[fieldname]
                                 ftype = _attr[0]
@@ -2473,26 +2553,13 @@ class GIS(object):
                                         represent = s3_unicode(represent)
                                     else:
                                         # Attributes should be numbers not strings
+                                        # (@ToDo: Add a JS i18n formatter for the tooltips)
                                         # NB This also relies on decoding within geojson/export.xsl and S3XML.__element2json()
-                                        try:
-                                            represent = int(represent.replace(",", ""))
-                                        except:
-                                            # @ToDo: Don't assume this i18n formatting...better to have no represent & then bypass the s3_unicode in select too
-                                            #        (although we *do* want the represent in the tooltips!)
-                                            pass
-                                elif ftype == "double":
+                                        represent = row["_row"][fieldname]
+                                elif ftype in ("double", "float"):
                                     # Attributes should be numbers not strings
-                                    try:
-                                        float_represent = float(represent.replace(",", ""))
-                                        int_represent = int(float_represent)
-                                        if int_represent == float_represent:
-                                            represent = int_represent
-                                        else:
-                                            represent = float_represent
-                                    except:
-                                        # @ToDo: Don't assume this i18n formatting...better to have no represent & then bypass the s3_unicode in select too
-                                        #        (although we *do* want the represent in the tooltips!)
-                                        pass
+                                    # (@ToDo: Add a JS i18n formatter for the tooltips)
+                                    represent = row["_row"][fieldname]
                                 else:
                                     represent = s3_unicode(represent)
                                 attribute[_attr[1]] = represent
@@ -2510,8 +2577,10 @@ class GIS(object):
                 #                                                      ).first().name
                 #    else:
                 #        layer_name = "Unknown"
-                #    _debug("Attributes lookup of layer %s completed in %s seconds" % \
-                #            (layer_name, duration))
+                #    _debug("Attributes lookup of layer %s completed in %s seconds",
+                #           layer_name,
+                #           duration,
+                #           )
 
             _markers = get_vars.get("markers", None)
             if _markers:
@@ -2579,7 +2648,9 @@ class GIS(object):
                 pass
             else:
                 _latlons = tracker.get_location(_fields=[gtable.lat,
-                                                         gtable.lon])
+                                                         gtable.lon],
+                                                empty = False,
+                                                )
                 index = 0
                 for _id in ids:
                     _location = _latlons[index]
@@ -2649,13 +2720,14 @@ class GIS(object):
                 #if custom:
                 #    # Add geoJSONs
                 #elif join:
-                # @ToDo: Support records with multiple locations
-                #        (e.g. an Org with multiple Facs)
                 if join:
                     for row in rows:
+                        # @ToDo: Support records with multiple locations
+                        #        (e.g. an Org with multiple Facs)
                         _location = row["gis_location"]
                         latlons[row[tablename].id] = (_location.lat, _location.lon)
                 else:
+                    # gis_location: Always single
                     for row in rows:
                         latlons[row.id] = (row.lat, row.lon)
 
@@ -2667,8 +2739,10 @@ class GIS(object):
         #    end = datetime.datetime.now()
         #    duration = end - start
         #    duration = "{:.2f}".format(duration.total_seconds())
-        #    _debug("latlons lookup of layer %s completed in %s seconds" % \
-        #            (layer_name, duration))
+        #    _debug("latlons lookup of layer %s completed in %s seconds",
+        #           layer_name,
+        #           duration,
+        #           )
 
         # Used by S3XML's gis_encode()
         return dict(geojsons = geojsons,
@@ -2727,18 +2801,19 @@ class GIS(object):
             if len(layers) > 1:
                 layers.exclude(lambda row: row["gis_layer_feature.style_default"] == False)
             if len(layers) == 1:
-                marker = layers.first()
+                layer = layers.first()
             else:
                 # Can't differentiate
-                marker = None
+                layer = None
 
-            if marker:
-                _marker = marker["gis_marker"]
-                marker = dict(image=_marker.image,
-                              height=_marker.height,
-                              width=_marker.width,
-                              gps_marker=marker["gis_style"].gps_marker
-                              )
+            if layer:
+                _marker = layer["gis_marker"]
+                if _marker.image:
+                    marker = dict(image=_marker.image,
+                                  height=_marker.height,
+                                  width=_marker.width,
+                                  gps_marker=layer["gis_style"].gps_marker
+                                  )
 
         if not marker:
             # Default
@@ -2935,7 +3010,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         """
 
         db = current.db
-        tablename = "gis_layer_shapefile_%s" % resource._ids[0]
+        #tablename = "gis_layer_shapefile_%s" % resource._ids[0]
+        tablename = resource.tablename
         table = db[tablename]
         query = resource.get_query()
         fields = []
@@ -3717,7 +3793,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                         #ttable.insert(location_id = location_id,
                         #              tag = "area",
                         #              value = area)
-                    except db._adapter.driver.OperationalError, exception:
+                    except db._adapter.driver.OperationalError, e:
                         current.log.error(sys.exc_info[1])
 
             else:
@@ -4528,7 +4604,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def update_location_tree(feature=None, all_locations=False):
+    def update_location_tree(feature=None, all_locations=False, propagating=False):
         """
             Update GIS Locations' Materialized path, Lx locations, Lat/Lon & the_geom
 
@@ -4536,6 +4612,10 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             - if not provided then update the whole tree
             @param all_locations: passed to recursive calls to indicate that this
             is an update of the whole tree. Used to avoid repeated attempts to
+            update hierarchy locations with missing data (e.g. lacking some
+            ancestor level).
+            @param propagating: passed to recursive calls to indicate that this
+            is a propagation update. Used to avoid repeated attempts to
             update hierarchy locations with missing data (e.g. lacking some
             ancestor level).
 
@@ -4620,16 +4700,15 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 Propagate Lat/Lon down to any Features which inherit from this one
 
                 @param parent: gis_location id of parent
-                @param all_locations: passed to recursive calls to indicate that
-                this is an update of the whole tree
             """
 
+            # No need to filter out deleted since the parent FK is None for these records
             query = (table.parent == parent) & \
                     (table.inherited == True)
             rows = db(query).select(*fields)
             for row in rows:
                 try:
-                    update_location_tree(row)
+                    update_location_tree(row, propagating=True)
                 except RuntimeError:
                     current.log.error("Cannot propagate inherited latlon to child %s of location ID %s: too much recursion" % \
                         (row.id, parent))
@@ -4889,6 +4968,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 inherited = True
                 lat = Lx_lat
                 lon = Lx_lon
+                wkt = None
             elif path != _path or L0 != L0_name or L1 != L1_name or L2 != name or not wkt:
                 fixup_required = True
 
@@ -4968,7 +5048,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     L1_name = Lx.L1
                     L2_name = Lx.name
                     _path = Lx.path
-                    if _path and L0_name and L1_name:
+                    # Don't try to fixup ancestors when we're coming from a propagate
+                    if propagating or (_path and L0_name and L1_name):
                         _path = "%s/%s" % (_path, id)
                     else:
                         # This feature needs to be updated
@@ -4988,7 +5069,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     L1_name = Lx.name
                     L2_name = None
                     _path = Lx.path
-                    if _path and L0_name:
+                    # Don't try to fixup ancestors when we're coming from a propagate
+                    if propagating or (_path and L0_name):
                         _path = "%s/%s" % (_path, id)
                     else:
                         # This feature needs to be updated
@@ -5026,6 +5108,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 inherited = True
                 lat = Lx_lat
                 lon = Lx_lon
+                wkt = None
             elif path != _path or L0 != L0_name or L1 != L1_name or L2 != L2_name or L3 != name or not wkt:
                 fixup_required = True
 
@@ -5109,7 +5192,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     L2_name = Lx.L2
                     L3_name = Lx.name
                     _path = Lx.path
-                    if _path and L0_name and L1_name and L2_name:
+                    # Don't try to fixup ancestors when we're coming from a propagate
+                    if propagating or (_path and L0_name and L1_name and L2_name):
                         _path = "%s/%s" % (_path, id)
                     else:
                         # This feature needs to be updated
@@ -5132,7 +5216,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     L2_name = Lx.name
                     L3_name = None
                     _path = Lx.path
-                    if _path and L0_name and L1_name:
+                    # Don't try to fixup ancestors when we're coming from a propagate
+                    if propagating or (_path and L0_name and L1_name):
                         _path = "%s/%s" % (_path, id)
                     else:
                         # This feature needs to be updated
@@ -5153,7 +5238,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     L2_name = None
                     L3_name = None
                     _path = Lx.path
-                    if _path and L0_name:
+                    # Don't try to fixup ancestors when we're coming from a propagate
+                    if propagating or (_path and L0_name):
                         _path = "%s/%s" % (_path, id)
                     else:
                         # This feature needs to be updated
@@ -5193,6 +5279,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 inherited = True
                 lat = Lx_lat
                 lon = Lx_lon
+                wkt = None
             elif path != _path or L0 != L0_name or L1 != L1_name or L2 != L2_name or L3 != L3_name or L4 != name or not wkt:
                 fixup_required = True
 
@@ -5280,7 +5367,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     L3_name = Lx.L3
                     L4_name = Lx.name
                     _path = Lx.path
-                    if _path and L0_name and L1_name and L2_name and L3_name:
+                    # Don't try to fixup ancestors when we're coming from a propagate
+                    if propagating or (_path and L0_name and L1_name and L2_name and L3_name):
                         _path = "%s/%s" % (_path, id)
                     else:
                         # This feature needs to be updated
@@ -5306,7 +5394,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     L3_name = Lx.name
                     L4_name = None
                     _path = Lx.path
-                    if _path and L0_name and L1_name and L2_name:
+                    # Don't try to fixup ancestors when we're coming from a propagate
+                    if propagating or (_path and L0_name and L1_name and L2_name):
                         _path = "%s/%s" % (_path, id)
                     else:
                         # This feature needs to be updated
@@ -5330,7 +5419,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     L3_name = None
                     L4_name = None
                     _path = Lx.path
-                    if _path and L0_name and L1_name:
+                    # Don't try to fixup ancestors when we're coming from a propagate
+                    if propagating or (_path and L0_name and L1_name):
                         _path = "%s/%s" % (_path, id)
                     else:
                         # This feature needs to be updated
@@ -5352,7 +5442,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     L3_name = None
                     L4_name = None
                     _path = Lx.path
-                    if _path and L0_name:
+                    # Don't try to fixup ancestors when we're coming from a propagate
+                    if propagating or (_path and L0_name):
                         _path = "%s/%s" % (_path, id)
                     else:
                         # This feature needs to be updated
@@ -5394,6 +5485,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 inherited = True
                 lat = Lx_lat
                 lon = Lx_lon
+                wkt = None
             elif path != _path or L0 != L0_name or L1 != L1_name or L2 != L2_name or L3 != L3_name or L4 != L4_name or L5 != name or not wkt:
                 fixup_required = True
 
@@ -5491,7 +5583,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 L4_name = Lx.L4
                 L5_name = Lx.name
                 _path = Lx.path
-                if _path and L0_name and L1_name and L2_name and L3_name and L4_name:
+                # Don't try to fixup ancestors when we're coming from a propagate
+                if propagating or (_path and L0_name and L1_name and L2_name and L3_name and L4_name):
                     _path = "%s/%s" % (_path, id)
                 else:
                     # This feature needs to be updated
@@ -5519,7 +5612,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 L3_name = Lx.L3
                 L4_name = Lx.name
                 _path = Lx.path
-                if _path and L0_name and L1_name and L2_name and L3_name:
+                # Don't try to fixup ancestors when we're coming from a propagate
+                if propagating or (_path and L0_name and L1_name and L2_name and L3_name):
                     _path = "%s/%s" % (_path, id)
                 else:
                     # This feature needs to be updated
@@ -5544,7 +5638,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 L2_name = Lx.L2
                 L3_name = Lx.name
                 _path = Lx.path
-                if _path and L0_name and L1_name and L2_name:
+                # Don't try to fixup ancestors when we're coming from a propagate
+                if propagating or (_path and L0_name and L1_name and L2_name):
                     _path = "%s/%s" % (_path, id)
                 else:
                     # This feature needs to be updated
@@ -5566,7 +5661,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 L1_name = Lx.L1
                 L2_name = Lx.name
                 _path = Lx.path
-                if _path and L0_name and L1_name:
+                # Don't try to fixup ancestors when we're coming from a propagate
+                if propagating or (_path and L0_name and L1_name):
                     _path = "%s/%s" % (_path, id)
                 else:
                     # This feature needs to be updated
@@ -5585,7 +5681,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 L0_name = Lx.L0
                 L1_name = Lx.name
                 _path = Lx.path
-                if _path and L0_name:
+                # Don't try to fixup ancestors when we're coming from a propagate
+                if propagating or (_path and L0_name):
                     _path = "%s/%s" % (_path, id)
                 else:
                     # This feature needs to be updated
@@ -5618,6 +5715,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             inherited = True
             lat = Lx_lat
             lon = Lx_lon
+            wkt = None
         elif path != _path or L0 != L0_name or L1 != L1_name or L2 != L2_name or L3 != L3_name or L4 != L4_name or L5 != L5_name or not wkt:
             fixup_required = True
 
@@ -5768,8 +5866,6 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         if current.deployment_settings.get_gis_spatialdb():
             # Also populate the spatial field
             form_vars.the_geom = form_vars.wkt
-
-        return
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -6020,6 +6116,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                  add_line_active = False,
                  add_polygon = False,
                  add_polygon_active = False,
+                 add_circle = False,
+                 add_circle_active = False,
                  features = None,
                  feature_queries = None,
                  feature_resources = None,
@@ -6073,6 +6171,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             @param add_feature_active: Whether the DrawFeature control should be active by default
             @param add_polygon: Whether to include a DrawFeature control to allow drawing a polygon over the map
             @param add_polygon_active: Whether the DrawFeature control should be active by default
+            @param add_circle: Whether to include a DrawFeature control to allow drawing a circle over the map
+            @param add_circle_active: Whether the DrawFeature control should be active by default
             @param features: Simple Features to overlay on Map (no control over appearance & not interactive)
                 [wkt]
             @param feature_queries: Feature Queries to overlay onto the map & their options (List of Dicts):
@@ -6086,7 +6186,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                   "cluster_attribute",     # Optional
                   "cluster_distance",      # Optional
                   "cluster_threshold"      # Optional
-                }]
+                  }]
             @param feature_resources: REST URLs for (filtered) resources to overlay onto the map & their options (List of Dicts):
                 [{"name"      : T("MyLabel"), # A string: the label for the layer
                   "id"        : "search",     # A string: the id for the layer (for manipulation by JavaScript)
@@ -6105,11 +6205,11 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                   "cluster_threshold",        # Optional (overrides layer_id if-set)
                   "dir",                      # Optional (overrides layer_id if-set)
                   "style",                    # Optional (overrides layer_id if-set)
-                }]
+                  }]
             @param wms_browser: WMS Server's GetCapabilities & options (dict)
                 {"name": T("MyLabel"),     # Name for the Folder in LayerTree
                  "url": string             # URL of GetCapabilities
-                }
+                 }
             @param catalogue_layers: Show all the enabled Layers from the GIS Catalogue
                                      Defaults to False: Just show the default Base layer
             @param legend: True: Show the GeoExt Legend panel, False: No Panel, "float": New floating Legend Panel
@@ -6128,7 +6228,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             @param mgrs: Use the MGRS Control to select PDFs
                 {"name": string,           # Name for the Control
                  "url": string             # URL of PDF server
-                }
+                 }
                 @ToDo: Also add MGRS Search support: http://gxp.opengeo.org/master/examples/mgrs.html
             @param window: Have viewport pop out of page into a resizable window
             @param window_hide: Have the window hidden by default, ready to appear (e.g. on clicking a button)
@@ -6157,6 +6257,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                    add_line_active = add_line_active,
                    add_polygon = add_polygon,
                    add_polygon_active = add_polygon_active,
+                   add_circle = add_circle,
+                   add_circle_active = add_circle_active,
                    features = features,
                    feature_queries = feature_queries,
                    feature_resources = feature_resources,
@@ -6651,6 +6753,13 @@ class MAP(DIV):
                 options["draw_polygon"] = "active"
             else:
                 options["draw_polygon"] = "inactive"
+
+        if opts.get("add_circle", False):
+            i18n["gis_draw_circle"] = T("Add Circle")
+            if opts.get("add_circle_active", False):
+                options["draw_circle"] = "active"
+            else:
+                options["draw_circle"] = "inactive"
 
         # Clear Layers
         clear_layers = opts.get("clear_layers") is not False and settings.get_gis_clear_layers()
@@ -7672,6 +7781,7 @@ class LayerArcREST(Layer):
                 transparent = (self.transparent, (True,)),
                 base = (self.base, (False,)),
                 _base = (self._base, (False,)),
+                format = (self.img_format, ("png",)),
             )
 
             return output
@@ -9017,7 +9127,7 @@ class S3Map(S3Method):
             return output
 
         else:
-            r.error(501, current.ERROR.BAD_FORMAT)
+            r.error(415, current.ERROR.BAD_FORMAT)
 
     # -------------------------------------------------------------------------
     def widget(self,
@@ -9160,9 +9270,6 @@ class S3ExportPOI(S3Method):
             @param attr: controller options for this request
         """
 
-        import time
-        tfmt = current.xml.ISOFORMAT
-
         # Determine request Lx
         current_lx = r.record
         if not current_lx: # or not current_lx.level:
@@ -9196,12 +9303,7 @@ class S3ExportPOI(S3Method):
             if msince.lower() == "auto":
                 msince = "auto"
             else:
-                try:
-                    (y, m, d, hh, mm, ss, t0, t1, t2) = \
-                        time.strptime(msince, tfmt)
-                    msince = datetime.datetime(y, m, d, hh, mm, ss)
-                except ValueError:
-                    msince = None
+                msince = s3_parse_datetime(msince)
 
         # Export a combined tree
         tree = self.export_combined_tree(tables,
@@ -9229,7 +9331,7 @@ class S3ExportPOI(S3Method):
         if tree and stylesheet is not None:
             args = Storage(domain=xml.domain,
                            base_url=s3.base_url,
-                           utcnow=datetime.datetime.utcnow().strftime(tfmt))
+                           utcnow=s3_format_datetime())
             tree = xml.transform(tree, stylesheet, **args)
         if tree:
             if as_json:
@@ -9358,6 +9460,7 @@ class S3ImportPOI(S3Method):
                             default = T("Can read PoIs either from an OpenStreetMap file (.osm) or mirror."),
                             writable = False),
                       Field("file", "upload",
+                            length = current.MAX_FILENAME_LENGTH,
                             uploadfolder = uploadpath,
                             label = T("File")),
                       Field("text2", # Dummy Field to add text inside the Form
@@ -9512,6 +9615,6 @@ class S3ImportPOI(S3Method):
             return output
 
         else:
-            raise HTTP(501, current.ERROR.BAD_METHOD)
+            raise HTTP(405, current.ERROR.BAD_METHOD)
 
 # END =========================================================================

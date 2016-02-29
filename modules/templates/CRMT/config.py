@@ -24,7 +24,7 @@ def config(settings):
 
     # -----------------------------------------------------------------------------
     # Pre-Populate
-    settings.base.prepopulate = ("CRMT", "default/users", "CRMT/Demo")
+    settings.base.prepopulate += ("CRMT", "default/users", "CRMT/Demo")
 
     settings.base.system_name = T("Sahana LA Community Resilience Mapping Tool")
     settings.base.system_name_short = T("CRMT")
@@ -33,7 +33,7 @@ def config(settings):
     # US Settings
     # -----------------------------------------------------------------------------
     # Default timezone for users
-    settings.L10n.utc_offset = "UTC -0800"
+    settings.L10n.utc_offset = "-0800"
     # Uncomment these to use US-style dates
     settings.L10n.date_format = "%m-%d-%Y"
     # Start week on Sunday
@@ -101,22 +101,7 @@ def config(settings):
     # Uncomment to control the dataTables layout: https://datatables.net/reference/option/dom
     settings.ui.datatables_dom = "<'data-info row'<'large-4 columns'i><'large-3 columns'l><'large-3 columns search'f><'large-2 columns right'>r><'dataTable_table't><'row'p>"
     # Move the export_formats inside the row above it
-    settings.ui.datatables_initComplete = \
-    '''
-    $('.dataTables_paginate').after($('.dt-export-options'))
-    $('.dataTables_wrapper').prepend($('#filter-form'))
-    $('#filter-form').addClass('data-sort')
-    $('#summary-filter-form').children().first().addClass('row').wrap('<div class="data-filter"></div>')
-    $('#summary-filter-form').prepend($('.dataTables_wrapper .data-info'))
-    $('.data-filter').hide()
-    $('.data-sort .large-3.columns select').addClass('large-5')
-    $('.data-sort .search').append('<div class="row collapse"><div class="small-10 columns"></div></div>')
-    $('.data-sort .search .small-10').after($('.search_text')).remove()
-    $('.search_text').wrap('<div class="small-10 columns"></div>')
-    $('.data-sort .search .small-10').after('<div class="small-2 columns"><a class="button postfix" href="#"><i class="fi-magnifying-glass"></i></a></div>')
-    $('.data-sort .right').html('<a id="js-toggle-filters" class="button tiny right">%s</a>')
-    $('#js-toggle-filters').click(function(){$('.data-filter').slideToggle()})
-    ''' % T("Filter")
+    settings.ui.datatables_initComplete = '''$('.dataTables_paginate').after($('.dt-export-options'))'''
     # Uncomment for dataTables to use a different paging style:
     settings.ui.datatables_pagingType = "bootstrap"
     settings.ui.export_formats = ("xls", "xml")
@@ -297,7 +282,7 @@ def config(settings):
     # -----------------------------------------------------------------------------
     # Finance settings
     settings.fin.currencies = {
-        "USD" : T("United States Dollars"),
+        "USD" : "United States Dollars",
     }
 
     # =============================================================================
@@ -433,7 +418,7 @@ def config(settings):
 
                 if widgets:
                     from s3 import IS_ONE_OF, S3MultiSelectWidget
-                    from s3layouts import S3AddResourceLink
+                    #from s3layouts import S3PopupLink
 
                     htable.organisation_id.widget = S3MultiSelectWidget(multiple=False)
 
@@ -441,11 +426,13 @@ def config(settings):
                     #site_field.requires = IS_ONE_OF(db, "org_site.site_id",
                     #                                represent,
                     #                                orderby = "org_site.name")
-                    #site_field.comment = S3AddResourceLink(c="org", f="office",
-                    #                                       vars={"child": "site_id"},
-                    #                                       label=T("Add New Place"),
-                    #                                       title=T("Place"),
-                    #                                       tooltip=T("If you don't see the Place in the list, you can add a new one by clicking link 'Add New Place'."))
+                    #site_field.comment = S3PopupLink(c = "org",
+                    #                                 f = "office",
+                    #                                 vars = {"child": "site_id"},
+                    #                                 label = T("Add New Place"),
+                    #                                 title = T("Place"),
+                    #                                 tooltip = T("If you don't see the Place in the list, you can add a new one by clicking link 'Add New Place'."),
+                    #                                 )
 
                     table = s3db[tablename]
                     table.first_name.widget = S3StringWidget(placeholder=T("Text"))
@@ -799,7 +786,7 @@ def config(settings):
                                                       header = True,
                                                       ),
                                       S3DateFilter("date",
-                                                   label = None,
+                                                   #label = None,
                                                    hide_time = True,
                                                    input_labels = {"ge": "From", "le": "To"}
                                                    )
@@ -830,7 +817,7 @@ def config(settings):
                                    # Hide Open & Delete dataTable action buttons
                                    deletable = False,
                                    editable = False,
-                                   filter_formstyle = filter_formstyle,
+                                   #filter_formstyle = filter_formstyle,
                                    filter_widgets = filter_widgets,
                                    report_options = report_options,
                                    )
@@ -985,6 +972,8 @@ def config(settings):
                                "comments",
                                ]
 
+                s3db.org_facility.location_id.represent = s3db.gis_LocationRepresent(address_only=True)
+
                 s3db.configure(tablename,
                                # Hide Open & Delete dataTable action buttons
                                deletable = False,
@@ -1036,9 +1025,9 @@ def config(settings):
                                                     "service_organisation.service_id",
                                                     "comments"
                                                     ],
-                                                    label = "",
+                                                    label = T("Search"),
                                                     _class = "search_text",
-                                                    _placeholder = T("Search"),
+                                                    #_placeholder = T("Search"),
                                                     ),
                                       S3OptionsFilter("group_membership.group_id",
                                                       represent = "%(name)s",
@@ -1084,7 +1073,7 @@ def config(settings):
                         )
 
                     s3db.configure(tablename,
-                                   filter_formstyle = filter_formstyle,
+                                   #filter_formstyle = filter_formstyle,
                                    filter_widgets = filter_widgets,
                                    icon = "organization", # Used for Create Icon in Summary View
                                    report_options = report_options,
@@ -1180,11 +1169,12 @@ def config(settings):
                     mtable = s3db.org_group_membership
                     mtable.group_id.default = auth.user.org_group_id
                     mtable.group_id.widget = S3MultiSelectWidget(multiple=False)
-                    #from s3layouts import S3AddResourceLink
-                    #mtable.status_id.comment = S3AddResourceLink(c="org",
-                    #                                             f="group_membership_status",
-                    #                                             vars={"child": "status_id"},
-                    #                                             title=T("Add New Status"))
+                    #from s3layouts import S3PopupLink
+                    #mtable.status_id.comment = S3PopupLink(c = "org",
+                    #                                       f = "group_membership_status",
+                    #                                       vars = {"child": "status_id"},
+                    #                                       title = T("Add New Status"),
+                    #                                       )
                     mtable.status_id.comment = T("Status of the Organization in the Coalition")
                     mtable.status_id.widget = S3MultiSelectWidget(multiple=False,
                                                                   create=dict(c="org",
@@ -1202,7 +1192,7 @@ def config(settings):
                                            S3SQLInlineComponent("facility",
                                                     label = T("Organization's Addresses"),
                                                     fields = [("", "location_id"),
-                                                            ],
+                                                              ],
                                                     columns = (10,),
                                                     multiple = True,
                                            ))
@@ -1473,11 +1463,11 @@ def config(settings):
                              }
         for k in feature_type_keys.values():
             output[k] = 0
-                
+
         ptable = s3db.gis_poi
         ltable = s3db.gis_poi_group
 
-        join = [ltable.on((ltable.poi_id == ptable.id) & 
+        join = [ltable.on((ltable.poi_id == ptable.id) &
                           (ltable.deleted == False)),
                 gtable.on(ptable.location_id == gtable.id),
                 ]
@@ -1486,9 +1476,9 @@ def config(settings):
 
         cnt = ptable.id.count()
         feature_type = gtable.gis_feature_type
-        rows = db(query).select(cnt, 
-                                feature_type, 
-                                join = join, 
+        rows = db(query).select(cnt,
+                                feature_type,
+                                join = join,
                                 groupby = feature_type,
                                 )
         for row in rows:
@@ -1821,7 +1811,7 @@ def config(settings):
                                    # Hide Open & Delete dataTable action buttons
                                    editable = False,
                                    deletable = False,
-                                   filter_formstyle = filter_formstyle,
+                                   #filter_formstyle = filter_formstyle,
                                    filter_widgets = filter_widgets,
                                    report_options = report_options,
                                    )
@@ -2416,11 +2406,11 @@ def config(settings):
 
                 # Patch the style
                 script = \
-    '''var s=$('#gis_poi_poi_type_id__row .small-10') 
+    '''var s=$('#gis_poi_poi_type_id__row .small-10')
     var c=s.html()
     s.html('<div class="row"><div class="small-4 end columns"></div></div>')
     $('#gis_poi_poi_type_id__row .small-10 .small-4').html(c)
-    s=$('#gis_poi_organisation_id__row .small-10') 
+    s=$('#gis_poi_organisation_id__row .small-10')
     c=s.html()
     s.html('<div class="row"><div class="small-4 end columns"></div></div>')
     $('#gis_poi_organisation_id__row .small-10 .small-4').html(c)'''

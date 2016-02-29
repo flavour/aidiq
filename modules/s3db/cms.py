@@ -2,7 +2,7 @@
 
 """ Sahana Eden Content Management System Model
 
-    @copyright: 2012-2015 (c) Sahana Software Foundation
+    @copyright: 2012-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -27,17 +27,18 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["S3ContentModel",
+__all__ = ("S3ContentModel",
            "S3ContentMapModel",
            "S3ContentOrgModel",
            "S3ContentOrgGroupModel",
            "S3ContentUserModel",
            "cms_index",
+           "cms_documentation",
            "cms_rheader",
            "cms_customise_post_fields",
            "cms_post_list_layout",
            "S3CMS",
-           ]
+           )
 
 try:
     import json # try stdlib (Python 2.6)
@@ -50,7 +51,7 @@ except ImportError:
 from gluon import *
 from gluon.storage import Storage
 from ..s3 import *
-from s3layouts import S3AddResourceLink
+from s3layouts import S3PopupLink
 
 # Compact JSON encoding
 SEPARATORS = (",", ":")
@@ -241,9 +242,11 @@ class S3ContentModel(S3Model):
         # Reusable field
         represent = S3Represent(lookup=tablename)
         post_id = S3ReusableField("post_id", "reference %s" % tablename,
-                                  comment = S3AddResourceLink(c="cms", f="post",
-                                                              title=ADD_POST,
-                                                              tooltip=T("A block of rich text which could be embedded into a page, viewed as a complete page or viewed as a list of news items.")),
+                                  comment = S3PopupLink(c = "cms",
+                                                        f = "post",
+                                                        title = ADD_POST,
+                                                        tooltip = T("A block of rich text which could be embedded into a page, viewed as a complete page or viewed as a list of news items."),
+                                                        ),
                                   label = T("Post"),
                                   ondelete = "CASCADE",
                                   represent = represent,
@@ -302,6 +305,7 @@ class S3ContentModel(S3Model):
                              "location": "location_id",
                              "organisation": "created_by$organisation_id",
                              },
+                  deduplicate = self.cms_post_duplicate,
                   filter_actions = [{"label": "Open Table",
                                      "icon": "table",
                                      "function": "newsfeed",
@@ -579,6 +583,39 @@ class S3ContentModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
+    def cms_post_duplicate(item):
+        """
+            CMS Post Import - Update Detection (primarily for non-blog
+            contents such as homepage, module index pages, summary pages,
+            or online documentation):
+                - same name and series => same post
+
+            @param item: the import item
+
+            @todo: if no name present => use cms_post_module component
+                   to identify updates (also requires deduplication of
+                   cms_post_module component)
+        """
+
+        data = item.data
+
+        name = data.get("name")
+        series_id = data.get("series_id")
+
+        if not name:
+            return
+
+        table = item.table
+        query = (table.name == name) & \
+                (table.series_id == series_id)
+        duplicate = current.db(query).select(table.id,
+                                             limitby=(0, 1)).first()
+        if duplicate:
+            item.id = duplicate.id
+            item.method = item.METHOD.UPDATE
+
+    # -------------------------------------------------------------------------
+    @staticmethod
     def cms_post_onaccept(form):
         """
            Handle the case where the page is for a Module home page,
@@ -648,7 +685,7 @@ class S3ContentModel(S3Model):
 
         post_id = r.id
         if not post_id or len(r.args) < 3:
-            raise HTTP(501, current.ERROR.BAD_METHOD)
+            raise HTTP(405, current.ERROR.BAD_METHOD)
 
         tag = r.args[2]
         db = current.db
@@ -706,7 +743,7 @@ class S3ContentModel(S3Model):
 
         post_id = r.id
         if not post_id or len(r.args) < 3:
-            raise HTTP(501, current.ERROR.BAD_METHOD)
+            raise HTTP(405, current.ERROR.BAD_METHOD)
 
         tag = r.args[2]
         db = current.db
@@ -745,7 +782,7 @@ class S3ContentModel(S3Model):
         user = current.auth.user
         user_id = user and user.id
         if not post_id or not user_id:
-            raise HTTP(501, current.ERROR.BAD_METHOD)
+            raise HTTP(405, current.ERROR.BAD_METHOD)
 
         db = current.db
         ltable = db.cms_post_user
@@ -787,7 +824,7 @@ class S3ContentModel(S3Model):
         user = current.auth.user
         user_id = user and user.id
         if not post_id or not user_id:
-            raise HTTP(501, current.ERROR.BAD_METHOD)
+            raise HTTP(405, current.ERROR.BAD_METHOD)
 
         db = current.db
         ltable = db.cms_post_user
@@ -827,7 +864,7 @@ class S3ContentMapModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
 # =============================================================================
 class S3ContentOrgModel(S3Model):
@@ -855,7 +892,7 @@ class S3ContentOrgModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
 # =============================================================================
 class S3ContentOrgGroupModel(S3Model):
@@ -879,7 +916,7 @@ class S3ContentOrgGroupModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
 # =============================================================================
 class S3ContentUserModel(S3Model):
@@ -903,7 +940,7 @@ class S3ContentUserModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
 # =============================================================================
 def cms_rheader(r, tabs=[]):
@@ -964,7 +1001,7 @@ def cms_index(module, resource=None, page_name=None, alt_function=None):
     response.title = page_name
 
     item = None
-    if settings.has_module("cms"):
+    if settings.has_module("cms") and not settings.get_cms_hide_index(module):
         db = current.db
         table = current.s3db.cms_post
         ltable = db.cms_post_module
@@ -1020,6 +1057,10 @@ def cms_index(module, resource=None, page_name=None, alt_function=None):
             environment = build_environment(request, response, current.session)
             environment["settings"] = settings
             environment["s3db"] = current.s3db
+            # Retain certain globals (extend as needed):
+            g = globals()
+            environment["s3base"] = g.get("s3base")
+            environment["s3_redirect_default"] = g.get("s3_redirect_default")
             page = run_controller_in(request.controller, alt_function, environment)
             if isinstance(page, dict):
                 response._vars = page
@@ -1046,6 +1087,46 @@ def cms_index(module, resource=None, page_name=None, alt_function=None):
 
     response.view = "index.html"
     return dict(item=item, report=report)
+
+# =============================================================================
+def cms_documentation(r, default_page, default_url):
+    """
+        Render an online documentation page, to be called from prep
+
+        @param r: the S3Request
+        @param default_page: the default page name
+        @param default_url: the default URL if no contents found
+    """
+
+    row = r.record
+    if not row:
+        # Find the CMS page
+        name = r.get_vars.get("name", default_page)
+        table = r.resource.table
+        query = (table.name == name) & (table.deleted != True)
+        row = current.db(query).select(table.id,
+                                       table.title,
+                                       table.body,
+                                       limitby=(0, 1)).first()
+    if not row:
+        if name != default_page:
+            # Error - CMS page not found
+            r.error(404, current.T("Page not found"),
+                    next=URL(args=current.request.args, vars={}),
+                    )
+        else:
+            # No CMS contents for module homepage found at all
+            # => redirect to default page (preserving all errors)
+            from s3 import s3_redirect_default
+            s3_redirect_default(default_url)
+
+    # Render the page
+    from s3 import S3XMLContents
+    return {"bypass": True,
+            "output": {"title": row.title,
+                       "contents": S3XMLContents(row.body),
+                       },
+            }
 
 # =============================================================================
 class S3CMS(S3Method):
@@ -1086,10 +1167,10 @@ class S3CMS(S3Method):
 
         # This is currently assuming that we're being used in a Summary page or similar
         request = current.request
-        module = request.controller
-        resource = request.function
 
-        return self.resource_content(module, resource, widget_id)
+        return self.resource_content(request.controller,
+                                     request.function,
+                                     widget_id)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1324,6 +1405,12 @@ def cms_post_list_layout(list_id, item_id, resource, rfields, record):
     if subtitle:
         subtitle.append(body)
         body = TAG[""](*subtitle)
+
+    # Allow records to be truncated
+    # (not yet working for HTML)
+    body = DIV(body,
+               _class="s3-truncate",
+               )
 
     date = record["cms_post.date"]
     date = SPAN(date,
@@ -1572,8 +1659,11 @@ def cms_post_list_layout(list_id, item_id, resource, rfields, record):
     if documents:
         if not isinstance(documents, list):
             documents = [documents]
-        doc_list = UL(_class="dropdown-menu",
+        doc_list_id = "attachments-%s" % item_id
+        doc_list = UL(_class="f-dropdown dropdown-menu",
                       _role="menu",
+                      _id=doc_list_id,
+                      data={"dropdown-content": ""},
                       )
         retrieve = db.doc_document.file.retrieve
         for doc in documents:
@@ -1593,9 +1683,11 @@ def cms_post_list_layout(list_id, item_id, resource, rfields, record):
             doc_list.append(doc_item)
         docs = DIV(A(ICON("attachment"),
                      SPAN(_class="caret"),
-                     _class="btn dropdown-toggle",
+                     _class="btn dropdown-toggle dropdown",
                      _href="#",
-                     **{"_data-toggle": "dropdown"}
+                     data={"toggle": "dropdown",
+                           "dropdown": doc_list_id,
+                           },
                      ),
                    doc_list,
                    _class="btn-group attachments dropdown pull-right",
@@ -1634,15 +1726,17 @@ def cms_post_list_layout(list_id, item_id, resource, rfields, record):
         icon = series.lower().replace(" ", "_")
         series_title = SPAN(" %s" % series_title,
                             _class="card-title")
-        if settings.get_cms_show_titles() and raw["cms_post.title"]:
-            title = SPAN(raw["cms_post.title"],
-                         _class="card-title2")
+        raw_title = raw["cms_post.title"]
+        if settings.get_cms_show_titles() and raw_title:
+            title = SPAN(s3_truncate(raw_title), _class="card-title2")
             card_label = TAG[""](ICON(icon),
                                  series_title,
-                                 title)
+                                 title,
+                                 )
         else:
             card_label = TAG[""](ICON(icon),
-                                 series_title)
+                                 series_title,
+                                 )
         # Type cards
         if series == "Alert":
             # Apply additional highlighting for Alerts

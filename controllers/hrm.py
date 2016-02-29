@@ -14,15 +14,25 @@ s3db.hrm_vars()
 
 # =============================================================================
 def index():
-    """ Module Home Page """
+    """ Customisable module homepage """
+
+    return settings.customise_home(module, alt_function="index_alt")
+
+# -----------------------------------------------------------------------------
+def index_alt():
+    """
+        Fallback for module homepage when not customised and
+        no CMS content found (ADMINs will see CMS edit unless
+        disabled globally via settings.cms.hide_index)
+    """
 
     mode = session.s3.hrm.mode
     if mode is not None:
         # Go to Personal Profile
-        redirect(URL(f="person"))
+        s3_redirect_default(URL(f="person"))
     else:
         # Bypass home page & go direct to searchable list of Staff
-        redirect(URL(f="staff", args="summary"))
+        s3_redirect_default(URL(f="staff", args="summary"))
 
 # =============================================================================
 # People
@@ -113,8 +123,8 @@ def staff():
                 if r.method == "import":
                     # Redirect to person controller
                     redirect(URL(f="person",
-                                args="import",
-                                vars={"group": "staff"}))
+                                 args="import",
+                                 vars={"group": "staff"}))
                 elif not r.component and r.method != "delete":
                     # Configure site_id
                     field = table.site_id
@@ -128,18 +138,20 @@ def staff():
                                                     T("The facility where this position is based."),
                                                     #messages.AUTOCOMPLETE_HELP,
                                             )))
-                    #field.comment = S3AddResourceLink(c="org", f="facility",
-                    #                                  vars = dict(child="site_id",
-                    #                                              parent="req"),
-                    #                                  title=T("Add New Site"),
-                    #                                 )
+                    #field.comment = S3PopupLink(c="org", f="facility",
+                    #                            vars = dict(child="site_id",
+                    #                                        parent="req"),
+                    #                            title=T("Add New Site"),
+                    #                            )
 
                     # Hide status field
                     table.status.writable = table.status.readable = False
 
                     # Assume staff only between 16-81
-                    s3db.pr_person.date_of_birth.widget = S3DateWidget(past=972,
-                                                                       future=-192)
+                    dob = s3db.pr_person.date_of_birth
+                    dob.widget = S3CalendarWidget(past_months = 972,
+                                                  future_months = -192,
+                                                  )
         elif r.representation == "xls":
             # Make it match Import sheets
             list_fields = s3db.get_config(tablename, "list_fields")
@@ -176,9 +188,6 @@ def staff():
     def postp(r, output):
         if r.interactive:
             if not r.component:
-                # Set the minimum end_date to the same as the start_date
-                s3.jquery_ready.append(
-'''S3.start_end_date('hrm_human_resource_start_date','hrm_human_resource_end_date')''')
                 s3_action_buttons(r, deletable=settings.get_hrm_deletable())
                 if "msg" in settings.modules and \
                    settings.get_hrm_compose_button() and \
@@ -271,27 +280,15 @@ def profile():
                 table.missing.readable = table.missing.writable = False
                 table.age_group.readable = table.age_group.writable = False
                 # Assume volunteers only between 12-81
-                table.date_of_birth.widget = S3DateWidget(past=972, future=-144)
+                dob = table.date_of_birth
+                dob.widget = S3CalendarWidget(past_months = 972,
+                                              future_months = -144,
+                                              )
                 return True
         else:
             # Disable non-interactive & import
             return False
     s3.prep = prep
-
-    # CRUD post-process
-    def postp(r, output):
-        if r.interactive and r.component:
-            if r.component_name == "human_resource":
-                # Set the minimum end_date to the same as the start_date
-                s3.jquery_ready.append(
-'''S3.start_end_date('hrm_human_resource_start_date','hrm_human_resource_end_date')''')
-            if r.component_name == "experience":
-                # Set the minimum end_date to the same as the start_date
-                s3.jquery_ready.append(
-'''S3.start_end_date('hrm_experience_start_date','hrm_experience_end_date')''')
-
-        return output
-    s3.postp = postp
 
     output = s3_rest_controller("pr", "person",
                                 rheader = s3db.hrm_rheader,
@@ -492,7 +489,7 @@ def course():
         return True
     s3.prep = prep
 
-    if not auth.s3_has_role(ADMIN):
+    if not auth.s3_has_role(ADMIN) and not s3.filter:
         s3.filter = auth.filter_by_root_org(s3db.hrm_course)
 
     output = s3_rest_controller(rheader=s3db.hrm_rheader)
@@ -543,6 +540,76 @@ def certificate_skill():
 
     output = s3_rest_controller()
     return output
+
+# -----------------------------------------------------------------------------
+def facility():
+    """
+        Filtered version of the facility() REST controller
+    """
+
+    get_vars["facility_type.name"] = "Training Center"
+
+    # Load model (including normal CRUD strings)
+    table = s3db.org_facility
+
+    # Modify CRUD Strings
+    s3.crud_strings.org_facility = Storage(
+        label_create = T("Create Training Center"),
+        title_display = T("Training Center Details"),
+        title_list = T("Training Centers"),
+        title_update = T("Edit Training Center"),
+        title_upload = T("Import Training Centers"),
+        label_list_button = T("List Training Centers"),
+        label_delete_button = T("Delete Training Center"),
+        msg_record_created = T("Training Center added"),
+        msg_record_modified = T("Training Center updated"),
+        msg_record_deleted = T("Training Center deleted"),
+        msg_list_empty = T("No Training Centers currently registered")
+        )
+
+
+    # Open record in this controller after creation
+    s3db.configure("org_facility",
+                   create_next = URL(c="hrm", f="facility",
+                                     args = ["[id]", "read"]),
+                   )
+
+    return s3db.org_facility_controller()
+
+# -----------------------------------------------------------------------------
+def training_center():
+    """
+        Filtered version of the organisation() REST controller
+    """
+
+    get_vars["organisation_type.name"] = "Training Center"
+
+    # Load model (including normal CRUD strings)
+    table = s3db.org_organisation
+
+    # Modify CRUD Strings
+    s3.crud_strings.org_organisation = Storage(
+        label_create = T("Create Training Center"),
+        title_display = T("Training Center Details"),
+        title_list = T("Training Centers"),
+        title_update = T("Edit Training Center"),
+        title_upload = T("Import Training Centers"),
+        label_list_button = T("List Training Centers"),
+        label_delete_button = T("Delete Training Center"),
+        msg_record_created = T("Training Center added"),
+        msg_record_modified = T("Training Center updated"),
+        msg_record_deleted = T("Training Center deleted"),
+        msg_list_empty = T("No Training Centers currently registered")
+        )
+
+
+    # Open record in this controller after creation
+    s3db.configure("org_organisation",
+                   create_next = URL(c="hrm", f="training_center",
+                                     args = ["[id]", "read"]),
+                   )
+
+    return s3db.org_organisation_controller()
 
 # -----------------------------------------------------------------------------
 def training():

@@ -1,7 +1,7 @@
 /**
  * jQuery UI InlineComponent Widget
  *
- * @copyright 2015 (c) Sahana Software Foundation
+ * @copyright 2015-2016 (c) Sahana Software Foundation
  * @license MIT
  *
  * requires jQuery 1.9.1+
@@ -485,6 +485,15 @@
                         }
                     } else if (input.attr('type') == 'checkbox') {
                         value = input.prop('checked');
+                    } else if (input.hasClass('s3-hierarchy-input')) {
+                        if (value) {
+                            value = JSON.parse(value);
+                            if (!input.data('multiple')) {
+                                value = value[0];
+                            }
+                        } else {
+                            continue;
+                        }
                     } else {
                         cssclass = input.attr('class');
                         if (cssclass == 'generic-widget') {
@@ -498,9 +507,11 @@
                     }
                 } else {
                     // Field is Read-only
-                    if (typeof original != 'undefined') {
+                    if (original !== null) {
                         // Keep current value
                         value = original[fieldname]['value'];
+                    } else if (data.defaults  && (typeof(data.defaults[fieldname]) != 'undefined')) {
+                        value = data.defaults[fieldname].value;
                     } else {
                         value = '';
                     }
@@ -688,6 +699,15 @@
 
             this._removeErrors();
 
+            var data = this._deserialize();
+            var fields = data['fields'];
+            var row = data['data'][rowindex];
+
+            if (row._readonly) {
+                // Can't edit the row if it is read-only
+                return;
+            }
+
             // Show all read rows for this field
             $('#sub-' + formname + ' .read-row').removeClass('hide');
             // Hide the current read row, unless it's an Image
@@ -696,9 +716,6 @@
             }
 
             // Populate the edit row with the data for this rowindex
-            var data = this._deserialize();
-            var fields = data['fields'];
-            var row = data['data'][rowindex];
             var fieldname,
                 element,
                 input,
@@ -1158,8 +1175,23 @@
                     for (var j=0, numfields=inputs.length; j < numfields; j++) {
                         input = $(inputs[j]);
                         // Ignore hidden inputs unless they have an 'input' flag
-                        if (input.is('[type="hidden"]') && !input.data('input') || !input.is(':visible')) {
+                        var inputFlag = input.data('input');
+                        if (input.is('[type="hidden"]')) {
+                            if (!input.data('input')) {
+                                continue;
+                            }
+                        } else if (!input.is(':visible')) {
                             continue;
+                        }
+                        // Treat SELECTs as empty if only the default value is selected
+                        if (input.prop('tagName') == 'SELECT') {
+                            var tokens = input.attr('id').split('_');
+                            tokens.pop();
+                            tokens.push('default');
+                            var defaultInput = $('#' + tokens.join('_'));
+                            if (defaultInput.length && defaultInput.val() == input.val()) {
+                                continue;
+                            }
                         }
                         if ((input.attr('type') != 'checkbox' && input.val()) || input.prop('checked')) {
                             empty = false;
@@ -1326,8 +1358,8 @@
                 item = {};
                 item[fieldname] = {'text': label, 'value': value};
                 item._changed = true;
-                if (row.hasOwnProperty('_delete')) {
-                    delete row._delete;
+                if (item.hasOwnProperty('_delete')) {
+                    delete item._delete;
                 }
                 data.push(item);
             }
@@ -1390,10 +1422,17 @@
                 textInputs = 'input[type="text"],input[type="file"],textarea',
                 fileInputs = 'input[type="file"]',
                 otherInputs = 'input[type!="text"][type!="file"],select',
-                multiSelects = 'select.multiselect-widget';
+                multiSelects = 'select.multiselect-widget',
+                hierarchyInputs = 'input.s3-hierarchy-input';
 
             el.find('.add-row,.edit-row').each(function() {
                 var $this = $(this);
+                // Event to be triggered to force recollection of data (used by LocationSelector when modifying Point/Polygon on map)
+                $this.find('div.map_wrapper').bind('change' + ns, function() {
+                    self._markChanged(this);
+                    self._catchSubmit(this);
+                });
+
                 $this.find(textInputs).bind('input' + ns, function() {
                     self._markChanged(this);
                     self._catchSubmit(this);
@@ -1416,6 +1455,10 @@
                         self._markChanged(this);
                         self._catchSubmit(this);
                     });
+                });
+                $this.find(hierarchyInputs).bind('change' + ns, function() {
+                    self._markChanged(this);
+                    self._catchSubmit(this);
                 });
                 $this.find(inputs).bind('keypress' + ns, function(e) {
                     if (e.which == 13) {

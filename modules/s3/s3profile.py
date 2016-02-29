@@ -2,7 +2,7 @@
 
 """ S3 Profile
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -226,9 +226,11 @@ class S3Profile(S3CRUD):
                 elif w_type == "form":
                     w = self._form(r, widget, **attr)
                 elif w_type == "map":
-                    w = self._map(r, widget, **attr)
+                    w = self._map(r, widget, widgets, **attr)
                 elif w_type == "report":
                     w = self._report(r, widget, **attr)
+                elif w_type == "custom":
+                    w = self._custom(r, widget, **attr)
                 else:
                     if response.s3.debug:
                         raise SyntaxError("Unsupported widget type %s" %
@@ -255,6 +257,10 @@ class S3Profile(S3CRUD):
                 # We have an incomplete row of widgets
                 append(row)
             output["rows"] = rows
+
+            # Activate this if a project needs it
+            #response.view = get_config(tablename, "profile_view") or \
+            #                self._view(r, "profile.html")
             response.view = self._view(r, "profile.html")
 
         return output
@@ -301,22 +307,24 @@ class S3Profile(S3CRUD):
 
         # Define target resource
         resource = current.s3db.resource(tablename, filter=query)
+        r.customise_resource(tablename)
         return resource, query
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def _comments(r, widget, **attr):
+    def _comments(self, r, widget, **attr):
         """
             Generate a Comments widget
 
             @param r: the S3Request instance
-            @param widget: the widget as a tuple: (label, type, icon)
+            @param widget: the widget definition as dict
             @param attr: controller attributes for the request
 
             @ToDo: Configurable to use either Disqus or internal Comments
         """
 
         label = widget.get("label", "")
+        # Activate if-required
+        #if label and isinstance(label, basestring):
         if label:
             label = current.T(label)
         icon = widget.get("icon", "")
@@ -325,11 +333,47 @@ class S3Profile(S3CRUD):
 
         _class = self._lookup_class(r, widget)
 
+        comments = "@ToDo"
+
         # Render the widget
         output = DIV(H4(icon,
                         label,
                         _class="profile-sub-header"),
-                     DIV(_class="thumbnail"),
+                     DIV(comments,
+                         _class="card-holder"),
+                     _class=_class)
+
+        return output
+
+    # -------------------------------------------------------------------------
+    def _custom(self, r, widget, **attr):
+        """
+            Generate a Custom widget
+
+            @param r: the S3Request instance
+            @param widget: the widget definition as dict
+            @param attr: controller attributes for the request
+        """
+
+        label = widget.get("label", "")
+        # Activate if-required
+        #if label and isinstance(label, basestring):
+        if label:
+            label = current.T(label)
+        icon = widget.get("icon", "")
+        if icon:
+            icon = ICON(icon)
+
+        _class = self._lookup_class(r, widget)
+
+        contents = widget["fn"](r, **attr)
+
+        # Render the widget
+        output = DIV(H4(icon,
+                        label,
+                        _class="profile-sub-header"),
+                     DIV(contents,
+                         _class="card-holder"),
                      _class=_class)
 
         return output
@@ -432,6 +476,8 @@ class S3Profile(S3CRUD):
 
         # Interactive only below here
         label = widget.get("label", "")
+        # Activate if-required
+        #if label and isinstance(label, basestring):
         if label:
             label = T(label)
         icon = widget.get("icon", "")
@@ -455,7 +501,7 @@ class S3Profile(S3CRUD):
             url = URL(c=c, f=f, args=["datalist.popup"],
                       vars=get_vars_new)
             more = DIV(A(BUTTON("%s (%s)" % (T("see more"), more),
-                                _class="btn btn-mini",
+                                _class="btn btn-mini tiny button",
                                 _type="button",
                                 ),
                          _class="s3_modal",
@@ -505,15 +551,12 @@ class S3Profile(S3CRUD):
         tablename = widget.get("tablename")
         resource, context = self._resolve_context(r, tablename, context)
 
-        # Define target resource
-        table = resource.table
-        get_config = resource.get_config
-
         # List fields
-        list_fields = widget.get("list_fields",
-                                 get_config("list_fields", None))
+        list_fields = widget.get("list_fields")
         if not list_fields:
-            list_fields = [f for f in table.fields if table[f].readable]
+            # @ToDo: Set the parent so that the fkey gets removed from the list_fields
+            #resource.parent = s3db.resource("")
+            list_fields = resource.list_fields()
 
         # Widget filter option
         widget_filter = widget.get("filter")
@@ -527,9 +570,10 @@ class S3Profile(S3CRUD):
         # - first field actually in this table
         def default_orderby():
             for f in list_fields:
-                if f == "id":
+                selector = f[1] if isinstance(f, tuple) else f
+                if selector == "id":
                     continue
-                rfield = resource.resolve_selector(f)
+                rfield = resource.resolve_selector(selector)
                 if rfield.field:
                     return rfield.field
             return None
@@ -550,7 +594,7 @@ class S3Profile(S3CRUD):
                 try:
                     start = int(start)
                     limit = int(limit)
-                except ValueError:
+                except (ValueError, TypeError):
                     start = None
                     limit = 0 # use default
         else:
@@ -567,11 +611,14 @@ class S3Profile(S3CRUD):
                 display_length = s3.dataTable_pageLength
             else:
                 display_length = widget.get("pagesize", 10)
+            dtargs["dt_lengthMenu"] = [[10, 25, 50, -1],
+                                       [10, 25, 50, str(current.T("All"))]
+                                      ]
 
             # ORDERBY fallbacks: widget->resource->default
             orderby = widget.get("orderby")
             if not orderby:
-                orderby = get_config("orderby")
+                orderby = resource.get_config("orderby")
             if not orderby:
                 orderby = default_orderby()
 
@@ -612,15 +659,16 @@ class S3Profile(S3CRUD):
                 actions = actions(r, list_id)
             if actions:
                 dtargs["dt_row_actions"] = actions
+
             datatable = dt.html(totalrows,
                                 displayrows,
                                 id=list_id,
                                 **dtargs)
 
             if dt.data:
-                empty.update(_style="display:none;")
+                empty.update(_style="display:none")
             else:
-                datatable.update(_style="display:none;")
+                datatable.update(_style="display:none")
             contents = DIV(datatable, empty, _class="dt-contents")
 
             # Link for create-popup
@@ -633,8 +681,12 @@ class S3Profile(S3CRUD):
 
             # Card holder label and icon
             label = widget.get("label", "")
+            # Activate if-required
+            #if label and isinstance(label, basestring):
             if label:
                 label = current.T(label)
+            else:
+                label = S3CRUD.crud_string(tablename, "title_list")
             icon = widget.get("icon", "")
             if icon:
                 icon = ICON(icon)
@@ -661,7 +713,7 @@ class S3Profile(S3CRUD):
             if not orderby:
                 orderby = widget.get("orderby")
             if not orderby:
-                orderby = get_config("orderby")
+                orderby = resource.get_config("orderby")
             if not orderby:
                 orderby = default_orderby()
 
@@ -687,7 +739,7 @@ class S3Profile(S3CRUD):
                 totalrows = displayrows
 
             # Echo
-            draw = int(get_vars.draw or 0)
+            draw = int(get_vars.get("draw") or 0)
 
             # Representation
             if dt is not None:
@@ -707,7 +759,7 @@ class S3Profile(S3CRUD):
 
         else:
             # Really raise an exception here?
-            r.error(501, current.ERROR.BAD_FORMAT)
+            r.error(415, current.ERROR.BAD_FORMAT)
 
     # -------------------------------------------------------------------------
     def _form(self, r, widget, **attr):
@@ -720,6 +772,8 @@ class S3Profile(S3CRUD):
         """
 
         label = widget.get("label", "")
+        # Activate if-required
+        #if label and isinstance(label, basestring):
         if label:
             label = current.T(label)
         icon = widget.get("icon", "")
@@ -788,7 +842,7 @@ class S3Profile(S3CRUD):
         return output
 
     # -------------------------------------------------------------------------
-    def _map(self, r, widget, **attr):
+    def _map(self, r, widget, widgets, **attr):
         """
             Generate a Map widget
 
@@ -802,11 +856,13 @@ class S3Profile(S3CRUD):
         s3db = current.s3db
 
         label = widget.get("label", "")
-        if label:
+        if label and isinstance(label, basestring):
             label = T(label)
         icon = widget.get("icon", "")
         if icon:
             icon = ICON(icon)
+
+        _class = self._lookup_class(r, widget)
 
         context = widget.get("context", None)
         # Map widgets have no separate tablename
@@ -826,7 +882,6 @@ class S3Profile(S3CRUD):
         mtable = s3db.gis_marker
         feature_resources = []
         fappend = feature_resources.append
-        widgets = s3db.get_config(tablename, "profile_widgets")
         s3dbresource = s3db.resource
         for widget in widgets:
             if widget["type"] not in ("datalist", "datatable", "report"):
@@ -936,8 +991,6 @@ class S3Profile(S3CRUD):
             script = "/%s/static/scripts/S3/s3.gis.fullscreen.min.js" % current.request.application
         s3.scripts.append(script)
 
-        _class = self._lookup_class(r, widget)
-
         # Render the widget
         output = DIV(fullscreen,
                      H4(icon,
@@ -983,7 +1036,7 @@ class S3Profile(S3CRUD):
 
         # Card holder label and icon
         label = widget.get("label", "")
-        if label:
+        if label and isinstance(label, basestring):
             label = current.T(label)
         icon = widget.get("icon", "")
         if icon:
@@ -1004,7 +1057,10 @@ class S3Profile(S3CRUD):
     @staticmethod
     def _lookup_class(r, widget):
         """
-            Provide the Bootstrap span class for the Widgets
+            Provide the column-width class for the widgets
+
+            @param r: the S3Request
+            @param widget: the widget config (dict)
         """
 
         page_cols = current.s3db.get_config(r.tablename, "profile_cols")
@@ -1013,7 +1069,13 @@ class S3Profile(S3CRUD):
         widget_cols = widget.get("colspan", 1)
         span = int(12 / page_cols) * widget_cols
 
-        return "span%s" % span
+        formstyle = current.deployment_settings.ui.get("formstyle", "default")
+        if current.deployment_settings.ui.get("formstyle") == "bootstrap":
+            # Bootstrap
+            return "profile-widget span%s" % span
+
+        # Default (=foundation)
+        return "profile-widget medium-%s columns" % span
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1031,19 +1093,30 @@ class S3Profile(S3CRUD):
         """
 
         create = ""
+
         insert = widget.get("insert", True)
+        if not insert:
+            return create
 
         table = resource.table
         tablename = resource.tablename
 
         # Default to primary REST controller for the resource being added
         c, f = tablename.split("_", 1)
-        c = widget.get("create_controller", c)
-        f = widget.get("create_function", f)
+        create_controller = widget.get("create_controller")
+        if create_controller:
+            c = create_controller
+        create_function = widget.get("create_function")
+        if create_function:
+            f = create_function
 
-        if insert and \
-           current.auth.s3_has_permission("create", table, c=c, f=f):
-
+        permit = current.auth.s3_has_permission
+        create_ok = permit("create", table, c=c, f=f)
+        if create_ok:
+            if not create_controller or not create_function:
+                # Assume not component context
+                create_ok = permit("update", r.table, record_id=r.id, c=c, f=f)
+        if create_ok:
             #if tablename = "org_organisation":
                 # @ToDo: Special check for creating resources on Organisation profile
 
@@ -1074,6 +1147,8 @@ class S3Profile(S3CRUD):
 
             # CRUD string
             label_create = widget.get("label_create", None)
+            # Activate if-required
+            #if label_create and isinstance(label_create, basestring):
             if label_create:
                 label_create = current.T(label_create)
             else:
@@ -1112,9 +1187,9 @@ class S3Profile(S3CRUD):
                 multiple = widget.get("multiple", True)
                 if not multiple and hasattr(create, "update"):
                     if numrows:
-                        create.update(_style="display:none;")
+                        create.update(_style="display:none")
                     else:
-                        create.update(_style="display:block;")
+                        create.update(_style="display:block")
                     # Script to hide/unhide the create-button on Ajax
                     # list updates
                     createid = create["_id"]

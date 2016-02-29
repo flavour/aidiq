@@ -2,7 +2,7 @@
 
 """ Sahana Eden Synchronization
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -38,6 +38,7 @@ from gluon.storage import Storage
 
 from s3dal import Row
 from ..s3 import *
+from s3layouts import S3PopupLink
 
 # =============================================================================
 class SyncDataModel(S3Model):
@@ -45,6 +46,8 @@ class SyncDataModel(S3Model):
     names = ("sync_config",
              "sync_status",
              "sync_repository",
+             "sync_repository_id",
+             "sync_repository_onaccept",
              "sync_task",
              "sync_resource_filter",
              "sync_job",
@@ -78,8 +81,9 @@ class SyncDataModel(S3Model):
         tablename = "sync_config"
         define_table(tablename,
                      Field("proxy",
-                           label=T("Proxy Server URL"),
-                           requires=IS_EMPTY_OR(IS_URL(mode="generic"))),
+                           label = T("Proxy Server URL"),
+                           requires = IS_EMPTY_OR(IS_URL(mode="generic")),
+                           ),
                      *s3_meta_fields())
 
         # Field configuration
@@ -105,9 +109,10 @@ class SyncDataModel(S3Model):
 
         # Resource Configuration
         configure(tablename,
-                  insertable=False,
-                  deletable=False,
-                  update_next=URL(c="sync", f="config", args=["1", "update"]))
+                  deletable = False,
+                  insertable = False,
+                  update_next = URL(c="sync", f="config", args=["1", "update"]),
+                  )
 
         # -------------------------------------------------------------------------
         # Status
@@ -115,26 +120,40 @@ class SyncDataModel(S3Model):
         tablename = "sync_status"
         define_table(tablename,
                      Field("running", "boolean",
-                           default=False,
-                           readable=False,
-                           writable=False),
+                           default = False,
+                           readable = False,
+                           writable = False,
+                           ),
                      Field("manual", "boolean",
-                           default=False,
-                           readable=False,
-                           writable=False),
+                           default = False,
+                           readable = False,
+                           writable = False,
+                           ),
                      Field("timestmp", "datetime",
-                           readable=False,
-                           writable=False))
+                           readable = False,
+                           writable = False),
+                           )
 
         # -------------------------------------------------------------------------
         # Repository
         # -------------------------------------------------------------------------
         sync_repository_types = {
-            "eden": "Sahana Eden",
+            "adashi": "ADASHI",
             "ccrm": "CiviCRM",
-            "wrike": "Wrike",
+            "eden": "Sahana Eden",
+            "filesync": "Local Filesystem",
+            "ftp": "FTP",
             "mcb": "Mariner CommandBridge",
+            "wrike": "Wrike",
         }
+
+        # Back-ends implementing passive methods (=send and/or receive)
+        # so that they can be used for indirect, file-based synchronization
+        sync_backend_types = {
+            "adashi": "ADASHI",
+            "eden": "Sahana Eden",
+        }
+
         password_widget = S3PasswordWidget()
         tablename = "sync_repository"
         define_table(tablename,
@@ -145,21 +164,38 @@ class SyncDataModel(S3Model):
                                                 T("Name of the repository (for you own reference)"))),
                            ),
                      Field("apitype",
-                           label=T("Repository Type"),
-                           requires = IS_IN_SET(sync_repository_types),
                            default = "eden",
-                           represent = lambda opt: \
-                                       NONE if not opt else \
-                                       sync_repository_types.get(opt, NONE),
+                           label = T("Repository Type"),
+                           represent = S3Represent(options = sync_repository_types),
+                           requires = IS_IN_SET(sync_repository_types),
+                           ),
+                     Field("backend",
+                           default = "eden",
+                           label = T("Data Format"),
+                           represent = S3Represent(options = sync_backend_types),
+                           requires = IS_IN_SET(sync_backend_types),
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Data Format"),
+                                                T("The data format to use for data import/export"))),
                            ),
                      Field("url",
-                           label="URL",
+                           label = "URL",
                            requires = IS_EMPTY_OR(
                                       IS_NOT_IN_DB(db, "sync_repository.url")),
                            comment = DIV(_class="tooltip",
                                          _title="%s|%s" % (
-                                                T("Repository Base URL"),
-                                                T("Base URL of the remote Sahana Eden instance including application path, e.g. http://www.example.org/eden"))),
+                                                T("Repository URL"),
+                                                T("URL of the repository including application path, e.g. http://www.example.com/eden"))),
+                           ),
+                     Field("path",
+                           label = T("Path"),
+                           requires = IS_EMPTY_OR(
+                                      IS_NOT_IN_DB(db, "sync_repository.path")),
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Repository Path"),
+                                                T("File system location of the repository, e.g. /var/local/example"))),
                            ),
                      Field("username",
                            comment = DIV(_class="tooltip",
@@ -182,8 +218,8 @@ class SyncDataModel(S3Model):
                                                 T("The client ID to use for authentication at the remote site (if required for this type of repository)."))),
                            ),
                      Field("client_secret", "password",
-                           widget = password_widget,
                            label = T("Client Secret"),
+                           widget = password_widget,
                            comment = DIV(_class="tooltip",
                                          _title="%s|%s" % (
                                                 T("Client Secret"),
@@ -201,26 +237,44 @@ class SyncDataModel(S3Model):
                            writable = False,
                            ),
                      Field("proxy",
-                           label=T("Proxy Server URL"),
-                           requires=IS_EMPTY_OR(IS_URL(mode="generic")),
+                           label = T("Proxy Server URL"),
+                           requires = IS_EMPTY_OR(IS_URL(mode="generic")),
                            comment = DIV(_class="tooltip",
                                          _title="%s|%s" % (
                                                 T("Proxy Server URL"),
                                                 T("URL of the proxy server to connect to the repository (leave empty for default proxy)"))),
                            ),
                      Field("last_status",
-                           readable=False,
-                           writable=False,
-                           label=T("Last status"),
+                           label = T("Last status"),
+                           readable = False,
+                           writable = False,
                            ),
                      Field("accept_push", "boolean",
+                           default = False,
+                           label = T("Accept Push"),
                            represent = s3_yes_no_represent,
-                           default=False,
-                           label=T("Accept Push"),
                            comment = DIV(_class="tooltip",
                                          _title="%s|%s" % (
                                                 T("Accept Push"),
                                                 T("Accept unsolicited data transmissions from the repository."))),
+                           ),
+                     Field("synchronise_uuids", "boolean",
+                           default = False,
+                           label = T("Synchronize UUIDs"),
+                           represent = s3_yes_no_represent,
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Synchronize UUIDs"),
+                                                T("Allow records to be synchronized even if the remote record has a different unique identifier (UUID), and update local identifiers. Useful in active repositories when there are known duplicates in the remote database. Must be activated before the first synchronization run to take effect."))),
+                           ),
+                     Field("keep_source", "boolean",
+                           default = False,
+                           label = T("Keep Source Data"),
+                           represent = s3_yes_no_represent,
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Keep Source Data"),
+                                                T("Stores the data sent from the peer in the local file system (if supported by the adapter), for testing purposes. Enable only temporarily if and when required!"))),
                            ),
                      Field.Method("last_pull_time",
                                   self.sync_repository_last_pull_time),
@@ -243,40 +297,52 @@ class SyncDataModel(S3Model):
 
         # Resource Configuration
         configure(tablename,
-                  list_fields=["name",
-                               "uuid",
-                               "accept_push",
-                               (T("Last Pull"), "last_pull_time"),
-                               (T("Last Push"), "last_push_time"),
-                               ],
-                  onaccept=self.sync_repository_onaccept,
-                  ondelete=self.sync_repository_ondelete,
-                  create_next=URL(c="sync",
-                                  f="repository",
-                                  args=["[id]", "task"],
-                                  ),
-                  update_next=URL(c="sync",
-                                  f="repository",
-                                  args=["[id]"],
-                                  )
+                  deduplicate = S3Duplicate(primary=("name",)),
+                  list_fields = ["name",
+                                 "uuid",
+                                 "accept_push",
+                                 (T("Last Pull"), "last_pull_time"),
+                                 (T("Last Push"), "last_push_time"),
+                                 ],
+                  onaccept = self.sync_repository_onaccept,
+                  ondelete = self.sync_repository_ondelete,
+                  create_next = URL(c="sync",
+                                    f="repository",
+                                    args=["[id]", "task"],
+                                    ),
+                  update_next = URL(c="sync",
+                                    f="repository",
+                                    args=["[id]"],
+                                    ),
                   )
 
-        set_method("sync", "repository", method="now", action=sync_now)
+        set_method("sync", "repository",
+                   method="now",
+                   action=sync_now)
 
         # Reusable Fields
+        sync_repository_represent = S3Represent(lookup=tablename)
         repository_id = S3ReusableField("repository_id", "reference %s" % tablename,
+                                        comment = S3PopupLink(c = "sync",
+                                                              f = "repository",
+                                                              label = ADD_REPOSITORY,
+                                                              title = ADD_REPOSITORY,
+                                                              tooltip = ADD_REPOSITORY,
+                                                              ),
+                                        label = T("Repository"),
+                                        represent = sync_repository_represent,
                                         requires = IS_ONE_OF(db,
                                                             "sync_repository.id",
-                                                            "%(name)s"),
-                                        represent = self.sync_repository_represent,
-                                        label = T("Repository"))
+                                                            "%(name)s",
+                                                            ),
+                                        )
 
         # Components
         add_components(tablename,
-                       sync_task="repository_id",
-                       sync_log="repository_id",
-                       #sync_conflict="repository_id",
-                       
+                       sync_task = "repository_id",
+                       sync_log = "repository_id",
+                       #sync_conflict = "repository_id",
+
                        **{# Scheduler Jobs
                           S3Task.TASK_TABLENAME: {"name": "job",
                                                   "joinby": "repository_id",
@@ -327,88 +393,138 @@ class SyncDataModel(S3Model):
         define_table(tablename,
                      repository_id(),
                      Field("resource_name",
-                           notnull=True),
+                           notnull = True,
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Resource Name"),
+                                                T("Table name of the resource to synchronize"))),
+                           ),
+                     Field("infile_pattern",
+                           label = T("Input File Name"),
+                           readable = False,
+                           writable = False,
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Input File Name"),
+                                                T("Unix shell-style pattern for the input file name, e.g. 'example*.xml'"))),
+                           ),
+                     Field("delete_input_files", "boolean",
+                           label = T("Delete Input Files?"),
+                           default = False,
+                           readable = False,
+                           writable = False,
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Delete Input Files"),
+                                                T("Whether to delete input files after successful import"))),
+                           ),
+                     Field("outfile_pattern",
+                           label = T("Output File Name"),
+                           readable = False,
+                           writable = False,
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Output File Name"),
+                                                T("The output file name. You can use place holders like 'example${minute}.xml'. Supported placeholders are: year, month, day, hour, minute, second"))),
+                           ),
+                     Field("human_readable", "boolean",
+                           label = T("Human-readable Output?"),
+                           default = False,
+                           readable = False,
+                           writable = False,
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Human-readable Output"),
+                                                T("Shall XML output be formatted with whitespace and line breaks so that it is more human-readable?"))),
+                           ),
+                     Field("representation",
+                           readable = False,
+                           writable = False,
+                           ),
+                     # Multiple file per sync?
+                     Field("multiple_file", "boolean",
+                           default = False,
+                           readable = False,
+                           writable = False,
+                           ),
                      Field("last_pull", "datetime",
-                           readable=True,
-                           writable=False,
-                           label=T("Last pull on")),
+                           label = T("Last pull on"),
+                           readable = True,
+                           writable = False,
+                           ),
                      Field("last_push", "datetime",
-                           readable=True,
-                           writable=False,
-                           label=T("Last push on")),
+                           label = T("Last push on"),
+                           readable = True,
+                           writable = False,
+                           ),
                      Field("mode", "integer",
-                           requires = IS_IN_SET(sync_mode,
-                                                zero=None),
                            default = 3,
                            label = T("Mode"),
                            represent = lambda opt: \
-                                       sync_mode.get(opt, NONE)),
-                     Field("strategy", "list:string",
-                           requires = IS_IN_SET(sync_strategy.values(),
-                                                multiple=True,
+                                       sync_mode.get(opt, NONE),
+                           requires = IS_IN_SET(sync_mode,
                                                 zero=None),
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Synchronization mode"),
+                                                T("How data shall be transferred"))),
+                           ),
+                     Field("strategy", "list:string",
                            default = sync_strategy.values(),
                            label = T("Strategy"),
                            represent = sync_strategy_represent,
-                           widget = CheckboxesWidgetS3.widget),
-                     Field("update_method", "integer",
-                           # hide while not implemented
-                           readable=False,
-                           writable=False,
-                           requires = IS_IN_SET(sync_update_method,
+                           requires = IS_IN_SET(sync_strategy.values(),
+                                                multiple=True,
                                                 zero=None),
+                           widget = CheckboxesWidgetS3.widget,
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Strategy"),
+                                                T("Which methods to apply when importing data to the local repository"))),
+                           ),
+                     Field("update_method", "integer",
                            default = 1,
                            label = T("Update Method"),
                            represent = lambda opt: \
                                        sync_update_method.get(opt,
-                                                              NONE)),
-                     Field("update_policy",
-                           requires = IS_IN_SET(sync_policies,
+                                                              NONE),
+                           requires = IS_IN_SET(sync_update_method,
                                                 zero=None),
+                           # hide while not implemented
+                           readable = False,
+                           writable = False,
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Update Method"),
+                                                T("How local records shall be updated"))),
+                           ),
+                     Field("update_policy",
                            default = sync_policies.NEWER,
                            label = T("Update Policy"),
-                           represent = sync_policy_represent),
-                     Field("conflict_policy",
+                           represent = sync_policy_represent,
                            requires = IS_IN_SET(sync_policies,
                                                 zero=None),
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Update Policy"),
+                                                T("Under which conditions local records shall be updated"))),
+                           ),
+                     Field("conflict_policy",
                            default = sync_policies.NEWER,
                            label = T("Conflict Policy"),
-                           represent = sync_policy_represent),
+                           represent = sync_policy_represent,
+                           requires = IS_IN_SET(sync_policies,
+                                                zero=None),
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Conflict Policy"),
+                                                T("Under which condition a local record shall be updated if it also has been modified locally since the last synchronization"))),
+                           ),
                      *s3_meta_fields())
 
-        # Field configuration
-        # @todo: make in-line
-        table = db[tablename]
-        table.resource_name.comment = DIV(_class="tooltip",
-                                          _title="%s|%s" % (
-                                            T("Resource Name"),
-                                            T("Table name of the resource to synchronize")))
-
-        table.mode.comment = DIV(_class="tooltip",
-                                 _title="%s|%s" % (
-                                    T("Synchronization mode"),
-                                    T("How data shall be transferred")))
-        table.strategy.comment = DIV(_class="tooltip",
-                                     _title="%s|%s" % (
-                                        T("Strategy"),
-                                        T("Which methods to apply when importing data to the local repository")))
-        table.update_method.comment = DIV(_class="tooltip",
-                                          _title="%s|%s" % (
-                                            T("Update Method"),
-                                            T("How local records shall be updated")))
-        table.update_policy.comment = DIV(_class="tooltip",
-                                          _title="%s|%s" % (
-                                            T("Update Policy"),
-                                            T("Under which conditions local records shall be updated")))
-        table.conflict_policy.comment = DIV(_class="tooltip",
-                                            _title="%s|%s" % (
-                                                T("Conflict Policy"),
-                                                T("Under which condition a local record shall be updated if it also has been modified locally since the last synchronization")))
-
         # CRUD Strings
-        ADD_TASK = T("Create Resource")
         crud_strings[tablename] = Storage(
-            label_create = ADD_TASK,
+            label_create = T("Create Resource"),
             title_display = T("Resource Configuration"),
             title_list = T("Resources"),
             title_update = T("Edit Resource Configuration"),
@@ -420,22 +536,27 @@ class SyncDataModel(S3Model):
 
         # Resource Configuration
         configure(tablename,
-                  create_onvalidation=self.sync_task_onvalidation)
+                  create_onvalidation = self.sync_task_onvalidation,
+                  deduplicate = S3Duplicate(primary=("repository_id",
+                                                     "resource_name",
+                                                     )),
+                  )
 
         # Reusable Field
         task_represent = self.sync_task_represent
         task_id = S3ReusableField("task_id", "reference %s" % tablename,
+                                  label = T("Task"),
+                                  represent = task_represent,
                                   requires = IS_ONE_OF(db,
                                                        "sync_task.id",
                                                        task_represent),
-                                  represent = task_represent,
-                                  label = T("Task"))
+                                  )
 
         # Components
         add_components(tablename,
-                       sync_resource_filter="task_id",
-                      )
-                      
+                       sync_resource_filter = "task_id",
+                       )
+
         # -------------------------------------------------------------------------
         # Filters
         # -------------------------------------------------------------------------
@@ -444,10 +565,12 @@ class SyncDataModel(S3Model):
                      task_id(),
                      Field("tablename",
                            label = T("Table"),
-                           requires = IS_NOT_EMPTY()),
+                           requires = IS_NOT_EMPTY(),
+                           ),
                      Field("filter_string",
                            label = T("Filter"),
-                           requires = IS_NOT_EMPTY()),
+                           requires = IS_NOT_EMPTY(),
+                           ),
                      *s3_meta_fields())
 
         onaccept = self.sync_resource_filter_onaccept
@@ -456,10 +579,12 @@ class SyncDataModel(S3Model):
                                  "task_id$repository_id",
                                  "task_id$resource_name",
                                  "tablename",
-                                 "filter_string"],
+                                 "filter_string",
+                                 ],
                   onaccept = onaccept,
-                  ondelete = onaccept)
-                             
+                  ondelete = onaccept,
+                  )
+
         # -------------------------------------------------------------------------
         # Job
         # -------------------------------------------------------------------------
@@ -470,9 +595,8 @@ class SyncDataModel(S3Model):
                      *s3_meta_fields())
 
         # CRUD Strings
-        ADD_JOB = T("Create Job")
         crud_strings[tablename] = Storage(
-            label_create = ADD_JOB,
+            label_create = T("Create Job"),
             title_display = T("Synchronization Job"),
             title_list = T("Synchronization Schedule"),
             title_update = T("Edit Job"),
@@ -495,8 +619,9 @@ class SyncDataModel(S3Model):
         tablename = "sync_log"
         define_table(tablename,
                      Field("timestmp", "datetime",
-                           represent=s3_datetime_represent,
-                           label=T("Date/Time")),
+                           label = T("Date/Time"),
+                           represent = s3_datetime_represent,
+                           ),
                      repository_id(),
                      Field("resource_name"),
                      # Synchronization mode: PULL/PUSH, IN/OUT
@@ -504,11 +629,13 @@ class SyncDataModel(S3Model):
                      Field("action"),
                      Field("result"),
                      Field("remote", "boolean",
-                           default=False,
-                           label=T("Remote Error"),
-                           represent=lambda opt: opt and T("yes") or ("no")),
+                           default = False,
+                           label = T("Remote Error"),
+                           represent = s3_yes_no_represent,
+                           ),
                      Field("message", "text",
-                           represent=s3_strip_markup),
+                           represent = s3_strip_markup,
+                           ),
                      *s3_meta_fields())
 
         # CRUD Strings
@@ -522,37 +649,24 @@ class SyncDataModel(S3Model):
 
         # Resource Configuration
         configure(tablename,
-                  editable=False,
-                  insertable=False,
-                  deletable=True,
-                  orderby="sync_log.timestmp desc")
+                  deletable = True,
+                  editable = False,
+                  insertable = False,
+                  orderby = "sync_log.timestmp desc",
+                  )
 
         # ---------------------------------------------------------------------
         # Return global names to s3.*
         #
-        return Storage()
+        return dict(sync_repository_id = repository_id,
+                    sync_repository_onaccept = self.sync_repository_onaccept,
+                    )
 
     # -------------------------------------------------------------------------
     def defaults(self):
         """ Safe defaults if module is disabled """
 
-        return Storage()
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def sync_repository_represent(rid):
-        """ Repository representation """
-
-        db = current.db
-
-        rtable = current.s3db.sync_repository
-        repository = db(rtable.id == rid).select(rtable.name,
-                                                 limitby=(0, 1)).first()
-
-        try:
-            return repository.name
-        except:
-            return current.messages.UNKNOWN_OPT
+        return {}
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -595,7 +709,11 @@ class SyncDataModel(S3Model):
     # -------------------------------------------------------------------------
     @staticmethod
     def sync_task_represent(task_id):
-        """ Task representation """
+        """
+            Task representation
+
+            @ToDo: Migrate to S3Represent
+        """
 
         s3db = current.s3db
 
@@ -714,7 +832,7 @@ class SyncDataModel(S3Model):
 
         db = current.db
         s3db = current.s3db
-        
+
         ttable = s3db.sync_task
         ftable = s3db.sync_resource_filter
 
@@ -745,7 +863,7 @@ class SyncDataModel(S3Model):
                 task_id = row.task_id
             if task_id:
                 db(ttable.id == task_id).update(last_push=None)
-                
+
         return
 
 # =============================================================================
@@ -764,7 +882,8 @@ def sync_rheader(r, tabs=[]):
             else:
                 purge_log = ""
             if repository:
-                if repository.url:
+                if repository.url or \
+                   repository.apitype == "filesync" and repository.path:
                     tabs.append((T("Manual Synchronization"), "now"))
                 rheader_tabs = s3_rheader_tabs(r, tabs)
                 rheader = DIV(TABLE(
@@ -844,7 +963,7 @@ def sync_now(r, **attr):
         else:
             r.error(405, current.ERROR.BAD_METHOD)
     else:
-        r.error(501, current.ERROR.BAD_FORMAT)
+        r.error(415, current.ERROR.BAD_FORMAT)
 
     status = sync.get_status()
     if status.running:

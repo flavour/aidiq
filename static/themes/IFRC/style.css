@@ -85,10 +85,12 @@ table th label {
 }
 table td {
     padding: 10px;
-    vertical-align: top;
 }
 table td:first-child {
     background-color: #fff;
+}
+table.ui-datepicker-calendar td:first-child {
+    background: inherit;
 }
 /*
 table tr td:last-child,
@@ -269,9 +271,20 @@ form table td:first-child {
 	border-style: none;
 	background-color: transparent;
 }
-form table.embeddedComponent td,
-form table.embeddedComponent td:first-child {
-	border-style: solid;
+form table.embeddedComponent {
+    overflow: auto;
+}
+form table.embeddedComponent .map_wrapper {
+    min-width: 500px;
+}
+form table.embeddedComponent td {
+    border-style: none;
+}
+form table.embeddedComponent tr.label-row > td,
+form table.embeddedComponent tr.read-row > td,
+form table.embeddedComponent tr.edit-row > td,
+form table.embeddedComponent tr.edit-row > td {
+    border-style: solid;
 }
 
 /* Form Layout styles */
@@ -339,8 +352,9 @@ div.form-container form fieldset input.errorfield {
     background-color: #dc032e;
 }
 
-/* Required Field indicator */
+/* Red indicators */
 .error,
+.expired,
 .req,
 .req_key {
     color: #dc032e;
@@ -459,8 +473,15 @@ button.alert-send-btn:enabled {
 }
 .pr-contact-data,
 .pr-emergency-data,
-.pr-contact-actions {
+.pr-contact-actions,
+.pr-contact-priority,
+.pr-contact-details {
     display: inline-block;
+}
+.pr-contact-data,
+.pr-emergency-data {
+    width: 400px;
+    vertical-align: top;
 }
 .pr-contacts h3,
 .pr-emergency-contacts .pr-emergency-contact,
@@ -473,12 +494,20 @@ button.alert-send-btn:enabled {
     font-style: italic;
     color: #7f7f7f;
 }
-.pr-contact-data,
-.pr-emergency-data {
-    width: 400px;
-    vertical-align: top;
+.pr-contact-priority {
+  border: thin solid #a0a0a0;
+  color: #a0a0a0;
+  display: inline-block;
+  margin: 3px 8px 0 0;
+  padding: 0 3px;
+  vertical-align: top;
 }
 
 .profile-sub-header .icon {
     margin-right: 8px;
+}
+
+/* For Person Duplicates */
+.card_1_line {
+    height: 14px; /* Height needs to be same with or without contents */
 }

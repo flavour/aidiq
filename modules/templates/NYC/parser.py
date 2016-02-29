@@ -5,7 +5,7 @@
 
     Template-specific Message Parsers are defined here.
 
-    @copyright: 2013-14 (c) Sahana Software Foundation
+    @copyright: 2013-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -84,8 +84,8 @@ class S3Parser(object):
             exists = db(post_table.body == body).select(post_table.id,
                                                         limitby=(0, 1)
                                                         ).first()
-                
-        
+
+
         channel_id = record.channel_id
         tags = record.tags
 
@@ -110,6 +110,7 @@ class S3Parser(object):
                 person_id = ptable.insert(first_name = first_name,
                                           middle_name = middle_name,
                                           last_name = last_name)
+                s3db.update_super(ptable, dict(id=person_id))
         else:
             person_id = None
 
@@ -226,7 +227,7 @@ class S3Parser(object):
                 s3db.cms_post_organisation_group.insert(post_id=post_id,
                                                         group_id=org_id,
                                                         )
-            
+
 
             if tags:
                 ttable = db.cms_tag

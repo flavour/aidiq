@@ -2,7 +2,7 @@
 
 """ Sahana Eden GUI Layouts (HTML Renderers)
 
-    @copyright: 2012-15 (c) Sahana Software Foundation
+    @copyright: 2012-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -34,9 +34,12 @@ __all__ = ("S3MainMenuDefaultLayout",
            "MM",
            "S3OptionsMenuDefaultLayout",
            "M",
+           "S3OAuthMenuDefaultLayout",
+           "MOA",
            "S3MenuSeparatorDefaultLayout",
            "SEP",
            "S3BreadcrumbsLayout",
+           "S3PopupLink",
            "S3AddResourceLink",
            "homepage",
            )
@@ -110,6 +113,7 @@ class S3MainMenuDefaultLayout(S3NavigationItem):
                         return LI(A(item.label,
                                     _href=item_url,
                                     _id=item.attr._id,
+                                    _target=item.attr._target,
                                     ),
                                   _class=_class,
                                   )
@@ -124,7 +128,11 @@ class S3MainMenuDefaultLayout(S3NavigationItem):
                                 return None
                         else:
                             label = item.label
-                        link = A(label, _href=item.url(), _id=item.attr._id)
+                        link = A(label,
+                                 _href=item.url(),
+                                 _id=item.attr._id,
+                                 _target=item.attr._target,
+                                 )
                         _class = " ".join(classes)
                         return LI(link, _class=_class)
             else:
@@ -281,6 +289,38 @@ class S3OptionsMenuDefaultLayout(S3NavigationItem):
             return None
 
 # =============================================================================
+class S3OAuthMenuDefaultLayout(S3NavigationItem):
+    """ OAuth Menu Layout """
+
+    # Use the layout method of this class in templates/<theme>/layouts.py
+    # if it is available at runtime (otherwise fallback to this layout):
+    OVERRIDE = "S3OAuthMenuLayout"
+
+    @staticmethod
+    def layout(item):
+        """ Layout Method (Item Renderer) """
+
+        if item.enabled:
+            if item.parent is not None:
+                output = A(SPAN(item.label),
+                        _class = "zocial %s" % item.opts.api,
+                        _href = item.url(),
+                        _title = item.opts.get("title", item.label),
+                        )
+            else:
+                items = item.render_components()
+                if items:
+                    output = DIV(items, _class="zocial-login")
+                else:
+                    # Hide if empty
+                    output = None
+        else:
+            # Hide if disabled
+            output = None
+
+        return output
+
+# =============================================================================
 class S3MenuSeparatorDefaultLayout(S3NavigationItem):
     """ Simple menu separator """
 
@@ -302,6 +342,7 @@ class S3MenuSeparatorDefaultLayout(S3NavigationItem):
 #
 MM = S3MainMenuDefaultLayout
 M = S3OptionsMenuDefaultLayout
+MOA = S3OAuthMenuDefaultLayout
 SEP = S3MenuSeparatorDefaultLayout
 
 # =============================================================================
@@ -400,7 +441,7 @@ class S3HomepageMenuLayout(S3NavigationItem):
             return None
 
 # =============================================================================
-class S3AddResourceLink(S3NavigationItem):
+class S3PopupLink(S3NavigationItem):
     """
         Links in form fields comments to show a form for adding
         a new foreign key record.
@@ -411,6 +452,8 @@ class S3AddResourceLink(S3NavigationItem):
                  c=None,
                  f=None,
                  t=None,
+                 m="create",
+                 args=None,
                  vars=None,
                  info=None,
                  title=None,
@@ -422,6 +465,8 @@ class S3AddResourceLink(S3NavigationItem):
             @param c: the target controller
             @param f: the target function
             @param t: the target table (defaults to c_f)
+            @param m: the URL method (will be appended to args)
+            @param args: the argument list
             @param vars: the request vars (format="popup" will be added automatically)
             @param label: the link label (falls back to label_create)
             @param info: hover-title for the label
@@ -439,19 +484,24 @@ class S3AddResourceLink(S3NavigationItem):
             c = current.request.controller
 
         if label is None:
-            # Fall back to label_create
             if t is None:
                 t = "%s_%s" % (c, f)
-            label = S3CRUD.crud_string(t, "label_create")
+            if m == "create":
+                # Fall back to label_create
+                label = S3CRUD.crud_string(t, "label_create")
+            elif m == "update":
+                # Fall back to label_update
+                label = S3CRUD.crud_string(t, "label_update")
 
-        return super(S3AddResourceLink, self).__init__(label,
-                                                       c=c, f=f, t=t,
-                                                       m="create",
-                                                       vars=vars,
-                                                       info=info,
-                                                       title=title,
-                                                       tooltip=tooltip,
-                                                       mandatory=True)
+        return super(S3PopupLink, self).__init__(label,
+                                                 c=c, f=f, t=t,
+                                                 m=m,
+                                                 args=args,
+                                                 vars=vars,
+                                                 info=info,
+                                                 title=title,
+                                                 tooltip=tooltip,
+                                                 mandatory=True)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -501,6 +551,11 @@ class S3AddResourceLink(S3NavigationItem):
                        )
 
         return DIV(popup_link, _class="s3_inline_add_resource_link")
+
+# =============================================================================
+# Maintained for backward compatibility
+#
+S3AddResourceLink = S3PopupLink
 
 # =============================================================================
 def homepage(module=None, *match, **attr):

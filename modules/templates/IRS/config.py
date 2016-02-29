@@ -23,7 +23,7 @@ def config(settings):
     settings.base.system_name_short = T("SL IRS")
 
     # PrePopulate data
-    settings.base.prepopulate = ("IRS", "default/users")
+    settings.base.prepopulate += ("IRS", "default/users")
 
     # Theme (folder to use for views/layout.html)
     settings.base.theme = "IRS"
@@ -85,7 +85,7 @@ def config(settings):
     # Uncomment to Hide the language toolbar
     settings.L10n.display_toolbar = False
     # Default timezone for users
-    #settings.L10n.utc_offset = "UTC +0100"
+    #settings.L10n.utc_offset = "+0100"
     # Number formats (defaults to ISO 31-0)
     # Decimal separator for numbers (defaults to ,)
     settings.L10n.decimal_separator = "."

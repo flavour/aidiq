@@ -337,6 +337,8 @@ S3.trunk8 = function(selector, lines, more) {
     // Line-truncation, see s3utils.s3_trunk8
     var settings = {
         fill: '&hellip; <a class="s3-truncate-more" href="#">' + more + '</a>'
+        // Not yet working for me
+        //parseHTML: true
     };
     if (lines) {
         settings['lines'] = lines;
@@ -344,6 +346,14 @@ S3.trunk8 = function(selector, lines, more) {
     $(selector).trunk8(settings);
     // Attach to any new items after Ajax-listUpdate (dataLists)
     $('.dl').on('listUpdate', function() {
+        $(this).find(selector).each(function() {
+            if (this.trunk8 === undefined) {
+                $(this).trunk8(settings);
+            }
+        });
+    });
+    // Attach to any new items after Ajax-listUpdate (dataTables)
+    $('.dataTable').on('draw.dt', function() {
         $(this).find(selector).each(function() {
             if (this.trunk8 === undefined) {
                 $(this).trunk8(settings);
@@ -890,7 +900,7 @@ S3.openPopup = function(url, center) {
 
         var options = data.options,
             newValue = data.defaultValue,
-            hasCurrentValue = false;
+            selectedValues = [];
 
         // Get the current value of the target field
         if (!empty) {
@@ -909,13 +919,19 @@ S3.openPopup = function(url, center) {
                     // Options list not populated yet?
                     currentValue = widget.prop('value');
                 }
-                if (currentValue && $(options).filter('option[value=' + currentValue + ']').length) {
-                    hasCurrentValue = true;
+                if (!$.isArray(currentValue)) {
+                    currentValue = [currentValue];
+                }
+                for (var i = 0, len = currentValue.length, val; i < len; i++) {
+                    val = currentValue[i];
+                    if (val && $(options).filter('option[value=' + val + ']').length) {
+                        selectedValues.push(val);
+                    }
                 }
             }
-            if (hasCurrentValue) {
+            if (selectedValues.length) {
                 // Retain selected value
-                newValue = currentValue;
+                newValue = selectedValues;
             }
         }
 
@@ -932,16 +948,23 @@ S3.openPopup = function(url, center) {
         }
 
         // Update the target field options
+        var disable = options === '';
         widget.html(options)
               .val(newValue)
               .change()
-              .prop('disabled', options === '');
+              .prop('disabled', disable);
 
         // Refresh groupedopts or multiselect
         if (widget.hasClass('groupedopts-widget')) {
             widget.groupedopts('refresh');
         } else if (widget.hasClass('multiselect-widget')) {
             widget.multiselect('refresh');
+            // Disabled-attribute not reflected by refresh (?)
+            if (!disable) {
+                widget.multiselect('enable');
+            } else {
+                widget.multiselect('disable');
+            }
         }
         return widget;
     };
@@ -1048,8 +1071,12 @@ S3.openPopup = function(url, center) {
         }
 
         // Disable the target field if no value selected in trigger field
-        if (value === '' || value === undefined) {
-            target.prop('disabled', true);
+        if (value === '' || value === null || value === undefined) {
+            target.val('').prop('disabled', true);
+            if (target.multiselect('instance')) {
+                target.multiselect('refresh')
+                      .multiselect('disable');
+            }
             return;
         }
 
@@ -1082,6 +1109,16 @@ S3.openPopup = function(url, center) {
                 url = url.concat('&' + tooltip);
             } else {
                 url = url.concat('?' + tooltip);
+            }
+        }
+
+        // Represent options unless settings.represent is falsy
+        var represent = settings.represent;
+        if (represent || typeof represent == 'undefined') {
+            if (url.indexOf('?') != -1) {
+                url = url.concat('&represent=1');
+            } else {
+                url = url.concat('?represent=1');
             }
         }
 
@@ -1292,7 +1329,6 @@ S3.openPopup = function(url, center) {
 
         var trigger = settings.trigger, triggerName;
 
-
         if (settings.event) {
             triggerName = settings.event;
         } else if (typeof trigger == 'string') {
@@ -1330,9 +1366,18 @@ S3.openPopup = function(url, center) {
         }
 
         // Initial event-less update of the target(s)
-        $(triggerSelector).last().each(function() {
+        $(triggerSelector).each(function() {
             var trigger = $(this),
                 $scope;
+            // Hidden inline rows must not trigger an initial update
+            // @note: check visibility of the row not of the trigger, e.g.
+            //        AutoComplete triggers are always hidden!
+            // @note: must check for CSS explicitly, not just visibility because
+            //        the entire form could be hidden (e.g. list-add)
+            var inlineRow = trigger.closest('.inline-form');
+            if (inlineRow.length && (inlineRow.hasClass('empty-row') || inlineRow.css('display') == 'none')) {
+                return;
+            }
             if (settings.scope == 'row') {
                 $scope = trigger.closest('.edit-row.inline-form,.add-row.inline-form');
             } else {

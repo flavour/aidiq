@@ -2,7 +2,7 @@
 
 """ S3 Synchronization: Peer Repository Adapter
 
-    @copyright: 2012-14 (c) Sahana Software Foundation
+    @copyright: 2012-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -34,6 +34,14 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..s3sync import S3SyncBaseAdapter
+from ..s3utils import S3ModuleDebug
+
+DEBUG = False
+if DEBUG:
+    print >> sys.stderr, "S3SYNC/CCRM: DEBUG MODE"
+    _debug = S3ModuleDebug.on
+else:
+    _debug = S3ModuleDebug.off
 
 # =============================================================================
 class S3SyncAdapter(S3SyncBaseAdapter):
@@ -52,15 +60,25 @@ class S3SyncAdapter(S3SyncBaseAdapter):
     }
 
     # -------------------------------------------------------------------------
+    # Methods to be implemented by subclasses:
+    # -------------------------------------------------------------------------
     def register(self):
-        """ Register at the repository """
+        """
+            Register this site at the peer repository
+
+            @return: True to indicate success, otherwise False
+        """
 
         # CiviCRM does not support via-web peer registration
         return True
 
     # -------------------------------------------------------------------------
     def login(self):
-        """ Login to the repository """
+        """
+            Login at the peer repository
+
+            @return: None if successful, otherwise the error
+        """
 
         _debug("S3SyncCiviCRM.login()")
 
@@ -71,10 +89,10 @@ class S3SyncAdapter(S3SyncBaseAdapter):
             "name": repository.username,
             "pass": repository.password,
         }
-        response, error = self.send(**request)
+        response, error = self._send_request(**request)
 
         if error:
-            _debug("S3SyncCiviCRM.login FAILURE: %s" % error)
+            _debug("S3SyncCiviCRM.login FAILURE: %s", error)
             return error
 
         api_key = response.findall("//api_key")
@@ -82,14 +100,14 @@ class S3SyncAdapter(S3SyncBaseAdapter):
             self.api_key = api_key[0].text
         else:
             error = "No API Key returned by CiviCRM"
-            _debug("S3SyncCiviCRM.login FAILURE: %s" % error)
+            _debug("S3SyncCiviCRM.login FAILURE: %s", error)
             return error
         PHPSESSID = response.findall("//PHPSESSID")
         if len(PHPSESSID):
             self.PHPSESSID = PHPSESSID[0].text
         else:
             error = "No PHPSESSID returned by CiviCRM"
-            _debug("S3SyncCiviCRM.login FAILURE: %s" % error)
+            _debug("S3SyncCiviCRM.login FAILURE: %s", error)
             return error
 
         _debug("S3SyncCiviCRM.login SUCCESS")
@@ -98,10 +116,15 @@ class S3SyncAdapter(S3SyncBaseAdapter):
     # -------------------------------------------------------------------------
     def pull(self, task, onconflict=None):
         """
-            Pull updates from this repository
+            Fetch updates from the peer repository and import them
+            into the local database (active pull)
 
-            @param task: the task Row
-            @param onconflict: synchronization conflict resolver
+            @param task: the synchronization task (sync_task Row)
+            @param onconflict: callback for automatic conflict resolution
+
+            @return: tuple (error, mtime), with error=None if successful,
+                     else error=message, and mtime=modification timestamp
+                     of the youngest record sent
         """
 
         xml = current.xml
@@ -109,7 +132,7 @@ class S3SyncAdapter(S3SyncBaseAdapter):
         log = repository.log
         resource_name = task.resource_name
 
-        _debug("S3SyncCiviCRM.pull(%s, %s)" % (repository.url, resource_name))
+        _debug("S3SyncCiviCRM.pull(%s, %s)", repository.url, resource_name)
 
         mtime = None
         message = ""
@@ -125,7 +148,7 @@ class S3SyncAdapter(S3SyncBaseAdapter):
             args = Storage(self.RESOURCE[resource_name])
             args["q"] += "/get"
 
-            tree, error = self.send(method="GET", **args)
+            tree, error = self._send_request(method="GET", **args)
             if error:
 
                 result = log.FATAL
@@ -210,14 +233,14 @@ class S3SyncAdapter(S3SyncBaseAdapter):
 
                 # ...or report success
                 elif not message:
-                    message = "data imported successfully (%s records)" % count
+                    message = "Data imported successfully (%s records)" % count
                     output = None
 
             else:
                 # No data received from peer
                 result = log.ERROR
                 remote = True
-                message = "no data received from peer"
+                message = "No data received from peer"
                 output = None
 
         # Log the operation
@@ -230,15 +253,20 @@ class S3SyncAdapter(S3SyncBaseAdapter):
                   result=result,
                   message=message)
 
-        _debug("S3SyncCiviCRM.pull import %s: %s" % (result, message))
+        _debug("S3SyncCiviCRM.pull import %s: %s", result, message)
         return (output, mtime)
 
     # -------------------------------------------------------------------------
     def push(self, task):
         """
-            Push data for a task
+            Extract new updates from the local database and send
+            them to the peer repository (active push)
 
-            @param task: the task Row
+            @param task: the synchronization task (sync_task Row)
+
+            @return: tuple (error, mtime), with error=None if successful,
+                     else error=message, and mtime=modification timestamp
+                     of the youngest record sent
         """
 
         xml = current.xml
@@ -247,7 +275,7 @@ class S3SyncAdapter(S3SyncBaseAdapter):
         log = repository.log
         resource_name = task.resource_name
 
-        _debug("S3SyncCiviCRM.push(%s, %s)" % (repository.url, resource_name))
+        _debug("S3SyncCiviCRM.push(%s, %s)", repository.url, resource_name)
 
         result = log.FATAL
         remote = False
@@ -264,11 +292,13 @@ class S3SyncAdapter(S3SyncBaseAdapter):
                   result=result,
                   message=message)
 
-        _debug("S3SyncCiviCRM.push export %s: %s" % (result, message))
+        _debug("S3SyncCiviCRM.push export %s: %s", result, message)
         return(output, None)
 
     # -------------------------------------------------------------------------
-    def send(self, method="GET", **args):
+    # Internal methods:
+    # -------------------------------------------------------------------------
+    def _send_request(self, method="GET", **args):
 
         repository = self.repository
         config = repository.config
@@ -290,7 +320,7 @@ class S3SyncAdapter(S3SyncBaseAdapter):
         # Proxy handling
         proxy = repository.proxy or config.proxy or None
         if proxy:
-            _debug("using proxy=%s" % proxy)
+            _debug("using proxy=%s", proxy)
             proxy_handler = urllib2.ProxyHandler({protocol: proxy})
             handlers.append(proxy_handler)
 

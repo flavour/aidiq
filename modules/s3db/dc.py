@@ -2,7 +2,7 @@
 
 """ Sahana Eden Data Collection Models
 
-    @copyright: 2014-2015 (c) Sahana Software Foundation
+    @copyright: 2014-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -37,7 +37,7 @@ __all__ = ("DataCollectionTemplateModel",
 from gluon import *
 
 from ..s3 import *
-from s3layouts import S3AddResourceLink
+from s3layouts import S3PopupLink
 
 # =============================================================================
 class DataCollectionTemplateModel(S3Model):
@@ -93,9 +93,9 @@ class DataCollectionTemplateModel(S3Model):
                                                            represent,
                                                            ),
                                       sortby = "name",
-                                      comment = S3AddResourceLink(f="template",
-                                                                  tooltip=T("Add a new data collection template"),
-                                                                  ),
+                                      comment = S3PopupLink(f="template",
+                                                            tooltip=T("Add a new data collection template"),
+                                                            ),
                                       )
 
         # CRUD strings
@@ -131,11 +131,10 @@ class DataCollectionTemplateModel(S3Model):
                            requires = IS_NOT_EMPTY(),
                            ),
                      Field("model", "json",
-                           requires = IS_EMPTY_OR(IS_JSON()),
+                           requires = IS_EMPTY_OR(IS_JSON(native_json=True)),
                            # @todo: representation?
-                           # @todo: widget?
+                           widget = S3QuestionWidget(),
                            ),
-                     s3_comments(),
                      *s3_meta_fields())
 
         # CRUD strings
@@ -166,9 +165,9 @@ class DataCollectionTemplateModel(S3Model):
                                                            represent,
                                                            ),
                                       sortby = "name",
-                                      comment = S3AddResourceLink(f="question",
-                                                                  tooltip=T("Add a new data collection question"),
-                                                                  ),
+                                      comment = S3PopupLink(f="question",
+                                                            tooltip=T("Add a new data collection question"),
+                                                            ),
                                       )
 
         # Components
@@ -320,9 +319,9 @@ class DataCollectionModel(S3Model):
                                         requires = IS_ONE_OF(db, "dc_collection.id",
                                                              represent,
                                                              ),
-                                        comment = S3AddResourceLink(f="collection",
-                                                                    tooltip=T("Add a new data collection"),
-                                                                    ),
+                                        comment = S3PopupLink(f="collection",
+                                                              tooltip=T("Add a new data collection"),
+                                                              ),
                                         )
 
         # =====================================================================

@@ -7,7 +7,7 @@
     <!-- **********************************************************************
          RSS Export Templates for Sahana Eden
 
-         Copyright (c) 2010-15 Sahana Software Foundation
+         Copyright (c) 2010-16 Sahana Software Foundation
 
          Permission is hereby granted, free of charge, to any person
          obtaining a copy of this software and associated documentation
@@ -53,11 +53,12 @@
 
     <!-- ****************************************************************** -->
     <!-- Module-specific XSLT -->
-    <xsl:include href="modules/project.xsl"/>
+    <xsl:include href="modules/cap.xsl"/>
     <xsl:include href="modules/cms.xsl"/>
     <xsl:include href="modules/dvi.xsl"/>
     <xsl:include href="modules/hms.xsl"/>
     <xsl:include href="modules/pr.xsl"/>
+    <xsl:include href="modules/project.xsl"/>
     <xsl:include href="modules/req.xsl"/>
     <xsl:include href="modules/supply.xsl"/>
 

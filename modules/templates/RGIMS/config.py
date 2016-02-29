@@ -24,7 +24,7 @@ def config(settings):
     settings.base.system_name_short = "RGIMS"
 
     # Pre-Populate
-    settings.base.prepopulate = ("RGIMS", "default/users")
+    settings.base.prepopulate += ("RGIMS", "default/users")
 
     # Theme
     settings.base.theme = "RGIMS"
@@ -32,7 +32,7 @@ def config(settings):
     # Uncomment to Hide the language toolbar
     settings.L10n.display_toolbar = False
     # Default timezone for users
-    settings.L10n.utc_offset = "UTC +0800"
+    settings.L10n.utc_offset = "+0800"
 
     # Number formats (defaults to ISO 31-0)
     # Decimal separator for numbers (defaults to ,)
@@ -40,11 +40,16 @@ def config(settings):
 
     # Finance settings
     settings.fin.currencies = {
-        "USD" : T("United States Dollars"),
-        "EUR" : T("Euros"),
-        "PHP" : T("Philippine Pesos")
+        "USD" : "United States Dollars",
+        "EUR" : "Euros",
+        "PHP" : "Philippine Pesos",
     }
     settings.fin.currency_default = "PHP"
+
+    # Restrict the Location Selector to just certain countries
+    # NB This can also be over-ridden for specific contexts later
+    # e.g. Activities filtered to those of parent Project
+    settings.gis.countries= ("PH",)
 
     # Security Policy
     settings.security.policy = 6 # Warehouse-specific restrictions
@@ -95,12 +100,12 @@ def config(settings):
     settings.inv.recv_form_name = "Acknowledgement Receipt for Donations Received Form"
     settings.inv.recv_shortname = "ARDR"
     settings.inv.recv_type = {
-             #0: T("-"),
-             #1: T("Other Warehouse"),
-             32: T("Donation"),
-             33: T("Foreign Donation"),
-             34: T("Local Purchases"),
-             35: T("Confiscated Goods from Bureau Of Customs")
+        #0: T("-"),
+        #1: T("Other Warehouse"),
+        32: T("Donation"),
+        33: T("Foreign Donation"),
+        34: T("Local Purchases"),
+        35: T("Confiscated Goods from Bureau Of Customs")
         }
 
     # Comment/uncomment modules here to disable/enable them
@@ -215,11 +220,11 @@ def config(settings):
         #        module_type = 10,
         #    )),
         ("req", Storage(
-                name_nice = T("Requests"),
-                #description = "Manage requests for supplies, assets, staff or other resources. Matches against Inventories where supplies are requested.",
-                restricted = True,
-                module_type = 2,
-            )),
+            name_nice = T("Requests"),
+            #description = "Manage requests for supplies, assets, staff or other resources. Matches against Inventories where supplies are requested.",
+            restricted = True,
+            module_type = 2,
+        )),
         #("project", Storage(
         #        name_nice = T("Projects"),
         #        #description = "Tracking of Projects, Activities and Tasks",
