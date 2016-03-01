@@ -11,7 +11,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -47,6 +47,7 @@ from s3validators import *
 from s3utils import *
 from s3widgets import *
 from s3data import *
+from s3datetime import *
 
 # Basic Toolkits ==============================================================
 #
@@ -91,6 +92,7 @@ from s3forms import *
 from s3filter import *
 
 # Reporting
+from s3grouped import *
 from s3report import *
 from s3timeplot import *
 

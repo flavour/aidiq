@@ -10,6 +10,11 @@ except ImportError:
 import s3menus as default
 
 red_cross_filter = {"organisation_type.name" : "Red Cross / Red Crescent"}
+CRMADA = "Malagasy Red Cross Society"
+#HNRC = "Honduran Red Cross"
+IRCS = "Iraqi Red Crescent Society"
+NRCS = "Nepal Red Cross Society"
+NZRC = "New Zealand Red Cross"
 
 # =============================================================================
 class S3MainMenu(default.S3MainMenu):
@@ -38,11 +43,72 @@ class S3MainMenu(default.S3MainMenu):
         """ Custom Modules Menu """
 
         T = current.T
+        auth = current.auth
+        settings = current.deployment_settings
+
+        has_role = auth.s3_has_role
+        root_org = auth.root_org_name()
+        system_roles = current.session.s3.system_roles
+        ADMIN = system_roles.ADMIN
+        ORG_ADMIN = system_roles.ORG_ADMIN
+
+        s3db = current.s3db
+        s3db.inv_recv_crud_strings()
+        inv_recv_list = current.response.s3.crud_strings.inv_recv.title_list
+
+        vol_activities = lambda i: True if root_org == CRMADA else False
+
+        use_certs = lambda i: settings.get_hrm_use_certificates()
+
+        vol_programmes = lambda i: settings.get_hrm_vol_experience() in ("programme", "both")
+
+        #def hrm(item):
+        #    return root_org != HNRC or \
+        #           has_role(ORG_ADMIN)
+
+        #def inv(item):
+        #    return root_org != HNRC or \
+        #           has_role("hn_wh_manager") or \
+        #           has_role("hn_national_wh_manager") or \
+        #           has_role(ORG_ADMIN)
+
+        #def basic_warehouse(i):
+        #    if root_org == HNRC  and \
+        #       not (has_role("hn_national_wh_manager") or \
+        #            has_role(ORG_ADMIN)):
+        #        # Hide menu entries which user shouldn't need access to
+        #        return False
+        #    else:
+        #        return True
+
+        #def multi_warehouse(i):
+        #    if root_org == HNRC and \
+        #       not (has_role("hn_national_wh_manager") or \
+        #            has_role(ORG_ADMIN)):
+        #        # Only responsible for 1 warehouse so hide menu entries which should be accessed via Tabs on their warehouse
+        #        return False
+        #    else:
+        #        return True
+
+        def outreach(item):
+            return root_org == NZRC or \
+                   root_org is None and has_role(ADMIN)
+
+        #def vol(item):
+        #    return root_org != HNRC or \
+        #           has_role(ORG_ADMIN)
+
+        def vol_roles(item):
+            return root_org != IRCS
+
+        def vol_teams(item):
+            return root_org != IRCS
 
         return [
             homepage("gis")(
             ),
             homepage("hrm", "org", name=T("Staff"),
+                     #vars=dict(group="staff"), check=hrm)(
                      vars=dict(group="staff"))(
                 MM("Staff", c="hrm", f="staff", m="summary"),
                 MM("Teams", c="hrm", f="group"),
@@ -53,30 +119,42 @@ class S3MainMenu(default.S3MainMenu):
                 #MM("Skill List", c="hrm", f="skill"),
                 MM("Training Events", c="hrm", f="training_event"),
                 MM("Training Courses", c="hrm", f="course"),
-                MM("Certificate List", c="hrm", f="certificate"),
+                MM("Certificate List", c="hrm", f="certificate", check=use_certs),
             ),
+            #homepage("vol", name=T("Volunteers"), check=vol)(
             homepage("vol", name=T("Volunteers"))(
                 MM("Volunteers", c="vol", f="volunteer", m="summary"),
-                MM("Teams", c="vol", f="group"),
-                MM("Volunteer Roles", c="vol", f="job_title"),
-                MM("Programs", c="vol", f="programme"),
+                MM("Teams", c="vol", f="group", check=vol_teams),
+                MM("Volunteer Roles", c="vol", f="job_title", check=vol_roles),
+                MM("Activities", c="vol", f="activity", check=vol_activities),
+                MM("Programs", c="vol", f="programme", check=vol_programmes),
                 #MM("Skill List", c="vol", f="skill"),
                 MM("Training Events", c="vol", f="training_event"),
                 MM("Training Courses", c="vol", f="course"),
-                MM("Certificate List", c="vol", f="certificate"),
+                MM("Certificate List", c="vol", f="certificate", check=use_certs),
             ),
             homepage("member")(
                 MM("Members", c="member", f="membership", m="summary"),
             ),
+            #homepage("inv", "supply", "req", check=inv)(
             homepage("inv", "supply", "req")(
-                MM("Warehouses", c="inv", f="warehouse"),
-                MM("Received Shipments", c="inv", f="recv"),
+                #MM("Warehouses", c="inv", f="warehouse", m="summary", check=multi_warehouse),
+                MM("Warehouses", c="inv", f="warehouse", m="summary"),
+                #MM(inv_recv_list, c="inv", f="recv", check=multi_warehouse),
+                MM(inv_recv_list, c="inv", f="recv"),
+                #MM("Sent Shipments", c="inv", f="send", check=multi_warehouse),
                 MM("Sent Shipments", c="inv", f="send"),
+                #MM("Items", c="supply", f="item", check=basic_warehouse),
                 MM("Items", c="supply", f="item"),
-                MM("Item Catalogs", c="supply", f="catalog"),
-                MM("Item Categories", c="supply", f="item_category"),
+                #MM("Catalogs", c="supply", f="catalog", check=basic_warehouse),
+                MM("Catalogs", c="supply", f="catalog"),
+                ##MM("Item Categories", c="supply", f="item_category"),
+                #M("Suppliers", c="inv", f="supplier", check=basic_warehouse)(),
+                M("Suppliers", c="inv", f="supplier")(),
+                #M("Facilities", c="inv", f="facility", check=basic_warehouse)(),
+                M("Facilities", c="inv", f="facility")(),
                 M("Requests", c="req", f="req")(),
-                #M("Commitments", f="commit")(),
+                ##M("Commitments", f="commit")(),
             ),
             homepage("asset")(
                 MM("Assets", c="asset", f="asset", m="summary"),
@@ -87,15 +165,16 @@ class S3MainMenu(default.S3MainMenu):
                 MM("Disaster Assessments", c="survey", f="series"),
             ),
             homepage("project")(
-                MM("Projects", c="project", f="project"),
+                MM("Projects", c="project", f="project", m="summary"),
                 MM("Communities", c="project", f="location"),
+                MM("Outreach", c="po", f="index", check=outreach),
             ),
             homepage("vulnerability")(
                 MM("Map", c="vulnerability", f="index"),
             ),
             homepage("event")(
-                MM("Events", c="event", f="event"),
-                MM("Incident Reports", c="event", f="incident_report"),
+                MM("Events", c="event", f="event", m="summary"),
+                MM("Incident Reports", c="event", f="incident_report", m="summary"),
             ),
             homepage("deploy", name="RDRT", f="mission", m="summary",
                      vars={"~.status__belongs": "2"})(
@@ -110,63 +189,87 @@ class S3MainMenu(default.S3MainMenu):
         """ Dashboard Menu (at bottom of page) """
 
         DB = S3DashBoardMenuLayout
+        auth = current.auth
         request = current.request
         controller = request.controller
+
+        has_role = auth.s3_has_role
+        root_org = auth.root_org_name()
+        system_roles = current.session.s3.system_roles
+        #ADMIN = system_roles.ADMIN
+        ORG_ADMIN = system_roles.ORG_ADMIN
+
+        def hrm(item):
+            # @ToDo: Bot sure why this isn't hidden automatically when user doesn't have access
+            return root_org != CRMADA or \
+                   has_role(ORG_ADMIN)
+
+        #def inv(item):
+        #    return root_org != HNRC or \
+        #           has_role("hn_wh_manager") or \
+        #           has_role("hn_national_wh_manager") or \
+        #           has_role(ORG_ADMIN)
+
+        #def vol(item):
+        #    return root_org != HNRC or \
+        #           has_role(ORG_ADMIN)
 
         if controller == "vol":
             dashboard = DB()(
                 DB("Volunteers",
-                    c="vol",
-                    image = "graphic_staff_wide.png",
-                    title = "Volunteers")(
-                    DB("Manage Volunteer Data", f="volunteer", m="summary"),
-                    DB("Manage Teams Data", f="group"),
+                   c="vol",
+                   image = "graphic_staff_wide.png",
+                   title = "Volunteers")(
+                   DB("Manage Volunteer Data", f="volunteer", m="summary"),
+                   DB("Manage Teams Data", f="group"),
                 ),
                 DB("Catalogs",
-                    c="hrm",
-                    image="graphic_catalogue.png",
-                    title="Catalogs")(
-                    DB("Certificates", f="certificate"),
-                    DB("Training Courses", f="course"),
-                    #DB("Skills", f="skill"),
-                    DB("Job Titles", f="job_title")
+                   c="hrm",
+                   image="graphic_catalogue.png",
+                   title="Catalogs")(
+                   DB("Certificates", f="certificate"),
+                   DB("Training Courses", f="course"),
+                   #DB("Skills", f="skill"),
+                   DB("Job Titles", f="job_title")
                 ))
         elif controller in ("hrm", "org"):
             dashboard = DB()(
                 DB("Staff",
-                    c="hrm",
-                    image = "graphic_staff_wide.png",
-                    title = "Staff")(
-                    DB("Manage Staff Data", f="staff", m="summary"),
-                    DB("Manage Teams Data", f="group"),
+                   c="hrm",
+                   image = "graphic_staff_wide.png",
+                   title = "Staff")(
+                   DB("Manage Staff Data", f="staff", m="summary"),
+                   DB("Manage Teams Data", f="group"),
                 ),
                 DB("Offices",
-                    c="org",
-                    image = "graphic_office.png",
-                    title = "Offices")(
-                    DB("Manage Offices Data", f="office"),
-                    DB("Manage National Society Data", f="organisation",
-                       vars=red_cross_filter
-                       ),
+                   c="org",
+                   image = "graphic_office.png",
+                   title = "Offices")(
+                   DB("Manage Offices Data", f="office"),
+                   DB("Manage National Society Data", f="organisation",
+                      vars=red_cross_filter
+                      ),
                 ),
                 DB("Catalogs",
-                    c="hrm",
-                    image="graphic_catalogue.png",
-                    title="Catalogs")(
-                    DB("Certificates", f="certificate"),
-                    DB("Training Courses", f="course"),
-                    #DB("Skills", f="skill"),
-                    DB("Job Titles", f="job_title")
+                   c="hrm",
+                   image="graphic_catalogue.png",
+                   title="Catalogs")(
+                   DB("Certificates", f="certificate"),
+                   DB("Training Courses", f="course"),
+                   #DB("Skills", f="skill"),
+                   DB("Job Titles", f="job_title")
                 ))
 
         elif controller == "default" and request.function == "index":
 
             dashboard = DB(_id="dashboard")(
                 DB("Staff", c="hrm", f="staff", m="summary",
+                   check = hrm,
                    image = "graphic_staff.png",
                    title = "Staff",
                    text = "Add new and manage existing staff."),
                 DB("Volunteers", c="vol", f="volunteer", m="summary",
+                   #check = vol,
                    image = "graphic_volunteers.png",
                    title = "Volunteers",
                    text = "Add new and manage existing volunteers."),
@@ -174,7 +277,8 @@ class S3MainMenu(default.S3MainMenu):
                    image = "graphic_members.png",
                    title = "Members",
                    text = "Add new and manage existing members."),
-                DB("Warehouses", c="inv", f="index",
+                DB("Warehouses", c="inv", f="warehouse", m="summary",
+                   #check = inv,
                    image = "graphic_warehouse.png",
                    title = "Warehouses",
                    text = "Stocks and relief items."),
@@ -186,7 +290,7 @@ class S3MainMenu(default.S3MainMenu):
                    image = "graphic_assessments.png",
                    title = "Assessments",
                    text = "Design, deploy & analyze surveys."),
-                DB("Projects", c="project", f="index",
+                DB("Projects", c="project", f="project", m="summary",
                    image = "graphic_tools.png",
                    title = "Projects",
                    text = "Tracking and analysis of Projects and Activities.")
@@ -230,7 +334,7 @@ class S3MainMenu(default.S3MainMenu):
             "_next" in request.get_vars:
                 login_next = request.get_vars["_next"]
 
-            self_registration = settings.get_security_self_registration()
+            self_registration = settings.get_security_registration_visible()
             menu_personal = MP()(
                         MP("Register", c="default", f="user",
                            m="register", check=self_registration),
@@ -266,11 +370,93 @@ class S3OptionsMenu(default.S3OptionsMenu):
     def admin(self):
         """ ADMIN menu """
 
+        # Standard Admin Menu
         menu = super(S3OptionsMenu, self).admin()
-        gis_item = M("Map Settings", c="gis", f="config")
-        menu.append(gis_item)
+
+        # Additional Items
+        menu(M("Map Settings", c="gis", f="config"),
+             M("Content Management", c="cms", f="index"),
+             )
 
         return menu
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def cms():
+        """ CMS / Content Management System """
+
+        return M(c="cms")(
+                    M("Series", f="series")(
+                        M("Create", m="create"),
+                        M("View as Pages", f="blog"),
+                     ),
+                    M("Posts", f="post")(
+                        M("Create", m="create"),
+                        M("View as Pages", f="page"),
+                        M("Import", m="import"),
+                     ),
+                 )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def deploy():
+        """ RDRT Alerting and Deployments """
+
+        return M()(M("Missions",
+                     c="deploy", f="mission", m="summary")(
+                        M("Create", m="create"),
+                        M("Active Missions", m="summary",
+                          vars={"~.status__belongs": "2"}),
+                   ),
+                   M("Alerts",
+                     c="deploy", f="alert")(
+                        M("Create", m="create"),
+                        M("InBox",
+                          c="deploy", f="email_inbox",
+                        ),
+                        M("Settings",
+                          c="deploy", f="email_channel",
+                          p="update", t="msg_email_channel",
+                          ),
+                   ),
+                   M("Deployments",
+                     c="deploy", f="assignment", m="summary"
+                   ),
+                   M("Sectors",
+                     c="deploy", f="job_title", restrict=["ADMIN"],
+                   ),
+                   M("RDRT Members",
+                     c="deploy", f="human_resource", m="summary")(
+                        M("Add Member",
+                          c="deploy", f="application", m="select",
+                          p="create", t="deploy_application",
+                          ),
+                        M("Import Members", c="deploy", f="person", m="import"),
+                   ),
+                   M("Online Manual", c="deploy", f="index"),
+               )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def event():
+        """ Event Management """
+
+        return M()(
+                    M("Events", c="event", f="event")(
+                        M("Create", m="create"),
+                    ),
+                    M("Event Types", c="event", f="event_type")(
+                        M("Create", m="create"),
+                        #M("Import", m="import", p="create"),
+                    ),
+                    M("Incident Reports", c="event", f="incident_report", m="summary")(
+                        M("Create", m="create"),
+                    ),
+                    M("Incident Types", c="event", f="incident_type")(
+                        M("Create", m="create"),
+                        #M("Import", m="import", p="create"),
+                    ),
+                )
 
     # -------------------------------------------------------------------------
     def gis(self):
@@ -288,27 +474,28 @@ class S3OptionsMenu(default.S3OptionsMenu):
     def hrm():
         """ HRM Human Resource Management """
 
-        session = current.session
+        has_role = current.auth.s3_has_role
         s3 = current.session.s3
         ADMIN = s3.system_roles.ADMIN
+        settings = current.deployment_settings
 
         if "hrm" not in s3:
             current.s3db.hrm_vars()
         hrm_vars = s3.hrm
 
-        SECTORS = "Clusters" if current.deployment_settings.get_ui_label_cluster() \
+        SECTORS = "Clusters" if settings.get_ui_label_cluster() \
                              else "Sectors"
 
         manager_mode = lambda i: hrm_vars.mode is None
         personal_mode = lambda i: hrm_vars.mode is not None
         is_org_admin = lambda i: hrm_vars.orgs and True or \
-                                 ADMIN in s3.roles
-        is_super_editor = lambda i: current.auth.s3_has_role("staff_super") or \
-                                    current.auth.s3_has_role("vol_super")
+                                 has_role(ADMIN)
+        is_super_editor = lambda i: has_role("staff_super") or \
+                                    has_role("vol_super")
 
         staff = {"group": "staff"}
 
-        is_not_vnrc = lambda i: current.auth.root_org_name() != "Viet Nam Red Cross"
+        use_certs = lambda i: settings.get_hrm_use_certificates()
 
         return M()(
                     M("Staff", c="hrm", f=("staff", "person"), m="summary",
@@ -326,7 +513,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         M("Search Members", f="group_membership"),
                         M("Import", f="group_membership", m="import"),
                     ),
-                    M("National Societies", c="org", 
+                    M("National Societies", c="org",
                                             f="organisation",
                                             vars=red_cross_filter,
                       check=manager_mode)(
@@ -374,7 +561,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         M("Course Certificates", f="course_certificate"),
                     ),
                     M("Certificate Catalog", c="hrm", f="certificate",
-                      check=[manager_mode, is_not_vnrc])(
+                      check=[manager_mode, use_certs])(
                         M("Create", m="create"),
                         M("Import", m="import", p="create", check=is_org_admin),
                         #M("Skill Equivalence", f="certificate_skill"),
@@ -395,56 +582,346 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     #    M("Create", m="create"),
                     #),
                     #M("My Profile", c="hrm", f="person",
-                    #  check=personal_mode, vars=dict(mode="personal")),
+                    #  check=personal_mode, vars=dict(access="personal")),
                     # This provides the link to switch to the manager mode:
                     M("Human Resources", c="hrm", f="index",
                       check=[personal_mode, is_org_admin]),
                     # This provides the link to switch to the personal mode:
                     #M("Personal Profile", c="hrm", f="person",
-                    #  check=manager_mode, vars=dict(mode="personal"))
+                    #  check=manager_mode, vars=dict(access="personal"))
+                )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def inv():
+        """ INV / Inventory """
+
+        auth = current.auth
+        has_role = auth.s3_has_role
+        system_roles = current.session.s3.system_roles
+        ADMIN = system_roles.ADMIN
+        ORG_ADMIN = system_roles.ORG_ADMIN
+
+        s3db = current.s3db
+        s3db.inv_recv_crud_strings()
+        inv_recv_list = current.response.s3.crud_strings.inv_recv.title_list
+
+        settings = current.deployment_settings
+        root_org = auth.root_org_name()
+        def no_direct_stock_edits(i):
+            if root_org in ("Australian Red Cross", CRMADA):
+                # Australian & Malagasy RC use proper Logistics workflow
+                return True
+            else:
+                # Others use simplified version
+                return False
+        #def use_facilities(i):
+        #    if root_org == HNRC:
+        #        # Honduran RC don't use Facilities
+        #        return False
+        #    else:
+        #        return True
+        #def basic_warehouse(i):
+        #    if root_org == HNRC  and \
+        #       not (has_role("hn_national_wh_manager") or \
+        #            has_role(ORG_ADMIN)):
+        #        # Hide menu entries which user shouldn't need access to
+        #        return False
+        #    else:
+        #        return True
+        #def multi_warehouse(i):
+        #    if root_org == HNRC  and \
+        #       not (has_role("hn_national_wh_manager") or \
+        #            has_role(ORG_ADMIN)):
+        #        # Only responsible for 1 warehouse so hide menu entries which should be accessed via Tabs on their warehouse
+        #        # & other things that HNRC
+        #        return False
+        #    else:
+        #        return True
+        #def use_kits(i):
+        #    if root_org == HNRC:
+        #        # Honduran RC use Kits
+        #        return True
+        #    else:
+        #        return False
+        def use_types(i):
+            if root_org == NRCS:
+                # Nepal RC use Warehouse Types
+                return True
+            else:
+                return False
+        use_commit = lambda i: settings.get_req_use_commit()
+
+        return M()(
+                    #M("Home", f="index"),
+                    #M("Warehouses", c="inv", f="warehouse", m="summary", check=multi_warehouse)(
+                    M("Warehouses", c="inv", f="warehouse", m="summary")(
+                        M("Create", m="create"),
+                        M("Import", m="import", p="create"),
+                    ),
+                    M("Warehouse Stock", c="inv", f="inv_item", args="summary")(
+                        M("Search Shipped Items", f="track_item"),
+                        M("Adjust Stock Levels", f="adj", check=no_direct_stock_edits),
+                        #M("Kitting", f="kitting", check=use_kits),
+                        M("Import", f="inv_item", m="import", p="create"),
+                    ),
+                    M("Reports", c="inv", f="inv_item")(
+                        M("Warehouse Stock", f="inv_item",m="report"),
+                        M("Expiration Report", c="inv", f="track_item",
+                          vars=dict(report="exp")),
+                        # CRMADA want this - requires support in config.py atm (move that to core)
+                        #M("Stock Movements", f="inv_item", m="grouped",
+                        #  vars={"report": "movements"},
+                        #  check=no_direct_stock_edits,
+                        #  ),
+                        #M("Monetization Report", c="inv", f="inv_item",
+                        #  vars=dict(report="mon")),
+                        #M("Utilization Report", c="inv", f="track_item",
+                        #  vars=dict(report="util")),
+                        #M("Summary of Incoming Supplies", c="inv", f="track_item",
+                        #  vars=dict(report="inc")),
+                        # M("Summary of Releases", c="inv", f="track_item",
+                        #  vars=dict(report="rel")),
+                    ),
+                    #M(inv_recv_list, c="inv", f="recv", check=multi_warehouse)(
+                    M(inv_recv_list, c="inv", f="recv")(
+                        M("Create", m="create"),
+                    ),
+                    #M("Sent Shipments", c="inv", f="send", check=multi_warehouse)(
+                    M("Sent Shipments", c="inv", f="send")(
+                        M("Create", m="create"),
+                        M("Search Shipped Items", f="track_item"),
+                    ),
+                    #M("Items", c="supply", f="item", m="summary", check=basic_warehouse)(
+                    M("Items", c="supply", f="item", m="summary")(
+                        M("Create", m="create"),
+                        M("Import", f="catalog_item", m="import", p="create"),
+                    ),
+                    # Catalog Items moved to be next to the Item Categories
+                    #M("Catalog Items", c="supply", f="catalog_item")(
+                    #   M("Create", m="create"),
+                    #),
+                    #M("Brands", c="supply", f="brand",
+                    #  restrict=[ADMIN])(
+                    #    M("Create", m="create"),
+                    #),
+                    #M("Catalogs", c="supply", f="catalog", check=basic_warehouse)(
+                    M("Catalogs", c="supply", f="catalog")(
+                        M("Create", m="create"),
+                    ),
+                    M("Item Categories", c="supply", f="item_category",
+                      restrict=[ADMIN])(
+                        M("Create", m="create"),
+                    ),
+                    #M("Suppliers", c="inv", f="supplier", check=basic_warehouse)(
+                    M("Suppliers", c="inv", f="supplier")(
+                        M("Create", m="create"),
+                        M("Import", m="import", p="create"),
+                    ),
+                    #M("Facilities", c="inv", f="facility", check=basic_warehouse)(
+                    M("Facilities", c="inv", f="facility")(
+                        M("Create", m="create", t="org_facility"),
+                    ),
+                    M("Facility Types", c="inv", f="facility_type",
+                      restrict=[ADMIN])(
+                        M("Create", m="create"),
+                    ),
+                    M("Warehouse Types", c="inv", f="warehouse_type", check=use_types,
+                      restrict=[ADMIN])(
+                        M("Create", m="create"),
+                    ),
+                    M("Requests", c="req", f="req")(
+                        M("Create", m="create"),
+                        M("Requested Items", f="req_item"),
+                    ),
+                    M("Commitments", c="req", f="commit", check=use_commit)(
+                    ),
                 )
 
     # -------------------------------------------------------------------------
     def org(self):
         """ Organisation Management """
 
-        # Same as HRM
-        return self.hrm()
-    
+        if current.request.function in ("capacity_assessment", "capacity_assessment_data"):
+            # Use Survey
+            return self.survey()
+        else:
+            # Use HRM
+            return self.hrm()
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def project():
+        """ PROJECT / Project Tracking & Management """
+
+        #root_org = current.auth.root_org_name()
+        #def community_volunteers(i):
+        #    if root_org == HNRC:
+        #        return True
+        #    else:
+        #        return False
+
+        #system_roles = current.session.s3.system_roles
+        #ORG_ADMIN = system_roles.ORG_ADMIN
+
+        menu = M(c="project")(
+             M("Programs", f="programme")(
+                M("Create", m="create"),
+             ),
+             M("Projects", f="project", m="summary")(
+                M("Create", m="create"),
+             ),
+             M("Communities", f="location")(
+                # Better created from tab (otherwise Activity Type filter won't work)
+                #M("Create", m="create"),
+                M("Map", m="map"),
+                M("Community Contacts", f="location_contact"),
+                #M("Community Volunteers", f="volunteer",
+                #  check=community_volunteers),
+             ),
+            M("Reports", f="location", m="report")(
+                M("3W", f="location", m="report"),
+                M("Beneficiaries", f="beneficiary", m="report"),
+                #M("Indicators", f="indicator", m="report",
+                #  check=indicators,
+                #  ),
+                #M("Indicators over Time", f="indicator", m="timeplot",
+                #  check=indicators,
+                #  ),
+                M("Funding", f="organisation", m="report"),
+             ),
+             M("Import", f="project", m="import", p="create"#, restrict=[ORG_ADMIN]
+               )(
+                M("Import Projects", m="import", p="create"),
+                M("Import Project Organizations", f="organisation",
+                  m="import", p="create"),
+                M("Import Project Communities", f="location",
+                  m="import", p="create"),
+             ),
+             M("Partner Organizations",  f="partners")(
+                M("Create", m="create"),
+                M("Import", m="import", p="create"),
+             ),
+             M("Activity Types", f="activity_type")(
+                M("Create", m="create"),
+             ),
+             M("Beneficiary Types", f="beneficiary_type")(
+                M("Create", m="create"),
+             ),
+             M("Demographics", f="demographic")(
+                M("Create", m="create"),
+             ),
+             M("Hazards", f="hazard")(
+                M("Create", m="create"),
+             ),
+             #M("Indicators", f="indicator",
+             #  check=indicators)(
+             #   M("Create", m="create"),
+             #),
+             M("Sectors", f="sector")(
+                M("Create", m="create"),
+             ),
+             M("Themes", f="theme")(
+                M("Create", m="create"),
+             ),
+            )
+
+        return menu
+
+    # -------------------------------------------------------------------------
+    def req(self):
+        """ Requests Management """
+
+        # Same as Inventory
+        return self.inv()
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def survey():
+        """ SURVEY / Survey """
+
+        ADMIN = current.session.s3.system_roles.ADMIN
+
+        # Do we have a series_id?
+        series_id = False
+        get_vars = Storage()
+        try:
+            series_id = int(current.request.args[0])
+        except:
+            try:
+                (dummy, series_id) = current.request.get_vars["viewing"].split(".")
+                series_id = int(series_id)
+            except:
+                pass
+        if series_id:
+            get_vars.viewing = "survey_complete.%s" % series_id
+
+        return M(c="survey")(
+                    M("Branch Organization Capacity Assessments", c="org", f="capacity_assessment")(
+                        M("Create", m="create"),
+                        M("Report", f="capacity_assessment_data", m="custom_report"),
+                    ),
+                    M("Assessment Templates", f="template")(
+                        M("Create", m="create"),
+                    ),
+                    #M("Section", f="section")(
+                    #    M("Create", args="create"),
+                    #),
+                    M("Disaster Assessments", f="series")(
+                        M("Create", m="create"),
+                    ),
+                    M("Administration", f="admin", restrict=[ADMIN])(
+                        M("Import Templates", f="question_list",
+                          m="import", p="create"),
+                        M("Import Template Layout", f="formatter",
+                          m="import", p="create"),
+                        M("Import Completed Assessment Forms", f="complete",
+                          m="import", p="create", vars=get_vars, check=series_id),
+                    ),
+                )
+
     # -------------------------------------------------------------------------
     @staticmethod
     def vol():
         """ Volunteer Management """
 
         auth = current.auth
+        has_role = auth.s3_has_role
         s3 = current.session.s3
         ADMIN = s3.system_roles.ADMIN
+        root_org = auth.root_org_name()
 
         # Custom conditions for the check-hook, as lambdas in order
         # to have them checked only immediately before rendering:
         manager_mode = lambda i: s3.hrm.mode is None
         personal_mode = lambda i: s3.hrm.mode is not None
         is_org_admin = lambda i: s3.hrm.orgs and True or \
-                                 ADMIN in s3.roles
-        is_super_editor = lambda i: auth.s3_has_role("vol_super") or \
-                                    auth.s3_has_role("staff_super")
+                                 has_role(ADMIN)
+        is_super_editor = lambda i: has_role("vol_super") or \
+                                    has_role("staff_super")
 
         settings = current.deployment_settings
-        show_programmes = lambda i: settings.get_hrm_vol_experience() == "programme"
+        use_certs = lambda i: settings.get_hrm_use_certificates()
+        use_skills = lambda i: settings.get_hrm_use_skills()
+        show_programmes = lambda i: settings.get_hrm_vol_experience() in ("programme", "both")
+        show_program_reports = lambda i: root_org != IRCS and \
+                                         settings.get_hrm_vol_experience() in ("programme", "both")
         show_tasks = lambda i: settings.has_module("project") and \
                                settings.get_project_mode_task()
         teams = settings.get_hrm_teams()
         use_teams = lambda i: teams
-
-        not_vnrc = lambda i: auth.root_org_name() != "Viet Nam Red Cross"
-        skills_menu = lambda i: auth.root_org_name() in ("Afghan Red Crescent Society",
-                                                         "Indonesian Red Cross Society (Pelang Merah Indonesia)",
-                                                         "Viet Nam Red Cross",
-                                                         )
+        vol_roles = lambda i: settings.get_hrm_vol_roles() and root_org != "Viet Nam Red Cross"
 
         check_org_dependent_field = lambda tablename, fieldname: \
             settings.set_org_dependent_field(tablename, fieldname,
                                              enable_field = False)
+
+        if root_org == IRCS:
+            awards_label = "Recommendation Letter Types"
+        else:
+            awards_label = "Awards"
+
+        use_activities = lambda i: True if root_org == CRMADA else False
 
         return M(c="vol")(
                     M("Volunteers", f="volunteer", m="summary",
@@ -467,18 +944,29 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     #    M("Create", m="create"),
                     #),
                     M("Volunteer Role Catalog", f="job_title",
-                      check=[manager_mode, not_vnrc])(
+                      check=[manager_mode, vol_roles])(
                         M("Create", m="create"),
                         M("Import", m="import", p="create", check=is_org_admin),
                     ),
                     M("Skill Catalog", f="skill",
-                      check=[manager_mode, skills_menu])(
+                      check=[manager_mode, use_skills])(
                         M("Create", m="create"),
                         #M("Skill Provisions", f="skill_provision"),
+                    ),
+                    M("Activities", f="activity",
+                      check=[manager_mode, use_activities])(
+                        M("Create", m="create"),
+                        M("Import Hours", f="activity_hours", m="import"),
+                    ),
+                    M("Activity Types", f="activity_type",
+                      check=[manager_mode, use_activities, is_super_editor])(
+                        M("Create", m="create"),
+                        #M("Import", m="import"),
                     ),
                     M("Training Events", f="training_event",
                       check=manager_mode)(
                         M("Create", m="create"),
+                        M("Facilities", f="facility"),
                         M("Search Training Participants", f="training"),
                         M("Import Participant List", f="training", m="import"),
                     ),
@@ -488,7 +976,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         #M("Course Certificates", f="course_certificate"),
                     ),
                     M("Certificate Catalog", f="certificate",
-                      check=manager_mode)(
+                      check=[manager_mode, use_certs])(
                         M("Create", m="create"),
                         #M("Skill Equivalence", f="certificate_skill"),
                     ),
@@ -497,7 +985,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         M("Create", m="create"),
                         M("Import Hours", f="programme_hours", m="import"),
                     ),
-                    M("Awards", f="award",
+                    M(awards_label, f="award",
                       check=[manager_mode, is_org_admin])(
                         M("Create", m="create"),
                     ),
@@ -519,202 +1007,32 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     M("Reports", f="volunteer", m="report",
                       check=manager_mode)(
                         M("Volunteer Report", m="report"),
+                        M("Hours by Activity Type", f="activity_hours", m="report",
+                          check=use_activities),
                         M("Hours by Role Report", f="programme_hours", m="report",
                           vars=Storage(rows="job_title_id",
                                        cols="month",
                                        fact="sum(hours)"),
-                          check=show_programmes),
+                          check=show_program_reports),
                         M("Hours by Program Report", f="programme_hours", m="report",
                           vars=Storage(rows="programme_id",
                                        cols="month",
                                        fact="sum(hours)"),
-                          check=show_programmes),
+                          check=show_program_reports),
                         M("Training Report", f="training", m="report"),
                     ),
                     #M("My Profile", f="person",
-                    #  check=personal_mode, vars=dict(mode="personal")),
+                    #  check=personal_mode, vars=dict(access="personal")),
                     M("My Tasks", f="task",
                       check=[personal_mode, show_tasks],
-                      vars=dict(mode="personal",
+                      vars=dict(access="personal",
                                 mine=1)),
                     # This provides the link to switch to the manager mode:
                     M("Volunteer Management", f="index",
                       check=[personal_mode, is_org_admin]),
                     # This provides the link to switch to the personal mode:
                     #M("Personal Profile", f="person",
-                    #  check=manager_mode, vars=dict(mode="personal"))
+                    #  check=manager_mode, vars=dict(access="personal"))
                 )
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def inv():
-        """ INV / Inventory """
-
-        ADMIN = current.session.s3.system_roles.ADMIN
-
-        s3db = current.s3db
-        s3db.inv_recv_crud_strings()
-        inv_recv_list = current.response.s3.crud_strings.inv_recv.title_list
-
-        settings = current.deployment_settings
-        #use_adjust = lambda i: not settings.get_inv_direct_stock_edits()
-        def use_adjust(i):
-            db = current.db
-            otable = s3db.org_organisation
-            try:
-                ausrc = db(otable.name == "Australian Red Cross").select(otable.id,
-                                                                         limitby=(0, 1)
-                                                                         ).first().id
-            except:
-                # No IFRC prepop done - skip (e.g. testing impacts of CSS changes in this theme)
-                return False
-            if current.auth.root_org() == ausrc:
-                # AusRC use proper Logistics workflow
-                return True
-            else:
-                # Others use simplified version
-                return False
-        use_commit = lambda i: settings.get_req_use_commit()
-
-        return M()(
-                    #M("Home", f="index"),
-                    M("Warehouses", c="inv", f="warehouse")(
-                        M("Create", m="create"),
-                        M("Import", m="import", p="create"),
-                    ),
-                    M("Warehouse Stock", c="inv", f="inv_item")(
-                        M("Search Shipped Items", f="track_item"),
-                        M("Adjust Stock Levels", f="adj", check=use_adjust),
-                        #M("Kitting", f="kit"),
-                        M("Import", f="inv_item", m="import", p="create"),
-                    ),
-                    M("Reports", c="inv", f="inv_item")(
-                        M("Warehouse Stock", f="inv_item",m="report"),
-                        #M("Expiration Report", c="inv", f="track_item",
-                        #  vars=dict(report="exp")),
-                        #M("Monetization Report", c="inv", f="inv_item",
-                        #  vars=dict(report="mon")),
-                        #M("Utilization Report", c="inv", f="track_item",
-                        #  vars=dict(report="util")),
-                        #M("Summary of Incoming Supplies", c="inv", f="track_item",
-                        #  vars=dict(report="inc")),
-                        # M("Summary of Releases", c="inv", f="track_item",
-                        #  vars=dict(report="rel")),
-                    ),
-                    M(inv_recv_list, c="inv", f="recv")(
-                        M("Create", m="create"),
-                    ),
-                    M("Sent Shipments", c="inv", f="send")(
-                        M("Create", m="create"),
-                        M("Search Shipped Items", f="track_item"),
-                    ),
-                    M("Items", c="supply", f="item", m="summary")(
-                        M("Create", m="create"),
-                        M("Import", f="catalog_item", m="import", p="create"),
-                    ),
-                    # Catalog Items moved to be next to the Item Categories
-                    #M("Catalog Items", c="supply", f="catalog_item")(
-                    #   M("Create", m="create"),
-                    #),
-                    #M("Brands", c="supply", f="brand",
-                    #  restrict=[ADMIN])(
-                    #    M("Create", m="create"),
-                    #),
-                    M("Catalogs", c="supply", f="catalog")(
-                        M("Create", m="create"),
-                    ),
-                    M("Item Categories", c="supply", f="item_category",
-                      restrict=[ADMIN])(
-                        M("Create", m="create"),
-                    ),
-                    M("Suppliers", c="inv", f="supplier")(
-                        M("Create", m="create"),
-                        M("Import", m="import", p="create"),
-                    ),
-                    M("Facilities", c="inv", f="facility")(
-                        M("Create", m="create", t="org_facility"),
-                    ),
-                    M("Facility Types", c="inv", f="facility_type",
-                      restrict=[ADMIN])(
-                        M("Create", m="create"),
-                    ),
-                    M("Warehouse Types", c="inv", f="warehouse_type",
-                      restrict=[ADMIN])(
-                        M("Create", m="create"),
-                    ),
-                    M("Requests", c="req", f="req")(
-                        M("Create", m="create"),
-                        M("Requested Items", f="req_item"),
-                    ),
-                    M("Commitments", c="req", f="commit", check=use_commit)(
-                    ),
-                )
-
-    # -------------------------------------------------------------------------
-    def req(self):
-        """ Requests Management """
-
-        # Same as Inventory
-        return self.inv()
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def event():
-        """ Event Management """
-
-        return M()(
-                    M("Events", c="event", f="event")(
-                        M("Create", m="create"),
-                    ),
-                    M("Event Types", c="event", f="event_type")(
-                        M("Create", m="create"),
-                        #M("Import", m="import", p="create"),
-                    ),
-                    M("Incident Reports", c="event", f="incident_report", m="summary")(
-                        M("Create", m="create"),
-                    ),
-                    M("Incident Types", c="event", f="incident_type")(
-                        M("Create", m="create"),
-                        #M("Import", m="import", p="create"),
-                    ),
-                )
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def deploy():
-        """ RDRT Alerting and Deployments """
-
-        return M()(M("Missions",
-                     c="deploy", f="mission", m="summary")(
-                        M("Create", m="create"),
-                        M("Active Missions", m="summary",
-                          vars={"~.status__belongs": "2"}),
-                   ),
-                   M("Alerts",
-                     c="deploy", f="alert")(
-                        M("Create", m="create"),
-                        M("InBox",
-                          c="deploy", f="email_inbox",
-                        ),
-                        M("Settings",
-                          c="deploy", f="email_channel",
-                          p="update", t="msg_email_channel",
-                          ),
-                   ),
-                   M("Deployments",
-                     c="deploy", f="assignment", m="summary"
-                   ),
-                   M("Sectors",
-                     c="deploy", f="job_title", restrict=["ADMIN"],
-                   ),
-                   M("RDRT Members",
-                     c="deploy", f="human_resource", m="summary")(
-                        M("Add Member",
-                          c="deploy", f="application", m="select",
-                          p="create", t="deploy_application",
-                          ),
-                        M("Import Members", c="deploy", f="person", m="import"),
-                   ),
-               )
 
 # END =========================================================================

@@ -31,7 +31,7 @@ def config(settings):
 
     # -----------------------------------------------------------------------------
     # Pre-Populate
-    settings.base.prepopulate = ("Philippines", "default/users")
+    settings.base.prepopulate += ("Philippines", "default/users")
 
     settings.base.system_name = T("Sahana")
     settings.base.system_name_short = T("Sahana")
@@ -100,7 +100,7 @@ def config(settings):
     # Default Language
     settings.L10n.default_language = "en"
     # Default timezone for users
-    settings.L10n.utc_offset = "UTC +0800"
+    settings.L10n.utc_offset = "+0800"
     # Unsortable 'pretty' date format
     settings.L10n.date_format = "%d %b %Y"
     # Number formats (defaults to ISO 31-0)
@@ -128,11 +128,10 @@ def config(settings):
     # -----------------------------------------------------------------------------
     # Finance settings
     settings.fin.currencies = {
-        "PHP" : T("Philippine Pesos"),
-        #"EUR" : T("Euros"),
-        #"GBP" : T("Great British Pounds"),
-        #"CHF" : T("Swiss Francs"),
-        "USD" : T("United States Dollars"),
+        "PHP" : "Philippine Pesos"),
+        #"EUR" : "Euros",
+        #"GBP" : "Great British Pounds",
+        "USD" : "United States Dollars",
     }
     settings.fin.currency_default = "PHP"
 
@@ -1335,7 +1334,8 @@ def config(settings):
                     if not level:
                         # Just show PH L1s
                         level = "L1"
-                        s3.filter = (table.L0 == "Philippines") & (table.level == "L1")
+                        query = (table.L0 == "Philippines") & (table.level == "L1")
+                        r.resource.add_filter(query)
 
                     parent = current.request.get_vars.get("~.parent", None)
                     if level == "L1":
@@ -2552,12 +2552,14 @@ def config(settings):
                 site_field.requires = IS_ONE_OF(current.db, "org_site.site_id",
                                                 represent,
                                                 orderby = "org_site.name")
-                from s3layouts import S3AddResourceLink
-                site_field.comment = S3AddResourceLink(c="org", f="facility",
-                                                       vars={"child": "site_id"},
-                                                       label=T("Add New Site"),
-                                                       title=T("Site"),
-                                                       tooltip=T("If you don't see the Site in the list, you can add a new one by clicking link 'Add New Site'."))
+                from s3layouts import S3PopupLink
+                site_field.comment = S3PopupLink(c = "org",
+                                                 f = "facility",
+                                                 vars = {"child": "site_id"},
+                                                 label = T("Add New Site"),
+                                                 title = T("Site"),
+                                                 tooltip = T("If you don't see the Site in the list, you can add a new one by clicking link 'Add New Site'."),
+                                                 )
 
                 # ImageCrop widget doesn't currently work within an Inline Form
                 s3db.pr_image.image.widget = None
@@ -2752,7 +2754,7 @@ def config(settings):
                 result = standard_prep(r)
 
             # Filter Out Docs from Newsfeed
-            current.response.s3.filter = (table.name != None)
+            r.resource.add_filter(table.name != None)
 
             if r.interactive:
                 s3.crud_strings[tablename] = Storage(
@@ -2821,7 +2823,7 @@ def config(settings):
             else:
                 s3db.req_customise_req_fields()
             if r.method in ("datalist", "datalist.dl"):
-                s3.filter = (r.table.req_status.belongs([0, 1]))
+                r.resource.add_filter(r.table.req_status.belongs([0, 1]))
             elif r.method == "profile":
                 # Customise tables used by widgets
                 s3db.req_customise_commit_fields()
@@ -2943,7 +2945,7 @@ def config(settings):
             current.s3db.req_customise_commit_fields()
 
             if r.method in ("datalist", "datalist.dl"):
-                s3.filter = (r.table.cancel != True)
+                r.resource.add_filter(r.table.cancel != True)
 
             return True
         s3.prep = custom_prep

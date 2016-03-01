@@ -2,7 +2,7 @@
 
 """ Sahana Eden Climate Model
 
-    @copyright: 2011-2015 (c) Sahana Software Foundation
+    @copyright: 2011-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -588,7 +588,7 @@ def climate_station_parameter_range_from(row):
     table = current.s3db.table("climate_sample_table_%s" % parameter_id)
     if not table:
         return default
-        
+
     date = table.time_period.min()
     row = db(table.place_id == station_id).select(date).first()
     if row:
@@ -601,7 +601,7 @@ def climate_station_parameter_range_from(row):
 
 # -------------------------------------------------------------------------
 def climate_station_parameter_range_to(self):
-    
+
     default = current.messages["NONE"]
 
     if hasattr(row, "climate_station_parameter"):

@@ -5,9 +5,11 @@
 # To run this script use:
 # python web2py.py -S eden -M -R applications/eden/modules/unit_tests/s3/s3import.py
 #
+import datetime
 import unittest
 
 from gluon import *
+from gluon.storage import Storage
 
 try:
     import json # try stdlib (Python 2.6)
@@ -16,6 +18,8 @@ except ImportError:
         import simplejson as json # try external module
     except:
         import gluon.contrib.simplejson as json # fallback to pure-Python module
+
+from s3 import S3Duplicate, S3ImportItem, S3ImportJob, s3_meta_fields
 
 # =============================================================================
 class ListStringImportTests(unittest.TestCase):
@@ -62,7 +66,7 @@ class ListStringImportTests(unittest.TestCase):
 
         current.auth.override = False
         current.db.rollback()
-    
+
 # =============================================================================
 class DefaultApproverOverrideTests(unittest.TestCase):
     """ Test ability to override default approver in imports """
@@ -221,7 +225,7 @@ class PostParseTests(unittest.TestCase):
 
     # -------------------------------------------------------------------------
     def setUp(self):
-    
+
         current.auth.override = True
         self.pp = current.s3db.get_config("pr_person", "xml_post_parse")
 
@@ -377,12 +381,255 @@ class FailedReferenceTests(unittest.TestCase):
         org = s3db.resource("org_organisation", uid="TROY")
         self.assertEqual(before, org.count())
         org.delete()
-        
+
     # -------------------------------------------------------------------------
     def tearDown(self):
 
         current.db.rollback()
         current.auth.override = False
+
+# =============================================================================
+class DuplicateDetectionTests(unittest.TestCase):
+    """ Test cases for S3Duplicate """
+
+    @classmethod
+    def setUpClass(cls):
+
+        db = current.db
+
+        # Define test table
+        db.define_table("dedup_test",
+                        Field("name"),
+                        Field("secondary"),
+                        *s3_meta_fields())
+
+        # Create sample records
+        samples = (
+            {"uuid": "TEST0", "name": "Test0", "secondary": "SecondaryX"},
+            {"uuid": "TEST1", "name": "test1", "secondary": "Secondary1"},
+            {"uuid": "TEST2", "name": "Test2", "secondary": "seCondaryX"},
+            {"uuid": "TEST3", "name": "Test3", "secondary": "Secondary3"},
+            {"uuid": "TEST4", "name": "test4", "secondary": "Secondary4"},
+        )
+        table = db.dedup_test
+        for data in samples:
+            table.insert(**data)
+
+        current.db.commit()
+
+    @classmethod
+    def tearDownClass(cls):
+
+        db = current.db
+        db.dedup_test.drop()
+        db.commit()
+
+    def setUp(self):
+
+        # Create a dummy import job
+        self.job = S3ImportJob(current.db.dedup_test)
+
+        db = current.db
+        table = db.dedup_test
+        rows = db(table.id > 0).select(table.uuid, table.id)
+
+        ids = {}
+        uids = {}
+        for row in rows:
+            uids[row.id] = row.uuid
+            ids[row.uuid] = row.id
+
+        self.ids = ids
+        self.uids = uids
+
+    def tearDown(self):
+
+        self.job = None
+        self.ids = None
+        self.uids = None
+
+    # -------------------------------------------------------------------------
+    def testMatch(self):
+        """ Test match with primary/secondary field """
+
+        assertEqual = self.assertEqual
+
+        deduplicate = S3Duplicate(primary=("name",),
+                                  secondary=("secondary",),
+                                  )
+
+        # Dummy item for testing
+        item = S3ImportItem(self.job)
+        item.table = current.db.dedup_test
+
+        ids = self.ids
+
+        # Test primary match
+        item.id = None
+        item.method = item.METHOD.CREATE
+        item.data = Storage(name="Test0")
+
+        deduplicate(item)
+        assertEqual(item.id, ids["TEST0"])
+        assertEqual(item.method, item.METHOD.UPDATE)
+
+        # Test primary match + secondary match
+        item.id = None
+        item.method = item.METHOD.CREATE
+        item.data = Storage(name="Test2", secondary="secondaryX")
+
+        deduplicate(item)
+        assertEqual(item.id, ids["TEST2"])
+        assertEqual(item.method, item.METHOD.UPDATE)
+
+        # Test primary match + secondary mismatch
+        item.id = None
+        item.method = item.METHOD.CREATE
+        item.data = Storage(name="test4", secondary="secondaryX")
+
+        deduplicate(item)
+        assertEqual(item.id, None)
+        assertEqual(item.method, item.METHOD.CREATE)
+
+        # Test primary mismatch
+        item.id = None
+        item.method = item.METHOD.CREATE
+        item.data = Storage(name="Test")
+
+        deduplicate(item)
+        assertEqual(item.id, None)
+        assertEqual(item.method, item.METHOD.CREATE)
+
+    # -------------------------------------------------------------------------
+    def testDefaults(self):
+        """ Test default behavior """
+
+        assertEqual = self.assertEqual
+
+        deduplicate = S3Duplicate()
+
+        # Dummy item for testing
+        item = S3ImportItem(self.job)
+        item.table = current.db.dedup_test
+
+        ids = self.ids
+
+        # Test primary match
+        item.id = None
+        item.method = item.METHOD.CREATE
+        item.data = Storage(name="Test0")
+
+        deduplicate(item)
+        assertEqual(item.id, ids["TEST0"])
+        assertEqual(item.method, item.METHOD.UPDATE)
+
+        # Test primary match + secondary mismatch
+        item.id = None
+        item.method = item.METHOD.CREATE
+        item.data = Storage(name="test4", secondary="secondaryX")
+
+        deduplicate(item)
+        assertEqual(item.id, ids["TEST4"])
+        assertEqual(item.method, item.METHOD.UPDATE)
+
+        # Test primary mismatch
+        item.id = None
+        item.method = item.METHOD.CREATE
+        item.data = Storage(name="Test")
+
+        deduplicate(item)
+        assertEqual(item.id, None)
+        assertEqual(item.method, item.METHOD.CREATE)
+
+    # -------------------------------------------------------------------------
+    def testExceptions(self):
+        """ Test S3Duplicate exceptions for nonexistent fields """
+
+        assertRaises = self.assertRaises
+
+
+        # Dummy item for testing
+        item = S3ImportItem(self.job)
+        item.table = current.db.dedup_test
+
+        # Test invalid primary
+        deduplicate = S3Duplicate(primary=("nonexistent",))
+        item.id = None
+        item.method = item.METHOD.CREATE
+        item.data = Storage(name="Test0")
+
+        with assertRaises(SyntaxError):
+            deduplicate(item)
+
+        # Test invalid secondary
+        deduplicate = S3Duplicate(secondary=("nonexistent",))
+        item.id = None
+        item.method = item.METHOD.CREATE
+        item.data = Storage(name="Test0")
+
+        with assertRaises(SyntaxError):
+            deduplicate(item)
+
+        # Test invalid type
+        with assertRaises(TypeError):
+            deduplicate = S3Duplicate(primary=lambda: None)
+        with assertRaises(TypeError):
+            deduplicate = S3Duplicate(secondary=17)
+
+# =============================================================================
+class MtimeImportTests(unittest.TestCase):
+
+    def setUp(self):
+
+        current.auth.override = True
+
+    def tearDown(self):
+
+        current.auth.override = False
+        current.db.rollback()
+
+    # -------------------------------------------------------------------------
+    def testMtimeImport(self):
+        """
+            Verify that create-postprocess does not overwrite
+            imported modified_on
+        """
+
+        s3db = current.s3db
+
+        assertEqual = self.assertEqual
+
+        # Fixed modified_on date in the past
+        mtime = datetime.datetime(1988, 8, 13, 10, 0, 0)
+
+        xmlstr = """
+<s3xml>
+    <resource name="org_facility" modified_on="%(mtime)s" uuid="MTFAC">
+        <data field="name">MtimeTestOffice</data>
+        <reference field="organisation_id">
+            <resource name="org_organisation" modified_on="%(mtime)s" uuid="MTORG">
+                <data field="name">MtimeTestOrg</data>
+            </resource>
+        </reference>
+    </resource>
+</s3xml>""" % {"mtime": mtime.isoformat()}
+
+        from lxml import etree
+        tree = etree.ElementTree(etree.fromstring(xmlstr))
+
+        # Import the data
+        resource = s3db.resource("org_facility")
+        result = resource.import_xml(tree)
+
+        # Verify outer resource
+        resource = s3db.resource("org_facility", uid="MTFAC")
+        row = resource.select(["id", "modified_on"], as_rows=True)[0]
+        assertEqual(row.modified_on, mtime)
+
+        # Verify inner resource
+        resource = s3db.resource("org_organisation", uid="MTORG")
+        row = resource.select(["id", "modified_on"], as_rows=True)[0]
+        assertEqual(row.modified_on, mtime)
 
 # =============================================================================
 def run_suite(*test_classes):
@@ -405,6 +652,8 @@ if __name__ == "__main__":
         ComponentDisambiguationTests,
         PostParseTests,
         FailedReferenceTests,
+        DuplicateDetectionTests,
+        MtimeImportTests,
     )
 
 # END ========================================================================

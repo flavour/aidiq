@@ -2,7 +2,7 @@
 
 """ Sahana Eden Scenario Model
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -40,7 +40,7 @@ __all__ = ("S3ScenarioModel",
 from gluon import *
 from gluon.storage import Storage
 from ..s3 import *
-from ..s3layouts import S3AddResourceLink
+from ..s3layouts import S3PopupLink
 
 # =============================================================================
 class S3ScenarioModel(S3Model):
@@ -241,8 +241,10 @@ class S3ScenarioAssetModel(S3Model):
         self.define_table(tablename,
                           self.scenario_scenario_id(),
                           self.asset_asset_id(
-                            comment = S3AddResourceLink(c="asset", f="asset",
-                                                        tooltip = T("If you don't see the asset in the list, you can add a new one by clicking link 'Create Asset'.")),
+                            comment = S3PopupLink(c = "asset",
+                                                  f = "asset",
+                                                  tooltip = T("If you don't see the asset in the list, you can add a new one by clicking link 'Create Asset'."),
+                                                  ),
                             ),
                           *s3_meta_fields())
 
@@ -261,7 +263,7 @@ class S3ScenarioAssetModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
 # =============================================================================
 class S3ScenarioHRModel(S3Model):
@@ -301,7 +303,7 @@ class S3ScenarioHRModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
 # =============================================================================
 class S3ScenarioMapModel(S3Model):
@@ -382,7 +384,7 @@ class S3ScenarioOrganisationModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
 # =============================================================================
 class S3ScenarioSiteModel(S3Model):
@@ -421,7 +423,7 @@ class S3ScenarioSiteModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
 # =============================================================================
 class S3ScenarioTaskModel(S3Model):
@@ -463,7 +465,7 @@ class S3ScenarioTaskModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
 # -----------------------------------------------------------------------------
 def scenario_rheader(r, tabs=[]):

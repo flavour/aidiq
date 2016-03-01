@@ -28,7 +28,7 @@ def config():
             output["buttons"].pop("list_btn", None)
         return output
     s3.postp = postp
-    
+
     # Can't do anything else than update here
     r = s3_request(args=[str(record_id), "update"], extension="html")
     return r()
@@ -37,76 +37,144 @@ def config():
 def repository():
     """ Repository Management Controller """
 
-    tabs = [(T("Configuration"), None),
-            (T("Resources"), "task"),
-            (T("Schedule"), "job"),
-            (T("Log"), "log")
-            ]
-
     s3db.set_method("sync", "repository",
-                    method="register", action=current.sync)
-
-    crud_form = s3base.S3SQLCustomForm("resource_name",
-                                       "last_pull",
-                                       "last_push",
-                                       "mode",
-                                       "strategy",
-                                       "update_method",
-                                       "update_policy",
-                                       "conflict_policy",
-                                       s3base.S3SQLInlineComponent(
-                                             "resource_filter",
-                                             label = T("Filters"),
-                                             fields = ["tablename",
-                                                       "filter_string",
-                                                      ]
-                                       ),
-                                      )
-    s3db.configure("sync_task", crud_form=crud_form)
+                    method = "register",
+                    action = current.sync,
+                    )
 
     def prep(r):
         if r.interactive:
 
-            # Make the UUID field editable in the form
-            field = r.table.uuid
-            field.label = "UUID"
-            field.readable = True
-            field.writable = True
-            field.comment = DIV(_class="tooltip",
-                                _title="%s|%s" % (
-                                       T("Repository UUID"),
-                                       T("Identifier which the remote site uses to authenticate at this site when sending synchronization requests.")))
-            
-            if r.component and r.id:
-                if r.component.alias == "job":
+            if not r.component:
+
+                # Make the UUID field editable in the form
+                field = r.table.uuid
+                field.label = "UUID"
+                field.readable = True
+                field.writable = True
+                field.comment = DIV(_class="tooltip",
+                                    _title="%s|%s" % (
+                                           T("Repository UUID"),
+                                           T("Identifier which the remote site uses to authenticate at this site when sending synchronization requests."),
+                                           ),
+                                    )
+
+                # Inject script to show/hide relevant fields depending
+                # on the API type selected:
+                script = "s3.sync.js" if s3.debug else "s3.sync.min.js"
+                path = "/%s/static/scripts/S3/%s" % (appname, script)
+                if path not in s3.scripts:
+                    s3.scripts.append(path)
+
+            elif r.id:
+
+                alias = r.component.alias
+                if alias == "task":
+                    # Configure custom CRUD form
+                    apitype = r.record.apitype
+                    if apitype == "filesync":
+                        component_table = r.component.table
+                        for fname in ("infile_pattern",
+                                      "outfile_pattern",
+                                      "human_readable",
+                                      "delete_input_files",
+                                      ):
+                            field = component_table[fname]
+                            field.readable = field.writable = True
+                        infile_pattern = "infile_pattern"
+                        outfile_pattern = "outfile_pattern"
+                        human_readable = "human_readable"
+                        delete_input_files = "delete_input_files"
+                    else:
+                        infile_pattern = None
+                        outfile_pattern = None
+                        human_readable = None
+                        delete_input_files = None
+
+                    crud_form = s3base.S3SQLCustomForm(
+                                    "resource_name",
+                                    infile_pattern,
+                                    delete_input_files,
+                                    outfile_pattern,
+                                    human_readable,
+                                    "last_pull",
+                                    "last_push",
+                                    "mode",
+                                    "strategy",
+                                    #"update_method",
+                                    "update_policy",
+                                    "conflict_policy",
+                                    s3base.S3SQLInlineComponent(
+                                        "resource_filter",
+                                        label = T("Filters"),
+                                        fields = ["tablename",
+                                                  "filter_string",
+                                                  ],
+                                        ),
+                                    )
+
+                    list_fields = ["resource_name",
+                                   "mode",
+                                   "last_pull",
+                                   "last_push",
+                                   "strategy",
+                                   "update_policy",
+                                   "conflict_policy",
+                                   ]
+
+                    s3db.configure("sync_task",
+                                   crud_form = crud_form,
+                                   list_fields = list_fields,
+                                   )
+
+                elif alias == "job":
+                    # Configure sync-specific defaults for scheduler_task table
                     s3task.configure_tasktable_crud(
                         function="sync_synchronize",
                         args = [r.id],
-                        vars = dict(user_id = auth.user.id if auth.user else 0),
+                        vars = {"user_id": auth.user.id if auth.user else 0},
                         period = 600, # seconds, so 10 mins
-                        )
-                elif r.component.alias == "log" and r.component_id:
+                    )
+
+                elif alias == "log" and r.component_id:
                     table = r.component.table
                     table.message.represent = lambda msg: \
                                                 DIV(s3base.s3_strip_markup(msg),
-                                                    _class="message-body")
-                s3.cancel = URL(c="sync", f="repository",
-                                args=[str(r.id), r.component.alias])
+                                                    _class="message-body",
+                                                    )
+                s3.cancel = URL(c = "sync",
+                                f = "repository",
+                                args = [str(r.id), alias],
+                                )
+
         return True
     s3.prep = prep
 
     def postp(r, output):
         if r.interactive and r.id:
             if r.component and r.component.alias == "job":
-                s3.actions = [
-                    dict(label=str(T("Reset")),
-                         _class="action-btn",
-                         url=URL(c="sync", f="repository",
-                                 args=[str(r.id), "job", "[id]", "reset"]))
-                    ]
+                s3.actions = [dict(label=str(T("Reset")),
+                                   _class="action-btn",
+                                   url=URL(c="sync",
+                                           f="repository",
+                                           args=[str(r.id),
+                                                 "job",
+                                                 "[id]",
+                                                 "reset",
+                                                 ],
+                                           ),
+                                   )
+                              ]
         s3_action_buttons(r)
         return output
     s3.postp = postp
+
+    # Rheader tabs for repositories
+    tabs = [(T("Configuration"), None),
+            (T("Resources"), "task"),
+            (T("Schedule"), "job"),
+            (T("Log"), "log"),
+            ]
 
     rheader = lambda r: s3db.sync_rheader(r, tabs=tabs)
     return s3_rest_controller("sync", "repository", rheader=rheader)
@@ -115,29 +183,37 @@ def repository():
 def sync():
     """ Synchronization """
 
-    if "resource" in get_vars:
-        tablename = get_vars["resource"]
-        if "_" in tablename:
+    tablename = get_vars.get("resource")
+    if not tablename or tablename == "mixed":
+        # Sync adapter to determine/negotiate the resource(s)
+        mixed = True
+        tablename = "sync_repository"
+    else:
+        # Resource determined by request
+        mixed = False
 
-            # URL variables from peer:
-            # repository ID, msince and sync filters
-            get_vars_new = Storage(include_deleted=True)
-            
-            for k, v in get_vars.items():
-                if k in ("repository", "msince") or \
-                   k[0] == "[" and "]" in k:
-                    get_vars_new[k] = v
+    if tablename and "_" in tablename:
 
-            # Request
-            prefix, name = tablename.split("_", 1)
-            r = s3_request(prefix=prefix,
-                           name=name,
-                           args=["sync"],
-                           get_vars=get_vars_new)
+        get_vars_new = Storage(include_deleted=True)
 
-            # Response
-            output = r()
-            return output
+        # Copy URL variables from peer:
+        # repository ID, msince and sync filters
+        for k, v in get_vars.items():
+            if k in ("repository", "msince") or \
+               k[0] == "[" and "]" in k:
+                get_vars_new[k] = v
+
+        # Request
+        prefix, name = tablename.split("_", 1)
+        r = s3_request(prefix = prefix,
+                       name = name,
+                       args = ["sync"],
+                       get_vars = get_vars_new,
+                       )
+
+        # Response
+        output = r(mixed=mixed)
+        return output
 
     raise HTTP(400, body=current.ERROR.BAD_REQUEST)
 
@@ -155,15 +231,18 @@ def log():
 
     def prep(r):
         if r.record:
-            r.table.message.represent = lambda msg: DIV(s3base.s3_strip_markup(msg),
-                                                         _class="message-body")
+            r.table.message.represent = lambda msg: \
+                                            DIV(s3base.s3_strip_markup(msg),
+                                                _class="message-body",
+                                                )
         return True
     s3.prep = prep
 
     output = s3_rest_controller("sync", "log",
                                 subtitle=None,
                                 rheader=s3base.S3SyncLog.rheader,
-                                list_btn=list_btn)
+                                list_btn=list_btn,
+                                )
     return output
 
 # END =========================================================================

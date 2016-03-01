@@ -478,6 +478,7 @@ div.dl {
 .dl-item {
     float: left;
     padding: 3px 5px 3px 5px;
+    width: 98.7%;
 }
 .dl-row.even,
 .dl-row.even .dl-item {
@@ -521,7 +522,8 @@ div.dl {
     padding-bottom: 2px;
 }
 .card_1_line {
-    height: 14px; /* Height needs to be same with or without contents */
+    height: 16px; /* Height needs to be same with or without contents */
+    line-height: normal;
     margin-bottom: 0;
     text-overflow: none;
     overflow: hidden;
@@ -553,8 +555,9 @@ ul.ui-autocomplete {
     overflow: auto;
 }
 
-/* Required Field indicator */
+/* Red indicators */
 .error,
+.expired,
 .req,
 .req_key {
     color: red;
@@ -967,20 +970,16 @@ span.tab_next_inactive a {
 .box_top {
    padding-top: 8px;
 }
+.box_top_inner {
+   padding-top: 0.2rem;
+   padding-bottom: 0.5rem;
+}
 form table td.box_top_td {
     padding-top: 8px;
 }
-
 .box_top label,
 .box_top_inner label {
-    display: block;
-    /* @ToDo: Move colour out of widgets.css */
-    background-color: #fbfbfb;
-    float: left;
-    margin-top: -6px;
-    margin-left: 50px;
-    padding: 0 10px;
-    width: auto;
+    display: inline-block;
 }
 
 .box_bottom { /* For Bootstrap */
@@ -1004,10 +1003,9 @@ form table tr.box_bottom td { /* For regular themes */
 
 /* Add Person 2 */
 .add_person_edit_bar {
-    float: right;
-    padding-right: 10px;
-    padding-top: 5px;
     cursor: pointer;
+    display: inline-block;
+    padding-left: 1.2rem;
 }
 .add_person_edit_bar a {
     text-decoration: none;
@@ -1292,7 +1290,8 @@ ul.x-tree-root-ct {
 .s3-checkboxes-widget input,
 .s3-groupedopts-widget input
 {
-    float: left;
+    display: inline-block;
+    vertical-align: middle;
 }
 .s3-checkboxes-widget-filter input {
     vertical-align: middle;
@@ -1324,8 +1323,7 @@ ul.x-tree-root-ct {
 /* Vertical arrangement of multi-button multi-select filter widgets such as S3LocationFilter */
 .filter-form .ui-multiselect.ui-widget.ui-state-default.ui-corner-all,
 .form-container .ui-multiselect.ui-widget.ui-state-default.ui-corner-all {
-    clear: left;
-    float: left;
+    display: block;
     min-width: 220px;
 }
 
@@ -1342,11 +1340,6 @@ ul.x-tree-root-ct {
 /* Don't display the default widget, only the multiselect generated widget is displayed */
 select.multiselect-filter-widget {
     display: none;
-}
-
-body.rtl .filter-form .ui-multiselect.ui-widget.ui-state-default.ui-corner-all {
-    clear: right;
-    float: right;
 }
 
 .filter-advanced {
@@ -1537,7 +1530,8 @@ body.rtl label.ui-corner-all span {
 }
 
 /* Hierarchy Widget */
-.s3-hierarchy-tree.jstree {
+.s3-hierarchy-tree.jstree,
+.s3-hierarchy-header {
     border: 1px solid #ccc;
     padding: 2px 3px 4px 3px;
     background: white;
@@ -1547,6 +1541,20 @@ body.rtl label.ui-corner-all span {
 */
 /*  max-height: 360px;
     overflow-y: auto;*/
+}
+.jstree-contextmenu {
+    z-index: 9999;
+}
+.s3-hierarchy-wrapper {
+    z-index: 9998;
+}
+.s3-hierarchy-header {
+    font-size: 0.8rem;
+    display: none;
+}
+.s3-hierarchy-action-node,
+.s3-hierarchy-none {
+    font-style: italic;
 }
 
 /* Saved Filters Page - Inline Editor for Filter Titles */
@@ -1617,10 +1625,10 @@ button.toggle-text {
 	margin: 0 2px 2px 0;
 }
 .ajax_more.collapsed {
-	background: url(../../img/icon_blue_plus15px.png) no-repeat left top; 
+	background: url(../../img/icon_blue_plus15px.png) no-repeat left top;
 }
 .ajax_more.expanded {
-	background: url(../../img/icon_blue_minus15px.png) no-repeat left top; 
+	background: url(../../img/icon_blue_minus15px.png) no-repeat left top;
 }
 
 /* Simile Timeline */
@@ -1643,6 +1651,9 @@ button.toggle-text {
 .s3-unmask {
     margin-left: 10px;
     cursor: pointer;
+}
+.s3-password-widget {
+    display: inline-block;
 }
 
 /* Tweet Display */

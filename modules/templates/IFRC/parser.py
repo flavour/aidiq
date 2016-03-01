@@ -5,7 +5,7 @@
 
     Template-specific Message Parsers are defined here.
 
-    @copyright: 2013-2015 (c) Sahana Software Foundation
+    @copyright: 2013-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -153,7 +153,7 @@ class S3Parser(object):
                     hr_id = rows[0][htable.id]
             if hr_id:
                 data["human_resource_id"] = hr_id
-                
+
         table = s3db.deploy_response
         table.insert(**data)
 

@@ -12,34 +12,46 @@ if not settings.has_module(module):
 
 s3db.hrm_vars()
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 def index():
-    """ Module's Home Page """
+    """ Customisable module homepage """
 
-    module_name = settings.modules[module].name_nice
-    response.title = module_name
-    return dict(module_name=module_name)
+    return settings.customise_home(module, alt_function="index_alt")
 
-# =============================================================================
+# -----------------------------------------------------------------------------
+def index_alt():
+    """
+        Fallback for module homepage when not customised and
+        no CMS content found (ADMINs will see CMS edit unless
+        disabled globally via settings.cms.hide_index)
+    """
+
+    # Just redirect to the Mission Summary View
+    s3_redirect_default(URL(f="mission", args="summary"))
+
+# -----------------------------------------------------------------------------
 def mission():
     """ RESTful CRUD Controller """
 
     def prep(r):
         # Configure created_on field in deploy_mission
-        created_on = r.table.created_on
-        created_on.readable = True
-        created_on.label = T("Date Created")
-        created_on.represent = lambda d: \
-                               s3base.S3DateTime.date_represent(d, utc=True)
+        #created_on = r.table.created_on
+        #created_on.readable = True
+        #created_on.label = T("Date Created")
+        #created_on.represent = lambda d: \
+        #                       s3base.S3DateTime.date_represent(d, utc=True)
         if r.id:
             # Mission-specific workflows return to the profile page
             tablename = r.tablename if not r.component else r.component.tablename
             next_url = r.url(component="", method="profile", vars={})
             if r.component_name == "alert":
                 alert_create_script()
+                if settings.get_deploy_manual_recipients():
+                    create_next = URL(f="alert", args=["[id]", "select"])
+                else:
+                    create_next = next_url
                 s3db.configure(tablename,
-                               create_next = URL(f="alert",
-                                                 args=["[id]", "select"]),
+                               create_next = create_next,
                                delete_next = next_url,
                                update_next = next_url,
                                )
@@ -78,6 +90,7 @@ def mission():
             if not r.component and \
                r.get_vars.get("~.status__belongs") == "2":
                 s3.crud_strings[r.tablename]["title_list"] = T("Active Missions")
+
         return True
     s3.prep = prep
 
@@ -102,17 +115,18 @@ def mission():
             # In component CRUD views, have a subtitle after the rheader
             output["rheader"] = TAG[""](output["rheader"],
                                         H3(output["subtitle"]))
+
         return output
     s3.postp = postp
 
     return s3_rest_controller(# Remove the title if we have a component
                               # (rheader includes the title)
-                              notitle=lambda r: {"title": ""} \
-                                             if r.component else None,
-                              rheader=s3db.deploy_rheader,
+                              notitle = lambda r: {"title": ""} \
+                                               if r.component else None,
+                              rheader = s3db.deploy_rheader,
                               )
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 def response_message():
     """
         RESTful CRUD Controller
@@ -123,7 +137,7 @@ def response_message():
                               custom_crud_buttons = {"list_btn": None},
                               )
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 def human_resource():
     """
         RESTful CRUD Controller
@@ -185,9 +199,10 @@ def application():
     settings.search.filter_manager = True
 
     def prep(r):
-        if not r.method and r.representation != "s3json":
-            r.method = "select"
-        if r.method == "select":
+        method = r.method
+        if not method and r.representation != "s3json":
+            r.method = method = "select"
+        if method == "select":
             r.custom_action = s3db.deploy_apply
         return True
     s3.prep = prep
@@ -311,6 +326,12 @@ def experience():
     return s3db.hrm_experience_controller()
 
 # -----------------------------------------------------------------------------
+def event_type():
+    """ RESTful CRUD Controller """
+
+    return s3_rest_controller("event", "event_type")
+
+# -----------------------------------------------------------------------------
 def job_title():
     """ RESTful CRUD Controller """
 
@@ -352,7 +373,7 @@ def person_search():
 
     return s3_rest_controller("pr", "person")
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 def alert_create_script():
     """
         Inject JS to help the Alert creation form
@@ -394,6 +415,7 @@ i18n.only_visible="%s"''' % (T("characters left"),
                              T("Only visible to Email recipients"))
     s3.js_global.append(i18n)
 
+# -----------------------------------------------------------------------------
 def alert():
     """ RESTful CRUD Controller """
 
@@ -409,24 +431,26 @@ def alert():
                     r.method = "select"
                 if r.method == "select":
                     r.custom_action = s3db.deploy_alert_select_recipients
+
             elif r.component_name == "response":
                 s3db.configure(r.component.tablename,
                                deletable = False,
                                editable = False,
                                insertable = False,
                                )
+
             elif r.component_name == "recipient":
                 settings.search.filter_manager = False
-                from s3.s3filter import S3TextFilter, S3OptionsFilter
+                from s3 import S3TextFilter, S3OptionsFilter
                 recipient_filters = [
-                    s3base.S3TextFilter([
+                    S3TextFilter([
                             "human_resource_id$person_id$first_name",
                             "human_resource_id$person_id$middle_name",
                             "human_resource_id$person_id$last_name",
                         ],
                         label=current.T("Name"),
                     ),
-                    s3base.S3OptionsFilter(
+                    S3OptionsFilter(
                         "human_resource_id$organisation_id",
                         widget="multiselect",
                         filter=True,
@@ -443,11 +467,14 @@ def alert():
                         )
                     )
                 s3db.configure(r.component.tablename,
-                               filter_widgets=recipient_filters)
+                               filter_widgets = recipient_filters,
+                               )
+
                 if r.record.message_id:
                     s3db.configure(r.component.tablename,
-                                   insertable=False,
-                                   deletable=False)
+                                   deletable = False,
+                                   insertable = False,
+                                   )
         else:
             if r.record:
                 if r.record.message_id:
@@ -458,19 +485,17 @@ def alert():
                                    )
             else:
                 alert_create_script()
+                if settings.get_deploy_manual_recipients():
+                    create_next = URL(f="alert", args=["[id]", "select"])
+                else:
+                    create_next = URL(f="alert", args=["[id]", "recipient"])
                 s3db.configure(r.tablename,
-                               create_next = URL(f="alert",
-                                                 args=["[id]", "select"]),
+                               create_next = create_next,
                                deletable = False,
                                # @ToDo: restrict in postp to change this action button
                                #editable = False,
                                )
 
-            created_on = r.table.modified_on
-            created_on.readable = True
-            created_on.label = T("Date")
-            created_on.represent = lambda d: \
-                                   s3base.S3DateTime.date_represent(d, utc=True)
         return True
     s3.prep = prep
 
@@ -484,6 +509,7 @@ def alert():
                                "_class": "action-btn read",
                                }
                               ]
+
             if r.component_name == "recipient":
                 # Open should open the HR profile, not the link
                 open_url = URL(f="human_resource",
@@ -519,6 +545,7 @@ def alert():
                            "_class": "delete-btn",
                            },
                           ]
+
         return output
     s3.postp = postp
 
@@ -528,6 +555,41 @@ def alert():
                                              "_default": True,
                                              }
                               )
+
+# -----------------------------------------------------------------------------
+def alert_response():
+    """
+        RESTful CRUD Controller
+        - used to allow RIT Memebers to apply for Positions
+
+        @ToDo: Block all methods but CREATE => what next_url?
+    """
+
+    alert_id = get_vars.get("alert_id")
+    if alert_id:
+        table = s3db.deploy_response
+        f = table.alert_id
+        f.readable = f.writable = False
+        f.default = alert_id
+        atable = s3db.deploy_alert
+        alert = db(atable.id == alert_id).select(atable.mission_id,
+                                                 limitby=(0, 1),
+                                                 ).first()
+        if alert:
+            f = table.mission_id
+            f.readable = f.writable = False
+            f.default = alert.mission_id
+        human_resource_id = auth.s3_logged_in_human_resource()
+        if human_resource_id:
+            f = table.human_resource_id_id
+            f.readable = f.writable = False
+            f.default = alert_id
+        table.message_id.readable = False
+    #else:
+    #    # Block
+    #    pass
+
+    return s3_rest_controller("deploy", "response")
 
 # -----------------------------------------------------------------------------
 def email_inbox():
@@ -705,7 +767,7 @@ def email_channel():
 
     return s3_rest_controller("msg")
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 def alert_recipient():
     """
         RESTful CRUD controller for options.s3json lookups
@@ -716,9 +778,9 @@ def alert_recipient():
 
     return s3_rest_controller()
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Messaging
-# =============================================================================
+#
 def compose():
     """ Send message to people/teams """
 

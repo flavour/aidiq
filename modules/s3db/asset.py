@@ -2,7 +2,7 @@
 
 """ Sahana Eden Assets Model
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -50,7 +50,6 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
-from s3layouts import S3AddResourceLink
 
 ASSET_TYPE_VEHICLE   = 1   # => Extra Tab(s) for Registration Documents, Fuel Efficiency
 #ASSET_TYPE_RADIO     = 2   # => Extra Tab(s) for Radio Channels/Frequencies
@@ -103,6 +102,8 @@ class S3AssetModel(S3Model):
         T = current.T
         db = current.db
         auth = current.auth
+        user = auth.user
+        LOGGED_IN = auth.is_logged_in()
         s3 = current.response.s3
 
         item_id = self.supply_item_id
@@ -191,10 +192,11 @@ class S3AssetModel(S3Model):
                            readable = False,
                            writable = False,
                            ),
-                     organisation_id(requires=self.org_organisation_requires(
-                                                 updateable=True,
-                                                 #required=True
-                                              ),
+                     organisation_id(default = user.organisation_id if LOGGED_IN else None,
+                                     requires = self.org_organisation_requires(
+                                                updateable=True,
+                                                #required=True
+                                                ),
                                      required = True,
                                      script = \
 '''$.filterOptionsS3({
@@ -209,7 +211,7 @@ class S3AssetModel(S3Model):
                      # This is a component, so needs to be a super_link
                      # - can't override field name, ondelete or requires
                      super_link("site_id", "org_site",
-                                default = auth.user.site_id if auth.is_logged_in() else None,
+                                default = user.site_id if LOGGED_IN else None,
                                 empty = False,
                                 label = org_site_label,
                                 ondelete = "RESTRICT",
@@ -432,7 +434,7 @@ class S3AssetModel(S3Model):
         tablename = "asset_item"
         define_table(tablename,
                      item_entity_id,
-                     asset_id(ondelete="CASCADE"),
+                     asset_id(ondelete = "CASCADE"),
                      item_id(represent = supply_item_represent,
                              requires = IS_ONE_OF(asset_items_set,
                                                   "supply_item.id",
@@ -541,20 +543,20 @@ $.filterOptionsS3({
                      # This is a component, so needs to be a super_link
                      # - can't override field name, ondelete or requires
                      super_link("site_id", "org_site",
+                                #default = user.site_id if LOGGED_IN else None,
+                                empty = False,
                                 label = org_site_label,
                                 #filterby = "site_id",
                                 #filter_opts = auth.permitted_facilities(redirect_on_error=False),
                                 instance_types = auth.org_site_types,
-                                updateable = True,
                                 not_filterby = "obsolete",
                                 not_filter_opts = (True,),
-                                #default = user.site_id if is_logged_in() else None,
+                                represent = self.org_site_represent,
                                 readable = True,
                                 writable = True,
-                                empty = False,
-                                represent = self.org_site_represent,
-                                #widget = S3SiteAutocompleteWidget(),
                                 script = script,
+                                updateable = True,
+                                #widget = S3SiteAutocompleteWidget(),
                                 ),
                      self.org_room_id(),
                      #location_id(),
@@ -582,9 +584,8 @@ $.filterOptionsS3({
                      *s3_meta_fields())
 
         # CRUD strings
-        ADD_ASSIGN = T("New Entry in Asset Log")
         crud_strings[tablename] = Storage(
-            label_create = ADD_ASSIGN,
+            label_create = T("New Entry in Asset Log"),
             title_display = T("Asset Log Details"),
             title_list = T("Asset Log"),
             title_update = T("Edit Asset Log Entry"),
@@ -866,7 +867,7 @@ class S3AssetHRModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
 # =============================================================================
 class S3AssetTeamModel(S3Model):
@@ -895,7 +896,7 @@ class S3AssetTeamModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
 # =============================================================================
 class S3AssetTelephoneModel(S3Model):
@@ -960,7 +961,7 @@ class S3AssetTelephoneModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
 # =============================================================================
 def asset_get_current_log(asset_id):
@@ -1395,7 +1396,7 @@ class asset_AssetRepresent(S3Represent):
             represent = "%s, %s)" % (represent, brand)
         else:
             represent = "%s)" % represent
-        return s3_unicode(represent)
+        return s3_str(represent)
 
     # -------------------------------------------------------------------------
     def link(self, k, v, row=None):

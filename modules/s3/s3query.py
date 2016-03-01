@@ -2,7 +2,7 @@
 
 """ S3 Query Construction
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -40,7 +40,7 @@ import datetime
 import re
 import sys
 
-from gluon import current
+from gluon import current, IS_EMPTY_OR, IS_IN_SET
 from gluon.storage import Storage
 
 from s3dal import Field, Row
@@ -223,7 +223,8 @@ class S3FieldSelector(object):
             try:
                 value = value()
             except:
-                current.log.error(sys.exc_info()[1])
+                t, m = sys.exc_info()[:2]
+                current.log.error("%s.%s: %s" % (tname, fname, str(m) or t.__name__))
                 value = None
 
         if hasattr(field, "expr"):
@@ -696,6 +697,14 @@ class S3ResourceField(object):
         self.label = label
         self.show = True
 
+        # Field type category flags
+        self._is_numeric = None
+        self._is_lookup = None
+        self._is_string = None
+        self._is_datetime = None
+        self._is_reference = None
+        self._is_list = None
+
     # -------------------------------------------------------------------------
     def __repr__(self):
         """ String representation of this instance """
@@ -795,6 +804,123 @@ class S3ResourceField(object):
         else:
             return value
 
+    # -------------------------------------------------------------------------
+    @property
+    def is_lookup(self):
+        """
+            Check whether the field type is a fixed set lookup (IS_IN_SET)
+
+            @return: True if field type is a fixed set lookup, else False
+        """
+
+        is_lookup = self._is_lookup
+        if is_lookup is None:
+
+            is_lookup = False
+
+            ftype = self.ftype
+            field = self.field
+
+            if field:
+                requires = field.requires
+                if requires:
+                    if not isinstance(requires, (list, tuple)):
+                        requires = [requires]
+                    requires = requires[0]
+                    if isinstance(requires, IS_EMPTY_OR):
+                        requires = requires.other
+                    if isinstance(requires, IS_IN_SET):
+                        is_lookup = True
+                if is_lookup and requires and self.ftype == "integer":
+                    # Discrete numeric values?
+                    options = requires.options(zero=False)
+                    if all(k == v for k, v in options):
+                        is_lookup = False
+            self._is_lookup = is_lookup
+        return is_lookup
+
+    # -------------------------------------------------------------------------
+    @property
+    def is_numeric(self):
+        """
+            Check whether the field type is numeric (lazy property)
+
+            @return: True if field type is integer or double, else False
+        """
+
+        is_numeric = self._is_numeric
+        if is_numeric is None:
+
+            ftype = self.ftype
+            field = self.field
+
+            if ftype == "integer" and self.is_lookup:
+                is_numeric = False
+            else:
+                is_numeric = ftype in ("integer", "double")
+            self._is_numeric = is_numeric
+        return is_numeric
+
+    # -------------------------------------------------------------------------
+    @property
+    def is_string(self):
+        """
+            Check whether the field type is a string type (lazy property)
+
+            @return: True if field type is string or text, else False
+        """
+
+        is_string = self._is_string
+        if is_string is None:
+            is_string = self.ftype in ("string", "text")
+            self._is_string = is_string
+        return is_string
+
+    # -------------------------------------------------------------------------
+    @property
+    def is_datetime(self):
+        """
+            Check whether the field type is date/time (lazy property)
+
+            @return: True if field type is datetime, date or time, else False
+        """
+
+        is_datetime = self._is_datetime
+        if is_datetime is None:
+            is_datetime = self.ftype in ("datetime", "date", "time")
+            self._is_datetime = is_datetime
+        return is_datetime
+
+    # -------------------------------------------------------------------------
+    @property
+    def is_reference(self):
+        """
+            Check whether the field type is a reference (lazy property)
+
+            @return: True if field type is a reference, else False
+        """
+
+        is_reference = self._is_reference
+        if is_reference is None:
+            is_reference = self.ftype[:9] == "reference"
+            self._is_reference = is_reference
+        return is_reference
+
+    # -------------------------------------------------------------------------
+    @property
+    def is_list(self):
+        """
+            Check whether the field type is a list (lazy property)
+
+            @return: True if field type is a list, else False
+        """
+
+        is_list = self._is_list
+        if is_list is None:
+            is_list = self.ftype[:5] == "list:"
+            self._is_list = is_list
+        return is_list
+
 # =============================================================================
 class S3Joins(object):
     """ A collection of joins """
@@ -857,6 +983,15 @@ class S3Joins(object):
                     joins_dict[tname] = [join]
         self.tables.add(tablename)
         return
+
+    # -------------------------------------------------------------------------
+    def __len__(self):
+        """
+            Return the number of tables in the join, for boolean
+            test of this instance ("if joins:")
+        """
+
+        return len(self.tables)
 
     # -------------------------------------------------------------------------
     def keys(self):
@@ -1407,7 +1542,10 @@ class S3ResourceQuery(object):
         elif op == self.TYPEOF:
             q = self._query_typeof(l, r)
         elif op == self.LIKE:
-            q = l.like(s3_unicode(r))
+            if current.deployment_settings.get_database_airegex():
+                q = S3AIRegex.like(l, r)
+            else:
+                q = l.like(s3_unicode(r))
         elif op == self.LT:
             q = l < r
         elif op == self.LE:
@@ -1776,6 +1914,7 @@ class S3ResourceQuery(object):
             result = self._probe_contains(r, l)
 
         elif op == self.LIKE:
+            # @todo: apply AIRegex if configured
             pattern = re.escape(str(r)).replace("\\%", ".*").replace(".*.*", "\\%")
             return re.match(pattern, str(l)) is not None
 
@@ -2019,7 +2158,10 @@ class S3URLQuery(object):
 
         for key, value in vars.iteritems():
 
-            if key == "$filter":
+            if not key:
+                continue
+
+            elif key == "$filter":
                 # Instantiate the advanced filter parser
                 parser = S3URLQueryParser()
                 if parser.parser is None:
@@ -2046,7 +2188,8 @@ class S3URLQuery(object):
                 # Stop here
                 continue
 
-            elif not("." in key or key[0] == "(" and ")" in key):
+            elif key[0] == "_" or \
+                 not("." in key or key[0] == "(" and ")" in key):
                 # Not a filter expression
                 continue
 
@@ -2204,16 +2347,29 @@ class S3URLQuery(object):
 
         v = cls.parse_value(value)
 
+        # Auto-lowercase, escape, and replace wildcards
+        like = lambda s: s3_unicode(s).lower() \
+                                      .replace("%", "\\%") \
+                                      .replace("_", "\\_") \
+                                      .replace("?", "_") \
+                                      .replace("*", "%") \
+                                      .encode("utf-8")
+
         q = None
+
+        # Don't repeat LIKE-escaping for multiple selectors
+        escaped = False
+
         for fs in selectors:
 
             if op == S3ResourceQuery.LIKE:
-                # Auto-lowercase and replace wildcard
                 f = S3FieldSelector(fs).lower()
-                if isinstance(v, basestring):
-                    v = v.replace("*", "%").lower()
-                elif isinstance(v, list):
-                    v = [x.replace("*", "%").lower() for x in v if x is not None]
+                if not escaped:
+                    if isinstance(v, basestring):
+                        v = like(v)
+                    elif isinstance(v, list):
+                        v = [like(s) for s in v if s is not None]
+                    escaped = True
             else:
                 f = S3FieldSelector(fs)
 
@@ -2238,6 +2394,118 @@ class S3URLQuery(object):
                 q |= rquery
 
         return q
+
+# =============================================================================
+class S3AIRegex(object):
+    """
+        Helper class to construct quasi-accent-insensitive text search
+        queries based on SQL regular expressions (REGEXP).
+
+        Important: This will return complete nonsense if the REGEXP
+                   implementation of the DBMS is not multibyte-safe,
+                   so it must be suppressed for those cases (see also
+                   modules/s3config.py)!
+    """
+
+    # Groups with diacritic variants of the same character
+    GROUPS = (
+        u"aăâåãáàẩắằầảẳẵẫấạặậǻ",
+        u"äæ",
+        u"cçćĉ",
+        u"dđð",
+        u"eêèềẻểẽễéếẹệë",
+        u"gǵĝ",
+        u"hĥ",
+        u"iìỉĩíịîïİ",
+        u"jĵ",
+        u"kḱ",
+        u"lĺ",
+        u"mḿ",
+        u"nñńǹ",
+        u"oôơòồờỏổởõỗỡóốớọộợ",
+        u"öøǿ",
+        u"pṕ",
+        u"rŕ",
+        u"sśŝ",
+        u"tẗ",
+        u"uưùừủửũữúứụựứüǘûǜ",
+        u"wẃŵẁ",
+        u"yỳỷỹýỵÿŷ",
+        u"zźẑ",
+    )
+
+    ESCAPE = ".*$^[](){}\\+?"
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def like(cls, l, r):
+        """
+            Query constructor
+
+            @param l: the left operand
+            @param r: the right operand (string)
+        """
+
+        string = cls.translate(r)
+        if string:
+            return l.lower().regexp("^%s$" % string)
+        else:
+            return l.like(r)
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def translate(cls, string):
+        """
+            Helper method to translate the search string into a regular
+            expression
+
+            @param string: the search string
+        """
+
+        if not string:
+            return None
+
+        match = False
+        output = []
+        append = output.append
+
+        GROUPS = cls.GROUPS
+        ESCAPE = cls.ESCAPE
+
+        escaped = False
+        for character in s3_unicode(string).lower():
+
+            result = None
+
+            # Translate any unescaped wildcard characters
+            if not escaped:
+                if character == "\\":
+                    escaped = True
+                    continue
+                elif character == "%":
+                    result = ".*"
+                elif character == "_":
+                    result = "."
+
+            if result is None:
+                if character in ESCAPE:
+                    result = "\\%s" % character
+                else:
+                    result = character
+                    for group in GROUPS:
+                        if character in group:
+                            match = True
+                            result = "[%s%s]{1}" % (group, group.upper())
+                            break
+
+            # Don't swallow backslashes that do not escape wildcards
+            if escaped and character not in ("%", "_"):
+                result = "\\%s" % result
+
+            escaped = False
+            append(result)
+
+        return "".join(output) if match else None
 
 # =============================================================================
 # Helper to combine multiple queries using AND
@@ -2291,8 +2559,8 @@ class S3URLQueryParser(object):
                 pp.Keyword("NONE") | \
                 pp.quotedString | \
                 pp.Word(pp.alphanums + pp.printables)
-        qe = pp.Group(pp.Group(expression | selector) + 
-                      comparison + 
+        qe = pp.Group(pp.Group(expression | selector) +
+                      comparison +
                       pp.originalTextFor(pp.delimitedList(value, combine=True)))
 
         parser = pp.operatorPrecedence(qe, [("not", 1, pp.opAssoc.RIGHT, ),
@@ -2475,6 +2743,7 @@ class S3URLQueryParser(object):
 
         value = S3URLQuery.parse_value(second.strip())
         if op == S3ResourceQuery.LIKE:
+            selector.lower()
             if isinstance(value, basestring):
                 value = value.replace("*", "%").lower()
             elif isinstance(value, list):

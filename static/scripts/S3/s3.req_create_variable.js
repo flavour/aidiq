@@ -3,7 +3,7 @@
 */
 
 $(document).ready(function() {
-    
+
     var span = '<span class="req"> *</span>';
 
     function idescape(input) {
@@ -24,9 +24,10 @@ $(document).ready(function() {
         $('#req_req_recv_by_id__row1 label').html(i18n.req_recv_by_id + ':');
         $('#req_req_purpose__row1').show();
         $('#req_req_purpose__row').show();
-        if (($('#req_req_comments').val() === '') || ($('#req_req_comments').val() == i18n.req_next_msg) || ($('#req_req_comments').val() == i18n.req_other_msg)) {
+        var comments = $('#req_req_comments').val();
+        if ((comments === '') || (comments == i18n.req_next_msg) || (comments == i18n.req_other_msg)) {
             $('#req_req_comments').addClass('default-text')
-                                  .attr({ value: i18n.req_other_msg })
+                                  .val(i18n.req_other_msg)
                                   .focus(function() {
                 if($(this).val() == i18n.req_other_msg){
                     // Clear on click if still default
@@ -60,9 +61,10 @@ $(document).ready(function() {
         $('.summary_item').remove();
         $('#req_req_purpose__row1').show();
         $('#req_req_purpose__row').show();
-        if (($('#req_req_comments').val() === '') || ($('#req_req_comments').val() == i18n.req_next_msg) || ($('#req_req_comments').val() == i18n.req_other_msg)) {
+        var comments = $('#req_req_comments').val();
+        if ((comments === '') || (comments == i18n.req_next_msg) || (comments == i18n.req_other_msg)) {
             $('#req_req_comments').addClass('default-text')
-                                  .attr({ value: i18n.req_next_msg })
+                                  .val(i18n.req_next_msg)
                                   .focus(function() {
                 if($(this).val() == i18n.req_next_msg){
                     // Clear on click if still default
@@ -128,7 +130,7 @@ $(document).ready(function() {
             if ($('#req_req_comments').val() == i18n.req_other_msg) {
                 // Default help still showing
                 // Requests of type 'Other' need this field to be mandatory
-                $('#req_req_comments').after('<div id="type__error" class="error" style="display: block;">i18n.req_details_mandatory</div>');
+                $('#req_req_comments').after('<div id="type__error" class="error" style="display: block;">' + i18n.req_details_mandatory + '</div>');
                 // Reset the Navigation protection
                 S3SetNavigateAwayConfirm();
                 // Move focus to this field

@@ -2,7 +2,7 @@
 
 """ Sahana Eden Disease Tracking Models
 
-    @copyright: 2014-2015 (c) Sahana Software Foundation
+    @copyright: 2014-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -51,7 +51,7 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
-from s3layouts import S3AddResourceLink
+from s3layouts import S3PopupLink
 
 # Monitoring upgrades {new_level:previous_levels}
 MONITORING_UPGRADE = {"OBSERVATION": ("NONE",
@@ -118,9 +118,9 @@ class DiseaseDataModel(S3Model):
                                                           represent,
                                                           ),
                                      sortby = "name",
-                                     comment = S3AddResourceLink(f="disease",
-                                                                 tooltip=T("Add a new disease to the catalog"),
-                                                                 ),
+                                     comment = S3PopupLink(f = "disease",
+                                                           tooltip = T("Add a new disease to the catalog"),
+                                                           ),
                                      )
 
         self.add_components(tablename,
@@ -365,9 +365,9 @@ class CaseTrackingModel(S3Model):
                                   requires = IS_ONE_OF(db, "disease_case.id",
                                                        represent,
                                                        ),
-                                  comment = S3AddResourceLink(f="case",
-                                                              tooltip=T("Add a new case"),
-                                                              ),
+                                  comment = S3PopupLink(f = "case",
+                                                        tooltip = T("Add a new case"),
+                                                        ),
                                   )
 
         # Components
@@ -465,9 +465,9 @@ class CaseTrackingModel(S3Model):
                                     requires = IS_ONE_OF(db, "disease_case.id",
                                                          represent,
                                                          ),
-                                    comment = S3AddResourceLink(f="case",
-                                                                tooltip=T("Add a new case"),
-                                                                ),
+                                    comment = S3PopupLink(f = "case",
+                                                          tooltip = T("Add a new case"),
+                                                          ),
                                     )
 
         # Components
@@ -852,13 +852,11 @@ class ContactTracingModel(S3Model):
                      case_id(),
                      s3_datetime("start_date",
                                  label = T("From"),
-                                 widget = S3DateTimeWidget(set_min="disease_end_date",
-                                                           ),
+                                 set_min="#disease_tracing_end_date",
                                  ),
                      s3_datetime("end_date",
                                  label = T("To"),
-                                 widget = S3DateTimeWidget(set_max="disease_start_date",
-                                                           ),
+                                 set_max="#disease_tracing_start_date",
                                  ),
                      # @todo: add site_id?
                      self.gis_location_id(),
@@ -883,9 +881,9 @@ class ContactTracingModel(S3Model):
                                                               represent,
                                                               )),
                                      sortby = "date",
-                                     comment = S3AddResourceLink(f="tracing",
-                                                                 tooltip=T("Add a new contact tracing information"),
-                                                                 ),
+                                     comment = S3PopupLink(f = "tracing",
+                                                           tooltip = T("Add a new contact tracing information"),
+                                                           ),
                                      )
 
         self.add_components(tablename,
@@ -982,13 +980,13 @@ class ContactTracingModel(S3Model):
             msg_list_empty = T("No Exposure Information currently registered"))
 
         # Pass names back to global scope (s3.*)
-        return dict()
+        return {}
 
     # -------------------------------------------------------------------------
     @staticmethod
     def defaults():
 
-        return dict()
+        return {}
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1239,11 +1237,11 @@ class DiseaseStatsModel(S3Model):
                                 readable = True,
                                 writable = True,
                                 empty = False,
-                                comment = S3AddResourceLink(c="disease",
-                                                            f="statistic",
-                                                            vars = dict(child = "parameter_id"),
-                                                            title=ADD_STATISTIC,
-                                                            ),
+                                comment = S3PopupLink(c = "disease",
+                                                      f = "statistic",
+                                                      vars = {"child": "parameter_id"},
+                                                      title = ADD_STATISTIC,
+                                                      ),
                                 ),
                      location_id(
                          requires = IS_LOCATION(),

@@ -53,17 +53,19 @@ __all__ = ("single_phone_number_pattern",
            "IS_ONE_OF_EMPTY",
            "IS_ONE_OF_EMPTY_SELECT",
            "IS_NOT_ONE_OF",
+           "IS_PERSON_GENDER",
            "IS_PHONE_NUMBER",
            "IS_PROCESSED_IMAGE",
            "IS_SITE_SELECTOR",
            "IS_UTC_DATETIME",
+           "IS_UTC_DATE",
            "IS_UTC_OFFSET",
            "QUANTITY_INV_ITEM",
            )
 
+import datetime
 import re
 import time
-from datetime import datetime, timedelta
 
 JSONErrors = (NameError, TypeError, ValueError, AttributeError, KeyError)
 try:
@@ -78,11 +80,12 @@ except ImportError:
 
 from gluon import *
 #from gluon import current
-#from gluon.validators import IS_DATE_IN_RANGE, IS_MATCH, IS_NOT_IN_DB, IS_IN_SET, IS_INT_IN_RANGE, IS_FLOAT_IN_RANGE, IS_EMAIL
+#from gluon.validators import IS_MATCH, IS_NOT_IN_DB, IS_IN_SET, IS_INT_IN_RANGE, IS_FLOAT_IN_RANGE, IS_EMAIL
 from gluon.storage import Storage
 from gluon.validators import Validator
 
-from s3utils import S3DateTime, s3_orderby_fields, s3_unicode, s3_validate
+from s3datetime import S3DateTime
+from s3utils import s3_orderby_fields, s3_str, s3_unicode, s3_validate
 
 def translate(text):
     if text is None:
@@ -118,6 +121,7 @@ s3_phone_requires = IS_MATCH(multi_phone_number_pattern,
 # =============================================================================
 class IS_JSONS3(Validator):
     """
+    Web2Py IS_JSON validator extended for CSV imports
     Example:
         Used as::
 
@@ -395,7 +399,7 @@ class IS_INT_AMOUNT(IS_INT_IN_RANGE):
     def __call__(self, value):
 
         thousands_sep = ","
-        value = str(value).replace(thousands_sep, "")
+        value = s3_str(value).replace(thousands_sep, "")
         return IS_INT_IN_RANGE.__call__(self, value)
 
     # -------------------------------------------------------------------------
@@ -472,7 +476,7 @@ class IS_FLOAT_AMOUNT(IS_FLOAT_IN_RANGE):
     def __call__(self, value):
 
         thousands_sep = ","
-        value = str(value).replace(thousands_sep, "")
+        value = s3_str(value).replace(thousands_sep, "")
         return IS_FLOAT_IN_RANGE.__call__(self, value)
 
     # -------------------------------------------------------------------------
@@ -2069,13 +2073,18 @@ class IS_ADD_PERSON_WIDGET2(Validator):
     """
 
     def __init__(self,
-                 error_message=None,
-                 allow_empty=False):
+                 error_message = None,
+                 allow_empty = False,
+                 first_name_only = None,
+                 separate_name_fields = None,
+                 ):
         """
             Constructor
 
             @param error_message: alternative error message
             @param allow_empty: allow the selector to be left empty
+            @param first_name_only: put all name elements into first_name field
+                                    None => activate if RTL otherwise don't
 
             @note: This validator can *not* be used together with IS_EMPTY_OR,
                    because when a new person gets entered, the submitted value
@@ -2087,6 +2096,8 @@ class IS_ADD_PERSON_WIDGET2(Validator):
 
         self.error_message = error_message
         self.allow_empty = allow_empty
+        self.first_name_only = first_name_only
+        self.separate_name_fields = separate_name_fields
 
         # Tell s3_mark_required that this validator doesn't accept NULL values
         self.mark_required = not allow_empty
@@ -2094,7 +2105,8 @@ class IS_ADD_PERSON_WIDGET2(Validator):
     # -------------------------------------------------------------------------
     def __call__(self, value):
 
-        if current.response.s3.bulk:
+        s3 = current.response.s3
+        if s3.bulk:
             # Pointless in imports
             return (value, None)
 
@@ -2118,6 +2130,11 @@ class IS_ADD_PERSON_WIDGET2(Validator):
             T = current.T
             db = current.db
             s3db = current.s3db
+            settings = current.deployment_settings
+
+            separate_name_fields = self.separate_name_fields
+            if separate_name_fields is None:
+                separate_name_fields = settings.get_pr_separate_name_fields()
 
             ptable = db.pr_person
             ctable = s3db.pr_contact
@@ -2172,8 +2189,7 @@ class IS_ADD_PERSON_WIDGET2(Validator):
 
                 # No email?
                 if not value:
-                    email_required = \
-                        current.deployment_settings.get_hrm_email_required()
+                    email_required = settings.get_hrm_email_required()
                     if email_required:
                         return (value, error_message)
                     return (value, None)
@@ -2198,8 +2214,8 @@ class IS_ADD_PERSON_WIDGET2(Validator):
                 # Ok!
                 return value, None
 
-            _vars = request.post_vars
-            mobile = _vars["mobile_phone"]
+            post_vars = request.post_vars
+            mobile = post_vars["mobile_phone"]
             if mobile:
                 # Validate the mobile phone number
                 validator = IS_PHONE_NUMBER(international = True)
@@ -2207,7 +2223,7 @@ class IS_ADD_PERSON_WIDGET2(Validator):
                 if error:
                     return (person_id, error)
 
-            home_phone = _vars.get("home_phone", None)
+            home_phone = post_vars.get("home_phone", None)
             if home_phone:
                 # Validate the home phone number
                 validator = IS_PHONE_NUMBER()
@@ -2215,23 +2231,27 @@ class IS_ADD_PERSON_WIDGET2(Validator):
                 if error:
                     return (person_id, error)
 
+            dob = post_vars["date_of_birth"]
+            if not dob and settings.get_pr_dob_required():
+                return (person_id, T("Date of Birth is Required"))
+
             #if person_id:
             #    # Filter out location_id (location selector form values
             #    # being processed only after this widget has been validated)
-            #    _vars = Storage([(k, _vars[k])
-            #                     for k in _vars if k != "location_id"])
+            #    post_vars = Storage([(k, post_vars[k])
+            #                         for k in post_vars if k != "location_id"])
 
             #    # Separate the Name into components
-            #    first_name, middle_name, last_name = name_split(_vars["full_name"])
-            #    _vars["first_name"] = first_name
-            #    _vars["middle_name"] = middle_name
-            #    _vars["last_name"] = last_name
+            #    first_name, middle_name, last_name = name_split(post_vars["full_name"])
+            #    post_vars["first_name"] = first_name
+            #    post_vars["middle_name"] = middle_name
+            #    post_vars["last_name"] = last_name
 
             #    # Validate and update the person record
             #    query = (ptable.id == person_id)
             #    data = Storage()
-            #    for f in ptable._filter_fields(_vars):
-            #        value, error = s3_validate(ptable, f, _vars[f])
+            #    for f in ptable._filter_fields(post_vars):
+            #        value, error = s3_validate(ptable, f, post_vars[f])
             #        if error:
             #            return (person_id, error)
             #        if value:
@@ -2249,7 +2269,7 @@ class IS_ADD_PERSON_WIDGET2(Validator):
             #        pe_id = record.pe_id
 
             #        r = ctable(pe_id=pe_id, contact_method="EMAIL")
-            #        email = _vars["email"]
+            #        email = post_vars["email"]
             #        if email:
             #            query = (ctable.pe_id == pe_id) & \
             #                    (ctable.contact_method == "EMAIL") &\
@@ -2292,7 +2312,7 @@ class IS_ADD_PERSON_WIDGET2(Validator):
             #                              contact_method="HOME_PHONE",
             #                              value=home_phone)
 
-            #        occupation = _vars.get("occupation", None)
+            #        occupation = post_vars.get("occupation", None)
             #        if occupation:
             #            pdtable = s3db.pr_person_details
             #            query = (pdtable.person_id == person_id) & \
@@ -2311,33 +2331,57 @@ class IS_ADD_PERSON_WIDGET2(Validator):
 
             # Filter out location_id (location selector form values
             # being processed only after this widget has been validated)
-            _vars = Storage([(k, _vars[k])
-                             for k in _vars if k != "location_id"])
+            post_vars = Storage([(k, post_vars[k])
+                                 for k in post_vars if k != "location_id"])
 
-            fullname = _vars["full_name"]
-            if not fullname and self.allow_empty:
-                return None, None
+            if not separate_name_fields:
+                fullname = post_vars["full_name"]
+                if not fullname and self.allow_empty:
+                    return None, None
 
             # Validate the email
-            email, error = email_validate(_vars.email, None)
+            email, error = email_validate(post_vars.email, None)
             if error:
                 return (None, error)
 
-            # Separate the Name into components
-            first_name, middle_name, last_name = name_split(fullname)
-            _vars["first_name"] = first_name
-            _vars["middle_name"] = middle_name
-            _vars["last_name"] = last_name
+            if not separate_name_fields:
+                # Separate the Name into components
+                if self.first_name_only is None:
+                    # Activate if using RTL
+                    if s3.rtl:
+                        first_name_only = True
+                    else:
+                        first_name_only = False
+                else:
+                    first_name_only = self.first_name_only
+                if first_name_only:
+                    first_name = fullname
+                    middle_name = last_name = None
+                else:
+                    name_format = settings.get_pr_name_format()
+                    if name_format == "%(last_name)s %(middle_name)s %(first_name)s":
+                        # Viet Nam style
+                        last_name, middle_name, first_name = name_split(fullname)
+                    #elif name_format == "%(last_name)s, %(first_name)s":
+                    #    # DRK style (deprecated once we complete separation of widget fields)
+                    #    last_name, middle_name, first_name = name_split(fullname)
+                    else:
+                        # Assume default: "%(first_name)s %(middle_name)s %(last_name)s"
+                        # @ToDo: Actually parse the format string
+                        first_name, middle_name, last_name = name_split(fullname)
+                post_vars["first_name"] = first_name
+                post_vars["middle_name"] = middle_name
+                post_vars["last_name"] = last_name
 
             # Validate and add the person record
-            for f in ptable._filter_fields(_vars):
-                value, error = s3_validate(ptable, f, _vars[f])
+            for f in ptable._filter_fields(post_vars):
+                value, error = s3_validate(ptable, f, post_vars[f])
                 if error:
                     return (None, error)
                 elif f == "date_of_birth" and \
                     value:
-                    _vars[f] = value.isoformat()
-            person_id = ptable.insert(**ptable._filter_fields(_vars))
+                    post_vars[f] = value.isoformat()
+            person_id = ptable.insert(**ptable._filter_fields(post_vars))
 
             # Need to update post_vars here,
             # for some reason this doesn't happen through validation alone
@@ -2347,26 +2391,41 @@ class IS_ADD_PERSON_WIDGET2(Validator):
                 # Update the super-entities
                 s3db.update_super(ptable, dict(id=person_id))
                 # Read the created pe_id
-                query = (ptable.id == person_id)
-                person = db(query).select(ptable.pe_id,
-                                          limitby=(0, 1)).first()
+                person = db(ptable.id == person_id).select(ptable.pe_id,
+                                                           limitby=(0, 1)
+                                                           ).first()
 
                 # Add contact information as provided
-                if _vars.email:
-                    ctable.insert(pe_id=person.pe_id,
+                pe_id = person.pe_id
+                if post_vars.email:
+                    ctable.insert(pe_id=pe_id,
                                   contact_method="EMAIL",
-                                  value=_vars.email)
+                                  value=post_vars.email)
                 if mobile:
-                    ctable.insert(pe_id=person.pe_id,
+                    ctable.insert(pe_id=pe_id,
                                   contact_method="SMS",
-                                  value=_vars.mobile_phone)
+                                  value=post_vars.mobile_phone)
                 if home_phone:
-                    ctable.insert(pe_id=person.pe_id,
+                    ctable.insert(pe_id=pe_id,
                                   contact_method="HOME_PHONE",
-                                  value=_vars.home_phone)
-                if _vars.occupation:
-                    s3db.pr_person_details.insert(person_id = person_id,
-                                                  occupation = _vars.occupation)
+                                  value=post_vars.home_phone)
+
+                # Add details
+                details = {}
+                if post_vars.occupation:
+                    details["occupation"] = post_vars.occupation
+                if post_vars.father_name:
+                    details["father_name"] = post_vars.father_name
+                if post_vars.grandfather_name:
+                    details["grandfather_name"] = post_vars.grandfather_name
+                if post_vars.year_of_birth:
+                    details["year_of_birth"] = post_vars.year_of_birth
+                if details:
+                    details["person_id"] = person_id
+                    s3db.pr_person_details.insert(**details)
+
+                # Update ownership & realm
+                current.auth.s3_set_record_owner(ptable, person_id)
             else:
                 # Something went wrong
                 return (person_id, self.error_message or \
@@ -2477,161 +2536,364 @@ class IS_UTC_OFFSET(Validator):
             passes through.
     """
 
-    def __init__(self,
-                 error_message="invalid UTC offset!"
-                ):
+    def __init__(self, error_message="invalid UTC offset!"):
+
         self.error_message = error_message
 
     # -------------------------------------------------------------------------
     def __call__(self, value):
 
         if value and isinstance(value, str):
-            _offset_str = value.strip()
 
-            offset = S3DateTime.get_offset_value(_offset_str)
-
-            if offset is not None and offset > -86340 and offset < 86340:
-                # Add a leading 'UTC ',
-                # otherwise leading '+' and '0' will be stripped away by web2py
-                return ("UTC " + _offset_str[-5:], None)
+            offset = S3DateTime.get_offset_value(value)
+            if offset is not None:
+                hours, seconds = divmod(abs(offset), 3600)
+                minutes = int(seconds / 60)
+                sign = "-" if offset < 0 else "+"
+                return ("%s%02d%02d" % (sign, hours, minutes), None)
 
         return (value, self.error_message)
 
 # =============================================================================
 class IS_UTC_DATETIME(Validator):
     """
-        Validates a given value as datetime string and returns the
-        corresponding UTC datetime.
+        Validates a given date/time and returns it as timezone-naive
+        datetime object in UTC. Accepted input types are strings (in
+        local format), datetime.datetime and datetime.date.
 
         Example:
             - INPUT(_type="text", _name="name", requires=IS_UTC_DATETIME())
 
-        @param format:          strptime/strftime format template string, for
-                                directives refer to your strptime implementation
-        @param error_message:   error message to be returned
-        @param utc_offset:      offset to UTC in seconds, if not specified, the
-                                value is considered to be UTC
-        @param minimum:         the minimum acceptable datetime
-        @param maximum:         the maximum acceptable datetime
-
-        @note:
-            datetime has to be in the ISO8960 format YYYY-MM-DD hh:mm:ss,
-            with an optional trailing UTC offset specified as +/-HHMM
-            (+ for eastern, - for western timezones)
+        @note: a date/time string must be in local format, and can have
+               an optional trailing UTC offset specified as +/-HHMM
+               (+ for eastern, - for western timezones)
+        @note: dates stretch 8 hours West and 16 hours East of the current
+               time zone, i.e. the most Eastern timezones are on the next
+               day.
     """
 
     def __init__(self,
                  format=None,
                  error_message=None,
+                 offset_error=None,
                  utc_offset=None,
+                 calendar=None,
                  minimum=None,
                  maximum=None):
+        """
+            Constructor
+
+            @param format: strptime/strftime format template string, for
+                           directives refer to your strptime implementation
+            @param error_message: error message for invalid date/times
+            @param offset_error: error message for invalid UTC offset
+            @param utc_offset: offset to UTC in seconds, defaults to the
+                               current session's UTC offset
+            @param calendar: calendar to use for string evaluation, defaults
+                             to current.calendar
+            @param minimum: the minimum acceptable date/time
+            @param maximum: the maximum acceptable date/time
+        """
 
         if format is None:
-            self.format = format = str(current.deployment_settings.get_L10n_datetime_format())
+            self.format = dtfmt = str(current.deployment_settings.get_L10n_datetime_format())
         else:
-            self.format = format = str(format)
+            self.format = dtfmt = str(format)
+
+        if isinstance(calendar, basestring):
+            # Instantiate calendar by name
+            from s3datetime import S3Calendar
+            calendar = S3Calendar(calendar)
+        elif calendar == None:
+            calendar = current.calendar
+        self.calendar = calendar
 
         self.utc_offset = utc_offset
 
         self.minimum = minimum
         self.maximum = maximum
-        delta = timedelta(seconds=self.delta())
-        min_local = minimum and minimum + delta or None
-        max_local = maximum and maximum + delta or None
 
+        # Default error messages
+        T = current.T
         if error_message is None:
             if minimum is None and maximum is None:
-                error_message = current.T("enter date and time")
+                error_message = T("Date is required!")
             elif minimum is None:
-                error_message = current.T("enter date and time on or before %(max)s")
+                error_message = T("Date must be %(max)s or earlier!")
             elif maximum is None:
-                error_message = current.T("enter date and time on or after %(min)s")
+                error_message = T("Date must be %(min)s or later!")
             else:
-                error_message = current.T("enter date and time in range %(min)s %(max)s")
+                error_message = T("Date must be between %(min)s and %(max)s!")
+        if offset_error is None:
+            offset_error = T("Invalid UTC offset!")
 
-        if min_local:
-            min = min_local.strftime(format)
-        else:
-            min = ""
-        if max_local:
-            max = max_local.strftime(format)
-        else:
-            max = ""
-        self.error_message = error_message % dict(min = min,
-                                                  max = max)
+        # Localized minimum/maximum
+        mindt = self.formatter(minimum) if minimum else ""
+        maxdt = self.formatter(maximum) if maximum else ""
+
+        # Store error messages
+        self.error_message = error_message % {"min": mindt, "max": maxdt}
+        self.offset_error = offset_error
 
     # -------------------------------------------------------------------------
     def delta(self, utc_offset=None):
+        """
+            Compute the delta in seconds for the current UTC offset
 
-        if utc_offset is not None:
-            self.utc_offset = utc_offset
-        if self.utc_offset is None:
-            self.utc_offset = current.session.s3.utc_offset
-        validate = IS_UTC_OFFSET()
-        offset, error = validate(self.utc_offset)
+            @param utc_offset: the offset (override defaults)
+            @return: the offset in seconds
+        """
+
+        if utc_offset is None:
+            # Fall back to validator default
+            utc_offset = self.utc_offset
+        if utc_offset is None:
+            # Fall back to session default
+            utc_offset = current.session.s3.utc_offset
+
+        offset, error = IS_UTC_OFFSET()(utc_offset)
         if error:
-            self.utc_offset = "UTC +0000" # fallback to UTC
-        else:
-            self.utc_offset = offset
-        delta = S3DateTime.get_offset_value(self.utc_offset)
-        return delta
+            offset = 0 # fallback to UTC
+
+        return S3DateTime.get_offset_value(utc_offset)
 
     # -------------------------------------------------------------------------
     def __call__(self, value):
+        """
+            Validate a value, and convert it into a timezone-naive
+            datetime.datetime object as necessary
 
-        val = value.strip()
+            @param value: the value to validate
+            @return: tuple (value, error)
+        """
 
-        # Get UTC offset
-        if len(val) > 5 and val[-5] in ("+", "-") and val[-4:].isdigit():
-            # UTC offset specified in dtstr
-            dtstr = val[0:-5].strip()
-            utc_offset = "UTC %s" % val[-5:]
-        else:
-            # use default UTC offset
-            dtstr = val
-            utc_offset = self.utc_offset
+        if isinstance(value, basestring):
 
-        # Offset must be in range -2359 to +2359
-        offset = self.delta(utc_offset=utc_offset)
-        if offset < -86340 or offset > 86340:
-            return (val, self.error_message)
+            val = value.strip()
 
-        # Convert into datetime object
-        try:
-            (y, m, d, hh, mm, ss, t0, t1, t2) = \
-                time.strptime(dtstr, self.format)
-            dt = datetime(y, m, d, hh, mm, ss)
-        except:
-            try:
-                (y, m, d, hh, mm, ss, t0, t1, t2) = \
-                    time.strptime(dtstr + ":00", self.format)
-                dt = datetime(y, m, d, hh, mm, ss)
-            except:
+            # Split date/time and UTC offset
+            if len(val) > 5 and val[-5] in ("+", "-") and val[-4:].isdigit():
+                dtstr, utc_offset = val[0:-5].strip(), val[-5:]
+            else:
+                dtstr, utc_offset = val, None
+
+            # Convert into datetime object
+            dt = self.calendar.parse_datetime(dtstr,
+                                              dtfmt=self.format,
+                                              local=True,
+                                              )
+            if dt is None:
                 return(value, self.error_message)
+        elif isinstance(value, datetime.datetime):
+            dt = value
+            utc_offset = None
+        elif isinstance(value, datetime.date):
+            # Default to 8:00 hours in the current timezone
+            dt = datetime.datetime.combine(value, datetime.time(8, 0, 0))
+            utc_offset = None
+        else:
+            # Invalid type
+            return value, self.error_message
+
+        # Convert to UTC and make tz-naive
+        if dt.tzinfo:
+            offset = dt.tzinfo.utcoffset(dt)
+            dt = dt.replace(tzinfo=None)
+        else:
+            offset = self.delta(utc_offset=utc_offset)
+            # Offset must be in range -2359 to +2359
+            if not -86340 < offset < 86340:
+                return (val, self.offset_error)
+            offset = datetime.timedelta(seconds=offset)
+        dt_utc = dt - offset
 
         # Validate
-        dt_utc = dt - timedelta(seconds=offset)
         if self.minimum and dt_utc < self.minimum or \
            self.maximum and dt_utc > self.maximum:
             return (dt_utc, self.error_message)
-        else:
-            return (dt_utc, None)
+
+        return (dt_utc, None)
 
     # -------------------------------------------------------------------------
     def formatter(self, value):
+        """
+            Format a datetime as string.
 
-        format = self.format
-        offset = self.delta()
+            @param value: the value
+        """
 
         if not value:
-            return "-"
-        elif offset:
-            dt = value + timedelta(seconds=offset)
-            return dt.strftime(format)
+            result = current.messages["NONE"]
+
+        offset = self.delta()
+        if offset:
+            value += datetime.timedelta(seconds=offset)
+        result = self.calendar.format_datetime(value,
+                                               dtfmt=self.format,
+                                               local=True,
+                                               )
+        return result
+
+# =============================================================================
+class IS_UTC_DATE(IS_UTC_DATETIME):
+    """
+        Validates a given date and returns the corresponding datetime.date
+        object in UTC. Accepted input types are strings (in local format),
+        datetime.datetime and datetime.date.
+
+        Example:
+            - INPUT(_type="text", _name="name", requires=IS_UTC_DATE())
+
+        @note: dates stretch 8 hours West and 16 hours East of the current
+               time zone, i.e. the most Eastern timezones are on the next
+               day.
+    """
+
+    def __init__(self,
+                 format=None,
+                 error_message=None,
+                 offset_error=None,
+                 calendar=None,
+                 utc_offset=None,
+                 minimum=None,
+                 maximum=None):
+        """
+            Constructor
+
+            @param format: strptime/strftime format template string, for
+                           directives refer to your strptime implementation
+            @param error_message: error message for invalid date/times
+            @param offset_error: error message for invalid UTC offset
+            @param calendar: calendar to use for string evaluation, defaults
+                             to current.calendar
+            @param utc_offset: offset to UTC in seconds, defaults to the
+                               current session's UTC offset
+            @param minimum: the minimum acceptable date (datetime.date)
+            @param maximum: the maximum acceptable date (datetime.date)
+        """
+
+        if format is None:
+            self.format = dtfmt = str(current.deployment_settings.get_L10n_date_format())
         else:
+            self.format = dtfmt = str(format)
+
+        if isinstance(calendar, basestring):
+            # Instantiate calendar by name
+            from s3datetime import S3Calendar
+            calendar = S3Calendar(calendar)
+        elif calendar == None:
+            calendar = current.calendar
+        self.calendar = calendar
+
+        self.utc_offset = utc_offset
+
+        self.minimum = minimum
+        self.maximum = maximum
+
+        # Default error messages
+        T = current.T
+        if error_message is None:
+            if minimum is None and maximum is None:
+                error_message = T("Date is required!")
+            elif minimum is None:
+                error_message = T("Date must be %(max)s or earlier!")
+            elif maximum is None:
+                error_message = T("Date must be %(min)s or later!")
+            else:
+                error_message = T("Date must be between %(min)s and %(max)s!")
+        if offset_error is None:
+            offset_error = T("Invalid UTC offset!")
+
+        # Localized minimum/maximum
+        mindt = self.formatter(minimum) if minimum else ""
+        maxdt = self.formatter(maximum) if maximum else ""
+
+        # Store error messages
+        self.error_message = error_message % {"min": mindt, "max": maxdt}
+        self.offset_error = offset_error
+
+    # -------------------------------------------------------------------------
+    def __call__(self, value):
+        """
+            Validate a value, and convert it into a datetime.date object
+            as necessary
+
+            @param value: the value to validate
+            @return: tuple (value, error)
+        """
+
+        is_datetime = False
+
+        if isinstance(value, basestring):
+            # Convert into date object
+            dt = self.calendar.parse_date(value.strip(),
+                                          dtfmt=self.format,
+                                          local=True,
+                                          )
+            if dt is None:
+                return(value, self.error_message)
+        elif isinstance(value, datetime.datetime):
             dt = value
-            return dt.strftime(format) + "+0000"
+            utc_offset = None
+            is_datetime = True
+        elif isinstance(value, datetime.date):
+            # Default to 0:00 hours in the current timezone
+            dt = value
+            utc_offset = None
+        else:
+            # Invalid type
+            return (value, self.error_message)
+
+        # Convert to UTC
+        if is_datetime and dt.tzinfo:
+            offset = dt.tzinfo.utcoffset(dt)
+            dt = dt.replace(tzinfo=None)
+        else:
+            offset = self.delta()
+            # Offset must be in range -2359 to +2359
+            if not -86340 < offset < 86340:
+                return (val, self.offset_error)
+            offset = datetime.timedelta(seconds=offset)
+
+        if not is_datetime:
+            # Convert to standard time 08:00 hours
+            dt = datetime.datetime.combine(dt, datetime.time(8, 0, 0))
+        dt_utc = (dt - offset).date()
+
+        # Validate
+        if self.minimum and dt_utc < self.minimum or \
+           self.maximum and dt_utc > self.maximum:
+            return (value, self.error_message)
+
+        return (dt_utc, None)
+
+    # -------------------------------------------------------------------------
+    def formatter(self, value):
+        """
+            Format a date as string.
+
+            @param value: the value
+        """
+
+        if not value:
+            result = current.messages["NONE"]
+
+        offset = self.delta()
+        if offset:
+            delta = datetime.timedelta(seconds=offset)
+            if not isinstance(value, datetime.datetime):
+                combine = datetime.datetime.combine
+                # Compute the break point
+                bp = (combine(value, datetime.time(8, 0, 0)) - delta).time()
+                value = combine(value, bp)
+            value += delta
+
+        result = self.calendar.format_date(value,
+                                           dtfmt=self.format,
+                                           local=True,
+                                           )
+
+        return result
 
 # =============================================================================
 class IS_ACL(IS_IN_SET):
@@ -2922,6 +3184,21 @@ class IS_TIME_INTERVAL_WIDGET(Validator):
         return (seconds, None)
 
 # =============================================================================
+class IS_PERSON_GENDER(IS_IN_SET):
+    """
+        Special validator for pr_person.gender and derivates,
+        accepts the "O" option even if it's not in the set.
+    """
+
+    def __call__(self, value):
+
+        if value == 4:
+            # 4 = other, always accepted even if hidden
+            return value, None
+        else:
+            return super(IS_PERSON_GENDER, self).__call__(value)
+
+# =============================================================================
 class IS_PHONE_NUMBER(Validator):
     """
         Validator for single phone numbers with option to
@@ -2957,7 +3234,7 @@ class IS_PHONE_NUMBER(Validator):
         T = current.T
         error_message = self.error_message
 
-        number = str(value).strip()
+        number = s3_str(value).strip()
         number, error = s3_single_phone_requires(number)
         if not error:
             if self.international and \
@@ -2991,6 +3268,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                  multiple = False,
                  select = DEFAULT,
                  sort = False,
+                 translate = False,
                  zero = ""):
         """
             Constructor
@@ -3001,6 +3279,9 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                            defaults to settings.L10n.languages,
                            set explicitly to None to allow all languages
             @param sort: sort options in selector
+            @param translate: translate the language options into
+                              the current UI language (only with
+                              explicit select=None)
             @param zero: use this label for the empty-option (default="")
         """
         super(IS_ISO639_2_LANGUAGE_CODE, self).__init__(
@@ -3015,6 +3296,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
             self._select = current.deployment_settings.get_L10n_languages()
         else:
             self._select = select
+        self.translate = translate
 
     # -------------------------------------------------------------------------
     def options(self, zero=True):
@@ -3030,7 +3312,11 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
             items = [(k, v) for k, v in self._select.items()
                             if k in language_codes_dict]
         else:
-            items = self.language_codes()
+            if self.translate:
+                T = current.T
+                items = [(k, T(v)) for k, v in self.language_codes()]
+            else:
+                items = self.language_codes()
         if self.sort:
             items.sort(options_sorter)
         if zero and not self.zero is None and not self.multiple:
@@ -3041,7 +3327,9 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
     @classmethod
     def represent(cls, code):
         """
-            Represent a language code by language name
+            Represent a language code by language name, uses the
+            representation from deployment_settings if available
+            rather than translation into current UI language.
 
             @param code: the language code
         """
@@ -3050,10 +3338,24 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
         if code in l10n_languages:
             name = l10n_languages[code]
         else:
-            all_languages = dict(cls.language_codes())
-            name = all_languages.get(code)
-            if name is None:
-                name = current.messages.UNKNOWN_OPT
+            name = cls.represent_local(code)
+        return name
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def represent_local(cls, code):
+        """
+            Represent a language code by language name, translated
+            into current UI language (preferrable for database fields).
+
+            @param code: the language code
+        """
+
+        name = dict(cls.language_codes()).get(code)
+        if name is None:
+            name = current.messages.UNKNOWN_OPT
+        else:
+            name = current.T(name)
         return name
 
     # -------------------------------------------------------------------------
@@ -3548,6 +3850,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("pt", "Portuguese"),
                 #("pra", "Prakrit languages"),
                 #("pro", "Provençal, Old (to 1500)"),
+                ("prs", "Dari"),
                 #("pus", "Pushto; Pashto"),
                 ("ps", "Pushto; Pashto"),
                 #("qaa-qtz", "Reserved for local use"),

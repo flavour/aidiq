@@ -134,10 +134,19 @@ def csv2tree(source,
                             quotechar=quotechar)
 
     for i, r in enumerate(reader):
+        # Skip empty rows
+        if not any(r.values()):
+            continue
         if i == 0:
             # Auto-detect hashtags
-            items = dict((k, s3_unicode(v.strip()))
-                         for k, v in r.items() if v and v.strip())
+            items = {}
+            for k, v in r.items():
+                if v:
+                    try:
+                        v = v.strip()
+                    except AttributeError: # v is a List
+                        v = s3_unicode(v)
+                    items[k] = v
             if all(v[0] == '#' for v in items.values()):
                 hashtags.update(items)
                 continue

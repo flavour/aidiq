@@ -60,19 +60,28 @@ from gluon.languages import lazyT
 from gluon.tools import addrow
 
 from s3dal import Expression, Row
-
-DEBUG = False
-if DEBUG:
-    print >> sys.stderr, "S3Utils: DEBUG MODE"
-    def _debug(m):
-        print >> sys.stderr, m
-else:
-    _debug = lambda m: None
+from s3datetime import ISOFORMAT, s3_decode_iso_datetime
 
 URLSCHEMA = re.compile("((?:(())(www\.([^/?#\s]*))|((http(s)?|ftp):)"
                        "(//([^/?#\s]*)))([^?#\s]*)(\?([^#\s]*))?(#([^\s]*))?)")
 
 RCVARS = "rcvars"
+
+class S3ModuleDebug(object):
+    """ Helper class to debug modules """
+
+    @staticmethod
+    def on(msg, *args):
+        print >> sys.stderr, msg % args if args else msg
+
+    off = staticmethod(lambda msg, *args: None)
+
+DEBUG = False
+if DEBUG:
+    print >> sys.stderr, "S3UTILS: DEBUG MODE"
+    _debug = S3ModuleDebug.on
+else:
+    _debug = S3ModuleDebug.off
 
 # =============================================================================
 def s3_debug(message, value=None):
@@ -82,7 +91,7 @@ def s3_debug(message, value=None):
        Provide an easy, safe, systematic way of handling Debug output
        (print to stdout doesn't work with WSGI deployments)
 
-       @ToDo: Should be using python's built-in logging module?
+       @ToDo: Should be using current.log.warning instead?
     """
 
     output = "S3 Debug: %s" % s3_unicode(message)
@@ -438,7 +447,7 @@ def s3_mark_required(fields,
         mark_required = ()
 
     if label_html is None:
-        # @ToDo: DRY this setting with s3.locationselector.widget2.js
+        # @ToDo: DRY this setting with s3.ui.locationselector.js
         label_html = s3_required_label
 
     labels = dict()
@@ -540,6 +549,7 @@ def s3_truncate(text, length=48, nice=True):
         @param nice: do not truncate words
     """
 
+    # Make sure text is multi-byte-aware before truncating it
     text = s3_unicode(text)
     if len(text) > length:
         if nice:
@@ -565,6 +575,7 @@ def s3_datatable_truncate(string, maxlength=40):
         @note: the JS click-event will be attached by S3.datatables.js
     """
 
+    # Make sure text is multi-byte-aware before truncating it
     string = s3_unicode(string)
     if string and len(string) > maxlength:
         _class = "dt-truncate"
@@ -596,7 +607,10 @@ def s3_trunk8(selector=None, lines=None, less=None, more=None):
 
     s3 = current.response.s3
     scripts = s3.scripts
-    script = "/%s/static/scripts/trunk8.js" % current.request.application
+    if s3.debug:
+        script = "/%s/static/scripts/trunk8.js" % current.request.application
+    else:
+        script = "/%s/static/scripts/trunk8.min.js" % current.request.application
     if script not in scripts:
         scripts.append(script)
 
@@ -617,14 +631,41 @@ $(document).on('click','.s3-truncate-less',function(event){
 
     # Init-script
     # - required separately for each selector
-    script = """S3.trunk8('%(selector)s', %(lines)s, '%(more)s')""" % \
+    script = """S3.trunk8('%(selector)s',%(lines)s,'%(more)s')""" % \
              dict(selector = ".s3-truncate" if selector is None else selector,
                   lines = "null" if lines is None else lines,
-                  more=T("more") if more is None else more,
-                 )
+                  more = T("more") if more is None else more,
+                  )
 
     s3.jquery_ready.append(script)
     return
+
+# =============================================================================
+def s3_text_represent(text, truncate=True, lines=5, _class=None):
+    """
+        Representation function for text fields with intelligent
+        truncation and preserving whitespace.
+
+        @param text: the text
+        @param truncate: whether to truncate or not
+        @param lines: maximum number of lines to show
+        @param _class: CSS class to use for truncation (otherwise usign
+                       the text-body class itself)
+    """
+
+    if not text:
+        text = current.messages["NONE"]
+    if _class is None:
+        selector = ".text-body"
+        _class = "text-body"
+    else:
+        selector = ".%s" % _class
+        _class = "text-body %s" % _class
+
+    if truncate:
+        s3_trunk8(selector = selector, lines = lines)
+
+    return DIV(text, _class="text-body")
 
 # =============================================================================
 def s3_format_fullname(fname=None, mname=None, lname=None, truncate=True):
@@ -648,7 +689,7 @@ def s3_format_fullname(fname=None, mname=None, lname=None, truncate=True):
         if truncate:
             fname = "%s" % s3_truncate(fname, 24)
             mname = "%s" % s3_truncate(mname, 24)
-            lname = "%s" % s3_truncate(lname, 24, nice = False)
+            lname = "%s" % s3_truncate(lname, 24, nice=False)
         name_format = current.deployment_settings.get_pr_name_format()
         name = name_format % dict(first_name=fname,
                                   middle_name=mname,
@@ -656,7 +697,7 @@ def s3_format_fullname(fname=None, mname=None, lname=None, truncate=True):
                                   )
         name = name.replace("  ", " ").rstrip()
         if truncate:
-            name = s3_truncate(name, 24, nice = False)
+            name = s3_truncate(name, 24, nice=False)
     return name
 
 # =============================================================================
@@ -847,9 +888,9 @@ def s3_avatar_represent(id, tablename="auth_user", gravatar=False, **attr):
             # If no Image uploaded, try Gravatar, which also provides a nice fallback identicon
             import hashlib
             hash = hashlib.md5(email).hexdigest()
-            url = "http://www.gravatar.com/avatar/%s?s=50&d=identicon" % hash
+            url = "//www.gravatar.com/avatar/%s?s=50&d=identicon" % hash
         else:
-            url = "http://www.gravatar.com/avatar/00000000000000000000000000000000?d=mm"
+            url = "//www.gravatar.com/avatar/00000000000000000000000000000000?d=mm"
     else:
         url = URL(c="static", f="img", args="blank-user.gif")
 
@@ -907,10 +948,40 @@ def s3_auth_user_represent_name(id, row=None):
 def s3_yes_no_represent(value):
     " Represent a Boolean field as Yes/No instead of True/False "
 
-    if value:
+    if value is True:
         return current.T("Yes")
-    else:
+    elif value is False:
         return current.T("No")
+    else:
+        return current.messages["NONE"]
+
+# =============================================================================
+def s3_redirect_default(location="", how=303, client_side=False, headers=None):
+    """
+        Redirect preserving response messages, useful when redirecting from
+        index() controllers.
+
+        @param location: the url where to redirect
+        @param how: what HTTP status code to use when redirecting
+        @param client_side: if set to True, it triggers a reload of
+                            the entire page when the fragment has been
+                            loaded as a component
+        @param headers: response headers
+    """
+
+    response = current.response
+    session = current.session
+
+    session.error = response.error
+    session.warning = response.warning
+    session.confirmation = response.confirmation
+    session.flash = response.flash
+
+    redirect(location,
+             how=how,
+             client_side=client_side,
+             headers=headers,
+             )
 
 # =============================================================================
 def s3_include_debug_css():
@@ -925,13 +996,13 @@ def s3_include_debug_css():
 
     settings = current.deployment_settings
     theme = settings.get_theme()
-    location = settings.get_template_location()
+    location = current.response.s3.theme_location
 
-    css_cfg = "%s/%s/templates/%s/css.cfg" % (folder, location, theme)
+    css_cfg = "%s/modules/templates/%s%s/css.cfg" % (folder, location, theme)
     try:
         f = open(css_cfg, "r")
     except:
-        raise HTTP(500, "Theme configuration file missing: %s/templates/%s/css.cfg" % (location, theme))
+        raise HTTP(500, "Theme configuration file missing: modules/templates/%s%s/css.cfg" % (location, theme))
     files = f.readlines()
     files = files[:-1]
     include = ""
@@ -1000,7 +1071,7 @@ def s3_include_ext():
 
     if s3.cdn:
         # For Sites Hosted on the Public Internet, using a CDN may provide better performance
-        PATH = "http://cdn.sencha.com/ext/gpl/3.4.1.1"
+        PATH = "//cdn.sencha.com/ext/gpl/3.4.1.1"
     else:
         PATH = "/%s/static/scripts/ext" % appname
 
@@ -1231,7 +1302,7 @@ def s3_get_foreign_key(field, m2m=True):
 def s3_unicode(s, encoding="utf-8"):
     """
         Convert an object into an unicode instance, to be used instead of
-        unicode(s) (Note: user data should never be converted into str).
+        unicode(s)
 
         @param s: the object
         @param encoding: the character encoding
@@ -1255,9 +1326,25 @@ def s3_unicode(s, encoding="utf-8"):
     except UnicodeDecodeError:
         if not isinstance(s, Exception):
             raise
-        else:
-            s = " ".join([s3_unicode(arg, encoding) for arg in s])
+        s = " ".join([s3_unicode(arg, encoding) for arg in s])
     return s
+
+def s3_str(s):
+    """
+        Unicode-safe conversion of an object s into a utf-8 encoded str,
+        to be used instead of str(s)
+
+        @param s: the object
+
+        @note: assumes utf-8, for other character encodings use explicit:
+
+                - s3_unicode(s, encoding=<in>).encode(<out>)
+    """
+
+    if type(s) is str:
+        return s
+    else:
+        return s3_unicode(s).encode("utf-8", "strict")
 
 # =============================================================================
 def s3_flatlist(nested):
@@ -1770,13 +1857,29 @@ def URL2(a=None, c=None, r=None):
 
 # =============================================================================
 class S3CustomController(object):
+    """
+        Base class for custom controllers (template/controllers.py),
+        implements common helper functions
+    """
 
     @classmethod
-    def _view(cls, theme, name):
+    def _view(cls, template, filename):
+        """
+            Use a custom view template
 
-        view = os.path.join(current.request.folder,
-                            current.deployment_settings.get_template_location(),
-                            "templates", theme, "views", name)
+            @param template: name of the template (determines the path)
+            @param filename: name of the view template file
+        """
+
+        if "." in template:
+            subfolder, template = template.split(".", 1)
+            view = os.path.join(current.request.folder,
+                                current.deployment_settings.get_template_location(),
+                                "templates", subfolder, template, "views", filename)
+        else:
+            view = os.path.join(current.request.folder,
+                                current.deployment_settings.get_template_location(),
+                                "templates", template, "views", filename)
         try:
             # Pass view as file not str to work in compiled mode
             current.response.view = open(view, "rb")
@@ -1784,104 +1887,6 @@ class S3CustomController(object):
             from gluon.http import HTTP
             raise HTTP(404, "Unable to open Custom View: %s" % view)
         return
-
-# =============================================================================
-class S3DateTime(object):
-    """
-        Toolkit for date+time parsing/representation
-    """
-
-    # -------------------------------------------------------------------------
-    @classmethod
-    def date_represent(cls, date, format=None, utc=False):
-        """
-            Represent the date according to deployment settings &/or T()
-
-            @param date: the date
-            @param format: the format if wishing to override deployment_settings
-            @param utc: the date is given in UTC
-        """
-
-        if not format:
-            format = current.deployment_settings.get_L10n_date_format()
-
-        if date and isinstance(date, datetime.datetime) and utc:
-            offset = cls.get_offset_value(current.session.s3.utc_offset)
-            if offset:
-                date = date + datetime.timedelta(seconds=offset)
-
-        if date:
-            try:
-                return date.strftime(str(format))
-            except:
-                # e.g. dates < 1900
-                date = date.isoformat()
-                current.log.warning("Date cannot be formatted - using isoformat", date)
-                return date
-        else:
-            return current.messages["NONE"]
-
-    # -----------------------------------------------------------------------------
-    @classmethod
-    def time_represent(cls, time, utc=False):
-        """
-            Represent the date according to deployment settings &/or T()
-
-            @param time: the time
-            @param utc: the time is given in UTC
-        """
-
-        session = current.session
-        settings = current.deployment_settings
-        format = settings.get_L10n_time_format()
-
-        if time and utc:
-            offset = cls.get_offset_value(session.s3.utc_offset)
-            if offset:
-                time = time + datetime.timedelta(seconds=offset)
-
-        if time:
-            return time.strftime(str(format))
-        else:
-            return current.messages["NONE"]
-
-    # -----------------------------------------------------------------------------
-    @classmethod
-    def datetime_represent(cls, dt, utc=False):
-        """
-            Represent the datetime according to deployment settings &/or T()
-
-            @param dt: the datetime
-            @param utc: the datetime is given in UTC
-        """
-
-        if dt and utc:
-            offset = cls.get_offset_value(current.session.s3.utc_offset)
-            if offset:
-                dt = dt + datetime.timedelta(seconds=offset)
-
-        if dt:
-            return current.xml.encode_local_datetime(dt)
-        else:
-            return current.messages["NONE"]
-
-    # -----------------------------------------------------------------------------
-    @staticmethod
-    def get_offset_value(offset_str):
-        """
-            Convert an UTC offset string into a UTC offset value in seconds
-
-            @param offset_str: the UTC offset as string
-        """
-        if offset_str and len(offset_str) >= 5 and \
-            (offset_str[-5] == "+" or offset_str[-5] == "-") and \
-            offset_str[-4:].isdigit():
-            offset_hrs = int(offset_str[-5] + offset_str[-4:-2])
-            offset_min = int(offset_str[-5] + offset_str[-2:])
-            offset = 3600 * offset_hrs + 60 * offset_min
-            return offset
-        else:
-            return None
 
 # =============================================================================
 class S3TypeConverter(object):
@@ -2020,24 +2025,33 @@ class S3TypeConverter(object):
         if isinstance(b, datetime.datetime):
             return b
         elif isinstance(b, basestring):
+            # NB: converting from string (e.g. URL query) assumes the string
+            #     is specified for the local time zone, unless a timezone is
+            #     explicitly specified in the string (e.g. trailing Z in ISO)
+            dt = None
             try:
-                # ISO Format is standard (e.g. in URLs)
-                tfmt = current.xml.ISOFORMAT
-                (y, m, d, hh, mm, ss, t0, t1, t2) = time.strptime(b, tfmt)
+                # Try ISO Format (e.g. filter widgets)
+                (y, m, d, hh, mm, ss, t0, t1, t2) = time.strptime(b, ISOFORMAT)
             except ValueError:
+                # Fall back to default format (deployment setting)
+                dt = b
+            else:
+                dt = datetime.datetime(y, m, d, hh, mm, ss)
+            # Validate and convert to UTC (assuming local timezone)
+            from s3validators import IS_UTC_DATETIME
+            dt, error = IS_UTC_DATETIME()(dt)
+            if error:
+                # dateutil as last resort
+                # NB: this can process ISOFORMAT with time zone specifier,
+                #     returning a timezone-aware datetime, which is then
+                #     properly converted by IS_UTC_DATETIME
                 try:
-                    # Try localized datetime format
-                    tfmt = str(current.deployment_settings.get_L10n_datetime_format())
-                    (y, m, d, hh, mm, ss, t0, t1, t2) = time.strptime(b, tfmt)
-                except ValueError:
-                    # dateutil as last resort
-                    try:
-                        dt = current.xml.decode_iso_datetime(b)
-                    except:
-                        raise ValueError
-                    else:
-                        return dt
-            return datetime.datetime(y, m, d, hh, mm, ss)
+                    dt = s3_decode_iso_datetime(b)
+                except:
+                    raise ValueError
+                else:
+                    dt, error = IS_UTC_DATETIME()(dt)
+            return dt
         else:
             raise TypeError
 
@@ -2049,11 +2063,14 @@ class S3TypeConverter(object):
         if isinstance(b, datetime.date):
             return b
         elif isinstance(b, basestring):
-            format = current.deployment_settings.get_L10n_date_format()
-            validator = IS_DATE(format=format)
-            value, error = validator(b)
+            # NB: converting from string (e.g. URL query) assumes
+            #     the string is specified for the local time zone,
+            #     specify an ISOFORMAT date/time with explicit time zone
+            #     (e.g. trailing Z) to override this assumption
+            from s3validators import IS_UTC_DATE
+            value, error = IS_UTC_DATE()(b)
             if error:
-                # May be specified as datetime-string?
+                # Maybe specified as datetime-string?
                 value = cls._datetime(b).date()
             return value
         else:

@@ -176,6 +176,22 @@ def dojs(dogis = False, warnings = True):
         # pass
     # shutil.move(outputFilenameBootstrap, "..")
 
+    # Calendar
+    print "Compressing calendar"
+    sourceDirectory = ".."
+    configFilename = "sahana.js.calendar.cfg"
+    outputFilename = "s3.ui.calendar.min.js"
+    merged = mergejs.run(sourceDirectory,
+                         None,
+                         configFilename)
+    minimized = minimize(merged)
+    open(outputFilename, "w").write(minimized)
+    try:
+        os.remove("../S3/%s" % outputFilename)
+    except:
+        pass
+    shutil.move(outputFilename, "../S3")
+
     # dataLists
     print "Compressing dataLists"
     sourceDirectory = ".."
@@ -242,6 +258,22 @@ def dojs(dogis = False, warnings = True):
     sourceDirectory = ".."
     configFilename = "sahana.js.timeplot.cfg"
     outputFilename = "s3.timeplot.min.js"
+    merged = mergejs.run(sourceDirectory,
+                         None,
+                         configFilename)
+    minimized = minimize(merged)
+    open(outputFilename, "w").write(minimized)
+    try:
+        os.remove("../S3/%s" % outputFilename)
+    except:
+        pass
+    shutil.move(outputFilename, "../S3")
+
+    # groupedItems
+    print "Compressing groupedItems"
+    sourceDirectory = ".."
+    configFilename = "sahana.js.groupeditems.cfg"
+    outputFilename = "s3.groupeditems.min.js"
     merged = mergejs.run(sourceDirectory,
                          None,
                          configFilename)
@@ -331,10 +363,12 @@ def dojs(dogis = False, warnings = True):
                      "popup",
                      "register_validation",
                      "select_person",
+                     "sync",
                      "timeline",
                      "ui.contacts",
                      "ui.embeddedcomponent",
                      "ui.locationselector",
+                     "work",
                      ):
         print "Compressing s3.%s.js" % filename
         inputFilename = os.path.join("..", "S3", "s3.%s.js" % filename)
@@ -577,9 +611,12 @@ def docss():
 
     # Theme
     theme = settings.get_theme()
-    location = settings.get_template_location()
+    location = current.response.s3.theme_location
     print "Using theme %s" % theme
-    css_cfg = os.path.join("..", "..", "..", location, "templates", theme, "css.cfg")
+    if location:
+        css_cfg = os.path.join("..", "..", "..", "modules", "templates", location[:-1], theme, "css.cfg")
+    else:
+        css_cfg = os.path.join("..", "..", "..", "modules", "templates", theme, "css.cfg")
     f = open(css_cfg, "r")
     files = f.readlines()
     f.close()

@@ -25,7 +25,7 @@ def index_alt():
     """
 
     # Just redirect to the list of Assets
-    redirect(URL(f="asset"))
+    s3_redirect_default(URL(f="asset"))
 
 # -----------------------------------------------------------------------------
 def create():
@@ -38,7 +38,7 @@ def asset():
     """ RESTful CRUD controller """
 
     # Use the item() controller in this module to set options correctly
-    s3db.asset_asset.item_id.comment = S3AddResourceLink(f="item",
+    s3db.asset_asset.item_id.comment = S3PopupLink(f="item",
         label=T("Create Item"),
         title=T("Item"),
         tooltip=T("Type the name of an existing catalog item OR Click 'Create Item' to add an item which is not in the catalog."))
@@ -81,11 +81,11 @@ def item():
                                    filter_opts = (True,),
                                    sort = True,
                                    )
-                    
-        field.comment = S3AddResourceLink(f="item_category",
-                                          label=T("Create Item Category"),
-                                          title=T("Item Category"),
-                                          tooltip=T("Only Categories of type 'Asset' will be seen in the dropdown."))
+
+        field.comment = S3PopupLink(f="item_category",
+                                    label=T("Create Item Category"),
+                                    title=T("Item Category"),
+                                    tooltip=T("Only Categories of type 'Asset' will be seen in the dropdown."))
 
     # Defined in the Model for use from Multiple Controllers for unified menus
     return s3db.supply_item_controller()
@@ -115,7 +115,7 @@ def item_category():
     field = table.can_be_asset
     field.readable = field.writable = False
     field.default = True
-    
+
     return s3_rest_controller("supply", "item_category")
 
 # -----------------------------------------------------------------------------
@@ -141,13 +141,6 @@ def supplier():
         msg_record_deleted = T("Supplier deleted"),
         msg_list_empty = T("No Suppliers currently registered")
         )
-
-    # Modify filter_widgets
-    filter_widgets = s3db.get_config("org_organisation", "filter_widgets")
-    # Remove type (always 'Supplier')
-    filter_widgets.pop(1)
-    # Remove sector (not relevant)
-    filter_widgets.pop(1)
 
     return s3db.org_organisation_controller()
 
@@ -182,13 +175,13 @@ def telephone():
 
     field = table.item_id
     field.label = T("Telephone Type")
-    field.comment = S3AddResourceLink(f="item",
-                                      # Use this controller for options.json rather than looking for one called 'asset'
-                                      vars=dict(parent="telephone"),
-                                      label=T("Add Telephone Type"),
-                                      info=T("Add a new telephone type"),
-                                      title=T("Telephone Type"),
-                                      tooltip=T("Only Items whose Category are of type 'Telephone' will be seen in the dropdown."))
+    field.comment = S3PopupLink(f="item",
+                                # Use this controller for options.json rather than looking for one called 'asset'
+                                vars=dict(parent="telephone"),
+                                label=T("Add Telephone Type"),
+                                info=T("Add a new telephone type"),
+                                title=T("Telephone Type"),
+                                tooltip=T("Only Items whose Category are of type 'Telephone' will be seen in the dropdown."))
 
     # Only select from telephones
     field.widget = None # We want a simple dropdown

@@ -185,12 +185,12 @@ class XMLFormatTests(unittest.TestCase):
     def setUp(self):
 
         xmlstr = """<?xml version="1.0"?><s3xml/>"""
-        
+
         stylesheet = """<?xml version="1.0"?>
 <xsl:stylesheet
     xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0"
     xmlns:s3="http://eden.sahanafoundation.org/wiki/S3">
-    
+
     <xsl:output method="xml"/>
 
     <s3:fields tables="gis_location" select="ALL"/>
@@ -212,7 +212,7 @@ class XMLFormatTests(unittest.TestCase):
     def testSelectAllFields(self):
 
         include, exclude = self.stylesheet.get_fields("gis_location")
-        
+
         self.assertEqual(include, None)
         self.assertEqual(exclude, [])
 
@@ -245,11 +245,11 @@ class XMLFormatTests(unittest.TestCase):
 
     # -------------------------------------------------------------------------
     def testWildcard(self):
-        
+
         include, exclude = self.stylesheet.get_fields("pr_address")
         self.assertEqual(include, ["pe_id"])
         self.assertEqual(exclude, ["pe_label"])
-        
+
         include, exclude = self.stylesheet.get_fields("pr_contact")
         self.assertEqual(include, None)
         self.assertEqual(exclude, ["pe_label"])
@@ -312,7 +312,7 @@ class GetFieldOptionsTests(unittest.TestCase):
                           Field("noopts"),
                           *s3_meta_fields())
         db.commit()
-                          
+
     # -------------------------------------------------------------------------
     @classmethod
     def tearDownClass(cls):
@@ -340,7 +340,7 @@ class GetFieldOptionsTests(unittest.TestCase):
         db = current.db
         table = db.fotest_lookup_table
         db(table.uuid == "OPTION3").delete()
-        
+
         # Restore Auth
         current.auth.override = False
 
@@ -355,22 +355,22 @@ class GetFieldOptionsTests(unittest.TestCase):
 
         xml = current.xml
         fo = xml.get_field_options(table, "fixed_set")
-        
+
         assertTrue(isinstance(fo, etree._Element))
         assertEqual(fo.tag, "select")
 
         ATTRIBUTE = xml.ATTRIBUTE
         VALUE = ATTRIBUTE.value
         options = self.options
-        
+
         has_empty = False
         self.assertEqual(len(fo), len(options) + 1)
         for opt in fo:
             assertEqual(opt.tag, "option")
-            
+
             attr = opt.attrib
             assertTrue(VALUE in attr)
-            
+
             value = attr[VALUE]
             if value == "":
                 has_empty = True
@@ -378,10 +378,10 @@ class GetFieldOptionsTests(unittest.TestCase):
                 continue
             else:
                 value = int(value)
-                
+
             assertTrue(value in options)
             assertEqual(opt.text, options[value])
-            
+
         assertTrue(has_empty, msg="Empty-option missing")
 
     # -------------------------------------------------------------------------
@@ -529,7 +529,7 @@ class GetFieldOptionsTests(unittest.TestCase):
         VALUE = ATTRIBUTE.value
         PARENT = ATTRIBUTE.parent
         UID = xml.UID
-        
+
         has_empty = False
         self.assertEqual(len(fo), len(options) + 1)
         for opt in fo:
@@ -566,7 +566,7 @@ class GetFieldOptionsTests(unittest.TestCase):
         assertTrue = self.assertTrue
 
         options = dict(self.records)
-        
+
         # Request options
         resource = current.s3db.resource("fotest_table")
         result = resource.export_options(fields=["lookup"])
@@ -594,9 +594,9 @@ class GetFieldOptionsTests(unittest.TestCase):
                 value = int(value)
             assertTrue(value in options)
             assertEqual(opt.text, options[value]["name"])
-            
+
         assertTrue(has_empty, msg="Empty-option missing")
-        
+
     # -------------------------------------------------------------------------
     def testExportOptionsXMLHierarchy(self):
         """ Test Export Options (all options, XML+hierarchy) """
@@ -660,7 +660,7 @@ class GetFieldOptionsTests(unittest.TestCase):
 
             assertTrue(value in options)
             assertEqual(opt.text, options[value]["name"])
-            
+
             if "parent" in options[value] and options[value]["parent"]:
                 assertTrue(PARENT in attr)
                 assertEqual(attr[PARENT], str(options[value]["parent"]))
@@ -786,11 +786,11 @@ class GetFieldOptionsTests(unittest.TestCase):
 
         # Inspect result
         assertTrue(isinstance(fo, dict))
-        
+
         assertTrue("option" in fo)
         assertTrue(isinstance(fo["option"], list))
         assertEqual(len(fo["option"]), 1)
-        
+
         opt = fo["option"][0]
         value = opt["@value"]
         assertEqual(options[value]["uuid"], last.uuid)
@@ -804,7 +804,7 @@ class GetFieldOptionsTests(unittest.TestCase):
 
         db = current.db
         s3db = current.s3db
-        
+
         # Configure parent-field
         table = db.fotest_lookup_table
         represent = S3Represent(lookup="fotest_lookup_table")
@@ -844,18 +844,70 @@ class GetFieldOptionsTests(unittest.TestCase):
 
         # Inspect result
         assertTrue(isinstance(fo, dict))
-        
+
         assertTrue("option" in fo)
         assertTrue(isinstance(fo["option"], list))
         assertEqual(len(fo["option"]), 1)
-        
+
         opt = fo["option"][0]
         value = opt["@value"]
         assertEqual(options[value]["uuid"], last.uuid)
         assertEqual(opt["$"], options[value]["name"])
-        
+
         assertTrue("@parent" in opt)
         assertEqual(opt["@parent"], str(options[value]["parent"]))
+
+# =============================================================================
+class S3JSONParsingTests(unittest.TestCase):
+    """ Tests for S3JSON Parsing """
+
+    # -------------------------------------------------------------------------
+    def testValueParsing(self):
+        """ Test handling of S3JSON @value attribute """
+
+        assertEqual = self.assertEqual
+
+        json_str = """{
+"$_test_resource": [
+    {
+        "valuelist": {
+            "@value": ["value1", "value2"]
+        },
+        "jsonlist": {
+            "@value": "[\\"value1\\", \\"value2\\"]"
+        },
+        "valuestring": {
+            "@value": "value1"
+        },
+        "valueinteger": {
+            "@value": 2
+        }
+    }
+]}"""
+        tree = current.xml.json2tree(StringIO(json_str))
+        root = tree.getroot()
+
+        # A value list gives a JSON string with a list
+        value_list = root.findall('resource/data[@field="valuelist"]')[0]
+        v = value_list.get("value")
+        assertEqual(v, '["value1", "value2"]')
+        assertEqual(json.loads(v), ["value1", "value2"])
+
+        # A JSON list gives the same JSON string
+        value_list = root.findall('resource/data[@field="jsonlist"]')[0]
+        v = value_list.get("value")
+        assertEqual(v, '["value1", "value2"]')
+        assertEqual(json.loads(v), ["value1", "value2"])
+
+        # A string gives the same string
+        value_list = root.findall('resource/data[@field="valuestring"]')[0]
+        v = value_list.get("value")
+        assertEqual(v, "value1")
+
+        # A numeric value gives its string representation
+        value_list = root.findall('resource/data[@field="valueinteger"]')[0]
+        v = value_list.get("value")
+        assertEqual(v, "2")
 
 # =============================================================================
 def run_suite(*test_classes):
@@ -877,6 +929,7 @@ if __name__ == "__main__":
         JSONMessageTests,
         XMLFormatTests,
         GetFieldOptionsTests,
+        S3JSONParsingTests,
     )
 
 # END ========================================================================

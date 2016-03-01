@@ -2,7 +2,7 @@
 
 """ S3 Data Model Extensions
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -43,15 +43,6 @@ from s3resource import S3Resource
 from s3validators import IS_ONE_OF
 
 DEFAULT = lambda: None
-
-DEBUG = False
-if DEBUG:
-    import sys
-    print >> sys.stderr, "S3MODEL: DEBUG MODE"
-    def _debug(m):
-        print >> sys.stderr, m
-else:
-    _debug = lambda m: None
 
 ogetattr = object.__getattribute__
 
@@ -326,6 +317,7 @@ class S3Model(object):
         if s3.all_models_loaded:
             # Already loaded
             return
+        s3.load_all_models = True
 
         models = current.models
 
@@ -343,8 +335,8 @@ class S3Model(object):
         S3ImportJob.define_item_table()
 
         # Don't do this again within the current request cycle
+        s3.load_all_models = False
         s3.all_models_loaded = True
-        return
 
     # -------------------------------------------------------------------------
     @classmethod
@@ -448,7 +440,7 @@ class S3Model(object):
         onaccept = cls.get_config(tablename, "%s_onaccept" % method,
                    cls.get_config(tablename, "onaccept"))
         if "vars" not in record:
-            record = Storage(vars=record, errors=Storage())
+            record = Storage(vars=Storage(record), errors=Storage())
         if onaccept:
             callback(onaccept, record, tablename=tablename)
         return
@@ -472,7 +464,7 @@ class S3Model(object):
         onvalidation = cls.get_config(tablename, "%s_onvalidation" % method,
                        cls.get_config(tablename, "onvalidation"))
         if "vars" not in record:
-            record = Storage(vars=record, errors=Storage())
+            record = Storage(vars=Storage(record), errors=Storage())
         if onvalidation:
             callback(onvalidation, record, tablename=tablename)
         return record.errors
@@ -490,6 +482,7 @@ class S3Model(object):
         """
 
         components = current.model.components
+        load_all_models = current.response.s3.load_all_models
 
         master = master._tablename if type(master) is Table else master
 
@@ -530,6 +523,30 @@ class S3Model(object):
                     linktable = link.get("link")
                     linktable = linktable._tablename \
                                 if type(linktable) is Table else linktable
+
+                    if load_all_models:
+                        # Warn for redeclaration of components (different table
+                        # under the same alias) - this is wrong most of the time,
+                        # even though it would produce valid+consistent results:
+                        if alias in hooks and hooks[alias].tablename != tablename:
+                            current.log.warning("Redeclaration of component (%s.%s)" %
+                                              (master, alias))
+
+                        # Ambiguous aliases can cause accidental deletions and
+                        # other serious integrity problems, so we warn for ambiguous
+                        # aliases (not raising exceptions just yet because there
+                        # are a number of legacy cases),
+                        # Currently only logging during load_all_models to not
+                        # completely submerge other important log messages
+                        if linktable and alias == linktable.split("_", 1)[1]:
+                            # @todo: fix legacy cases (e.g. renaming the link tables)
+                            # @todo: raise Exception once all legacy cases are fixed
+                            current.log.warning("Ambiguous link/component alias (%s.%s)" %
+                                                (master, alias))
+                        if alias == master.split("_", 1)[1]:
+                            # No legacy cases, so crash to prevent introduction of any
+                            raise SyntaxError("Ambiguous master/component alias (%s.%s)" %
+                                              (master, alias))
 
                     pkey = link.get("pkey")
                     if linktable is None:

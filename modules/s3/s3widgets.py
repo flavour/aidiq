@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -39,6 +39,7 @@ __all__ = ("S3ACLWidget",
            "S3AutocompleteWidget",
            "S3BooleanWidget",
            "S3ColorPickerWidget",
+           "S3CalendarWidget",
            "S3DateWidget",
            "S3DateTimeWidget",
            "S3EmbeddedComponentWidget",
@@ -72,15 +73,18 @@ __all__ = ("S3ACLWidget",
            "S3TimeIntervalWidget",
            #"S3UploadWidget",
            "S3FixedOptionsWidget",
+           "S3QuestionWidget",
            "CheckboxesWidgetS3",
            "s3_comments_widget",
            "s3_richtext_widget",
            "search_ac",
+           "S3XMLContents",
            "ICON",
            )
 
 import datetime
 import os
+import re
 
 try:
     import json # try stdlib (Python 2.6)
@@ -108,6 +112,7 @@ from gluon.languages import lazyT
 from gluon.sqlhtml import *
 from gluon.storage import Storage
 
+from s3datetime import S3DateTime
 from s3utils import *
 from s3validators import *
 
@@ -449,7 +454,7 @@ class S3AddPersonWidget(FormWidget):
                         _class="box_top")
             # Select from registry buttons
             _class ="box_top"
-            select_row = TR(TD(A(T("Select from registry"),
+            select_row = TR(TD(A(T("Select from Registry"),
                                  _href="#",
                                  _id="select_from_registry",
                                  _class="action-btn"),
@@ -624,16 +629,23 @@ class S3AddPersonWidget2(FormWidget):
 
         @ToDo: get working AC/validator for human_resource_id
                - perhaps re-implement as S3SQLFormElement
-        @ToDo: provide option for entering data in 2-3 separate name fields
-               instead of all in 1 field
     """
 
     def __init__(self,
-                 controller = None
+                 controller = None,
+                 separate_name_fields = None,
+                 father_name = None,
+                 grandfather_name = None,
+                 year_of_birth = None, # Whether to use Year of Birth (as well as, or instead of, Date of Birth)
                  ):
 
         # Controller to retrieve the person or hrm record
         self.controller = controller
+
+        self.separate_name_fields = separate_name_fields
+        self.father_name = father_name
+        self.grandfather_name = grandfather_name
+        self.year_of_birth = year_of_birth
 
     def __call__(self, field, value, **attributes):
 
@@ -643,12 +655,13 @@ class S3AddPersonWidget2(FormWidget):
         attr["_class"] = "hide"
 
         request = current.request
-        if not value and request.env.request_method == "POST":
+        POST = request.env.request_method == "POST"
+        if not value and POST:
             # Read the POST vars:
             values = request.post_vars
             # @ToDo: Format these for Display?
             if values.get(str(field).split(".", 1)[1], None) and \
-               "full_name" not in values:
+               "full_name" not in values and "first_name" not in values:
                 # We selected an existing user...this would fail as the non-existent gender would fail to validate
                 # and we can optimise by simply returning the simple widget
                 return INPUT(**attr)
@@ -673,13 +686,6 @@ class S3AddPersonWidget2(FormWidget):
 
         s3 = current.response.s3
 
-        #bootstrap = settings.ui.formstyle == "bootstrap"
-        #if bootstrap:
-        #    # We need to make the HTML markup compliant with this CSS framework
-        #    # @ToDo: This should now be possible by calling the formstyle as-normal
-        #    # No need to test this formstyle as we know it up-front
-        #    tuple_rows = False
-        #else:
         # Test the formstyle
         formstyle = s3.crud.formstyle
         row = formstyle("test", "test", "test", "test")
@@ -695,55 +701,88 @@ class S3AddPersonWidget2(FormWidget):
             #else:
             #    foundation = False
 
-        controller = self.controller or request.controller
         settings = current.deployment_settings
 
+        separate_name_fields = self.separate_name_fields
+        if separate_name_fields is None:
+            separate_name_fields = settings.get_pr_separate_name_fields()
+        if separate_name_fields:
+            middle_name = separate_name_fields == 3
+
+        date_of_birth = None
+        year_of_birth = self.year_of_birth
+
+        dtable = None
         ptable = s3db.pr_person
+        first_name_field = ptable.first_name
+        middle_name_field = ptable.middle_name
+        last_name_field = ptable.last_name
+
+        if year_of_birth is None:
+            # Use Global deployment_setting
+            year_of_birth = settings.get_pr_request_year_of_birth()
+        if year_of_birth:
+            dtable = s3db.pr_person_details
+            year_of_birth = dtable.year_of_birth
 
         if settings.get_pr_request_dob():
             date_of_birth = ptable.date_of_birth
-        else:
-            date_of_birth = None
+            dob_required = settings.get_pr_dob_required()
+
         if settings.get_pr_request_gender():
             gender = ptable.gender
-            if request.env.request_method == "POST":
+            if POST:
                 gender.requires = IS_EMPTY_OR(gender.requires)
         else:
             gender = None
 
+        req_email = settings.get_pr_request_email()
         req_home_phone = settings.get_pr_request_home_phone()
 
-        if controller == "hrm":
-            emailRequired = settings.get_hrm_email_required()
-            occupation = None
+        emailRequired = settings.get_hrm_email_required()
 
-        elif controller == "vol":
+        # Determine controller for autocomplete
+        controller = self.controller
+        if not controller:
+            controller = request.controller
+            if controller not in ("hrm", "vol"):
+                if hrm:
+                    # Always use hrm for human_resource_id
+                    controller = "hrm"
+                else:
+                    # Always use pr for person_id
+                    controller = "pr"
+                    emailRequired = False
+
+        # Widget-Options for additional fields
+        occupation = None
+        father_name = self.father_name
+        grandfather_name = self.grandfather_name
+
+        # ...fall back to global settings for volunteers
+        if controller == "vol":
             dtable = s3db.pr_person_details
             occupation = dtable.occupation
-            emailRequired = settings.get_hrm_email_required()
-
-        elif controller == "patient":
-            controller = "pr"
-            emailRequired = settings.get_hrm_email_required()
-            occupation = None
-
-        elif hrm:
-            controller = "hrm"
-            emailRequired = settings.get_hrm_email_required()
-            occupation = None
-
-        else:
-            controller = "pr"
-            emailRequired = False
-            occupation = None
+            if father_name is None:
+                # Use Global deployment_setting
+                father_name = settings.get_pr_request_father_name()
+            if father_name:
+                father_name = dtable.father_name
+            if grandfather_name is None:
+                # Use Global deployment_setting
+                grandfather_name  = settings.get_pr_request_grandfather_name()
+            if grandfather_name:
+                grandfather_name = dtable.grandfather_name
 
         if value:
             db = current.db
-            fields = [ptable.first_name,
-                      ptable.middle_name,
-                      ptable.last_name,
+            fields = [first_name_field,
+                      middle_name_field,
+                      last_name_field,
                       ptable.pe_id,
                       ]
+            details = False
+
             if hrm:
                 query = (htable.id == value) & \
                         (htable.person_id == ptable.id)
@@ -755,33 +794,65 @@ class S3AddPersonWidget2(FormWidget):
                 fields.append(date_of_birth)
             if gender:
                 fields.append(gender)
+            if father_name:
+                fields.append(father_name)
+                details = True
+            if grandfather_name:
+                fields.append(grandfather_name)
+                details = True
             if occupation:
                 fields.append(occupation)
+                details = True
+            if year_of_birth:
+                fields.append(year_of_birth)
+                details = True
+
+            if details:
                 left = dtable.on(dtable.person_id == ptable.id)
             else:
                 left = None
+
             row = db(query).select(*fields,
                                    left=left,
                                    limitby=(0, 1)).first()
-            if hrm:
-                values["organisation_id"] = row["hrm_human_resource.organisation_id"]
-            if occupation:
-                values["occupation"] = row["pr_person_details.occupation"]
-            if hrm or occupation:
+
+            if details or hrm:
                 person = row["pr_person"]
+                if details:
+                    person_details = row["pr_person_details"]
+                if hrm:
+                    human_resource = row["hrm_human_resource"]
             else:
                 person = row
-            values["full_name"] = s3_fullname(person)
+            if hrm:
+                values["organisation_id"] = human_resource.organisation_id
+            if occupation:
+                values["occupation"] = person_details.occupation
+            if father_name:
+                values["father_name"] = person_details.father_name
+            if grandfather_name:
+                values["grandfather_name"] = person_details.grandfather_name
+            if separate_name_fields:
+                values["first_name"] = person.first_name
+                values["last_name"] = person.last_name
+                if middle_name:
+                    values["middle_name"] = person.middle_name
+            else:
+                values["full_name"] = s3_fullname(person)
+            if year_of_birth:
+                values["year_of_birth"] = person_details.year_of_birth
             if date_of_birth:
                 values["date_of_birth"] = person.date_of_birth
             if gender:
                 values["gender"] = person.gender
+
             # Contacts as separate query as we can't easily limitby
             ctable = s3db.pr_contact
+            contact_methods = ["SMS"]
+            if req_email:
+                contact_methods.append("EMAIL")
             if req_home_phone:
-                contact_methods = ("SMS", "EMAIL", "HOME_PHONE")
-            else:
-                contact_methods = ("SMS", "EMAIL")
+                contact_methods.append("HOME_PHONE")
             query = (ctable.pe_id == person.pe_id) & \
                     (ctable.deleted == False) & \
                     (ctable.contact_method.belongs(contact_methods))
@@ -789,27 +860,19 @@ class S3AddPersonWidget2(FormWidget):
                                         ctable.value,
                                         orderby=ctable.priority,
                                         )
-            email = mobile_phone = ""
-            if req_home_phone:
-                home_phone = ""
-                for contact in contacts:
-                    if not email and contact.contact_method == "EMAIL":
-                        email = contact.value
-                    elif not mobile_phone and contact.contact_method == "SMS":
-                        mobile_phone = contact.value
-                    elif not home_phone and contact.contact_method == "HOME_PHONE":
-                        home_phone = contact.value
-                    if email and mobile_phone and home_phone:
-                        break
-                values["home_phone"] = home_phone
-            else:
-                for contact in contacts:
-                    if not email and contact.contact_method == "EMAIL":
-                        email = contact.value
-                    elif not mobile_phone and contact.contact_method == "SMS":
-                        mobile_phone = contact.value
-                    if email and mobile_phone:
-                        break
+            email = mobile_phone = home_phone = ""
+            for contact in contacts:
+                if req_email and not email and contact.contact_method == "EMAIL":
+                    email = contact.value
+                elif not mobile_phone and contact.contact_method == "SMS":
+                    mobile_phone = contact.value
+                elif req_home_phone and not home_phone and contact.contact_method == "HOME_PHONE":
+                    home_phone = contact.value
+                if mobile_phone and \
+                   ((req_email and email) or (not req_email)) and \
+                   ((req_home_phone and home_phone) or (not req_home_phone)):
+                    break
+            values["home_phone"] = home_phone
             values["email"] = email
             values["mobile_phone"] = mobile_phone
 
@@ -864,9 +927,15 @@ class S3AddPersonWidget2(FormWidget):
 
         # Fields
         # (id, label, widget, required)
-        fattr = {"_data-c": controller,
-                 "_data-f": fn,
-                 }
+        data = {"c": controller,
+                "f": fn,
+                }
+        delay = settings.get_ui_autocomplete_delay()
+        if delay != 800:
+            data["delay"] = delay
+        chars = settings.get_ui_autocomplete_min_chars()
+        if chars != 2:
+            data["chars"] = chars
         fields = []
         fappend = fields.append
 
@@ -876,28 +945,56 @@ class S3AddPersonWidget2(FormWidget):
                                           _id = "%s_organisation_id" % fieldname),
                      settings.get_hrm_org_required()))
 
-        # Name field
-        # - can search for an existing person
-        # - can create a new person
-        # - multiple names get assigned to first, middle, last
-        fappend(("full_name", T("Name"), INPUT(**fattr), True))
+        if separate_name_fields:
+            mandatory_lastname = settings.get_L10n_mandatory_lastname()
+            mandatory_middlename = settings.get_L10n_mandatory_middlename()
+            name_format = settings.get_pr_name_format()
+            if name_format == "%(last_name)s %(middle_name)s %(first_name)s":
+                # Vietnamese Style
+                fappend(("last_name", last_name_field.label, INPUT(data=data, _size=40), mandatory_lastname))
+                if middle_name:
+                    fappend(("middle_name", middle_name_field.label, INPUT(_size=40), mandatory_middlename))
+                fappend(("first_name", first_name_field.label, INPUT(_size=40), True))
+            elif name_format == "%(last_name)s, %(first_name)s":
+                # DRK Style
+                fappend(("last_name", last_name_field.label, INPUT(data=data, _size=40), mandatory_lastname))
+                fappend(("first_name", first_name_field.label, INPUT(_size=40), True))
+            else:
+                fappend(("first_name", first_name_field.label, INPUT(data=data, _size=40), True))
+                if middle_name:
+                    fappend(("middle_name", middle_name_field.label, INPUT(_size=40), mandatory_middlename))
+                fappend(("last_name", last_name_field.label, INPUT(_size=40), mandatory_lastname))
+        else:
+            # Unified Name field
+            # - can search for an existing person
+            # - can create a new person
+            # - multiple names get assigned to first, middle, last
+            full_name_label = settings.get_pr_label_fullname()
+            fappend(("full_name", T(full_name_label), INPUT(data=data, _size=40), True))
 
-        if date_of_birth:
+        if father_name:
+            fappend(("father_name", father_name.label, INPUT(), False))
+        if grandfather_name:
+            fappend(("grandfather_name", grandfather_name.label, INPUT(), False))
+        if year_of_birth:
+            fappend(("year_of_birth", year_of_birth.label, INPUT(), False))
+        elif date_of_birth:
             fappend(("date_of_birth", date_of_birth.label,
                      date_of_birth.widget(date_of_birth, values.get("date_of_birth", None),
                                           _id = "%s_date_of_birth" % fieldname),
-                     False))
+                     dob_required))
         if gender:
             fappend(("gender", gender.label,
                      OptionsWidget.widget(gender, values.get("gender", None),
                                           _id = "%s_gender" % fieldname),
                      False))
-
         if occupation:
             fappend(("occupation", occupation.label, INPUT(), False))
 
+        if req_email:
+            fappend(("email", T("Email"), INPUT(), emailRequired))
+
         fappend(("mobile_phone", settings.get_ui_label_mobile_phone(), INPUT(), False))
-        fappend(("email", T("Email"), INPUT(), emailRequired))
 
         if req_home_phone:
             fappend(("home_phone", T("Home Phone"), INPUT(), False))
@@ -917,7 +1014,7 @@ class S3AddPersonWidget2(FormWidget):
             if fname not in ("date_of_birth", "gender"):
                 widget["_id"] = id
                 widget["_name"] = fname
-                widget["_value"] = values.get(fname, "")
+                widget["_value"] = s3_unicode(values.get(fname, "")).encode("utf-8")
             #if bootstrap:
             #    # We would like to hide the whole original control-group & append rows, but that can't be done directly within a Widget
             #    # -> Elements moved via JS after page load
@@ -981,6 +1078,14 @@ i18n.dupes_found="%s"''' % (i18n,
                             T("No"),
                             T("_NUM_ duplicates found"),
                             )
+            if father_name or grandfather_name:
+                i18n = \
+'''%s
+i18n.father_name_label="%s:"
+i18n.grandfather_name_label="%s:"''' % (i18n,
+                                        father_name.label,
+                                        grandfather_name.label,
+                                        )
             s3.js_global.append(i18n)
         if lookup_duplicates:
             script = '''S3.addPersonWidget('%s',1)''' % fieldname
@@ -1009,8 +1114,7 @@ class S3AutocompleteWidget(FormWidget):
                  filter = "",       # REST filter
                  link_filter = "",
                  post_process = "",
-                 delay = 450,       # milliseconds
-                 min_length = 2):   # Increase this for large deployments
+                 ):
 
         self.module = module
         self.resourcename = resourcename
@@ -1018,8 +1122,6 @@ class S3AutocompleteWidget(FormWidget):
         self.filter = filter
         self.link_filter = link_filter
         self.post_process = post_process
-        self.delay = delay
-        self.min_length = min_length
 
         # @ToDo: Refreshes all dropdowns as-necessary
         self.post_process = post_process or ""
@@ -1027,6 +1129,8 @@ class S3AutocompleteWidget(FormWidget):
     def __call__(self, field, value, **attributes):
 
         s3 = current.response.s3
+        settings = current.deployment_settings
+
         default = dict(
             _type = "text",
             value = (value != None and str(value)) or "",
@@ -1054,14 +1158,14 @@ class S3AutocompleteWidget(FormWidget):
 
         options = ""
         post_process = self.post_process
-        delay = self.delay
-        min_length = self.min_length
+        delay = settings.get_ui_autocomplete_delay()
+        min_length = settings.get_ui_autocomplete_min_chars()
         if min_length != 2:
             options = ''',"%(postprocess)s",%(delay)s,%(min_length)s''' % \
                 dict(postprocess = post_process,
                      delay = delay,
                      min_length = min_length)
-        elif delay != 450:
+        elif delay != 800:
             options = ''',"%(postprocess)s",%(delay)s''' % \
                 dict(postprocess = post_process,
                      delay = delay)
@@ -1239,20 +1343,435 @@ class S3ColorPickerWidget(FormWidget):
         return widget
 
 # =============================================================================
+class S3CalendarWidget(FormWidget):
+    """
+        Widget to select a date from a popup calendar, with
+        optional time input
+
+        @note: this widget must be combined with the IS_UTC_DATE or
+               IS_UTC_DATETIME validators to have the value properly
+               converted from/to local timezone and format.
+    """
+
+    def __init__(self,
+                 calendar=None,
+                 date_format=None,
+                 time_format=None,
+                 separator=None,
+                 minimum=None,
+                 maximum=None,
+                 past=None,
+                 future=None,
+                 past_months=None,
+                 future_months=None,
+                 month_selector=False,
+                 year_selector=True,
+                 min_year=None,
+                 max_year=None,
+                 week_number=False,
+                 buttons=None,
+                 timepicker=False,
+                 minute_step=5,
+                 set_min=None,
+                 set_max=None,
+                 ):
+        """
+            Constructor
+
+            @param calendar: which calendar to use (override default)
+
+            @param date_format: the date format (override default)
+            @param time_format: the time format (override default)
+            @param separator: date-time separator (override default)
+
+            @param minimum: the minimum selectable date/time (overrides past)
+            @param maximum: the maximum selectable date/time (overrides future)
+            @param past: how many hours into the past are selectable (overrides past_months)
+            @param future: how many hours into the future are selectable (overrides future_months)
+            @param past_months: how many months into the past are selectable
+            @param future_months: how many months into the future are selectable
+
+            @param month_selector: show a months drop-down
+            @param year_selector: show a years drop-down
+            @param min_year: the minimum selectable year (can be relative to now like "-10")
+            @param max_year: the maximum selectable year (can be relative to now like "+10")
+
+            @param week_number: show the week number in the calendar
+            @param buttons: show the button panel (defaults to True if
+                            the widget has a timepicker, else False)
+
+            @param timepicker: show a timepicker
+            @param minute_step: minute-step for the timepicker slider
+
+            @param set_min: CSS selector for another S3Calendar widget for which to
+                            dynamically update the minimum selectable date/time from
+                            the selected date/time of this widget
+            @param set_max: CSS selector for another S3Calendar widget for which to
+                            dynamically update the maximum selectable date/time from
+                            the selected date/time of this widget
+        """
+
+        self.calendar = calendar
+
+        self.date_format = date_format
+        self.time_format = time_format
+        self.separator = separator
+
+        self.minimum = minimum
+        self.maximum = maximum
+        self.past = past
+        self.future = future
+        self.past_months = past_months
+        self.future_months = future_months
+
+        self.month_selector = month_selector
+        self.year_selector = year_selector
+        self.min_year = min_year
+        self.max_year = max_year
+
+        self.week_number = week_number
+        self.buttons = buttons if buttons is not None else timepicker
+
+        self.timepicker = timepicker
+        self.minute_step = minute_step
+
+        self.set_min = set_min
+        self.set_max = set_max
+
+        self._class = "s3-calendar-widget datetimepicker"
+
+    # -------------------------------------------------------------------------
+    def __call__(self, field, value, **attributes):
+        """
+            Widget builder
+
+            @param field: the Field
+            @param value: the current value
+            @param attributes: the HTML attributes for the widget
+        """
+
+        # Modify class as required
+        _class = self._class
+
+        # Default attributes
+        defaults = {"_type": "text",
+                    "_class": _class,
+                    "value": value,
+                    "requires": field.requires,
+                    }
+        attr = self._attributes(field, defaults, **attributes)
+
+        # Real input ID
+        input_id = attr.get("_id")
+        if not input_id:
+            if isinstance(field, Field):
+                input_id = str(field).replace(".", "_")
+            else:
+                input_id = field.name.replace(".", "_")
+            attr["_id"] = input_id
+
+
+        # Real input name attribute
+        input_name = attr.get("_name")
+        if not input_name:
+            input_name = field.name.replace(".", "_")
+            attr["_name"] = input_name
+
+        # Container ID
+        container_id = "%s-calendar-widget" % input_id
+
+        # Script options
+        settings = current.deployment_settings
+
+        calendar = self.calendar or current.calendar.name
+        calendar = calendar if calendar and calendar != "Gregorian" else "gregorian"
+
+        date_format = self.date_format or \
+                      settings.get_L10n_date_format()
+        time_format = self.time_format or \
+                      settings.get_L10n_time_format()
+        separator = self.separator or \
+                    settings.get_L10n_datetime_separator()
+
+        c = current.calendar if not self.calendar else S3Calendar(self.calendar)
+        firstDOW = c.first_dow
+
+        extremes = self.extremes(time_format=time_format)
+
+        T = current.T
+        options = {"calendar": calendar,
+                   "dateFormat": str(date_format),
+                   "timeFormat": str(time_format),
+                   "separator": separator,
+                   "firstDOW": firstDOW,
+                   "monthSelector": self.month_selector,
+                   "yearSelector": self.year_selector,
+                   "showButtons": self.buttons,
+                   "weekNumber": self.week_number,
+                   "timepicker": self.timepicker,
+                   "minuteStep": self.minute_step,
+                   "todayText": str(T("Today")),
+                   "nowText": str(T("Now")),
+                   "closeText": str(T("Done")),
+                   "clearText": str(T("Clear")),
+                   "setMin": self.set_min,
+                   "setMax": self.set_max,
+                   }
+        options.update(extremes)
+
+        # Inject JS
+        self.inject_script(input_id, options)
+
+        # Construct real input
+        real_input = INPUT(**attr)
+
+        # Construct and return the widget
+        return TAG[""](DIV(real_input,
+                           _id=container_id,
+                           _class="calendar-widget-container",
+                           ),
+                       )
+
+    # -------------------------------------------------------------------------
+    def extremes(self, time_format=None):
+        """
+            Compute the minimum/maximum selectable date/time, as well as
+            the default time (=the minute-step closest to now)
+
+            @param time_format: the user time format
+
+            @return: a dict {minDateTime, maxDateTime, defaultValue, yearRange}
+                     with the min/max options as ISO-formatted strings, and the
+                     defaultValue in user-format (all in local time), to be
+                     passed as-is to s3.calendarwidget
+        """
+
+        extremes = {}
+        now = current.request.utcnow
+
+        offset = S3DateTime.get_offset_value(current.session.s3.utc_offset)
+
+        # RAD : default to something quite generous
+        pyears, fyears = 80, 80
+
+        # Minimum
+        earliest = None
+        fallback = False
+        if self.minimum:
+            earliest = self.minimum
+            if type(earliest) is datetime.date:
+                # Consistency with S3Calendar
+                earliest = datetime.datetime.combine(earliest, datetime.time(8, 0, 0))
+        elif self.past is not None:
+            earliest = now - datetime.timedelta(hours=self.past)
+        elif self.past_months is not None:
+            earliest = now - relativedelta(months=self.past_months)
+        else:
+            fallback = True
+            earliest = now - datetime.timedelta(hours=876000)
+        if earliest is not None:
+            if not fallback:
+                pyears = abs(earliest.year - now.year)
+            earliest = earliest.replace(microsecond=0)
+            if offset:
+                earliest += datetime.timedelta(seconds=offset)
+            extremes["minDateTime"] = earliest.isoformat()
+
+        # Maximum
+        latest = None
+        fallback = False
+        if self.maximum:
+            latest = self.maximum
+            if type(latest) is datetime.date:
+                # Consistency with S3Calendar
+                latest = datetime.datetime.combine(latest, datetime.time(8, 0, 0))
+        elif self.future is not None:
+            latest = now + datetime.timedelta(hours=self.future)
+        elif self.future_months is not None:
+            latest = now + relativedelta(months=self.future_months)
+        else:
+            fallback = True
+            latest = now + datetime.timedelta(hours=876000)
+        if latest is not None:
+            if not fallback:
+                fyears = abs(latest.year - now.year)
+            latest = latest.replace(microsecond=0)
+            if offset:
+                latest += datetime.timedelta(seconds=offset)
+            extremes["maxDateTime"] = latest.isoformat()
+
+        # Default date/time
+        if self.timepicker and time_format:
+            # Pick a start date/time
+            if earliest <= now <= latest:
+                start = now
+            elif now < earliest:
+                start = earliest
+            elif now > latest:
+                start = latest
+            # Round to the closest minute-step
+            step = self.minute_step * 60
+            seconds = (start - start.min).seconds
+            rounding = (seconds + step / 2) // step * step
+            rounded = start + datetime.timedelta(0,
+                                                 rounding - seconds,
+                                                 -start.microsecond,
+                                                 )
+            # Limits
+            if rounded < earliest:
+                rounded = earliest
+            elif rounded > latest:
+                rounded = latest
+            # Translate into local time
+            if offset:
+                rounded += datetime.timedelta(seconds=offset)
+            # Convert into user format (time part only)
+            default = rounded.strftime(time_format)
+            extremes["defaultValue"] = default
+
+        # Year range
+        min_year = self.min_year
+        if not min_year:
+            min_year = "-%s" % pyears
+        max_year = self.max_year
+        if not max_year:
+            max_year = "+%s" % fyears
+        extremes["yearRange"] = "%s:%s" % (min_year, max_year)
+
+        return extremes
+
+    # -------------------------------------------------------------------------
+    def inject_script(self, selector, options):
+        """
+            Helper function to inject the document-ready-JavaScript for
+            this widget.
+
+            @param field: the Field
+            @param value: the current value
+            @param attr: the HTML attributes for the widget
+        """
+
+        if not selector:
+            return
+
+        s3 = current.response.s3
+        appname = current.request.application
+
+        request = current.request
+        s3 = current.response.s3
+        jquery_ready = s3.jquery_ready
+
+        datepicker_l10n = None
+        timepicker_l10n = None
+        calendars_type = None
+        calendars_l10n = None
+        calendars_picker_l10n = None
+
+        # Paths to localization files
+        datepicker_l10n_path = os.path.join(request.folder, "static", "scripts", "ui", "i18n")
+        timepicker_l10n_path = os.path.join(request.folder, "static", "scripts", "ui", "i18n")
+        calendars_l10n_path = os.path.join(request.folder, "static", "scripts", "calendars", "i18n")
+
+        calendar = options["calendar"].lower()
+        if calendar != "gregorian":
+            # Include the right calendar script
+            filename = "jquery.calendars.%s.js" % calendar
+            lscript = os.path.join(calendars_l10n_path, filename)
+            if os.path.exists(lscript):
+                calendars_type = "calendars/i18n/%s" % filename
+
+        language = current.session.s3.language
+        if language in current.deployment_settings.date_formats:
+            # Localise if we have configured a Date Format and we have a jQueryUI options file
+
+            # Do we have a suitable locale file?
+            if language in ("prs", "ps"):
+                # Dari & Pashto use Farsi
+                language = "fa"
+            #elif language == "ur":
+            #    # Urdu uses Arabic
+            #    language = "ar"
+            elif "-" in language:
+                parts = language.split("_", 1)
+                language = "%s-%s" % (parts[0], parts[1].upper())
+
+            # datePicker regional
+            filename = "datepicker-%s.js" % language
+            path = os.path.join(timepicker_l10n_path, filename)
+            if os.path.exists(path):
+                timepicker_l10n = "ui/i18n/%s" % filename
+
+            # timePicker regional
+            filename = "jquery-ui-timepicker-%s.js" % language
+            path = os.path.join(datepicker_l10n_path, filename)
+            if os.path.exists(path):
+                datepicker_l10n = "ui/i18n/%s" % filename
+
+            if calendar != "gregorian" and language:
+                # calendars regional
+                filename = "jquery.calendars.%s-%s.js" % (calendar, language)
+                path = os.path.join(calendars_l10n_path, filename)
+                if os.path.exists(path):
+                    calendars_l10n = "calendars/i18n/%s" % filename
+                # calendarsPicker regional
+                filename = "jquery.calendars.picker-%s.js" % language
+                path = os.path.join(calendars_l10n_path, filename)
+                if os.path.exists(path):
+                    calendars_picker_l10n = "calendars/i18n/%s" % filename
+        else:
+            language = ""
+
+        options["language"] = language
+
+        # Global scripts
+        if s3.debug:
+            scripts = ("jquery.plugin.js",
+                       "calendars/jquery.calendars.all.js",
+                       "calendars/jquery.calendars.picker.ext.js",
+                       "S3/s3.ui.calendar.js",
+                       datepicker_l10n,
+                       timepicker_l10n,
+                       calendars_type,
+                       calendars_l10n,
+                       calendars_picker_l10n,
+                       )
+        else:
+            scripts = ("jquery.plugin.min.js",
+                       "S3/s3.ui.calendar.min.js",
+                       datepicker_l10n,
+                       timepicker_l10n,
+                       calendars_type,
+                       calendars_l10n,
+                       calendars_picker_l10n,
+                       )
+        for script in scripts:
+            if not script:
+                continue
+            path = "/%s/static/scripts/%s" % (appname, script)
+            if path not in s3.scripts:
+                s3.scripts.append(path)
+
+        # jQuery-ready script
+        script = '''$('#%(selector)s').calendarWidget(%(options)s);''' % \
+                 {"selector": selector, "options": json.dumps(options)}
+        s3.jquery_ready.append(script)
+
+# =============================================================================
 class S3DateWidget(FormWidget):
     """
-        Standard Date widget, but with a modified yearRange to support Birth dates
+        Standard Date widget
     """
 
     def __init__(self,
                  format = None,
-                 past=1440,
-                 future=1440,
+                 #past=1440,
+                 #future=1440,
+                 past=None,
+                 future=None,
                  start_field = None,
                  default_interval = None,
                  default_explicit = False,
                  ):
-
         """
             Constructor
 
@@ -1260,7 +1779,7 @@ class S3DateWidget(FormWidget):
             @param past: how many months into the past the date can be set to
             @param future: how many months into the future the date can be set to
             @param start_field: "selector" for start date field
-            @paran default_interval: x months from start date
+            @param default_interval: x months from start date
             @param default_explicit: bool for explicit default
         """
 
@@ -1271,20 +1790,30 @@ class S3DateWidget(FormWidget):
         self.default_interval = default_interval
         self.default_explicit = default_explicit
 
+    # -------------------------------------------------------------------------
     def __call__(self, field, value, **attributes):
+        """
+            Widget builder
+
+            @param field: the Field
+            @param value: the current value
+            @param attributes: the HTML attributes for the widget
+        """
 
         # Need to convert value into ISO-format
         # (widget expects ISO, but value comes in custom format)
-        settings = current.deployment_settings
-        _format = settings.get_L10n_date_format()
-        v, error = IS_DATE_IN_RANGE(format=_format)(value)
-        if not error:
-            value = v.isoformat()
+        dt = current.calendar.parse_date(value, local=True)
+        if dt:
+            value = dt.isoformat()
 
         request = current.request
+        settings = current.deployment_settings
+
         s3 = current.response.s3
+
         jquery_ready = s3.jquery_ready
         language = current.session.s3.language
+
         if language in settings.date_formats:
             # Localise if we have configured a Date Format and we have a jQueryUI options file
             # Do we have a suitable locale file?
@@ -1310,7 +1839,12 @@ class S3DateWidget(FormWidget):
             # default: "yy-mm-dd"
             format = str(self.format)
         else:
-            format = _format.replace("%Y", "yy").replace("%y", "y").replace("%m", "mm").replace("%d", "dd").replace("%b", "M")
+            dtfmt = settings.get_L10n_date_format()
+            format = dtfmt.replace("%Y", "yy") \
+                          .replace("%y", "y") \
+                          .replace("%m", "mm") \
+                          .replace("%d", "dd") \
+                          .replace("%b", "M")
 
         default = dict(_type = "text",
                        value = (value != None and str(value)) or "",
@@ -1329,41 +1863,47 @@ class S3DateWidget(FormWidget):
         # Convert to Days
         now = current.request.utcnow
         past = self.past
-        if past:
-            past = now - relativedelta(months=past)
-            if now > past:
-                days = (now - past).days
-                minDate = "-%s" % days
-            else:
-                days = (past - now).days
-                minDate = "+%s" % days
+        if past is None:
+            past = ""
         else:
-            minDate = "-0"
+            if past:
+                past = now - relativedelta(months=past)
+                if now > past:
+                    days = (now - past).days
+                    minDate = "-%s" % days
+                else:
+                    days = (past - now).days
+                    minDate = "+%s" % days
+            else:
+                minDate = "-0"
+            past = ",minDate:%s" % minDate
+
         future = self.future
-        if future:
-            future = now + relativedelta(months=future)
-            if future > now:
-                days = (future - now).days
-                maxDate = "+%s" % days
-            else:
-                days = (now - future).days
-                maxDate = "-%s" % days
+        if future is None:
+            future = ""
         else:
-            maxDate = "+0"
+            if future:
+                future = now + relativedelta(months=future)
+                if future > now:
+                    days = (future - now).days
+                    maxDate = "+%s" % days
+                else:
+                    days = (now - future).days
+                    maxDate = "-%s" % days
+            else:
+                maxDate = "+0"
+            future = ",maxDate:%s" % maxDate
 
         # Set auto updation of end_date based on start_date if start_field attr are set
         start_field = self.start_field
         default_interval = self.default_interval
 
         script = \
-'''$('#%(selector)s').datepicker('option',{yearRange:'c-100:c+100',
- dateFormat:'%(format)s',
- minDate:%(past)s,
- maxDate:%(future)s}).one('click',function(){$(this).focus()})''' % \
+'''$('#%(selector)s').datepicker('option',{yearRange:'c-100:c+100',dateFormat:'%(format)s'%(past)s%(future)s}).one('click',function(){$(this).focus()})''' % \
             dict(selector = selector,
                  format = format,
-                 past = minDate,
-                 future = maxDate,
+                 past = past,
+                 future = future,
                  )
 
         if script not in jquery_ready: # Prevents loading twice when form has errors
@@ -1618,10 +2158,17 @@ class S3DateTimeWidget(FormWidget):
 
         separator = settings.get_L10n_datetime_separator()
 
+        # Year range
+        pyears, fyears = 10, 10
+        if "min" in opts or "past" in opts:
+            pyears = abs(earliest.year - now.year)
+        if "max" in opts or "future" in opts:
+            fyears = abs(latest.year - now.year)
+        year_range = "%s:%s" % (opts.get("min_year", "-%s" % pyears),
+                                opts.get("max_year", "+%s" % fyears))
+
         # Other options
         firstDOW = settings.get_L10n_firstDOW()
-        year_range = "%s:%s" % (opts.get("min_year", "-10"),
-                                opts.get("max_year", "+10"))
 
         # Boolean options
         getopt = lambda opt, default: opts.get(opt, default) and "true" or "false"
@@ -2023,7 +2570,8 @@ class S3GroupedOptionsWidget(FormWidget):
                  cols=None,
                  help_field=None,
                  none=None,
-                 sort=True):
+                 sort=True,
+                 orientation=None):
         """
             Constructor
 
@@ -2039,6 +2587,7 @@ class S3GroupedOptionsWidget(FormWidget):
                                a tooltip text from (for foreign keys only)
             @param none: True to render "None" as normal option
             @param sort: sort the options (only effective if size==None)
+            @param orientation: the ordering orientation, "columns"|"rows"
         """
 
         self.options = options
@@ -2048,6 +2597,7 @@ class S3GroupedOptionsWidget(FormWidget):
         self.help_field = help_field
         self.none = none
         self.sort = sort
+        self.orientation = orientation
 
     # -------------------------------------------------------------------------
     def __call__(self, field, value, **attributes):
@@ -2086,8 +2636,8 @@ class S3GroupedOptionsWidget(FormWidget):
         widget.add_class("groupedopts-widget")
         widget_opts = {"columns": self.cols,
                        "emptyText": str(current.T("No options available")),
-                       "order": "columns",
-                       "sort": True,
+                       "orientation": self.orientation or "columns",
+                       "sort": self.sort,
                        }
         script = '''$('#%s').groupedopts(%s)''' % \
                  (_id, json.dumps(widget_opts, separators=SEPARATORS))
@@ -2514,17 +3064,15 @@ class S3HumanResourceAutocompleteWidget(FormWidget):
 
     def __init__(self,
                  post_process = "",
-                 delay = 450,   # milliseconds
-                 min_length=2,  # Increase this for large deployments
                  group = "",    # Filter to staff/volunteers/deployables
                  ):
 
         self.post_process = post_process
-        self.delay = delay
-        self.min_length = min_length
         self.group = group
 
     def __call__(self, field, value, **attributes):
+
+        settings = current.deployment_settings
 
         group = self.group
         if not group and current.request.controller == "deploy":
@@ -2558,13 +3106,22 @@ class S3HumanResourceAutocompleteWidget(FormWidget):
         else:
             represent = ""
 
-        script = '''S3.autocomplete.hrm('%(group)s','%(input)s',"%(postprocess)s",%(delay)s,%(min_length)s)''' % \
+        delay = settings.get_ui_autocomplete_delay()
+        min_length = settings.get_ui_autocomplete_min_chars()
+
+        script = '''S3.autocomplete.hrm('%(group)s','%(input)s',"%(postprocess)s"''' % \
             dict(group = group,
                  input = real_input,
                  postprocess = self.post_process,
-                 delay = self.delay,
-                 min_length = self.min_length,
                  )
+        if delay != 800:
+            script = "%s,%s" % (script, delay)
+            if min_length != 2:
+                script = "%s,%s" % (script, min_length)
+        elif min_length != 2:
+            script = "%s,,%s" % (script, min_length)
+        script = "%s)" % script
+
         current.response.s3.jquery_ready.append(script)
 
         return TAG[""](INPUT(_id=dummy_input,
@@ -2964,15 +3521,15 @@ class S3LocationAutocompleteWidget(FormWidget):
     def __init__(self,
                  level = "",
                  post_process = "",
-                 delay = 450,     # milliseconds
-                 min_length = 2): # Increase this for large deployments
+                 ):
 
         self.level = level
         self.post_process = post_process
-        self.delay = delay
-        self.min_length = min_length
 
     def __call__(self, field, value, **attributes):
+
+        settings = current.deployment_settings
+
         level = self.level
         if isinstance(level, list):
             levels = ""
@@ -3012,17 +3569,20 @@ class S3LocationAutocompleteWidget(FormWidget):
         else:
             represent = ""
 
+        delay = settings.get_ui_autocomplete_delay()
+        min_length = settings.get_ui_autocomplete_min_chars()
+
         # Mandatory part
         script = '''S3.autocomplete.location("%s"''' % real_input
         # Optional parts
         if self.post_process:
             # We need all
-            script = '''%s,'%s',%s,%s,"%s"''' % (script, level, self.min_length, self.delay, self.post_process)
-        elif self.delay:
-            script = '''%s,"%s",%s,%s''' % (script, level, self.min_length, self.delay)
-        elif self.min_length:
-            script = '''%s,"%s",%s''' % (script, level, self.min_length)
-        elif levels:
+            script = '''%s,'%s',%s,%s,"%s"''' % (script, level, min_length, delay, self.post_process)
+        elif delay != 800:
+            script = '''%s,"%s",%s,%s''' % (script, level, min_length, delay)
+        elif min_length != 2:
+            script = '''%s,"%s",%s''' % (script, level, min_length)
+        elif level:
             script = '''%s,"%s"''' % (script, level)
         # Close
         script = "%s)" % script
@@ -4245,7 +4805,7 @@ class S3LocationSelector(S3Selector):
     """
 
     keys = ("L0", "L1", "L2", "L3", "L4", "L5",
-            "address", "postcode", "lat", "lon", "wkt", "specific", "id")
+            "address", "postcode", "lat", "lon", "wkt", "specific", "id", "radius")
 
     def __init__(self,
                  levels = None,
@@ -4253,23 +4813,26 @@ class S3LocationSelector(S3Selector):
                  hide_lx = True,
                  reverse_lx = False,
                  show_address = False,
-                 show_postcode = False,
+                 show_postcode = None,
                  show_latlon = None,
                  latlon_mode = "decimal",
                  latlon_mode_toggle = True,
-                 show_map = True,
+                 show_map = None,
                  open_map_on_load = False,
                  feature_required = False,
                  lines = False,
                  points = True,
                  polygons = False,
+                 circles = False,
                  color_picker = False,
                  catalog_layers = False,
                  min_bbox = None,
                  labels = True,
                  placeholders = False,
                  error_message = None,
-                 represent = None):
+                 represent = None,
+                 prevent_duplicate_addresses = False,
+                 ):
         """
             Constructor
 
@@ -4292,6 +4855,7 @@ class S3LocationSelector(S3Selector):
             @param lines: use a line draw tool
             @param points: use a point draw tool
             @param polygons: use a polygon draw tool
+            @param circles: use a circle draw tool
             @param color_picker: display a color-picker to set per-feature styling
                                  (also need to enable in the feature layer to show on map)
             @param catalog_layers: display catalogue layers or just the default base layer
@@ -4301,22 +4865,25 @@ class S3LocationSelector(S3Selector):
             @param placeholders: show placeholder text in inputs
             @param error_message: default error message for server-side validation
             @param represent: an S3Represent instance that can represent non-DB rows
+            @param prevent_duplicate_addresses: do a check for duplicate addresses & prevent
+                                                creation of record if a dupe is found
         """
+
+        settings = current.deployment_settings
 
         self._initlx = True
         self._levels = levels
         self._required_levels = required_levels
-
         self._load_levels = None
 
         self.hide_lx = hide_lx
         self.reverse_lx = reverse_lx
-
         self.show_address = show_address
         self.show_postcode = show_postcode
+        self.prevent_duplicate_addresses = prevent_duplicate_addresses
 
         if show_latlon is None:
-            show_latlon = current.deployment_settings.get_gis_latlon_selector()
+            show_latlon = settings.get_gis_latlon_selector()
         self.show_latlon = show_latlon
         self.latlon_mode = latlon_mode
         if show_latlon:
@@ -4327,21 +4894,24 @@ class S3LocationSelector(S3Selector):
 
         if feature_required:
             show_map = True
-            if not any((points,lines, polygons)):
+            if not any((points,lines, polygons, circles)):
                 points = True
-            if lines or polygons:
+            if lines or polygons or circles:
                 required = "wkt" if not points else "any"
             else:
                 required = "latlon"
             self.feature_required = required
         else:
             self.feature_required = None
+        if show_map is None:
+            show_map = settings.get_gis_map_selector()
         self.show_map = show_map
         self.open_map_on_load = show_map and open_map_on_load
 
         self.lines = lines
         self.points = points
         self.polygons = polygons
+        self.circles = circles
 
         self.color_picker = color_picker
         self.catalog_layers = catalog_layers
@@ -4541,7 +5111,10 @@ class S3LocationSelector(S3Selector):
                                                  )
 
         # Postcode INPUT
-        show_postcode = self.show_postcode and settings.get_gis_postcode_selector()
+        show_postcode = self.show_postcode
+        if show_postcode is None:
+            # Use global setting
+            show_postcode = settings.get_gis_postcode_selector()
         if show_postcode:
             postcode = values.get("postcode")
             components["postcode"] = manual_input(fieldname,
@@ -4628,6 +5201,7 @@ class S3LocationSelector(S3Selector):
         # then we need to launch the client-side JS as a callback to the
         # MapJS loader
         wkt = values.get("wkt")
+        radius = values.get("radius")
         if lat is not None or lon is not None or wkt is not None:
             use_callback = True
         else:
@@ -4678,6 +5252,7 @@ class S3LocationSelector(S3Selector):
                                  lat,
                                  lon,
                                  wkt,
+                                 radius,
                                  callback = callback,
                                  geocoder = geocoder,
                                  tablename = field.tablename,
@@ -4694,11 +5269,17 @@ class S3LocationSelector(S3Selector):
         # Real input
         classes = ["location-selector"]
         if fieldname.startswith("sub_"):
+            is_inline = True
             classes.append("inline-locationselector-widget")
+        else:
+            is_inline = False
         real_input = self.inputfield(field, values, classes, **attributes)
 
         # The overall layout of the components
-        visible_components = self._layout(components, map_icon=map_icon)
+        visible_components = self._layout(components,
+                                          map_icon=map_icon,
+                                          inline=is_inline,
+                                          )
 
         return TAG[""](DIV(_class="throbber"),
                        real_input,
@@ -4721,6 +5302,7 @@ class S3LocationSelector(S3Selector):
             @ToDo: Country-specific Translations of Labels
         """
 
+        T = current.T
         table = current.s3db.gis_hierarchy
 
         fields = [table[level] for level in levels if level != "L0"]
@@ -4756,14 +5338,14 @@ class S3LocationSelector(S3Selector):
                     for level in levels:
                         if level == "L0":
                             continue
-                        labels[level] = d[int(level[1:])] = row[level]
+                        labels[level] = d[int(level[1:])] = s3_unicode(T(row[level]))
         else:
             row = rows.first()
             d = compact["d"] = {}
             for level in levels:
                 if level == "L0":
                     continue
-                d[int(level[1:])] = row[level]
+                d[int(level[1:])] = s3_unicode(T(row[level]))
 
         return labels, compact
 
@@ -4877,7 +5459,8 @@ class S3LocationSelector(S3Selector):
         settings = current.deployment_settings
         translate = settings.get_L10n_translate_gis_location()
         language = current.session.s3.language
-        if language == settings.get_L10n_default_language():
+        #if language == settings.get_L10n_default_language():
+        if language == "en": # Can have a default language for system & yet still want to translate from base English
             translate = False
 
         db = current.db
@@ -5006,7 +5589,8 @@ class S3LocationSelector(S3Selector):
     def _layout(self,
                 components,
                 map_icon=None,
-                formstyle=None):
+                formstyle=None,
+                inline=False):
         """
             Overall layout for visible components
 
@@ -5025,12 +5609,14 @@ class S3LocationSelector(S3Selector):
             # Formstyle with separate row for label
             # (e.g. old default Eden formstyle)
             tuple_rows = True
+            table_style = inline and row[0].tag == "tr"
         else:
             # Formstyle with just a single row
             # (e.g. Bootstrap, Foundation or DRRPP)
             tuple_rows = False
+            table_style = False
 
-        selectors = DIV()
+        selectors = DIV() if not table_style else TABLE()
         for name in ("L0", "L1", "L2", "L3", "L4", "L5"):
             if name in components:
                 label, widget, input_id, hidden = components[name]
@@ -5046,7 +5632,7 @@ class S3LocationSelector(S3Selector):
                 else:
                     selectors.append(formrow)
 
-        inputs = TAG[""]()
+        inputs = TAG[""]() if not table_style else TABLE()
         for name in ("address", "postcode", "lat", "lon", "latlon_toggle"):
             if name in components:
                 label, widget, input_id, hidden = components[name]
@@ -5111,7 +5697,8 @@ class S3LocationSelector(S3Selector):
             label = labels.get(level, level)
 
             # Widget (options to be populated client-side)
-            placeholder = T("Select %(level)s") % {"level": label}
+            #placeholder = T("Select %(level)s") % {"level": label}
+            placeholder = ""
             widget = SELECT(OPTION(placeholder, _value=""),
                             _id = _id,
                             _class = _class,
@@ -5192,6 +5779,7 @@ class S3LocationSelector(S3Selector):
              lat,
              lon,
              wkt,
+             radius,
              callback = None,
              geocoder = False,
              tablename = None):
@@ -5202,6 +5790,7 @@ class S3LocationSelector(S3Selector):
             @param lat: the Latitude of the current point location
             @param lon: the Longitude of the current point location
             @param wkt: the WKT
+            @param radius: the radius of the location
             @param callback: the script to initialize the widget, if to be
                              initialized as callback of the MapJS loader
             @param geocoder: use a geocoder
@@ -5218,7 +5807,8 @@ class S3LocationSelector(S3Selector):
         lines = self.lines
         points = self.points
         polygons = self.polygons
-        use_wkt = polygons or lines
+        circles = self.circles
+        use_wkt = polygons or lines or circles
 
         db = current.db
         gis = current.gis
@@ -5232,7 +5822,7 @@ class S3LocationSelector(S3Selector):
         settings = current.deployment_settings
 
         # Toolbar options
-        add_points_active = add_polygon_active = add_line_active = False
+        add_points_active = add_polygon_active = add_line_active = add_circle_active = False
         if points and lines:
             # Allow selection between drawing a point or a line
             toolbar = True
@@ -5252,6 +5842,13 @@ class S3LocationSelector(S3Selector):
                 add_polygon_active = True
             else:
                 add_points_active = True
+        elif points and circles:
+            # Allow selection between drawing a point or a circle
+            toolbar = True
+            if wkt:
+                add_circle_active = True
+            else:
+                add_points_active = True
         elif points:
             # No toolbar needed => always drawing points
             toolbar = False
@@ -5266,14 +5863,38 @@ class S3LocationSelector(S3Selector):
                     add_polygon_active = True
             else:
                 add_polygon_active = True
+        elif lines and circles:
+            # Allow selection between drawing a line or a circle
+            toolbar = True
+            if wkt:
+                if wkt.startswith("LINE"):
+                    add_line_active = True
+                else:
+                    add_circle_active = True
+            else:
+                add_circle_active = True
         elif lines:
             # No toolbar needed => always drawing lines
             toolbar = False
             add_line_active = True
+        elif polygons and circles:
+            # Allow selection between drawing a polygon or a circle
+            toolbar = True
+            if wkt:
+                if radius is not None:
+                    add_circle_active = True
+                else:
+                    add_polygon_active = True
+            else:
+                add_polygon_active = True
         elif polygons:
             # No toolbar needed => always drawing polygons
             toolbar = False
             add_polygon_active = True
+        elif circles:
+            # No toolbar needed => always drawing circles
+            toolbar = False
+            add_circle_active = True
         else:
             # No Valid options!
             raise SyntaxError
@@ -5330,6 +5951,8 @@ class S3LocationSelector(S3Selector):
                             add_line_active = add_line_active,
                             add_polygon = polygons,
                             add_polygon_active = add_polygon_active,
+                            add_circle = circles,
+                            add_circle_active = add_circle_active,
                             catalogue_layers = self.catalog_layers,
                             color_picker = colorpicker,
                             toolbar = toolbar,
@@ -5458,7 +6081,7 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
         # Initialize the values dict
         if values is None:
             values = {}
-        for key in ("L0", "L1", "L2", "L3", "L4", "L5", "specific", "parent"):
+        for key in ("L0", "L1", "L2", "L3", "L4", "L5", "specific", "parent", "radius"):
             if key not in values:
                 values[key] = None
 
@@ -5475,6 +6098,7 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
         lat = values.get("lat")
         lon = values.get("lon")
         wkt = values.get("wkt")
+        radius = values.get("radius")
         address = values.get("address")
         postcode = values.get("postcode")
 
@@ -5488,6 +6112,7 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
                                                   table.lat,
                                                   table.lon,
                                                   table.wkt,
+                                                  table.radius,
                                                   table.addr_street,
                                                   table.addr_postcode,
                                                   limitby=(0, 1)).first()
@@ -5543,11 +6168,13 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
                 else:
                     lat = None
                     lon = None
-                if self.lines or self.polygons:
+                if self.lines or self.polygons or self.circles:
                     if not wkt:
                         if record.gis_feature_type != 1:
                             # Only use WKT for non-Points
                             wkt = record.wkt
+                            if record.radius is not None:
+                                radius = record.radius
                         else:
                             wkt = None
                 else:
@@ -5574,10 +6201,11 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
         values["address"] = address
         values["postcode"] = postcode
 
-        # Lat/Lon/WKT
+        # Lat/Lon/WKT/Radius
         values["lat"] = lat
         values["lon"] = lon
         values["wkt"] = wkt
+        values["radius"] = radius
 
         return values
 
@@ -5605,6 +6233,7 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
         lat = value.get("lat")
         lon = value.get("lon")
         wkt = value.get("wkt")
+        radius = value.get("radius")
         address = value.get("address")
         postcode = value.get("postcode")
 
@@ -5688,7 +6317,7 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
         else:
             text = represent(record)
 
-        return s3_unicode(text)
+        return s3_str(text)
 
     # -------------------------------------------------------------------------
     def validate(self, value, requires=None):
@@ -5717,34 +6346,43 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
 
         msg = self.error_message
 
-        # Check for valid Lat/Lon/WKT (if any)
+        # Check for valid Lat/Lon/WKT/Radius (if any)
         lat = values.get("lat")
-        if lat == "":
-            lat = None
         if lat:
             try:
                 lat = float(lat)
             except ValueError:
                 errors["lat"] = current.T("Latitude is Invalid!")
+        elif lat == "":
+            lat = None
 
         lon = values.get("lon")
-        if lon == "":
-            lon = None
         if lon:
             try:
                 lon = float(lon)
             except ValueError:
                 errors["lon"] = current.T("Longitude is Invalid!")
+        elif lon == "":
+            lon = None
 
         wkt = values.get("wkt")
-        if wkt == "":
-            wkt = None
         if wkt:
             try:
                 from shapely.wkt import loads as wkt_loads
                 wkt_loads(wkt)
             except:
                 errors["wkt"] = current.T("WKT is Invalid!")
+        elif wkt == "":
+            wkt = None
+
+        radius = values.get("radius")
+        if radius:
+            try:
+                radius = float(radius)
+            except ValueError:
+                errors["radius"] = current.T("Radius is Invalid!")
+        elif radius == "":
+            radius = None
 
         if errors:
             error = "\n".join(errors[fn] for fn in errors)
@@ -5758,7 +6396,7 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
             # Currently not possible
             #   => widget always retains specific
             #   => must take care of orphaned specific locations otherwise
-            lat = lon = wkt = None
+            lat = lon = wkt = radius = None
         else:
             # Read other details
             parent = values.get("parent")
@@ -5768,7 +6406,8 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
         if parent or address or postcode or \
            wkt is not None or \
            lat is not None or \
-           lon is not None:
+           lon is not None or \
+           radius is not None:
 
             # Specific location with details
             if specific:
@@ -5842,10 +6481,11 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
                                       addr_postcode=postcode,
                                       parent=parent,
                                       )
-                    if any(detail is not None for detail in (lat, lon, wkt)):
+                    if any(detail is not None for detail in (lat, lon, wkt, radius)):
                         feature.lat = lat
                         feature.lon = lon
                         feature.wkt = wkt
+                        feature.radius = radius
                         feature.inherited = False
                     onvalidation = current.s3db.gis_location_onvalidation
 
@@ -5861,16 +6501,28 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
                 if not current.auth.s3_has_permission("create", table):
                     return (values, current.auth.messages.access_denied)
 
+                # Check for duplicate address
+                if self.prevent_duplicate_addresses:
+                    query = (table.addr_street == address) & \
+                            (table.parent == parent) & \
+                            (table.deleted != True)
+                    duplicate = current.db(query).select(table.id,
+                                                         limitby=(0, 1)
+                                                         ).first()
+                    if duplicate:
+                        return (values, current.T("Duplicate Address"))
+
                 # Schedule for onvalidation
                 feature = Storage(addr_street=address,
                                   addr_postcode=postcode,
                                   parent=parent,
                                   inherited=True,
                                   )
-                if any(detail is not None for detail in (lat, lon, wkt)):
+                if any(detail is not None for detail in (lat, lon, wkt, radius)):
                     feature.lat = lat
                     feature.lon = lon
                     feature.wkt = wkt
+                    feature.radius = radius
                     feature.inherited = False
                 onvalidation = current.s3db.gis_location_onvalidation
 
@@ -5904,18 +6556,23 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
 
                 level = location.level
                 if level:
-                    # Which levels of Hierarchy are we using?
+                    # Accept all levels above and including the lowest selectable level
                     levels = self.levels
-                    if level not in levels:
+                    for i in xrange(5,-1,-1):
+                        if "L%s" % i in levels:
+                            accepted_levels = set("L%s" % l for l in xrange(i,-1,-1))
+                            break
+                    if level not in accepted_levels:
                         return (values, msg or \
                                         current.T("Location is of incorrect level!"))
-
             # Do not update (indicate by specific = None)
             values["specific"] = None
 
         if feature and onvalidation:
 
-            form = Storage(errors = errors, vars = feature)
+            form = Storage(errors = errors,
+                           vars = feature,
+                           )
             try:
                 # @todo: should use callback()
                 onvalidation(form)
@@ -5929,6 +6586,10 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
                 errors = form.errors
                 error = "\n".join(errors[fn] for fn in errors)
                 return (values, error)
+            elif feature:
+                # gis_location_onvalidation adds/updates form vars (e.g.
+                # gis_feature_type, the_geom) => must also update values
+                values.update(feature)
 
         # Success
         return (values, None)
@@ -5970,10 +6631,17 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
         # Read the values
         lat = values.get("lat")
         lon = values.get("lon")
+        lat_min = values.get("lat_min") # Values brought in by onvalidation
+        lon_min = values.get("lon_min")
+        lat_max = values.get("lat_max")
+        lon_max = values.get("lon_max")
         wkt = values.get("wkt")
+        radius = values.get("radius")
+        the_geom = values.get("the_geom")
         address = values.get("address")
         postcode = values.get("postcode")
         parent = values.get("parent")
+        gis_feature_type = values.get("gis_feature_type")
 
         if location_id == 0:
             # Create new location
@@ -5984,12 +6652,24 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
 
             feature = Storage(lat=lat,
                               lon=lon,
+                              lat_min=lat_min,
+                              lon_min=lon_min,
+                              lat_max=lat_max,
+                              lon_max=lon_max,
                               wkt=wkt,
+                              radius=radius,
                               inherited=inherited,
                               addr_street=address,
                               addr_postcode=postcode,
                               parent=parent,
                               )
+
+            # These could have been added during validate:
+            if gis_feature_type:
+                feature.gis_feature_type = gis_feature_type
+            if the_geom:
+                feature.the_geom = the_geom
+
             location_id = table.insert(**feature)
             feature.id = location_id
             current.gis.update_location_tree(feature)
@@ -6000,15 +6680,26 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
             # specific is None for Lx locations
             if specific and specific == location_id:
                 # Update specific location
-                feature = Storage(addr_street=values.get("address"),
-                                  addr_postcode=values.get("postcode"),
-                                  parent=values.get("parent"),
+                feature = Storage(addr_street=address,
+                                  addr_postcode=postcode,
+                                  parent=parent,
                                   )
-                if any(detail is not None for detail in (lat, lon, wkt)):
+                if any(detail is not None for detail in (lat, lon, wkt, radius)):
                     feature.lat = lat
                     feature.lon = lon
+                    feature.lat_min = lat_min
+                    feature.lon_min = lon_min
+                    feature.lat_max = lat_max
+                    feature.lon_max = lon_max
                     feature.wkt = wkt
+                    feature.radius = radius
                     feature.inherited = False
+
+                # These could have been added during validate:
+                if gis_feature_type:
+                    feature.gis_feature_type = gis_feature_type
+                if the_geom:
+                    feature.the_geom = the_geom
 
                 db(table.id == location_id).update(**feature)
                 feature.id = location_id
@@ -6125,8 +6816,8 @@ class S3MultiSelectWidget(MultipleOptionsWidget):
         # * Show Selected List
         if header_opt is True:
             header = '''checkAllText:'%s',uncheckAllText:"%s"''' % \
-                     (T("Select all"),
-                      T("Clear all"))
+                     (T("Select All"),
+                      T("Clear All"))
         elif header_opt is False:
             header = '''header:false'''
         else:
@@ -6266,8 +6957,11 @@ class S3HierarchyWidget(FormWidget):
                  represent = None,
                  multiple = True,
                  leafonly = True,
+                 cascade = False,
+                 bulk_select = False,
                  filter = None,
                  columns = None,
+                 none = None,
                  ):
         """
             Constructor
@@ -6277,18 +6971,34 @@ class S3HierarchyWidget(FormWidget):
             @param represent: alternative representation method (falls back
                               to the field's represent-method)
             @param multiple: allow selection of multiple options
-            @param leafonly: True = only leaf nodes can be selected
-                             False = any nodes to be selected independently
+            @param leafonly: True = only leaf nodes can be selected (with
+                             multiple=True: selection of a parent node will
+                             automatically select all leaf nodes of that
+                             branch)
+                             False = any nodes can be selected independently
+            @param cascade: automatic selection of children when selecting
+                            a parent node (if leafonly=False, otherwise
+                            this is the standard behavior!), requires
+                            multiple=True
+            @param bulk_select: provide option to select/deselect all nodes
             @param filter: filter query for the lookup table
             @param columns: set the columns width class for Foundation forms
+            @param none: label for an option that delivers "None" as value
+                         (useful for HierarchyFilters with explicit none-selection)
         """
 
         self.lookup = lookup
         self.represent = represent
         self.filter = filter
+
         self.multiple = multiple
         self.leafonly = leafonly
+        self.cascade = cascade
+
         self.columns = columns
+        self.bulk_select = bulk_select
+
+        self.none = none
 
     # -------------------------------------------------------------------------
     def __call__(self, field, value, **attr):
@@ -6343,13 +7053,39 @@ class S3HierarchyWidget(FormWidget):
             attr["s3cols"] = self.columns
 
         # Generate the widget
+        settings = current.deployment_settings
+        cascade_option_in_tree = settings.get_ui_hierarchy_cascade_option_in_tree()
+
+        if self.multiple and self.bulk_select and \
+           not cascade_option_in_tree:
+            # Render bulk-select options as separate header
+            header = DIV(SPAN(A("Select All",
+                                _class="s3-hierarchy-select-all",
+                                ),
+                              " | ",
+                              A("Deselect All",
+                                _class="s3-hierarchy-deselect-all",
+                                ),
+                              _class="s3-hierarchy-bulkselect",
+                              ),
+                         _class="s3-hierarchy-header",
+                         )
+        else:
+            header = ""
         widget = DIV(INPUT(_type = "hidden",
                            _multiple = "multiple",
                            _name = name,
+                           _id = selector,
                            _class = "s3-hierarchy-input",
                            requires = self.parse),
-                     DIV(h.html("%s-tree" % widget_id),
-                         _class = "s3-hierarchy-tree"),
+                     DIV(header,
+                         DIV(h.html("%s-tree" % widget_id,
+                                    none=self.none,
+                                    ),
+                             _class = "s3-hierarchy-tree",
+                             ),
+                         _class = "s3-hierarchy-wrapper",
+                         ),
                      **attr)
         widget.add_class("s3-hierarchy-widget")
 
@@ -6369,7 +7105,7 @@ class S3HierarchyWidget(FormWidget):
                 append(v)
 
         # Custom theme
-        theme = current.deployment_settings.get_ui_hierarchy_theme()
+        theme = settings.get_ui_hierarchy_theme()
 
         if s3.debug:
             script = "%s/jstree.js" % script_dir
@@ -6395,18 +7131,28 @@ class S3HierarchyWidget(FormWidget):
                        "selectedText": str(T("# selected")),
                        "noneSelectedText": str(T("Select")),
                        "noOptionsText": str(T("No options available")),
+                       "selectAllText": str(T("Select All")),
+                       "deselectAllText": str(T("Deselect All")),
                        }
+
         # Only include non-default options
         if not self.multiple:
             widget_opts["multiple"] = False
         if not leafonly:
             widget_opts["leafonly"] = False
+        if self.cascade:
+            widget_opts["cascade"] = True
+        if self.bulk_select:
+            widget_opts["bulkSelect"] = True
+        if not cascade_option_in_tree:
+            widget_opts["cascadeOptionInTree"] = False
         icons = theme.get("icons", False)
         if icons:
             widget_opts["icons"] = icons
         stripes = theme.get("stripes", True)
         if not stripes:
             widget_opts["stripes"] = stripes
+
 
         script = '''$('#%(widget_id)s').hierarchicalopts(%(widget_opts)s)''' % \
                  {"widget_id": widget_id,
@@ -6533,12 +7279,9 @@ class S3OrganisationAutocompleteWidget(FormWidget):
     def __init__(self,
                  post_process = "",
                  default_from_profile = False,
-                 delay = 450,       # milliseconds
-                 min_length = 2):   # Increase this for large deployments
+                 ):
 
         self.post_process = post_process
-        self.delay = delay
-        self.min_length = min_length
         self.tablename = "org_organisation"
         self.default_from_profile = default_from_profile
 
@@ -6552,8 +7295,6 @@ class S3OrganisationAutocompleteWidget(FormWidget):
             return value
 
         return S3GenericAutocompleteTemplate(self.post_process,
-                                             self.delay,
-                                             self.min_length,
                                              field,
                                              value,
                                              attributes,
@@ -6625,14 +7366,10 @@ class S3PersonAutocompleteWidget(FormWidget):
                  function = "person_search",
                  post_process = "",
                  hideerror = False,
-                 delay = 450,     # milliseconds
-                 min_length = 2,  # Increase this for large deployments
                  ajax_filter = "",
                  ):
 
         self.post_process = post_process
-        self.delay = delay
-        self.min_length = min_length
         self.c = controller
         self.f = function
         self.hideerror = hideerror
@@ -6676,8 +7413,10 @@ class S3PersonAutocompleteWidget(FormWidget):
                  )
         options = ""
         post_process = self.post_process
-        delay = self.delay
-        min_length = self.min_length
+
+        settings = current.deployment_settings
+        delay = settings.get_ui_autocomplete_delay()
+        min_length = settings.get_ui_autocomplete_min_chars()
 
         if self.ajax_filter:
             options = ''',"%(ajax_filter)s"''' % \
@@ -6688,7 +7427,7 @@ class S3PersonAutocompleteWidget(FormWidget):
                 dict(postprocess = post_process,
                      delay = delay,
                      min_length = min_length)
-        elif delay != 450:
+        elif delay != 800:
             options += ''',"%(postprocess)s",%(delay)s''' % \
                 dict(postprocess = post_process,
                      delay = delay)
@@ -6722,12 +7461,9 @@ class S3PentityAutocompleteWidget(FormWidget):
                  types = None,
                  post_process = "",
                  hideerror = False,
-                 delay = 450,     # milliseconds
-                 min_length = 2): # Increase this for large deployments
+                 ):
 
         self.post_process = post_process
-        self.delay = delay
-        self.min_length = min_length
         self.c = controller
         self.f = function
         self.types = None
@@ -6784,8 +7520,11 @@ class S3PentityAutocompleteWidget(FormWidget):
 
         options = ""
         post_process = self.post_process
-        delay = self.delay
-        min_length = self.min_length
+
+        settings = current.deployment_settings
+        delay = settings.get_ui_autocomplete_delay()
+        min_length = settings.get_ui_autocomplete_min_chars()
+
         if types:
             options = ''',"%(postprocess)s",%(delay)s,%(min_length)s,%(types)s''' % \
                 dict(postprocess = post_process,
@@ -6797,7 +7536,7 @@ class S3PentityAutocompleteWidget(FormWidget):
                 dict(postprocess = post_process,
                      delay = delay,
                      min_length = min_length)
-        elif delay != 450:
+        elif delay != 800:
             options = ''',"%(postprocess)s",%(delay)s''' % \
                 dict(postprocess = post_process,
                      delay = delay)
@@ -6858,14 +7597,10 @@ class S3SiteAutocompleteWidget(FormWidget):
 
     def __init__(self,
                  post_process = "",
-                 delay = 450, # milliseconds
-                 min_length = 2,
                  ):
 
         self.auth = current.auth
         self.post_process = post_process
-        self.delay = delay
-        self.min_length = min_length
 
     def __call__(self, field, value, **attributes):
 
@@ -6903,21 +7638,34 @@ class S3SiteAutocompleteWidget(FormWidget):
         else:
             represent = ""
 
+
+
         s3 = current.response.s3
         site_types = current.auth.org_site_types
         for instance_type in site_types:
             # Change from T()
             site_types[instance_type] = s3_unicode(site_types[instance_type])
         site_types = '''S3.org_site_types=%s''' % json.dumps(site_types, separators=SEPARATORS)
+
+        settings = current.deployment_settings
+        delay = settings.get_ui_autocomplete_delay()
+        min_length = settings.get_ui_autocomplete_min_chars()
+
         js_global = s3.js_global
         if site_types not in js_global:
             js_global.append(site_types)
-        script = '''S3.autocomplete.site('%(input)s',"%(postprocess)s",%(delay)s,%(min_length)s)''' % \
+        script = '''S3.autocomplete.site('%(input)s',"%(postprocess)s"''' % \
             dict(input = real_input,
                  postprocess = self.post_process,
-                 delay = self.delay,
-                 min_length = self.min_length,
                  )
+        if delay != 800:
+            script = "%s,%s" % (script, delay)
+            if min_length != 2:
+                script = "%s,%s" % (script, min_length)
+        elif min_length != 2:
+            script = "%s,,%s" % (script, min_length)
+        script = "%s)" % script
+
         s3.jquery_ready.append(script)
         return TAG[""](INPUT(_id=dummy_input,
                              _class="string",
@@ -7077,6 +7825,11 @@ class S3TimeIntervalWidget(FormWidget):
 
         if value is None:
             value = 0
+        elif isinstance(value, basestring):
+            try:
+                value = int(value)
+            except ValueError:
+                value = 0
 
         if value == 0:
             multiplier = 1
@@ -7356,6 +8109,7 @@ class S3PasswordWidget(FormWidget):
                             )
         return DIV(password_input,
                    password_unmask,
+                   _class = "s3-password-widget",
                    )
 
 # =============================================================================
@@ -7383,21 +8137,34 @@ def s3_comments_widget(field, value, **attr):
 # =============================================================================
 def s3_richtext_widget(field, value):
     """
-        A larger-than-normal textarea to be used by the CMS Post Body field
+        A Rich Text field to be used by the CMS Post Body, etc
+        - uses CKEditor
+        - requires doc module loaded to be able to upload/browse Images
     """
 
     s3 = current.response.s3
     id = "%s_%s" % (field._tablename, field.name)
 
     # Load the scripts
+    sappend = s3.scripts.append
     ckeditor = URL(c="static", f="ckeditor", args="ckeditor.js")
-    s3.scripts.append(ckeditor)
+    sappend(ckeditor)
     adapter = URL(c="static", f="ckeditor", args=["adapters",
                                                   "jquery.js"])
-    s3.scripts.append(adapter)
+    sappend(adapter)
 
-    # Toolbar options: http://docs.cksource.com/CKEditor_3.x/Developers_Guide/Toolbar
-    js = '''var ck_config={toolbar:[['Format','Bold','Italic','-','NumberedList','BulletedList','-','Link','Unlink','-','Image','Table','-','PasteFromWord','-','Source','Maximize']],toolbarCanCollapse:false,removePlugins:'elementspath'}'''
+    table = current.s3db.table("doc_ckeditor")
+    if table:
+        # Doc module enabled: can upload/browse images
+        url = '''filebrowserUploadUrl:'/%(appname)s/doc/ck_upload',filebrowserBrowseUrl:'/%(appname)s/doc/ck_browse',''' \
+                % dict(appname=current.request.application)
+    else:
+        # Doc module not enabled: cannot upload/browse images
+        url = ""
+
+    # Toolbar options: http://docs.ckeditor.com/#!/guide/dev_toolbar
+    js = '''var ck_config={toolbar:[['Format','Bold','Italic','-','NumberedList','BulletedList','-','Link','Unlink','-','Image','Table','-','PasteFromWord','-','Source','Maximize']],toolbarCanCollapse:false,%sremovePlugins:'elementspath'}''' \
+            % url
     s3.js_global.append(js)
 
     js = '''$('#%s').ckeditor(ck_config)''' % id
@@ -7548,9 +8315,10 @@ def search_ac(r, **attr):
         MAX_SEARCH_RESULTS = current.deployment_settings.get_search_max_results()
         if (not limit or limit > MAX_SEARCH_RESULTS) and \
            resource.count() > MAX_SEARCH_RESULTS:
-            output = json.dumps([
-                dict(label=str(current.T("There are more than %(max)s results, please input more characters.") % dict(max=MAX_SEARCH_RESULTS)))
-                ], separators=SEPARATORS)
+            output = [
+                dict(label=str(current.T("There are more than %(max)s results, please input more characters.") % \
+                    dict(max=MAX_SEARCH_RESULTS)))
+                ]
 
     if output is None:
         rows = resource.select(fields,
@@ -7568,6 +8336,327 @@ def search_ac(r, **attr):
 
     current.response.headers["Content-Type"] = "application/json"
     return json.dumps(output, separators=SEPARATORS)
+
+# =============================================================================
+class S3XMLContents(object):
+    """
+        Renderer for db-stored XML contents (e.g. CMS)
+
+        Replaces {{page}} expressions inside the contents with local URLs.
+
+        {{page}}                 - gives the URL of the current page
+        {{name:example}}         - gives the URL of the current page with
+                                   a query ?name=example (can add any number
+                                   of query variables)
+        {{c:org,f:organisation}} - c and f tokens override controller and
+                                   function of the current page, in this
+                                   example like /org/organisation
+        {{args:arg,arg}}         - override the current request's URL args
+                                   (this should come last in the expression)
+        {{noargs}}               - strip all URL args
+
+        @note: does not check permissions for the result URLs
+    """
+
+    def __init__(self, contents):
+        """
+            Constructor
+
+            @param contents: the contents (string)
+        """
+
+        self.contents = contents
+
+    # -------------------------------------------------------------------------
+    def link(self, match):
+        """
+            Replace {{}} expressions with local URLs, with the ability to
+            override controller, function and URL query variables.Called
+            from re.sub.
+
+            @param match: the re match object
+        """
+
+        # Parse the expression
+        tokens = match.group(1).split(",")
+
+        args = True
+        parameters = {}
+        arguments = []
+        collect_args = False
+        for token in tokens:
+            if not token:
+                continue
+            elif ":" in token:
+                collect_args = False
+                key, value = token.split(":")
+            else:
+                key, value = token, None
+            key = key.strip()
+            if not value:
+                if key == "noargs":
+                    args = False
+                elif collect_args:
+                    arguments.append(key)
+            elif key == "args":
+                arguments.append(value.strip())
+                collect_args = True
+            else:
+                parameters[key] = value.strip()
+
+        # Construct the URL
+        request = current.request
+        c = parameters.pop("c", request.controller)
+        f = parameters.pop("f", request.function)
+        if not arguments:
+            arguments = request.args
+        args = arguments if args else []
+        return URL(c=c, f=f, args=args, vars=parameters, host=True)
+
+    # -------------------------------------------------------------------------
+    def xml(self):
+        """ Render the output """
+
+        return re.sub(r"\{\{(.+?)\}\}", self.link, self.contents)
+
+# =============================================================================
+class S3QuestionWidget(FormWidget):
+    """
+        A Question widget which takes attributes
+        of a typical question as input and converts
+        it into a JSON
+    """
+
+    # -------------------------------------------------------------------------
+    def __call__(self, field, value, **attr):
+        """
+            Widget builder
+
+            @param field: the Field
+            @param value: the current value
+            @param attributes: the HTML attributes for the widget
+        """
+
+        selector = attr.get("id")
+        if not selector:
+            if isinstance(field, Field):
+                selector = str(field).replace(".", "_")
+            else:
+                selector = field.name.replace(".", "_")
+
+        # Field name
+        name = attr.get("_name")
+
+        if not name:
+            name = field.name
+
+        T = current.T
+        request = current.request
+        s3 = current.response.s3
+
+        # The actual hidden input containing the JSON of the fields
+        real_input = INPUT(_id=selector,
+                           _name=name,
+                           _value=value,
+                           _type="hidden",
+                           )
+
+        formstyle = s3.crud.formstyle
+
+        if value is None:
+            value = "{}"
+
+        value = eval(value)
+
+        type_options = (("string", "String"),
+                        ("integer", "Integer"),
+                        ("float", "Float"),
+                        ("text", "Text"),
+                        ("object", "Object"),
+                        ("date", "Date"),
+                        ("time", "Time"),
+                        ("datetime", "DateTime"),
+                        ("reference", "Reference"),
+                        ("location", "Location"),
+                        )
+
+        type_id = "%s_type" % selector
+
+        select_field = Field("type", requires=IS_IN_SET(type_options))
+        select_value = value.get("type", "")
+
+        # Used by OptionsWidget for creating DOM id for select input
+        select_field.tablename = "dc_question_model"
+        select = OptionsWidget.widget(select_field, select_value)
+
+        # Retrieve value of checkboxes
+        multiple = value.get("multiple", False)
+        if multiple == "true":
+            multiple = True
+        else:
+            multiple = False
+
+        is_required = value.get("is_required", False)
+        if is_required == "true":
+            is_required = True
+        else:
+            is_required = False
+
+        # Render visual components
+        components = {}
+        manual_input = self._input
+
+        components["type"] = ("Type: ", select, type_id)
+
+        components["is_required"] = manual_input(selector,
+                                                 "is_required",
+                                                 is_required,
+                                                 T("Is Required"),
+                                                 "checkbox")
+
+        components["description"] = manual_input(selector,
+                                                 "description",
+                                                 value.get("description", ""),
+                                                 T("Description"))
+
+        components["default_answer"] = manual_input(selector,
+                                                    "defaultanswer",
+                                                    value.get("defaultanswer", ""),
+                                                    T("Default Answer"))
+
+        components["max"] = manual_input(selector,
+                                         "max",
+                                         value.get("max", ""),
+                                         T("Maximum"))
+
+        components["min"] = manual_input(selector,
+                                         "min",
+                                         value.get("min", ""),
+                                         T("Minimum"))
+
+        components["filter"] = manual_input(selector,
+                                            "filter",
+                                            value.get("filter", ""),
+                                            T("Filter"))
+
+        components["reference"] = manual_input(selector,
+                                               "reference",
+                                               value.get("reference", ""),
+                                               T("Reference"))
+
+        components["represent"] = manual_input(selector,
+                                               "represent",
+                                               value.get("represent", ""),
+                                               T("Represent"))
+
+        components["location"] = manual_input(selector,
+                                              "location",
+                                              value.get("location", "[]"),
+                                              T("Location Fields"))
+
+        components["options"] = manual_input(selector,
+                                             "options",
+                                             value.get("options", "[]"),
+                                             T("Options"))
+
+        components["multiple"] = manual_input(selector,
+                                              "multiple",
+                                              multiple,
+                                              T("Multiple Options"),
+                                              "checkbox")
+
+        # Load the widget script
+        scripts = s3.scripts
+        script_dir = "/%s/static/scripts" % request.application
+
+        script = "%s/S3/s3.ui.question.js" % script_dir
+        if script not in scripts:
+            scripts.append(script)
+
+        # Call the widget
+        script = '''$('#%(widget_id)s').addQuestion()''' % \
+                {"widget_id": "dc_question_model"}
+
+        s3.jquery_ready.append(script)
+
+        # Get the layout for visible components
+        visible_components = self._layout(components)
+
+        return TAG[""](real_input,
+                       visible_components)
+
+    # -------------------------------------------------------------------------
+    def _layout(self, components, formstyle=None):
+        """
+            Overall layout for visible components
+
+            @param components: the components as dict
+            @param formstyle: the formstyle (falls back to CRUD formstyle)
+        """
+
+        if formstyle is None:
+            formstyle = current.response.s3.crud.formstyle
+
+        # Test the formstyle
+        row = formstyle("test", "test", "test", "test")
+
+        tuple_rows = isinstance(row, tuple)
+
+        inputs = TAG[""]()
+        for name in ("type", "is_required", "description", "default_answer",
+                     "max", "min", "filter", "reference", "represent",
+                     "location", "options", "multiple"):
+            if name in components:
+                label, widget, input_id = components[name]
+                formrow = formstyle("%s__row" % input_id,
+                                    label,
+                                    widget,
+                                    "")
+
+                if tuple_rows:
+                    inputs.append(formrow[0])
+                    inputs.append(formrow[1])
+                else:
+                    inputs.append(formrow)
+        return inputs
+
+    # -------------------------------------------------------------------------
+    def _input(self,
+               fieldname,
+               name,
+               value,
+               label,
+               _type="text"):
+        """
+            Render a text input with given attributes
+
+            @param fieldname: the field name (for ID construction)
+            @param name: the name for the input field
+            @param value: the initial value for the input
+            @param label: the label for the input
+            @param hidden: render hidden
+
+            @return: a tuple (label, widget, id, hidden)
+        """
+
+        input_id = "%s_%s" % (fieldname, name)
+
+        _label = LABEL("%s: " % label, _for=input_id)
+
+        if isinstance(value, unicode):
+            value = value.encode("utf-8")
+
+        # If the input is of type checkbox
+        if name in ("is_required", "multiple"):
+            widget = INPUT(_type=_type,
+                           _id=input_id,
+                           value=value)
+        else:
+            widget = INPUT(_type=_type,
+                           _id=input_id,
+                           _value=value)
+
+        return (_label, widget, input_id)
 
 # =============================================================================
 class ICON(I):
@@ -7604,6 +8693,7 @@ class ICON(I):
         "font-awesome": {
             "_base": "icon",
             "active": "icon-check",
+            "activity": "icon-tag",
             "add": "icon-plus",
             "arrow-down": "icon-arrow-down",
             "attachment": "icon-paper-clip",
@@ -7615,33 +8705,44 @@ class ICON(I):
             "calendar": "icon-calendar",
             "certificate": "icon-certificate",
             "comment-alt": "icon-comment-alt",
+            "commit": "icon-truck",
             "delete": "icon-trash",
+            "deploy": "icon-plus",
+            "deployed": "icon-ok",
             "down": "icon-caret-down",
             "edit": "icon-edit",
             "exclamation": "icon-exclamation",
             "facebook": "icon-facebook",
+            "facility": "icon-home",
             "file": "icon-file",
             "file-alt": "icon-file-alt",
             "folder-open-alt": "icon-folder-open-alt",
             "fullscreen": "icon-fullscreen",
             "globe": "icon-globe",
+            "group": "icon-group",
             "home": "icon-home",
             "inactive": "icon-check-empty",
             "link": "icon-external-link",
             "list": "icon-list",
+            "location": "icon-globe",
             "mail": "icon-envelope-alt",
             "map-marker": "icon-map-marker",
             "offer": "icon-truck",
+            "organisation": "icon-sitemap",
+            "org-network": "icon-umbrella",
             "other": "icon-circle",
             "paper-clip": "icon-paper-clip",
             "phone": "icon-phone",
             "plus": "icon-plus",
             "plus-sign": "icon-plus-sign",
+            "print": "icon-print",
             "radio": "icon-microphone",
             "remove": "icon-remove",
             "request": "icon-flag",
+            "responsibility": "icon-briefcase",
             "rss": "icon-rss",
-            "sitemap": "icon-sitemap",
+            "sent": "icon-ok",
+            "site": "icon-home",
             "skype": "icon-skype",
             "star": "icon-star",
             "table": "icon-table",
@@ -7649,12 +8750,12 @@ class ICON(I):
             "tags": "icon-tags",
             "tasks": "icon-tasks",
             "time": "icon-time",
-            "trash": "icon-trash",
             "truck": "icon-truck",
             "twitter": "icon-twitter",
+            "unsent": "icon-remove",
             "up": "icon-caret-up",
+            "upload": "icon-upload-alt",
             "user": "icon-user",
-            "wrench": "icon-wrench",
             "zoomin": "icon-zoomin",
             "zoomout": "icon-zoomout",
         },
@@ -7662,6 +8763,7 @@ class ICON(I):
         #"font-awesome4": {
             #"_base": "fa",
             #"active": "fa-check",
+            #"activity": "fa-tag",
             #"add": "fa-plus",
             #"arrow-down": "fa-arrow-down",
             #"attachment": "fa-paper-clip",
@@ -7673,23 +8775,31 @@ class ICON(I):
             #"calendar": "fa-calendar",
             #"certificate": "fa-certificate",
             #"comment-alt": "fa-comment-o",
+            #"commit": "fa-truck",
             #"delete": "fa-trash",
+            #"deploy": "fa-plus",
+            #"deployed": "fa-check",
             #"down": "fa-caret-down",
             #"edit": "fa-edit",
             #"exclamation": "fa-exclamation",
             #"facebook": "fa-facebook",
+            #"facility": "fa-home",
             #"file": "fa-file",
             #"file-alt": "fa-file-alt",
             #"folder-open-alt": "fa-folder-open-o",
             #"fullscreen": "fa-fullscreen",
             #"globe": "fa-globe",
+            #"group": "fa-group",
             #"home": "fa-home",
             #"inactive": "fa-check-empty",
             #"link": "fa-external-link",
             #"list": "fa-list",
+            #"location": "fa-globe",
             #"mail": "fa-envelope-o",
             #"map-marker": "fa-map-marker",
             #"offer": "fa-truck",
+            #"organisation": "fa-institution",
+            #"org-network": "fa-umbrella",
             #"other": "fa-circle",
             #"paper-clip": "fa-paper-clip",
             #"phone": "fa-phone",
@@ -7698,8 +8808,10 @@ class ICON(I):
             #"radio": "fa-microphone",
             #"remove": "fa-remove",
             #"request": "fa-flag",
+            #"responsibility": "fa-briefcase",
             #"rss": "fa-rss",
-            #"sitemap": "fa-sitemap",
+            #"sent": "fa-check",
+            #"site": "fa-home",
             #"skype": "fa-skype",
             #"star": "fa-star",
             #"table": "fa-table",
@@ -7707,17 +8819,18 @@ class ICON(I):
             #"tags": "fa-tags",
             #"tasks": "fa-tasks",
             #"time": "fa-time",
-            #"trash": "fa-trash",
             #"truck": "fa-truck",
             #"twitter": "fa-twitter",
+            #"unsent": "fa-times",
             #"up": "fa-caret-up",
+            #"upload": "fa-upload",
             #"user": "fa-user",
-            #"wrench": "fa-wrench",
             #"zoomin": "fa-zoomin",
             #"zoomout": "fa-zoomout",
         #},
         "foundation": {
             "active": "fi-check",
+            "activity": "fi-price-tag",
             "add": "fi-plus",
             "arrow-down": "fi-arrow-down",
             "attachment": "fi-paperclip",
@@ -7728,31 +8841,43 @@ class ICON(I):
             "calendar": "fi-calendar",
             "certificate": "fi-burst",
             "comment-alt": "fi-comment",
+            "commit": "fi-check",
             "delete": "fi-trash",
+            "deploy": "fi-plus",
+            "deployed": "fi-check",
             "edit": "fi-page-edit",
             "exclamation": "fi-alert",
             "facebook": "fi-social-facebook",
+            "facility": "fi-home",
             "file": "fi-page-filled",
             "file-alt": "fi-page",
             "folder-open-alt": "fi-folder",
             "fullscreen": "fi-arrows-out",
             "globe": "fi-map",
+            "group": "fi-torsos-all",
             "home": "fi-home",
             "inactive": "fi-x",
             "link": "fi-web",
             "list": "fi-list",
+            "location": "fi-map",
             "mail": "fi-mail",
             "map-marker": "fi-marker",
             "offer": "fi-burst",
+            "organisation": "fi-torsos-all",
+            "org-network": "fi-asterisk",
             "other": "fi-asterisk",
             "paper-clip": "fi-paperclip",
             "phone": "fi-telephone",
             "plus": "fi-plus",
             "plus-sign": "fi-plus",
+            "print": "fi-print",
             "radio": "fi-microphone",
             "remove": "fi-x",
             "request": "fi-flag",
+            "responsibility": "fi-sheriff-badge",
             "rss": "fi-rss",
+            "sent": "fi-check",
+            "site": "fi-home",
             "skype": "fi-social-skype",
             "star": "fi-star",
             "table": "fi-list-thumbnails",
@@ -7760,10 +8885,10 @@ class ICON(I):
             "tags": "fi-pricetag-multiple",
             "tasks": "fi-clipboard-notes",
             "time": "fi-clock",
-            "trash": "fi-trash",
             "twitter": "fi-social-twitter",
+            "unsent": "fi-x",
+            "upload": "fi-upload",
             "user": "fi-torso",
-            "wrench": "fi-wrench",
             "zoomin": "fi-zoom-in",
             "zoomout": "fi-zoom-out",
         },

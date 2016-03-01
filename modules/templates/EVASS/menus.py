@@ -9,9 +9,6 @@ except ImportError:
     pass
 import s3menus as default
 
-# Below is an example which you can base your own template's menus.py on
-# - there are also other examples in the other templates folders
-
 # =============================================================================
 class S3MainMenu(default.S3MainMenu):
     """
@@ -46,13 +43,11 @@ class S3MainMenu(default.S3MainMenu):
     def menu_modules(cls):
         """ Custom Modules Menu """
 
-        return [
-            homepage(name="EVASS"),
-            homepage("gis"),
-            homepage("org"),
-            homepage("msg"),
-
-       ]
+        return [homepage(name="EVASS"),
+                homepage("gis"),
+                homepage("org"),
+                homepage("msg"),
+                ]
 
 # =============================================================================
 class S3OptionsMenu(default.S3OptionsMenu):
@@ -129,13 +124,13 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         M("Staff Report", m="report"),
                     ),
                     M("Personal Profile", f="person",
-                      check=personal_mode, vars=dict(mode="personal")),
+                      check=personal_mode, vars=dict(access="personal")),
                     # This provides the link to switch to the manager mode:
                     M("Staff Management", f="index",
                       check=[personal_mode, is_org_admin]),
                     # This provides the link to switch to the personal mode:
                     M("Personal Profile", f="person",
-                      check=manager_mode, vars=dict(mode="personal"))
+                      check=manager_mode, vars=dict(access="personal"))
                 )
 
     # -------------------------------------------------------------------------
@@ -215,17 +210,17 @@ class S3OptionsMenu(default.S3OptionsMenu):
                           check=show_programmes),
                     ),
                     M("My Profile", f="person",
-                      check=personal_mode, vars=dict(mode="personal")),
+                      check=personal_mode, vars=dict(access="personal")),
                     M("My Tasks", f="task",
                       check=[personal_mode, show_tasks],
-                      vars=dict(mode="personal",
+                      vars=dict(access="personal",
                                 mine=1)),
                     # This provides the link to switch to the manager mode:
                     M("Volunteer Management", f="index",
                       check=[personal_mode, is_org_admin]),
                     # This provides the link to switch to the personal mode:
                     M("Personal Profile", f="person",
-                      check=manager_mode, vars=dict(mode="personal"))
+                      check=manager_mode, vars=dict(access="personal"))
                 )
 
 

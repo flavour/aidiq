@@ -163,7 +163,7 @@
   border-left: 2px solid #ccc;
 }
 .pt-table-contents .pt-table .pt-cell-value {
-  float: left;
+  display: inline;
 }
 .pt-table-contents .pt-table .pt-cell-value li {
   font-size: 0.8rem;
@@ -180,7 +180,8 @@
   width: 16px;
   height: 16px;
   cursor: pointer;
-  float: right;
+  display: inline-block;
+  vertical-align: text-top;
   margin-left: 5px;
   background: url(../../img/silk/magnifier_zoom_in.png) no-repeat top right;
 }
@@ -200,6 +201,7 @@
 }
 
 /* Empty-sections */
+.gi-empty,
 .tp-empty,
 .pt-empty,
 .pt-no-data {
@@ -227,4 +229,66 @@
 .pt-table-controls,
 .pt-table-contents {
   clear: left;
+}
+
+/* In grouped tables, separate groups visually */
+.gi-table table {
+  border-collapse: separate;
+}
+.gi-table table thead td,
+.gi-table table tfoot td {
+  background-color: #333;
+  color: #fff;
+}
+
+.gi-group-header.gi-level-1 td {
+  background-color: #999;
+  color: #fff;
+}
+.gi-group-header.gi-level-1 td a {
+  color: #fff;
+}
+.gi-group-header.gi-level-2 td {
+  background-color: #eee;
+  border-top: 1px solid #999;
+}
+
+.gi-group-footer.gi-level-1 td {
+  background-color: #999;
+  color: #fff;
+  border-bottom: 1px dotted #666;
+}
+.gi-group-footer.gi-level-1 td a {
+  color: #fff;
+}
+.gi-group-footer.gi-level-2 td {
+  background-color: #eee;
+  border-bottom: 1px solid #999;
+}
+
+/* Show label for summary in tables */
+.gi-group-footer-inline-label {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1;
+  position: relative;
+  top: -0.1em;
+  margin: 0 0.25em 0 1em;
+  padding: 0.25em 0.75em;
+  text-transform: uppercase;
+  background-color: #ccc;
+  color: #666;
+}
+
+.gi-export-formats {
+  display: inline;
+}
+.gi-export-formats .gi-export {
+  height: 16px;
+  width: 16px;
+  display: inline-block;
+  padding-right: 1.2rem;
+  padding-bottom: 1.5rem;
+  background-repeat: no-repeat;
+  cursor: pointer;
 }

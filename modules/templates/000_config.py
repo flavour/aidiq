@@ -95,6 +95,7 @@ settings.auth.hmac_key = "akeytochange"
 #settings.mail.server = "127.0.0.1:25"
 #settings.mail.tls = True
 # Useful for Windows Laptops:
+# https://www.google.com/settings/security/lesssecureapps
 #settings.mail.server = "smtp.gmail.com:587"
 #settings.mail.tls = True
 #settings.mail.login = "username:password"
@@ -211,6 +212,18 @@ settings.auth.hmac_key = "akeytochange"
 # Maximum number of features for a Map Layer
 #settings.gis.max_features = 1000
 
+# CAP Settings
+# Change for different authority and organisations
+# See http://alerting.worldweather.org/ for prefix and oid
+#settings.cap.identifier_prefix = "PAGASA-DOST"
+# Country root oid. The oid for the organisation includes this base with an additional suffix
+#settings.cap.identifier_oid = "2.49.0.1.608"
+#settings.cap.identifier_suffix = "alert"
+# Change this for the offset period in days that the alert will be effective for
+# Expire Date = Effective Date + expire_offset
+# Default is 2 days
+#settings.cap.expire_offset = 2
+
 # =============================================================================
 # Import the settings from the Template
 # - note: invalid settings are ignored
@@ -223,7 +236,8 @@ settings.import_template()
 
 # e.g.
 #settings.base.system_name = T("Sahana TEST")
-#settings.base.prepopulate = ("default", "default/users")
+#settings.base.prepopulate = ("MY_TEMPLATE_ONLY")
+#settings.base.prepopulate += ("default", "default/users")
 #settings.base.theme = "default"
 #settings.L10n.default_language = "en"
 #settings.security.policy = 7 # Organisation-ACLs
@@ -233,7 +247,7 @@ settings.import_template()
 #        restricted = False,
 #        module_type = 10,
 #    )
-# Disable a module which is nromally used by the template
+# Disable a module which is normally used by the template
 # - NB Only templates with adaptive menus will work nicely with this!
 #del settings.modules["irs"]
 

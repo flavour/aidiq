@@ -2,7 +2,7 @@
 
 """ Sahana Eden Hospital Management System Model
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -38,7 +38,7 @@ from gluon.storage import Storage
 
 from ..s3 import *
 from s3dal import Row
-from s3layouts import S3AddResourceLink
+from s3layouts import S3PopupLink
 
 # =============================================================================
 class HospitalDataModel(S3Model):
@@ -115,7 +115,6 @@ class HospitalDataModel(S3Model):
                      super_link("doc_id", "doc_entity"),
                      super_link("pe_id", "pr_pentity"),
                      super_link("site_id", "org_site"),
-
                      # UID assigned by Local Government
                      # required for EDXL-HAVE
                      # @ToDo: Move to a KV in hms_hospital_tag table?
@@ -128,31 +127,26 @@ class HospitalDataModel(S3Model):
                            readable = False,
                            writable = False,
                            ),
-
                      # Name of the facility
                      Field("name", notnull=True,
                            length=64, # Mayon compatibility
                            label = T("Name"),
                            ),
-
                      # Alternate name, or name in local language
                      Field("aka1",
                            label = T("Other Name"),
                            ),
-
                      # Alternate name, or name in local language
                      Field("aka2",
                            label = T("Other Name"),
                            readable = False,
                            writable = False,
                            ),
-
-                     # Mayon compatibility
-                     Field("code", length=10,
+                     Field("code", length=10, # Mayon compatibility
                            #notnull=True, unique=True,
+                           # @ToDo: code_requires
                            label = T("Code"),
                            ),
-
                      Field("facility_type", "integer",
                            default = 1,
                            label = T("Facility Type"),
@@ -166,7 +160,6 @@ class HospitalDataModel(S3Model):
                         requires = self.org_organisation_requires(updateable=True),
                         ),
                      self.gis_location_id(),
-
                      # Address fields:
                      # @todo: Deprecate these & use location_id in HAVE export
                      Field("address",
@@ -347,11 +340,12 @@ class HospitalDataModel(S3Model):
                   )
 
         # Reusable field
-        hms_hospital_id_comment = S3AddResourceLink(c="hms",
-                                                    f="hospital",
-                                                    label=ADD_HOSPITAL,
-                                                    title=T("Hospital"),
-                                                    tooltip=T("If you don't see the Hospital in the list, you can add a new one by clicking link 'Create Hospital'."))
+        hms_hospital_id_comment = S3PopupLink(c = "hms",
+                                              f = "hospital",
+                                              label = ADD_HOSPITAL,
+                                              title = T("Hospital"),
+                                              tooltip = T("If you don't see the Hospital in the list, you can add a new one by clicking link 'Create Hospital'."),
+                                              )
 
         represent = S3Represent(lookup=tablename)
         hospital_id = S3ReusableField("hospital_id", "reference %s" % tablename,
@@ -1208,12 +1202,12 @@ class CholeraTreatmentCapabilityModel(S3Model):
         # ---------------------------------------------------------------------
         # Return global names to s3db
         #
-        return dict()
+        return {}
 
     # -------------------------------------------------------------------------
     def defaults(self):
 
-        return dict()
+        return {}
 
 # =============================================================================
 class HospitalActivityReportModel(S3Model):
@@ -1298,12 +1292,12 @@ class HospitalActivityReportModel(S3Model):
         # ---------------------------------------------------------------------
         # Return global names to s3db
         #
-        return dict()
+        return {}
 
     # -------------------------------------------------------------------------
     def defaults(self):
 
-        return dict()
+        return {}
 
     # -------------------------------------------------------------------------
     @staticmethod

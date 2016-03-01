@@ -1,5 +1,9 @@
 /* GIS module */
 
+.embeddedComponent .map_wrapper {
+    min-width: 350px;
+}
+
 .map_wrapper {
     /* Allow Absolutely positioned panels within */
     position: relative;
@@ -353,6 +357,10 @@ svg[id^=OpenLayers] {
 .olPopup #plain {
     max-width: 450px;
 }
+.olPopupCloseBox { /* Needed for Foundation-based themes for some reason */
+    margin-right: 15px;
+    margin-top: -8px;
+}
 .olFramedCloudPopupContent label {
     padding-right: 5px;
 }
@@ -444,6 +452,11 @@ svg[id^=OpenLayers] {
 }
 .mappnlcntr .drawpolygon-off {
   background-image: url(../../img/gis/mapfish/draw_polygon_off.png) !important;
+  height: 20px !important;
+  width: 20px !important;
+}
+.mappnlcntr .drawcircle-on {
+  background-image: url(../../img/draw_circle_on.png) !important;
   height: 20px !important;
   width: 20px !important;
 }

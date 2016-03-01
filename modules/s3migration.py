@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2012-2015 (c) Sahana Software Foundation
+    @copyright: 2012-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -120,14 +120,14 @@ class S3Migration(object):
         # Some (older) 000_config.py also use "deployment_settings":
         environment["deployment_settings"] = settings
         # For backwards-compatibility with older 000_config.py:
-        def template_path():
-            # When you see this warning, you should update 000_config.py
-            # See: http://eden.sahanafoundation.org/wiki/DeveloperGuidelines/Templates/Migration#Changesin000_config.py
-            print "template_path() is deprecated, please update 000_config.py"
-            # Return just any valid path to make sure the path-check succeeds,
-            # => modern S3Config will find the template itself
-            return request.folder
-        environment["template_path"] = template_path
+        #def template_path():
+        #    # When you see this warning, you should update 000_config.py
+        #    # See: http://eden.sahanafoundation.org/wiki/DeveloperGuidelines/Templates/Migration#Changesin000_config.py
+        #    print "template_path() is deprecated, please update 000_config.py"
+        #    # Return just any valid path to make sure the path-check succeeds,
+        #    # => modern S3Config will find the template itself
+        #    return request.folder
+        #environment["template_path"] = template_path
         environment["os"] = os
         environment["Storage"] = Storage
 

@@ -5,13 +5,15 @@
 """
 
 # =============================================================================
+# Special local requests (e.g. from scheduler)
+#
 if request.is_local:
     # This is a request made from the local server
 
     f = get_vars.get("format", None)
     auth_token = get_vars.get("subscription", None)
     if auth_token and f == "msg":
-        # Subscription lookup request
+        # Subscription lookup request (see S3Notify.notify())
         rtable = s3db.pr_subscription_resource
         stable = s3db.pr_subscription
         utable = s3db.pr_person_user
@@ -41,6 +43,11 @@ if not auth.permission.has_permission("read"):
     auth.permission.fail()
 
 # =============================================================================
+# Initialize Date/Time Settings
+#
+s3base.s3_get_utc_offset()
+
+# =============================================================================
 # Menus
 #
 from s3layouts import *
@@ -49,31 +56,38 @@ import s3menus as default_menus
 S3MainMenu = default_menus.S3MainMenu
 S3OptionsMenu = default_menus.S3OptionsMenu
 
-current.menu = Storage(options=None, override={})
+current.menu = Storage(oauth="", options=None, override={})
 if auth.permission.format in ("html"):
 
-    menus = None
     theme = settings.get_theme()
-    location = settings.get_template_location()
-    package = "applications.%s.%s.templates.%%s.menus" % (appname, location)
+
+    package = "applications.%s.modules.templates.%%s.menus" % appname
+
+    menu_locations = []
     if theme != "default":
-        # Custom theme => try loading menus from theme
-        menus = package % theme
+        if s3.theme_location:
+            theme = "%s.%s" % (s3.theme_location[:-1], theme)
+        menu_locations.append(theme)
     else:
         template = settings.get_template()
-        if template != "default":
-            # Custom template => try loading menus from template
-            menus = package % template
+        if isinstance(template, (tuple, list)):
+            menu_locations.extend(template)
+        else:
+            menu_locations.append(template)
 
-    if menus:
+    for name in menu_locations:
+        if name == "default":
+            # Using s3menus.py
+            continue
         try:
-            deployment_menus = __import__(menus,
+            deployment_menus = __import__(package % name,
                                           fromlist=["S3MainMenu",
                                                     "S3OptionsMenu",
                                                     ],
                                           )
         except ImportError:
-            pass
+            # No menus.py (using except is faster than os.stat)
+            continue
         else:
             if hasattr(deployment_menus, "S3MainMenu"):
                 S3MainMenu = deployment_menus.S3MainMenu
@@ -91,40 +105,6 @@ menu["main"] = main
 # Override controller menus
 # @todo: replace by current.menu.override
 s3_menu_dict = {}
-
-# =============================================================================
-def s3_get_utc_offset():
-    """ Get the current UTC offset for the client """
-
-    offset = None
-
-    if auth.is_logged_in():
-        # 1st choice is the personal preference (useful for GETs if user wishes to see times in their local timezone)
-        offset = session.auth.user.utc_offset
-        if offset:
-            offset = offset.strip()
-
-    if not offset:
-        # 2nd choice is what the client provides in the hidden field (for form POSTs)
-        offset = request.post_vars.get("_utc_offset", None)
-        if offset:
-            offset = int(offset)
-            utcstr = offset < 0 and "UTC +" or "UTC -"
-            hours = abs(int(offset/60))
-            minutes = abs(int(offset % 60))
-            offset = "%s%02d%02d" % (utcstr, hours, minutes)
-            # Make this the preferred value during this session
-            if auth.is_logged_in():
-                session.auth.user.utc_offset = offset
-
-    if not offset:
-        # 3rd choice is the server default (what most clients should see the timezone as)
-        offset = deployment_settings.L10n.utc_offset
-
-    return offset
-
-# Store last value in session
-session.s3.utc_offset = s3_get_utc_offset()
 
 # -----------------------------------------------------------------------------
 def s3_rest_controller(prefix=None, resourcename=None, **attr):
@@ -206,7 +186,8 @@ def s3_rest_controller(prefix=None, resourcename=None, **attr):
     set_handler("profile", s3base.S3Profile)
     set_handler("report", s3base.S3Report)
     set_handler("report", s3base.S3Report, transform=True)
-    set_handler("timeplot", s3base.S3TimePlot) # temporary setting for testing
+    set_handler("timeplot", s3base.S3TimePlot)
+    set_handler("grouped", s3base.S3GroupedItemsReport)
     set_handler("search_ac", s3base.search_ac)
     set_handler("summary", s3base.S3Summary)
 

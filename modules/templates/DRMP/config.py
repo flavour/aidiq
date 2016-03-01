@@ -30,7 +30,7 @@ def config(settings):
 
     # -----------------------------------------------------------------------------
     # Pre-Populate
-    settings.base.prepopulate = ("DRMP", "default/users")
+    settings.base.prepopulate += ("DRMP", "default/users")
 
     settings.base.system_name = T("Timor-Leste Disaster Risk Management Information System")
     settings.base.system_name_short = T("DRMIS")
@@ -119,7 +119,7 @@ def config(settings):
     # Default Language
     settings.L10n.default_language = "tet"
     # Default timezone for users
-    settings.L10n.utc_offset = "UTC +0900"
+    settings.L10n.utc_offset = "+0900"
     # Unsortable 'pretty' date format
     settings.L10n.date_format = "%d %b %Y"
     # Number formats (defaults to ISO 31-0)
@@ -147,10 +147,10 @@ def config(settings):
     # -----------------------------------------------------------------------------
     # Finance settings
     settings.fin.currencies = {
-        "AUD" : T("Australian Dollars"),
-        "EUR" : T("Euros"),
-        "GBP" : T("Great British Pounds"),
-        "USD" : T("United States Dollars"),
+        "AUD" : "Australian Dollars",
+        "EUR" : "Euros",
+        "GBP" : "Great British Pounds",
+        "USD" : "United States Dollars",
     }
 
     # -----------------------------------------------------------------------------
@@ -2501,14 +2501,15 @@ def config(settings):
                                                         #P(record.comments),
                                                         _class="profile-header",
                                                         ),
-                                   profile_widgets = [alerts_widget,
+                                   profile_widgets = (alerts_widget,
                                                       map_widget,
                                                       incidents_widget,
                                                       assessments_widget,
                                                       activities_widget,
                                                       reports_widget,
                                                       #comments_widget,
-                                                      ])
+                                                      ),
+                                   )
 
                 # Include a Location inline
                 location_field = s3db.event_event_location.location_id
@@ -2615,7 +2616,7 @@ def config(settings):
                     s3.dl_rowsize = 2
 
                     # Just show L1s (Districts)
-                    s3.filter = (table.level == "L1")
+                    r.resource.add_filter(table.level == "L1")
                     # Default 5 triggers an AJAX call, we should load all by default
                     s3.dl_pagelength = 13
 
@@ -2753,14 +2754,14 @@ def config(settings):
                                                         H2(name),
                                                         _class="profile-header",
                                                         ),
-                                   profile_widgets = [#locations_widget,
+                                   profile_widgets = (#locations_widget,
                                                       resources_widget,
                                                       map_widget,
                                                       incidents_widget,
                                                       reports_widget,
                                                       projects_widget,
                                                       activities_widget,
-                                                      ],
+                                                      ),
                                    )
 
             # Call standard prep
@@ -3220,7 +3221,7 @@ def config(settings):
                                                         H2(record.name),
                                                         _class="profile-header",
                                                         ),
-                                   profile_widgets = [contacts_widget,
+                                   profile_widgets = (contacts_widget,
                                                       map_widget,
                                                       offices_widget,
                                                       resources_widget,
@@ -3228,8 +3229,9 @@ def config(settings):
                                                       activities_widget,
                                                       reports_widget,
                                                       assessments_widget,
-                                                      ]
+                                                      ),
                                    )
+
                 elif r.method == "datalist":
                     # Stakeholder selection page
                     # 2-column datalist, 6 rows per page
@@ -3508,12 +3510,14 @@ def config(settings):
                 site_field.requires = IS_ONE_OF(current.db, "org_site.site_id",
                                                 represent,
                                                 orderby = "org_site.name")
-                from s3layouts import S3AddResourceLink
-                site_field.comment = S3AddResourceLink(c="org", f="office",
-                                                       vars={"child": "site_id"},
-                                                       label=T("Create Office"),
-                                                       title=T("Office"),
-                                                       tooltip=T("If you don't see the Office in the list, you can add a new one by clicking link 'Create Office'."))
+                from s3layouts import S3PopupLink
+                site_field.comment = S3PopupLink(c = "org",
+                                                 f = "office",
+                                                 vars = {"child": "site_id"},
+                                                 label = T("Create Office"),
+                                                 title = T("Office"),
+                                                 tooltip = T("If you don't see the Office in the list, you can add a new one by clicking link 'Create Office'."),
+                                                 )
 
                 # ImageCrop widget doesn't currently work within an Inline Form
                 image_field = s3db.pr_image.image
@@ -3998,7 +4002,7 @@ def config(settings):
                 result = standard_prep(r)
 
             # Filter Out Docs from Newsfeed & Projects
-            current.response.s3.filter = (table.name != None)
+            r.resource.add_filter(table.name != None)
 
             if r.interactive:
                 s3.crud_strings[tablename] = Storage(

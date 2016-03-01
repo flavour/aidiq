@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+## -*- coding: utf-8 -*-
 
 """ S3XML Toolkit
 
@@ -7,7 +7,7 @@
     @requires: U{B{I{gluon}} <http://web2py.com>}
     @requires: U{B{I{lxml}} <http://codespeak.net/lxml>}
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -56,6 +56,7 @@ from gluon import *
 from gluon.storage import Storage
 
 from s3codec import S3Codec
+from s3datetime import s3_decode_iso_datetime, s3_encode_iso_datetime, s3_utc
 from s3fields import S3RepresentLazy
 from s3utils import s3_get_foreign_key, s3_unicode, s3_strip_markup, s3_validate, s3_represent_value
 
@@ -235,7 +236,9 @@ class S3XML(S3Codec):
             except:
                 pass
         try:
-            parser = etree.XMLParser(no_network=False)
+            parser = etree.XMLParser(no_network = False,
+                                     remove_blank_text = True,
+                                     )
             result = etree.parse(source, parser)
             return result
         except:
@@ -849,6 +852,7 @@ class S3XML(S3Codec):
                 # These have been looked-up in bulk
                 geojson = geojsons[tablename].get(record_id, None)
                 if geojson:
+                    # Always single
                     geometry = etree.SubElement(map_data, "geometry")
                     geometry.set("value", geojson)
 
@@ -862,6 +866,7 @@ class S3XML(S3Codec):
                 # These have been looked-up in bulk
                 LatLon = latlons[tablename].get(record_id, None)
                 if LatLon:
+                    # Always single
                     lat = LatLon[0]
                     lon = LatLon[1]
                     if lat is not None and lon is not None:
@@ -949,12 +954,13 @@ class S3XML(S3Codec):
             return
 
         elif len(tablename) > 19 and \
-           tablename.startswith("gis_layer_shapefile"):
+             tablename.startswith("gis_layer_shapefile"):
             # Shapefile data
             if tablename in geojsons:
                 # These have been looked-up in bulk
                 geojson = geojsons[tablename].get(record_id, None)
                 if geojson:
+                    # Always single
                     geometry = etree.SubElement(map_data, "geometry")
                     geometry.set("value", geojson)
                     if tablename in attributes:
@@ -996,13 +1002,16 @@ class S3XML(S3Codec):
                 # These have been looked-up in bulk
                 geojson = geojsons[tablename].get(record_id, None)
                 if geojson:
-                    geometry = etree.SubElement(map_data, "geometry")
-                    geometry.set("value", geojson)
+                    for g in geojson:
+                        geometry = etree.SubElement(map_data, "geometry")
+                        geometry.set("value", g)
 
             elif tablename in latlons:
                 # These have been looked-up in bulk
                 LatLon = latlons[tablename].get(record_id, None)
                 if LatLon:
+                    # @ToDo: Support records with multiple locations
+                    #        via making these also use the map element
                     lat = LatLon[0]
                     lon = LatLon[1]
                     if lat is not None and lon is not None:
@@ -1014,7 +1023,12 @@ class S3XML(S3Codec):
 
             if tablename in attributes:
                 # Add Attributes
-                attrs = attributes[tablename][record_id]
+                try:
+                    attrs = attributes[tablename][record_id]
+                except KeyError:
+                    from s3utils import s3_debug
+                    s3_debug("S3XML", "record not found in lookup")
+                    attrs = {}
                 if attrs:
                     # Encode in a way which we can decode in static/formats/geojson/export.xsl
                     # - double up all tokens to reduce chances of them being within represents
@@ -1065,6 +1079,7 @@ class S3XML(S3Codec):
             # These have been looked-up in bulk
             LatLon = latlons[tablename].get(record_id, None)
             if LatLon:
+                # @ToDo: Support records with multiple locations
                 lat = LatLon[0]
                 lon = LatLon[1]
                 if lat is not None and lon is not None:
@@ -1179,8 +1194,6 @@ class S3XML(S3Codec):
         # Fields
         FIELDS_TO_ATTRIBUTES = self.FIELDS_TO_ATTRIBUTES
 
-        encode_iso_datetime = self.encode_iso_datetime
-
         _repr = self.represent
         to_json = json.dumps
 
@@ -1207,7 +1220,7 @@ class S3XML(S3Codec):
             value = None
 
             if fieldtype == "datetime":
-                value = encode_iso_datetime(v).decode("utf-8")
+                value = s3_encode_iso_datetime(v).decode("utf-8")
             elif fieldtype in ("date", "time") or \
                  fieldtype[:7] == "decimal":
                 value = str(formatter(v)).decode("utf-8")
@@ -1355,8 +1368,8 @@ class S3XML(S3Codec):
         value = None
 
         try:
-            dt = S3Codec.decode_iso_datetime(str(dtstr))
-            value = S3Codec.as_utc(dt)
+            dt = s3_decode_iso_datetime(str(dtstr))
+            value = s3_utc(dt)
         except:
             error = sys.exc_info()[1]
         if error is None:
@@ -1396,6 +1409,7 @@ class S3XML(S3Codec):
 
         # Extract the UUID
         UID = cls.UID
+        uid = None
         if UID in table.fields and UID not in skip:
             uid = current.xml.import_uid(element.get(UID, None))
             if uid:
@@ -1431,10 +1445,15 @@ class S3XML(S3Codec):
             if f == APPROVED:
                 # Override default-approver:
                 if "approved_by" in table:
-                    if element.get(f, "true").lower() == "false":
-                        record["approved_by"] = None
+                    approved = element.get(f)
+                    if approved:
+                        if approved.lower() == "false":
+                            record["approved_by"] = None
+                        else:
+                            if table["approved_by"].default is None:
+                                auth.permission.set_default_approver(table, force=True)
                     else:
-                        if table["approved_by"].default == None:
+                        if table["approved_by"].default is None:
                             auth.permission.set_default_approver(table)
                 continue
 
@@ -1478,7 +1497,9 @@ class S3XML(S3Codec):
                         continue
                     record[f] = value
 
-        if deleted:
+        if deleted and uid:
+            # UUID is enough to identify the record,
+            # so can skip parsing field data
             return record
 
         # Fields
@@ -1494,8 +1515,8 @@ class S3XML(S3Codec):
             if field_type in ("id", "blob"):
                 continue
             elif field_type == "upload":
-                download_url = child.get(ATTRIBUTE["url"], None)
-                filename = child.get(ATTRIBUTE["filename"], None)
+                download_url = child.get(ATTRIBUTE["url"])
+                filename = child.get(ATTRIBUTE["filename"])
                 upload = None
                 if filename and filename in files:
                     # We already have the file cached
@@ -1515,17 +1536,23 @@ class S3XML(S3Codec):
                         # continue
                 elif download_url:
                     # Download file from Internet
-                    if not filename:
+                    if not isinstance(download_url, str):
                         try:
-                            filename = download_url.split("?")[0]
-                        except:
-                            # Fake filename as fallback
-                            filename = "upload.bin"
+                            download_url = download_url.encode("utf-8")
+                        except UnicodeEncodeError:
+                            continue
+                    if not filename:
+                        filename = download_url.split("?")[0] or "upload.bin"
                     try:
                         upload = urllib2.urlopen(download_url)
                     except IOError:
                         continue
                 if upload:
+                    if not isinstance(filename, str):
+                        try:
+                            filename = filename.encode("utf-8")
+                        except UnicodeEncodeError:
+                            continue
                     field = table[f]
                     value = field.store(upload, filename)
                 elif download_url != "local":
@@ -1573,7 +1600,7 @@ class S3XML(S3Codec):
                         error = sys.exc_info()[1]
 
                 if not skip_validation:
-                    if not isinstance(value, (basestring, list, tuple)):
+                    if not isinstance(value, (basestring, list, tuple, bool)):
                         v = str(value)
                     elif isinstance(value, basestring):
                         v = value.encode("utf-8")
@@ -1594,7 +1621,7 @@ class S3XML(S3Codec):
                                                  "file": stream})
                                 (dummy, error) = s3_validate(table, f, dummy, original)
                         elif field_type == "password":
-                            v = value
+                            v = str(value) # CRYPT barfs on integers
                             (value, error) = s3_validate(table, f, v)
                         else:
                             (value, error) = s3_validate(table, f, v, original)
@@ -1611,7 +1638,7 @@ class S3XML(S3Codec):
 
                 child.set(VALUE, s3_unicode(v))
                 if error:
-                    child.set(ERROR, "%s: %s" % (f, error))
+                    child.set(ERROR, s3_unicode("%s: %s" % (f, error)))
                     valid = False
                     continue
 
@@ -1918,29 +1945,38 @@ class S3XML(S3Codec):
         """
 
         if isinstance(value, dict):
-            return cls.__obj2element(key, value, native=native)
+            # Value contains an object, so recurse
+            element = cls.__obj2element(key, value, native=native)
 
         elif isinstance(value, (list, tuple)):
-            if not key == cls.TAG.item:
-                _list = etree.Element(key)
+            # Produce an element with one child element per list item
+            if key != cls.TAG.item:
+                element = etree.Element(key)
             else:
-                _list = etree.Element(cls.TAG.list)
+                # Nested list
+                element = etree.Element(cls.TAG.list)
+
+            json2element = cls.__json2element
+            item_tag = cls.TAG.item
+
             for obj in value:
-                item = cls.__json2element(cls.TAG.item, obj,
-                                           native=native)
-                _list.append(item)
-            return _list
+                item = json2element(item_tag, obj, native=native)
+                element.append(item)
 
         else:
+            # Produce a child element
             if native:
+                # always <data field="key">value</data>
                 element = etree.Element(cls.TAG.data)
                 element.set(cls.ATTRIBUTE.field, key)
             else:
+                # always <key>value</key>
                 element = etree.Element(key)
-            if not isinstance(value, (str, unicode)):
+            if not isinstance(value, basestring):
                 value = str(value)
             element.text = value
-            return element
+
+        return element
 
     # -------------------------------------------------------------------------
     @classmethod
@@ -1957,8 +1993,8 @@ class S3XML(S3Codec):
 
         if not tag:
             tag = cls.TAG.object
-
         elif native:
+            # Check for S3JSON prefix, convert object name to name attribute
             if tag.startswith(cls.PREFIX.reference):
                 field = tag[len(cls.PREFIX.reference) + 1:]
                 tag = cls.TAG.reference
@@ -1983,24 +2019,45 @@ class S3XML(S3Codec):
             if field:
                 element.set(cls.ATTRIBUTE.field, field)
 
+        attribute_prefix = cls.PREFIX.attribute
+        text_prefix = cls.PREFIX.text
+
+        obj2element = cls.__obj2element
+        json2element = cls.__json2element
+
         for k in obj:
             m = obj[k]
+
             if isinstance(m, dict):
-                child = cls.__obj2element(k, m, native=native)
+                # Node contains subelements of its own
+                child = obj2element(k, m, native=native)
                 element.append(child)
+
             elif isinstance(m, (list, tuple)):
-                #l = etree.SubElement(element, k)
-                for _obj in m:
-                    child = cls.__json2element(k, _obj, native=native)
+                # Node is a value list
+                if native and k.startswith(attribute_prefix):
+                    # S3JSON: convert value lists for attributes to JSON
+                    a = k[len(attribute_prefix):]
+                    element.set(a, json.dumps(m))
+                    continue
+                for obj_ in m:
+                    child = json2element(k, obj_, native=native)
                     element.append(child)
+
             else:
-                if k == cls.PREFIX.text:
+                # Node is a single value
+                if k == text_prefix:
+                    # ...is a text node
                     element.text = m
-                elif k.startswith(cls.PREFIX.attribute):
-                    a = k[len(cls.PREFIX.attribute):]
+                elif k.startswith(attribute_prefix):
+                    a = k[len(attribute_prefix):]
+                    # ...is an attribute
+                    if not isinstance(m, basestring):
+                        m = str(m)
                     element.set(a, m)
                 else:
-                    child = cls.__json2element(k, m, native=native)
+                    # ...is a subelement
+                    child = json2element(k, m, native=native)
                     element.append(child)
 
         return element
@@ -2077,19 +2134,19 @@ class S3XML(S3Codec):
                 attributes = child.attrib
                 if native:
                     if tag == TAG.resource:
-                        resource = attributes[ATTRIBUTE.name]
+                        resource = attributes.get(ATTRIBUTE.name)
                         tag = "%s_%s" % (PREFIX.resource, resource)
                         collapse = False
                     elif tag == TAG.options:
-                        r = attributes[ATTRIBUTE.resource]
+                        r = attributes.get(ATTRIBUTE.resource)
                         tag = "%s_%s" % (PREFIX.options, r)
                         single = is_single(TAG.options, ATTRIBUTE.resource, r)
                     elif tag == TAG.reference:
-                        f = attributes[ATTRIBUTE.field]
+                        f = attributes.get(ATTRIBUTE.field)
                         tag = "%s_%s" % (PREFIX.reference, f)
                         single = is_single(TAG.reference, ATTRIBUTE.field, f)
                     elif tag == TAG.data:
-                        tag = attributes[ATTRIBUTE.field]
+                        tag = attributes.get(ATTRIBUTE.field)
                         single = is_single(TAG.data, ATTRIBUTE.field, tag)
                 else:
                     for s in iterchildren(tag=tag):
@@ -2099,7 +2156,7 @@ class S3XML(S3Codec):
                         else:
                             single = True
                 child_obj = element2json(child, native=native)
-                if child_obj:
+                if child_obj is not None and child_obj != "":
                     if tag not in obj:
                         if single and collapse:
                             obj[tag] = child_obj
@@ -2187,7 +2244,10 @@ class S3XML(S3Codec):
         root_dict = cls.__element2json(root, native=native)
         if "s3" in root_dict:
             # Don't double JSON-encode
-            root_dict["s3"] = json.loads(root_dict["s3"])
+            if root_dict["s3"] == {}:
+                del root_dict["s3"]
+            else:
+                root_dict["s3"] = json.loads(root_dict["s3"])
 
         if pretty_print:
             js = json.dumps(root_dict, indent=4)
@@ -2375,7 +2435,6 @@ class S3XML(S3Codec):
             decode_date = lambda v: datetime.datetime(
                                     *xlrd.xldate_as_tuple(v, wb.datemode))
 
-            encode_iso_datetime = cls.encode_iso_datetime
             def decode(t, v):
                 """
                     Helper method to decode the cell value by type
@@ -2393,7 +2452,7 @@ class S3XML(S3Codec):
                     elif t == xlrd.XL_CELL_NUMBER:
                         text = str(long(v)) if long(v) == v else str(v)
                     elif t == xlrd.XL_CELL_DATE:
-                        text = encode_iso_datetime(decode_date(v))
+                        text = s3_encode_iso_datetime(decode_date(v))
                     elif t == xlrd.XL_CELL_BOOLEAN:
                         text = str(value).lower()
                 return text
@@ -2426,6 +2485,10 @@ class S3XML(S3Codec):
                 # Read types and values
                 types = s.row_types(ridx, *cols)
                 values = s.row_values(ridx, *cols)
+
+                # Skip empty rows
+                if not any(v != "" for v in values):
+                    continue
 
                 if header_row and record_idx == 0:
                     # Read column headers
@@ -2544,7 +2607,7 @@ class S3XML(S3Codec):
             # Make this a list of all encodings you need to support (as long as
             # they are supported by Python codecs), always starting with the most
             # likely.
-            encodings = ["utf-8-sig", "iso-8859-1"]
+            encodings = ("utf-8-sig", "iso-8859-1")
             e = encodings[0]
             for line in source:
                 if e:
@@ -2574,11 +2637,14 @@ class S3XML(S3Codec):
                                     quotechar=quotechar)
             ROW = TAG.row
             for i, r in enumerate(reader):
+                # Skip empty rows
+                if not any(r.values()):
+                    continue
                 if i == 0:
                     # Auto-detect hashtags
                     items = dict((k, s3_unicode(v.strip()))
                                  for k, v in r.items() if k and v and v.strip())
-                    if all(v[0] == '#' for v in items.values()):
+                    if all(v[0] == "#" for v in items.values()):
                         hashtags.update(items)
                         continue
                 row = SubElement(root, ROW)

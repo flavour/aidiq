@@ -23,7 +23,7 @@ def config(settings):
     settings.base.system_name_short = "Athewaas"
 
     # PrePopulate data
-    settings.base.prepopulate = ("Kashmir", "Kashmir/Demo", "default/users")
+    settings.base.prepopulate += ("Kashmir", "Kashmir/Demo", "default/users")
 
     # Theme (folder to use for views/layout.html)
     settings.base.theme = "Kashmir"
@@ -93,13 +93,13 @@ def config(settings):
     # Uncomment to Hide the language toolbar
     settings.L10n.display_toolbar = False
     # Default timezone for users
-    settings.L10n.utc_offset = "UTC +0530"
+    settings.L10n.utc_offset = "+0530"
 
     settings.fin.currencies = {
-        "EUR" : T("Euros"),
-        "GBP" : T("Great British Pounds"),
-        "INR" : T("Indian Rupees"),
-        "USD" : T("United States Dollars"),
+        "EUR" : "Euros",
+        "GBP" : "Great British Pounds",
+        "INR" : "Indian Rupees",
+        "USD" : "United States Dollars",
     }
     settings.fin.currency_default = "INR"
 

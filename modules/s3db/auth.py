@@ -2,7 +2,7 @@
 
 """ Sahana Eden Auth Model
 
-    @copyright: 2009-2015 (c) Sahana Software Foundation
+    @copyright: 2009-2016 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -88,7 +88,7 @@ class S3AuthModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict()
+        return {}
 
 
 # =============================================================================
@@ -118,7 +118,7 @@ class S3AuthUserOptions(S3Model):
                                 label = T("OpenStreetMap OAuth Consumer Secret"),
                                 ),
                           *s3_meta_fields())
-                          
+
         return {}
 
 # =============================================================================
