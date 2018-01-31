@@ -46,6 +46,7 @@
     <s3:fields tables="event_incident_report_group" select="incident_report_id"/>
     <s3:fields tables="event_post_incident_type" select="incident_type_id,post_id"/>
     <s3:fields tables="event_task" select="task_id"/>
+    <s3:fields tables="gis_location_tag" select="location_id,tag,value"/>
     <s3:fields tables="gis_poi" select="poi_type_id"/>
     <s3:fields tables="hms_status" select="hospital_id"/>
     <s3:fields tables="project_activity_activity_type" select="activity_id"/>
@@ -72,18 +73,13 @@
     </xsl:template>
 
     <xsl:template match="s3xml">
-        <xsl:variable name="results">
-            <xsl:value-of select="@results"/>
-        </xsl:variable>
-        <xsl:variable name="s3">
-            <!-- S3 Extensions -->
-            <xsl:value-of select="@map"/>
-        </xsl:variable>
+        <!-- S3 Extensions -->
+        <xsl:variable name="s3" select="@map"/>
         <!-- Skip empty resources -->
-        <xsl:if test="$results &gt; 0">
-            <xsl:variable name="resource">
-                <xsl:value-of select="concat($prefix, '_', $name)"/>
-            </xsl:variable>
+        <xsl:variable name="results" select="@results"/>
+        <xsl:variable name="start" select="@start"/>
+        <xsl:if test="$results &gt; 0 and (not($start) or $start &lt; $results)">
+            <xsl:variable name="resource" select="concat($prefix, '_', $name)"/>
             <xsl:choose>
                 <xsl:when test="$resource='gis_layer_shapefile'">
                     <xsl:apply-templates select="./resource[@name='gis_layer_shapefile']"/>

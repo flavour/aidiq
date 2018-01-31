@@ -1211,7 +1211,12 @@
                 $('.dt-truncate .ui-icon-zoomin, .dt-truncate .ui-icon-zoomout').bind('click.dtToggleCell', toggleCell);
                 bindButtons(t, tableConfig, fnActionCallBacks);
                 if (oSettings.aiDisplay.length === 0) {
+                    // Hide the export options (table is empty)
+                    $(selector).closest('.dt-wrapper').find('.dt-export-options').hide();
                     return;
+                } else {
+                    // Show the export options (table has data)
+                    $(selector).closest('.dt-wrapper').find('.dt-export-options').show();
                 }
                 if (tableConfig['group'].length) {
                     var groupList = tableConfig['group'];
@@ -1336,29 +1341,29 @@
                 extension = $(this).data('extension');
 
             if (oSetting) {
-                var arguments = 'id=' + tableid,
+                var args = 'id=' + tableid,
                     serverFilterArgs = $('#' + tableid + '_dataTable_filter'),
                     sFilter = serverFilterArgs.val();
                 if (sFilter !== undefined && sFilter !== '') {
-                    arguments += '&sFilter=' + sFilter;
+                    args += '&sFilter=' + sFilter;
                 }
-                arguments += '&sSearch=' + oSetting.oPreviousSearch['sSearch'];
+                args += '&sSearch=' + oSetting.oPreviousSearch['sSearch'];
                 columns = oSetting.aoColumns;
                 var i, len;
                 for (i=0, len=columns.length; i < len; i++) {
                     if (!columns[i].bSortable) {
-                        arguments += '&bSortable_' + i + '=false';
+                        args += '&bSortable_' + i + '=false';
                     }
                 }
                 var aaSort = oSetting.aaSortingFixed !== null ?
                              oSetting.aaSortingFixed.concat(oSetting.aaSorting) :
                              oSetting.aaSorting.slice();
-                arguments += '&iSortingCols=' + aaSort.length;
+                args += '&iSortingCols=' + aaSort.length;
                 for (i=0, len=aaSort.length; i < len; i++) {
-                    arguments += '&iSortCol_' + i + '=' + aaSort[i][0];
-                    arguments += '&sSortDir_' + i + '=' + aaSort[i][1];
+                    args += '&iSortCol_' + i + '=' + aaSort[i][0];
+                    args += '&sSortDir_' + i + '=' + aaSort[i][1];
                 }
-                url = appendUrlQuery(url, extension, arguments);
+                url = appendUrlQuery(url, extension, args);
             } else {
                 url = appendUrlQuery(url, extension, '');
             }

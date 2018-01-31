@@ -3,7 +3,7 @@
     Sahana Eden Volunteers Management
     (Extends modules/eden/hrm.py)
 
-    @copyright: 2012-2016 (c) Sahana Software Foundation
+    @copyright: 2012-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -37,20 +37,9 @@ __all__ = ("S3VolunteerModel",
            "vol_volunteer_controller",
            )
 
-try:
-    import json # try stdlib (Python 2.6)
-except ImportError:
-    try:
-        import simplejson as json # try external module
-    except:
-        import gluon.contrib.simplejson as json # fallback to pure-Python module
+import json
 
-try:
-    # Python 2.7
-    from collections import OrderedDict
-except:
-    # Python 2.6
-    from gluon.contrib.simplejson.ordered_dict import OrderedDict
+from collections import OrderedDict
 
 from gluon import *
 from gluon.storage import Storage
@@ -689,7 +678,9 @@ class S3VolunteerAwardModel(S3Model):
         #
         tablename = "vol_volunteer_award"
         define_table(tablename,
-                     self.pr_person_id(empty=False),
+                     self.pr_person_id(empty = False,
+                                       ondelete = "CASCADE",
+                                       ),
                      award_id(),
                      s3_date(future = 0,
                              ),
@@ -704,6 +695,7 @@ class S3VolunteerAwardModel(S3Model):
                            label = T("Attachment"),
                            length = current.MAX_FILENAME_LENGTH,
                            represent = self.vol_award_file_represent,
+                           requires = IS_LENGTH(current.MAX_FILENAME_LENGTH),
                            # Enable in templates as-required
                            readable = False,
                            writable = False,
@@ -772,8 +764,12 @@ class S3VolunteerClusterModel(S3Model):
         # Volunteer Cluster
         tablename = "vol_cluster_type"
         define_table(tablename,
-                     Field("name", length=255, unique=True,
-                           label = T("Name")),
+                     Field("name", length=255, notnull=True, unique=True,
+                           label = T("Name"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(255),
+                                       ],
+                           ),
                      *s3_meta_fields())
 
         crud_strings[tablename] = Storage(
@@ -814,8 +810,12 @@ class S3VolunteerClusterModel(S3Model):
         tablename = "vol_cluster"
         define_table(tablename,
                      vol_cluster_type_id(),
-                     Field("name", length=255, unique=True,
-                           label = T("Name")),
+                     Field("name", length=255, notnull=True, unique=True,
+                           label = T("Name"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(255),
+                                       ],
+                           ),
                      *s3_meta_fields())
 
         crud_strings[tablename] = Storage(
@@ -856,8 +856,12 @@ class S3VolunteerClusterModel(S3Model):
         #
         tablename = "vol_cluster_position"
         define_table(tablename,
-                     Field("name", length=255, unique=True,
-                           label = T("Name")),
+                     Field("name", length=255, notnull=True, unique=True,
+                           label = T("Name"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(255),
+                                       ],
+                           ),
                      *s3_meta_fields())
 
         crud_strings[tablename] = Storage(
@@ -980,7 +984,7 @@ def vol_service_record(r, **attr):
         logo = org.logo
         if logo:
             logo = s3db.org_organisation_logo(org)
-        elif current.deployment_settings.get_org_branches():
+        elif settings.get_org_branches():
             root_org = current.cache.ram(
                 # Common key with auth.root_org
                 "root_org_%s" % org_id,
@@ -1012,7 +1016,7 @@ def vol_service_record(r, **attr):
         if image:
             image = image.image
             size = (160, None)
-            image = s3db.pr_image_represent(image, size=size)
+            image = s3db.pr_image_library_represent(image, size=size)
             size = s3db.pr_image_size(image, size)
             url = URL(c="default",
                       f="download",
@@ -1317,7 +1321,6 @@ def vol_volunteer_controller():
 
     def prep(r):
         resource = r.resource
-        get_config = resource.get_config
 
         # CRUD String
         s3.crud_strings[resource.tablename] = s3.crud_strings["hrm_volunteer"]
@@ -1326,71 +1329,74 @@ def vol_volunteer_controller():
         table = r.table
         table.type.default = 2
 
-        # Volunteers use home address
-        location_id = table.location_id
-        location_id.label = T("Home Address")
-
         # Configure list_fields
         if r.representation == "xls":
-            # Split person_id into first/middle/last to
-            # make it match Import sheets
-            list_fields = ["person_id$first_name",
-                           "person_id$middle_name",
-                           "person_id$last_name",
-                           ]
+            s3db.hrm_xls_list_fields(r, staff=False)
         else:
             list_fields = ["person_id",
+                           "person_id$gender",
                            ]
-        if settings.get_hrm_use_code() is True:
-            list_fields.append("code")
-        list_fields.append("job_title_id")
-        if settings.get_hrm_multiple_orgs():
-            list_fields.append("organisation_id")
-        list_fields.extend(((settings.get_ui_label_mobile_phone(), "phone.value"),
-                            (T("Email"), "email.value"),
-                            "location_id",
-                            ))
-        if settings.get_hrm_use_trainings():
-            list_fields.append((T("Trainings"), "person_id$training.course_id"))
-        if settings.get_hrm_use_certificates():
-            list_fields.append((T("Certificates"), "person_id$certification.certificate_id"))
+            if settings.get_hrm_use_code() is True:
+                list_fields.append("code")
+            if settings.get_hrm_vol_roles():
+                list_fields.append("job_title_id")
+            if settings.get_hrm_vol_departments():
+                list_fields.append("department_id")
+            if settings.get_hrm_multiple_orgs():
+                list_fields.append("organisation_id")
+            list_fields.extend(((settings.get_ui_label_mobile_phone(), "phone.value"),
+                                (T("Email"), "email.value"),
+                                ))
+            # Volunteers use home address
+            location_id = table.location_id
+            location_id.label = T("Home Address")
+            list_fields.append("location_id")
+            if settings.get_hrm_use_trainings():
+                list_fields.append((T("Trainings"), "person_id$training.course_id"))
+            if settings.get_hrm_use_certificates():
+                list_fields.append((T("Certificates"), "person_id$certification.certificate_id"))
 
-        # Volunteer Programme and Active-status
-        report_options = get_config("report_options")
-        if vol_experience in ("programme", "both"):
-            # Don't use status field
-            table.status.readable = table.status.writable = False
-            # Use active field?
-            vol_active = settings.get_hrm_vol_active()
-            if vol_active:
-                list_fields.insert(3, (T("Active?"), "details.active"))
-            # Add Programme to List Fields
-            list_fields.insert(6, "person_id$hours.programme_id")
+            # Volunteer Programme and Active-status
+            report_options = resource.get_config("report_options")
+            if vol_experience in ("programme", "both"):
+                # Don't use status field
+                table.status.readable = table.status.writable = False
+                # Use active field?
+                vol_active = settings.get_hrm_vol_active()
+                if vol_active:
+                    list_fields.insert(3, (T("Active?"), "details.active"))
+                # Add Programme to List Fields
+                list_fields.insert(6, "person_id$hours.programme_id")
 
-            # Add active and programme to Report Options
-            report_fields = report_options.rows
-            report_fields.append("person_id$hours.programme_id")
-            if vol_active:
-                report_fields.append((T("Active?"), "details.active"))
-            report_options.rows = report_fields
-            report_options.cols = report_fields
-            report_options.fact = report_fields
-        else:
-            # Use status field
-            list_fields.append("status")
+                # Add active and programme to Report Options
+                report_fields = report_options.rows
+                report_fields.append("person_id$hours.programme_id")
+                if vol_active:
+                    report_fields.append((T("Active?"), "details.active"))
+                report_options.rows = report_fields
+                report_options.cols = report_fields
+                report_options.fact = report_fields
+            else:
+                # Use status field
+                list_fields.append("status")
 
-        # Update filter widgets
-        filter_widgets = \
-            s3db.hrm_human_resource_filters(resource_type="volunteer",
-                                            hrm_type_opts=s3db.hrm_type_opts)
+            # Update filter widgets
+            filter_widgets = \
+                s3db.hrm_human_resource_filters(resource_type="volunteer",
+                                                hrm_type_opts=s3db.hrm_type_opts)
 
-        # Reconfigure
-        resource.configure(list_fields = list_fields,
-                           filter_widgets = filter_widgets,
-                           report_options = report_options,
-                           )
+            # Reconfigure
+            resource.configure(list_fields = list_fields,
+                               filter_widgets = filter_widgets,
+                               )
 
         if r.interactive:
+            if s3.rtl:
+                # Ensure that + appears at the beginning of the number
+                f = s3db.pr_phone_contact.value
+                f.represent = s3_phone_represent
+                f.widget = S3PhoneWidget()
+
             if r.id:
                 if r.method not in ("profile", "delete"):
                     # Redirect to person controller
@@ -1511,9 +1517,10 @@ def vol_person_controller():
         # Edits should always happen via the Asset Log
         # @ToDo: Allow this method too, if we can do so safely
         configure("asset_asset",
-                  insertable = False,
+                  deletable = False,
                   editable = False,
-                  deletable = False)
+                  insertable = False,
+                  )
 
     group = get_vars.get("group", "volunteer")
     hr_id = get_vars.get("human_resource.id", None)
@@ -1536,51 +1543,52 @@ def vol_person_controller():
     tablename = "pr_person"
     table = s3db[tablename]
     configure(tablename,
-              deletable = False)
+              deletable = False,
+              )
 
-    mode = session.s3.hrm.mode
-    if mode is not None:
-        # Configure for personal mode
-        s3db.hrm_human_resource.organisation_id.readable = True
-        s3.crud_strings[tablename].update(
-            title_display = T("Personal Profile"),
-            title_update = T("Personal Profile"))
-        # People can view their own HR data, but not edit it
-        configure("hrm_human_resource",
-                  insertable = False,
-                  editable = False,
-                  deletable = False)
-        configure("hrm_certification",
-                  insertable = True,
-                  editable = True,
-                  deletable = True)
-        configure("hrm_credential",
-                  insertable = False,
-                  editable = False,
-                  deletable = False)
-        configure("hrm_competency",
-                  insertable = True,  # Can add unconfirmed
-                  editable = False,
-                  deletable = False)
-        configure("hrm_training",    # Can add but not provide grade
-                  insertable = True,
-                  editable = False,
-                  deletable = False)
-        configure("hrm_experience",
-                  insertable = False,
-                  editable = False,
-                  deletable = False)
-        configure("pr_group_membership",
-                  insertable = False,
-                  editable = False,
-                  deletable = False)
-    else:
-        # Configure for HR manager mode
-        s3.crud_strings[tablename].update(
-                title_display = T("Volunteer Details"),
-                title_update = T("Volunteer Details"),
-                title_upload = T("Import Volunteers"),
-                )
+    #mode = session.s3.hrm.mode
+    #if mode is not None:
+    #    # Configure for personal mode
+    #    s3db.hrm_human_resource.organisation_id.readable = True
+    #    s3.crud_strings[tablename].update(
+    #        title_display = T("Personal Profile"),
+    #        title_update = T("Personal Profile"))
+    #    # People can view their own HR data, but not edit it
+    #    configure("hrm_human_resource",
+    #              insertable = False,
+    #              editable = False,
+    #              deletable = False)
+    #    configure("hrm_certification",
+    #              insertable = True,
+    #              editable = True,
+    #              deletable = True)
+    #    configure("hrm_credential",
+    #              insertable = False,
+    #              editable = False,
+    #              deletable = False)
+    #    configure("hrm_competency",
+    #              insertable = True,  # Can add unconfirmed
+    #              editable = False,
+    #              deletable = False)
+    #    configure("hrm_training",    # Can add but not provide grade
+    #              insertable = True,
+    #              editable = False,
+    #              deletable = False)
+    #    configure("hrm_experience",
+    #              insertable = False,
+    #              editable = False,
+    #              deletable = False)
+    #    configure("pr_group_membership",
+    #              insertable = False,
+    #              editable = False,
+    #              deletable = False)
+    #else:
+    # Configure for HR manager mode
+    s3.crud_strings[tablename].update(
+            title_display = T("Volunteer Details"),
+            title_update = T("Volunteer Details"),
+            title_upload = T("Import Volunteers"),
+            )
 
     # Upload for configuration (add replace option)
     s3.importerPrep = lambda: dict(ReplaceOption=T("Remove existing data before import"))
@@ -1632,9 +1640,16 @@ def vol_person_controller():
         # Plug-in role matrix for Admins/OrgAdmins
         S3PersonRoleManager.set_method(r, entity="pr_person")
 
+        method = r.method
         if r.representation == "s3json":
             current.xml.show_ids = True
-        elif r.interactive and r.method != "import":
+        elif r.interactive and method != "import":
+            if s3.rtl:
+                # Ensure that + appears at the beginning of the number
+                f = s3db.pr_phone_contact.value
+                f.represent = s3_phone_represent
+                f.widget = S3PhoneWidget()
+
             if not r.component:
                 table = r.table
                 # Assume volunteers only between 12-81
@@ -1716,7 +1731,7 @@ def vol_person_controller():
                                                    filter_opts=filter_opts,
                                                    )
 
-            if r.method == "record" or r.component_name == "human_resource":
+            if method == "record" or r.component_name == "human_resource":
                 table = s3db.hrm_human_resource
                 table.code.writable = table.code.readable = False
                 table.department_id.writable = table.department_id.readable = False
@@ -1725,13 +1740,13 @@ def vol_person_controller():
                 table.person_id.writable = table.person_id.readable = False
                 table.site_id.writable = table.site_id.readable = False
                 table.site_contact.writable = table.site_contact.readable = False
-                org = session.s3.hrm.org
-                field = table.organisation_id
-                if org is None:
-                    field.widget = None
-                else:
-                    field.default = org
-                    field.readable = field.writable = False
+                #org = session.s3.hrm.org
+                #field = table.organisation_id
+                #if org is None:
+                #    field.widget = None
+                #else:
+                #    field.default = org
+                #    field.readable = field.writable = False
 
                 # Organisation Dependent Fields
                 # @ToDo: Move these to the IFRC Template & make Lazy settings
@@ -1740,10 +1755,21 @@ def vol_person_controller():
                 set_org_dependent_field("vol_volunteer_cluster", "vol_cluster_id")
                 set_org_dependent_field("vol_volunteer_cluster", "vol_cluster_position_id")
 
+            elif method == "cv" or r.component_name == "training":
+                list_fields = ["course_id",
+                               "grade",
+                               ]
+                if settings.get_hrm_course_pass_marks:
+                    list_fields.append("grade_details")
+                list_fields.append("date")
+                s3db.configure("hrm_training",
+                               list_fields = list_fields,
+                               )
+
             resource = r.resource
-            if mode is not None:
-                r.resource.build_query(id=current.auth.s3_logged_in_person())
-            elif r.method not in ("deduplicate", "search_ac"):
+            #if mode is not None:
+            #    r.resource.build_query(id=current.auth.s3_logged_in_person())
+            if method not in ("deduplicate", "search_ac"):
                 if not r.id and not hr_id:
                     # pre-action redirect => must retain prior errors
                     if response.error:
@@ -1759,10 +1785,22 @@ def vol_person_controller():
                     redirect(URL(f="volunteer"))
                 if hr_id and r.component_name == "human_resource":
                     r.component_id = hr_id
-                configure("hrm_human_resource", insertable = False)
+                configure("hrm_human_resource",
+                          insertable = False)
 
-        elif r.component_name == "group_membership" and r.representation == "aadata":
-            s3db.hrm_configure_pr_group_membership()
+        elif r.representation == "aadata":
+            if r.component_name == "group_membership":
+                s3db.hrm_configure_pr_group_membership()
+            elif method == "cv" or r.component_name == "training":
+                list_fields = ["course_id",
+                               "grade",
+                               ]
+                if settings.get_hrm_course_pass_marks:
+                    list_fields.append("grade_details")
+                list_fields.append("date")
+                s3db.configure("hrm_training",
+                               list_fields = list_fields,
+                               )
 
         return True
     s3.prep = prep
@@ -1818,10 +1856,7 @@ def vol_person_controller():
     s3.postp = postp
 
     # REST Interface
-    if session.s3.hrm.orgname and mode is None:
-        orgname = session.s3.hrm.orgname
-    else:
-        orgname = None
+    #orgname = session.s3.hrm.orgname
 
     return current.rest_controller("pr", resourcename,
                                    csv_template = ("hrm", "volunteer"),
@@ -1830,7 +1865,7 @@ def vol_person_controller():
                                         dict(label="Type",
                                              field=s3db.hrm_human_resource.type)
                                         ],
-                                   orgname = orgname,
+                                   #orgname = orgname,
                                    replace_option = T("Remove existing data before import"),
                                    rheader = s3db.hrm_rheader,
                                    )

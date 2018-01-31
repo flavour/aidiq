@@ -16,14 +16,7 @@ get_vars = request.get_vars
 settings.check_debug()
 
 import datetime
-
-try:
-    import json # try stdlib (Python 2.6)
-except ImportError:
-    try:
-        import simplejson as json # try external module
-    except:
-        import gluon.contrib.simplejson as json # fallback to pure-Python module
+import json
 
 ########################
 # Database Configuration
@@ -32,64 +25,46 @@ except ImportError:
 migrate = settings.get_base_migrate()
 fake_migrate = settings.get_base_fake_migrate()
 
+(db_type, db_string, pool_size) = settings.get_database_string()
 if migrate:
-    check_reserved = ("mysql", "postgres")
+    if db_type == "mysql":
+        check_reserved = ["postgres"]
+    elif db_type == "postgres":
+        check_reserved = ["mysql"]
+    else:
+        check_reserved = ["mysql", "postgres"]
 else:
     check_reserved = []
 
-(db_string, pool_size) = settings.get_database_string()
-if db_string.find("sqlite") != -1:
+try:
     db = DAL(db_string,
-             check_reserved=check_reserved,
+             check_reserved = check_reserved,
+             pool_size = pool_size,
              migrate_enabled = migrate,
              fake_migrate_all = fake_migrate,
-             lazy_tables = not migrate)
-    # on SQLite 3.6.19+ this enables foreign key support (included in Python 2.7+)
-    # db.executesql("PRAGMA foreign_keys=ON")
-else:
-    try:
-        if db_string.find("mysql") != -1:
-            # Use MySQLdb where available (pymysql has given broken pipes)
-            # - done automatically now, no need to add this manually
-            #try:
-            #    import MySQLdb
-            #    from gluon.dal import MySQLAdapter
-            #    MySQLAdapter.driver = MySQLdb
-            #except ImportError:
-            #    # Fallback to pymysql
-            #    pass
-            if check_reserved:
-                check_reserved = ["postgres"]
-            db = DAL(db_string,
-                     check_reserved = check_reserved,
-                     pool_size = pool_size,
-                     migrate_enabled = migrate,
-                     lazy_tables = not migrate)
-        else:
-            # PostgreSQL
-            if check_reserved:
-                check_reserved = ["mysql"]
-            db = DAL(db_string,
-                     check_reserved = check_reserved,
-                     pool_size = pool_size,
-                     migrate_enabled = migrate,
-                     lazy_tables = not migrate)
-    except:
-        db_type = db_string.split(":", 1)[0]
-        db_location = db_string.split("@", 1)[1]
-        raise(HTTP(503, "Cannot connect to %s Database: %s" % (db_type, db_location)))
+             lazy_tables = not migrate,
+             )
+except:
+    db_location = db_string.split("@", 1)[1]
+    raise(HTTP(503, "Cannot connect to %s Database: %s" % (db_type, db_location)))
 
 current.db = db
 db.set_folder("upload")
 
 # Sessions Storage
-if settings.get_base_session_memcache():
+if settings.get_base_session_db():
+    # Store sessions in the database to avoid a locked session
+    session.connect(request, response, db)
+elif settings.get_base_session_memcache():
     # Store sessions in Memcache
     from gluon.contrib.memcache import MemcacheClient
     cache.memcache = MemcacheClient(request,
                                     [settings.get_base_session_memcache()])
     from gluon.contrib.memdb import MEMDB
     session.connect(request, response, db=MEMDB(cache.memcache))
+#else:
+    ## Default to filesystem
+    # pass
 
 ####################################################################
 # Instantiate Classes from Modules                                 #

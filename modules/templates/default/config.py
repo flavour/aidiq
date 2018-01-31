@@ -1,22 +1,15 @@
 # -*- coding: utf-8 -*-
 
-try:
-    # Python 2.7
-    from collections import OrderedDict
-except:
-    # Python 2.6
-    from gluon.contrib.simplejson.ordered_dict import OrderedDict
+from collections import OrderedDict
 
 from gluon import current
 from gluon.storage import Storage
 
 def config(settings):
     """
-        Template settings
+        Template settings for a default system
 
-        All settings which are to configure a specific template are located
-        here. Deployers should ideally not need to edit any other files outside
-        of their template folder.
+        @ToDo: Rename this as 'Demo'
     """
 
     T = current.T
@@ -32,6 +25,9 @@ def config(settings):
     # Unless doing a manual DB migration, where prepopulate = 0
     # In Production, prepopulate = 0 (to save 1x DAL hit every page)
     settings.base.prepopulate.append("default")
+
+    # Uncomment this to prefer scalability-optimized strategies globally
+    #settings.base.bigtable = True
 
     # Theme (folder to use for views/layout.html)
     #settings.base.theme = "default"
@@ -90,6 +86,8 @@ def config(settings):
     # The key 0 implies not realm restricted
     # The keys "organisation_id" and "site_id" can be used to indicate the user's "organisation_id" and "site_id"
     #settings.auth.registration_roles = { 0: ["STAFF", "PROJECT_EDIT"]}
+    # Whether the first user to register for an Org should get the ORG_ADMIN role for that Org
+    #settings.auth.org_admin_to_first = True
     # Define which entity types to use as realm entities in role manager
     #settings.auth.realm_entity_types = ("org_organisation",)
     # Uncomment to activate entity role manager tabs for OrgAdmins
@@ -109,12 +107,19 @@ def config(settings):
     # @ToDo: Extend to all optional Profile settings: Homepage, Twitter, Facebook, Mobile Phone, Image
     #settings.auth.registration_volunteer = True
     # Terms of Service to be able to Register on the system
+    # https://termsfeed.com/terms-conditions/generator/
     # uses <template>/views/tos.html
     #settings.auth.terms_of_service = True
     # Uncomment this to allow users to Login using Gmail's SMTP
     #settings.auth.gmail_domains = ["gmail.com"]
+    # Uncomment this to allow users to Login using Office365's SMTP
+    #settings.auth.office365_domains = ["microsoft.com"]
     # Uncomment this to allow users to Login using OpenID
     #settings.auth.openid = True
+    # Uncomment this to block password changes since managed externally (OpenID / SMTP / LDAP)
+    #settings.auth.password_changes = False
+    # Uncomment this to disable password retrieval (e.g. if impractical or unsafe)
+    #settings.auth.password_retrieval = False
     # Uncomment this to enable presence records on login based on HTML5 geolocations
     #settings.auth.set_presence_on_login = True
     # Uncomment this and specify a list of location levels to be ignored by presence records
@@ -123,36 +128,45 @@ def config(settings):
     #settings.auth.create_unknown_locations = True
 
     # L10n settings
-    # Languages used in the deployment (used for Language Toolbar & GIS Locations)
+    # Languages used in the deployment (used for Language Toolbar, GIS Locations, etc)
     # http://www.loc.gov/standards/iso639-2/php/code_list.php
-    #settings.L10n.languages = OrderedDict([
-    #    ("ar", "العربية"),
-    #    ("bs", "Bosanski"),
-    #    ("en", "English"),
-    #    ("fr", "Français"),
-    #    ("de", "Deutsch"),
-    #    ("el", "ελληνικά"),
-    #    ("es", "Español"),
-    #    ("it", "Italiano"),
-    #    ("ja", "日本語"),
-    #    ("km", "ភាសាខ្មែរ"),
-    #    ("ko", "한국어"),
-    #    ("mn", "Монгол хэл"), # Mongolian
-    #    ("my", "မြန်မာစာ"),       # Burmese
-    #    ("ne", "नेपाली"),                               #  Nepali
-    #    ("prs", "دری"),       # Dari
-    #    ("ps", "پښتو"),       # Pashto
-    #    ("pt", "Português"),
-    #    ("pt-br", "Português (Brasil)"),
-    #    ("ru", "русский"),
-    #    ("tet", "Tetum"),
-    #    ("tl", "Tagalog"),
-    #    ("tr", "Türkçe"),
-    #    ("ur", "اردو"),
-    #    ("vi", "Tiếng Việt"),
-    #    ("zh-cn", "中文 (简体)"),
-    #    ("zh-tw", "中文 (繁體)"),
-    #])
+    settings.L10n.languages = OrderedDict([
+        ("ar", "Arabic"),
+        ("bs", "Bosnian"),
+        #("dv", "Divehi"), # Maldives
+        ("en", "English"),
+        ("fr", "French"),
+        ("de", "German"),
+        ("el", "Greek"),
+        ("es", "Spanish"),
+        #("id", "Bahasa Indonesia"),
+        ("it", "Italian"),
+        ("ja", "Japanese"),
+        ("km", "Khmer"), # Cambodia
+        ("ko", "Korean"),
+        #("lo", "Lao"),
+        #("lt", "Lithuanian"),
+        #("mg", "Malagasy"),
+        ("mn", "Mongolian"),
+        #("ms", "Malaysian"),
+        ("my", "Burmese"), # Myanmar
+        ("ne", "Nepali"),
+        ("prs", "Dari"), # Afghan Persian
+        ("ps", "Pashto"), # Afghanistan, Pakistan
+        ("pt", "Portuguese"),
+        ("pt-br", "Portuguese (Brazil)"),
+        ("ru", "Russian"),
+        ("tet", "Tetum"),
+        #("si", "Sinhala"), # Sri Lanka
+        #("ta", "Tamil"), # India, Sri Lanka
+        ("th", "Thai"),
+        ("tl", "Tagalog"), # Philippines
+        ("tr", "Turkish"),
+        ("ur", "Urdu"), # Pakistan
+        ("vi", "Vietnamese"),
+        ("zh-cn", "Chinese (Simplified)"), # Mainland China
+        ("zh-tw", "Chinese (Taiwan)"),
+    ])
     # Default language for Language Toolbar (& GIS Locations in future)
     #settings.L10n.default_language = "en"
     # Uncomment to Hide the language toolbar
@@ -284,6 +298,8 @@ def config(settings):
     #settings.gis.layer_tree_radio = True
     # Uncomment to display the Map Legend as a floating DIV
     #settings.gis.legend = "float"
+    # Uncomment to use scalability-optimized options lookups in location filters
+    #settings.gis.location_filter_bigtable_lookups = True
     # Uncomment to prevent showing LatLon in Location Represents
     #settings.gis.location_represent_address_only = True
     # Mouse Position: 'normal', 'mgrs' or None
@@ -296,7 +312,7 @@ def config(settings):
     #settings.gis.permalink = False
     # Resources which can be directly added to the main map
     #settings.gis.poi_create_resources = None
-    #settings.gis.poi_create_resources = [{"c":"event", "f":"incident_report", "table": "gis_poi", label": T("Add Incident Report") ,"tooltip": T("Add Incident Report"), "layer":"Incident Reports", "location": "popup"}]
+    #settings.gis.poi_create_resources = [{"c":"event", "f":"incident_report", "table": "gis_poi", "label": T("Add Incident Report") ,"tooltip": T("Add Incident Report"), "layer":"Incident Reports", "location": "popup"}]
     # PoIs to export in KML/OSM feeds from Admin locations
     #settings.gis.poi_export_resources = ["cr_shelter", "hms_hospital", "org_office"]
     # Uncomment to show the Print control:
@@ -312,6 +328,8 @@ def config(settings):
     #settings.gis.search_geonames = False
     # Uncomment to modify the Simplify Tolerance
     #settings.gis.simplify_tolerance = 0.001
+    # Uncomment this for highly-zoomed maps showing buildings
+    #settings.gis.precision = 5
     # Uncomment to Hide the Toolbar from the main Map
     #settings.gis.toolbar = False
     # Uncomment to show Catalogue Layers in Map Widgets (e.g. Profile & Summary pages)
@@ -323,6 +341,8 @@ def config(settings):
     #settings.gis.zoomcontrol = False
     # Uncomment to open Location represent links in a Popup Window
     #settings.gis.popup_location_link = True
+    # Uncomment to include WKT in XML exports
+    #settings.gis.xml_wkt = True
     # GeoNames username
     settings.gis.geonames_username = "eden_test"
 
@@ -433,6 +453,8 @@ def config(settings):
     #settings.ui.datatables_responsive = False
     # Uncomment to modify the label of the Permalink
     #settings.ui.label_permalink = "Permalink"
+    # Uncomment to modify the main menu logo
+    #settings.ui.menu_logo = URL(c="static", f="img", args=["S3menulogo.png"])
 
     # -------------------------------------------------------------------------
     # Asset
@@ -477,18 +499,102 @@ def config(settings):
     #settings.cr.people_registration = False
     # Uncomment to use Tags for Shelters
     #settings.cr.tags = True
+    # Uncomment to generate tasks from shelter inspections (requires project module)
+    #settings.cr.shelter_inspection_tasks = True
+    # Configure active statuses for shelter inspection tasks (subset of project.task_status_opts)
+    #settings.cr.shelter_inspection_task_active_statuses = (2, 3, 6)
+
+    # -------------------------------------------------------------------------
+    # Disaster Victim Registry / Case Management
+
+    # Uncomment to use the term Beneficiary instead of Case
+    #settings.dvr.label = "Beneficiary"
+
+    # Uncomment this to allow cases to belong to multiple case groups ("households")
+    #settings.dvr.multiple_case_groups = True
+
+    # Uncomment this to enable tracking of transfer origin/destination sites
+    #settings.dvr.track_transfer_sites = True
+    # Uncomment this to enable features to manage transferability of cases
+    #settings.dvr.manage_transferability = True
+
+    # Uncomment this to enable household size in cases, set to "auto" for automatic counting
+    #settings.dvr.household_size = True
+
+    # Uncomment this to expose flags to mark appointment types as mandatory
+    #settings.dvr.mandatory_appointments = True
+    # Uncomment this to have appointments with personal presence update last_seen_on
+    #settings.dvr.appointments_update_last_seen_on = True
+    # Uncomment this to automatically update the case status when appointments are completed
+    #settings.dvr.appointments_update_case_status = True
+    # Uncomment this to automatically close appointments when registering certain case events
+    #settings.dvr.case_events_close_appointments = True
+
+    # Uncomment this to have allowance payments update last_seen_on
+    #settings.dvr.payments_update_last_seen_on = True
+
+    # Uncomment this to use service types for group/case activites
+    #settings.dvr.activity_use_service_type = True
+    # Uncomment this to use sectors in group/case activities
+    #settings.dvr.activity_sectors = True
+    # Uncomment this to use case activity types
+    #settings.dvr.activity_types = True
+    # Uncomment this to use hierarchical case activity types
+    #settings.dvr.activity_types_hierarchical = True
+    # Uncomment this to use status field in case activities
+    #settings.dvr.case_activity_use_status = True
+
+    # Uncomment this if Case activities use multiple Needs
+    #settings.dvr.case_activity_needs_multiple = True
+    # Uncomment this to use service types for needs
+    #settings.dvr_needs_use_service_type = True
+    # Uncomment this to use hierarchical need types
+    #settings.dvr.needs_hierarchical = True
+    # Uncomment this to use hierarchical vulnerability types
+    #settings.dvr.vulnerability_types_hierarchical = True
+
+    # Uncomment this to manage individual response actions in case activities
+    #settings.dvr.manage_response_actions = True
+
+    # Configure a regular expression pattern for ID Codes (QR Codes)
+    #settings.dvr.id_code_pattern = "(?P<label>[^,]*),(?P<first_name>[^,]*),(?P<last_name>[^,]*),(?P<date_of_birth>[^,]*)"
+    # Uncomment this to show a warning during event registration if the person is not currently checked-in
+    #settings.dvr.event_registration_checkin_warning = True
+    # Uncomment this to show profile pictures in event registration UI only on demand
+    #settings.dvr.event_registration_show_picture = False
 
     # -------------------------------------------------------------------------
     # Events
+    # Uncomment to use the term Disaster instead of Event
+    #settings.event.label = "Disaster"
+    # Uncomment to preserve linked Incidents when an Event is deleted
+    # NB Changing this setting requires a DB migration
+    #settings.event.cascade_delete_incidents = False
     # Make Event Types Hierarchical
     #settings.event.types_hierarchical = True
     # Make Incident Types Hierarchical
     #settings.event.incident_types_hierarchical = True
-    # Show tab with teams assigned for incidents
+    # Uncomment to allow the use of Exercise Events
+    #settings.event.exercise = True
+    # Show tab for Event Dispatch
+    #settings.event.dispatch_tab = False
+    # Hide tab for Event Impacts
+    #settings.event.impact_tab = False
+    # Hide tab for Event Collection Targets
+    #settings.event.target_tab = False
+    # Hide tab for Event Collections
+    #settings.event.collection_tab = False
+    # Hide tab for Incident Dispatch
+    #settings.event.incident_dispatch_tab = False
+    # Show tab for Incident Impacts
+    #settings.event.incident_impact_tab = True
+    # Show tab for Incident Teams
     #settings.event.incident_teams_tab = True
 
     # -------------------------------------------------------------------------
     # Members
+    # Hide Membership Types
+    #settings.member.membership_types = False
     # Show a CV tab for Members
     #settings.member.cv_tab = True
 
@@ -502,6 +608,7 @@ def config(settings):
     #settings.pr.lookup_duplicates = True
     # Uncomment to hide fields in S3AddPersonWidget[2]
     #settings.pr.request_dob = False
+    #settings.pr.request_email = False
     #settings.pr.request_gender = False
     # Uncomment to show field in S3AddPersonWidget
     #settings.pr.request_home_phone = True
@@ -543,6 +650,8 @@ def config(settings):
     #settings.org.regions = True
     # Make Organisation Regions Hierarchical
     #settings.org.regions_hierarchical = True
+    # Enable the use of Organisation Region Countries
+    #settings.org.region_countries = True
     # Uncomment to show a Tab for Organisation Resources
     #settings.org.resources_tab = True
     # Make Services Hierarchical
@@ -598,8 +707,8 @@ def config(settings):
     #settings.hrm.compose_button = False
     # Uncomment to allow HR records to be deletable rather than just marking them as obsolete
     #settings.hrm.deletable = True
-    # Uncomment to filter certificates by (root) Organisation & hence not allow Certificates from other orgs to be added to a profile (except by Admin)
-    #settings.hrm.filter_certificates = True
+    # Uncomment to hide Job Titles
+    #settings.hrm.use_job_titles = False
     # Uncomment to allow HRs to have multiple Job Titles
     #settings.hrm.multiple_job_titles = True
     # Uncomment to have each root Org use a different Job Title Catalog
@@ -618,6 +727,10 @@ def config(settings):
     #settings.hrm.staff_experience = False
     # Uncomment to enable Volunteer 'active' field
     # - can also be made a function which is called to calculate the status based on recorded hours
+    # Custom label for Organisations in HR module
+    #settings.hrm.organisation_label = "Organization / Branch"
+    # Custom label for Top-level Organisations in HR module
+    #settings.hrm.root_organisation_label = "Organization"
     #settings.hrm.vol_active = True
     # Uncomment to define a Tooltip to show when viewing the Volunteer 'active' field
     #settings.hrm.vol_active_tooltip = "A volunteer is defined as active if they've participated in an average of 8 or more hours of Program work or Trainings per month in the last year"
@@ -633,6 +746,10 @@ def config(settings):
     #settings.hrm.use_awards = False
     # Uncomment to disable the use of HR Certificates
     #settings.hrm.use_certificates = False
+    # Uncomment to filter certificates by (root) Organisation & hence not allow Certificates from other orgs to be added to a profile (except by Admin)
+    #settings.hrm.filter_certificates = True
+    # Uncomment to auto-create certificates for courses
+    #settings.hrm.create_certificates_from_courses = True
     # Uncomment to enable the use of Staff/Volunteer IDs
     #settings.hrm.use_code = True
     # Uncomment to disable the use of HR Credentials
@@ -655,6 +772,8 @@ def config(settings):
     #settings.hrm.use_trainings = False
     # Uncomment this to configure tracking of internal/external training instructors
     #settings.hrm.training_instructors = "external"
+    # Uncomment this to modify the training filter to be AND not OR
+    #settings.hrm.training_filter_and = True
     # Uncomment this to have Pass marks defined by Course
     #settings.hrm.course_pass_marks = True
     # Uncomment to use activity types in experience record, specify as {"code":"label", ...}
@@ -809,8 +928,12 @@ def config(settings):
     #settings.project.mode_drr = True
     # Uncomment this to use settings suitable for detailed Task management
     #settings.project.mode_task = True
+    # Uncomment this to use link Projects to Events
+    #settings.project.event_projects = True
     # Uncomment this to use Activities for Projects & Tasks
     #settings.project.activities = True
+    # Uncomment this to use link Activities to Events
+    #settings.project.event_activities = True
     # Uncomment this to use Activity Types for Activities & Projects
     #settings.project.activity_types = True
     # Uncomment this to filter dates in Activities
@@ -833,6 +956,8 @@ def config(settings):
     #settings.project.sectors = False
     # Uncomment this to enable Programmes in projects
     #settings.project.programmes = True
+    # Uncomment this to enable Budgets in Programmes
+    #settings.project.programme_budget = True
     # Uncomment this to use Tags in Tasks
     #settings.project.task_tag = True
     # Uncomment this to enable Themes in 3W projects
@@ -882,6 +1007,15 @@ def config(settings):
     #settings.base.youtube_id = [dict(id = "introduction",
     #                                 title = T("Introduction"),
     #                                 video_id = "HR-FtR2XkBU"),]
+
+    # -----------------------------------------------------------------------------
+    # Mobile Forms
+    # Configure mobile forms (example), see modules/s3cfg.py for details
+    #settings.mobile.forms = [
+    #    ("Beneficiaries", "pr_person", {"c": "dvr", "f": "person"}),
+    #]
+    # Disable mobile forms for dynamic tables:
+    #settings.mobile.dynamic_tables = False
 
     # -----------------------------------------------------------------------------
     # XForms
@@ -1121,17 +1255,17 @@ def config(settings):
         #   module_type = 10,
         #   #access = "|DVI|",      # Only users with the DVI role can see this module in the default menu & access the controller
         #)),
+        #("edu", Storage(
+        #    name_nice = T("Schools"),
+        #    #description = "Helps to monitor status of schools",
+        #    restricted = True,
+        #    module_type = 10
+        #)),
         #("mpr", Storage(
         #   name_nice = T("Missing Person Registry"),
         #   #description = "Helps to report and search for missing persons",
         #   restricted = True,
         #   module_type = 10,
-        #)),
-        #("scenario", Storage(
-        #    name_nice = T("Scenarios"),
-        #    #description = "Define Scenarios for allocation of appropriate Resources (Human, Assets & Facilities).",
-        #    restricted = True,
-        #    module_type = 10,
         #)),
         #("vulnerability", Storage(
         #    name_nice = T("Vulnerability"),

@@ -147,7 +147,7 @@ def template():
                                           template_id=template_id,
                                           cloned_section_id=section_id)
             if id is None:
-                print "Failed to insert record"
+                current.log.error("Failed to insert record")
             return
 
     # Remove CRUD generated buttons in the tabs
@@ -254,13 +254,24 @@ def series():
     s3.prep = prep
 
     def postp(r, output):
-        if request.ajax == True and r.method == "read":
+        method = r.method
+        if request.ajax == True and method == "read":
             return output["item"]
-        if not r.component:
-            s3db.survey_serieslist_dataTable_post(r)
+        if not r.component and method != "summary":
+            # Replace the Action buttons
+            s3.actions = [{"label": s3base.s3_str(messages.UPDATE),
+                           "_class": "action-btn edit",
+                           "url": URL(c="survey",
+                                      f="series",
+                                      args=["[id]",
+                                            "summary",
+                                            ],
+                                      ),
+                           },
+                          ]
 
         elif r.component_name == "complete":
-            if r.method == "update":
+            if method == "update":
                 if r.http == "GET":
                     form = s3db.survey_buildQuestionnaireFromSeries(r.id,
                                                                     r.component_id)
@@ -387,14 +398,6 @@ def series_prepare_matrix(series_id, series, logo, lang_dict, justified=False):
     # ============
     # * The sections within the template
     # * The layout rules for each question
-    # Check that the series_id has been passed in
-    try:
-        series_id = request.args[0]
-    except:
-        output = s3_rest_controller(module, "series",
-                                    rheader = s3db.survey_series_rheader)
-        return output
-
     template = s3db.survey_getTemplateFromSeries(series_id)
     template_id = template.id
     section_list = s3db.survey_getAllSectionsForSeries(series_id)
@@ -1109,8 +1112,9 @@ def complete():
         return openFile
 
     s3db.configure("survey_complete",
-                   listadd=False,
-                   deletable=False)
+                   deletable = False,
+                   listadd = False,
+                   )
 
     s3.xls_parser = import_xls
 

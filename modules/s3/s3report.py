@@ -2,7 +2,7 @@
 
 """ S3 Pivot Table Reports Method
 
-    @copyright: 2011-2016 (c) Sahana Software Foundation
+    @copyright: 2011-2018 (c) Sahana Software Foundation
     @license: MIT
 
     @requires: U{B{I{Python 2.6}} <http://www.python.org>}
@@ -29,39 +29,37 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
+__all__ = ("S3Report",
+           "S3PivotTable",
+           )
+
+import datetime
+import json
 import os
 import re
 import sys
 
-try:
-    import json # try stdlib (Python 2.6)
-except ImportError:
-    try:
-        import simplejson as json # try external module
-    except:
-        import gluon.contrib.simplejson as json # fallback to pure-Python module
-
 from itertools import product
 
 from gluon import current
-from gluon.storage import Storage
+from gluon.contenttype import contenttype
 from gluon.html import *
 from gluon.languages import regex_translate
 from gluon.sqlhtml import OptionsWidget
+from gluon.storage import Storage
 from gluon.validators import IS_IN_SET, IS_EMPTY_OR
 
 from s3query import FS
 from s3rest import S3Method
-from s3utils import s3_flatlist, s3_has_foreign_key, s3_unicode, S3MarkupStripper, s3_represent_value
+from s3utils import s3_flatlist, s3_has_foreign_key, s3_str, s3_unicode, S3MarkupStripper, s3_represent_value
 from s3xml import S3XMLFormat
 from s3validators import IS_NUMBER
-
-layer_pattern = re.compile("([a-zA-Z]+)\((.*)\)\Z")
 
 # Compact JSON encoding
 DEFAULT = lambda: None
 SEPARATORS = (",", ":")
 
+LAYER = re.compile("([a-zA-Z]+)\((.*)\)\Z")
 FACT = re.compile(r"([a-zA-Z]+)\(([a-zA-Z0-9_.$:\,~]+)\),*(.*)\Z")
 SELECTOR = re.compile(r"^[a-zA-Z0-9_.$:\~]+\Z")
 
@@ -136,7 +134,11 @@ class S3Report(S3Method):
         if get_vars:
 
             rows = get_vars.get("rows", None)
+            if type(rows) is list:
+                rows = rows[-1]
             cols = get_vars.get("cols", None)
+            if type(cols) is list:
+                cols = cols[-1]
 
             layer = get_vars.get("fact", "id")
             try:
@@ -156,11 +158,14 @@ class S3Report(S3Method):
         else:
             pivottable = None
 
-        # Render as JSON-serializable dict
-        if pivottable is not None:
-            pivotdata = pivottable.json(maxrows=maxrows, maxcols=maxcols)
-        else:
-            pivotdata = None
+        representation = r.representation
+        if representation in ("html", "iframe", "json"):
+
+            # Generate JSON-serializable dict
+            if pivottable is not None:
+                pivotdata = pivottable.json(maxrows=maxrows, maxcols=maxcols)
+            else:
+                pivotdata = None
 
         if r.representation in ("html", "iframe"):
 
@@ -176,16 +181,18 @@ class S3Report(S3Method):
 
                 filter_formstyle = get_config("filter_formstyle", None)
                 filter_form = S3FilterForm(filter_widgets,
-                                           formstyle=filter_formstyle,
-                                           advanced=advanced,
-                                           submit=False,
-                                           _class="filter-form",
-                                           _id="%s-filter-form" % widget_id)
+                                           formstyle = filter_formstyle,
+                                           advanced = advanced,
+                                           submit = False,
+                                           _class = "filter-form",
+                                           _id = "%s-filter-form" % widget_id,
+                                           )
                 fresource = current.s3db.resource(tablename)
                 alias = resource.alias if r.component else None
                 filter_widgets = filter_form.fields(fresource,
                                                     r.get_vars,
-                                                    alias=alias)
+                                                    alias = alias,
+                                                    )
             else:
                 # Render as empty string to avoid the exception in the view
                 filter_widgets = None
@@ -193,20 +200,22 @@ class S3Report(S3Method):
             # Generate the report form
             ajax_vars = Storage(r.get_vars)
             ajax_vars.update(get_vars)
-            filter_url = r.url(method="",
-                               representation="",
-                               vars=ajax_vars.fromkeys((k for k in ajax_vars
-                                                        if k not in report_vars)))
-            ajaxurl = attr.get("ajaxurl", r.url(method="report",
-                                                representation="json",
-                                                vars=ajax_vars))
+            filter_url = r.url(method = "",
+                               representation = "",
+                               vars = ajax_vars.fromkeys((k for k in ajax_vars
+                                                          if k not in report_vars)))
+            ajaxurl = attr.get("ajaxurl", r.url(method = "report",
+                                                representation = "json",
+                                                vars = ajax_vars,
+                                                ))
 
             output = S3ReportForm(resource).html(pivotdata,
                                                  get_vars = get_vars,
                                                  filter_widgets = filter_widgets,
                                                  ajaxurl = ajaxurl,
                                                  filter_url = filter_url,
-                                                 widget_id = widget_id)
+                                                 widget_id = widget_id,
+                                                 )
 
             output["title"] = self.crud_string(tablename, "title_report")
             output["report_type"] = "pivottable"
@@ -220,6 +229,34 @@ class S3Report(S3Method):
         elif r.representation == "json":
 
             output = json.dumps(pivotdata, separators=SEPARATORS)
+
+        elif r.representation == "xls":
+
+            if pivottable:
+
+                # Report title
+                title = self.crud_string(r.tablename, "title_report")
+                if title is None:
+                    title = current.T("Report")
+
+                # TODO: include current date?
+                filename = "%s_%s.xls" % (r.env.server_name,
+                                          s3_str(title).replace(" ", "_"),
+                                          )
+                disposition = "attachment; filename=\"%s\"" % filename
+
+                # Response headers
+                response = current.response
+                response.headers["Content-Type"] = contenttype(".xls")
+                response.headers["Content-disposition"] = disposition
+
+                # Convert pivot table to XLS
+                stream = pivottable.xls(title)
+                #stream.seek(0) # already done in encoder
+                output = stream.read()
+
+            else:
+                r.error(400, "No report parameters specified")
 
         else:
             r.error(415, current.ERROR.BAD_FORMAT)
@@ -629,6 +666,7 @@ class S3ReportForm(object):
             "filterForm": filter_form,
 
             "autoSubmit": settings.get_ui_report_auto_submit(),
+            "timeout": settings.get_ui_report_timeout(),
 
             "thousandSeparator": settings.get_L10n_thousands_separator(),
             "thousandGrouping": settings.get_L10n_thousands_grouping(),
@@ -692,7 +730,7 @@ class S3ReportForm(object):
         T = current.T
 
         SHOW_TOTALS = T("Show totals")
-        FACT = T("Report of")
+        REPORT = T("Report of")
         ROWS = T("Grouped by")
         COLS = T("and")
 
@@ -718,7 +756,7 @@ class S3ReportForm(object):
                                           get_vars=get_vars,
                                           widget_id=layer_id)
         formfields.append((layer_id + "-row",
-                           label(FACT, _for=layer_id),
+                           label(REPORT, _for=layer_id),
                            layer_widget,
                            "",
                            ))
@@ -974,7 +1012,7 @@ class S3ReportForm(object):
         else:
             layer = ""
         if layer:
-            match = layer_pattern.match(layer)
+            match = LAYER.match(layer)
             if match is None:
                 layer = ""
             else:
@@ -1103,46 +1141,50 @@ class S3PivotTableFact(object):
         if method is None or method == "list":
             return values if values else None
 
-        values = [v for v in values if v != None]
-
         if method == "count":
-            return len(values)
+            # Count all non-null values
+            return len([v for v in values if v is not None])
+        else:
+            # Numeric values required - some virtual fields
+            # return '-' for None, so must type-check here:
+            values = [v for v in values if isinstance(v, (int, long, float))]
 
-        elif method == "min":
-            try:
-                return min(values)
-            except (TypeError, ValueError):
-                return None
+            if method == "min":
+                try:
+                    return min(values)
+                except (TypeError, ValueError):
+                    return None
 
-        elif method == "max":
-            try:
-                return max(values)
-            except (TypeError, ValueError):
-                return None
+            elif method == "max":
+                try:
+                    return max(values)
+                except (TypeError, ValueError):
+                    return None
 
-        elif method == "sum":
-            try:
-                return sum(values)
-            except (TypeError, ValueError):
-                return None
+            elif method == "sum":
+                try:
+                    return sum(values)
+                except (TypeError, ValueError):
+                    return None
 
-        elif method == "avg":
-            try:
-                if len(values):
-                    return sum(values) / float(len(values))
-                else:
-                    return 0.0
-            except (TypeError, ValueError):
-                return None
+            elif method == "avg":
+                try:
+                    number = len(values)
+                    if number:
+                        return sum(values) / float(number)
+                    else:
+                        return 0.0
+                except (TypeError, ValueError):
+                    return None
 
-        #elif method == "std":
-            #import numpy
-            #if not values:
-                #return 0.0
-            #try:
-                #return numpy.std(values)
-            #except (TypeError, ValueError):
-                #return None
+            #elif method == "std":
+                #import numpy
+                #if not values:
+                    #return 0.0
+                #try:
+                    #return numpy.std(values)
+                #except (TypeError, ValueError):
+                    #return None
 
         return None
 
@@ -1412,6 +1454,20 @@ class S3PivotTable(object):
         rows = self.rows
         cols = self.cols
 
+        # Exclude records with empty axis values ------------------------------
+        #
+        exclude_empty = current.s3db.get_config(tablename, "report_exclude_empty")
+        if exclude_empty is True:
+            # Exclude empty axis values for all fields
+            query = (FS(rows) != None) & (FS(cols) != None)
+            resource.add_filter(query)
+
+        elif type(exclude_empty) is tuple:
+            # Exclude empty axis values for some fields
+            for axis in (cols, rows):
+                if axis in exclude_empty:
+                    resource.add_filter(FS(axis) != None)
+
         # Retrieve the records ------------------------------------------------
         #
         data = resource.select(self.rfields.keys(), limit=None)
@@ -1439,7 +1495,6 @@ class S3PivotTable(object):
 
             dataframe = []
             extend = dataframe.extend
-            #insert = dataframe.append
             expand = self._expand
 
             for _id in records:
@@ -1959,6 +2014,21 @@ class S3PivotTable(object):
         return output
 
     # -------------------------------------------------------------------------
+    def xls(self, title):
+        """
+            Convert this pivot table into an XLS file
+
+            @param title: the title of the report
+
+            @returns: the XLS file as stream
+        """
+
+        from s3codec import S3Codec
+        exporter = S3Codec.get_codec("xls")
+
+        return exporter.encode_pt(self, title)
+
+    # -------------------------------------------------------------------------
     def _represents(self, layers):
         """
             Get the representation functions per fact field
@@ -2014,9 +2084,14 @@ class S3PivotTable(object):
 
         if not rfield:
             return
+
         ftype = rfield.ftype
+
         sortby = "value"
-        if ftype == "integer":
+        key = lambda item: item[index][sortby]
+
+        if ftype in ("integer", "string"):
+            # Sort option keys by their representation
             requires = rfield.requires
             if isinstance(requires, (tuple, list)):
                 requires = requires[0]
@@ -2024,10 +2099,22 @@ class S3PivotTable(object):
                 requires = requires.other
             if isinstance(requires, IS_IN_SET):
                 sortby = "text"
+
         elif ftype[:9] == "reference":
+            # Sort foreign keys by their representation
             sortby = "text"
-        items.sort(key=lambda item: item[index][sortby])
-        return
+
+        elif ftype == "date":
+            # Can't compare date objects to None
+            mindate = datetime.date.min
+            key = lambda item: item[index][sortby] or mindate
+
+        elif ftype == "datetime":
+            # Can't compare datetime objects to None
+            mindate = datetime.datetime.min
+            key = lambda item: item[index][sortby] or mindate
+
+        items.sort(key=key)
 
     # -------------------------------------------------------------------------
     @classmethod
@@ -2263,7 +2350,6 @@ class S3PivotTable(object):
         # Compute overall total
         self.totals[layer] = fact.compute(all_values, totals=True)
         self.values[layer] = all_values
-        return
 
     # -------------------------------------------------------------------------
     def _get_fields(self, fields=None):
@@ -2323,7 +2409,6 @@ class S3PivotTable(object):
                         cols: rfields[cols].colname
                                 if cols and cols in rfields else None,
                         }
-        return
 
     # -------------------------------------------------------------------------
     def _represent_method(self, field):
@@ -2339,21 +2424,28 @@ class S3PivotTable(object):
         if field and field in rfields:
 
             rfield = rfields[field]
-
             if rfield.field:
                 def repr_method(value):
-                    return s3_represent_value(rfield.field, value,
-                                              strip_markup=True)
-
+                    return s3_represent_value(rfield.field,
+                                              value,
+                                              strip_markup = True,
+                                              )
             elif rfield.virtual:
+
+                # If rfield defines a represent, use it
+                represent = rfield.represent
+                if not represent:
+                    represent = s3_unicode
+
+                # Wrap with markup stripper
                 stripper = S3MarkupStripper()
                 def repr_method(val):
                     if val is None:
                         return "-"
-                    text = s3_unicode(val)
+                    text = represent(val)
                     if "<" in text:
                         stripper.feed(text)
-                        return stripper.stripped() # = totally naked ;)
+                        return stripper.stripped()
                     else:
                         return text
             else:

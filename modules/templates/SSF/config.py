@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
 
-try:
-    # Python 2.7
-    from collections import OrderedDict
-except:
-    # Python 2.6
-    from gluon.contrib.simplejson.ordered_dict import OrderedDict
+from collections import OrderedDict
 
 from gluon import current, URL
 from gluon.storage import Storage
@@ -32,6 +27,7 @@ def config(settings):
     settings.base.theme = "SSF"
 
     # UI
+    settings.ui.icons = "font-awesome3"
     settings.ui.custom_icons = {
         "watch": "icon-eye-open",
         "unwatch": "icon-eye-close",
@@ -1367,12 +1363,6 @@ def config(settings):
                 restricted = True,
                 module_type = 5,
             )),
-        #("scenario", Storage(
-        #        name_nice = T("Scenarios"),
-        #        #description = T("Define Scenarios for allocation of appropriate Resources (Human, Assets & Facilities)."),
-        #        restricted = True,
-        #        module_type = 10,
-        #    )),
         #("event", Storage(
         #        name_nice = T("Events"),
         #        #description = T("Activate Events (e.g. from Scenario templates) for allocation of appropriate Resources (Human, Assets & Facilities)."),

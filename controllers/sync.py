@@ -72,7 +72,14 @@ def repository():
                 if alias == "task":
                     # Configure custom CRUD form
                     apitype = r.record.apitype
-                    if apitype == "filesync":
+                    if apitype == "eden":
+                        components = "components"
+                        infile_pattern = None
+                        outfile_pattern = None
+                        human_readable = None
+                        delete_input_files = None
+                    elif apitype == "filesync":
+                        components = None
                         component_table = r.component.table
                         for fname in ("infile_pattern",
                                       "outfile_pattern",
@@ -86,6 +93,7 @@ def repository():
                         human_readable = "human_readable"
                         delete_input_files = "delete_input_files"
                     else:
+                        components = None
                         infile_pattern = None
                         outfile_pattern = None
                         human_readable = None
@@ -93,6 +101,7 @@ def repository():
 
                     crud_form = s3base.S3SQLCustomForm(
                                     "resource_name",
+                                    components,
                                     infile_pattern,
                                     delete_input_files,
                                     outfile_pattern,
@@ -244,5 +253,14 @@ def log():
                                 list_btn=list_btn,
                                 )
     return output
+
+# -----------------------------------------------------------------------------
+def task():
+    """ RESTful CRUD controller for options.s3json lookups """
+
+    # Pre-process
+    s3.prep = lambda r: r.representation == "s3json" and r.method == "options"
+
+    return s3_rest_controller()
 
 # END =========================================================================

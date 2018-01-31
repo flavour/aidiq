@@ -2,7 +2,7 @@
 
 """ Sahana Eden Assessments Model
 
-    @copyright: 2012-2016 (c) Sahana Software Foundation
+    @copyright: 2012-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -782,9 +782,8 @@ class S3AssessBuildingModel(S3Model):
         self.configure(tablename,
                        onvalidation = self.assess_building_onvalidation,
                        filter_widgets = filter_widgets,
-                       subheadings = {
-                        T("Damages"): "electricity",
-                        }
+                       subheadings = {"electricity": T("Damages"),
+                                      }
                        )
 
         # Generate Work Order

@@ -52,12 +52,54 @@ def shelter_unit():
         REST controller to
             retrieve options for shelter unit selection
             show layer on Map
+            imports
     """
 
-    # [Geo]JSON & Map Popups only
-    s3.prep = lambda r: r.representation in ("json", "geojson", "plain")
+    # [Geo]JSON & Map Popups or Imports only
+    def prep(r):
+        if r.representation == "plain":
+            # Have the 'Open' button open in the context of the Shelter
+            record_id = r.id
+            table = s3db.cr_shelter_unit
+            row = db(table.id == record_id).select(table.shelter_id,
+                                                   limitby=(0, 1)
+                                                   ).first()
+            shelter_id = row.shelter_id
+            s3db.configure("cr_shelter_unit",
+                           popup_url = URL(c="cr", f="shelter",
+                                           args=[shelter_id, "shelter_unit",
+                                                 record_id]),
+                        )
+            return True
+        elif r.representation in ("json", "geojson", "plain") or \
+             r.method == "import":
+            return True
+        return False
+
+    s3.prep = prep
 
     return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def shelter_registration():
+    """
+        RESTful CRUD controller
+    """
+
+    s3.crud_strings.cr_shelter_registration = Storage(
+        label_create = T("Register Person"),
+        title_display = T("Registration Details"),
+        title_list = T("Registered People"),
+        title_update = T("Edit Registration"),
+        label_list_button = T("List Registrations"),
+        msg_record_created = T("Registration added"),
+        msg_record_modified = T("Registration updated"),
+        msg_record_deleted = T("Registration entry deleted"),
+        msg_list_empty = T("No people currently registered in this shelter")
+        )
+
+    output = s3_rest_controller()
+    return output
 
 # =============================================================================
 def shelter():
@@ -87,12 +129,14 @@ def shelter():
         elif method == "profile":
             shelter_id = r.id
             name = r.record.name
-            
+
             profile_header = settings.get_ui_profile_header(r)
 
             map_widget = dict(label = T("Housing Units"),
                               type = "map",
-                              icon = "icon-map",
+                              icon = "globe",
+                              colspan = 2,
+                              height = 500,
                               #bbox = bbox,
                               )
             ftable = s3db.gis_layer_feature
@@ -189,6 +233,64 @@ def shelter():
     s3.prep = prep
 
     return s3_rest_controller(rheader = s3db.cr_shelter_rheader)
+
+# -----------------------------------------------------------------------------
+def shelter_flag():
+    """
+        Shelter Flags - RESTful CRUD controller
+    """
+
+    def prep(r):
+
+        if r.interactive:
+
+            # Filter task_assign_to option to human resources and teams
+            assignees = []
+
+            # Select active HRs
+            hr = s3db.resource("hrm_human_resource",
+                               filter = FS("status") == 1,
+                               )
+            rows = hr.select(["person_id$pe_id"], limit=None, represent=False).rows
+            if rows:
+                assignees.extend(row["pr_person.pe_id"] for row in rows)
+
+            # Select teams
+            teams = s3db.resource("pr_group",
+                                  filter = FS("group_type") == 3,
+                                  )
+            rows = teams.select(["pe_id"], limit=None, represent=False).rows
+            if rows:
+                assignees.extend(row["pr_group.pe_id"] for row in rows)
+
+            # Set filter for task_assign_to.requires
+            field = r.table.task_assign_to
+            requires = field.requires
+            if isinstance(requires, IS_EMPTY_OR):
+                requires = requires.other
+            requires.set_filter(filterby = "pe_id",
+                                filter_opts = assignees,
+                                )
+        return True
+    s3.prep = prep
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def shelter_inspection():
+    """
+        Shelter Inspections - RESTful CRUD controller
+    """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def shelter_inspection_flag():
+    """
+        Shelter Inspection Flags - RESTful CRUD controller
+    """
+
+    return s3_rest_controller()
 
 # =============================================================================
 def incoming():

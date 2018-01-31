@@ -1,7 +1,7 @@
 /**
  * jQuery UI EmbeddedComponent Widget (used by S3EmbeddedComponentWidget)
  *
- * @copyright 2015-2016 (c) Sahana Software Foundation
+ * @copyright 2015-2018 (c) Sahana Software Foundation
  * @license MIT
  */
 (function($, undefined) {
@@ -43,8 +43,8 @@
             embeddedComponentID += 1;
 
             // Namespace for events
-            this.namespace = '.embeddedComponent';
-            this.namespaceID = this.namespace + this.id;
+            this.eventNamespace = '.embeddedComponent';
+            this.eventNamespaceID = this.eventNamespace + this.id;
         },
 
         /**
@@ -67,7 +67,6 @@
             this.autocompleteLabel = $('#' + fieldname + '-autocomplete-label');
 
             this.refresh();
-
         },
 
         /**
@@ -259,9 +258,9 @@
         _bindEvents: function() {
 
             var self = this,
-                ns = this.namespace;
+                ns = this.eventNamespace;
 
-            this.input.closest('form').bind('submit' + this.namespaceID, function () {
+            this.input.closest('form').bind('submit' + this.eventNamespaceID, function () {
                 self._onFormSubmission();
                 return true;
             });
@@ -317,9 +316,9 @@
          */
         _unbindEvents: function() {
 
-            var ns = this.namespace;
+            var ns = this.eventNamespace;
 
-            this.input.closest('form').unbind(this.namespaceID);
+            this.input.closest('form').unbind(this.eventNamespaceID);
 
             this.selectBtn.unbind(ns);
             this.editBtn.unbind(ns);

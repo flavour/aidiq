@@ -2,7 +2,7 @@
 
 """ S3 pyDAL Imports (with fallbacks for older DAL versions)
 
-    @copyright: 2015-2016 (c) Sahana Software Foundation
+    @copyright: 2015-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -34,17 +34,78 @@ __all__ = ("Expression",
            "Rows",
            "SQLCustomType",
            "Table",
+           "original_tablename",
            )
 
 try:
     from pydal import Field, SQLCustomType
+    from pydal.contrib import portalocker
     from pydal.objects import Expression, Query, Row, Rows, Table
 except ImportError:
     # older web2py
     try:
+        from gluon import portalocker
         from gluon.dal import Field, SQLCustomType
         from gluon.dal.objects import Expression, Query, Row, Rows, Table
     except ImportError:
         # even older web2py
+        from gluon import portalocker
         from gluon.dal import Field, SQLCustomType
         from gluon.dal import Expression, Query, Row, Rows, Table
+
+from gluon import current
+
+# =============================================================================
+class S3DAL(object):
+    """ Adapter class for backwards-incompatible PyDAL changes """
+
+    def __init__(self):
+
+        adapter = current.db._adapter
+
+        try:
+            dialect = adapter.dialect
+
+        except AttributeError:
+            # PyDAL <= 16.03
+            self.INVERT = adapter.INVERT
+            self.COMMA = adapter.COMMA
+            self.OR = adapter.OR
+            self.CONTAINS = adapter.CONTAINS
+            self.AGGREGATE = adapter.AGGREGATE
+
+        else:
+            # current PyDAL
+            self.INVERT = dialect.invert
+            self.COMMA = dialect.comma
+            self.OR = dialect._or
+            self.CONTAINS = dialect.contains
+            self.AGGREGATE = dialect.aggregate
+
+    # -------------------------------------------------------------------------
+    dalname = staticmethod(lambda table: table._dalname)
+
+    @classmethod
+    def original_tablename(cls, table):
+        """
+            Get the original name of an aliased table, with fallback
+            cascade for PyDAL < 17.01
+
+            @param table: the Table
+        """
+
+        try:
+            return cls.dalname(table)
+        except AttributeError:
+            if hasattr(table, "_ot"):
+                dalname = lambda table: \
+                          table._ot if table._ot else table._tablename
+                cls.dalname = staticmethod(dalname)
+                return dalname(table)
+            else:
+                raise
+
+# =============================================================================
+original_tablename = S3DAL.original_tablename
+
+# END =========================================================================

@@ -2,7 +2,7 @@
 
 """ S3 RESTful API
 
-    @copyright: 2009-2016 (c) Sahana Software Foundation
+    @copyright: 2009-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -32,24 +32,15 @@ __all__ = ("S3Request",
            "s3_request",
            )
 
-import datetime
+import json
 import os
 import re
 import sys
-import time
 import types
 try:
     from cStringIO import StringIO    # Faster, where available
 except:
     from StringIO import StringIO
-
-try:
-    import json # try stdlib (Python 2.6)
-except ImportError:
-    try:
-        import simplejson as json # try external module
-    except:
-        import gluon.contrib.simplejson as json # fallback to pure-Python module
 
 from gluon import *
 # Here are dependencies listed for reference:
@@ -63,6 +54,7 @@ from s3resource import S3Resource
 from s3utils import s3_get_extension, s3_remove_last_record_id, s3_store_last_record_id
 
 REGEX_FILTER = re.compile(".+\..+|.*\(.+\).*")
+HTTP_METHODS = ("GET", "PUT", "POST", "DELETE")
 
 # =============================================================================
 class S3Request(object):
@@ -272,8 +264,9 @@ class S3Request(object):
                 raise KeyError(current.ERROR.BAD_RECORD)
 
         # Store method handlers
-        self._handler = Storage()
+        self._handlers = {}
         set_handler = self.set_handler
+
         set_handler("export_tree", self.get_tree,
                     http=("GET",), transform=True)
         set_handler("import_tree", self.put_tree,
@@ -281,7 +274,9 @@ class S3Request(object):
         set_handler("fields", self.get_fields,
                     http=("GET",), transform=True)
         set_handler("options", self.get_options,
-                    http=("GET",), transform=True)
+                    http=("GET",),
+                    representation = ("__transform__", "json"),
+                    )
 
         sync = current.sync
         set_handler("sync", sync,
@@ -309,41 +304,43 @@ class S3Request(object):
             @param method: the method name
             @param handler: the handler function
             @type handler: handler(S3Request, **attr)
+            @param http: restrict to these HTTP methods, list|tuple
+            @param representation: register handler for non-transformable data
+                                   formats
+            @param transform: register handler for transformable data formats
+                              (overrides representation)
         """
 
-        HTTP = ("GET", "PUT", "POST", "DELETE")
-
         if http is None:
-            http = HTTP
-        if not isinstance(http, (set, tuple, list)):
-            http = [http]
-        if transform:
-            representation = ["__transform__"]
-        elif representation is None:
-            representation = [self.DEFAULT_REPRESENTATION]
-        if not isinstance(representation, (set, tuple, list)):
-            representation = [representation]
-        if not isinstance(method, (set, tuple, list)):
-            method = [method]
+            http = HTTP_METHODS
+        else:
+            if not isinstance(http, (tuple, list)):
+                http = (http,)
 
-        handlers = self._handler
+        if transform:
+            representation = ("__transform__",)
+        elif not representation:
+            representation = (self.DEFAULT_REPRESENTATION,)
+        else:
+            if not isinstance(representation, (tuple, list)):
+                representation = (representation,)
+
+        if not isinstance(method, (tuple, list)):
+            method = (method,)
+
+        handlers = self._handlers
         for h in http:
-            if h not in HTTP:
+            if h not in HTTP_METHODS:
                 continue
-            if h not in handlers:
-                handlers[h] = Storage()
-            format_hooks = handlers[h]
+            format_hooks = handlers.get(h)
+            if format_hooks is None:
+                format_hooks = handlers[h] = {}
             for r in representation:
-                if r not in format_hooks:
-                    format_hooks[r] = Storage()
-                method_hooks = format_hooks[r]
+                method_hooks = format_hooks.get(r)
+                if method_hooks is None:
+                    method_hooks = format_hooks[r] = {}
                 for m in method:
-                    if m is None:
-                        _m = "__none__"
-                    else:
-                        _m = m
-                    method_hooks[_m] = handler
-        return
+                    method_hooks[m] = handler
 
     # -------------------------------------------------------------------------
     def get_handler(self, method, transform=False):
@@ -351,43 +348,43 @@ class S3Request(object):
             Get a method handler for this request
 
             @param method: the method name
-            @return: the handler function
+            @param transform: get handler for transformable data format
+
+            @return: the method handler
         """
 
-        http = self.http
-        representation = self.representation
+        handlers = self._handlers
 
-        if transform:
-            representation = "__transform__"
-        elif representation is None:
-            representation = self.DEFAULT_REPRESENTATION
-        if method is None:
-            method = "__none__"
-
-        if http not in self._handler:
-            http = "GET"
-        if http not in self._handler:
+        http_hooks = handlers.get(self.http)
+        if not http_hooks:
             return None
-        else:
-            format_hooks = self._handler[http]
 
-        if representation not in format_hooks:
-            representation = self.DEFAULT_REPRESENTATION
-        if representation not in format_hooks:
-            return None
+        DEFAULT_REPRESENTATION = self.DEFAULT_REPRESENTATION
+        hooks = http_hooks.get(DEFAULT_REPRESENTATION)
+        if hooks:
+            method_hooks = dict(hooks)
         else:
-            method_hooks = format_hooks[representation]
+            method_hooks = {}
 
-        if method not in method_hooks:
-            method = "__none__"
-        if method not in method_hooks:
-            return None
+        representation = "__transform__" if transform else self.representation
+        if representation and representation != DEFAULT_REPRESENTATION:
+            hooks = http_hooks.get(representation)
+            if hooks:
+                method_hooks.update(hooks)
+
+        if not method:
+            methods = (None,)
         else:
-            handler = method_hooks[method]
-            if isinstance(handler, (type, types.ClassType)):
-                return handler()
-            else:
-                return handler
+            methods = (method, None)
+        for m in methods:
+            handler = method_hooks.get(m)
+            if handler is not None:
+                break
+
+        if isinstance(handler, (type, types.ClassType)):
+            return handler()
+        else:
+            return handler
 
     # -------------------------------------------------------------------------
     def get_widget_handler(self, method):
@@ -461,15 +458,8 @@ class S3Request(object):
         self.component_id = None
         self.method = None
 
-        representation = self.extension
-
         # Get the names of all components
         tablename = "%s_%s" % (self.prefix, self.name)
-        components = current.s3db.get_components(tablename)
-        if components:
-            components = components.keys()
-        else:
-            components = []
 
         # Map request args, catch extensions
         f = []
@@ -499,7 +489,8 @@ class S3Request(object):
         if l > 1:
             m = f[1][0].lower()
             i = f[1][1]
-            if m in components:
+            components = current.s3db.get_components(tablename, names=[m])
+            if components and m in components:
                 self.component_name = m
                 self.component_id = i
             else:
@@ -544,7 +535,11 @@ class S3Request(object):
             self.http = "GET"
 
         # Retrieve filters from request body
-        if mode == "ajax" or content_type[:10] != "multipart/":
+        if content_type == "application/x-www-form-urlencoded":
+            # Read POST vars (from S3.gis.refreshLayer)
+            filters = self.post_vars
+            decode = None
+        elif mode == "ajax" or content_type[:10] != "multipart/":
             # Read body JSON (from $.searchS3)
             s = self.body
             s.seek(0)
@@ -642,7 +637,7 @@ class S3Request(object):
                     if not success:
                         if representation == "html" and output:
                             if isinstance(output, dict):
-                                output.update(r=self)
+                                output["r"] = self
                             return output
                         else:
                             status = pre.get("status", 400)
@@ -703,11 +698,11 @@ class S3Request(object):
         if output is not None and isinstance(output, dict):
             # Put a copy of r into the output for the view
             # to be able to make use of it
-            output.update(r=self)
+            output["r"] = self
 
         # Redirection
         if self.next is not None and \
-           (self.http != "GET" or self.method == "clear"):
+           (http != "GET" or self.method == "clear"):
             if isinstance(output, dict):
                 form = output.get("form")
                 if form:
@@ -792,10 +787,10 @@ class S3Request(object):
             Get the PUT method handler
         """
 
-        method = self.method
         transform = self.transformable(method="import")
 
-        if not self.method and transform:
+        method = self.method
+        if not method and transform:
             method = "import_tree"
 
         return self.get_handler(method, transform=transform)
@@ -806,9 +801,7 @@ class S3Request(object):
             Get the POST method handler
         """
 
-        method = self.method
-
-        if method == "delete":
+        if self.method == "delete":
             return self.__DELETE()
         else:
             if self.transformable(method="import"):
@@ -819,8 +812,8 @@ class S3Request(object):
                 if "deleted" in table and "id" not in post_vars: # and "uuid" not in post_vars:
                     original = S3Resource.original(table, post_vars)
                     if original and original.deleted:
-                        self.post_vars.update(id=original.id)
-                        self.vars.update(id=original.id)
+                        self.post_vars["id"] = original.id
+                        self.vars["id"] = original.id
                 return self.__GET()
 
     # -------------------------------------------------------------------------
@@ -877,6 +870,9 @@ class S3Request(object):
         if "show_urls" in get_vars:
             if get_vars["show_urls"].lower() == "false":
                 current.xml.show_urls = False
+
+        # Mobile data export (default: False)
+        mdata = get_vars.get("mdata") == "1"
 
         # Maxbounds (default: False)
         maxbounds = False
@@ -939,13 +935,13 @@ class S3Request(object):
         # Add stylesheet parameters
         if stylesheet is not None:
             if r.component:
-                args.update(id=r.id,
-                            component=r.component.tablename)
+                args["id"] = r.id
+                args["component"] = r.component.tablename
                 if r.component.alias:
-                    args.update(alias=r.component.alias)
+                    args["alias"] = r.component.alias
             mode = get_vars.get("xsltmode")
             if mode is not None:
-                args.update(mode=mode)
+                args["mode"] = mode
 
         # Set response headers
         response = current.response
@@ -967,19 +963,20 @@ class S3Request(object):
         if target == resource.tablename:
             # Master resource targetted
             target = None
-        output = resource.export_xml(start=start,
-                                     limit=limit,
-                                     msince=msince,
-                                     fields=fields,
-                                     dereference=True,
+        output = resource.export_xml(start = start,
+                                     limit = limit,
+                                     msince = msince,
+                                     fields = fields,
+                                     dereference = True,
                                      # maxdepth in args
-                                     references=references,
-                                     mcomponents=mcomponents,
-                                     rcomponents=rcomponents,
-                                     stylesheet=stylesheet,
-                                     as_json=as_json,
-                                     maxbounds=maxbounds,
-                                     target= target,
+                                     references = references,
+                                     mdata = mdata,
+                                     mcomponents = mcomponents,
+                                     rcomponents = rcomponents,
+                                     stylesheet = stylesheet,
+                                     as_json = as_json,
+                                     maxbounds = maxbounds,
+                                     target = target,
                                      **args)
         # Transformation error?
         if not output:
@@ -1028,8 +1025,8 @@ class S3Request(object):
         json_formats = s3.json_formats
         csv_formats = s3.csv_formats
         source = []
-        format = r.representation
-        if format in json_formats or format in csv_formats:
+        representation = r.representation
+        if representation in json_formats or representation in csv_formats:
             if filenames:
                 try:
                     for f in filenames:
@@ -1088,17 +1085,17 @@ class S3Request(object):
             args["image_field"] = get_vars["image_field"]
 
         # Format type?
-        if format in json_formats:
-            format = "json"
-        elif format in csv_formats:
-            format = "csv"
+        if representation in json_formats:
+            representation = "json"
+        elif representation in csv_formats:
+            representation = "csv"
         else:
-            format = "xml"
+            representation = "xml"
 
         try:
             output = r.resource.import_xml(source,
                                            id=_id,
-                                           format=format,
+                                           format=representation,
                                            files=r.files,
                                            stylesheet=stylesheet,
                                            ignore_errors=ignore_errors,
@@ -1182,8 +1179,9 @@ class S3Request(object):
         """
 
         get_vars = r.get_vars
-        if "field" in get_vars:
-            items = get_vars["field"]
+
+        items = get_vars.get("field")
+        if items:
             if not isinstance(items, (list, tuple)):
                 items = [items]
             fields = []
@@ -1211,11 +1209,19 @@ class S3Request(object):
             show_uids = False
 
         representation = r.representation
+        flat = False
         if representation == "xml":
             only_last = False
             as_json = False
             content_type = "text/xml"
         elif representation == "s3json":
+            show_uids = False
+            as_json = True
+            content_type = "application/json"
+        elif representation == "json" and fields and len(fields) == 1:
+            # JSON option supported for flat data structures only
+            # e.g. for use by jquery.jeditable
+            flat = True
             show_uids = False
             as_json = True
             content_type = "application/json"
@@ -1228,7 +1234,17 @@ class S3Request(object):
                                            show_uids=show_uids,
                                            only_last=only_last,
                                            hierarchy=hierarchy,
-                                           as_json=as_json)
+                                           as_json=as_json,
+                                           )
+
+        if flat:
+            s3json = json.loads(output)
+            output = {}
+            options = s3json.get("option")
+            if options:
+                for item in options:
+                    output[item.get("@value")] = item.get("$", "")
+            output = json.dumps(output)
 
         current.response.headers["Content-Type"] = content_type
         return output
@@ -1643,7 +1659,7 @@ class S3Request(object):
             # override the custom settings when loaded later)
             db = current.db
             if tablename not in db:
-                db.table(tablename)
+                current.s3db.table(tablename)
             customise = current.deployment_settings.customise_resource(tablename)
             if customise:
                 customise(self, tablename)
@@ -2025,7 +2041,7 @@ class S3Method(object):
                 if isinstance(display, dict) and resolve:
                     output.update(**display)
                 elif display is not None:
-                    output.update(**{key: display})
+                    output[key] = display
                 elif key in output and callable(handler):
                     del output[key]
 

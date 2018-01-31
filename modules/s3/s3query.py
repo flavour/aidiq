@@ -2,7 +2,7 @@
 
 """ S3 Query Construction
 
-    @copyright: 2009-2016 (c) Sahana Software Foundation
+    @copyright: 2009-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -113,6 +113,10 @@ class S3FieldSelector(object):
     # -------------------------------------------------------------------------
     def typeof(self, value):
         return S3ResourceQuery(S3ResourceQuery.TYPEOF, self, value)
+
+    # -------------------------------------------------------------------------
+    def intersects(self, value):
+        return S3ResourceQuery(S3ResourceQuery.INTERSECTS, self, value)
 
     # -------------------------------------------------------------------------
     def lower(self):
@@ -334,9 +338,10 @@ class S3FieldPath(object):
 
         # Initialize
         self.original = None
-        self.tname = table._tablename
+        tname = self.tname = table._tablename
         self.fname = None
         self.field = None
+        self.method = None
         self.ftype = None
         self.virtual = False
         self.colname = None
@@ -397,22 +402,25 @@ class S3FieldPath(object):
             # End of the expression
             if self.ftype != "context":
                 # Expression is resolved, head is a field name:
-                self.field = self._resolve_field(table, head)
-                if not self.field:
+                field, method = self._resolve_field(table, head)
+                if not field:
                     self.virtual = True
+                    self.field = None
+                    self.method = method
                     self.ftype = "virtual"
                 else:
                     self.virtual = False
-                    self.ftype = str(self.field.type)
+                    self.field = field
+                    self.method = None
+                    self.ftype = str(field.type)
                 self.fname = head
-                self.colname = "%s.%s" % (self.tname, self.fname)
-
+                self.colname = "%s.%s" % (tname, head)
         else:
-
             # Read field data from tail
             self.tname = tail.tname
             self.fname = tail.fname
             self.field = tail.field
+            self.method = tail.method
             self.ftype = tail.ftype
             self.virtual = tail.virtual
             self.colname = tail.colname
@@ -432,18 +440,28 @@ class S3FieldPath(object):
             @param table: the Table
             @param fieldname: the field name
 
-            @return: the Field
+            @return: tuple (Field, Field.Method)
         """
+
+        method = None
 
         if fieldname == "uid":
             fieldname = current.xml.UID
+
         if fieldname == "id":
             field = table._id
         elif fieldname in table.fields:
             field = ogetattr(table, fieldname)
         else:
+            # Virtual Field
             field = None
-        return field
+            try:
+                method = ogetattr(table, fieldname)
+            except AttributeError:
+                # not yet defined, skip
+                pass
+
+        return field, method
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -671,6 +689,15 @@ class S3ResourceField(object):
         elif self.colname:
             self.virtual = True
             self.ftype = "virtual"
+            # Check whether the fieldmethod handler has a
+            # representation method (s3_fieldmethod)
+            method = lf.method
+            if hasattr(method, "handler"):
+                handler = method.handler
+                if hasattr(handler, "represent"):
+                    self.represent = handler.represent
+                if hasattr(handler, "search_field"):
+                    self.search_field = handler.search_field
         else:
             self.ftype = "context"
 
@@ -1230,9 +1257,10 @@ class S3ResourceQuery(object):
     CONTAINS = "contains"
     ANYOF = "anyof"
     TYPEOF = "typeof"
+    INTERSECTS = "intersects"
 
     COMPARISON = [LT, LE, EQ, NE, GE, GT,
-                  LIKE, BELONGS, CONTAINS, ANYOF, TYPEOF]
+                  LIKE, BELONGS, CONTAINS, ANYOF, TYPEOF, INTERSECTS]
 
     OPERATORS = [NOT, AND, OR] + COMPARISON
 
@@ -1510,12 +1538,19 @@ class S3ResourceQuery(object):
                 return query
 
         # Convert date(time) strings
-        if ftype  == "datetime" and \
-           isinstance(rfield, basestring):
-            rfield = S3TypeConverter.convert(datetime.datetime, rfield)
-        elif ftype  == "date" and \
-             isinstance(rfield, basestring):
-            rfield = S3TypeConverter.convert(datetime.date, rfield)
+        if ftype in ("date", "datetime") and isinstance(rfield, basestring):
+            to_type = datetime.date if ftype == "date" else datetime.datetime
+            rfield = S3TypeConverter.convert(to_type, rfield)
+
+        # Catch invalid data types for primary/foreign keys (PyDAL doesn't)
+        if op == self.EQ and rfield is not None and \
+           (ftype == "id" or ftype[:9] == "reference"):
+            try:
+                rfield = long(rfield)
+            except (ValueError, TypeError):
+                # Right argument is an invalid key
+                # => treat as 0 to prevent crash in SQL expansion
+                rfield = 0
 
         query = query_bare(op, lfield, rfield)
         if invert:
@@ -1546,6 +1581,8 @@ class S3ResourceQuery(object):
                 q = S3AIRegex.like(l, r)
             else:
                 q = l.like(s3_unicode(r))
+        elif op == self.INTERSECTS:
+            q = self._query_intersects(l, r)
         elif op == self.LT:
             q = l < r
         elif op == self.LE:
@@ -1567,8 +1604,8 @@ class S3ResourceQuery(object):
         """
             Translate TYPEOF into DAL expression
 
-            @param l: the left operator
-            @param r: the right operator
+            @param l: the left operand
+            @param r: the right operand
         """
 
         hierarchy, field, nodeset, none = self._resolve_hierarchy(l, r)
@@ -1610,8 +1647,8 @@ class S3ResourceQuery(object):
         """
             Resolve the hierarchical lookup in a typeof-query
 
-            @param l: the left operator
-            @param r: the right operator
+            @param l: the left operand
+            @param r: the right operand
         """
 
         from s3hierarchy import S3Hierarchy
@@ -1703,9 +1740,9 @@ class S3ResourceQuery(object):
             Resolve BELONGS into a DAL expression (or S3ResourceQuery if
             field is an S3FieldSelector)
 
-            @param l: the left operator
-            @param r: the right operator
-            @param field: alternative left operator
+            @param l: the left operand
+            @param r: the right operand
+            @param field: alternative left operand
         """
 
         if field is None:
@@ -1762,6 +1799,49 @@ class S3ResourceQuery(object):
                 expr |= (field == None)
         elif expr is None:
             expr = field.belongs(set())
+
+        return expr
+
+    # -------------------------------------------------------------------------
+    def _query_intersects(self, l, r):
+        """
+            Resolve INTERSECTS into a DAL expression;
+            will be ignored for non-spatial DBs
+
+            @param l: the left operand (Field)
+            @param r: the right operand
+        """
+
+        if current.deployment_settings.get_gis_spatialdb():
+
+            expr = None
+
+            if str(l.type)[:3] == "geo":
+
+                if isinstance(r, basestring):
+
+                    # Assume WKT => validate it before constructing the query
+                    #from shapely.geos import ReadingError as GEOSReadingError
+                    from shapely.wkt import loads as wkt_loads
+                    try:
+                        wkt_loads(r)
+                    except Exception: #GEOSReadingError:
+                        # Invalid WKT => log and let default
+                        current.log.error("INTERSECTS: %s" % sys.exc_info()[1])
+                    else:
+                        expr = l.st_intersects(r)
+
+                elif hasattr(r, type) and str(r.type)[:3] == "geo":
+
+                    expr = l.st_intersects(r)
+
+            if expr is None:
+                # Invalid operand => fail by default
+                return l.belongs(set())
+
+        else:
+            # Ignore sub-query for non-spatial DB
+            expr = False
 
         return expr
 

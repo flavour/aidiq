@@ -2,7 +2,7 @@
 
 """ Sahana Eden Budget Model
 
-    @copyright: 2009-2016 (c) Sahana Software Foundation
+    @copyright: 2009-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -81,7 +81,9 @@ class S3BudgetModel(S3Model):
                                )
 
         tablename = "budget_entity"
-        self.super_entity(tablename, "budget_entity_id", entity_types)
+        self.super_entity(tablename, "budget_entity_id", entity_types,
+                          Field("name"), # shared field
+                          )
 
         self.add_components(tablename,
                             # Budget Details
@@ -127,9 +129,10 @@ class S3BudgetModel(S3Model):
                      super_link("budget_entity_id", "budget_entity"),
                      Field("name", length=128, notnull=True, unique=True,
                            label = T("Name"),
-                           #requires = [IS_NOT_EMPTY(),
-                           #            IS_NOT_ONE_OF(db, "%s.name" % tablename),
-                           #            ],
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(128),
+                                       IS_NOT_ONE_OF(db, "%s.name" % tablename),
+                                       ],
                            ),
                      Field("description",
                            label = T("Description"),
@@ -249,9 +252,10 @@ class S3BudgetModel(S3Model):
         define_table(tablename,
                      Field("code", length=3, notnull=True, unique=True,
                            label = T("Code"),
-                           #requires = [IS_NOT_EMPTY(),
-                           #            IS_NOT_ONE_OF(db, "%s.code" % tablename),
-                           #            ],
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(3),
+                                       IS_NOT_ONE_OF(db, "%s.code" % tablename),
+                                       ],
                            ),
                      Field("description",
                            label = T("Description"),
@@ -317,9 +321,10 @@ class S3BudgetModel(S3Model):
         define_table(tablename,
                      Field("name", length=128, notnull=True, unique=True,
                            label = T("Name"),
-                           #requires = [IS_NOT_EMPTY(),
-                           #            IS_NOT_ONE_OF(db, "%s.name" % tablename),
-                           #            ],
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(128),
+                                       IS_NOT_ONE_OF(db, "%s.name" % tablename),
+                                       ],
                            ),
                      Field("grade", notnull=True,
                            label = T("Grade"),
@@ -565,9 +570,10 @@ class S3BudgetKitModel(S3Model):
         define_table(tablename,
                      Field("code", length=128, notnull=True, unique=True,
                            label = T("Code"),
-                           #requires = [IS_NOT_EMPTY(),
-                           #            IS_NOT_ONE_OF(db, "%s.code" % tablename),
-                           #            ],
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(128),
+                                       IS_NOT_ONE_OF(db, "%s.code" % tablename),
+                                       ],
                            ),
                      Field("description",
                            label = T("Description"),
@@ -684,9 +690,10 @@ class S3BudgetKitModel(S3Model):
                            ),
                      Field("code", length=128, notnull=True, unique=True,
                            label = T("Code"),
-                           #requires = [IS_NOT_EMPTY(),
-                           #            IS_NOT_ONE_OF(db, "%s.code" % tablename),
-                           #            ],
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(128),
+                                       IS_NOT_ONE_OF(db, "%s.code" % tablename),
+                                       ],
                            ),
                      Field("description", notnull=True,
                            label = T("Description"),
@@ -933,9 +940,10 @@ class S3BudgetBundleModel(S3Model):
         define_table(tablename,
                      Field("name", length=128, notnull=True, unique=True,
                            label = T("Name"),
-                           #requires = [IS_NOT_EMPTY(),
-                           #            IS_NOT_ONE_OF(db, "%s.name" % tablename),
-                           #            ],
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(128),
+                                       IS_NOT_ONE_OF(db, "%s.name" % tablename),
+                                       ],
                            ),
                      Field("description",
                            label = T("Description"),
@@ -1334,22 +1342,31 @@ class S3BudgetAllocationModel(S3Model):
         self.define_table(tablename,
                           # This is a component, so needs to be a super_link
                           # - can't override field name, ondelete or requires
-                          super_link("budget_entity_id", "budget_entity"),
+                          super_link("budget_entity_id", "budget_entity",
+                                     # @todo: proper representation method incl.
+                                     #        entity type (currently only one
+                                     #        type defined, so using that as
+                                     #        label for now)
+                                     label = T("Project"),
+                                     represent = S3Represent(lookup="budget_entity"),
+                                     ),
                           # Component not instance
                           super_link("cost_item_id", "budget_cost_item",
                                      readable = True,
                                      writable = True,
                                      represent = self.budget_CostItemRepresent(),
                                      ),
-                          # @ToDo: s3_datetime
-                          s3_date("start_date",
-                                  label = T("Start Date")
-                                  ),
-                          s3_date("end_date",
-                                  label = T("End Date"),
-                                  start_field = "budget_allocation_start_date",
-                                  default_interval = 12,
-                                  ),
+                          s3_datetime("start_date",
+                                      label = T("Start Date"),
+                                      widget = "date",
+                                      ),
+                          s3_datetime("end_date",
+                                      label = T("End Date"),
+                                      # Not supported by s3_datetime
+                                      #start_field = "budget_allocation_start_date",
+                                      #default_interval = 12,
+                                      widget = "date",
+                                      ),
                           Field("unit_cost", "double",
                                 default = 0.00,
                                 label = T("One-Time Cost"),
@@ -1524,7 +1541,7 @@ class S3BudgetMonitoringModel(S3Model):
                                                   limitby=(0, 1)
                                                   ).first()
         if not record:
-            s3_debug("Cannot find Budget Monitoring record (no record for this ID), so can't update start_date")
+            current.log.debug("Cannot find Budget Monitoring record (no record for this ID), so can't update start_date")
             return
         budget_entity_id = record.budget_entity_id
         start_date = record.start_date
@@ -1572,7 +1589,7 @@ class S3BudgetMonitoringModel(S3Model):
                                                    limitby=(0, 1)
                                                    ).first()
         if not record:
-            s3_debug("Cannot find Budget Monitoring record (no record for this ID), so can't check whether Total Budget is exceeded")
+            current.log.debug("Cannot find Budget Monitoring record (no record for this ID), so can't check whether Total Budget is exceeded")
             return
         budget_entity_id = record.budget_entity_id
 
@@ -1583,7 +1600,7 @@ class S3BudgetMonitoringModel(S3Model):
                                   limitby=(0, 1)
                                   ).first()
         if not budget:
-            s3_debug("Cannot find Budget record (no record for this super_key), so can't check whether Total Budget is exceeded")
+            current.log.debug("Cannot find Budget record (no record for this super_key), so can't check whether Total Budget is exceeded")
             return
 
         # Read the total Planned
@@ -1629,7 +1646,7 @@ class S3BudgetMonitoringModel(S3Model):
 
         if hasattr(row, "id"):
             # Reload the record
-            s3_debug("Reload")
+            #current.log.debug("Reloading budget_monitoring record")
             table = current.s3db.budget_monitoring
             r = current.db(table.id == row.id).select(table.planned,
                                                       table.value,
@@ -1683,7 +1700,7 @@ class budget_CostItemRepresent(S3Represent):
         instance_fields = {
             "event_asset": ["incident_id", "asset_id"],
             "event_site": ["incident_id", "site_id"],
-            "event_human_resource": ["incident_id", "human_resource_id"],
+            "event_human_resource": ["incident_id", "job_title_id"],
         }
 
         # Get all super-entity rows
@@ -1785,7 +1802,7 @@ class budget_CostItemRepresent(S3Represent):
             table = s3db.event_human_resource
             repr_str = "%s - %s" % \
                         (table.incident_id.represent(item.incident_id),
-                         self.represent["human_resource_id"](item.human_resource_id),
+                         self.represent["job_title_id"](item.job_title_id),
                          )
         else:
             # Unknown instance type

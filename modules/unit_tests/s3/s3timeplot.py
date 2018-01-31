@@ -15,6 +15,8 @@ from s3.s3timeplot import *
 from s3.s3timeplot import tp_datetime
 from s3.s3query import FS
 
+from unit_tests import run_suite
+
 # =============================================================================
 class EventTests(unittest.TestCase):
     """ Tests for S3TimeSeriesEvent class """
@@ -1552,6 +1554,22 @@ class TimeSeriesTests(unittest.TestCase):
         # ~14 days => reasonable intervall length: days
         assertEqual(ef.slots, "days")
 
+        # Check with manual start date
+        query = FS("event_type") == "STARTEND"
+        resource = s3db.resource("tp_test_events", filter = query)
+        ts = S3TimeSeries(resource,
+                          event_start = "event_start",
+                          event_end = "event_end",
+                          start = "2011-02-15",
+                          end = tp_datetime(2011, 2, 28, 12, 53, 0),
+                          )
+        ef = ts.event_frame
+        # falls back to first start date
+        assertEqual(ef.start, tp_datetime(2011, 2, 15, 0, 0, 0))
+        assertEqual(ef.end, tp_datetime(2011, 2, 28, 12, 53, 0))
+        # ~14 days => reasonable intervall length: days
+        assertEqual(ef.slots, "days")
+
     # -------------------------------------------------------------------------
     def testEventDataAggregation(self):
         """ Test aggregation of event data """
@@ -1831,18 +1849,6 @@ class FactParserTests(unittest.TestCase):
                                 (i, j, fact.interval, interval))
 
 # =============================================================================
-def run_suite(*test_classes):
-    """ Run the test suite """
-
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    for test_class in test_classes:
-        tests = loader.loadTestsFromTestCase(test_class)
-        suite.addTests(tests)
-    if suite is not None:
-        unittest.TextTestRunner(verbosity=2).run(suite)
-    return
-
 if __name__ == "__main__":
 
     run_suite(

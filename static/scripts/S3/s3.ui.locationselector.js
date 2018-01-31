@@ -1,7 +1,7 @@
 /**
  * jQuery UI LocationSelector Widget
  *
- * @copyright 2015-2016 (c) Sahana Software Foundation
+ * @copyright 2015-2018 (c) Sahana Software Foundation
  * @license MIT
  *
  * requires jQuery 1.9.1+
@@ -69,7 +69,7 @@
             locationselectorID += 1;
 
             // Namespace for events
-            this.namespace = '.locationselector';
+            this.eventNamespace = '.locationselector';
         },
 
         /**
@@ -339,7 +339,7 @@
 
             // Make errorWrapper clickable to remove it
             if (errorWrapper.length) {
-                errorWrapper.one('click' + this.namespace, function() {
+                errorWrapper.one('click' + this.eventNamespace, function() {
                     var $this = $(this);
                     $this.fadeOut('slow', function() {
                         $this.remove();
@@ -413,7 +413,7 @@
 
                     // Update the label
                     $(s + '__row label').html(labelHTML);
-                    // Tuple themes (@todo: why would row1 have a label?)
+                    // Tuple themes
                     $(s + '__row1 label').html(labelHTML);
                     // Update the placeholder-option in the selector
                     $(s + ' option[value=""]').html(i18n.select + ' ' + label);
@@ -442,17 +442,28 @@
 
             if (id) {
                 // Show next dropdown
-                var next = level + 1;
-                var dropdown_row = $(selector + '_L' + next + '__row');
+                var missing = false,
+                    next = level + 1,
+                    dropdown_row = $(selector + '_L' + next + '__row');
 
-                if (dropdown_row.length) {
-
+                if (!dropdown_row.length) {
+                    // Maybe we have a missing level, so try the next one
+                    missing = true;
+                    next++;
+                    dropdown_row = $(selector + '_L' + next + '__row');
+                }
+                if (!dropdown_row.length) {
+                    // No next level - we're at the bottom of the hierarchy
+                    if (this.useGeocoder && !refresh) {
+                        this._geocodeDecision();
+                    }
+                } else {
                     // Do we need to read hierarchy?
                     var locations,
                         location,
                         locationID;
                     if ($(selector + '_L' + level + ' option[value="' + id + '"]').hasClass('missing')) {
-                        // Missing level: we already have the data
+                        // An individual location with a Missing Level: we already have the data
                         location = hierarchyLocations[id];
                         location.i = id;
                         locations = [location];
@@ -467,7 +478,7 @@
                         }
                         if (read) {
                             // AJAX Read extra hierarchy options
-                            this._readHierarchy(id, next);
+                            this._readHierarchy(id, next, missing);
                         }
 
                         locations = [];
@@ -486,7 +497,6 @@
                     // Populate the next dropdown
                     var numLocations = locations.length,
                         selected,
-                        missing,
                         option;
 
                     if (numLocations) {
@@ -517,7 +527,7 @@
                                 // A normal level
                                 missing = '';
                             } else {
-                                // A link for a missing level
+                                // A link for an individual location with a Missing Level
                                 missing = ' class="missing"';
                             }
                             option = '<option value="' + locationID + '"' + selected + missing + '>' + location.n + '</option>';
@@ -554,11 +564,6 @@
                             // Only 1 option so select this one
                             this._lxSelect(next, locationID, refresh);
                         }
-                    }
-                } else {
-                    // No next level - we're at the bottom of the hierarchy
-                    if (this.useGeocoder && !refresh) {
-                        this._geocodeDecision();
                     }
                 }
             }
@@ -760,8 +765,9 @@
          *
          * @param {number} parent - the parent location id
          * @param {number} level - the hierarchy level (1..5)
+         * @param {boolean} missing - whether this is looking up after a missinglevel
          */
-        _readHierarchy: function(parent, level) {
+        _readHierarchy: function(parent, level, missing) {
 
             var selector = '#' + this.fieldname;
 
@@ -779,7 +785,11 @@
             var throbber = $(selector + '_L' + level + '__throbber').removeClass('hide').show();
 
             // Download Location Data
-            var url = S3.Ap.concat('/gis/ldata/' + parent);
+            if (missing) {
+                var url = S3.Ap.concat('/gis/ldata/' + parent + '/' + level);
+            } else {
+                var url = S3.Ap.concat('/gis/ldata/' + parent);
+            }
             $.ajaxS3({
                 async: false,
                 url: url,
@@ -856,7 +866,7 @@
               selector + '_geocode .geocode_fail').hide();
 
             var self = this,
-                ns = this.namespace;
+                ns = this.eventNamespace;
             if (this.input.data('manually_geocoded')) {
                 // Show a button to allow the user to do a new automatic Geocode
                 $(selector + '_geocode button').removeClass('hide')
@@ -1100,7 +1110,7 @@
         _showMap: function(event) {
 
             var fieldname = this.fieldname,
-                ns = this.namespace,
+                ns = this.eventNamespace,
                 self = this;
 
             var selector = '#' + fieldname;
@@ -1208,7 +1218,7 @@
                                     'internalProjection': map.getProjectionObject(),
                                     'externalProjection': gis.proj4326
                                     };
-                                    
+
                                 data.radius = null;
                                 var linearRing = new OpenLayers.Geometry.LinearRing(feature.geometry.components[0].components);
                                 var polygon = new OpenLayers.Geometry.Polygon([linearRing]);
@@ -1229,7 +1239,7 @@
                                     var startPoint = new OpenLayers.Geometry.Point(startX, startY);
                                     var endPoint = new OpenLayers.Geometry.Point(maxX, startY);
                                     var radius = new OpenLayers.Geometry.LineString([startPoint, endPoint]);
-                                    var lengthMeter = parseFloat(radius.getLength() * 0.001); // in kilometer
+                                    var lengthMeter = parseFloat(radius.getLength()); // in meter
                                     //var lengthMeter = parseFloat(radius.getGeodesicLength());
 
                                     // Store radius
@@ -1275,7 +1285,7 @@
         _hideMap: function() {
 
             var fieldname = this.fieldname,
-                ns = this.namespace;
+                ns = this.eventNamespace;
 
             var selector = '#' + fieldname;
 
@@ -1571,7 +1581,7 @@
         _bindEvents: function() {
 
             var fieldname = this.fieldname,
-                ns = this.namespace,
+                ns = this.eventNamespace,
                 self = this;
 
             var selector = '#' + fieldname;
@@ -1660,7 +1670,7 @@
         _unbindEvents: function() {
 
             var selector = '#' + this.fieldname,
-                ns = this.namespace;
+                ns = this.eventNamespace;
 
             $(selector + '_L0,' +
               selector + '_L1,' +
@@ -1716,7 +1726,7 @@
             latloninputID += 1;
 
             // Namespace for events
-            this.namespace = '.latloninput';
+            this.eventNamespace = '.latloninput';
         },
 
         /**
@@ -2117,7 +2127,7 @@
         _bindEvents: function() {
 
             var self = this,
-                ns = this.namespace;
+                ns = this.eventNamespace;
 
             this.dmsInput.find('input').bind('change' + ns, function() {
                 var value = self._validateDMS();
@@ -2150,7 +2160,7 @@
          */
         _unbindEvents: function() {
 
-            var ns = this.namespace;
+            var ns = this.eventNamespace;
 
             if (this.input) {
                 this.input.find('input').unbind(ns);

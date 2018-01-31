@@ -319,6 +319,45 @@ def req_controller(template = False):
                 if r.id:
                     table.is_template.readable = table.is_template.writable = False
 
+                keyvalue = settings.get_ui_auto_keyvalue()
+                if keyvalue:
+                    # What Keys do we have?
+                    kvtable = s3db.req_req_tag
+                    keys = db(kvtable.deleted == False).select(kvtable.tag,
+                                                               distinct=True)
+                    if keys:
+                        tablename = "req_req"
+                        crud_fields = [f for f in table.fields if table[f].readable]
+                        cappend = crud_fields.append
+                        add_component = s3db.add_components
+                        list_fields = s3db.get_config(tablename,
+                                                      "list_fields")
+                        lappend = list_fields.append
+                        for key in keys:
+                            tag = key.tag
+                            label = T(tag.title())
+                            cappend(S3SQLInlineComponent("tag",
+                                                         label = label,
+                                                         name = tag,
+                                                         multiple = False,
+                                                         fields = [("", "value")],
+                                                         filterby = dict(field = "tag",
+                                                                         options = tag,
+                                                                         )
+                                                         ))
+                            add_component(tablename,
+                                          org_organisation_tag = {"name": tag,
+                                                                  "joinby": "req_id",
+                                                                  "filterby": "tag",
+                                                                  "filterfor": (tag,),
+                                                                  },
+                                          )
+                            lappend((label, "%s.value" % tag))
+                        crud_form = S3SQLCustomForm(*crud_fields)
+                        s3db.configure(tablename,
+                                       crud_form = crud_form,
+                                       )
+
                 method = r.method
                 if method in (None, "create"):
                     # Hide fields which don't make sense in a Create form
@@ -452,7 +491,7 @@ $.filterOptionsS3({
  'target':{'alias':'commit_item','name':'item_pack_id'},
  'scope':'row',
  'lookupPrefix':'req',
- 'lookupResource':'req_item_packs',
+ 'lookupResource':'req_item_packs.json',
  'lookupKey':'req_item_id',
  'lookupField':'id',
  'msgNoRecords':i18n.no_packs,
@@ -921,6 +960,8 @@ def req_item():
 def req_item_packs():
     """
         Called by S3OptionsFilter to provide the pack options for an Item
+
+        Access via the .json representation to avoid work rendering menus, etc
     """
 
     req_item_id = None
@@ -1121,7 +1162,8 @@ def commit():
         tablename = "req_commit_person"
         table = s3db[tablename]
         # Unaffiliated people can't commit on behalf of others
-        table.person_id.writable = False
+        #table.person_id.writable = False
+        table.human_resource_id.writable = False
         # & can only make single-person commitments
         # (This should have happened in the main commitment)
         s3db.configure(tablename,
@@ -1209,7 +1251,7 @@ $.filterOptionsS3({
  'target':{'alias':'commit_item','name':'item_pack_id'},
  'scope':'row',
 'lookupPrefix':'req',
-'lookupResource':'req_item_packs',
+'lookupResource':'req_item_packs.json',
 'lookupKey':'req_item_id',
 'lookupField':'id',
 'msgNoRecords':i18n.no_packs,
@@ -1768,7 +1810,9 @@ def send_req():
 # =============================================================================
 def commit_item_json():
     """
-       @ToDo: docstring to explain where this is used
+        Used by s3.supply.js
+
+        Access via the .json representation to avoid work rendering menus, etc
     """
 
     ctable = s3db.req_commit

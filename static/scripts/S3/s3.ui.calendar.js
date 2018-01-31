@@ -1,11 +1,15 @@
 /**
  * jQuery UI Widget for S3CalendarWidget
  *
- * @copyright 2015-2016 (c) Sahana Software Foundation
+ * @copyright 2015-2018 (c) Sahana Software Foundation
  * @license MIT
  *
  * requires jQuery 1.9.1+
  * requires jQuery UI 1.10 widget factory
+ * requires jQuery UI DatePicker for Gregorian calendars: https://jqueryui.com/datepicker/
+ * requires jQuery UI Timepicker-addon if using times: http://trentrichardson.com/examples/timepicker
+ * requires Calendars for non-Gregorian calendars: http://keith-wood.name/calendars.html
+ * (ensure that calendars/ui-smoothness.calendars.picker.css is in css.cfg for that)
  */
 (function($, undefined) {
 
@@ -191,7 +195,7 @@
          * @prop {bool} timepicker - show a timepicker
          * @prop {number} minuteStep - the minute-step for the timepicker slider
          *
-         * @prop {bool} clearButton - show a "Clear"-button
+         * @prop {bool} clearButton - show a "Clear"-button, true|false|"icon"
          *
          * @prop {string} setMin - CSS selector for target widget to set minimum selectable
          *                         date/time to the selected date/time of this widget
@@ -246,7 +250,7 @@
 
             // Instance ID and namespace
             this.id = calendarWidgetID;
-            this.namespace = '.calendar-widget-' + calendarWidgetID;
+            this.eventNamespace = '.calendar-widget-' + calendarWidgetID;
 
             calendarWidgetID += 1;
         },
@@ -318,9 +322,14 @@
             }
 
             // Add clear-button
-            if (opts.clearButton) {
-                var clearButton = $('<button class="btn date-clear-btn" type="button">' + opts.clearText + '</button>');
-                $(el).after(clearButton);
+            var clearButton;
+            if (opts.clearButton === "icon") {
+                clearButton = $('<span class="postfix calendar-clear-btn" title="' + opts.clearText + '"><i class="fa-close fa"> </i></span>');
+                el.after(clearButton);
+                this.clearButton = clearButton;
+            } else if (opts.clearButton) {
+                clearButton = $('<button class="btn date-clear-btn" type="button">' + opts.clearText + '</button>');
+                el.after(clearButton);
                 this.clearButton = clearButton;
             }
 
@@ -333,7 +342,7 @@
             // Add trigger button
             if (opts.triggerButton) {
                 var triggerButton = $('<button class="ui-datepicker-trigger" type="button">');
-                $(el).after(triggerButton);
+                el.after(triggerButton);
                 this.triggerButton = triggerButton;
             }
 
@@ -359,7 +368,7 @@
             if (this.dateInput && this.timeInput) {
                 this._updateInput();
             } else {
-                el.val('');
+                el.val('').change();
             }
 
             this._updateExtremes(null);
@@ -538,7 +547,7 @@
                     defaultDate: +0, // drawDate will automatically be min/max adjusted
                     showTrigger: '<div>',
 
-                    onSelect: function(input) {
+                    onSelect: function( /* input */ ) {
                         self._updateInput();
                     },
                     onShow: function(picker, calendar, inst) {
@@ -587,7 +596,7 @@
                     minDate: minDate,
                     maxDate: maxDate,
 
-                    onSelect: function(input) {
+                    onSelect: function( /* input */ ) {
                         // Trigger a change event (calendarPicker does not)
                         el.change();
                     },
@@ -765,7 +774,7 @@
                 date = this.dateInput.val(),
                 time = this.timeInput.val();
 
-            el.val(this._join(date, time));
+            el.val(this._join(date, time)).change();
 
             // Inform the filter form about the change
             el.closest('.filter-form').trigger('optionChanged');
@@ -871,7 +880,8 @@
          */
         _join: function(datestr, timestr) {
 
-            return [datestr, timestr].join(this.options.separator);
+            return [datestr, timestr].map(function(s) { return s; })
+                                     .join(this.options.separator);
         },
 
         /**
@@ -1034,7 +1044,8 @@
 
             var el = $(this.element),
                 opts = this.options,
-                selectedDate = null;
+                selectedDate = null,
+                calendarDates;
 
             if (opts.timepicker) {
                 if (opts.calendar == 'gregorian') {
@@ -1042,7 +1053,7 @@
                     selectedDate = el.datetimepicker('getDate');
                 } else {
                     // calendarsPicker + timepicker
-                    var calendarDates = this.dateInput.calendarsPicker('getDate');
+                    calendarDates = this.dateInput.calendarsPicker('getDate');
                     if (calendarDates.length) {
                         selectedDate = calendarDates[0].toJSDate();
                         var selectedTime = this.timeInput.data('selectedTime');
@@ -1134,7 +1145,7 @@
         _bindEvents: function() {
 
             var el = $(this.element),
-                ns = this.namespace,
+                ns = this.eventNamespace,
                 self = this;
 
             // Trigger calendarsPicker.show when real input receives focus
@@ -1194,8 +1205,7 @@
         _unbindEvents: function() {
 
             var el = $(this.element),
-                ns = this.namespace,
-                self = this;
+                ns = this.eventNamespace;
 
             // Real input
             el.unbind(ns);

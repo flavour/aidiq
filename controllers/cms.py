@@ -64,6 +64,12 @@ def series():
     return s3_rest_controller(rheader=s3db.cms_rheader)
 
 # -----------------------------------------------------------------------------
+def status():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
 def tag():
     """ RESTful CRUD controller """
 
@@ -110,7 +116,8 @@ def post():
 
     def prep(r):
         if r.interactive:
-            if r.method in ("create", "update"):
+            method = r.method
+            if method in ("create", "update"):
                 table = r.table
 
                 # Filter from a Profile page?"
@@ -134,8 +141,19 @@ def post():
                     field.readable = field.writable = False
 
                 page = get_vars.get("page", None)
-                url = get_vars.get("url") # custom redirect?
+                url = get_vars.get("url") # custom redirect
                 if page:
+                    if method == "create":
+                        query = (table.name == page) & \
+                                (table.deleted == False)
+                        record = current.db(query).select(table.id,
+                                                          limitby=(0, 1)
+                                                          ).first()
+                        if record:
+                            record_id = record.id
+                            r.id = record_id
+                            r.resource.add_filter(table.id == record_id)
+                            r.method = "update"
                     table.name.default = page
                     table.name.readable = table.name.writable = False
                     _crud = s3.crud_strings[tablename]
@@ -176,21 +194,30 @@ def post():
                         table.replies.readable = table.replies.writable = False
                         if not url:
                             url = URL(c=_module, f=resource)
-                    elif resource:
-                        # We're creating/updating text for a Resource Summary page
-                        table.name.default = "%s Summary Page Header" % resource
-                        table.title.readable = table.title.writable = False
-                        table.replies.readable = table.replies.writable = False
-                        if not url:
-                            url = URL(c=_module, f=resource, args="summary")
                     else:
-                        # We're creating/updating a Module home page
-                        table.name.default = "%s Home Page" % _module
-                        _crud = s3.crud_strings[tablename]
-                        _crud.label_create = T("New Page")
-                        _crud.title_update = T("Edit Page")
-                        if not url:
-                            url = URL(c=_module, f="index")
+                        record = get_vars.get("record", None)
+                        if record:
+                            # We're creating/updating text for a Profile page
+                            table.name.default = "%s %s Profile Page" % (resource, record)
+                            table.title.readable = table.title.writable = False
+                            table.replies.readable = table.replies.writable = False
+                            if not url:
+                                url = URL(c=_module, f=resource, args=[record, "profile"])
+                        elif resource:
+                            # We're creating/updating text for a Resource Summary page
+                            table.name.default = "%s Summary Page Header" % resource
+                            table.title.readable = table.title.writable = False
+                            table.replies.readable = table.replies.writable = False
+                            if not url:
+                                url = URL(c=_module, f=resource, args="summary")
+                        else:
+                            # We're creating/updating a Module home page
+                            table.name.default = "%s Home Page" % _module
+                            _crud = s3.crud_strings[tablename]
+                            _crud.label_create = T("New Page")
+                            _crud.title_update = T("Edit Page")
+                            if not url:
+                                url = URL(c=_module, f="index")
 
                     s3db.configure(tablename,
                                    create_next = url,
@@ -293,28 +320,6 @@ function comment_reply(id){
     return output
 
 # -----------------------------------------------------------------------------
-def filter_formstyle(row_id, label, widget, comment, hidden=False):
-    """
-        Custom Formstyle for FilterForm
-
-        @param row_id: HTML id for the row
-        @param label: the label
-        @param widget: the form widget
-        @param comment: the comment
-        @param hidden: whether the row should initially be hidden or not
-    """
-
-    if hidden:
-        _class = "advanced hide"
-    else:
-        _class= ""
-
-    if label:
-        return DIV(label, widget, _id=row_id, _class=_class)
-    else:
-        return DIV(widget, _id=row_id, _class=_class)
-
-# -----------------------------------------------------------------------------
 def cms_post_age(row):
     """
         The age of the post
@@ -348,12 +353,13 @@ def newsfeed():
     # Load Model
     table = s3db.cms_post
     stable = db.cms_series
-    title_list = T("Latest Information")
 
     # Hide Posts linked to Modules and Maps & Expired Posts
     s3.filter = (FS("post_module.module") == None) & \
                 (FS("post_layer.layer_id") == None) & \
                 (FS("expired") != True)
+
+    title_list = T("Latest Information")
 
     # Ensure that filtered views translate into options which update the Widget
     if "~.series_id$name" in get_vars:
@@ -590,7 +596,7 @@ def newsfeed():
                            "series_id",
                            ]
             cappend = crud_fields.append
-            if settings.get_cms_show_tags():
+            if settings.get_cms_show_titles():
                 cappend("title")
             crud_fields.extend(("body",
                                 "location_id",
@@ -723,6 +729,12 @@ def newsfeed():
 # =============================================================================
 # Comments
 # =============================================================================
+def comment():
+    """ RESTful CRUD controller """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
 def discuss(r, **attr):
     """ Custom Method to manage the discussion of a Post """
 

@@ -2,7 +2,7 @@
 
 """ Sahana Eden Content Management System Model
 
-    @copyright: 2012-2016 (c) Sahana Software Foundation
+    @copyright: 2012-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -28,9 +28,11 @@
 """
 
 __all__ = ("S3ContentModel",
+           "S3ContentForumModel",
            "S3ContentMapModel",
            "S3ContentOrgModel",
            "S3ContentOrgGroupModel",
+           "S3ContentTeamModel",
            "S3ContentUserModel",
            "cms_index",
            "cms_documentation",
@@ -38,15 +40,12 @@ __all__ = ("S3ContentModel",
            "cms_customise_post_fields",
            "cms_post_list_layout",
            "S3CMS",
+           #"cms_Calendar",
+           #"cms_TagList",
            )
 
-try:
-    import json # try stdlib (Python 2.6)
-except ImportError:
-    try:
-        import simplejson as json # try external module
-    except:
-        import gluon.contrib.simplejson as json # fallback to pure-Python module
+import datetime
+import json
 
 from gluon import *
 from gluon.storage import Storage
@@ -63,10 +62,12 @@ class S3ContentModel(S3Model):
     """
 
     names = ("cms_series",
+             "cms_status",
              "cms_post",
              "cms_post_id",
              "cms_post_module",
              "cms_tag",
+             "cms_tag_id",
              "cms_tag_post",
              "cms_comment",
              )
@@ -91,6 +92,12 @@ class S3ContentModel(S3Model):
         define_table(tablename,
                      Field("name", length=255, notnull=True, unique=True,
                            label = T("Name"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(255),
+                                       IS_NOT_ONE_OF(db,
+                                                     "%s.name" % tablename,
+                                                     ),
+                                       ],
                            ),
                      Field("avatar", "boolean",
                            default = False,
@@ -159,6 +166,54 @@ class S3ContentModel(S3Model):
                        )
 
         # ---------------------------------------------------------------------
+        # Post Statuses
+        # - used by WACOP
+        #
+        tablename = "cms_status"
+        define_table(tablename,
+                     Field("name", length=128, notnull=True, unique=True,
+                           label = T("Name"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(128),
+                                       ],
+                           ),
+                     s3_comments(),
+                     *s3_meta_fields())
+
+        # CRUD Strings
+        ADD_STATUS = T("Create Status")
+        crud_strings[tablename] = Storage(
+            label_create = ADD_STATUS,
+            title_display = T("Status Details"),
+            title_list = T("Statuses"),
+            title_update = T("Edit Status"),
+            #title_upload = T("Import Statuses"),
+            label_list_button = T("List Statuses"),
+            label_delete_button = T("Delete Status"),
+            msg_record_created = T("Status added"),
+            msg_record_modified = T("Status updated"),
+            msg_record_deleted = T("Status deleted"),
+            msg_list_empty = T("No Statuses currently registered"))
+
+        # Reusable Field
+        represent = S3Represent(lookup=tablename, translate=True)
+                                #none = T("Unknown"))
+        status_id = S3ReusableField("status_id", "reference %s" % tablename,
+                        comment = S3PopupLink(title = ADD_STATUS,
+                                              c = "cms",
+                                              f = "status",
+                                              ),
+                        label = T("Status"),
+                        ondelete = "SET NULL",
+                        represent = represent,
+                        requires = IS_EMPTY_OR(
+                                    IS_ONE_OF(db, "cms_status.id",
+                                              represent,
+                                              sort=True)),
+                        sortby = "name",
+                        )
+
+        # ---------------------------------------------------------------------
         # Posts
         # - single blocks of [rich] text which can be embedded into a page,
         #   be viewed as full pages or as part of a Series
@@ -170,6 +225,13 @@ class S3ContentModel(S3Model):
         else:
             body_represent = lambda body: XML(s3_URLise(body))
             body_widget = None
+
+        # WACOP Priorities
+        # @ToDo: Add deployment_setting if these need to be different in other templates
+        post_priority_opts = {1: T("Informational"),
+                              2: T("Important"),
+                              3: T("Critical"),
+                              }
 
         tablename = "cms_post"
         define_table(tablename,
@@ -186,10 +248,11 @@ class S3ContentModel(S3Model):
                      Field("body", "text", notnull=True,
                            label = T("Body"),
                            represent = body_represent,
+                           #requires = IS_NOT_EMPTY(),
                            widget = body_widget,
                            ),
+                     s3_datetime(default = "now"),
                      # @ToDo: Move this to link table?
-                     # - although this makes widget hard!
                      self.gis_location_id(),
                      # @ToDo: Move this to link table?
                      # - although this makes widget hard!
@@ -208,7 +271,21 @@ class S3ContentModel(S3Model):
                            label = T("Comments permitted?"),
                            represent = s3_yes_no_represent,
                            ),
-                     s3_datetime(default = "now"),
+                     Field("priority", "integer",
+                           default = 1,
+                           label = T("Priority"),
+                           represent = lambda opt: \
+                                       post_priority_opts.get(opt,
+                                                              current.messages.UNKNOWN_OPT),
+                           requires = IS_IN_SET(post_priority_opts,
+                                                zero=None),
+                           # Enable in template if-desired
+                           readable = False,
+                           writable = False,
+                           ),
+                     status_id(readable = False,
+                               writable = False,
+                               ),
                      # @ToDo: Also have a datetime for 'Expires On'
                      Field("expired", "boolean",
                            default = False,
@@ -349,6 +426,7 @@ class S3ContentModel(S3Model):
                        cms_comment = "post_id",
                        cms_post_layer = "post_id",
                        cms_post_module = "post_id",
+                       cms_post_forum = "post_id",
                        cms_post_user = {"name": "bookmark",
                                         "joinby": "post_id",
                                         },
@@ -371,7 +449,7 @@ class S3ContentModel(S3Model):
                                                       "multiple": False,
                                                       },
 
-                       # For InlineForm to tag Posts to Events/Incidents/Incident Types
+                       # For InlineForm to tag Posts to Events/Incidents/Incident Types/Teams
                        event_post = (# Events
                                      {"name": "event_post",
                                       "joinby": "post_id",
@@ -382,6 +460,13 @@ class S3ContentModel(S3Model):
                                       }
                                      ),
                        event_post_incident_type = "post_id",
+
+                       pr_group = {"link": "cms_post_team",
+                                   "joinby": "group_id",
+                                   "key": "incident_type_id",
+                                   "actuate": "hide",
+                                   },
+                       cms_post_team = "post_id",
 
                        # For Profile to filter appropriately
                        event_event = {"link": "event_post",
@@ -403,6 +488,14 @@ class S3ContentModel(S3Model):
 
         # Custom Methods
         set_method("cms", "post",
+                   method = "add_bookmark",
+                   action = self.cms_add_bookmark)
+
+        set_method("cms", "post",
+                   method = "remove_bookmark",
+                   action = self.cms_remove_bookmark)
+
+        set_method("cms", "post",
                    method = "add_tag",
                    action = self.cms_add_tag)
 
@@ -411,31 +504,35 @@ class S3ContentModel(S3Model):
                    action = self.cms_remove_tag)
 
         set_method("cms", "post",
-                   method = "add_bookmark",
-                   action = self.cms_add_bookmark)
+                   method = "share",
+                   action = self.cms_share)
 
         set_method("cms", "post",
-                   method = "remove_bookmark",
-                   action = self.cms_remove_bookmark)
+                   method = "unshare",
+                   action = self.cms_unshare)
+
+        set_method("cms", "post",
+                   method = "calendar",
+                   action = cms_Calendar)
 
         # ---------------------------------------------------------------------
         # Modules/Resources <> Posts link table
         #
         tablename = "cms_post_module"
         define_table(tablename,
-                     post_id(empty=False),
+                     post_id(empty = False),
                      Field("module",
-                           comment = T("If you specify a module then this will be used as the text in that module's index page"),
+                           comment = T("If you specify a module, but no resource, then this will be used as the text in that module's index page"),
                            label = T("Module"),
                            ),
                      Field("resource",
-                           comment = T("If you specify a resource then this will be used as the text in that resource's summary page"),
+                           comment = T("If you specify a resource, but no record, then this will be used as the text in that resource's summary page"),
                            label = T("Resource"),
                            ),
-                     #Field("record",
-                     #      comment = T("If you specify a record then this will be used as a hyperlink to that resource"),
-                     #      label = T("Record"),
-                     #      ),
+                     Field("record",
+                           comment = T("If you specify a record then this will be used for that record's profile page"),
+                           label = T("Record"),
+                           ),
                      *s3_meta_fields())
 
         # CRUD Strings
@@ -490,6 +587,11 @@ class S3ContentModel(S3Model):
                                  sortby = "name",
                                  )
 
+        # Custom Methods
+        set_method("cms", "tag",
+                   method = "tag_list",
+                   action = cms_TagList)
+
         # ---------------------------------------------------------------------
         # Tags <> Posts link table
         #
@@ -530,16 +632,16 @@ class S3ContentModel(S3Model):
                                         IS_ONE_OF(db, "cms_comment.id")),
                            readable = False,
                            ),
-                     post_id(empty=False),
+                     post_id(empty = False),
                      Field("body", "text", notnull=True,
                            label = T("Comment"),
+                           requires = IS_NOT_EMPTY(),
                            ),
                      *s3_meta_fields())
 
         # Resource Configuration
         configure(tablename,
-                  list_fields = ["id",
-                                 "post_id",
+                  list_fields = ["post_id",
                                  "created_by",
                                  "modified_on"
                                  ],
@@ -549,6 +651,7 @@ class S3ContentModel(S3Model):
         # Pass names back to global scope (s3.*)
         #
         return dict(cms_post_id = post_id,
+                    cms_tag_id = tag_id,
                     )
 
     # -------------------------------------------------------------------------
@@ -562,6 +665,7 @@ class S3ContentModel(S3Model):
                                 writable = False)
 
         return dict(cms_post_id = lambda **attr: dummy("post_id"),
+                    cms_tag_id = lambda **attr: dummy("tag_id"),
                     )
 
     # -------------------------------------------------------------------------
@@ -618,8 +722,9 @@ class S3ContentModel(S3Model):
     @staticmethod
     def cms_post_onaccept(form):
         """
-           Handle the case where the page is for a Module home page,
-           Resource Summary page or Map Layer
+           - Set person_id from created_by if not already set
+           - Handle the case where the page is for a Module home page,
+             Resource Summary page or Map Layer
         """
 
         db = current.db
@@ -632,10 +737,17 @@ class S3ContentModel(S3Model):
             query = (table.module == module)
             resource = get_vars.get("resource", None)
             if resource:
-                # Resource Summary page
                 query &= (table.resource == resource)
+                record = get_vars.get("record", None)
+                if record:
+                    # Profile page
+                    query &= (table.record == record)
+                else:
+                    # Resource Summary page
+                    query &= (table.record == None)
             else:
                 # Module home page
+                record = None
                 query &= ((table.resource == None) | \
                           (table.resource == "index"))
             result = db(query).update(post_id=post_id)
@@ -643,6 +755,7 @@ class S3ContentModel(S3Model):
                 table.insert(post_id=post_id,
                              module=module,
                              resource=resource,
+                             record=record,
                              )
 
         layer_id = get_vars.get("layer_id", None)
@@ -672,6 +785,79 @@ class S3ContentModel(S3Model):
                                       ).first()
             if person:
                 db(table.id == post_id).update(person_id=person.id)
+
+    # -----------------------------------------------------------------------------
+    @staticmethod
+    def cms_add_bookmark(r, **attr):
+        """
+            Bookmark a Post
+
+            S3Method for interactive requests
+        """
+
+        post_id = r.id
+        user = current.auth.user
+        user_id = user and user.id
+        if not post_id or not user_id:
+            raise HTTP(405, current.ERROR.BAD_METHOD)
+
+        db = current.db
+        ltable = db.cms_post_user
+        query = (ltable.post_id == post_id) & \
+                (ltable.user_id == user_id)
+        exists = db(query).select(ltable.id,
+                                  ltable.deleted,
+                                  ltable.deleted_fk,
+                                  limitby=(0, 1)
+                                  ).first()
+        if exists:
+            link_id = exists.id
+            if exists.deleted:
+                if exists.deleted_fk:
+                    data = json.loads(exists.deleted_fk)
+                    data["deleted"] = False
+                else:
+                    data = dict(deleted=False)
+                db(ltable.id == link_id).update(**data)
+        else:
+            link_id = ltable.insert(post_id = post_id,
+                                    user_id = user_id,
+                                    )
+
+        output = current.xml.json_message(True, 200, current.T("Bookmark Added"))
+        current.response.headers["Content-Type"] = "application/json"
+        return output
+
+    # -----------------------------------------------------------------------------
+    @staticmethod
+    def cms_remove_bookmark(r, **attr):
+        """
+            Remove a Bookmark for a Post
+
+            S3Method for interactive requests
+        """
+
+        post_id = r.id
+        user = current.auth.user
+        user_id = user and user.id
+        if not post_id or not user_id:
+            raise HTTP(405, current.ERROR.BAD_METHOD)
+
+        db = current.db
+        ltable = db.cms_post_user
+        query = (ltable.post_id == post_id) & \
+                (ltable.user_id == user_id)
+        exists = db(query).select(ltable.id,
+                                  ltable.deleted,
+                                  limitby=(0, 1)
+                                  ).first()
+        if exists and not exists.deleted:
+            resource = current.s3db.resource("cms_post_user", id=exists.id)
+            resource.delete()
+
+        output = current.xml.json_message(True, 200, current.T("Bookmark Removed"))
+        current.response.headers["Content-Type"] = "application/json"
+        return output
 
     # -----------------------------------------------------------------------------
     @staticmethod
@@ -727,7 +913,7 @@ class S3ContentModel(S3Model):
                           tag_id = tag_id,
                           )
 
-        output = current.xml.json_message(True, 200, "Tag Added")
+        output = current.xml.json_message(True, 200, current.T("Tag Added"))
         current.response.headers["Content-Type"] = "application/json"
         return output
 
@@ -765,82 +951,126 @@ class S3ContentModel(S3Model):
                 resource = current.s3db.resource("cms_tag_post", id=exists.id)
                 resource.delete()
 
-        output = current.xml.json_message(True, 200, "Tag Removed")
+        output = current.xml.json_message(True, 200, current.T("Tag Removed"))
         current.response.headers["Content-Type"] = "application/json"
         return output
 
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     @staticmethod
-    def cms_add_bookmark(r, **attr):
+    def cms_share(r, **attr):
         """
-            Bookmark a Post
+            Share a Post to a Forum
 
             S3Method for interactive requests
+            - designed to be called via AJAX
         """
 
         post_id = r.id
-        user = current.auth.user
-        user_id = user and user.id
-        if not post_id or not user_id:
+        if not post_id or len(r.args) < 3:
             raise HTTP(405, current.ERROR.BAD_METHOD)
 
         db = current.db
-        ltable = db.cms_post_user
+        s3db = current.s3db
+        auth = current.auth
+        forum_id = r.args[2]
+
+        if not auth.s3_has_role("ADMIN"):
+            # Check that user is a member of the forum
+            mtable = s3db.pr_forum_membership
+            ptable = s3db.pr_person
+            query = (ptable.pe_id == auth.user.pe_id) & \
+                    (mtable.person_id == ptable.id)
+            member = db(query).select(mtable.id,
+                                      limitby = (0, 1)
+                                      ).first()
+            if not member:
+                output = current.xml.json_message(False, 403, current.T("Cannot Share to a Forum unless you are a Member"))
+                current.response.headers["Content-Type"] = "application/json"
+                return output
+
+        ltable = s3db.cms_post_forum
         query = (ltable.post_id == post_id) & \
-                (ltable.user_id == user_id)
+                (ltable.forum_id == forum_id)
         exists = db(query).select(ltable.id,
-                                  ltable.deleted,
-                                  ltable.deleted_fk,
+                                  limitby=(0, 1)
+                                  ).first()
+        if not exists:
+            ltable.insert(post_id = post_id,
+                          forum_id = forum_id,
+                          )
+            # Update modified_on of the forum to allow subscribers to be notified
+            db(s3db.pr_forum.id == forum_id).update(modified_on = r.utcnow)
+
+        output = current.xml.json_message(True, 200, current.T("Post Shared"))
+        current.response.headers["Content-Type"] = "application/json"
+        return output
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def cms_unshare(r, **attr):
+        """
+            Unshare a Post from a Forum
+
+            S3Method for interactive requests
+            - designed to be called via AJAX
+        """
+
+        post_id = r.id
+        if not post_id or len(r.args) < 3:
+            raise HTTP(405, current.ERROR.BAD_METHOD)
+
+        db = current.db
+        s3db = current.s3db
+        forum_id = r.args[2]
+
+        ltable = s3db.cms_post_forum
+        query = (ltable.post_id == post_id) & \
+                (ltable.forum_id == forum_id)
+        exists = db(query).select(ltable.id,
+                                  ltable.created_by,
                                   limitby=(0, 1)
                                   ).first()
         if exists:
-            link_id = exists.id
-            if exists.deleted:
-                if exists.deleted_fk:
-                    data = json.loads(exists.deleted_fk)
-                    data["deleted"] = False
-                else:
-                    data = dict(deleted=False)
-                db(ltable.id == link_id).update(**data)
-        else:
-            link_id = ltable.insert(post_id = post_id,
-                                    user_id = user_id,
-                                    )
+            auth = current.auth
+            if not auth.s3_has_role("ADMIN"):
+                # Check that user is the one that shared the Incident
+                if exists.created_by != auth.user.id:
+                    output = current.xml.json_message(False, 403, current.T("Only the Sharer, or Admin, can Unshare"))
+                    current.response.headers["Content-Type"] = "application/json"
+                    return output
 
-        output = current.xml.json_message(True, 200, "Bookmark Added")
-        current.response.headers["Content-Type"] = "application/json"
-        return output
-
-    # -----------------------------------------------------------------------------
-    @staticmethod
-    def cms_remove_bookmark(r, **attr):
-        """
-            Remove a Bookmark for a Post
-
-            S3Method for interactive requests
-        """
-
-        post_id = r.id
-        user = current.auth.user
-        user_id = user and user.id
-        if not post_id or not user_id:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
-
-        db = current.db
-        ltable = db.cms_post_user
-        query = (ltable.post_id == post_id) & \
-                (ltable.user_id == user_id)
-        exists = db(query).select(ltable.id,
-                                  ltable.deleted,
-                                  limitby=(0, 1)
-                                  ).first()
-        if exists and not exists.deleted:
-            resource = current.s3db.resource("cms_post_user", id=exists.id)
+            resource = s3db.resource("cms_post_forum", id=exists.id)
             resource.delete()
 
-        output = current.xml.json_message(True, 200, "Bookmark Removed")
+        output = current.xml.json_message(True, 200, current.T("Stopped Sharing Post"))
         current.response.headers["Content-Type"] = "application/json"
         return output
+
+# =============================================================================
+class S3ContentForumModel(S3Model):
+    """
+        Link Posts to Forums to allow Users to Share posts
+    """
+
+    names = ("cms_post_forum",)
+
+    def model(self):
+
+        # ---------------------------------------------------------------------
+        # Forums <> Posts link table
+        #
+        tablename = "cms_post_forum"
+        self.define_table(tablename,
+                          self.cms_post_id(empty = False),
+                          self.pr_forum_id(empty = False,
+                                           ondelete = "CASCADE",
+                                           ),
+                          *s3_meta_fields())
+
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        #
+        return {}
 
 # =============================================================================
 class S3ContentMapModel(S3Model):
@@ -919,6 +1149,34 @@ class S3ContentOrgGroupModel(S3Model):
         return {}
 
 # =============================================================================
+class S3ContentTeamModel(S3Model):
+    """
+        Link Posts to Teams
+    """
+
+    names = ("cms_post_team",)
+
+    def model(self):
+
+        # ---------------------------------------------------------------------
+        # Teams <> Posts link table
+        #
+        tablename = "cms_post_team"
+        self.define_table(tablename,
+                          self.cms_post_id(empty = False,
+                                           ondelete = "CASCADE",
+                                           ),
+                          self.pr_group_id(empty = False,
+                                           ondelete = "CASCADE",
+                                           ),
+                          *s3_meta_fields())
+
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        #
+        return {}
+
+# =============================================================================
 class S3ContentUserModel(S3Model):
     """
         Link Posts to Users to allow Users to Bookmark posts
@@ -933,7 +1191,7 @@ class S3ContentUserModel(S3Model):
         #
         tablename = "cms_post_user"
         self.define_table(tablename,
-                          self.cms_post_id(empty=False),
+                          self.cms_post_id(empty = False),
                           Field("user_id", current.auth.settings.table_user),
                           *s3_meta_fields())
 
@@ -1165,21 +1423,35 @@ class S3CMS(S3Method):
         if not current.deployment_settings.has_module("cms"):
             return ""
 
-        # This is currently assuming that we're being used in a Summary page or similar
-        request = current.request
-
-        return self.resource_content(request.controller,
-                                     request.function,
+        return self.resource_content(r.controller,
+                                     r.function,
+                                     r.id,
                                      widget_id)
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def resource_content(module, resource, widget_id=None):
+    def resource_content(module,
+                         resource,
+                         record=None,
+                         widget_id=None,
+                         hide_if_empty=False):
+        """
+            Render resource-related CMS contents
+
+            @param module: the module prefix
+            @param resource: the resource name (without prefix)
+            @param record: the record ID (optional)
+            @param widget_id: the DOM node ID for the CMS widget
+            @param hide_if_empty: return an empty string when there is no
+                                  contents rather than a blank DIV
+        """
+
         db = current.db
         table = current.s3db.cms_post
         ltable = db.cms_post_module
         query = (ltable.module == module) & \
                 (ltable.resource == resource) & \
+                (ltable.record == record) & \
                 (ltable.post_id == table.id) & \
                 (table.deleted != True)
         _item = db(query).select(table.id,
@@ -1190,37 +1462,42 @@ class S3CMS(S3Method):
         auth = current.auth
         ADMIN = auth.get_system_roles().ADMIN
         ADMIN = auth.s3_has_role(ADMIN)
-        if _item:
-            if ADMIN:
-                if current.response.s3.crud.formstyle == "bootstrap":
-                    _class = "btn"
-                else:
-                    _class = "action-btn"
-                item = DIV(XML(_item.body),
-                           A(current.T("Edit"),
-                             _href=URL(c="cms", f="post",
-                                       args=[_item.id, "update"],
-                                       vars={"module": module,
-                                             "resource": resource
-                                             }),
-                             _class="%s cms-edit" % _class))
-            else:
-                item = XML(_item.body)
-        elif ADMIN:
+        if ADMIN:
             if current.response.s3.crud.formstyle == "bootstrap":
                 _class = "btn"
             else:
                 _class = "action-btn"
-            item = A(current.T("Edit"),
-                     _href=URL(c="cms", f="post", args="create",
-                               vars={"module": module,
-                                     "resource": resource
-                                     }),
-                     _class="%s cms-edit" % _class)
+            url_vars = {"module": module,
+                        "resource": resource,
+                        }
+            if record:
+                url_vars["record"] = record
+            if _item:
+                item = DIV(XML(_item.body),
+                           A(current.T("Edit"),
+                             _href=URL(c="cms", f="post",
+                                       args = [_item.id, "update"],
+                                       vars = url_vars,
+                                       ),
+                             _class="%s cms-edit" % _class,
+                             ))
+            else:
+                item = A(current.T("Edit"),
+                         _href=URL(c="cms", f="post",
+                                   args = "create",
+                                   vars = url_vars,
+                                   ),
+                         _class="%s cms-edit" % _class,
+                         )
+        elif _item:
+            item = XML(_item.body)
         else:
             item = ""
 
-        output = DIV(item, _id=widget_id, _class="cms_content")
+        if item != "" or not hide_if_empty:
+            output = DIV(item, _id=widget_id, _class="cms_content")
+        else:
+            output = item
         return output
 
 # =============================================================================
@@ -1777,5 +2054,207 @@ def cms_post_list_layout(list_id, item_id, resource, rfields, record):
                )
 
     return item
+
+# =============================================================================
+class cms_Calendar(S3Method):
+    """
+        Display Posts on a Calendar format
+
+       @ToDo: Customisable Date Range
+                - currently hardcoded to 1 day in past, today & 5 days ahead
+       @ToDo: Interactive version
+                - drag/drop entries
+                - edit entries
+       @ToDo: PDF/XLS representations
+    """
+
+    # -------------------------------------------------------------------------
+    def apply_method(self, r, **attr):
+        """
+            Entry point for REST API
+
+            @param r: the S3Request
+            @param attr: controller arguments
+        """
+
+        if r.name == "post":
+            if r.representation == "html":
+                output = self.html(r, **attr)
+                return output
+            #elif r.representation == "pdf":
+            #    output = self.pdf(r, **attr)
+            #    return output
+            #elif r.representation == "xls":
+            #    output = self.xls(r, **attr)
+            #    return output
+        raise HTTP(405, current.ERROR.BAD_METHOD)
+
+    # -------------------------------------------------------------------------
+    def _extract(self, days, r, **attr):
+        """
+            Extract the Data
+        """
+
+        # Respect any filters present
+        resource = r.resource
+
+        # Provide additional Filter based on days
+        resource.add_filter((FS("date") > days[0].replace(hour = 0, minute=0, second=0, microsecond=0)) & \
+                            (FS("date") < days[-1].replace(hour = 23, minute=59, second=59)))
+
+        # @ToDo: Configurable fields (location_id not always relevant, but e.g. Author may be)
+        fields = ["body",
+                  "date",
+                  "location_id",
+                  "post_module.module",
+                  "post_module.resource",
+                  "post_module.record",
+                  ]
+
+        data = resource.select(fields, represent=True, raw_data=True)
+
+        # Reformat posts into Array of rows and columns (days)
+        # Need to start with the columns as we don't yet know how many rows we need
+        cols = []
+        cappend = cols.append
+        max_rows = []
+        mappend = max_rows.append
+        # Initialise arrays
+        for day in days:
+            cappend([])
+            mappend(0)
+
+        # Place each record into the correct day's column
+        len_days = len(days)
+        for record in data.rows:
+            date = record._row["cms_post.date"]
+            for i in range(len_days):
+                if date < days[i + 1]:
+                    cols[i].append(record)
+                    max_rows[i] += 1
+                    break
+
+        # Now convert to rows
+        rows = []
+        rappend = rows.append
+        len_rows = max(max_rows)
+        # Initialise array
+        for i in range(len_rows):
+            rappend([])
+
+        for row in rows:
+            rappend = row.append
+            for col in cols:
+                if len(col):
+                    rappend(col.pop())
+                else:
+                    rappend(Storage())
+
+        return rows
+
+    # -------------------------------------------------------------------------
+    def html(self, r, **attr):
+        """
+            HTML Representation
+        """
+
+        T = current.T
+
+        now = current.request.now
+        timedelta = datetime.timedelta
+
+        # @ToDo: Make this configurable
+        days = (now - timedelta(days = 1), # Yesterday
+                now,                       # Today
+                now + timedelta(days = 1), # Tomorrow
+                now + timedelta(days = 2),
+                now + timedelta(days = 3),
+                now + timedelta(days = 4),
+                now + timedelta(days = 5),
+                )
+
+        posts = self._extract(days, r, **attr)
+
+        item = TABLE()
+        title_row = TR()
+        rappend = title_row.append
+        for day in days:
+            rappend(TD(day.strftime("%A")))
+        item.append(title_row)
+
+        for row in posts:
+            data_row = TR()
+            rappend = data_row.append
+            row.reverse()
+            for day in days:
+                post = row.pop()
+                if post:
+                    rappend(TD(self.post_layout(post)))
+                else:
+                    rappend(TD())
+            item.append(data_row)
+
+        output = dict(item=item)
+        output["title"] = T("Weekly Schedule")
+
+        # Maintain RHeader for consistency
+        if "rheader" in attr:
+            rheader = attr["rheader"](r)
+            if rheader:
+                output["rheader"] = rheader
+
+        current.response.view = "simple.html"
+        return output
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def post_layout(post):
+        """
+            Format a calendar entry
+        """
+
+        title = post["cms_post.body"]
+        record_id = post["cms_post_module.record"]
+        if record_id:
+            title = A(title,
+                      _href = URL(c = str(post["cms_post_module.module"]),
+                                  f = str(post["cms_post_module.resource"]), # gluon does an isinstance(str)
+                                  args = record_id,
+                                  ),
+                      _target = "_blank",
+                      )
+
+        location = post["cms_post.location_id"]
+
+        return DIV(title,
+                   BR(),
+                   location,
+                   )
+
+# =============================================================================
+class cms_TagList(S3Method):
+    """
+        Return a list of available Tags
+        - suitable for use in Tag-It's AutoComplete
+    """
+
+    # -------------------------------------------------------------------------
+    def apply_method(self, r, **attr):
+        """
+            Entry point for REST API
+
+            @param r: the S3Request
+            @param attr: controller arguments
+        """
+
+        if r.representation == "json":
+            table = current.s3db.cms_tag
+            tags = current.db(table.deleted == False).select(table.name)
+            tag_list = [tag.name for tag in tags]
+            output = json.dumps(tag_list, separators=SEPARATORS)
+            current.response.headers["Content-Type"] = "application/json"
+            return output
+
+        raise HTTP(405, current.ERROR.BAD_METHOD)
 
 # END =========================================================================

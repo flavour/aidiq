@@ -12,15 +12,27 @@ if not settings.has_module(module):
 
 mode_task = settings.get_project_mode_task()
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 def index():
-    """ Module's Home Page """
+    """ Module's Custom Home Page """
+
+    return settings.customise_home(module, alt_function="index_alt")
+
+# -----------------------------------------------------------------------------
+def index_alt():
+    """
+        Default module homepage
+    """
 
     if mode_task:
-        # Bypass home page & go direct to browsing Tasks for a Project
-        s3_redirect_default(URL(f="project", vars={"tasks":1}))
+        if settings.get_project_projects():
+            # Bypass home page & go directly to task list for a project
+            s3_redirect_default(URL(f="project", vars={"tasks":1}))
+        else:
+            # Bypass home page & go directly to task list
+            s3_redirect_default(URL(f="task"))
     else:
-        # Bypass home page & go direct to filterable list of Projects
+        # Bypass home page & go directly to projects list
         s3_redirect_default(URL(f="project"))
 
 # =============================================================================
@@ -81,8 +93,8 @@ def project():
                                                                  )
                                                )
 
-            if not component or component_name == "activity":
-                # Filter Themes/Activity Types based on Sector
+            if not component:
+                # Filter Themes based on Sector
                 if r.record:
                     table = s3db.project_sector_project
                     query = (table.project_id == r.id) & \
@@ -91,7 +103,6 @@ def project():
                     sector_ids = [row.sector_id for row in rows]
                     set_theme_requires(sector_ids)
 
-            if not component:
                 if r.method in ("create", "update"):
                     # Context from a Profile page?"
                     location_id = get_vars.get("(location)", None)
@@ -162,8 +173,14 @@ def project():
                     otable.role.requires = IS_EMPTY_OR(IS_IN_SET(allowed_roles))
 
             elif component_name == "activity":
-                # Filter Activity Type based on Sector
+                # Filter Activity Types/Themes based on Sector
+                table = s3db.project_sector_project
+                query = (table.project_id == r.id) & \
+                        (table.deleted == False)
+                rows = db(query).select(table.sector_id)
+                sector_ids = [row.sector_id for row in rows]
                 set_activity_type_requires("project_activity_activity_type", sector_ids)
+                set_theme_requires(sector_ids)
 
             elif component_name == "goal":
                 # Not working for embedded create form
@@ -172,80 +189,88 @@ def project():
                     ctable = r.component.table
                     field = ctable.weighting
                     field.readable = field.writable = False
-                    ctable.current_status.readable = False
-                    ctable.overall_status.readable = False
+                    ctable.current_status_by_indicators.readable = False
+                    ctable.overall_status_by_indicators.readable = False
+                    ctable.actual_progress_by_activities.readable = False
+                    ctable.planned_progress_by_activities.readable = False
 
             elif component_name == "outcome":
+                ctable = r.component.table
                 if r.method != "update":
-                    ctable = r.component.table
                     field = ctable.weighting
                     field.readable = field.writable = False
-                    ctable.current_status.readable = False
-                    ctable.overall_status.readable = False
+                    ctable.current_status_by_indicators.readable = False
+                    ctable.overall_status_by_indicators.readable = False
+                    ctable.actual_progress_by_activities.readable = False
+                    ctable.planned_progress_by_activities.readable = False
                 if settings.get_project_goals():
                     # Filter to just those for this Project & make mandatory
-                    r.component.table.goal_id.requires = IS_ONE_OF(db, "project_goal.id",
-                                                                   s3db.project_goal_represent,
-                                                                   sort=True,
-                                                                   filterby="project_id",
-                                                                   filter_opts=[r.id],
-                                                                   )
+                    ctable.goal_id.requires = IS_ONE_OF(db, "project_goal.id",
+                                                        s3db.project_goal_represent,
+                                                        sort=True,
+                                                        filterby="project_id",
+                                                        filter_opts=[r.id],
+                                                        )
 
             elif component_name == "output":
+                ctable = r.component.table
                 if r.method != "update":
-                    ctable = r.component.table
                     field = ctable.weighting
                     field.readable = field.writable = False
-                    ctable.current_status.readable = False
-                    ctable.overall_status.readable = False
+                    ctable.current_status_by_indicators.readable = False
+                    ctable.overall_status_by_indicators.readable = False
+                    ctable.actual_progress_by_activities.readable = False
+                    ctable.planned_progress_by_activities.readable = False
                 if settings.get_project_outcomes():
                     # Filter to just those for this Project & make mandatory
-                    r.component.table.outcome_id.requires = IS_ONE_OF(db, "project_outcome.id",
-                                                                      s3db.project_outcome_represent,
-                                                                      sort=True,
-                                                                      filterby="project_id",
-                                                                      filter_opts=[r.id],
-                                                                      )
+                    ctable.outcome_id.requires = IS_ONE_OF(db, "project_outcome.id",
+                                                           s3db.project_outcome_represent,
+                                                           sort=True,
+                                                           filterby="project_id",
+                                                           filter_opts=[r.id],
+                                                           )
                 elif settings.get_project_goals():
                     # Filter to just those for this Project & make mandatory
-                    r.component.table.goal_id.requires = IS_ONE_OF(db, "project_goal.id",
-                                                                   s3db.project_goal_represent,
-                                                                   sort=True,
-                                                                   filterby="project_id",
-                                                                   filter_opts=[r.id],
-                                                                   )
+                    ctable.goal_id.requires = IS_ONE_OF(db, "project_goal.id",
+                                                        s3db.project_goal_represent,
+                                                        sort=True,
+                                                        filterby="project_id",
+                                                        filter_opts=[r.id],
+                                                        )
 
             elif component_name == "indicator":
+                ctable = r.component.table
                 if r.method != "update":
-                    ctable = r.component.table
                     field = ctable.weighting
                     field.readable = field.writable = False
-                    ctable.current_status.readable = False
-                    ctable.overall_status.readable = False
+                    ctable.current_status_by_indicators.readable = False
+                    ctable.overall_status_by_indicators.readable = False
+                    ctable.actual_progress_by_activities.readable = False
+                    ctable.planned_progress_by_activities.readable = False
                 if settings.get_project_outputs():
                     # Filter to just those for this Project & make mandatory
-                    r.component.table.output_id.requires = IS_ONE_OF(db, "project_output.id",
-                                                                     s3db.project_output_represent,
-                                                                     sort=True,
-                                                                     filterby="project_id",
-                                                                     filter_opts=[r.id],
-                                                                     )
+                    ctable.output_id.requires = IS_ONE_OF(db, "project_output.id",
+                                                          s3db.project_output_represent,
+                                                          sort=True,
+                                                          filterby="project_id",
+                                                          filter_opts=[r.id],
+                                                          )
                 elif settings.get_project_outcomes():
                     # Filter to just those for this Project & make mandatory
-                    r.component.table.outcome_id.requires = IS_ONE_OF(db, "project_outcome.id",
-                                                                      s3db.project_outcome_represent,
-                                                                      sort=True,
-                                                                      filterby="project_id",
-                                                                      filter_opts=[r.id],
-                                                                      )
+                    ctable.outcome_id.requires = IS_ONE_OF(db, "project_outcome.id",
+                                                           s3db.project_outcome_represent,
+                                                           sort=True,
+                                                           filterby="project_id",
+                                                           filter_opts=[r.id],
+                                                           )
                 elif settings.get_project_goals():
                     # Filter to just those for this Project & make mandatory
-                    r.component.table.goal_id.requires = IS_ONE_OF(db, "project_goal.id",
-                                                                   s3db.project_goal_represent,
-                                                                   sort=True,
-                                                                   filterby="project_id",
-                                                                   filter_opts=[r.id],
-                                                                   )
+                    ctable.goal_id.requires = IS_ONE_OF(db, "project_goal.id",
+                                                        s3db.project_goal_represent,
+                                                        sort=True,
+                                                        filterby="project_id",
+                                                        filter_opts=[r.id],
+                                                        )
 
             elif component_name == "indicator_data":
                 ctable = r.component.table
@@ -269,6 +294,40 @@ def project():
                 #else:
                 #    filter_widgets = None
                 #r.component.configure(filter_widgets = filter_widgets)
+
+            elif component_name == "indicator_criteria":
+                # Filter to just those for this Project & make mandatory
+                ctable = r.component.table
+                ctable.indicator_id.requires = IS_ONE_OF(db, "project_indicator.id",
+                                                         s3db.project_indicator_represent,
+                                                         sort=True,
+                                                         filterby="project_id",
+                                                         filter_opts=[r.id],
+                                                         )
+
+            elif component_name == "indicator_activity":
+                s3db.project_activity.name.requires = IS_NOT_EMPTY()
+                ctable = r.component.table
+                if r.method != "update":
+                    field = ctable.weighting
+                    field.readable = field.writable = False
+                # Filter to just those for this Project & make mandatory
+                ctable.indicator_id.requires = IS_ONE_OF(db, "project_indicator.id",
+                                                        s3db.project_indicator_represent,
+                                                        sort=True,
+                                                        filterby="project_id",
+                                                        filter_opts=[r.id],
+                                                        )
+
+            elif component_name == "activity_data":
+                ctable = r.component.table
+                # Filter to just those for this Project
+                ctable.indicator_activity_id.requires = IS_ONE_OF(db, "project_indicator_activity.id",
+                                                                  s3db.project_indicator_activity_represent,
+                                                                  sort=True,
+                                                                  filterby="project_id",
+                                                                  filter_opts=[r.id],
+                                                                  )
 
             elif component_name == "task":
                 if not auth.s3_has_role("STAFF"):
@@ -469,8 +528,8 @@ def open_tasks_for_project():
     s3.postp = postp
 
     return s3_rest_controller(module, "project",
-                              hide_filter=False,
-                             )
+                              hide_filter = False,
+                              )
 # -----------------------------------------------------------------------------
 def set_theme_requires(sector_ids):
     """
@@ -580,9 +639,9 @@ def hazard():
 def framework():
     """ RESTful CRUD controller """
 
-    return s3_rest_controller(dtargs={"dt_text_maximum_len": 160},
-                              hide_filter=True,
-                             )
+    return s3_rest_controller(dtargs = {"dt_text_maximum_len": 160},
+                              hide_filter = True,
+                              )
 
 # =============================================================================
 def organisation():
@@ -653,7 +712,8 @@ def beneficiary():
     #    return True
     #s3.prep = prep
 
-    return s3_rest_controller(hide_filter=False)
+    return s3_rest_controller(hide_filter = False,
+                              )
 
 # =============================================================================
 def activity_type():
@@ -709,18 +769,58 @@ def activity():
     def prep(r):
         if r.interactive:
             if r.component is not None:
-                if r.component_name == "document":
-                    doc_table = s3db.doc_document
-                    doc_table.organisation_id.readable = doc_table.organisation_id.writable = False
-                    doc_table.person_id.readable = doc_table.person_id.writable = False
-                    doc_table.location_id.readable = doc_table.location_id.writable = False
+                component_name = r.component_name
+                if component_name == "distribution":
+                    dtable = s3db.supply_distribution
+                    f = dtable.location_id
+                    f.default = r.record.location_id
+                    f.readable = f.writable = False
+                    f = dtable.date
+                    f.default = r.record.date
+                    f.readable = f.writable = False
+                elif component_name == "document":
+                    dtable = s3db.doc_document
+                    dtable.organisation_id.readable = dtable.organisation_id.writable = False
+                    dtable.person_id.readable = dtable.person_id.writable = False
+                    f = dtable.location_id
+                    f.default = r.record.location_id
+                    f.readable = f.writable = False
+                    s3db.configure("doc_document",
+                                   list_fields = ["name",
+                                                  "date",
+                                                  ],
+                                   )
         return True
     s3.prep = prep
 
-    return s3_rest_controller(csv_template = "activity",
-                              hide_filter = False,
+    return s3_rest_controller("project", "activity",
+                              csv_template = "activity",
+                              #hide_filter = False,
                               rheader = s3db.project_rheader,
                               )
+
+# -----------------------------------------------------------------------------
+def distribution():
+    """ Activities which include Distributions """
+
+    # Load model
+    table = s3db.project_activity
+
+    # CRUD strings
+    s3.crud_strings["project_activity"] = Storage(
+        label_create = T("Create Distribution"),
+        title_display = T("Distribution Details"),
+        title_list = T("Distributions"),
+        title_update = T("Edit Distribution"),
+        title_report = T("Distribution Report"),
+        label_list_button = T("List Distributions"),
+        msg_record_created = T("Distribution Added"),
+        msg_record_modified = T("Distribution Updated"),
+        msg_record_deleted = T("Distribution Deleted"),
+        msg_list_empty = T("No Distributions Found")
+    )
+
+    return activity()
 
 # -----------------------------------------------------------------------------
 def location():
@@ -820,9 +920,9 @@ def location():
     s3.postp = postp
 
     return s3_rest_controller(interactive_report = True,
-                              rheader = s3db.project_rheader,
-                              hide_filter = False,
                               csv_template = "location",
+                              hide_filter = False,
+                              rheader = s3db.project_rheader,
                               )
 
 # -----------------------------------------------------------------------------
@@ -1043,7 +1143,8 @@ def time():
         delta = month * months
         s3.filter = (table.date > (now - delta))
 
-    return s3_rest_controller(hide_filter=hide_filter)
+    return s3_rest_controller(hide_filter = hide_filter,
+                              )
 
 # =============================================================================
 # Programmes
@@ -1057,6 +1158,13 @@ def programme_project():
     """ RESTful controller for Programmes <> Projects """
 
     s3.prep = lambda r: r.method == "options" and r.representation == "s3json"
+
+    return s3_rest_controller()
+
+# =============================================================================
+def strategy():
+    """ RESTful controller for Strategies """
+
     return s3_rest_controller()
 
 # =============================================================================
@@ -1262,13 +1370,14 @@ def comments():
     field.writable = field.readable = False
 
     # Create S3Request for S3SQLForm
-    r = s3_request(prefix="project",
-                   name="comment",
+    r = s3_request(prefix = "project",
+                   name = "comment",
                    # Override task_id
-                   args=[],
-                   vars=None,
+                   args = [],
+                   vars = None,
                    # Override .loads
-                   extension="html")
+                   extension = "html",
+                   )
 
     # Customise resource
     r.customise_resource()
@@ -1281,7 +1390,8 @@ def comments():
                                            table.parent,
                                            table.body,
                                            table.created_by,
-                                           table.created_on)
+                                           table.created_on,
+                                           )
 
     output = UL(_id="comments")
     for comment in comments:
@@ -1358,6 +1468,7 @@ def human_resource_project():
     """
 
     s3.prep = lambda r: r.method == "options" and r.representation == "s3json"
+
     return s3_rest_controller()
 
 # END =========================================================================

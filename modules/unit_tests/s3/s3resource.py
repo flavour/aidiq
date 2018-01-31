@@ -5,14 +5,19 @@
 # To run this script use:
 # python web2py.py -S eden -M -R applications/eden/modules/unit_tests/s3/s3resource.py
 #
-import unittest
 import datetime
+import json
+import unittest
+
 from lxml import etree
+
 from gluon import *
 from gluon.storage import Storage
 
 from s3dal import Row
 from s3 import *
+
+from unit_tests import run_suite
 
 # =============================================================================
 class ComponentJoinConstructionTests(unittest.TestCase):
@@ -520,7 +525,7 @@ class ResourceExportTests(unittest.TestCase):
             filters = {"org_organisation": {"organisation.name__like": "Sync1*"}}
 
             xmlexport = resource.export_xml(filters=filters,
-                                            mcomponents=["org_office"],
+                                            mcomponents=["office"],
                                             dereference=False)
 
             xmltree = etree.ElementTree(etree.fromstring(xmlexport))
@@ -539,7 +544,7 @@ class ResourceExportTests(unittest.TestCase):
             filters = {"org_organisation": {"office.name__like": "Sync2*"}}
 
             xmlexport = resource.export_xml(filters=filters,
-                                            mcomponents=["org_office"],
+                                            mcomponents=["office"],
                                             dereference=False)
 
             xmltree = etree.ElementTree(etree.fromstring(xmlexport))
@@ -558,7 +563,7 @@ class ResourceExportTests(unittest.TestCase):
             filters = {"org_office": {"office.name__like": "Sync1*"}}
 
             xmlexport = resource.export_xml(filters=filters,
-                                            mcomponents=["org_office"],
+                                            mcomponents=["office"],
                                             dereference=False)
             xmltree = etree.ElementTree(etree.fromstring(xmlexport))
 
@@ -582,7 +587,7 @@ class ResourceExportTests(unittest.TestCase):
                                      uid=["SFO1", "SFO2"])
 
             xmlexport = resource.export_xml(filters=None,
-                                            mcomponents=["org_office"])
+                                            mcomponents=["office"])
             xmltree = etree.ElementTree(etree.fromstring(xmlexport))
 
             types = xmltree.xpath("resource[@name='org_office_type']")
@@ -597,7 +602,7 @@ class ResourceExportTests(unittest.TestCase):
             filters = {"org_office_type": {"office_type.name__like": "SFT1*"}}
 
             xmlexport = resource.export_xml(filters=filters,
-                                            mcomponents=["org_office"])
+                                            mcomponents=["office"])
             xmltree = etree.ElementTree(etree.fromstring(xmlexport))
 
             types = xmltree.xpath("resource[@name='org_office_type']")
@@ -653,7 +658,6 @@ class ResourceImportTests(unittest.TestCase):
         resource = current.s3db.resource("pr_person")
         msg = resource.import_xml(xmltree)
 
-        from gluon.contrib import simplejson as json
         msg = json.loads(msg)
 
         assertEqual(msg["status"], "success")
@@ -1895,6 +1899,79 @@ class ResourceSelectTests(unittest.TestCase):
         current.auth.override = False
 
     # -------------------------------------------------------------------------
+    def testApplyExtraFilter(self):
+        """ Test application of extra filters """
+
+        assertTrue = self.assertTrue
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+
+        test_expression = "test filter expression"
+        seen = []
+
+        def test_filter(resource, ids, expression):
+            """ Test filter method """
+
+            # Check resource
+            assertNotEqual(resource, None)
+            assertEqual(resource.tablename, "select_master")
+
+            # Verify that the resource has no extra filters while
+            # extra filters are applied
+            efilters = resource.rfilter.efilters
+            assertEqual(efilters, [])
+
+            # Check ids
+            assertTrue(type(ids) is list)
+            assertNotEqual(len(ids), 0)
+
+            # Remember ids to verify that no unnecessary items are passed
+            seen.extend(ids)
+
+            # Verify correct expression is passed
+            assertEqual(expression, test_expression)
+
+            # Filter ids to verify that filter is effective
+            result = [item for item in ids if item > 3 and item % 2 == 0]
+
+            # Add a duplicate to verify that duplicates do not affect
+            # match counting and do not appear in the subset
+            if result:
+                result.insert(0, result[-1])
+
+            # Reverse result list to verify that original order is restored
+            result.reverse()
+
+            return result
+
+        # Define resource, add test filter as extra filter
+        resource = current.s3db.resource("select_master")
+        resource.add_extra_filter(test_filter, test_expression)
+
+        apply_extra_filters = resource.rfilter.apply_extra_filters
+
+        # Fake set of record IDs
+        test_set = [1, 2, 3, 4, 5, 6, 7, 8]
+
+        # Test without limit
+        seen = []
+        subset = apply_extra_filters(test_set)
+        assertEqual(subset, [4, 6, 8])
+        assertEqual(seen, test_set)
+
+        # Test with limit < len(test_set)
+        seen = []
+        subset = apply_extra_filters(test_set, limit=2)
+        assertEqual(subset, [4, 6])
+        assertEqual(seen, [1, 2, 3, 4, 5, 6])
+
+        # Test with limit > len(test_set)
+        seen = []
+        subset = apply_extra_filters(test_set, limit=10)
+        assertEqual(subset, [4, 6, 8])
+        assertEqual(seen, test_set)
+
+    # -------------------------------------------------------------------------
     def testSelectAll(self):
         """ Test selecting all records """
 
@@ -1986,6 +2063,60 @@ class ResourceSelectTests(unittest.TestCase):
         # - Rows properly filtered
         assertEqual(len(rows), numitems)
         assertTrue(all(row["select_master.status"] == "A" for row in rows))
+
+        # Select with counting
+        data = resource.select(["name", "status"], count=True)
+        # - Rows correctly counted
+        assertEqual(len(data.rows), data.numrows)
+
+        # Select with getids
+        data = resource.select(["id", "name", "status"], getids=True)
+        rows = data.rows
+        ids = data.ids
+        # - ids complete
+        assertEqual(len(rows), len(ids))
+        # - ...and in same order as the rows
+        for index, row in enumerate(rows):
+            assertEqual(row["select_master.id"], ids[index])
+
+    # -------------------------------------------------------------------------
+    def testSelectExtraFilter(self):
+        """ Test selection with extra filter """
+
+        db = current.db
+        s3db = current.s3db
+
+        assertTrue = self.assertTrue
+        assertEqual = self.assertEqual
+
+        test_expression = "A"
+
+        # Number of expected matches
+        numitems = len([item for item in self.test_data if item[1] == test_expression])
+
+        def test_filter(resource, ids, expression):
+            """ Test filter function """
+
+            assertEqual(expression, test_expression)
+
+            table = resource.table
+            query = (table.id.belongs(ids)) & \
+                    (table.status == expression)
+            rows = db(query).select(table.id)
+
+            return [row.id for row in rows]
+
+        # Define resource
+        resource = s3db.resource("select_master",
+                                 extra_filters = [(test_filter, test_expression)],
+                                 )
+
+        # Simple select
+        data = resource.select(["name", "status"])
+        rows = data.rows
+        # - Rows properly filtered
+        assertEqual(len(rows), numitems)
+        assertTrue(all(row["select_master.status"] == test_expression for row in rows))
 
         # Select with counting
         data = resource.select(["name", "status"], count=True)
@@ -2293,6 +2424,88 @@ class ResourceSelectTests(unittest.TestCase):
         # - returns all matching record ids, however
         assertEqual(len(data.ids), numitems)
 
+    # -------------------------------------------------------------------------
+    def testSelectSubsetExtraFilter(self):
+        """ Test selection of subset (pagination) with extra filter """
+
+        db = current.db
+        s3db = current.s3db
+
+        assertTrue = self.assertTrue
+        assertEqual = self.assertEqual
+
+        test_expression = "A"
+
+        def test_filter(resource, ids, expression):
+            """ Test filter function """
+
+            assertEqual(expression, test_expression)
+
+            table = resource.table
+            query = (table.id.belongs(ids)) & \
+                    (table.status == expression)
+            rows = db(query).select(table.id)
+
+            return [row.id for row in rows]
+
+        # Define subset
+        subset = [item for item in self.test_data if item[1] == test_expression]
+        numitems = len(subset)
+        names = [item[0] for item in subset]
+
+        # Define resource
+        resource = s3db.resource("select_master",
+                                 extra_filters = [(test_filter, test_expression)],
+                                 )
+
+        # Page limits
+        start = 2
+        limit = 2
+        subset_names = names[start:start+limit]
+
+        # Simple select
+        data = resource.select(["name", "status"],
+                               start = start,
+                               limit = limit,
+                               orderby = "select_master.name",
+                               )
+        # - returns only rows in the page
+        rows = data.rows
+        assertEqual(len(rows), min(numitems - start, limit))
+        assertTrue(all(row["select_master.name"] in subset_names for row in rows))
+
+        # Page limits:
+        start = 1
+        limit = 3
+        subset_names = names[start:start+limit]
+
+        # Select with counting
+        data = resource.select(["name", "status"],
+                               start = start,
+                               limit = limit,
+                               count = True,
+                               orderby = "select_master.name",
+                               )
+        # - returns only rows in the page
+        rows = data.rows
+        assertEqual(len(rows), min(numitems - start, limit))
+        assertTrue(all(row["select_master.name"] in subset_names for row in rows))
+        # - counts all matching records, however
+        assertEqual(data.numrows, numitems)
+
+        # Select with getids
+        data = resource.select(["id", "name", "status"],
+                               start = start,
+                               limit = limit,
+                               getids = True,
+                               orderby = "select_master.name",
+                               )
+        # - returns only rows in the page
+        assertEqual(len(data.rows), min(numitems - start, limit))
+        assertTrue(all(row["select_master.name"] in subset_names for row in rows))
+        # - returns all matching record ids, however
+        assertEqual(len(data.ids), numitems)
+
 # =============================================================================
 class ResourceLazyVirtualFieldsSupportTests(unittest.TestCase):
     """ Test support for lazy virtual fields """
@@ -2434,8 +2647,9 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         s3db.add_components("org_organisation",
                             org_office = {"name": "test",
                                           "joinby": "organisation_id",
-                                          "filterby": "office_type_id",
-                                          "filterfor": 5,
+                                          "filterby": {
+                                              "office_type_id": 5,
+                                              },
                                          },
                            )
 
@@ -2455,8 +2669,9 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         s3db.add_components("org_organisation",
                             org_office = {"name": "test",
                                           "joinby": "organisation_id",
-                                          "filterby": "office_type_id",
-                                          "filterfor": [5],
+                                          "filterby": {
+                                              "office_type_id": [5],
+                                              },
                                          },
                            )
         resource = s3db.resource("org_organisation", components=["test"])
@@ -2465,12 +2680,13 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         assertEqual(str(component.filter),
                     str((table.office_type_id == 5)))
 
-        # Define a filtered component with value list
+        # Define a filtered component with value tuple
         s3db.add_components("org_organisation",
                             org_office = {"name": "test",
                                           "joinby": "organisation_id",
-                                          "filterby": "office_type_id",
-                                          "filterfor": [4, 5],
+                                          "filterby": {
+                                              "office_type_id": (4, 5),
+                                              },
                                          },
                            )
         resource = s3db.resource("org_organisation", components=["test"])
@@ -2483,8 +2699,9 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         s3db.add_components("org_organisation",
                             org_office = {"name": "test",
                                           "joinby": "organisation_id",
-                                          "filterby": "office_type_id",
-                                          "filterfor": [],
+                                          "filterby": {
+                                              "office_type_id": [],
+                                              },
                                          },
                            )
         resource = s3db.resource("org_organisation", components=["test"])
@@ -2507,8 +2724,9 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         s3db.add_components("org_organisation",
                             org_office = {"name": "test",
                                           "joinby": "organisation_id",
-                                          "filterby": "office_type_id",
-                                          "filterfor": 5,
+                                          "filterby": {
+                                              "office_type_id": 5,
+                                              },
                                          },
                            )
 
@@ -2541,8 +2759,9 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         s3db.add_components("org_organisation",
                             org_office = {"name": "test",
                                           "joinby": "organisation_id",
-                                          "filterby": "office_type_id",
-                                          "filterfor": 5,
+                                          "filterby": {
+                                              "office_type_id": 5,
+                                              },
                                          },
                            )
 
@@ -2613,8 +2832,9 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         s3db.add_components("org_organisation",
                             org_office = {"name": "test",
                                           "joinby": "organisation_id",
-                                          "filterby": "office_type_id",
-                                          "filterfor": 5,
+                                          "filterby": {
+                                              "office_type_id": 5,
+                                              },
                                          },
                            )
 
@@ -2682,8 +2902,9 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         s3db.add_components("org_organisation",
                             org_office = {"name": "test",
                                           "joinby": "organisation_id",
-                                          "filterby": "office_type_id",
-                                          "filterfor": type_id,
+                                          "filterby": {
+                                              "office_type_id": type_id,
+                                              },
                                          },
                            )
 
@@ -2798,13 +3019,15 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         s3db.add_components("org_organisation",
                             org_office = ({"name": "fieldoffice",
                                            "joinby": "organisation_id",
-                                           "filterby": "office_type_id",
-                                           "filterfor": 5,
+                                           "filterby": {
+                                               "office_type_id": 5,
+                                               },
                                           },
                                           {"name": "hq",
                                            "joinby": "organisation_id",
-                                           "filterby": "office_type_id",
-                                           "filterfor": 4,
+                                           "filterby": {
+                                               "office_type_id": 4,
+                                               },
                                           },
                                          ),
                            )
@@ -2820,7 +3043,7 @@ class ResourceFilteredComponentTests(unittest.TestCase):
         assertTrue(resource.components.hq._length > 0)
         assertTrue(resource.components.office._length is None)
 
-        tree = resource.export_tree(mcomponents=["org_office","fieldoffice","hq"])
+        tree = resource.export_tree(mcomponents=["office","fieldoffice","hq"])
         assertTrue(resource.components.office._length > 0)
         assertTrue(resource.components.fieldoffice._length is None)
         assertTrue(resource.components.hq._length is None)
@@ -3428,6 +3651,57 @@ class ResourceDeleteTests(unittest.TestCase):
         finally:
             component.drop()
 
+    # -------------------------------------------------------------------------
+    def testArchiveWithNotNullConstraint(self):
+        """ Test archiving of foreign keys with notnull constraints """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+
+        s3db = current.s3db
+
+        master_table = s3db.del_master
+
+        s3db.define_table("del_notnull",
+                          Field("del_master_id", master_table,
+                                notnull = True,
+                                ondelete = "RESTRICT",
+                                ),
+                          *s3_meta_fields())
+        table = s3db["del_notnull"]
+
+        try:
+            master_id = master_table.insert()
+
+            # Create a record
+            record_id = table.insert(del_master_id = master_id)
+            record = table[record_id]
+            assertNotEqual(record, None)
+
+            # Verify that master record is restricted by reference
+            resource = s3db.resource("del_master", id=master_id)
+            success = resource.delete()
+            assertEqual(success, 0)
+
+            # Delete the record
+            resource = s3db.resource("del_notnull", id=record_id)
+            success = resource.delete()
+            assertEqual(success, 1)
+            assertEqual(resource.error, None)
+
+            # Deleted record is still linked
+            record = table[record_id]
+            assertEqual(record.del_master_id, master_id)
+
+            # ...but doesn't block the master record for that
+            resource = s3db.resource("del_master", id=master_id)
+            success = resource.delete()
+            assertEqual(success, 1)
+            assertEqual(resource.error, None)
+
+        finally:
+            table.drop()
+
     ## -------------------------------------------------------------------------
     #def testDeleteSimple(self):
         #""" Test hard deletion of a record """
@@ -3592,24 +3866,11 @@ class LinkDeletionTests(unittest.TestCase):
                        msg = "Unrelated component record deleted")
 
 # =============================================================================
-def run_suite(*test_classes):
-    """ Run the test suite """
-
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    for test_class in test_classes:
-        tests = loader.loadTestsFromTestCase(test_class)
-        suite.addTests(tests)
-    if suite is not None:
-        unittest.TextTestRunner(verbosity=2).run(suite)
-    return
-
 if __name__ == "__main__":
 
     run_suite(
         ComponentJoinConstructionTests,
         ComponentLeftJoinConstructionTests,
-
 
         ResourceLazyVirtualFieldsSupportTests,
         ResourceDataObjectAPITests,

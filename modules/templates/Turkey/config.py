@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
 
-try:
-    # Python 2.7
-    from collections import OrderedDict
-except:
-    # Python 2.6
-    from gluon.contrib.simplejson.ordered_dict import OrderedDict
+from collections import OrderedDict
 
 from gluon import current
 from gluon.storage import Storage
@@ -55,9 +50,9 @@ def config(settings):
     # Languages used in the deployment (used for Language Toolbar & GIS Locations)
     # http://www.loc.gov/standards/iso639-2/php/code_list.php
     settings.L10n.languages = OrderedDict([
-        ("ar", "العربية"),
+        ("ar", "Arabic"),
         ("en", "English"),
-        ("tr", "Türkçe"),
+        ("tr", "Turkish"),
     ])
     # Default language for Language Toolbar (& GIS Locations in future)
     settings.L10n.default_language = "tr"

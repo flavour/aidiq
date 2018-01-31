@@ -1,7 +1,7 @@
 /**
  * jQuery UI Widget for S3GroupedItemsReport
  *
- * @copyright 2015-2016 (c) Sahana Software Foundation
+ * @copyright 2015-2018 (c) Sahana Software Foundation
  * @license MIT
  *
  * requires jQuery 1.9.1+
@@ -44,7 +44,7 @@
             groupedItemsID += 1;
 
             // Namespace for events
-            this.namespace = '.groupeditems';
+            this.eventNamespace = '.groupeditems';
         },
 
         /**
@@ -578,7 +578,7 @@
         _bindEvents: function() {
 
             var el = $(this.element),
-                ns = this.namespace,
+                ns = this.eventNamespace,
                 self = this;
 
             el.delegate('.gi-export', 'click' + ns, function() {
@@ -599,7 +599,7 @@
         _unbindEvents: function() {
 
             var el = $(this.element),
-                ns = this.namespace;
+                ns = this.eventNamespace;
 
             el.undelegate(ns);
         }

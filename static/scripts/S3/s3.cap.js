@@ -5,7 +5,7 @@
      */
     var bindCloneActions = function() {
         $('.cap-clone-update').unbind('.cap').bind('click.cap', function() {
-            clone(this.id, $(this).attr('data'));
+            clone($(this).attr('data'));
         });
     };
 
@@ -13,27 +13,29 @@
      * Clone (Ajax)
      *
      * @param recordID - record ID for which clone is called
-     * @param msgType - one of the options for msgType change(Update, Cancel and Clear)
+     * @param data - msgType/alert_id data
      */
-    var clone = function(recordID, msgType) {
-
-        $.ajax({
-            'url': S3.Ap.concat('/cap/alert/') + recordID + '/' + 'clone?msg_type=' + msgType,
-            'success': function(data) {
-                window.location.href = S3.Ap.concat('/cap/alert/') + data['message'];
-            },
-            'error': function(request, status, error) {
-                var msg;
-                if (error == 'UNAUTHORIZED') {
-                    msg = i18n.gis_requires_login;
-                } else {
-                    msg = request.responseText;
-                }
-                console.log(msg);
-            },
-            'type': 'POST',
-            'dataType': 'json'
-        });
+    var clone = function(data) {
+        var msgType = data.split('/')[0];
+        var recordID = data.split('/').pop();
+        if (recordID) {
+            $.ajax({
+                'url': S3.Ap.concat('/cap/alert/') + recordID + '/' + 'clone?msg_type=' + msgType,
+                'success': function(data) {
+                    window.location.href = S3.Ap.concat('/cap/alert/') + data['message'];
+                },
+                'error': function(request, status, error) {
+                    if (error == 'UNAUTHORIZED') {
+                        var msg = i18n.gis_requires_login;
+                    } else {
+                        var msg = request.responseText;
+                    }
+                    console.log(msg);
+                },
+                'type': 'POST',
+                'dataType': 'json'
+            });
+        }
     };
 
     function get_table($form) {
@@ -62,9 +64,7 @@
 
     function get_template_fields(table) {
         if (table == 'cap_alert') {
-            return ('sender,sent,status,msg_type,source,scope,' +
-                    'restriction,addresses,codes,note,reference,' +
-                    'incidents').split(',');
+            return ('codes,note,incidents').split(',');
 
         } else if (table == 'cap_info') {
              return ('category,event,response_type,urgency,' +
@@ -83,9 +83,14 @@
         var recipient_row = $('#cap_alert_addresses__row, #cap_alert_addresses__row1');
         // Show the restriction field if scope is restricted otherwise hide by default
         if ($('#cap_alert_scope').val() == 'Restricted') {
-        	restriction_row.show();
+            restriction_row.show();
+            recipient_row.hide();
+        } else if($('#cap_alert_scope').val() == 'Public' || $('#cap_alert_scope').val() == 'Private') {
+            recipient_row.show();
+            restriction_row.hide();
         } else {
-        	restriction_row.hide();
+            recipient_row.hide();
+            restriction_row.hide();
         }
         // On change in scope
         $('#cap_alert_scope').change(function() {
@@ -94,27 +99,34 @@
                 case 'Public':
                     restriction_row.hide();
                 	if ($('#cap_alert_restriction').val()) {
-                		$('#cap_alert_restriction').val('');
+                	    $('#cap_alert_restriction').val('');
                 	}
                     recipient_row.show();
                     break;
                 case 'Restricted':
-                    restriction_row.show();
                     recipient_row.hide();
+                    if ($('#cap_alert_addresses').val()) {
+                        $('#cap_alert_addresses').val('');
+                    }
+                    restriction_row.show();
                     break;
                 case 'Private':
                     restriction_row.hide();
                 	if ($('#cap_alert_restriction').val()) {
-                		$('#cap_alert_restriction').val('');	
+                	    $('#cap_alert_restriction').val('');	
                 	}
                     recipient_row.show();
                     break;
+                case '':
+                    recipient_row.hide();
+                    restriction_row.hide();
+                    break;   
             }
         });
 
         $('#cap_info_priority').change(function() {
         	if (!$(this).val()) {
-        		$(this).css('border', '1px solid gray');
+        	    $(this).css('border', '1px solid gray');
         	}
         	else {
 	            var p = S3.cap_priorities,
@@ -136,7 +148,7 @@
 	        }
         });
 
-        $form.find('[name=urgency],[name=severity],[name=certainty]').change(function() {
+        /*$form.find('[name=urgency],[name=severity],[name=certainty]').change(function() {
             var p = S3.cap_priorities,
                 len = p.length;
             for (var i=0; i< len; i++) {
@@ -161,7 +173,7 @@
 
             $form.find('[name=priority]').val('Undefined')
                  .css('border', '2px solid gray');
-        });
+        });*/
 
         function load_template_data(data, overwrite) {
             var tablename = get_table($form),
@@ -198,7 +210,10 @@
                     		if ($f.val() != '') {
                     			restriction_row.show();
                     		}
-                    	}
+                    	} else {
+                            recipient_row.show();
+                            restriction_row.hide();
+                        }
                     case 'undefined':
                         // change field only if locked or overwrite flag is set
                         if ($f.is(':text') || $f.is('textarea') || $f.is('select')) {

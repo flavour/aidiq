@@ -11,6 +11,8 @@ from s3.s3utils import *
 from s3.s3data import S3DataTable
 from s3.s3datetime import S3Calendar
 
+from unit_tests import run_suite
+
 # =============================================================================
 class S3TypeConverterTests(unittest.TestCase):
     """ Test S3TypeConverter """
@@ -71,23 +73,40 @@ class S3TypeConverterTests(unittest.TestCase):
         result = convert("01.10.2011")
         assertEqual(result, datetime.date(2011, 10, 1))
 
-        # Reset to ISO format
-        settings.L10n.date_format = "%Y-%m-%d"
-
         # Verify without offset
         session.s3.utc_offset = 0
         result = convert("2011-10-01")
         assertEqual(result, datetime.date(2011, 10, 1))
 
         # Verify with offset
+        # => Date without time part means 08:00 local time zone,
+        #    so 2 hours East means the same day UTC, 06:00
+        session.s3.utc_offset = +2
+        result = convert("2011-10-01")
+        assertEqual(result, datetime.date(2011, 10, 01))
+        result = convert("01.05.2015")
+        assertEqual(result, datetime.date(2015, 05, 01))
+
+        # Cross into the next day
+        # => Date without time part means 08:00 local time zone,
+        #    so 11 hours East means previous day UTC, 21:00
         session.s3.utc_offset = +11
         result = convert("2011-10-01")
         assertEqual(result, datetime.date(2011, 9, 30))
+
+        # Reset to ISO format
+        settings.L10n.date_format = "%Y-%m-%d"
+
+        # Date+Time always convert to the exact UTC date
+        # => 11 hours West of 22:00 is the same day
         result = convert("2011-10-01T22:00:00")
         assertEqual(result, datetime.date(2011, 10, 1))
+        # => 11 hours West of 09:00 is the previous day
         result = convert("2011-10-01T09:00:00")
         assertEqual(result, datetime.date(2011, 9, 30))
-        # Explicit timezone in string overrides offset
+
+        # Explicit timezone in string overrides default offset
+        # => trailing Z means UTC
         result = convert("2011-10-01T09:00:00Z")
         assertEqual(result, datetime.date(2011, 10, 1))
 
@@ -176,18 +195,6 @@ class S3FKWrappersTests(unittest.TestCase):
         #self.assertEqual(multiple, None)
 
 # =============================================================================
-def run_suite(*test_classes):
-    """ Run the test suite """
-
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    for test_class in test_classes:
-        tests = loader.loadTestsFromTestCase(test_class)
-        suite.addTests(tests)
-    if suite is not None:
-        unittest.TextTestRunner(verbosity=2).run(suite)
-    return
-
 if __name__ == "__main__":
 
     run_suite(

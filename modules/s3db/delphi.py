@@ -2,7 +2,7 @@
 
 """ Sahana Eden Delphi Decision Maker Model
 
-    @copyright: 2009-2016 (c) Sahana Software Foundation
+    @copyright: 2009-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -72,6 +72,12 @@ class S3DelphiModel(S3Model):
         define_table(tablename,
                      Field("name", length=255, notnull=True, unique=True,
                            label = T("Group Title"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(255),
+                                       IS_NOT_ONE_OF(db,
+                                                     "%s.name" % tablename,
+                                                     ),
+                                       ],
                            ),
                      Field("description", "text",
                            label = T("Description"),
@@ -197,9 +203,16 @@ class S3DelphiModel(S3Model):
                      Field("code", length=8,
                            label = T("Problem Code"),
                            represent = lambda v: v or NONE,
+                           requires = IS_LENGTH(8),
                            ),
                      Field("name", length=255, notnull=True, unique=True,
                            label = T("Problem Title"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(255),
+                                       IS_NOT_ONE_OF(db,
+                                                     "%s.name" % tablename,
+                                                     ),
+                                       ],
                            ),
                      Field("description", "text",
                            label = T("Description"),
@@ -213,12 +226,10 @@ class S3DelphiModel(S3Model):
                            label = T("Active"),
                            represent = s3_yes_no_represent,
                            ),
-                     *s3_meta_fields()
+                     *s3_meta_fields(),
+                     on_define = lambda table: [table.modified_on.set_attributes(label = T("Last Modification")),
+                                                ]
                      )
-
-        # @todo: make lazy_table
-        table = db[tablename]
-        table.modified_on.label = T("Last Modification")
 
         # CRUD Strings
         crud_strings[tablename] = Storage(
@@ -243,7 +254,7 @@ class S3DelphiModel(S3Model):
                                  "created_by",
                                  "modified_on",
                                  ],
-                  orderby = table.code,
+                  orderby = "delphi_problem.code",
                   )
 
         # Components
@@ -283,13 +294,11 @@ class S3DelphiModel(S3Model):
                                   delphi_solution_comments),
                      Field.Method("votes",
                                   delphi_solution_votes),
-                     *s3_meta_fields()
+                     *s3_meta_fields(),
+                     on_define = lambda table: [table.created_by.set_attributes(label = T("Suggested By")),
+                                                table.modified_on.set_attributes(label = T("Last Modification")),
+                                                ]
                      )
-
-        # @todo: make lazy_table
-        table = db[tablename]
-        table.created_by.label = T("Suggested By")
-        table.modified_on.label = T("Last Modification")
 
         # CRUD Strings
         crud_strings[tablename] = Storage(
@@ -364,6 +373,7 @@ class S3DelphiModel(S3Model):
                      solution_id(),
                      Field("body", "text", notnull=True,
                            label = T("Comment"),
+                           requires = IS_NOT_EMPTY(),
                            ),
                      *s3_meta_fields()
                      )

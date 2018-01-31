@@ -116,6 +116,9 @@ class S3LanguageMenuLayout(S3NavigationItem):
             if item.components:
                 # The language menu itself
                 current_language = current.T.accepted_language
+                # Hack: for some reason T.accepted_language here is NOT what is set in 00_settings.py for unauthenticated users
+                if current_language == "en":
+                    current_language = "en-gb"
                 items = item.render_components()
                 select = SELECT(items, value=current_language,
                                     _name="_language",
@@ -317,7 +320,7 @@ class S3OrgMenuLayout(S3NavigationItem):
 
                 if record.logo:
                     size = (60, None)
-                    image = s3db.pr_image_represent(record.logo, size=size)
+                    image = s3db.pr_image_library_represent(record.logo, size=size)
                     url_small = URL(c="default", f="download", args=image)
                     alt = "%s logo" % _name
                     logo = IMG(_src=url_small,
