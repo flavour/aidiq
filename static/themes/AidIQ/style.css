@@ -75,7 +75,10 @@ form {
   font-size: 0.8em;
 }
 form .form-row {
-  margin-top: 5px !important;
+  margin-top: 0.325rem !important;
+}
+form .form-row > .columns:first-child {
+  overflow: hidden;
 }
 form .form-row > .columns > label {
   font-weight: bold;
@@ -109,7 +112,15 @@ form .action-lnk {
   font-size: 0.75rem;
 }
 form table.embeddedComponent {
+  border: 1px solid #dddddd;
   border-collapse: separate;
+}
+form table.embeddedComponent td {
+  border: none;
+  vertical-align: top;
+}
+form table.embeddedComponent .label-row td:empty {
+  padding: 0;
 }
 form .inline-open-add {
   display: inline-block;
@@ -202,12 +213,6 @@ textarea {
 .form-container form:not(.filter-form):not(.auth_login):not(.auth_register) input[type="text"]:not(.double):not(.datetimepicker):not(.date):not(.dms-input) {
   width: 20rem !important;
 }
-.form-container form table.embeddedComponent {
-  border: 1px solid #dddddd;
-}
-.form-container form table.embeddedComponent td {
-  border: none;
-}
 
 .item-container .controls {
   background: #fafafa;
@@ -219,6 +224,9 @@ textarea {
 .filter-form table tr,
 .filter-form .ui-multiselect {
   max-width: 60%;
+}
+.filter-form table.s3-groupedopts-widget {
+  display: inline-block;
 }
 .filter-form .inline-tooltip {
   padding-top: 0.2rem;
@@ -399,6 +407,18 @@ div.tabs span.tab_other a:hover {
   white-space: nowrap;
 }
 
+/* Caret */
+.caret {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  vertical-align: top;
+  border-top: 4px solid #000000;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  content: "";
+}
+
 /* Footer */
 #footer {
   margin-top: 20px;
@@ -465,11 +485,11 @@ div.tabs span.tab_other a:hover {
 .top-bar-section ul li.has-dropdown:hover > a {
   background-color: #0966AE;
 }
-.top-bar-section ul.dropdown li:not(.has-form) a:not(.button) {
+.top-bar-section ul.dropdown li:not(.has-form):not(.active) a:not(.button) {
   color: #ffffff;
   background-color: #074C81;
 }
-.top-bar-section ul.dropdown li:not(.has-form) a:not(.button):hover {
+.top-bar-section ul.dropdown li:not(.has-form):not(.active) a:not(.button):hover {
   color: #ffffff;
   background-color: #0966AE;
 }
@@ -605,6 +625,13 @@ table.dataTable .selected-action {
   margin: 0 0.085rem;
 }
 
+body.rtl .dt-export-options {
+  float: left;
+}
+body.rtl .list_formats div {
+  float: left;
+}
+
 /* Empty-sections */
 .empty {
   font-style: italic;
@@ -640,6 +667,12 @@ table.dataTable .selected-action {
 #list-btn-add {
   float: right;
   margin-right: 1.0rem;
+}
+
+body.rtl #list-btn-add {
+  float: left;
+  margin-left: 1.0rem;
+  margin-right: 0;
 }
 
 /* Summary tabs */
@@ -710,27 +743,83 @@ input.date.hasDatepicker {
 }
 
 /* pr_Contacts widgets */
-.pr-contacts-wrapper .pr-contact,
-.pr-contacts-wrapper .pr-emergency-contact {
-  padding: 0.5rem;
-}
 .pr-contacts-wrapper h3 {
+  margin-top: 0.5rem;
   padding-bottom: 0 !important;
 }
-.pr-contacts-wrapper .pr-contact-subtitle {
-  font-size: 0.8rem;
-  font-style: italic;
-}
-.pr-contacts-wrapper .pr-contact-actions {
+
+.pr-contact-actions {
   margin-bottom: 0.5rem;
 }
 
-/* Data Lists */
+.pr-contact,
+.pr-emergency-contact {
+  padding: 0.5rem;
+}
+
+.pr-contact-priority,
+.pr-contact-details {
+  display: inline-block;
+}
+
+.pr-contact-subtitle {
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.pr-contact-priority {
+  border: thin solid #2ba6cb;
+  border-radius: 2px;
+  color: #2ba6cb;
+  font-size: 0.8rem;
+  line-height: 1rem;
+  margin: 0.25rem 1rem 0 0;
+  padding: 0 0.25rem 0.125rem;
+  vertical-align: top;
+}
+.pr-contact-priority input[type=submit] {
+  color: black;
+  line-height: 1.2rem;
+  font-size: 0.8rem;
+}
+
+/* Data Lists (including profile) */
+.dl .dl-header {
+  float: none;
+  text-align: right;
+}
 .dl .card_1_line {
   height: auto;
 }
+.dl .empty_card-holder {
+  text-align: center;
+}
 .dl .dl-row {
   border: 0;
+}
+.dl .dl-1-cols {
+  width: 100%;
+}
+
+.dl-item .dropdown .caret {
+  margin-left: 0.2rem;
+  margin-top: 0.4rem;
+}
+.dl-item .attachments {
+  margin-right: 0.2rem;
+}
+
+h4.profile-sub-header {
+  background-color: #EFEFEF;
+  padding: 0.1rem 0.3rem;
+  font-size: 1.2rem;
+}
+
+.profile-widget .icon-fullscreen {
+  float: right;
+  position: relative;
+  right: 9px;
+  top: 17px;
 }
 
 /* Comment feeds */
