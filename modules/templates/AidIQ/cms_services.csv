@@ -5,28 +5,28 @@ Series,Name,Title,Body,Module
 <div class='row'>
  <div data-magellan-expedition='fixed'>
   <dl class='sub-nav'>
-   <dd data-magellan-arrival='starter'><a href='#starter'><i class='icon icon-play-sign'></i>Starter Package</a></dd>
-   <dd data-magellan-arrival='custom' class=''><a href='#custom'><i class='icon icon-puzzle-piece'></i>Custom Solution Development</a></dd>
-   <dd data-magellan-arrival='sla' class=''><a href='#sla'><i class='icon icon-wrench'></i>Service &amp; Support</a></dd>
-   <dd data-magellan-arrival='training'><a href='#training'><i class='icon icon-user'></i>Technical Training</a></dd>
+   <dd data-magellan-arrival='starter'><a href='#starter'><i class='fa fa-play'></i>Starter Package</a></dd>
+   <dd data-magellan-arrival='custom' class=''><a href='#custom'><i class='fa fa-puzzle-piece'></i>Custom Solution Development</a></dd>
+   <dd data-magellan-arrival='sla' class=''><a href='#sla'><i class='fa fa-wrench'></i>Service &amp; Support</a></dd>
+   <dd data-magellan-arrival='training'><a href='#training'><i class='fa fa-user'></i>Technical Training</a></dd>
   </dl>
  </div>
 </div>
 <div class='row'>
  <div class='panel' style='background:transparent;'>
-  <h2><i style='padding-right:10px;' class='icon icon-play-sign'></i>Starter Package</h2>
+  <h2><i style='padding-right:10px;' class='fa fa-play-sign'></i>Starter Package</h2>
   <a data-magellan-destination='starter' name='starter'></a>
   <p>All you need to get your organization started with Sahana Eden:</p>
   <ul style='list-style-type: none;line-height:2.0;'>
-   <li><i class='icon icon-check'></i>A cloud-hosted Sahana Eden instance including DNS for 1 year</li>
-   <li><i class='icon icon-check'></i>Initial setup, including:
+   <li><i class='fa fa-check'></i>A cloud-hosted Sahana Eden instance including DNS for 1 year</li>
+   <li><i class='fa fa-check'></i>Initial setup, including:
     <ul style='padding-left:4rem;'>
      <li>Modules and menus</li>
      <li>Master data and static contents</li>
      <li>Messaging system</li>
     </ul>
    </li>
-   <li><i class='icon icon-check'></i>Basic Customization, including:
+   <li><i class='fa fa-check'></i>Basic Customization, including:
     <ul style='padding-left:4rem;'>
      <li>Localization</li>
      <li>Homepage, branding and theme</li>
@@ -37,12 +37,12 @@ Series,Name,Title,Body,Module
   </ul>
   <p>Starts at: USD 5000 (EUR 4425)</p>
   <a data-magellan-destination='custom' name='custom'></a>
-  <p><a href='#'><small><i class='icon icon-up' style='padding-right:3px;'></i>Back to Top</small></a></p>
+  <p><a href='#'><small><i class='fa fa-caret-up' style='padding-right:3px;'></i>Back to Top</small></a></p>
  </div>
 </div>
 <div class='row'>
  <div class='panel' style='background:transparent;'>
-  <h2><i style='padding-right:10px;' class='icon icon-puzzle-piece'></i>Custom Solution Development</h2>
+  <h2><i style='padding-right:10px;' class='fa fa-puzzle-piece'></i>Custom Solution Development</h2>
   <p>
    AidIQ designs, develops and deploys your Sahana Eden solution, made
    to measure for the needs of your organization or community - at any scale
@@ -50,36 +50,36 @@ Series,Name,Title,Body,Module
   </p>
   <p>Price: contact us for an offer</p>
   <a data-magellan-destination='sla' name='sla'></a>
-  <p><a href='#'><small><i class='icon icon-up' style='padding-right:3px;'></i>Back to Top</small></a></p>
+  <p><a href='#'><small><i class='fa fa-caret-up' style='padding-right:3px;'></i>Back to Top</small></a></p>
  </div>
 </div>
 <div class='row'>
  <div class='panel' style='background:transparent;'>
-  <h2><i style='padding-right:10px;' class='icon icon-wrench'></i>Service &amp; Support</h2>
+  <h2><i style='padding-right:10px;' class='fa fa-wrench'></i>Service &amp; Support</h2>
   <p>
    AidIQ provide you with second and third level support for your Sahana Eden solution, including:
   </p>
   <ul style='list-style-type:none;line-height:2.0'>
-   <li><i class='icon icon-check'></i>Email support (48 hours turnaround)</li>
-   <li><i class='icon icon-check'></i>Analysis and resolution of defects</li>
-   <li><i class='icon icon-check'></i>Minor modifications and improvements</li>
-   <li><i class='icon icon-check'></i>Version Upgrades</li>
-   <li><i class='icon icon-check'></i>Database Maintenance</li>
+   <li><i class='fa fa-check'></i>Email support (48 hours turnaround)</li>
+   <li><i class='fa fa-check'></i>Analysis and resolution of defects</li>
+   <li><i class='fa fa-check'></i>Minor modifications and improvements</li>
+   <li><i class='fa fa-check'></i>Version Upgrades</li>
+   <li><i class='fa fa-check'></i>Database Maintenance</li>
   </ul>
   <p>Additional services are available upon request.</p>
   <p>Price: charged hourly, please contact us for an offer</p>
   <a data-magellan-destination='training' name='training'></a>
-  <p><a href='#'><small><i class='icon icon-up' style='padding-right:3px;'></i>Back to Top</small></a></p>
+  <p><a href='#'><small><i class='fa fa-caret-up' style='padding-right:3px;'></i>Back to Top</small></a></p>
  </div>
 </div>
 <div class='row'>
  <div class='panel' style='background:transparent;'>
-  <h2><i style='padding-right:10px;' class='icon icon-user'></i>Technical Training</h2>
+  <h2><i style='padding-right:10px;' class='fa fa-user'></i>Technical Training</h2>
   <p>
    AidIQ design, develop and facilitate technical trainings for your Sahana Eden
    project team (including system administrators and developers).
   </p>
   <p>Price: contact us for an offer</p>
-  <p><a href='#'><small><i class='icon icon-up' style='padding-right:3px;'></i>Back to Top</small></a></p>
+  <p><a href='#'><small><i class='fa fa-caret-up' style='padding-right:3px;'></i>Back to Top</small></a></p>
  </div>
 </div>",
