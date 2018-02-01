@@ -20,12 +20,12 @@ Series,Name,Title,Body,Module
     We provide a full range of services to clients to ensure that solutions are implemented effectively and sustainably:
    </p>
    <ul style='list-style-type:none;line-height:2.0;'>
-    <li><i class='icon icon-check'></i>Business Analysis</li>
-    <li><i class='icon icon-check'></i>Process Design</li>
-    <li><i class='icon icon-check'></i>Software Development</li>
-    <li><i class='icon icon-check'></i>Training Design</li>
-    <li><i class='icon icon-check'></i>Capacity Building</li>
-    <li><i class='icon icon-check'></i>Human Resources</li>
+    <li><i class='fa fa-check'></i>Business Analysis</li>
+    <li><i class='fa fa-check'></i>Process Design</li>
+    <li><i class='fa fa-check'></i>Software Development</li>
+    <li><i class='fa fa-check'></i>Training Design</li>
+    <li><i class='fa fa-check'></i>Capacity Building</li>
+    <li><i class='fa fa-check'></i>Human Resources</li>
    </ul>
   </div>
  </div>

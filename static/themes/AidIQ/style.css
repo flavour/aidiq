@@ -2,6 +2,20 @@
   content: url(img/logo_large.png);
 }
 
+.inline-throbber {
+  background-image: url(../../img/sunflower_fade_indicator.gif);
+}
+
+.loading {
+  background: url(../../img/sunflower_spin_throbber.gif) center no-repeat !important;
+}
+
+.throbber,
+.layer_throbber,
+.map_loader {
+  background-image: url(../../img/sunflower_spin_throbber.gif);
+}
+
 /* Override widget.css */
 .top-bar.expanded {
   width: 100%;
@@ -69,16 +83,30 @@
   font-size: 1.1em;
   padding-bottom: 5px;
 }
+#component {
+    float: none;
+    width: auto;
+}
+.action-lnk {
+    font-size: 80%;
+}
 
 /* General forms */
 form {
   font-size: 0.8em;
 }
 form .form-row {
-  margin-top: 5px !important;
+  margin-top: 0.325rem !important;
+}
+form .form-row > .columns:first-child {
+  overflow: hidden;
 }
 form .form-row > .columns > label {
   font-weight: bold;
+}
+form .form-row .controls > .s3-hierarchy-widget {
+    display: inline-block;
+    vertical-align: middle;
 }
 form label.inline {
   padding: 0;
@@ -89,6 +117,9 @@ form .gis_loc_select_btn {
 form .gis_loc_select_btn i {
   font-size: 1.0em;
   margin-right: 4px;
+}
+form .jstree-anchor {
+    font-size: 0.9rem;
 }
 form .error {
   display: block;
@@ -106,10 +137,38 @@ form .date-clear-btn {
 }
 form .action-lnk {
   font-weight: normal;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
 }
 form table.embeddedComponent {
+  border: 1px solid #dddddd;
   border-collapse: separate;
+}
+form table.embeddedComponent td {
+  border: none;
+  vertical-align: top;
+}
+form table.embeddedComponent .label-row td {
+  border-bottom: 1px solid #dddddd;
+}
+form table.embeddedComponent .label-row td:empty {
+  padding: 0;
+}
+form table.embeddedComponent .label-row label {
+  color: #4D4D4D;
+}
+form table.embeddedComponent tr.inline-form input,
+form table.embeddedComponent tr.inline-form .btn.date-clear-btn,
+form table.embeddedComponent tr.inline-form .postfix.calendar-clear-btn {
+  margin-top: 0;
+}
+form table.embeddedComponent tr.inline-form.single td:only-child {
+  padding: 0;
+}
+form table.embeddedComponent tr.inline-form.single td:only-child div.form-row {
+  padding: 0 0.2rem 0.2rem;
+}
+form table.embeddedComponent tr.inline-form select {
+  max-width: 18rem;
 }
 form .inline-open-add {
   display: inline-block;
@@ -119,6 +178,9 @@ form .inline-open-add {
 }
 form.auth_login #submit_record__row {
   white-space: pre;
+}
+.s3_inline_add_resource_link {
+    padding: 0.2rem 0.3rem 0.2rem 0.1rem;
 }
 
 /* General Widgets */
@@ -162,6 +224,10 @@ select {
   max-width: 100%;
 }
 
+select {
+  padding-right: 1rem!important;
+}
+
 textarea {
   resize: both;
   max-width: 100%;
@@ -199,14 +265,11 @@ textarea {
 .form-container form .ui-multiselect {
   max-width: 100%;
 }
-.form-container form:not(.filter-form):not(.auth_login):not(.auth_register) input[type="text"]:not(.double):not(.datetimepicker):not(.date):not(.dms-input) {
+.form-container form:not(.filter-form):not(.auth_login):not(.auth_register) input[type="text"]:not(.double):not(.datetimepicker):not(.date):not(.hours):not(.dms-input) {
   width: 20rem !important;
 }
-.form-container form table.embeddedComponent {
-  border: 1px solid #dddddd;
-}
-.form-container form table.embeddedComponent td {
-  border: none;
+.req_key {
+    font-size: 0.9rem;
 }
 
 .item-container .controls {
@@ -219,6 +282,9 @@ textarea {
 .filter-form table tr,
 .filter-form .ui-multiselect {
   max-width: 60%;
+}
+.filter-form table.s3-groupedopts-widget {
+  display: inline-block;
 }
 .filter-form .inline-tooltip {
   padding-top: 0.2rem;
@@ -234,7 +300,7 @@ textarea {
 /* Help Popup */
 .inline-tooltip {
   display: inline-block;
-  vertical-align: top;
+  vertical-align: middle;
   padding-left: 0.75rem;
 }
 .inline-tooltip .tooltip,
@@ -269,7 +335,7 @@ textarea {
 div.tabs {
   border-bottom: 1px solid #2ba6cb;
   clear: left;
-  height: 2.125em;
+  height: 2.15em;
   margin: 5px 0 0;
   padding: 0.5em 0;
   text-align: left;
@@ -399,6 +465,18 @@ div.tabs span.tab_other a:hover {
   white-space: nowrap;
 }
 
+/* Caret */
+.caret {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  vertical-align: top;
+  border-top: 4px solid #000000;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  content: "";
+}
+
 /* Footer */
 #footer {
   margin-top: 20px;
@@ -429,8 +507,7 @@ div.tabs span.tab_other a:hover {
   background: url(img/logo_small.png) left top no-repeat;
   text-shadow: none;
   padding: none;
-  margin-left: 5px;
-  margin-top: 10px;
+  margin: 10px 5px 0 5px;
   width: 94px;
   height: 28px;
   display: inline-block;
@@ -465,11 +542,11 @@ div.tabs span.tab_other a:hover {
 .top-bar-section ul li.has-dropdown:hover > a {
   background-color: #0966AE;
 }
-.top-bar-section ul.dropdown li:not(.has-form) a:not(.button) {
+.top-bar-section ul.dropdown li:not(.has-form):not(.active) a:not(.button) {
   color: #ffffff;
   background-color: #074C81;
 }
-.top-bar-section ul.dropdown li:not(.has-form) a:not(.button):hover {
+.top-bar-section ul.dropdown li:not(.has-form):not(.active) a:not(.button):hover {
   color: #ffffff;
   background-color: #0966AE;
 }
@@ -584,6 +661,10 @@ table.dataTable .selected-action {
   margin: 5px 0 5px;
 }
 
+.dt-wrapper {
+  margin-bottom: 1.5rem;
+}
+
 .dataTables_processing {
   padding: 14px 0 28px;
 }
@@ -605,10 +686,18 @@ table.dataTable .selected-action {
   margin: 0 0.085rem;
 }
 
+body.rtl .dt-export-options {
+  float: left;
+}
+body.rtl .list_formats div {
+  float: left;
+}
+
 /* Empty-sections */
-.empty {
+.empty,
+.dl-empty {
   font-style: italic;
-  font-size: 0.8em;
+  font-size: 0.825rem;
 }
 
 /* jQuery UI widgets */
@@ -639,7 +728,13 @@ table.dataTable .selected-action {
 
 #list-btn-add {
   float: right;
-  margin-right: 1.0rem;
+  margin-right: 0;
+}
+
+body.rtl #list-btn-add {
+  float: left;
+  margin-left: 0;
+  margin-right: 0;
 }
 
 /* Summary tabs */
@@ -702,6 +797,19 @@ input.date.hasDatepicker {
   margin-top: 0.5em;
 }
 
+/* GroupedOptionsWidget */
+.s3-groupedopts-label,
+.s3-groupedopts-label.expanded {
+  margin: 0.25rem 0 0.675rem 0;
+  float: none;
+}
+
+table.s3-groupedopts-widget {
+  margin-left: 0;
+  margin-top: 0.375rem;
+  border: 0;
+}
+
 /* ImageCropWidget */
 .imagecrop-btn {
   font-size: 1em;
@@ -710,32 +818,98 @@ input.date.hasDatepicker {
 }
 
 /* pr_Contacts widgets */
-.pr-contacts-wrapper .pr-contact,
-.pr-contacts-wrapper .pr-emergency-contact {
-  padding: 0.5rem;
-}
 .pr-contacts-wrapper h3 {
+  margin-top: 0.5rem;
   padding-bottom: 0 !important;
 }
-.pr-contacts-wrapper .pr-contact-subtitle {
-  font-size: 0.8rem;
-  font-style: italic;
-}
-.pr-contacts-wrapper .pr-contact-actions {
+
+.pr-contact-actions {
   margin-bottom: 0.5rem;
 }
 
-/* Data Lists */
+.pr-contact,
+.pr-emergency-contact {
+  padding: 0.5rem;
+}
+
+.pr-contact-priority,
+.pr-contact-details {
+  display: inline-block;
+}
+
+.pr-contact-subtitle {
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.pr-contact-priority {
+  border: thin solid #2ba6cb;
+  border-radius: 2px;
+  color: #2ba6cb;
+  font-size: 0.8rem;
+  line-height: 1rem;
+  margin: 0.25rem 1rem 0 0;
+  padding: 0 0.25rem 0.125rem;
+  vertical-align: top;
+}
+.pr-contact-priority input[type=submit] {
+  color: black;
+  line-height: 1.2rem;
+  font-size: 0.8rem;
+}
+
+/* Checkboxes Widget */
+.controls .checkboxes-widget-s3 {
+  display: inline-flex;
+}
+
+/* Data Lists (including profile) */
+.dl .dl-header {
+  float: none;
+  text-align: right;
+}
 .dl .card_1_line {
   height: auto;
 }
+.dl .empty_card-holder {
+  text-align: center;
+}
 .dl .dl-row {
   border: 0;
+}
+.dl .dl-1-cols {
+  width: 100%;
+}
+
+.dl-item .dropdown .caret {
+  margin-left: 0.2rem;
+  margin-top: 0.4rem;
+}
+.dl-item .attachments {
+  margin-right: 0.2rem;
+}
+
+h4.profile-sub-header {
+  background-color: #EFEFEF;
+  padding: 0.1rem 0.3rem;
+  font-size: 1.2rem;
+}
+
+.profile-widget .icon-fullscreen {
+  float: right;
+  position: relative;
+  right: 9px;
+  top: 17px;
 }
 
 /* Comment feeds */
 .comment-box {
   background: none repeat scroll 0 0 #f5f5f5;
+}
+
+/* Text representation */
+.text-body {
+  white-space: pre-wrap;
 }
 
 /* Iframe Map (Location Represent links) */
@@ -791,6 +965,6 @@ input.date.hasDatepicker {
   visibility: hidden;
 }
 
-.icon {
+.fa {
   margin-right: 0.3rem;
 }
