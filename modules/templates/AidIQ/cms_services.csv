@@ -14,7 +14,7 @@ Series,Name,Title,Body,Module
 </div>
 <div class='row'>
  <div class='panel' style='background:transparent;'>
-  <h2><i style='padding-right:10px;' class='fa fa-play-sign'></i>Starter Package</h2>
+  <h2><i style='padding-right:10px;' class='fa fa-play'></i>Starter Package</h2>
   <a data-magellan-destination='starter' name='starter'></a>
   <p>All you need to get your organization started with Sahana Eden:</p>
   <ul style='list-style-type: none;line-height:2.0;'>
