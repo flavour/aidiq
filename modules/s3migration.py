@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2012-2016 (c) Sahana Software Foundation
+    @copyright: 2012-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -33,14 +33,24 @@ __all__ = ("S3Migration",)
 
 import datetime
 import os
+import shutil
 
 from uuid import uuid4
 
 from gluon import current, DAL, Field
 from gluon.cfs import getcfs
-from gluon.compileapp import build_environment
+from gluon.compileapp import build_environment,compile_application,remove_compiled_application,run_models_in
 from gluon.restricted import restricted
 from gluon.storage import Storage
+
+#try:
+#    # http://gitpython.readthedocs.org
+#    from git import Repo
+#except:
+#    GITPYTHON = False
+import subprocess
+#else:
+#    GITPYTHON = True
 
 class S3Migration(object):
     """
@@ -55,15 +65,19 @@ class S3Migration(object):
         Where script looks like:
         m = local_import("s3migration")
         migrate = m.S3Migration()
-        migrate.prep(foreigns=[],
-                     moves=[],
+        #migrate.pull()
+        migrate.prep(moves=[],
                      news=[],
                      ondeletes=[],
                      strbools=[],
                      strints=[],
-                     uniques=[],
+                     add_notnulls=[],
+                     remove_foreigns=[],
+                     remove_uniques=[],
                      )
-        #migrate.migrate()
+        migrate.migrate()
+        migrate.compile()
+        migrate.refresh_roles()
         migrate.post(moves=[],
                      news=[],
                      strbools=[],
@@ -72,7 +86,7 @@ class S3Migration(object):
 
         FYI: If you need to access a filename in eden/databases/ then here is how:
         import hashlib
-        (db_string, pool_size) = settings.get_database_string()
+        (db_type, db_string, pool_size) = settings.get_database_string()
         prefix = hashlib.md5(db_string).hexdigest()
         filename = "%s_%s.table" % (prefix, tablename)
 
@@ -83,23 +97,12 @@ class S3Migration(object):
         from information_schema.KEY_COLUMN_USAGE
         where TABLE_NAME = 'module_resourcename';
 
-        @ToDo: Function to ensure that roles match those in prepop
         @ToDo: Function to do selective additional prepop
     """
 
     def __init__(self):
 
-        request = current.request
-
-        # Load s3cfg => but why do this so complicated?
-        #name = "applications.%s.modules.s3cfg" % request.application
-        #s3cfg = __import__(name)
-        #for item in name.split(".")[1:]:
-            ## Remove the dot
-            #s3cfg = getattr(s3cfg, item)
-        #settings = s3cfg.S3Config()
-
-        # Can use normal import here since executed in web2py environment:
+        # Load s3cfg
         import s3cfg
         settings = s3cfg.S3Config()
 
@@ -107,12 +110,14 @@ class S3Migration(object):
         current.deployment_settings = settings
 
         # Read settings
+        request = current.request
         model = "%s/models/000_config.py" % request.folder
         code = getcfs(model, model, None)
         response = current.response
 
         # Needed as some Templates look at this & we don't wish to crash:
         response.s3 = Storage()
+        response.s3.gis = Storage()
 
         # Global variables for 000_config.py
         environment = build_environment(request, response, current.session)
@@ -134,8 +139,10 @@ class S3Migration(object):
         # Execute 000_config.py
         restricted(code, environment, layer=model)
 
-        self.db_engine = settings.get_database_type()
-        (db_string, pool_size) = settings.get_database_string()
+        self.environment = environment
+
+        (db_type, db_string, pool_size) = settings.get_database_string()
+        self.db_engine = db_type
 
         # Get a handle to the database
         self.db = DAL(db_string,
@@ -146,19 +153,18 @@ class S3Migration(object):
                       )
 
     # -------------------------------------------------------------------------
-    def prep(self, foreigns=None,
-                   moves=None,
+    def prep(self, moves=None,
                    news=None,
                    ondeletes=None,
                    strbools=None,
                    strints=None,
-                   uniques=None,
+                   add_notnulls=None,
+                   remove_foreigns=None,
+                   remove_uniques=None,
                    ):
         """
             Preparation before migration
 
-            @param foreigns  : List of tuples (tablename, fieldname) to have the foreign keys removed
-                              - if tablename == "all" then all tables are checked
             @param moves     : List of dicts {tablename: [(fieldname, new_tablename, link_fieldname)]} to move a field from 1 table to another
                               - fieldname can be a tuple if the fieldname changes: (fieldname, new_fieldname)
             @param news      : List of dicts {new_tablename: {'lookup_field': '',
@@ -169,7 +175,10 @@ class S3Migration(object):
             @param ondeletes : List of tuples [(tablename, fieldname, reftable, ondelete)] to have the ondelete modified to
             @param strbools  : List of tuples [(tablename, fieldname)] to convert from string/integer to bools
             @param strints   : List of tuples [(tablename, fieldname)] to convert from string to integer
-            @param uniques   : List of tuples [(tablename, fieldname)] to have the unique indices removed,
+            @param add_notnulls     : List of tuples [(tablename, fieldname)] to add notnull to
+            @param remove_foreigns  : List of tuples (tablename, fieldname) to have the foreign keys removed
+                                      - if tablename == "all" then all tables are checked
+            @param remove_uniques   : List of tuples [(tablename, fieldname)] to have the unique indices removed,
         """
 
         # Backup current database
@@ -179,14 +188,19 @@ class S3Migration(object):
         self.strints = strints
         self.backup()
 
-        if foreigns:
+        if add_notnulls:
+            # Add notnull option to fields which need it
+            for tablename, fieldname in add_notnulls:
+                self.add_notnull(tablename, fieldname)
+
+        if remove_foreigns:
             # Remove Foreign Key constraints which need to go in next code
-            for tablename, fieldname in foreigns:
+            for tablename, fieldname in remove_foreigns:
                 self.remove_foreign(tablename, fieldname)
 
-        if uniques:
+        if remove_uniques:
             # Remove Unique indices which need to go in next code
-            for tablename, fieldname in uniques:
+            for tablename, fieldname in remove_uniques:
                 self.remove_unique(tablename, fieldname)
 
         if ondeletes:
@@ -197,10 +211,10 @@ class S3Migration(object):
         # Remove fields which need to be altered in next code
         if strbools:
             for tablename, fieldname in strbools:
-                self.drop(tablename, fieldname)
+                self.drop_field(tablename, fieldname)
         if strints:
             for tablename, fieldname in strints:
-                self.drop(tablename, fieldname)
+                self.drop_field(tablename, fieldname)
 
         self.db.commit()
 
@@ -228,7 +242,6 @@ class S3Migration(object):
 
         # Create clean folder for the backup
         if os.path.exists(folder):
-            import shutil
             shutil.rmtree(folder)
             import time
             time.sleep(1)
@@ -276,7 +289,7 @@ class S3Migration(object):
                         _skip.append(tablename)
                     except:
                         import sys
-                        print "Skipping %s: %s" % (tablename, sys.exc_info()[1])
+                        sys.stderr.write("Skipping %s: %s\n" % (tablename, sys.exc_info()[1]))
                 else:
                     try:
                         db_bak.define_table(tablename, db[tablename])
@@ -288,7 +301,7 @@ class S3Migration(object):
                         _skip.append(tablename)
                     except:
                         import sys
-                        print "Skipping %s: %s" % (tablename, sys.exc_info()[1])
+                        sys.stderr.write("Skipping %s: %s\n" % (tablename, sys.exc_info()[1]))
             skip = _skip
 
         # Which tables do we need to backup?
@@ -336,19 +349,177 @@ class S3Migration(object):
         self.db_bak = db_bak
 
     # -------------------------------------------------------------------------
-    def migrate(self):
+    def pull(self, version=None):
         """
-            Perform the migration
-            @ToDo
+            Update the Eden code
         """
 
-        # Update code: git pull
-        # run_models_in(environment)
-        # or
-        # Set migrate=True in models/000_config.py
-        # current.s3db.load_all_models() via applications/eden/static/scripts/tools/noop.py
-        # Set migrate=False in models/000_config.py
-        pass
+        #if GITPYTHON:
+        #else:
+        #import s3log
+        #s3log.S3Log.setup()
+        #current.log.warning("GitPython not installed, will need to call out to Git via CLI")
+
+        # Copy the current working directory to revert back to later
+        cwd = os.getcwd()
+
+        # Change to the Eden folder
+        folder = current.request.folder
+        os.chdir(os.path.join(cwd, folder))
+
+        # Remove old compiled code
+        remove_compiled_application(folder)
+
+        # Reset to remove any hotfixes
+        subprocess.call(["git", "reset", "--hard", "HEAD"])
+
+        # Store the current version
+        old_version = subprocess.check_output(["git", "describe", "--always", "HEAD"])
+        self.old_version = old_version.strip()
+
+        # Pull
+        subprocess.call(["git", "pull"])
+
+        if version:
+            # Checkout this version
+            subprocess.call(["git", "checkout", version])
+
+        # Change back
+        os.chdir(cwd)
+
+    # -------------------------------------------------------------------------
+    def find_script(self):
+        """
+            Find the upgrade script(s) to run
+        """
+
+        old_version = self.old_version
+        if not old_version:
+            # Nothing we can do
+            return
+
+        # Find the current version
+        new_version = subprocess.check_output(["git", "describe", "--always", "HEAD"])
+        new_version = new_version.strip()
+
+        # Look for a script to the current version
+        path = os.path.join(request.folder, "static", "scripts", "upgrade")
+
+    # -------------------------------------------------------------------------
+    def run_model(self):
+        """
+            Execute all the models/
+        """
+
+        if not hasattr(current, "db"):
+            run_models_in(self.environment)
+
+    # -------------------------------------------------------------------------
+    def compile(self):
+        """
+            Compile the Eden code
+        """
+
+        # Load the base Model
+        self.run_model()
+
+        from gluon.fileutils import up
+
+        request = current.request
+        os_path = os.path
+        join = os_path.join
+
+        # Pass View Templates to Compiler
+        settings = current.deployment_settings
+        s3 = current.response.s3
+        s3.views = views = {}
+        s3.theme = theme = settings.get_theme()
+        if theme != "default":
+            folder = request.folder
+            location = settings.get_template_location()
+            exists = os_path.exists
+            for view in ["create.html",
+                         "dashboard.html",
+                         #"delete.html",
+                         "display.html",
+                         "iframe.html",
+                         "list.html",
+                         "list_filter.html",
+                         "map.html",
+                         #"merge.html",
+                         "plain.html",
+                         "popup.html",
+                         "profile.html",
+                         "report.html",
+                         #"review.html",
+                         "summary.html",
+                         #"timeplot.html",
+                         "update.html",
+                         ]:
+                if exists(join(folder, location, "templates", theme, "views", "_%s" % view)):
+                    views[view] = "../%s/templates/%s/views/_%s" % (location, theme, view)
+
+        def apath(path="", r=None):
+            """
+            Builds a path inside an application folder
+
+            Parameters
+            ----------
+            path:
+                path within the application folder
+            r:
+                the global request object
+
+            """
+
+            opath = up(r.folder)
+            while path[:3] == "../":
+                (opath, path) = (up(opath), path[3:])
+            return join(opath, path).replace("\\", "/")
+
+        folder = apath(request.application, request)
+        compile_application(folder)
+
+    # -------------------------------------------------------------------------
+    def migrate(self):
+        """
+            Perform an automatic database migration
+        """
+
+        # Load the base model
+        self.run_model()
+
+        # Load all conditional models
+        current.s3db.load_all_models()
+
+    # -------------------------------------------------------------------------
+    def refresh_roles(self):
+        """
+            Refresh the Permissions
+        """
+
+        # Clear the Permissions table
+        current.s3db.s3_permission.truncate()
+
+        # Add Anonymous permissions from zzz_1st_run
+        auth = current.auth
+        acl = auth.permission
+        auth.s3_update_acls(
+                "ANONYMOUS",
+                {"t": "org_organisation", "uacl": acl.READ},
+                {"c": "org", "f": "sites_for_org", "uacl": acl.READ},
+        )
+
+        # Allow loading of Org model w/o crashing
+        current.response.s3.crud_strings = Storage()
+
+        # Import the new ACLs
+        from s3 import S3BulkImporter
+        bi = S3BulkImporter()
+        template = current.deployment_settings.get_template()
+        filename = os.path.join(current.request.folder, "modules", "templates", template, "auth_roles.csv")
+        bi.import_role(filename)
+        current.db.commit()
 
     # -------------------------------------------------------------------------
     def post(self, moves=None,
@@ -534,7 +705,50 @@ class S3Migration(object):
             return None
 
     # -------------------------------------------------------------------------
-    def drop(self, tablename, fieldname):
+    def add_notnull(self, tablename, fieldname):
+        """
+            Add a notnull constraint to a field
+        """
+
+        db = self.db
+        db_engine = self.db_engine
+
+        # Modify the database
+        if db_engine == "sqlite":
+            # @ToDo: http://www.sqlite.org/lang_altertable.html
+            raise NotImplementedError
+
+        elif db_engine == "mysql":
+            # http://dev.mysql.com/doc/refman/5.7/en/alter-table.html
+            raise NotImplementedError
+
+        elif db_engine == "postgres":
+            # http://www.postgresql.org/docs/9.3/static/sql-altertable.html
+            sql = "ALTER TABLE %(tablename)s ALTER COLUMN %(fieldname)s SET NOT NULL;" % \
+                dict(tablename=tablename, fieldname=fieldname)
+
+        try:
+            db.executesql(sql)
+        except:
+            import sys
+            sys.stderr.write("%s\n" % sys.exc_info()[1])
+
+        # Modify the .table file
+        table = db[tablename]
+        fields = []
+        for fn in table.fields:
+            field = table[fn]
+            if fn == fieldname:
+                field.notnull = True
+            fields.append(field)
+        db.__delattr__(tablename)
+        db.tables.remove(tablename)
+        db.define_table(tablename, *fields,
+                        # Rebuild the .table file from this definition
+                        fake_migrate=True)
+
+    # -------------------------------------------------------------------------
+    def drop_field(self, tablename, fieldname):
         """
             Drop a field from a table
             e.g. for when changing type
@@ -563,8 +777,7 @@ class S3Migration(object):
             db.executesql(sql)
         except:
             import sys
-            e = sys.exc_info()[1]
-            print >> sys.stderr, e
+            sys.stderr.write("%s\n" % sys.exc_info()[1])
 
         # Modify the .table file
         table = db[tablename]
@@ -612,18 +825,37 @@ class S3Migration(object):
                 sql = "ALTER TABLE `%(tablename)s` DROP FOREIGN KEY `%(fk)s`, ALTER TABLE %(tablename)s ADD CONSTRAINT %(fk)s FOREIGN KEY (%(fieldname)s) REFERENCES %(reftable)s(id) ON DELETE %(ondelete)s;" % \
                     dict(tablename=tablename, fk=fk, fieldname=fieldname, reftable=reftable, ondelete=ondelete)
 
+                try:
+                    executesql(sql)
+                except:
+                    import sys
+                    sys.stderr.write("Error: Cannot amend ondelete for Table %s and Field %s\n" % (tablename, fieldname))
+                    sys.stderr.write("%s\n" % sys.exc_info()[1])
+
             elif db_engine == "postgres":
                 # http://www.postgresql.org/docs/9.3/static/sql-altertable.html
-                sql = "ALTER TABLE %(tablename)s DROP CONSTRAINT %(tablename)s_%(fieldname)s_fkey, ALTER TABLE %(tablename)s ADD CONSTRAINT %(tablename)s_%(fieldname)s_fkey FOREIGN KEY (%(fieldname)s) REFERENCES %(reftable)s ON DELETE %(ondelete)s;" % \
+                sql = "ALTER TABLE %(tablename)s DROP CONSTRAINT %(tablename)s_%(fieldname)s_fkey;" % \
+                    dict(tablename=tablename, fieldname=fieldname)
+
+                try:
+                    executesql(sql)
+                except:
+                    import sys
+                    sys.stderr.write("Error: Cannot remove old ondelete for Table %s and Field %s\n" % (tablename, fieldname))
+                    sys.stderr.write("%s\n" % sys.exc_info()[1])
+
+                sql = "ALTER TABLE %(tablename)s ADD CONSTRAINT %(tablename)s_%(fieldname)s_fkey FOREIGN KEY (%(fieldname)s) REFERENCES %(reftable)s(id) ON DELETE %(ondelete)s;" % \
                     dict(tablename=tablename, fieldname=fieldname, reftable=reftable, ondelete=ondelete)
 
-            try:
-                executesql(sql)
-            except:
-                print "Error: Table %s with FK %s" % (tablename, fk)
-                import sys
-                e = sys.exc_info()[1]
-                print >> sys.stderr, e
+                try:
+                    executesql(sql)
+                except:
+                    import sys
+                    sys.stderr.write("Error: Cannot add new ondelete for Table %s and Field %s\n" % (tablename, fieldname))
+                    sys.stderr.write("%s\n" % sys.exc_info()[1])
+
+            else:
+                raise NotImplementedError
 
     # -------------------------------------------------------------------------
     def remove_foreign(self, tablename, fieldname):
@@ -666,10 +898,52 @@ class S3Migration(object):
             try:
                 executesql(sql)
             except:
-                print "Error: Table %s with FK %s" % (tablename, fk)
                 import sys
-                e = sys.exc_info()[1]
-                print >> sys.stderr, e
+                sys.stderr.write("Error: Table %s with FK %s\n" % (tablename, fk))
+                sys.stderr.write("%s\n" % sys.exc_info()[1])
+
+    # -------------------------------------------------------------------------
+    def remove_notnull(self, tablename, fieldname):
+        """
+            Remove a notnull constraint from a field
+        """
+
+        db = self.db
+        db_engine = self.db_engine
+
+        # Modify the database
+        if db_engine == "sqlite":
+            # @ToDo: http://www.sqlite.org/lang_altertable.html
+            raise NotImplementedError
+
+        elif db_engine == "mysql":
+            # http://dev.mysql.com/doc/refman/5.7/en/alter-table.html
+            raise NotImplementedError
+
+        elif db_engine == "postgres":
+            # http://www.postgresql.org/docs/9.3/static/sql-altertable.html
+            sql = "ALTER TABLE %(tablename)s ALTER COLUMN %(fieldname)s DROP NOT NULL;" % \
+                dict(tablename=tablename, fieldname=fieldname)
+
+        try:
+            db.executesql(sql)
+        except:
+            import sys
+            sys.stderr.write("%s\n" % sys.exc_info()[1])
+
+        # Modify the .table file
+        table = db[tablename]
+        fields = []
+        for fn in table.fields:
+            field = table[fn]
+            if fn == fieldname:
+                field.notnull = False
+            fields.append(field)
+        db.__delattr__(tablename)
+        db.tables.remove(tablename)
+        db.define_table(tablename, *fields,
+                        # Rebuild the .table file from this definition
+                        fake_migrate=True)
 
     # -------------------------------------------------------------------------
     def remove_unique(self, tablename, fieldname):
@@ -699,8 +973,7 @@ class S3Migration(object):
             db.executesql(sql)
         except:
             import sys
-            e = sys.exc_info()[1]
-            print >> sys.stderr, e
+            sys.stderr.write("%s\n" % sys.exc_info()[1])
 
         # Modify the .table file
         table = db[tablename]
@@ -765,7 +1038,7 @@ class S3Migration(object):
             db.executesql(sql)
 
         elif db_engine == "postgres":
-            sql = "ALTER TABLE %s RENAME COLUMN %s TO %s" % \
+            sql = "ALTER TABLE %s RENAME COLUMN %s TO %s;" % \
                 (tablename, fieldname_old, fieldname_new)
             db.executesql(sql)
 
@@ -786,7 +1059,8 @@ class S3Migration(object):
                                                     tablename_new)
             self.db.executesql(sql)
         except Exception, e:
-            print e
+            import sys
+            sys.stderr.write("%s\n" % e)
 
     # -------------------------------------------------------------------------
     def list_field_to_reference(self,

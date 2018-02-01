@@ -2,7 +2,7 @@
 
 """ Sahana Eden Disaster Victim Identification Model
 
-    @copyright: 2009-2016 (c) Sahana Software Foundation
+    @copyright: 2009-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -85,15 +85,17 @@ class S3DVIModel(S3Model):
         tablename = "dvi_recreq"
         define_table(tablename,
                      s3_datetime(label = T("Date/Time of Find"),
-                                 empty=False,
+                                 empty = False,
                                  default = "now",
-                                 future=0
+                                 future = 0,
                                  ),
                      Field("marker", length=64,
                            label = T("Marker"),
+                           requires = IS_LENGTH(64),
                            comment = DIV(_class="tooltip",
                                          _title="%s|%s" % (T("Marker"),
-                                                           T("Number or code used to mark the place of find, e.g. flag code, grid coordinates, site reference number or similar (if available)")))),
+                                                           T("Number or code used to mark the place of find, e.g. flag code, grid coordinates, site reference number or similar (if available)"))),
+                           ),
                      person_id(label = T("Finder")),
                      Field("bodies_found", "integer",
                            label = T("Bodies found"),
@@ -145,11 +147,15 @@ class S3DVIModel(S3Model):
                                  ])
 
         # Reusable fields
+        represent = S3Represent(lookup="dvi_recreq",
+                                fields = ["marker", "date", "bodies_found"],
+                                labels = T("[%(marker)s] %(date)s: %(bodies_found)s bodies"),
+                                )
         dvi_recreq_id = S3ReusableField("dvi_recreq_id", "reference %s" % tablename,
                                         requires = IS_EMPTY_OR(IS_ONE_OF(db,
                                                         "dvi_recreq.id",
-                                                        "[%(marker)s] %(date)s: %(bodies_found)s bodies")),
-                                        represent = lambda id: id,
+                                                        represent)),
+                                        represent = represent,
                                         label=T("Recovery Request"),
                                         ondelete = "RESTRICT")
 
@@ -160,29 +166,35 @@ class S3DVIModel(S3Model):
         define_table(tablename,
                      super_link("pe_id", "pr_pentity"),
                      super_link("site_id", "org_site"),
-                     Field("name",
-                           length=255,
-                           unique=True,
-                           notnull=True,
-                           label = T("Morgue")),
+                     Field("name", length=64, unique=True, notnull=True,
+                           label = T("Morgue"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(64),
+                                       IS_NOT_ONE_OF(db,
+                                                     "dvi_morgue.name",
+                                                     ),
+                                       ],
+                           ),
                      self.org_organisation_id(),
                      Field("description",
-                           label = T("Description")),
+                           label = T("Description"),
+                           ),
                      location_id(),
                      Field("obsolete", "boolean",
-                     label = T("Obsolete"),
-                     represent = lambda opt: \
-                                 (opt and [T("Obsolete")] or [messages["NONE"]])[0],
-                     default = False,
-                     readable = False,
-                     writable = False),
+                           label = T("Obsolete"),
+                           represent = lambda opt: \
+                             (opt and [T("Obsolete")] or [messages["NONE"]])[0],
+                           default = False,
+                           readable = False,
+                           writable = False,
+                           ),
                      *s3_meta_fields())
 
         # Reusable Field
         morgue_id = S3ReusableField("morgue_id", "reference %s" % tablename,
                                     requires = IS_EMPTY_OR(IS_ONE_OF(db,
                                                     "dvi_morgue.id", "%(name)s")),
-                                    represent = self.morgue_represent,
+                                    represent = S3Represent(lookup="dvi_morgue"),
                                     ondelete = "RESTRICT")
 
         # CRUD Strings
@@ -219,7 +231,7 @@ class S3DVIModel(S3Model):
                      self.pr_pe_label(requires = [IS_NOT_EMPTY(error_message=T("Enter a unique label!")),
                                                   IS_NOT_ONE_OF(db, "dvi_body.pe_label")]),
                      morgue_id(),
-                     dvi_recreq_id(label = T("Recovery Request")),
+                     dvi_recreq_id(),
                      s3_datetime("date_of_recovery",
                                  label = T("Date of Recovery"),
                                  empty=False,
@@ -469,21 +481,5 @@ class S3DVIModel(S3Model):
                            title = c_title,
                            tooltip = c_comment,
                            )
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def morgue_represent(id):
-
-        if not id:
-            return current.messages["NONE"]
-
-        db = current.db
-        table = db.dvi_morgue
-        row = db(table.id == id).select(table.name,
-                                        limitby=(0, 1)).first()
-        try:
-            return row.name
-        except:
-            return current.messages.UNKNOWN_OPT
 
 # END =========================================================================

@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: (c) 2010-2015 Sahana Software Foundation
+    @copyright: (c) 2010-2018 Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -35,9 +35,10 @@ __all__ = ("single_phone_number_pattern",
            "s3_single_phone_requires",
            "s3_phone_requires",
            "IS_ACL",
-           "IS_ADD_PERSON_WIDGET",
            "IS_ADD_PERSON_WIDGET2",
            "IS_COMBO_BOX",
+           "IS_DYNAMIC_FIELDNAME",
+           "IS_DYNAMIC_FIELDTYPE",
            "IS_FLOAT_AMOUNT",
            "IS_HTML_COLOUR",
            "IS_INT_AMOUNT",
@@ -55,6 +56,7 @@ __all__ = ("single_phone_number_pattern",
            "IS_NOT_ONE_OF",
            "IS_PERSON_GENDER",
            "IS_PHONE_NUMBER",
+           "IS_PHONE_NUMBER_MULTI",
            "IS_PROCESSED_IMAGE",
            "IS_SITE_SELECTOR",
            "IS_UTC_DATETIME",
@@ -64,19 +66,9 @@ __all__ = ("single_phone_number_pattern",
            )
 
 import datetime
+import json
 import re
-import time
-
-JSONErrors = (NameError, TypeError, ValueError, AttributeError, KeyError)
-try:
-    import json # try stdlib (Python 2.6)
-except ImportError:
-    try:
-        import simplejson as json # try external module
-    except:
-        import gluon.contrib.simplejson as json # fallback to pure-Python module
-        from gluon.contrib.simplejson.decoder import JSONDecodeError
-        JSONErrors += (JSONDecodeError,)
+#import time
 
 from gluon import *
 #from gluon import current
@@ -86,6 +78,10 @@ from gluon.validators import Validator
 
 from s3datetime import S3DateTime
 from s3utils import s3_orderby_fields, s3_str, s3_unicode, s3_validate
+
+DEFAULT = lambda: None
+JSONERRORS = (NameError, TypeError, ValueError, AttributeError, KeyError)
+SEPARATORS = (",", ":")
 
 def translate(text):
     if text is None:
@@ -98,7 +94,6 @@ def translate(text):
 def options_sorter(x, y):
     return (s3_unicode(x[1]).upper() > s3_unicode(y[1]).upper() and 1) or -1
 
-DEFAULT = lambda: None
 # -----------------------------------------------------------------------------
 # Phone number requires
 # Multiple phone numbers can be separated by comma, slash, semi-colon.
@@ -121,49 +116,80 @@ s3_phone_requires = IS_MATCH(multi_phone_number_pattern,
 # =============================================================================
 class IS_JSONS3(Validator):
     """
-    Web2Py IS_JSON validator extended for CSV imports
-    Example:
-        Used as::
+        Similar to web2py's IS_JSON validator, but extended to handle
+        single quotes in dict keys (=invalid JSON) from CSV imports.
 
-            INPUT(_type='text', _name='name',
-                requires=IS_JSON(error_message="This is not a valid json input")
+        Example:
 
-            >>> IS_JSON()('{"a": 100}')
+            INPUT(_type='text', _name='name', requires=IS_JSONS3())
+
+            >>> IS_JSONS3()('{"a": 100}')
             ({u'a': 100}, None)
 
-            >>> IS_JSON()('spam1234')
+            >>> IS_JSONS3()('spam1234')
             ('spam1234', 'invalid json')
     """
 
-    def __init__(self, error_message="Invalid JSON"):
-        try:
-            self.driver_auto_json = current.db._adapter.driver_auto_json
-        except:
-            current.log.warning("Update Web2Py to 2.9.11 to get native JSON support")
-            self.driver_auto_json = []
+    def __init__(self,
+                 native_json=False,
+                 error_message="Invalid JSON"):
+        """
+            Constructor
+
+            @param native_json: return the JSON string rather than
+                                a Python object (e.g. when the field
+                                is "string" type rather than "json")
+            @param error_message: the error message
+        """
+
+        self.native_json = native_json
         self.error_message = error_message
 
     # -------------------------------------------------------------------------
     def __call__(self, value):
-        # Convert CSV import format to valid JSON
-        value = value.replace("'", "\"")
-        try:
-            if "dumps" in self.driver_auto_json:
-                json.loads(value) # raises error in case of malformed JSON
-                return (value, None) #  the serialized value is not passed
+        """
+            Validator, validates a string and converts it into db format
+        """
+
+        error = lambda v, e: (v, "%s: %s" % (current.T(self.error_message), e))
+
+        if current.response.s3.bulk:
+            # CSV import produces invalid JSON (single quotes),
+            # which would still be valid Python though, so try
+            # using ast to decode, then re-dumps as valid JSON:
+            import ast
+            try:
+                value_ = json.dumps(ast.literal_eval(value),
+                                    separators = SEPARATORS,
+                                    )
+            except JSONERRORS + (SyntaxError,), e:
+                return error(value, e)
+            if self.native_json:
+                return (value_, None)
             else:
-                return (json.loads(value), None)
-        except JSONErrors, e:
-            return (value, "%s: %s" % (current.T(self.error_message), e))
+                return (json.loads(value_), None)
+        else:
+            # Coming from UI, so expect valid JSON
+            try:
+                if self.native_json:
+                    json.loads(value) # raises error in case of malformed JSON
+                    return (value, None) #  the serialized value is not passed
+                else:
+                    return (json.loads(value), None)
+            except JSONERRORS, e:
+                return error(value, e)
 
     # -------------------------------------------------------------------------
     def formatter(self, value):
-        if value is None:
-            return None
-        if "loads" in self.driver_auto_json:
+        """
+            Formatter, converts the db format into a string
+        """
+
+        if value is None or \
+           self.native_json and isinstance(value, basestring):
             return value
         else:
-            return json.dumps(value)
+            return json.dumps(value, separators = SEPARATORS)
 
 # =============================================================================
 class IS_LAT(Validator):
@@ -481,10 +507,14 @@ class IS_FLOAT_AMOUNT(IS_FLOAT_IN_RANGE):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def represent(number, precision=None):
+    def represent(number, precision=None, fixed=False):
         """
             Change the format of the number depending on the language
             Based on https://code.djangoproject.com/browser/django/trunk/django/utils/numberformat.py
+
+            @param number: the number
+            @param precision: the number of decimal places to show
+            @param fixed: show decimal places even if the decimal part is 0
         """
 
         if number is None:
@@ -500,10 +530,12 @@ class IS_FLOAT_AMOUNT(IS_FLOAT_IN_RANGE):
                 dec_part = dec_part[:precision]
         else:
             int_part, dec_part = str_number, ""
-        if int(dec_part) == 0:
+
+        if dec_part and int(dec_part) == 0 and not fixed:
             dec_part = ""
         elif precision is not None:
             dec_part = dec_part + ("0" * (precision - len(dec_part)))
+
         if dec_part:
             dec_part = DECIMAL_SEPARATOR + dec_part
 
@@ -1080,7 +1112,6 @@ class IS_ONE_OF_EMPTY_SELECT(IS_ONE_OF_EMPTY):
 
 # =============================================================================
 class IS_NOT_ONE_OF(IS_NOT_IN_DB):
-
     """
         Filtered version of IS_NOT_IN_DB()
             - understands the 'deleted' field.
@@ -1091,26 +1122,74 @@ class IS_NOT_ONE_OF(IS_NOT_IN_DB):
     """
 
     def __call__(self, value):
+
         value = str(value)
         if not value.strip():
+            # Empty => error
             return (value, translate(self.error_message))
+
         if value in self.allowed_override:
+            # Uniqueness-requirement overridden
             return (value, None)
+
+        # Establish table and field
         (tablename, fieldname) = str(self.field).split(".")
         dbset = self.dbset
         table = dbset.db[tablename]
         field = table[fieldname]
+
+        # Does the table allow archiving ("soft-delete")?
+        archived = "deleted" in table
+
+        # Does the table use multiple columns as key?
+        record_id = self.record_id
+        keys = record_id.keys() if isinstance(record_id, dict) else None
+
+        # Build duplicate query
+        # => if the field has a unique-constraint, we must include
+        #    archived ("soft-deleted") records, otherwise the
+        #    validator will pass, but the DB-write will crash
         query = (field == value)
-        if "deleted" in table:
+        if not field.unique and archived:
             query = (table["deleted"] == False) & query
-        rows = dbset(query).select(limitby=(0, 1))
-        if len(rows) > 0:
-            if isinstance(self.record_id, dict):
-                for f in self.record_id:
-                    if str(getattr(rows[0], f)) != str(self.record_id[f]):
+
+        # Limit the fields we extract to just keys+deleted
+        fields = []
+        if keys:
+            fields = [table[k] for k in keys]
+        else:
+            fields = [table._id]
+        if archived:
+            fields.append(table.deleted)
+
+        # Find conflict
+        row = dbset(query).select(limitby=(0, 1), *fields).first()
+        if row:
+            if keys:
+                # Keyed table
+                for f in keys:
+                    if str(getattr(row, f)) != str(record_id[f]):
                         return (value, translate(self.error_message))
-            elif str(rows[0][table._id.name]) != str(self.record_id):
+
+            elif str(row[table._id.name]) != str(record_id):
+
+                if archived and row.deleted and field.type in ("string", "text"):
+                    # Table supports archiving, and the conflicting
+                    # record is "deleted" => try updating the archived
+                    # record by appending a random tag to the field value
+                    import random
+                    tagged = "%s.[%s]" % (value,
+                                         "".join(random.choice("abcdefghijklmnopqrstuvwxyz")
+                                                 for _ in range(8))
+                                         )
+                    try:
+                        row.update_record(**{fieldname: tagged})
+                    except:
+                        # Failed => nothing else we can try
+                        return (value, translate(self.error_message))
+                else:
                     return (value, translate(self.error_message))
+
         return (value, None)
 
 # =============================================================================
@@ -1855,216 +1934,6 @@ class IS_SITE_SELECTOR(IS_LOCATION_SELECTOR):
         return (value, self.error_message or current.T("Invalid Site!"))
 
 # =============================================================================
-class IS_ADD_PERSON_WIDGET(Validator):
-    """
-        Validator for S3AddPersonWidget
-    """
-
-    def __init__(self,
-                 error_message=None):
-
-        self.error_message = error_message
-        # Tell s3_mark_required that this validator doesn't accept NULL values
-        self.mark_required = True
-
-    # -------------------------------------------------------------------------
-    def __call__(self, value):
-
-        if current.response.s3.bulk:
-            # Pointless in imports
-            return (value, None)
-
-        person_id = None
-        if value:
-            try:
-                person_id = int(value)
-            except:
-                pass
-
-        request = current.request
-        if request.env.request_method == "POST":
-            if "import" in request.args:
-                # Widget Validator not appropriate for this context
-                return (person_id, None)
-
-            T = current.T
-            db = current.db
-            s3db = current.s3db
-
-            ptable = db.pr_person
-            ctable = db.pr_contact
-
-            def email_validate(value, person_id):
-                """ Validate the email address """
-
-                error_message = T("Please enter a valid email address")
-
-                if value is not None:
-                    value = value.strip()
-
-                # No email?
-                if not value:
-                    email_required = \
-                        current.deployment_settings.get_hrm_email_required()
-                    if email_required:
-                        return (value, error_message)
-                    return (value, None)
-
-                # Valid email?
-                value, error = IS_EMAIL()(value)
-                if error:
-                    return value, error_message
-
-                # Unique email?
-                query = (ctable.deleted != True) & \
-                        (ctable.contact_method == "EMAIL") & \
-                        (ctable.value == value)
-                if person_id:
-                    query &= (ctable.pe_id == ptable.pe_id) & \
-                             (ptable.id != person_id)
-                email = db(query).select(ctable.id, limitby=(0, 1)).first()
-                if email:
-                    error_message = T("This email-address is already registered.")
-                    return value, error_message
-
-                # Ok!
-                return value, None
-
-            _vars = request.post_vars
-            mobile = _vars["mobile_phone"]
-            if mobile:
-                # Validate the phone number
-                regex = re.compile(single_phone_number_pattern)
-                if not regex.match(mobile):
-                    error = T("Invalid phone number")
-                    return (person_id, error)
-
-            if person_id:
-                # Filter out location_id (location selector form values
-                # being processed only after this widget has been validated)
-                _vars = Storage([(k, _vars[k])
-                                 for k in _vars if k != "location_id"])
-
-                # Validate and update the person record
-                query = (ptable.id == person_id)
-                data = Storage()
-                for f in ptable._filter_fields(_vars):
-                    value, error = s3_validate(ptable, f, _vars[f])
-                    if error:
-                        return (person_id, error)
-                    if value:
-                        if f == "date_of_birth":
-                            data[f] = value.isoformat()
-                        else:
-                            data[f] = value
-                if data:
-                    db(query).update(**data)
-
-                # Update the contact information & details
-                record = db(query).select(ptable.pe_id,
-                                          limitby=(0, 1)).first()
-                if record:
-                    pe_id = record.pe_id
-
-                    r = ctable(pe_id=pe_id, contact_method="EMAIL")
-                    email = _vars["email"]
-                    if email:
-                        query = (ctable.pe_id == pe_id) & \
-                                (ctable.contact_method == "EMAIL") &\
-                                (ctable.deleted != True)
-                        r = db(query).select(ctable.value,
-                                             limitby=(0, 1)).first()
-                        if r: # update
-                            if email != r.value:
-                                db(query).update(value=email)
-                        else: # insert
-                            ctable.insert(pe_id=pe_id,
-                                          contact_method="EMAIL",
-                                          value=email)
-
-                    if mobile:
-                        query = (ctable.pe_id == pe_id) & \
-                                (ctable.contact_method == "SMS") &\
-                                (ctable.deleted != True)
-                        r = db(query).select(ctable.value,
-                                             limitby=(0, 1)).first()
-                        if r: # update
-                            if mobile != r.value:
-                                db(query).update(value=mobile)
-                        else: # insert
-                            ctable.insert(pe_id=pe_id,
-                                          contact_method="SMS",
-                                          value=mobile)
-
-                    occupation = _vars["occupation"]
-                    if occupation:
-                        pdtable = s3db.pr_person_details
-                        query = (pdtable.person_id == person_id) & \
-                                (pdtable.deleted != True)
-                        r = db(query).select(pdtable.occupation,
-                                             limitby=(0, 1)).first()
-                        if r: # update
-                            if occupation != r.occupation:
-                                db(query).update(occupation=occupation)
-                        else: # insert
-                            pdtable.insert(person_id=person_id,
-                                           occupation=occupation)
-
-            else:
-                # Create a new person record
-
-                # Filter out location_id (location selector form values
-                # being processed only after this widget has been validated)
-                _vars = Storage([(k, _vars[k])
-                                 for k in _vars if k != "location_id"])
-
-                # Validate the email
-                email, error = email_validate(_vars.email, None)
-                if error:
-                    return (None, error)
-
-                # Validate and add the person record
-                for f in ptable._filter_fields(_vars):
-                    value, error = s3_validate(ptable, f, _vars[f])
-                    if error:
-                        return (None, error)
-                    elif f == "date_of_birth" and \
-                        value:
-                        _vars[f] = value.isoformat()
-                person_id = ptable.insert(**ptable._filter_fields(_vars))
-
-                # Need to update post_vars here,
-                # for some reason this doesn't happen through validation alone
-                request.post_vars.update(person_id=str(person_id))
-
-                if person_id:
-                    # Update the super-entities
-                    s3db.update_super(ptable, dict(id=person_id))
-                    # Read the created pe_id
-                    query = (ptable.id == person_id)
-                    person = db(query).select(ptable.pe_id,
-                                              limitby=(0, 1)).first()
-
-                    # Add contact information as provided
-                    if _vars.email:
-                        ctable.insert(pe_id=person.pe_id,
-                                      contact_method="EMAIL",
-                                      value=_vars.email)
-                    if mobile:
-                        ctable.insert(pe_id=person.pe_id,
-                                      contact_method="SMS",
-                                      value=_vars.mobile_phone)
-                    if _vars.occupation:
-                        s3db.pr_person_details.insert(person_id = person_id,
-                                                      occupation = _vars.occupation)
-                else:
-                    # Something went wrong
-                    return (None, self.error_message or \
-                                    T("Could not add person record"))
-
-        return (person_id, None)
-
-# =============================================================================
 class IS_ADD_PERSON_WIDGET2(Validator):
     """
         Validator for S3AddPersonWidget2
@@ -2189,7 +2058,8 @@ class IS_ADD_PERSON_WIDGET2(Validator):
 
                 # No email?
                 if not value:
-                    email_required = settings.get_hrm_email_required()
+                    email_required = settings.get_pr_request_email() and \
+                                     settings.get_hrm_email_required()
                     if email_required:
                         return (value, error_message)
                     return (value, None)
@@ -2587,7 +2457,7 @@ class IS_UTC_DATETIME(Validator):
                            directives refer to your strptime implementation
             @param error_message: error message for invalid date/times
             @param offset_error: error message for invalid UTC offset
-            @param utc_offset: offset to UTC in seconds, defaults to the
+            @param utc_offset: offset to UTC in hours, defaults to the
                                current session's UTC offset
             @param calendar: calendar to use for string evaluation, defaults
                              to current.calendar
@@ -2596,9 +2466,9 @@ class IS_UTC_DATETIME(Validator):
         """
 
         if format is None:
-            self.format = dtfmt = str(current.deployment_settings.get_L10n_datetime_format())
+            self.format = str(current.deployment_settings.get_L10n_datetime_format())
         else:
-            self.format = dtfmt = str(format)
+            self.format = str(format)
 
         if isinstance(calendar, basestring):
             # Instantiate calendar by name
@@ -2617,13 +2487,13 @@ class IS_UTC_DATETIME(Validator):
         T = current.T
         if error_message is None:
             if minimum is None and maximum is None:
-                error_message = T("Date is required!")
+                error_message = T("Date/Time is required!")
             elif minimum is None:
-                error_message = T("Date must be %(max)s or earlier!")
+                error_message = T("Date/Time must be %(max)s or earlier!")
             elif maximum is None:
-                error_message = T("Date must be %(min)s or later!")
+                error_message = T("Date/Time must be %(min)s or later!")
             else:
-                error_message = T("Date must be between %(min)s and %(max)s!")
+                error_message = T("Date/Time must be between %(min)s and %(max)s!")
         if offset_error is None:
             offset_error = T("Invalid UTC offset!")
 
@@ -2647,14 +2517,12 @@ class IS_UTC_DATETIME(Validator):
         if utc_offset is None:
             # Fall back to validator default
             utc_offset = self.utc_offset
+
         if utc_offset is None:
             # Fall back to session default
             utc_offset = current.session.s3.utc_offset
 
-        offset, error = IS_UTC_OFFSET()(utc_offset)
-        if error:
-            offset = 0 # fallback to UTC
-
+        # Convert into offset seconds
         return S3DateTime.get_offset_value(utc_offset)
 
     # -------------------------------------------------------------------------
@@ -2683,7 +2551,11 @@ class IS_UTC_DATETIME(Validator):
                                               local=True,
                                               )
             if dt is None:
-                return(value, self.error_message)
+                # Try parsing as date
+                dt_ = self.calendar.parse_date(dtstr)
+                if dt_ is None:
+                    return(value, self.error_message)
+                dt = datetime.datetime.combine(dt_, datetime.datetime.min.time())
         elif isinstance(value, datetime.datetime):
             dt = value
             utc_offset = None
@@ -2723,7 +2595,7 @@ class IS_UTC_DATETIME(Validator):
         """
 
         if not value:
-            result = current.messages["NONE"]
+            return current.messages["NONE"]
 
         offset = self.delta()
         if offset:
@@ -2773,9 +2645,9 @@ class IS_UTC_DATE(IS_UTC_DATETIME):
         """
 
         if format is None:
-            self.format = dtfmt = str(current.deployment_settings.get_L10n_date_format())
+            self.format = str(current.deployment_settings.get_L10n_date_format())
         else:
-            self.format = dtfmt = str(format)
+            self.format = str(format)
 
         if isinstance(calendar, basestring):
             # Instantiate calendar by name
@@ -2834,12 +2706,12 @@ class IS_UTC_DATE(IS_UTC_DATETIME):
                 return(value, self.error_message)
         elif isinstance(value, datetime.datetime):
             dt = value
-            utc_offset = None
+            #utc_offset = None
             is_datetime = True
         elif isinstance(value, datetime.date):
             # Default to 0:00 hours in the current timezone
             dt = value
-            utc_offset = None
+            #utc_offset = None
         else:
             # Invalid type
             return (value, self.error_message)
@@ -2852,7 +2724,7 @@ class IS_UTC_DATE(IS_UTC_DATETIME):
             offset = self.delta()
             # Offset must be in range -2359 to +2359
             if not -86340 < offset < 86340:
-                return (val, self.offset_error)
+                return (value, self.offset_error)
             offset = datetime.timedelta(seconds=offset)
 
         if not is_datetime:
@@ -2876,7 +2748,7 @@ class IS_UTC_DATE(IS_UTC_DATETIME):
         """
 
         if not value:
-            result = current.messages["NONE"]
+            return current.messages["NONE"]
 
         offset = self.delta()
         if offset:
@@ -3001,8 +2873,9 @@ class QUANTITY_INV_ITEM(Validator):
         track_quantity = 0
         if args[1] == "track_item" and len(args) > 2:
             # look to see if we already have a quantity stored in the track item
-            id = args[2]
-            track_record = current.s3db.inv_track_item[id]
+            track_item_id = args[2]
+            # @ToDo: Optimise with limitby=(0,1)
+            track_record = current.s3db.inv_track_item[track_item_id]
             track_quantity = track_record.quantity
             if track_quantity >= float(value):
                 # value reduced or unchanged
@@ -3093,6 +2966,7 @@ class IS_IN_SET_LAZY(Validator):
         self.theset_fn = theset_fn
         self.theset = None
         self.labels = None
+        self.represent = represent
         self.error_message = error_message
         self.zero = zero
         self.sort = sort
@@ -3110,6 +2984,7 @@ class IS_IN_SET_LAZY(Validator):
                     self.labels = [str(label) for item, label in theset]
                 else:
                     self.theset = [str(item) for item in theset]
+                    represent = self.represent
                     if represent:
                         self.labels = [represent(item) for item in theset]
             else:
@@ -3231,31 +3106,177 @@ class IS_PHONE_NUMBER(Validator):
                      is converted into E.123 international notation.
         """
 
-        T = current.T
-        error_message = self.error_message
+        if isinstance(value, basestring):
+            value = value.strip()
+            if value and value[0] == unichr(8206):
+                # Strip the LRM character
+                value = value[1:]
+            number = s3_str(value)
+            number, error = s3_single_phone_requires(number)
+        else:
+            error = True
 
-        number = s3_str(value).strip()
-        number, error = s3_single_phone_requires(number)
         if not error:
             if self.international and \
                current.deployment_settings \
                       .get_msg_require_international_phone_numbers():
+
+                # Configure alternative error message
+                error_message = self.error_message
                 if not error_message:
-                    error_message = T("Enter phone number in international format like +46783754957")
+                    error_message = current.T("Enter phone number in international format like +46783754957")
+
                 # Require E.123 international format
                 number = "".join(re.findall("[\d+]+", number))
                 match = re.match("(\+)([1-9]\d+)$", number)
                 #match = re.match("(\+|00|\+00)([1-9]\d+)$", number)
+
                 if match:
                     number = "+%s" % match.groups()[1]
                     return (number, None)
             else:
                 return (number, None)
 
+        error_message = self.error_message
         if not error_message:
-            error_message = T("Enter a valid phone number")
+            error_message = current.T("Enter a valid phone number")
 
         return (value, error_message)
+
+# =============================================================================
+class IS_PHONE_NUMBER_MULTI(Validator):
+    """
+        Validator for multiple phone numbers.
+    """
+
+    def __init__(self,
+                 error_message = None):
+        """
+            Constructor
+
+            @param error_message: alternative error message
+        """
+
+        self.error_message = error_message
+
+    def __call__(self, value):
+        """
+            Validation of a value
+
+            @param value: the value
+            @return: tuple (value, error), where error is None if value
+                     is valid.
+        """
+
+        value = value.strip()
+        if value[0] == unichr(8206):
+            # Strip the LRM character
+            value = value[1:]
+        number = s3_str(value)
+        number, error = s3_phone_requires(number)
+        if not error:
+            return (number, None)
+
+        error_message = self.error_message
+        if not error_message:
+            error_message = current.T("Enter a valid phone number")
+
+        return (value, error_message)
+
+# =============================================================================
+class IS_DYNAMIC_FIELDNAME(Validator):
+    """ Validator for field names in dynamic tables """
+
+    PATTERN = re.compile("^[a-z]+[a-z0-9_]*$")
+
+    def __init__(self,
+                 error_message = "Invalid field name",
+                 ):
+        """
+            Constructor
+
+            @param error_message: the error message for invalid values
+        """
+
+        self.error_message = error_message
+
+    # -------------------------------------------------------------------------
+    def __call__(self, value):
+        """
+            Validation of a value
+
+            @param value: the value
+            @return: tuple (value, error)
+        """
+
+        if value:
+
+            name = str(value).lower().strip()
+
+            from s3fields import s3_all_meta_field_names
+
+            if name != "id" and \
+               name not in s3_all_meta_field_names() and \
+               self.PATTERN.match(name):
+                return (name, None)
+
+        return (value, self.error_message)
+
+# =============================================================================
+class IS_DYNAMIC_FIELDTYPE(Validator):
+    """ Validator for field types in dynamic tables """
+
+    SUPPORTED_TYPES = ("boolean",
+                       "date",
+                       "datetime",
+                       "double",
+                       "integer",
+                       "reference",
+                       "string",
+                       "text",
+                       "upload",
+                       )
+
+    def __init__(self,
+                 error_message = "Unsupported field type",
+                 ):
+        """
+            Constructor
+
+            @param error_message: the error message for invalid values
+        """
+
+        self.error_message = error_message
+
+    # -------------------------------------------------------------------------
+    def __call__(self, value):
+        """
+            Validation of a value
+
+            @param value: the value
+            @return: tuple (value, error)
+        """
+
+        if value:
+
+            field_type = str(value).lower().strip()
+
+            items = field_type.split(" ")
+            base_type = items[0]
+
+            if base_type == "reference":
+
+                # Verify that referenced table is specified and exists
+                if len(items) > 1:
+                    ktablename = items[1].split(".")[0]
+                    ktable = current.s3db.table(ktablename, db_only=True)
+                    if ktable:
+                        return (field_type, None)
+
+            elif base_type in self.SUPPORTED_TYPES:
+                return (field_type, None)
+
+        return (value, self.error_message)
 
 # =============================================================================
 class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
@@ -3269,7 +3290,8 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                  select = DEFAULT,
                  sort = False,
                  translate = False,
-                 zero = ""):
+                 zero = "",
+                 ):
         """
             Constructor
 
@@ -3280,10 +3302,10 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                            set explicitly to None to allow all languages
             @param sort: sort options in selector
             @param translate: translate the language options into
-                              the current UI language (only with
-                              explicit select=None)
+                              the current UI language
             @param zero: use this label for the empty-option (default="")
         """
+
         super(IS_ISO639_2_LANGUAGE_CODE, self).__init__(
                                                 self.language_codes(),
                                                 error_message = error_message,
@@ -3309,7 +3331,12 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
         language_codes = self.language_codes()
         if self._select:
             language_codes_dict = dict(language_codes)
-            items = [(k, v) for k, v in self._select.items()
+            if self.translate:
+                T = current.T
+                items = [(k, T(v)) for k, v in self._select.items()
+                            if k in language_codes_dict]
+            else:
+                items = [(k, v) for k, v in self._select.items()
                             if k in language_codes_dict]
         else:
             if self.translate:
@@ -3324,38 +3351,53 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
         return items
 
     # -------------------------------------------------------------------------
-    @classmethod
-    def represent(cls, code):
+    def represent(self, code):
         """
             Represent a language code by language name, uses the
             representation from deployment_settings if available
-            rather than translation into current UI language.
+            (to allow overrides).
 
             @param code: the language code
         """
 
+        if not code:
+            return current.messages["NONE"]
+
         l10n_languages = current.deployment_settings.get_L10n_languages()
-        if code in l10n_languages:
-            name = l10n_languages[code]
-        else:
-            name = cls.represent_local(code)
+        name = l10n_languages.get(code)
+        if not name:
+            name = dict(self.language_codes()).get(code.split("-")[0])
+            if name is None:
+                return current.messages.UNKNOWN_OPT
+
+        if self.translate:
+            name = current.T(name)
+
         return name
 
     # -------------------------------------------------------------------------
     @classmethod
     def represent_local(cls, code):
         """
-            Represent a language code by language name, translated
-            into current UI language (preferrable for database fields).
+            Represent a language code by the name of the language in that
+            language. e.g. for Use in a Language dropdown
 
             @param code: the language code
         """
 
-        name = dict(cls.language_codes()).get(code)
-        if name is None:
-            name = current.messages.UNKNOWN_OPT
-        else:
-            name = current.T(name)
+        if not code:
+            return current.messages["NONE"]
+
+        l10n_languages = current.deployment_settings.get_L10n_languages()
+        name = l10n_languages.get(code)
+        if not name:
+            name = dict(cls.language_codes()).get(code.split("-")[0])
+            if name is None:
+                return current.messages.UNKNOWN_OPT
+
+        T = current.T
+        name = s3_str(T(name, language=code))
+
         return name
 
     # -------------------------------------------------------------------------
@@ -3370,7 +3412,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
               no 'families' or Old
         """
 
-        return [#("aar", "Afar"),
+        lang = [#("aar", "Afar"),
                 ("aa", "Afar"),
                 #("abk", "Abkhazian"),
                 ("ab", "Abkhazian"),
@@ -3589,7 +3631,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("grb", "Grebo"),
                 #("grc", "Greek, Ancient (to 1453)"),
                 #("gre", "Greek, Modern (1453-)"),
-                ("el", "Greek, Modern (1453-)"),
+                ("el", "Greek"), # "Greek, Modern (1453-)"
                 #("grn", "Guarani"),
                 ("gn", "Guarani"),
                 ("gsw", "Swiss German; Alemannic; Alsatian"),
@@ -3760,7 +3802,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 #("mis", "Uncoded languages"),
                 #("mkh", "Mon-Khmer languages"),
                 #("mlg", "Malagasy"),
-                ("mg", "Malagasy"),
+                ("mg", "Malagasy"), # Madagascar
                 ("mlt", "Maltese"),
                 ("mt", "Maltese"),
                 ("mnc", "Manchu"),
@@ -3886,7 +3928,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("sel", "Selkup"),
                 #("sem", "Semitic languages"),
                 #("sga", "Irish, Old (to 900)"),
-                #("sgn", "Sign Languages"),
+                ("sgn", "Sign Languages"),
                 ("shn", "Shan"),
                 ("sid", "Sidamo"),
                 #("sin", "Sinhala; Sinhalese"),
@@ -4041,6 +4083,16 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("zun", "Zuni"),
                 #("zxx", "No linguistic content; Not applicable"),
                 ("zza", "Zaza; Dimili; Dimli; Kirdki; Kirmanjki; Zazaki"),
-                 ]
+                ]
+
+        settings = current.deployment_settings
+        l10n_languages = settings.get_L10n_languages()
+        lang += l10n_languages.items()
+        lang = list(set(lang)) # Remove duplicates
+        extra_codes = settings.get_L10n_extra_codes()
+        if extra_codes:
+            lang += extra_codes
+
+        return lang
 
 # END =========================================================================

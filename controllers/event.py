@@ -41,28 +41,60 @@ def event():
     # Pre-process
     def prep(r):
         if r.interactive:
+            method = r.method
             if r.component:
-                if r.component.name == "req":
-                    if r.method != "update" and r.method != "read":
+                cname = r.component_name
+                if cname == "req":
+                    if method != "update" and method != "read":
                         # Hide fields which don't make sense in a Create form
                         # inc list_create (list_fields over-rides)
                         s3db.req_create_form_mods()
 
-            elif r.method != "update" and r.method != "read":
-                # Create or ListCreate
+                #elif cname == "document":
+                #    # @ToDo: Filter Locations available based on Event Locations
+                #    #s3db.doc_document.location_id.default = r.record.location_id
+
+                #elif cname == "impact":
+                #    # @ToDo: Filter Locations available based on Event Locations
+                #    #s3db.stats_impact.location_id.default = r.record.location_id
+
+                #elif cname == "image":
+                #    # @ToDo: Filter Locations available based on Event Locations
+                #    #s3db.doc_document.location_id.default = r.record.location_id
+
+                elif cname == "response":
+                    # @ToDo: Filter Locations available based on Event Locations
+                    #s3db.dc_collection.location_id.default = r.record.location_id
+                    s3.crud_strings["dc_response"].label_create = T("Add Assessment")
+
+                elif cname == "target":
+                    # @ToDo: Filter Locations available based on Event Locations
+                    #s3db.dc_target.location_id.default = r.record.location_id
+                    s3.crud_strings["dc_target"].label_create = T("Add Target")
+
+            elif method in ("create", "list", "summary"):
+                # Create or ListCreate: Simplify
                 r.table.closed.writable = r.table.closed.readable = False
 
-            elif r.method == "update":
-                # Can't change details after event activation
-                table = r.table
-                table.exercise.writable = False
-                table.exercise.comment = None
-                table.start_date.writable = False
+            #elif method == "update":
+            #    # Can't change details after event activation
+            #    table = r.table
+            #    table.exercise.writable = False
+            #    table.exercise.comment = None
+            #    table.start_date.writable = False
 
         return True
     s3.prep = prep
 
     return s3_rest_controller(rheader = s3db.event_rheader)
+
+# -----------------------------------------------------------------------------
+def event_location():
+    """
+        RESTful CRUD controller
+    """
+
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def event_type():
@@ -95,29 +127,70 @@ def incident():
                         r.method = "assign"
                     if r.method == "assign":
                         r.custom_action = s3db.hrm_AssignMethod(component="assign")
-                if r.component_name == "config":
+                cname = r.component_name
+                if cname == "config":
                     s3db.configure("gis_config",
                                    deletable = False,
                                    )
                     s3.crud.submit_button = T("Update")
-                elif r.component_name in ("asset", "human_resource", "organisation", "site"):
-                    s3.crud.submit_button = T("Assign")
-                    s3.crud_labels["DELETE"] = T("Remove")
-                #else:
-                #    s3.crud.submit_button = T("Assign")
-                #    s3.crud_labels["DELETE"] = T("Remove")
+                elif cname in ("asset", "human_resource", "organisation", "site"):
 
-            elif r.method != "update" and r.method != "read":
+                    atable = s3db.table("budget_allocation")
+                    if atable:
+                        field = atable.budget_entity_id
+                        field.readable = field.writable = True
+
+                    #s3.crud.submit_button = T("Assign")
+                    #s3.crud.submit_button = T("Add")
+                    s3.crud_labels["DELETE"] = T("Remove")
+
+                    # Default Event in the link to that of the Incident
+                    ltable = s3db.table("event_%s" % cname)
+                    if ltable:
+                        f = ltable.event_id
+                        f.default = r.record.event_id
+                        f.readable = f.writable = False
+                        if cname in ("asset", "human_resource"):
+                            # DateTime
+                            for f in (ltable.start_date, ltable.end_date):
+                                f.requires = IS_EMPTY_OR(IS_UTC_DATETIME())
+                                f.represent = lambda dt: S3DateTime.datetime_represent(dt, utc=True)
+                                f.widget = S3CalendarWidget(timepicker = True)
+
+                elif cname == "incident_asset":
+
+                    atable = s3db.table("budget_allocation")
+                    if atable:
+                        field = atable.budget_entity_id
+                        field.readable = field.writable = True
+
+                    #s3.crud.submit_button = T("Assign")
+                    #s3.crud.submit_button = T("Add")
+                    s3.crud_labels["DELETE"] = T("Remove")
+
+                    # Default Event in the link to that of the Incident
+                    ltable = s3db.table("event_asset")
+                    f = ltable.event_id
+                    f.default = r.record.event_id
+                    f.readable = f.writable = False
+                    # DateTime
+                    for f in (ltable.start_date, ltable.end_date):
+                        f.requires = IS_EMPTY_OR(IS_UTC_DATETIME())
+                        f.represent = lambda dt: S3DateTime.datetime_represent(dt, utc=True)
+                        f.widget = S3CalendarWidget(timepicker = True)
+
+            elif r.method not in ("read", "update"):
                 # Create or ListCreate
-                r.table.closed.writable = r.table.closed.readable = False
+                table = r.table
+                table.closed.writable = table.closed.readable = False
+                table.end_date.writable = table.end_date.readable = False
 
             elif r.method == "update":
                 # Can't change details after event activation
                 table = r.table
-                table.scenario_id.writable = False
                 table.exercise.writable = False
                 table.exercise.comment = None
-                table.zero_hour.writable = False
+                table.date.writable = False
 
         return True
     s3.prep = prep
@@ -179,6 +252,88 @@ def incident_report():
     s3.prep = prep
 
     return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def scenario():
+    """
+        RESTful CRUD controller
+    """
+
+    return s3_rest_controller(rheader = s3db.event_rheader)
+
+# -----------------------------------------------------------------------------
+def sitrep():
+    """ RESTful CRUD controller """
+
+    if settings.get_event_sitrep_dynamic():
+        # All templates use the same component name for answers so need to add the right component manually
+        try:
+            sitrep_id = int(request.args(0))
+        except:
+            # Multiple record method
+            pass
+        else:
+            dtable = s3db.s3_table
+            stable = s3db.event_sitrep
+            ttable = s3db.dc_template
+            query = (stable.id == sitrep_id) & \
+                    (stable.template_id == ttable.id) & \
+                    (ttable.table_id == dtable.id)
+            template = db(query).select(dtable.name,
+                                        limitby=(0, 1),
+                                        ).first()
+            try:
+                dtablename = template.name
+            except:
+                # Old URL?
+                pass
+            else:
+                components = {dtablename: {"name": "answer",
+                                           "joinby": "sitrep_id",
+                                           "multiple": False,
+                                           }
+                              }
+                s3db.add_components("event_sitrep", **components)
+
+    # Pre-process
+    def prep(r):
+        if r.interactive:
+            if r.component_name == "answer":
+                # CRUD Strings
+                tablename = r.component.tablename
+                #s3.crud_strings[tablename] = Storage(
+                #    label_create = T("Create Responses"),
+                #    title_display = T("Response Details"),
+                #    title_list = T("Responses"),
+                #    title_update = T("Edit Response"),
+                #    label_list_button = T("List Responses"),
+                #    label_delete_button = T("Clear Response"),
+                #    msg_record_created = T("Response created"),
+                #    msg_record_modified = T("Response updated"),
+                #    msg_record_deleted = T("Response deleted"),
+                #    msg_list_empty = T("No Responses currently defined"),
+                #)
+
+                # Custom Form with Questions & Subheadings sorted correctly
+                s3db.dc_answer_form(r, tablename)
+
+        return True
+    s3.prep = prep
+
+    return s3_rest_controller(rheader = s3db.event_rheader)
+
+# -----------------------------------------------------------------------------
+def template():
+    """ RESTful CRUD controller """
+
+    from s3 import FS
+    s3.filter = FS("master") == "event_sitrep"
+
+    s3db.dc_template.master.default = "event_sitrep"
+
+    return s3_rest_controller("dc", "template",
+                              rheader = s3db.dc_rheader,
+                              )
 
 # -----------------------------------------------------------------------------
 def resource():
@@ -266,17 +421,25 @@ def group():
 
 # -----------------------------------------------------------------------------
 def team():
-    """ Controller for event_team option lookups (popups) """
+    """ Events <> Teams """
 
-    # /options.s3json only
-    s3.prep = lambda r: r.method == "options" and \
-                        r.representation == "s3json"
-
-    return s3_rest_controller("event", "team")
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def team_status():
-    """ Team status taxonomy controller (for Admin and lookups) """
+    """ Team statuses """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def human_resource():
+    """ Events <> Human Resources """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def organisation():
+    """ Events <> Organisations """
 
     return s3_rest_controller()
 

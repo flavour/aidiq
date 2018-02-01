@@ -3,6 +3,12 @@ form {
     font-size: 0.8rem;
     .form-row {
         margin-top: 0.5rem !important;
+        .button {
+            margin-right: 0.5rem;
+            i.fa {
+                margin-right: 0.3rem;
+            }
+        }
         & > .columns {
             &:first-child {
                 overflow: hidden;
@@ -16,6 +22,14 @@ form {
         }
         select {
             min-width: 4rem;
+        }
+        .controls span.postfix {
+            height: 1.75rem;
+            line-height: 1.5rem;
+            font-size: 0.8rem;
+            .fa {
+                line-height: inherit;
+            }
         }
     }
     label.inline {
@@ -46,16 +60,29 @@ form {
         font-weight: normal;
         font-size: 0.75rem;
     }
+
+    // Inline-components
     table.embeddedComponent {
         margin-top: 0.125rem;
         margin-bottom: 0.125rem;
         border: 1px solid #dddddd;
         border-collapse: separate;
+
         td {
             border: none;
             padding-bottom: 0.05rem;
             padding-top: 0.15rem;
             vertical-align: top;
+        }
+        &.subform-vertical {
+            .add-row, .edit-row {
+                td {
+                    border-top: 1px solid #dddddd;
+                    &.subform-action {
+                        vertical-align: bottom;
+                    }
+                }
+            }
         }
         .label-row {
             td {
@@ -69,11 +96,25 @@ form {
             }
         }
         tr.inline-form {
-            &.single td {
+            input,
+            .btn.date-clear-btn,
+            .postfix.calendar-clear-btn {
+                margin-top: 0;
+            }
+            &.single td:only-child {
                 padding: 0;
+                div.form-row {
+                    padding: 0 0.2rem 0.2rem;
+                }
             }
             select {
                 max-width: 18rem;
+            }
+        }
+        tr.inline-form,
+        tr.read-row {
+            .zoom img {
+                max-height: 8rem;
             }
         }
     }
@@ -81,8 +122,9 @@ form {
         display: inline-block;
         margin-bottom: 1.25rem;
         margin-left: 0;
-        margin-top: -1.25rem;
     }
+
+    // Login-form on homepage
     &.auth_login #submit_record__row {
         white-space: pre;
     }
@@ -131,6 +173,13 @@ textarea {
     resize: both;
     max-width: 100%;
 }
+input.datetimepicker {
+    max-width: 8rem;
+}
+
+select {
+    padding-right: 1rem !important;
+}
 /* Form and Item containers */
 #last_update {
     float: none;
@@ -140,6 +189,12 @@ textarea {
     form {
         background: $form_container_bgcolor;
         padding: 5px 10px;
+        tr td {
+            padding: rem-calc(3);
+        }
+        .embeddedComponent td {
+            padding-right: rem-calc(9);
+        }
     }
     width: auto;
     overflow: inherit;
@@ -163,7 +218,7 @@ textarea {
             max-width: 100%;
         }
         &:not(.filter-form):not(.auth_login):not(.auth_register) {
-            input[type="text"]:not(.double):not(.datetimepicker):not(.date):not(.dms-input) {
+            input[type="text"]:not(.double):not(.datetimepicker):not(.date):not(.hours):not(.dms-input) {
                 width: 20rem !important;
             }
         }
@@ -186,6 +241,10 @@ textarea {
         display: inline-block;
     }
     .inline-tooltip {
+        padding-top: 0.2rem;
+    }
+    label.inline {
+        line-height: normal;
         padding-top: 0.2rem;
     }
 }

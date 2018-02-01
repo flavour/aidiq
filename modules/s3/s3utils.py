@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: (c) 2010-2015 Sahana Software Foundation
+    @copyright: (c) 2010-2018 Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -32,6 +32,7 @@
 import collections
 import copy
 import datetime
+import json
 import os
 import re
 import sys
@@ -39,70 +40,20 @@ import time
 import urlparse
 import HTMLParser
 
-try:
-    import json # try stdlib (Python 2.6)
-except ImportError:
-    try:
-        import simplejson as json # try external module
-    except:
-        import gluon.contrib.simplejson as json # fallback to pure-Python module
-
-try:
-    # Python 2.7
-    from collections import OrderedDict
-except:
-    # Python 2.6
-    from gluon.contrib.simplejson.ordered_dict import OrderedDict
+from collections import OrderedDict
 
 from gluon import *
 from gluon.storage import Storage
 from gluon.languages import lazyT
 from gluon.tools import addrow
 
-from s3dal import Expression, Row
+from s3dal import Expression, Row, S3DAL
 from s3datetime import ISOFORMAT, s3_decode_iso_datetime
 
 URLSCHEMA = re.compile("((?:(())(www\.([^/?#\s]*))|((http(s)?|ftp):)"
                        "(//([^/?#\s]*)))([^?#\s]*)(\?([^#\s]*))?(#([^\s]*))?)")
 
 RCVARS = "rcvars"
-
-class S3ModuleDebug(object):
-    """ Helper class to debug modules """
-
-    @staticmethod
-    def on(msg, *args):
-        print >> sys.stderr, msg % args if args else msg
-
-    off = staticmethod(lambda msg, *args: None)
-
-DEBUG = False
-if DEBUG:
-    print >> sys.stderr, "S3UTILS: DEBUG MODE"
-    _debug = S3ModuleDebug.on
-else:
-    _debug = S3ModuleDebug.off
-
-# =============================================================================
-def s3_debug(message, value=None):
-    """
-       Debug Function (same name/parameters as JavaScript one)
-
-       Provide an easy, safe, systematic way of handling Debug output
-       (print to stdout doesn't work with WSGI deployments)
-
-       @ToDo: Should be using current.log.warning instead?
-    """
-
-    output = "S3 Debug: %s" % s3_unicode(message)
-    if value:
-        output = "%s: %s" % (output, s3_unicode(value))
-
-    try:
-        print >> sys.stderr, output
-    except:
-        # Unicode string
-        print >> sys.stderr, "Debug crashed"
 
 # =============================================================================
 def s3_get_last_record_id(tablename):
@@ -342,28 +293,6 @@ def s3_represent_value(field,
     return text
 
 # =============================================================================
-def s3_set_default_filter(selector, value, tablename=None):
-    """
-        Set a default filter for selector.
-
-        @param selector: the field selector
-        @param value: the value, can be a dict {operator: value},
-                      a list of values, or a single value, or a
-                      callable that returns any of these
-        @param tablename: the tablename
-    """
-
-    s3 = current.response.s3
-
-    filter_defaults = s3
-    for level in ("filter_defaults", tablename):
-        if level not in filter_defaults:
-            filter_defaults[level] = {}
-        filter_defaults = filter_defaults[level]
-    filter_defaults[selector] = value
-    return
-
-# =============================================================================
 def s3_dev_toolbar():
     """
         Developer Toolbar - ported from gluon.Response.toolbar()
@@ -549,13 +478,21 @@ def s3_truncate(text, length=48, nice=True):
         @param nice: do not truncate words
     """
 
-    # Make sure text is multi-byte-aware before truncating it
-    text = s3_unicode(text)
+
     if len(text) > length:
-        if nice:
-            return "%s..." % text[:length].rsplit(" ", 1)[0][:45]
+        if type(text) is unicode:
+            encode = False
         else:
-            return "%s..." % text[:45]
+            # Make sure text is multi-byte-aware before truncating it
+            text = s3_unicode(text)
+            encode = True
+        if nice:
+            truncated = "%s..." % text[:length].rsplit(" ", 1)[0][:length-3]
+        else:
+            truncated = "%s..." % text[:length-3]
+        if encode:
+            truncated = truncated.encode("utf-8")
+        return truncated
     else:
         return text
 
@@ -606,39 +543,42 @@ def s3_trunk8(selector=None, lines=None, less=None, more=None):
     T = current.T
 
     s3 = current.response.s3
+
     scripts = s3.scripts
+    jquery_ready = s3.jquery_ready
+
     if s3.debug:
         script = "/%s/static/scripts/trunk8.js" % current.request.application
     else:
         script = "/%s/static/scripts/trunk8.min.js" % current.request.application
+
     if script not in scripts:
+
         scripts.append(script)
 
         # Toggle-script
         # - only required once per page
         script = \
 """$(document).on('click','.s3-truncate-more',function(event){
- $(this).parent()
-        .trunk8('revert')
-        .append(' <a class="s3-truncate-less" href="#">%(less)s</a>')
- return false
-})
+$(this).parent().trunk8('revert').append(' <a class="s3-truncate-less" href="#">%(less)s</a>')
+return false})
 $(document).on('click','.s3-truncate-less',function(event){
- $(this).parent().trunk8()
- return false
-})""" % dict(less=T("less") if less is None else less)
+$(this).parent().trunk8()
+return false})""" % {"less": T("less") if less is None else less}
         s3.jquery_ready.append(script)
 
     # Init-script
-    # - required separately for each selector
+    # - required separately for each selector (but do not repeat the
+    #   same statement if called multiple times => makes the page very
+    #   slow)
     script = """S3.trunk8('%(selector)s',%(lines)s,'%(more)s')""" % \
-             dict(selector = ".s3-truncate" if selector is None else selector,
-                  lines = "null" if lines is None else lines,
-                  more = T("more") if more is None else more,
-                  )
+             {"selector": ".s3-truncate" if selector is None else selector,
+              "lines": "null" if lines is None else lines,
+              "more": T("more") if more is None else more,
+              }
 
-    s3.jquery_ready.append(script)
-    return
+    if script not in jquery_ready:
+        jquery_ready.append(script)
 
 # =============================================================================
 def s3_text_represent(text, truncate=True, lines=5, _class=None):
@@ -649,7 +589,7 @@ def s3_text_represent(text, truncate=True, lines=5, _class=None):
         @param text: the text
         @param truncate: whether to truncate or not
         @param lines: maximum number of lines to show
-        @param _class: CSS class to use for truncation (otherwise usign
+        @param _class: CSS class to use for truncation (otherwise using
                        the text-body class itself)
     """
 
@@ -662,7 +602,8 @@ def s3_text_represent(text, truncate=True, lines=5, _class=None):
         selector = ".%s" % _class
         _class = "text-body %s" % _class
 
-    if truncate:
+    if truncate and \
+       current.auth.permission.format in ("html", "popup", "iframe"):
         s3_trunk8(selector = selector, lines = lines)
 
     return DIV(text, _class="text-body")
@@ -710,17 +651,19 @@ def s3_fullname(person=None, pe_id=None, truncate=True):
         @param truncate: truncate the name to max 24 characters
     """
 
-    db = current.db
-    ptable = db.pr_person
-
     record = None
     query = None
+
     if isinstance(person, (int, long)) or str(person).isdigit():
-        query = (ptable.id == person)# & (ptable.deleted != True)
+        db = current.db
+        ptable = db.pr_person
+        query = (ptable.id == person)
     elif person is not None:
         record = person
     elif pe_id is not None:
-        query = (ptable.pe_id == pe_id)# & (ptable.deleted != True)
+        db = current.db
+        ptable = db.pr_person
+        query = (ptable.pe_id == pe_id)
 
     if not record and query is not None:
         record = db(query).select(ptable.first_name,
@@ -801,6 +744,17 @@ def s3_comments_represent(text, show_link=True):
         return represent
 
 # =============================================================================
+def s3_phone_represent(value):
+    """
+        Ensure that Phone numbers always show as LTR
+        - otherwise + appears at the end which looks wrong even in RTL
+    """
+
+    if not value:
+        return current.messages["NONE"]
+    return "%s%s" % (unichr(8206), s3_unicode(value))
+
+# =============================================================================
 def s3_url_represent(url):
     """
         Make URLs clickable
@@ -879,7 +833,7 @@ def s3_avatar_represent(id, tablename="auth_user", gravatar=False, **attr):
 
     size = (50, 50)
     if image:
-        image = s3db.pr_image_represent(image, size=size)
+        image = s3db.pr_image_library_represent(image, size=size)
         size = s3db.pr_image_size(image, size)
         url = URL(c="default", f="download",
                   args=image)
@@ -1111,6 +1065,32 @@ def s3_include_ext():
     s3.ext_included = True
 
 # =============================================================================
+def s3_include_underscore():
+    """
+        Add Undercore JS into a page
+        - for Map templates
+        - for templates in GroupedOptsWidget comment
+    """
+
+    s3 = current.response.s3
+    debug = s3.debug
+    scripts = s3.scripts
+    if s3.cdn:
+        if debug:
+            script = \
+"//cdnjs.cloudflare.com/ajax/libs/underscore.js/1.6.0/underscore.js"
+        else:
+            script = \
+"//cdnjs.cloudflare.com/ajax/libs/underscore.js/1.6.0/underscore-min.js"
+    else:
+        if debug:
+            script = URL(c="static", f="scripts/underscore.js")
+        else:
+            script = URL(c="static", f="scripts/underscore-min.js")
+    if script not in scripts:
+        scripts.append(script)
+
+# =============================================================================
 def s3_is_mobile_client(request):
     """
         Simple UA Test whether client is a mobile device
@@ -1242,7 +1222,7 @@ def s3_has_foreign_key(field, m2m=True):
         @param field: the field (Field instance)
         @param m2m: also detect many-to-many links
 
-        @note: many-to-many references (list:reference) are no DB constraints,
+        @note: many-to-many references (list:reference) are not DB constraints,
                but pseudo-references implemented by the DAL. If you only want
                to find real foreign key constraints, then set m2m=False.
     """
@@ -1252,10 +1232,12 @@ def s3_has_foreign_key(field, m2m=True):
     except:
         # Virtual Field
         return False
-    if ftype[:9] == "reference":
+
+    if ftype[:9] == "reference" or \
+       m2m and ftype[:14] == "list:reference" or \
+       current.s3db.virtual_reference(field):
         return True
-    if m2m and ftype[:14] == "list:reference":
-        return True
+
     return False
 
 # =============================================================================
@@ -1268,25 +1250,27 @@ def s3_get_foreign_key(field, m2m=True):
         @param m2m: also detect many-to-many references
 
         @return: tuple (tablename, key, multiple), where tablename is
-                  the name of the referenced table (or None if this field
-                  has no foreign key constraint), key is the field name of
-                  the referenced key, and multiple indicates whether this is
-                  a many-to-many reference (list:reference) or not.
+                 the name of the referenced table (or None if this field
+                 has no foreign key constraint), key is the field name of
+                 the referenced key, and multiple indicates whether this is
+                 a many-to-many reference (list:reference) or not.
 
-        @note: many-to-many references (list:reference) are no DB constraints,
+        @note: many-to-many references (list:reference) are not DB constraints,
                but pseudo-references implemented by the DAL. If you only want
                to find real foreign key constraints, then set m2m=False.
     """
 
     ftype = str(field.type)
+    multiple = False
     if ftype[:9] == "reference":
         key = ftype[10:]
-        multiple = False
     elif m2m and ftype[:14] == "list:reference":
         key = ftype[15:]
         multiple = True
     else:
-        return (None, None, None)
+        key = current.s3db.virtual_reference(field)
+        if not key:
+            return (None, None, None)
     if "." in key:
         rtablename, key = key.split(".")
     else:
@@ -1373,8 +1357,10 @@ def s3_orderby_fields(table, orderby, expr=False):
         return
 
     db = current.db
-    COMMA = db._adapter.COMMA
-    INVERT = db._adapter.INVERT
+
+    adapter = S3DAL()
+    COMMA = adapter.COMMA
+    INVERT = adapter.INVERT
 
     if isinstance(orderby, str):
         items = orderby.split(",")
@@ -1700,8 +1686,7 @@ def s3_jaro_winkler_distance_row(row1, row2):
     dw = 0
     num_similar = 0
     if len(row1) != len(row2):
-            #print "The records columns does not match."
-            return
+        return
     for x in range(0, len(row1)):
         str1 = row1[x]    # get row fields
         str2 = row2[x]    # get row fields
@@ -1860,6 +1845,9 @@ class S3CustomController(object):
     """
         Base class for custom controllers (template/controllers.py),
         implements common helper functions
+
+        @ToDo: Add Helper Function for dataTables
+        @ToDo: Add Helper Function for dataLists
     """
 
     @classmethod
@@ -2063,14 +2051,18 @@ class S3TypeConverter(object):
         if isinstance(b, datetime.date):
             return b
         elif isinstance(b, basestring):
-            # NB: converting from string (e.g. URL query) assumes
-            #     the string is specified for the local time zone,
-            #     specify an ISOFORMAT date/time with explicit time zone
-            #     (e.g. trailing Z) to override this assumption
             from s3validators import IS_UTC_DATE
-            value, error = IS_UTC_DATE()(b)
+            # Try ISO format first (e.g. S3DateFilter)
+            value, error = IS_UTC_DATE(format="%Y-%m-%d")(b)
+            if error:
+                # Try L10n format
+                value, error = IS_UTC_DATE()(b)
             if error:
                 # Maybe specified as datetime-string?
+                # NB: converting from string (e.g. URL query) assumes
+                #     the string is specified for the local time zone,
+                #     specify an ISOFORMAT date/time with explicit time zone
+                #     (e.g. trailing Z) to override this assumption
                 value = cls._datetime(b).date()
             return value
         else:
@@ -2573,6 +2565,33 @@ class S3MultiPath:
                 return True
             else:
                 return False
+
+# =============================================================================
+class StringTemplateParser(object):
+    """
+        Helper to parse string templates with named keys
+
+        @return: a list of keys (in order of appearance),
+                 None for invalid string templates
+
+        @example:
+            keys = StringTemplateParser.keys("%(first_name)s %(last_name)s")
+            # Returns: ["first_name", "last_name"]
+    """
+    def __init__(self):
+        self.keys = []
+
+    def __getitem__(self, key):
+        self.keys.append(key)
+
+    @classmethod
+    def keys(cls, template):
+        parser = cls()
+        try:
+            template % parser
+        except TypeError:
+            return None
+        return parser.keys
 
 # =============================================================================
 class S3MarkupStripper(HTMLParser.HTMLParser):

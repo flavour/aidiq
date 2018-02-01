@@ -586,7 +586,7 @@
         clear_person_fields(fieldname);
         var real_input = $(selector);
         var fn = name_input.attr('data-f');
-        var url = S3.Ap.concat('/' + controller + '/' + fn + '/' + id + '/lookup');
+        var url = S3.Ap.concat('/' + controller + '/' + fn + '/' + id + '/lookup.json');
         $.getJSONS3(url, function(data) {
             try {
                 // Already done by ac, yet gets lost due to {} returning True
@@ -820,6 +820,7 @@
         if (email) {
             data['email'] = email;
         }
+        // @ToDo: Allow controller to be configurable
         var url = S3.Ap.concat('/pr/person/check_duplicates');
         $.ajaxS3({
             url: url,

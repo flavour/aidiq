@@ -13,6 +13,8 @@ from gluon.storage import Storage
 
 from lxml import etree
 
+from unit_tests import run_suite
+
 # =============================================================================
 class PRTests(unittest.TestCase):
     """ PR Tests """
@@ -468,8 +470,8 @@ class ContactValidationTests(unittest.TestCase):
         current.deployment_settings \
                .msg.require_international_phone_numbers = False
 
-        from s3db.pr import S3ContactModel
-        onvalidation = S3ContactModel.pr_contact_onvalidation
+        from s3db.pr import PRContactModel
+        onvalidation = PRContactModel.pr_contact_onvalidation
 
         form = Storage(
             vars = Storage(
@@ -498,8 +500,8 @@ class ContactValidationTests(unittest.TestCase):
         current.deployment_settings \
                .msg.require_international_phone_numbers = True
 
-        from s3db.pr import S3ContactModel
-        onvalidation = S3ContactModel.pr_contact_onvalidation
+        from s3db.pr import PRContactModel
+        onvalidation = PRContactModel.pr_contact_onvalidation
 
         form = Storage(
             vars = Storage(
@@ -600,18 +602,6 @@ class ContactValidationTests(unittest.TestCase):
         self.assertEqual(row.value, "+46733847589")
 
 # =============================================================================
-def run_suite(*test_classes):
-    """ Run the test suite """
-
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    for test_class in test_classes:
-        tests = loader.loadTestsFromTestCase(test_class)
-        suite.addTests(tests)
-    if suite is not None:
-        unittest.TextTestRunner(verbosity=2).run(suite)
-    return
-
 if __name__ == "__main__":
 
     run_suite(

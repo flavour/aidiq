@@ -2,7 +2,7 @@
 
 """ Sahana Eden Inventory Model
 
-    @copyright: 2009-2016 (c) Sahana Software Foundation
+    @copyright: 2009-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -140,6 +140,7 @@ class S3WarehouseModel(S3Model):
         define_table(tablename,
                      Field("name", length=128, notnull=True,
                            label = T("Name"),
+                           requires = IS_LENGTH(128),
                            ),
                      organisation_id(default = root_org if org_dependent_wh_types else None,
                                      readable = is_admin if org_dependent_wh_types else False,
@@ -185,7 +186,9 @@ class S3WarehouseModel(S3Model):
                                )
 
         configure(tablename,
-                  deduplicate = self.inv_warehouse_type_duplicate,
+                  deduplicate = S3Duplicate(primary = ("name",),
+                                            secondary = ("organisation_id",),
+                                            ),
                   )
 
         # Tags as component of Warehouse Types
@@ -204,7 +207,7 @@ class S3WarehouseModel(S3Model):
                                          IS_NOT_IN_DB(db, "inv_warehouse.code"),
                                          ])
         else:
-            code_requires = IS_EMPTY_OR(IS_LENGTH(10))
+            code_requires = IS_LENGTH(10)
 
         tablename = "inv_warehouse"
         define_table(tablename,
@@ -214,6 +217,9 @@ class S3WarehouseModel(S3Model):
                      Field("name", notnull=True,
                            length=64,           # Mayon Compatibility
                            label = T("Name"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(64),
+                                       ],
                            ),
                      Field("code", length=10, # Mayon compatibility
                            label = T("Code"),
@@ -225,6 +231,14 @@ class S3WarehouseModel(S3Model):
                         ),
                      warehouse_type_id(),
                      self.gis_location_id(),
+                     Field("capacity", "integer",
+                           label = T("Capacity (m3)"),
+                           represent = lambda v: v or NONE,
+                           ),
+                     Field("free_capacity", "integer",
+                           label = T("Free Capacity (m3)"),
+                           represent = lambda v: v or NONE,
+                           ),
                      Field("contact",
                            label = T("Contact"),
                            represent = lambda v: v or NONE,
@@ -324,7 +338,9 @@ class S3WarehouseModel(S3Model):
             ]
 
         configure(tablename,
-                  deduplicate = self.inv_warehouse_duplicate,
+                  deduplicate = S3Duplicate(primary = ("name",),
+                                            secondary = ("organisation_id",),
+                                            ),
                   filter_widgets = filter_widgets,
                   list_fields = list_fields,
                   onaccept = self.inv_warehouse_onaccept,
@@ -356,59 +372,12 @@ class S3WarehouseModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def inv_warehouse_type_duplicate(item):
-        """
-            Import item de-duplication
-
-            @param item: the S3ImportItem instance
-        """
-
-        data = item.data
-        name = data.get("name", None)
-        org = data.get("organisation_id", None)
-
-        table = item.table
-        query = (table.name.lower() == name.lower())
-        if org:
-            query  = query & (table.organisation_id == org)
-        duplicate = current.db(query).select(table.id,
-                                             limitby=(0, 1)).first()
-        if duplicate:
-            item.id = duplicate.id
-            item.method = item.METHOD.UPDATE
-
-    # -------------------------------------------------------------------------
-    @staticmethod
     def inv_warehouse_onaccept(form):
         """
             Update Affiliation, record ownership and component ownership
         """
 
         current.s3db.org_update_affiliations("inv_warehouse", form.vars)
-
-    # ---------------------------------------------------------------------
-    @staticmethod
-    def inv_warehouse_duplicate(item):
-        """
-            Import item deduplication, match by name and organisation
-                (Adding location_id doesn't seem to be a good idea - see office_duplicate)
-
-            @param item: the S3ImportItem instance
-        """
-
-        data = item.data
-        name = data.get("name", None)
-        org = data.get("organisation_id", None)
-
-        table = item.table
-        query = (table.name.lower() == name.lower())
-        if org:
-            query  = query & (table.organisation_id == org)
-        duplicate = current.db(query).select(table.id,
-                                             limitby=(0, 1)).first()
-        if duplicate:
-            item.id = duplicate.id
-            item.method = item.METHOD.UPDATE
 
 # =============================================================================
 class S3InventoryModel(S3Model):
@@ -473,7 +442,7 @@ class S3InventoryModel(S3Model):
                                           #              _title="%s|%s" % (WAREHOUSE,
                                           #                                messages.AUTOCOMPLETE_HELP)),
                                           ),
-                          self.supply_item_entity_id,
+                          self.supply_item_entity_id(),
                           self.supply_item_id(ondelete = "RESTRICT",
                                               required = True,
                                               ),
@@ -488,9 +457,10 @@ class S3InventoryModel(S3Model):
                                 requires = IS_FLOAT_IN_RANGE(0, None),
                                 writable = False,
                                 ),
-                          Field("bin", "string", length=16,
+                          Field("bin", length=16,
                                 label = T("Bin"),
                                 represent = lambda v: v or NONE,
+                                requires = IS_LENGTH(16),
                                 ),
                           # e.g.: Allow items to be marked as 'still on the shelf but allocated to an outgoing shipment'
                           Field("status", "integer",
@@ -520,9 +490,10 @@ class S3InventoryModel(S3Model):
                           s3_currency(readable = track_pack_values,
                                       writable = track_pack_values,
                                       ),
-                          Field("item_source_no", "string", length=16,
+                          Field("item_source_no", length=16,
                                 label = self.inv_itn_label,
                                 represent = lambda v: v or NONE,
+                                requires = IS_LENGTH(16),
                                 ),
                           # Organisation that owns this item
                           organisation_id("owner_org_id",
@@ -586,7 +557,7 @@ $.filterOptionsS3({
  'target':'item_pack_id',
  'lookupResource':'item_pack',
  'lookupPrefix':'supply',
- 'lookupURL':S3.Ap.concat('/inv/inv_item_packs/'),
+ 'lookupURL':S3.Ap.concat('/inv/inv_item_packs.json/'),
  'msgNoRecords':i18n.no_packs,
  'fncPrep':S3.supply.fncPrepItem,
  'fncRepresent':S3.supply.fncRepresentItem
@@ -1470,7 +1441,7 @@ class S3InventoryTrackingModel(S3Model):
                                   sortby = "date",
                                   )
 
-        # Search Method
+        # Filter Widgets
         if settings.get_inv_shipment_name() == "order":
             recv_search_comment = T("Search for an order by looking for text in any field.")
             recv_search_date_field = "eta"
@@ -1480,8 +1451,6 @@ class S3InventoryTrackingModel(S3Model):
             recv_search_date_field = "date"
             recv_search_date_comment = T("Search for a shipment received between these dates")
 
-        # @todo: make lazy_table
-        table = db[tablename]
         filter_widgets = [
             S3TextFilter(["sender_id$first_name",
                           "sender_id$middle_name",
@@ -1500,7 +1469,8 @@ class S3InventoryTrackingModel(S3Model):
                          comment = recv_search_comment,
                         ),
             S3DateFilter(recv_search_date_field,
-                         label = table[recv_search_date_field].label,
+                         # This will be the default
+                         #label = table[recv_search_date_field].label,
                          comment = recv_search_date_comment,
                          hidden = True,
                         ),
@@ -1570,7 +1540,7 @@ class S3InventoryTrackingModel(S3Model):
 
         set_method("inv", "recv",
                    method = "cert",
-                   action = self.inv_recv_donation_cert )
+                   action = self.inv_recv_donation_cert)
 
         set_method("inv", "recv",
                    method = "timeline",
@@ -1704,11 +1674,13 @@ class S3InventoryTrackingModel(S3Model):
                      Field("bin", length=16,
                            label = T("Bin"),
                            represent = s3_string_represent,
-                           writable = False,
+                           requires = IS_LENGTH(16),
+                                writable = False,
                            ),
-                     Field("item_source_no", "string", length=16,
+                     Field("item_source_no", length=16,
                            label = self.inv_itn_label,
                            represent = s3_string_represent,
+                           requires = IS_LENGTH(16),
                            ),
                      inv_item_id(ondelete = "RESTRICT",
                                  readable = False,
@@ -1751,7 +1723,7 @@ $.filterOptionsS3({
  'target':'item_pack_id',
  'lookupResource':'item_pack',
  'lookupPrefix':'supply',
- 'lookupURL':S3.Ap.concat('/inv/inv_item_packs/'),
+ 'lookupURL':S3.Ap.concat('/inv/inv_item_packs.json/'),
  'msgNoRecords':i18n.no_packs,
  'fncPrep':S3.supply.fncPrepItem,
  'fncRepresent':S3.supply.fncRepresentItem
@@ -1792,6 +1764,7 @@ $.filterOptionsS3({
                      Field("bin", length=16,
                            label = T("Bin"),
                            represent = s3_string_represent,
+                           requires = IS_LENGTH(16),
                            ),
                      inv_item_id(name="recv_inv_item_id",
                                  label = T("Receiving Inventory"),
@@ -1804,6 +1777,7 @@ $.filterOptionsS3({
                      Field("recv_bin", length=16,
                            label = T("Add to Bin"),
                            represent = s3_string_represent,
+                           requires = IS_LENGTH(16),
                            readable = False,
                            writable = False,
                            # Nice idea but not working properly
@@ -1813,9 +1787,10 @@ $.filterOptionsS3({
                                                 (T("Bin"),
                                                  T("The Bin in which the Item is being stored (optional)."))),
                            ),
-                     Field("item_source_no", "string", length=16,
+                     Field("item_source_no", length=16,
                            label = self.inv_itn_label,
                            represent = s3_string_represent,
+                           requires = IS_LENGTH(16),
                            ),
                      # Organisation which originally supplied/donated item(s)
                      organisation_id("supply_org_id",
@@ -4507,9 +4482,11 @@ class S3InventoryAdjustModel(S3Model):
                            requires = IS_EMPTY_OR(IS_IN_SET(inv_item_status_opts)),
                            ),
                      s3_date("expiry_date",
-                             label = T("Expiry Date")),
-                     Field("bin", "string", length=16,
+                             label = T("Expiry Date"),
+                             ),
+                     Field("bin", length=16,
                            label = T("Bin"),
+                           requires = IS_LENGTH(16),
                            # @ToDo:
                            #widget = S3InvBinWidget("inv_adj_item")
                            ),
@@ -4995,7 +4972,7 @@ def inv_adj_rheader(r):
                     # row = current.db(query).select(aitable.id,
                                                    # limitby=(0, 1)).first()
                     # if row == None:
-                    close_btn = A( T("Complete Adjustment"),
+                    close_btn = A(T("Complete Adjustment"),
                                   _href = URL(c = "inv",
                                               f = "adj_close",
                                               args = [record.id]
@@ -5004,7 +4981,7 @@ def inv_adj_rheader(r):
                                   _class = "action-btn"
                                   )
                     close_btn_confirm = SCRIPT("S3.confirmClick('#adj_close', '%s')"
-                                              % T("Do you want to complete & close this adjustment?") )
+                                              % T("Do you want to complete & close this adjustment?"))
                     rheader.append(close_btn)
                     rheader.append(close_btn_confirm)
 

@@ -2,7 +2,7 @@
 
 """ S3 Navigation Module
 
-    @copyright: 2011-2016 (c) Sahana Software Foundation
+    @copyright: 2011-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -431,16 +431,11 @@ class S3NavigationItem(object):
             by the renderer.
         """
 
-        has_role = current.auth.s3_has_role
-
         authorized = False
 
         restrict = self.restrict
         if restrict:
-            for role in restrict:
-                if has_role(role):
-                    authorized = True
-                    break
+            authorized = current.auth.s3_has_roles(restrict)
         else:
             authorized = True
 
@@ -736,7 +731,7 @@ class S3NavigationItem(object):
             mf = self.get("match_function")
             if function == f or function in mf:
                 level = 2
-            elif f == "index":
+            elif f == "index" or "index" in mf:
                 # "weak" match: homepage link matches any function
                 return 1
             elif f is not None:
@@ -1407,6 +1402,9 @@ class S3ComponentTabs(object):
 
         rheader_tabs = []
 
+        if r.resource.get_config("dynamic_components"):
+            self.dynamic_tabs(r.resource.tablename)
+
         tabs = tuple(t for t in self.tabs if t.active(r))
 
         mtab = False
@@ -1510,6 +1508,70 @@ class S3ComponentTabs(object):
             rheader_tabs = ""
         return rheader_tabs
 
+    # -------------------------------------------------------------------------
+    def dynamic_tabs(self, master):
+        """
+            Add dynamic tabs
+
+            @param master: the name of the master table
+        """
+
+        T = current.T
+        s3db = current.s3db
+
+        tabs = self.tabs
+        if not tabs:
+            return
+
+        ftable = s3db.s3_field
+        query = (ftable.component_key == True) & \
+                (ftable.component_tab == True) & \
+                (ftable.master == master) & \
+                (ftable.deleted == False)
+        rows = current.db(query).select(ftable.component_alias,
+                                        ftable.settings,
+                                        )
+        for row in rows:
+            alias = row.component_alias
+            if not alias:
+                continue
+
+            static_tab = False
+            for tab in tabs:
+                if tab.component == alias:
+                    static_tab = True
+                    break
+
+            if not static_tab:
+
+                label = None
+                position = None
+
+                settings = row.settings
+                if settings:
+
+                    label = settings.get("tab_label")
+
+                    position = settings.get("tab_position")
+                    if position is not None:
+                        try:
+                            position = int(position)
+                        except ValueError:
+                            position = None
+                    if position < 1 or position >= len(tabs):
+                        position = None
+
+                if not label:
+                    # Generate default label from component alias
+                    label = T(" ".join(s.capitalize()
+                                       for s in alias.split("_")
+                                       ))
+                tab = S3ComponentTab((label, alias))
+                if not position:
+                    tabs.append(tab)
+                else:
+                    tabs.insert(position, tab)
+
 # =============================================================================
 class S3ComponentTab(object):
     """ Class representing a single Component Tab """
@@ -1523,6 +1585,8 @@ class S3ComponentTab(object):
                         get_vars dict is optional.
         """
 
+        # @todo: use component hook label/plural as fallback for title
+        #        (see S3Model.add_components)
         title, component = tab[:2]
         if component and component.find("/") > 0:
             function, component = component.split("/", 1)
@@ -1544,10 +1608,10 @@ class S3ComponentTab(object):
             self.component = None
 
         if len(tab) > 2:
-            vars = self.vars = Storage(tab[2])
-            if "native" in vars:
-                self.native = True if vars["native"] else False
-                del vars["native"]
+            tab_vars = self.vars = Storage(tab[2])
+            if "native" in tab_vars:
+                self.native = True if tab_vars["native"] else False
+                del tab_vars["native"]
         else:
             self.vars = None
 
@@ -1573,6 +1637,7 @@ class S3ComponentTab(object):
 
         resource = r.resource
         component = self.component
+        function = self.function
         if component:
             clist = get_components(resource.table, names=[component])
             is_component = False
@@ -1595,6 +1660,10 @@ class S3ComponentTab(object):
                 handler = r.get_handler(component)
             if handler is None:
                 return component in ("create", "read", "update", "delete")
+
+        elif function:
+            return current.auth.permission.has_permission("read", f=function)
+
         return True
 
     # -------------------------------------------------------------------------
@@ -1628,9 +1697,9 @@ class S3ComponentTab(object):
             @param r: the S3Request
         """
 
-        get_vars = r.get_vars
         if self.vars is None:
             return True
+        get_vars = r.get_vars
         for k, v in self.vars.iteritems():
             if v is None:
                 continue
@@ -1730,7 +1799,7 @@ class S3ResourceHeader:
         self.tabs = tabs
 
     # -------------------------------------------------------------------------
-    def __call__(self, r, tabs=None, table=None, record=None, as_div = True):
+    def __call__(self, r, tabs=None, table=None, record=None, as_div=True):
         """
             Return the HTML representation of this rheader
 

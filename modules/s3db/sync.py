@@ -2,7 +2,7 @@
 
 """ Sahana Eden Synchronization
 
-    @copyright: 2009-2016 (c) Sahana Software Foundation
+    @copyright: 2009-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -162,6 +162,9 @@ class SyncDataModel(S3Model):
                                          _title="%s|%s" % (
                                                 T("Repository Name"),
                                                 T("Name of the repository (for you own reference)"))),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(64),
+                                       ],
                            ),
                      Field("apitype",
                            default = "eden",
@@ -249,15 +252,6 @@ class SyncDataModel(S3Model):
                            readable = False,
                            writable = False,
                            ),
-                     Field("accept_push", "boolean",
-                           default = False,
-                           label = T("Accept Push"),
-                           represent = s3_yes_no_represent,
-                           comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (
-                                                T("Accept Push"),
-                                                T("Accept unsolicited data transmissions from the repository."))),
-                           ),
                      Field("synchronise_uuids", "boolean",
                            default = False,
                            label = T("Synchronize UUIDs"),
@@ -276,6 +270,12 @@ class SyncDataModel(S3Model):
                                                 T("Keep Source Data"),
                                                 T("Stores the data sent from the peer in the local file system (if supported by the adapter), for testing purposes. Enable only temporarily if and when required!"))),
                            ),
+                     # User-visible field for Admin
+                     s3_datetime("last_connected",
+                                 label = T("Last Connected"),
+                                 writable = False,
+                                 ),
+                     # System fields
                      Field.Method("last_pull_time",
                                   self.sync_repository_last_pull_time),
                      Field.Method("last_push_time",
@@ -297,12 +297,12 @@ class SyncDataModel(S3Model):
 
         # Resource Configuration
         configure(tablename,
-                  deduplicate = S3Duplicate(primary=("name",)),
+                  deduplicate = S3Duplicate(),
                   list_fields = ["name",
                                  "uuid",
-                                 "accept_push",
-                                 (T("Last Pull"), "last_pull_time"),
-                                 (T("Last Push"), "last_push_time"),
+                                 "last_connected",
+                                 #(T("Last Pull"), "last_pull_time"),
+                                 #(T("Last Push"), "last_push_time"),
                                  ],
                   onaccept = self.sync_repository_onaccept,
                   ondelete = self.sync_repository_ondelete,
@@ -317,11 +317,11 @@ class SyncDataModel(S3Model):
                   )
 
         set_method("sync", "repository",
-                   method="now",
-                   action=sync_now)
+                   method = "now",
+                   action = sync_now)
 
         # Reusable Fields
-        sync_repository_represent = S3Represent(lookup=tablename)
+        sync_repository_represent = S3Represent(lookup = tablename)
         repository_id = S3ReusableField("repository_id", "reference %s" % tablename,
                                         comment = S3PopupLink(c = "sync",
                                                               f = "repository",
@@ -392,12 +392,21 @@ class SyncDataModel(S3Model):
         tablename = "sync_task"
         define_table(tablename,
                      repository_id(),
-                     Field("resource_name",
-                           notnull = True,
+                     Field("resource_name", notnull = True,
+                           label = T("Resource Name"),
                            comment = DIV(_class="tooltip",
                                          _title="%s|%s" % (
                                                 T("Resource Name"),
                                                 T("Table name of the resource to synchronize"))),
+                           requires = IS_NOT_EMPTY(),
+                           ),
+                     Field("components", "boolean",
+                           default = False,
+                           label = T("Include Components?"),
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (
+                                                T("Include Components?"),
+                                                T("For Eden repositories: Whether components of the resource should be included or not"))),
                            ),
                      Field("infile_pattern",
                            label = T("Input File Name"),
@@ -666,7 +675,12 @@ class SyncDataModel(S3Model):
     def defaults(self):
         """ Safe defaults if module is disabled """
 
-        return {}
+        dummy = S3ReusableField("dummy_id", "integer",
+                                readable = False,
+                                writable = False)
+
+        return dict(sync_repository_id = lambda **attr: dummy("repository_id"),
+                    )
 
     # -------------------------------------------------------------------------
     @staticmethod

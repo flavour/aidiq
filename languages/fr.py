@@ -254,6 +254,7 @@
 'Add Disaster Assessments': 'Ajouter des évaluations de catastrophe naturelle',
 'Add Disaster Victims': 'Ajouter les victimes des catastrophes',
 'Add Distribution': 'Ajouter distribution',
+'Add Document': 'Ajouter document',
 'Add Donor': 'Ajouter des donateurs',
 'Add Educational Achievements': "Ajouter des réalisations liées à l'éducation",
 'Add Email Settings': 'Ajouter des paramètres de courrier électronique',
@@ -1812,9 +1813,9 @@
 'Enable/Disable Layers': 'Activer/désactiver les Couches',
 'Enabled': 'Activé',
 'End date should be after start date': 'la date de fin doit être après la Date de début',
-'End date': 'date de fin',
+'End date': 'Date de fin',
 'End of Period': 'Fin de la période',
-'English': 'Français',
+'English': 'Anglais',
 'Enter Coordinates in Deg Min Sec': 'Entrer les coordonnées en degrés min sec',
 'Enter Coordinates:': 'Entrez les coordonnées :',
 'Enter a GPS Coord': 'Entrez une coordonnee GPS',
@@ -1997,6 +1998,7 @@
 'Freezing Rain': 'Pluies gelantes',
 'Freezing Spray': 'Pulvérisateur de gel',
 'Frequent': 'Fréquent',
+'French': 'Français',
 'Friday': 'Vendredi',
 'From %(site)s': 'De %(site)s',
 'From Inventory': 'à partir du stock',
@@ -2089,6 +2091,7 @@
 'Hair Color': 'couleur des cheveux',
 'Hair Length': 'longeur des cheveux',
 'Hair Style': 'style des cheveux',
+'Haitian Creole': 'Créole Haïtien',
 'Has additional rights to modify records relating to this Organization or Site.': "A des droits supplémentaires pour modifier les enregistrements relatifs à cette organisation ou d'un emplacement.",
 'Has data from this Reference Document been entered into Sahana?': 'Est-ce que les données de ce document de référence a été entré dans Sahana?',
 'Has only read-only access to records relating to this Organization or Site.': "A seulement un accès en lecture-seule aux données relatives à cette Organisation ou d'un Emplacement.",
@@ -2464,7 +2467,7 @@
 'Latitude of Map Center': 'Latitude du centre de la carte',
 'Latitude of far northern end of the region of interest.': "Latitude d'extrémité nord jusqu'ici de la région d'intérêt.",
 'Latitude of far southern end of the region of interest.': "Latitude d'extrémité sud jusqu'ici de la région d'intérêt.",
-'Latitude should be between': 'latitude doit être compris entre',
+'Latitude %(lat)s is invalid, should be between %(lat_min)s & %(lat_max)s': "Latitude %(lat)s n'est pas valide, doit être entre %(lat_min)s & %(lat_max)s",
 'Latitude': 'latitude',
 'Law enforcement, military, homeland and local/private security': "L'application de la loi, la sécurité militaire, intérieure, locale/privée",
 'Layer Details': 'Détails de la Couche',
@@ -2745,7 +2748,7 @@
 'Longitude of Map Center': 'Longitude du centre de la carte',
 'Longitude of far eastern end of the region of interest.': "Longitude de loin extrémité orientale de la région d'intérêt.",
 'Longitude of far western end of the region of interest.': "Longitude du extrémité ouest de la région d'intérêt.",
-'Longitude should be between': 'Longitude doit être entre',
+'Longitude %(lon)s is invalid, should be between %(lon_min)s & %(lon_max)s': "Longitude %(lon)s n'est pas valide, doit être entre %(lon_min)s & %(lon_max)s",
 'Longitude': 'longitude',
 'Looting': 'Pillage',
 'Lost Password': 'Mot de passe oublié',
@@ -2834,6 +2837,7 @@
 'Medium': 'Moyenne',
 'Megabytes per Month': 'Mégaoctets par mois',
 'Member removed from Group': "L'adhésion a supprimée",
+'Member': 'Membre',
 'Members': 'Membres',
 'Membership Details': "Détails de l'adhésion",
 'Membership added': "L'adhésion a ajouté",
@@ -4562,7 +4566,7 @@
 'Temp folder %s not writable - unable to apply theme!': "%s dossier temp non inscriptible - impossible d'appliquer thème!",
 'Template Name': 'Nom du modèle',
 'Template file %s not readable - unable to apply theme!': "%s modèle de fichier non lisible - impossible d'appliquer thème!",
-'Templates': 'templates',
+'Templates': 'Templates',
 'Term for the fifth-level within-country administrative division (e.g. a voting or postcode subdivision). This level is not often used.': "Terme pour le division administrative niveau 5 dans le pays (par exemple, un vote ou subdivision Code postal). Ce niveau n'est pas utilisée souvent.",
 'Term for the fourth-level within-country administrative division (e.g. Village, Neighborhood or Precinct).': 'Terme pour le division administrative niveau 4 dans le pays (par exemple, un village, quartier ou district).',
 'Term for the primary within-country administrative division (e.g. State or Province).': 'Terme pour la principale division administrative du pays (par exemple, Etat ou province).',
@@ -5014,6 +5018,23 @@
 'Weight': 'Poids',
 'Welcome to the Sahana Eden Disaster Management System': 'Bienvenue au système de gestion des catastrophes Sahana EDEN',
 'Welcome to the Sahana Portal at': 'Bienvenue sur le portail Sahana à',
+'Welcome to %(system_name)s': 'Bienvenue sur %(system_name)s',
+"""Welcome to %(system_name)s
+ - You can start using %(system_name)s at: %(url)s
+ - To edit your profile go to: %(url)s%(profile)s
+Thank you""" : """Bienvenue sur %(system_name)s
+ - Vous pouvez commencer à utiliser %(system_name)s depuis: %(url)s
+ - Pour modifier votre profil entrer à: %(url)s%(profile)s
+Merci""",
+"""Welcome to %(system_name)s
+ - You can start using %(system_name)s at: %(url)s
+ - Your password is: %(password)s
+ - To edit your profile go to: %(url)s%(profile)s
+Thank you""" : """Bienvenue sur %(system_name)s
+ - Vous pouvez commencer à utiliser %(system_name)s depuis: %(url)s
+ - Votre mot de passe est: %(password)s
+ - Pour modifier votre profil entrer à: %(url)s%(profile)s
+Merci""",
 'Well-Known Text': 'Texte bien connu',
 'What order to be contacted in.': 'Dans quel ordre être contacté.',
 'Wheat': 'Froment',

@@ -2,7 +2,7 @@
 
 """ Sahana Eden Request Model
 
-    @copyright: 2009-2016 (c) Sahana Software Foundation
+    @copyright: 2009-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -32,6 +32,7 @@ __all__ = ("S3RequestModel",
            "S3RequestSkillModel",
            "S3RequestRecurringModel",
            "S3RequestSummaryModel",
+           "S3RequestTagModel",
            "S3RequestTaskModel",
            "S3CommitModel",
            "S3CommitItemModel",
@@ -194,13 +195,6 @@ class S3RequestModel(S3Model):
         tablename = "req_req"
         self.define_table(tablename,
                           super_link("doc_id", "doc_entity"),
-                          # @ToDo: Replace with Link Table
-                          self.event_event_id(
-                               default = session.s3.event,
-                               ondelete = "SET NULL",
-                               readable = False,
-                               writable = False,
-                               ),
                           Field("type", "integer",
                                 default = default_type,
                                 label = T("Request Type"),
@@ -511,7 +505,6 @@ class S3RequestModel(S3Model):
                        "date_required",
                        "site_id",
                        "requester_id",
-                       #"event_id",
                        ]
 
         # @ToDo: Allow a single column to support different components based on type
@@ -539,12 +532,11 @@ class S3RequestModel(S3Model):
             list_fields.append((T("Committed By"), "commit.site_id"))
 
         self.configure(tablename,
-                       context = {"event": "event_id",
-                                  "location": "site_id$location_id",
+                       context = {"location": "site_id$location_id",
                                   "organisation": "site_id$organisation_id",
                                   "site": "site_id",
                                   },
-                       deduplicate = self.req_req_duplicate,
+                       deduplicate = S3Duplicate(primary = ("req_ref",)),
                        extra_fields = ("req_ref", "type"),
                        filter_widgets = filter_widgets,
                        onaccept = self.req_onaccept,
@@ -643,7 +635,8 @@ class S3RequestModel(S3Model):
                                 readable = False,
                                 writable = False)
 
-        return dict(req_req_ref = lambda **attr: dummy("req_ref"),
+        return dict(req_req_id = lambda **attr: dummy("req_id"),
+                    req_req_ref = lambda **attr: dummy("req_ref"),
                     )
 
     # -------------------------------------------------------------------------
@@ -1478,34 +1471,6 @@ $.filterOptionsS3({
                 (table.args == "[%s]" % row.id)
         db(query).delete()
 
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def req_req_duplicate(item):
-        """
-          This callback will be called when importing records
-          it will look to see if the record being imported is a duplicate.
-
-          @param item: An S3ImportItem object which includes all the details
-                       of the record being imported
-
-          If the record is a duplicate then it will set the item method to update
-
-          Rules for finding a duplicate:
-           - If the Request Number exists then it's a duplicate
-        """
-
-        request_number = item.data.get("req_ref")
-        if not request_number:
-            return
-
-        table = item.table
-        query = (table.req_ref == request_number)
-        duplicate = current.db(query).select(table.id,
-                                             limitby=(0, 1)).first()
-        if duplicate:
-            item.id = duplicate.id
-            item.method = item.METHOD.UPDATE
-
 # =============================================================================
 class S3RequestItemModel(S3Model):
     """
@@ -1537,7 +1502,7 @@ class S3RequestItemModel(S3Model):
         tablename = "req_req_item"
         define_table(tablename,
                      req_id(empty=False),
-                     self.supply_item_entity_id,
+                     self.supply_item_entity_id(),
                      self.supply_item_id(),
                      self.supply_item_pack_id(),
                      Field("quantity", "double", notnull=True,
@@ -1554,7 +1519,7 @@ class S3RequestItemModel(S3Model):
                      # @ToDo: Move this into a Currency Widget for the pack_value field
                      s3_currency(readable = track_pack_values,
                                  writable = track_pack_values),
-                     self.org_site_id,
+                     self.org_site_id(),
                      Field("quantity_commit", "double",
                            default = 0,
                            label = T("Quantity Committed"),
@@ -1586,11 +1551,11 @@ class S3RequestItemModel(S3Model):
                      Field.Method("pack_quantity",
                                   self.supply_item_pack_quantity(tablename=tablename)),
                      s3_comments(),
-                     *s3_meta_fields())
-
-        # @todo: make lazy_table
-        table = db[tablename]
-        table.site_id.label = T("Requested From")
+                     *s3_meta_fields(),
+                     on_define = lambda table: \
+                        [table.site_id.set_attributes(label = T("Requested From")),
+                         ]
+                     )
 
         # CRUD strings
         current.response.s3.crud_strings[tablename] = Storage(
@@ -1625,7 +1590,7 @@ $.filterOptionsS3({
  'target':'item_pack_id',
  'lookupResource':'item_pack',
  'lookupPrefix':'supply',
- 'lookupURL':S3.Ap.concat('/req/req_item_packs/'),
+ 'lookupURL':S3.Ap.concat('/req/req_item_packs.json/'),
  'msgNoRecords':i18n.no_packs,
  'fncPrep':S3.supply.fncPrepItem,
  'fncRepresent':S3.supply.fncRepresentItem
@@ -1891,7 +1856,7 @@ class S3RequestSkillModel(S3Model):
                            requires = IS_INT_IN_RANGE(1, 999999),
                            label = T("Number of People Required"),
                            ),
-                     self.org_site_id,
+                     self.org_site_id(),
                      Field("quantity_commit", "integer",
                            label = T("Quantity Committed"),
                            default = 0,
@@ -1920,11 +1885,11 @@ class S3RequestSkillModel(S3Model):
                                  #              _title="%s|%s" % (T("Task Details"),
                                  #                                T("Include any special requirements such as equipment which they need to bring.")))
                                  ),
-                     *s3_meta_fields())
-
-        # @todo: make lazy_table
-        table = current.db[tablename]
-        table.site_id.label = T("Requested From")
+                     *s3_meta_fields(),
+                     on_define = lambda table: \
+                        [table.site_id.set_attributes(label = T("Requested From")),
+                         ]
+                     )
 
         # CRUD strings
         current.response.s3.crud_strings[tablename] = Storage(
@@ -2405,6 +2370,48 @@ class S3RequestNeedsSkillsModel(S3Model):
         return {}
 
 # =============================================================================
+class S3RequestTagModel(S3Model):
+    """
+        Request Tags
+    """
+
+    names = ("req_req_tag",)
+
+    def model(self):
+
+        T = current.T
+
+        # ---------------------------------------------------------------------
+        # Request Tags
+        # - Key-Value extensions
+        # - can be used to provide conversions to external systems, such as:
+        #   * HXL
+        # - can be a Triple Store for Semantic Web support
+        #
+        tablename = "req_req_tag"
+        self.define_table(tablename,
+                          self.req_req_id(),
+                          # key is a reserved word in MySQL
+                          Field("tag",
+                                label = T("Key"),
+                                ),
+                          Field("value",
+                                label = T("Value"),
+                                ),
+                          s3_comments(),
+                          *s3_meta_fields())
+
+        self.configure(tablename,
+                       deduplicate = S3Duplicate(primary = ("req_id",
+                                                            "tag",
+                                                            ),
+                                                 ),
+                       )
+
+        # Pass names back to global scope (s3.*)
+        return {}
+
+# =============================================================================
 class S3RequestTaskModel(S3Model):
     """
         Link Requests for Skills to Tasks
@@ -2619,8 +2626,7 @@ class S3CommitModel(S3Model):
                         ]
 
         self.configure(tablename,
-                       context = {"event": "req_id$event_id",
-                                  "location": "location_id",
+                       context = {"location": "location_id",
                                   "organisation": "organisation_id",
                                   "request": "req_id",
                                   # We want 'For Sites XX' not 'From Site XX'
@@ -3912,7 +3918,7 @@ def req_match(rheader=None):
         try:
             customise(request, tablename)
         except:
-            s3_debug("customise_%s_resource is using attributes of r which aren't in request" % tablename)
+            current.log.error("customise_%s_resource is using attributes of r which aren't in request" % tablename)
             pass
 
     table = s3db[tablename]
@@ -4534,6 +4540,7 @@ def req_customise_req_fields():
     if site_id:
         field.default = site_id
         field.readable = field.writable = False
+
         # Lookup Site Contact
         script = \
 '''var fieldname='req_req_requester_id'
@@ -4542,8 +4549,14 @@ $.when(S3.addPersonWidgetReady(fieldname)).then(
 function(status){real_input.data('lookup_contact')(fieldname,%s)},
 function(status){s3_debug(status)},
 function(status){s3_debug(status)})''' % site_id
+
+        # @todo: change to this when migrated to S3AddPersonWidget
+        script = '''$.when(S3.addPersonWidgetReady('req_req_requester_id')).then(
+function(input){input.addPerson('lookupContact', %s)})''' % site_id
+
         current.response.s3.jquery_ready.append(script)
     else:
+
         # If the Requester is blank, then lookup default Site Contact
         script = \
 '''$('#req_req_site_id').change(function(){
@@ -4554,6 +4567,16 @@ function(status){s3_debug(status)})''' % site_id
   if(!real_input.val()&&!$('#req_req_requester_id_full_name').val()){
    real_input.data('lookup_contact')(fieldname,site_id)
 }}})'''
+
+        # @todo: change to this when migrated to S3AddPersonWidget
+        #script = '''$('#req_req_site_id').change(function(){
+#var siteID=$(this).val()
+#if(siteID){
+#var fieldName='req_req_requester_id',input=$('#'+fieldName)
+#if(!input.val()&&!$('#'+fieldName+'_full_name').val()){
+#input.addPerson('lookupContact',siteID)}}})
+#'''
+
         current.response.s3.jquery_ready.append(script)
 
         organisation_id = request.get_vars.get("~.(organisation)", None)
@@ -4595,6 +4618,8 @@ function(status){s3_debug(status)})''' % site_id
     field = table.requester_id
     field.requires = IS_ADD_PERSON_WIDGET2()
     field.widget = S3AddPersonWidget2(controller="pr")
+    # @todo: use new widget (=> must also update scripts above)
+    #field.widget = S3AddPersonWidget(controller="pr")
 
     filter_widgets = [
         S3TextFilter(["requester_id$first_name",

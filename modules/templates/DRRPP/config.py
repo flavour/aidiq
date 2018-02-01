@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
 
-#try:
-#    # Python 2.7
-#    from collections import OrderedDict
-#except:
-#    # Python 2.6
-from gluon.contrib.simplejson.ordered_dict import OrderedDict
+from collections import OrderedDict
 
 from gluon import current, A, DIV, H3, TAG, SQLFORM, IS_NOT_EMPTY, IS_EMAIL
 from gluon.storage import Storage
@@ -137,6 +132,9 @@ def config(settings):
 
     # =============================================================================
     # UI Settings
+    # Icons
+    settings.ui.icons = "font-awesome3"
+
     # Enable this for a UN-style deployment
     settings.ui.cluster = True
 
@@ -213,14 +211,16 @@ def config(settings):
                             doc_document=(# Files
                                           {"name": "file",
                                            "joinby": "doc_id",
-                                           "filterby": "url",
-                                           "filterfor": ("", None),
+                                           "filterby": {
+                                               "url": ("", None),
+                                               },
                                           },
                                           # Links
                                           {"name": "url",
                                            "joinby": "doc_id",
-                                           "filterby": "file",
-                                           "filterfor": ("", None),
+                                           "filterby": {
+                                               "file": ("", None),
+                                               },
                                           },
                                          ),
                            )
@@ -630,14 +630,14 @@ def config(settings):
 
         s3db.configure(tablename,
                        crud_form = crud_form,
-                       subheadings = {1: "hazard",
-                                      2: "theme",
-                                      3: "objectives",
-                                      4: "drr_hfa",
-                                      5: "drrpp_rfa",
-                                      6: "drrpp_pifacc",
-                                      7: "drrpp_jnap",
-                                      8: "organisation_id",
+                       subheadings = {"hazard": 1,
+                                      "theme": 2,
+                                      "objectives": 3,
+                                      "drr_hfa": 4,
+                                      "drrpp_rfa": 5,
+                                      "drrpp_pifacc": 6,
+                                      "drrpp_jnap": 7,
+                                      "organisation_id": 8,
                                      },
                        )
 

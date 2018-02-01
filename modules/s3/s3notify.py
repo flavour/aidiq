@@ -2,7 +2,7 @@
 
 """ S3 Notifications
 
-    @copyright: 2011-2016 (c) Sahana Software Foundation
+    @copyright: 2011-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -28,40 +28,24 @@
 """
 
 import datetime
+import json
 import os
+import string
 import sys
 import urlparse
 import urllib2
 from urllib import urlencode
 from uuid import uuid4
-import string
 
 try:
     from cStringIO import StringIO # Faster, where available
 except:
     from StringIO import StringIO
 
-try:
-    import json # try stdlib (Python 2.6)
-except ImportError:
-    try:
-        import simplejson as json # try external module
-    except:
-        import gluon.contrib.simplejson as json # fallback to pure-Python module
-
-from gluon import *
-from gluon.storage import Storage
-from gluon.tools import fetch
+from gluon import current, TABLE, THEAD, TBODY, TR, TD, TH, XML
 
 from s3datetime import s3_decode_iso_datetime, s3_encode_iso_datetime, s3_utc
-from s3utils import S3ModuleDebug, s3_truncate, s3_unicode
-
-DEBUG = False
-if DEBUG:
-    print >> sys.stderr, "S3NOTIFY: DEBUG MODE"
-    _debug = S3ModuleDebug.on
-else:
-    _debug = S3ModuleDebug.off
+from s3utils import s3_str, s3_truncate, s3_unicode
 
 # =============================================================================
 class S3Notifications(object):
@@ -75,9 +59,10 @@ class S3Notifications(object):
             active subscriptions which (may) have updates.
         """
 
+        _debug = current.log.debug
         now = datetime.datetime.utcnow()
 
-        _debug("S3Notifications.check_subscriptions(now=%s)", now)
+        _debug("S3Notifications.check_subscriptions(now=%s)" % now)
 
         subscriptions = cls._subscriptions(now)
         if subscriptions:
@@ -87,7 +72,6 @@ class S3Notifications(object):
                 row.update_record(locked=True)
                 async("notify_notify", args=[row.id])
             message = "%s notifications scheduled." % len(subscriptions)
-            current.db.commit()
         else:
             message = "No notifications to schedule."
 
@@ -106,7 +90,8 @@ class S3Notifications(object):
             @param resource_id: the pr_subscription_resource record ID
         """
 
-        _debug("S3Notifications.notify(resource_id=%s)", resource_id)
+        _debug = current.log.debug
+        _debug("S3Notifications.notify(resource_id=%s)" % resource_id)
 
         db = current.db
         s3db = current.s3db
@@ -126,6 +111,7 @@ class S3Notifications(object):
                                                   stable.notify_on,
                                                   stable.method,
                                                   stable.email_format,
+                                                  stable.attachment,
                                                   rtable.id,
                                                   rtable.resource,
                                                   rtable.url,
@@ -148,8 +134,7 @@ class S3Notifications(object):
         db.commit()
 
         # Construct the send-URL
-        settings = current.deployment_settings
-        public_url = settings.get_base_public_url()
+        public_url = current.deployment_settings.get_base_public_url()
         lookup_url = "%s/%s/%s" % (public_url,
                                    current.request.application,
                                    r.url.lstrip("/"))
@@ -158,12 +143,13 @@ class S3Notifications(object):
         purl = list(urlparse.urlparse(lookup_url))
 
         # Subscription parameters
+        # Date (must ensure we pass to REST as tz-aware)
         last_check_time = s3_encode_iso_datetime(r.last_check_time)
         query = {"subscription": auth_token, "format": "msg"}
         if "upd" in s.notify_on:
-            query["~.modified_on__ge"] = last_check_time
+            query["~.modified_on__ge"] = "%sZ" % last_check_time
         else:
-            query["~.created_on__ge"] = last_check_time
+            query["~.created_on__ge"] = "%sZ" % last_check_time
 
         # Filters
         if f.query:
@@ -202,6 +188,7 @@ class S3Notifications(object):
                            "notify_on": s.notify_on,
                            "method": s.method,
                            "email_format": s.email_format,
+                           "attachment": s.attachment,
                            "resource": r.resource,
                            "last_check_time": last_check_time,
                            "filter_query": query_nice,
@@ -210,7 +197,7 @@ class S3Notifications(object):
                            })
 
         # Send the request
-        _debug("Requesting %s", page_url)
+        _debug("Requesting %s" % page_url)
         req = urllib2.Request(page_url, data=data)
         req.add_header("Content-Type", "application/json")
         success = False
@@ -256,6 +243,7 @@ class S3Notifications(object):
             @param resource: the S3Resource
         """
 
+        _debug = current.log.debug
         _debug("S3Notifications.send()")
 
         json_message = current.xml.json_message
@@ -266,13 +254,13 @@ class S3Notifications(object):
         data = source.read()
         subscription = json.loads(data)
 
-        #_debug("Notify PE #%s by %s on %s of %s since %s",
-        #       subscription["pe_id"],
-        #       str(subscription["method"]),
-        #       str(subscription["notify_on"]),
-        #       subscription["resource"],
-        #       subscription["last_check_time"],
-        #       )
+        #_debug("Notify PE #%s by %s on %s of %s since %s" % \
+        #           (subscription["pe_id"],
+        #            str(subscription["method"]),
+        #            str(subscription["notify_on"]),
+        #            subscription["resource"],
+        #            subscription["last_check_time"],
+        #            ))
 
         # Check notification settings
         notify_on = subscription["notify_on"]
@@ -281,10 +269,10 @@ class S3Notifications(object):
             return json_message(message="No notifications configured "
                                         "for this subscription")
 
-        # Authorization (subscriber must be logged in)
-        auth = current.auth
+        # Authorization (pe_id must not be None)
         pe_id = subscription["pe_id"]
-        if not auth.s3_logged_in() or auth.user.pe_id != pe_id:
+
+        if not pe_id:
             r.unauthorised()
 
         # Fields to extract
@@ -303,7 +291,7 @@ class S3Notifications(object):
         if not numrows:
             return json_message(message="No records found")
 
-        #_debug("%s rows:", numrows)
+        #_debug("%s rows:" % numrows)
 
         # Prepare meta-data
         get_config = resource.get_config
@@ -354,12 +342,28 @@ class S3Notifications(object):
         subject = get_config("notify_subject")
         if not subject:
             subject = settings.get_msg_notify_subject()
+        if callable(subject):
+            subject = subject(resource, data, meta_data)
 
         from string import Template
         subject = Template(subject).safe_substitute(S="%(systemname)s",
                                                     s="%(systemname_short)s",
                                                     r="%(resource)s")
         subject = subject % meta_data
+
+        # Attachment
+        attachment = subscription.get("attachment", False)
+        document_ids = None
+        if attachment:
+            attachment_fnc = settings.get_msg_notify_attachment()
+            if attachment_fnc:
+                document_ids = attachment_fnc(resource, data, meta_data)
+
+        # **data for send_by_pe_id function in s3msg
+        send_data = {}
+        send_data_fnc = settings.get_msg_notify_send_data()
+        if callable(send_data_fnc):
+            send_data = send_data_fnc(resource, data, meta_data)
 
         # Helper function to find templates from a priority list
         join = lambda *f: os.path.join(current.request.folder, *f)
@@ -404,7 +408,7 @@ class S3Notifications(object):
                 path = join("views", "msg")
                 template = get_template(path, filenames)
             if template is None:
-                template = StringIO(T("New updates are available."))
+                template = StringIO(s3_str(current.T("New updates are available.")))
 
             # Select contents format
             if method == "EMAIL" and email_format == "html":
@@ -421,15 +425,21 @@ class S3Notifications(object):
                 errors.append(error)
                 continue
 
+            if not message:
+                continue
+
             # Send the message
-            #_debug("Sending message per %s", method)
+            #_debug("Sending message per %s" % method)
             #_debug(message)
             try:
                 sent = send(pe_id,
+                            # RFC 2822
                             subject=s3_truncate(subject, 78),
                             message=message,
                             contact_method=method,
-                            system_generated=True)
+                            system_generated=True,
+                            document_ids=document_ids,
+                            **send_data)
             except:
                 exc_info = sys.exc_info()[:2]
                 error = ("%s: %s" % (exc_info[0].__name__, exc_info[1]))
@@ -475,17 +485,23 @@ class S3Notifications(object):
         stable = s3db.pr_subscription
         rtable = db.pr_subscription_resource
 
-        # Find all resources with due suscriptions
-        query = ((rtable.next_check_time == None) |
-                 (rtable.next_check_time <= now)) & \
-                (rtable.locked != True) & \
-                (rtable.deleted != True)
+        # Find all resources with due subscriptions
+        next_check = rtable.next_check_time
+        locked_deleted = (rtable.locked != True) & \
+                         (rtable.deleted != True)
+        query = ((next_check == None) |
+                 (next_check <= now)) & \
+                locked_deleted
 
         tname = rtable.resource
-        mtime = rtable.last_check_time.min()
+        last_check = rtable.last_check_time
+        mtime = last_check.min()
         rows = db(query).select(tname,
                                 mtime,
                                 groupby=tname)
+
+        if not rows:
+            return None
 
         # Select those which have updates
         resources = set()
@@ -496,8 +512,7 @@ class S3Notifications(object):
             if not table or not "modified_on" in table.fields:
                 # Can't notify updates in resources without modified_on
                 continue
-            else:
-                modified_on = table.modified_on
+            modified_on = table.modified_on
             msince = row[mtime]
             if msince is None:
                 query = (table.id > 0)
@@ -509,29 +524,29 @@ class S3Notifications(object):
             if update:
                 radd((tablename, update.modified_on))
 
+        if not resources:
+            return None
+
         # Get all active subscriptions to these resources which
         # may need to be notified now:
-        if resources:
-            join = rtable.on((rtable.subscription_id == stable.id) & \
-                             (rtable.locked != True) & \
-                             (rtable.deleted != True))
-            query = None
-            for rname, modified_on in resources:
-                q = (rtable.resource == rname) & \
-                    ((rtable.last_check_time == None) |
-                     (rtable.last_check_time <= modified_on))
-                if query is None:
-                    query = q
-                else:
-                    query |= q
-            query = (stable.frequency != "never") & \
-                    (stable.deleted != True) & \
-                    ((rtable.next_check_time == None) | \
-                     (rtable.next_check_time <= now)) & \
-                    query
-            return db(query).select(rtable.id, join=join)
-        else:
-            return None
+        join = rtable.on((rtable.subscription_id == stable.id) & \
+                         locked_deleted)
+        query = None
+        for rname, modified_on in resources:
+            q = (tname == rname) & \
+                ((last_check == None) |
+                 (last_check <= modified_on))
+            if query is None:
+                query = q
+            else:
+                query |= q
+
+        query = (stable.frequency != "never") & \
+                (stable.deleted != True) & \
+                ((next_check == None) | \
+                 (next_check <= now)) & \
+                query
+        return db(query).select(rtable.id, join=join)
 
     # -------------------------------------------------------------------------
     @classmethod
@@ -573,7 +588,7 @@ class S3Notifications(object):
                 if created_on_colname:
                     try:
                         created_on = row["_row"][created_on_colname]
-                    except KeyError, AttributeError:
+                    except (KeyError, AttributeError):
                         pass
                     else:
                         if s3_utc(created_on) >= last_check_time:
@@ -607,7 +622,7 @@ class S3Notifications(object):
                 if created_on_colname:
                     try:
                         created_on = row["_row"][created_on_colname]
-                    except KeyError, AttributeError:
+                    except (KeyError, AttributeError):
                         pass
                     else:
                         if s3_utc(created_on) >= last_check_time:

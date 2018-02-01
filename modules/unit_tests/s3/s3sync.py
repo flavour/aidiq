@@ -5,16 +5,13 @@
 # To run this script use:
 # python web2py.py -S eden -M -R applications/eden/modules/unit_tests/s3/s3sync.py
 #
+import json
 import unittest
+
 from gluon import current
 from lxml import etree
-try:
-    import json # try stdlib (Python 2.6)
-except ImportError:
-    try:
-        import simplejson as json # try external module
-    except:
-        import gluon.contrib.simplejson as json # fallback to pure-Python module
+
+from unit_tests import run_suite
 
 # =============================================================================
 class ExportMergeTests(unittest.TestCase):
@@ -199,7 +196,6 @@ class ImportMergeWithExistingRecords(unittest.TestCase):
         xmltree = etree.ElementTree(etree.fromstring(xmlstr))
         resource = current.s3db.resource("org_organisation")
         msg = resource.import_xml(xmltree)
-        #print msg
         self.assertEqual(resource.error, None)
 
         # Check the result
@@ -277,7 +273,6 @@ class ImportMergeWithExistingOriginal(unittest.TestCase):
         xmltree = etree.ElementTree(etree.fromstring(xmlstr))
         resource = current.s3db.resource("org_organisation")
         msg = resource.import_xml(xmltree)
-        #print msg
         self.assertEqual(resource.error, None)
 
         # Check the result: the duplicate should never be imported
@@ -354,7 +349,6 @@ class ImportMergeWithExistingDuplicate(unittest.TestCase):
         xmltree = etree.ElementTree(etree.fromstring(xmlstr))
         resource = current.s3db.resource("org_organisation")
         msg = resource.import_xml(xmltree)
-        #print msg
         self.assertEqual(resource.error, None)
 
         # Check the result: new record gets imported, duplicate merged into it
@@ -417,7 +411,6 @@ class ImportMergeWithoutExistingRecords(unittest.TestCase):
         xmltree = etree.ElementTree(etree.fromstring(xmlstr))
         resource = current.s3db.resource("org_organisation")
         msg = resource.import_xml(xmltree)
-        #print msg
         self.assertEqual(resource.error, None)
 
         # Check the result: only the final record gets imported
@@ -438,18 +431,6 @@ class ImportMergeWithoutExistingRecords(unittest.TestCase):
         current.db.rollback()
 
 # =============================================================================
-def run_suite(*test_classes):
-    """ Run the test suite """
-
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    for test_class in test_classes:
-        tests = loader.loadTestsFromTestCase(test_class)
-        suite.addTests(tests)
-    if suite is not None:
-        unittest.TextTestRunner(verbosity=2).run(suite)
-    return
-
 if __name__ == "__main__":
 
     run_suite(

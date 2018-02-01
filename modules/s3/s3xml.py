@@ -1,4 +1,4 @@
-## -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 """ S3XML Toolkit
 
@@ -7,7 +7,7 @@
     @requires: U{B{I{gluon}} <http://web2py.com>}
     @requires: U{B{I{lxml}} <http://codespeak.net/lxml>}
 
-    @copyright: 2009-2016 (c) Sahana Software Foundation
+    @copyright: 2009-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -33,23 +33,16 @@
 """
 
 import datetime
+import json
 import os
 import re
 import sys
 import urllib2
 
 try:
-    import json # try stdlib (Python 2.6)
-except ImportError:
-    try:
-        import simplejson as json # try external module
-    except:
-        import gluon.contrib.simplejson as json # fallback to pure-Python module
-
-try:
     from lxml import etree
 except ImportError:
-    print >> sys.stderr, "ERROR: lxml module needed for XML handling"
+    sys.stderr.write("ERROR: lxml module needed for XML handling\n")
     raise
 
 from gluon import *
@@ -90,7 +83,7 @@ class S3XML(S3Codec):
     # GIS field names
     Lat = "lat"
     Lon = "lon"
-    WKT = "wkt"
+    #WKT = "wkt"
 
     IGNORE_FIELDS = [
         "id",
@@ -164,6 +157,7 @@ class S3XML(S3Codec):
         latmin="latmin",
         latmax="latmax",
         limit="limit",
+        llrepr="llrepr",
         lon="lon",
         lonmin="lonmin",
         lonmax="lonmax",
@@ -234,16 +228,17 @@ class S3XML(S3Codec):
             try:
                 source = urllib2.urlopen(source)
             except:
-                pass
+                self.error = "XML Source error: %s" % sys.exc_info()[1]
+                return None
         try:
-            parser = etree.XMLParser(no_network = False,
+            parser = etree.XMLParser(huge_tree = True, # Support large WKT fields
+                                     no_network = False,
                                      remove_blank_text = True,
                                      )
             result = etree.parse(source, parser)
             return result
         except:
-            e = sys.exc_info()[1]
-            self.error = e
+            self.error = "XML Parse error: %s" % sys.exc_info()[1]
             return None
 
     # -------------------------------------------------------------------------
@@ -852,7 +847,9 @@ class S3XML(S3Codec):
                 # These have been looked-up in bulk
                 geojson = geojsons[tablename].get(record_id, None)
                 if geojson:
-                    # Always single
+                    # Always single...except with spatial DB
+                    if type(geojson) is list:
+                        geojson = geojson[-1]
                     geometry = etree.SubElement(map_data, "geometry")
                     geometry.set("value", geojson)
 
@@ -1026,8 +1023,7 @@ class S3XML(S3Codec):
                 try:
                     attrs = attributes[tablename][record_id]
                 except KeyError:
-                    from s3utils import s3_debug
-                    s3_debug("S3XML", "record not found in lookup")
+                    current.log.debug("S3XML: record not found in lookup")
                     attrs = {}
                 if attrs:
                     # Encode in a way which we can decode in static/formats/geojson/export.xsl
@@ -1126,6 +1122,7 @@ class S3XML(S3Codec):
                  fields=[],
                  url=None,
                  lazy=None,
+                 llrepr=None,
                  postprocess=None):
         """
             Creates a <resource> element from a record
@@ -1137,6 +1134,7 @@ class S3XML(S3Codec):
             @param fields: list of field names to include
             @param url: URL of the record
             @param lazy: lazy representation map
+            @param llrepr: lookup list representation method
             @param postprocess: post-process hook (xml_post_render)
         """
 
@@ -1191,6 +1189,16 @@ class S3XML(S3Codec):
             # export only MTIME with deleted records
             fields = [self.MTIME]
 
+        # Lookup List Representation
+        if llrepr:
+            record_id = record.get(table._id.name)
+            if record_id:
+                if lazy is not None and hasattr(llrepr, "bulk"):
+                    text = S3RepresentLazy(record_id, llrepr)
+                    lazy.append((text, None, attrib, ATTRIBUTE.llrepr))
+                else:
+                    attrib[ATTRIBUTE.llrepr] = s3_unicode(llrepr(record_id))
+
         # Fields
         FIELDS_TO_ATTRIBUTES = self.FIELDS_TO_ATTRIBUTES
 
@@ -1219,10 +1227,9 @@ class S3XML(S3Codec):
             represent = dbfield.represent
             value = None
 
-            if fieldtype == "datetime":
+            if fieldtype in ("datetime", "date", "time"):
                 value = s3_encode_iso_datetime(v).decode("utf-8")
-            elif fieldtype in ("date", "time") or \
-                 fieldtype[:7] == "decimal":
+            elif fieldtype[:7] == "decimal":
                 value = str(formatter(v)).decode("utf-8")
 
             # Get the representation
@@ -1279,7 +1286,7 @@ class S3XML(S3Codec):
                     attr = data.attrib
                     attr[FIELD] = f
                     attr[FILEURL] = fileurl
-                    attr[ATTRIBUTE.filename] = filename
+                    attr[ATTRIBUTE.filename] = s3_unicode(filename)
 
             elif fieldtype == "password":
                 data = SubElement(elem, DATA)
@@ -1383,7 +1390,7 @@ class S3XML(S3Codec):
     @classmethod
     def record(cls, table, element,
                original=None,
-               files=[],
+               files=None,
                skip=[],
                postprocess=None):
         """
@@ -1391,10 +1398,9 @@ class S3XML(S3Codec):
             it
 
             @param table: the database table
-
             @param element: the element
             @param original: the original record
-            @param files: list of attached upload files
+            @param files: dict of attached upload files
             @param postprocess: post-process hook (xml_post_parse)
             @param skip: fields to skip
         """
@@ -1515,27 +1521,22 @@ class S3XML(S3Codec):
             if field_type in ("id", "blob"):
                 continue
             elif field_type == "upload":
+
                 download_url = child.get(ATTRIBUTE["url"])
                 filename = child.get(ATTRIBUTE["filename"])
+
                 upload = None
-                if filename and filename in files:
-                    # We already have the file cached
+
+                if filename and files and filename in files:
+                    # We already have the file cached (attachment)
                     upload = files[filename]
+
                 elif download_url == "local":
-                    # File is already in-place
+                    # File is already in-place (i.e. in the local upload folder)
                     value = filename
-                    # Read from the filesystem
-                    # uploadfolder = table[f].uploadfolder
-                    # if not uploadfolder:
-                        # uploadfolder = os.path.join(current.request.folder,
-                                                    # "uploads")
-                    # filepath = os.path.join(uploadfolder, filename)
-                    # try:
-                        # upload = open(filepath, r)
-                    # except IOError:
-                        # continue
+
                 elif download_url:
-                    # Download file from Internet
+                    # Download file from network location
                     if not isinstance(download_url, str):
                         try:
                             download_url = download_url.encode("utf-8")
@@ -1547,6 +1548,7 @@ class S3XML(S3Codec):
                         upload = urllib2.urlopen(download_url)
                     except IOError:
                         continue
+
                 if upload:
                     if not isinstance(filename, str):
                         try:
@@ -1555,6 +1557,7 @@ class S3XML(S3Codec):
                             continue
                     field = table[f]
                     value = field.store(upload, filename)
+
                 elif download_url != "local":
                     continue
             else:
@@ -1564,13 +1567,14 @@ class S3XML(S3Codec):
             is_text = field_type in ("string", "text")
 
             if value is None:
-                decode_value = not is_text
                 if field_type == "password":
                     value = child.text
                     # Do not re-encrypt the password if it already
                     # comes encrypted:
                     skip_validation = True
+                    decode_value = False
                 else:
+                    decode_value = not is_text
                     value = xml_decode(child.text)
             else:
                 decode_value = True
@@ -1675,7 +1679,7 @@ class S3XML(S3Codec):
         options = None
         try:
             field = table[fieldname]
-        except AttributeError:
+        except (KeyError, AttributeError):
             pass
         else:
             requires = field.requires
@@ -2223,12 +2227,21 @@ class S3XML(S3Codec):
 
     # -------------------------------------------------------------------------
     @classmethod
-    def tree2json(cls, tree, pretty_print=False, native=False):
+    def tree2json(cls, tree, pretty_print=False, native=False, as_dict=False):
         """
             Converts an element tree into JSON
 
             @param tree: the element tree
-            @param pretty_print: provide pretty formatted output
+            @param pretty_print: indent and insert line breaks into
+                                 the JSON string to make it human-readable
+                                 (useful for debug)
+            @param native: tree is S3XML
+            @param as_dict: return a JSON-serializable object instead of
+                            a string, useful for embedding the data in
+                            other structures
+
+            @return: a JSON string (with as_dict=False),
+                     or a JSON-serializable object (with as_dict=True)
         """
 
         if isinstance(tree, etree._ElementTree):
@@ -2249,8 +2262,10 @@ class S3XML(S3Codec):
             else:
                 root_dict["s3"] = json.loads(root_dict["s3"])
 
-        if pretty_print:
-            js = json.dumps(root_dict, indent=4)
+        if as_dict:
+            return root_dict
+        elif pretty_print:
+            js = json.dumps(root_dict, indent=2)
             return "\n".join([l.rstrip() for l in js.splitlines()])
         else:
             return json.dumps(root_dict, separators=SEPARATORS)
@@ -2431,9 +2446,8 @@ class S3XML(S3Codec):
                 # Use header row in the work sheet
                 headers = {}
 
-            # Lambda to decode XLS dates into an ISO datetime-string
-            decode_date = lambda v: datetime.datetime(
-                                    *xlrd.xldate_as_tuple(v, wb.datemode))
+            # Lambda to decode XLS dates into a datetime.datetime
+            decode_date = lambda v: xlrd.xldate.xldate_as_datetime(v, wb.datemode)
 
             def decode(t, v):
                 """
@@ -2452,6 +2466,7 @@ class S3XML(S3Codec):
                     elif t == xlrd.XL_CELL_NUMBER:
                         text = str(long(v)) if long(v) == v else str(v)
                     elif t == xlrd.XL_CELL_DATE:
+                        # Convert into an ISO datetime string
                         text = s3_encode_iso_datetime(decode_date(v))
                     elif t == xlrd.XL_CELL_BOOLEAN:
                         text = str(value).lower()
@@ -2539,7 +2554,7 @@ class S3XML(S3Codec):
                 record_idx += 1
 
         # Use this to debug the source tree if needed:
-        #print >>sys.stderr, cls.tostring(root, pretty_print=True)
+        #sys.stderr.write(cls.tostring(root, pretty_print=True))
 
         return  etree.ElementTree(root)
 
@@ -2660,7 +2675,7 @@ class S3XML(S3Codec):
             raise HTTP(400, body=cls.json_message(False, 400, e))
 
         # Use this to debug the source tree if needed:
-        #print >>sys.stderr, cls.tostring(root, pretty_print=True)
+        #sys.stderr.write(cls.tostring(root, pretty_print=True))
 
         return  etree.ElementTree(root)
 

@@ -2,7 +2,7 @@
 
 """ Sahana Eden Setup Model
 
-@copyright: 2015-2016 (c) Sahana Software Foundation
+@copyright: 2015-2018 (c) Sahana Software Foundation
 @license: MIT
 
 Permission is hereby granted, free of charge, to any person
@@ -118,6 +118,7 @@ class S3DeployModel(S3Model):
                            label = T("Private Key"),
                            length = current.MAX_FILENAME_LENGTH,
                            required = True,
+                           requires = IS_LENGTH(current.MAX_FILENAME_LENGTH),
                            ),
                      Field("webserver_type", "integer",
                            label = T("Web Server"),

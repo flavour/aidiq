@@ -12,6 +12,8 @@ from gluon.storage import Storage
 from s3.s3aaa import S3EntityRoleManager, S3Permission
 from s3.s3fields import s3_meta_fields
 
+from unit_tests import run_suite
+
 # =============================================================================
 class AuthUtilsTests(unittest.TestCase):
     """ S3Auth Utility Methods Tests """
@@ -191,6 +193,22 @@ class SetRolesTests(unittest.TestCase):
             current.db.rollback()
             auth.override = False
             raise
+
+        # Stash security policy
+        settings = current.deployment_settings
+        self.policy = settings.get_security_policy()
+
+    # -------------------------------------------------------------------------
+    def tearDown(self):
+
+        current.db.rollback()
+
+        auth = current.auth
+        auth.override = False
+
+        # Restore security policy
+        current.deployment_settings.security.policy = self.policy
+        auth.permission = S3Permission(auth)
 
     # -------------------------------------------------------------------------
     def testSetRolesPolicy3(self):
@@ -463,12 +481,6 @@ class SetRolesTests(unittest.TestCase):
             #s3db.pr_remove_affiliation(org1, org3, role="TestPartners")
             #auth.s3_delete_role("TESTGROUP")
             #current.db.rollback()
-
-    # -------------------------------------------------------------------------
-    def tearDown(self):
-
-        current.db.rollback()
-        current.auth.override = False
 
 # =============================================================================
 class RoleAssignmentTests(unittest.TestCase):
@@ -1103,6 +1115,20 @@ class ACLManagementTests(unittest.TestCase):
     """ Test ACL management/lookup functions """
 
     # -------------------------------------------------------------------------
+    def setUp(self):
+
+        # Stash security policy
+        self.policy = current.deployment_settings.get_security_policy()
+
+    # -------------------------------------------------------------------------
+    def tearDown(self):
+
+        # Restore security policy
+        current.deployment_settings.security.policy = self.policy
+        auth = current.auth
+        auth.permission = S3Permission(auth)
+
+    # -------------------------------------------------------------------------
     def testRequiredACL(self):
         """ Test lambda to compute the required ACL """
 
@@ -1492,6 +1518,7 @@ class HasPermissionTests(unittest.TestCase):
         auth.s3_impersonate(None)
         auth.override = False
 
+    # -------------------------------------------------------------------------
     def tearDown(self):
 
         table = current.s3db.org_organisation
@@ -1503,13 +1530,14 @@ class HasPermissionTests(unittest.TestCase):
         table = current.s3db.org_permission_test
         table.truncate()
 
-        # Restore security policy
-        current.deployment_settings.security.policy = self.policy
-
         # Logout + turn override off
         auth = current.auth
         auth.s3_impersonate(None)
         auth.override = False
+
+        # Restore security policy
+        current.deployment_settings.security.policy = self.policy
+        auth.permission = S3Permission(auth)
 
     # -------------------------------------------------------------------------
     def testPolicy1(self):
@@ -2192,6 +2220,7 @@ class AccessibleQueryTests(unittest.TestCase):
         auth.s3_impersonate(None)
         auth.override = False
 
+    # -------------------------------------------------------------------------
     def tearDown(self):
 
         # Rollback
@@ -2201,16 +2230,18 @@ class AccessibleQueryTests(unittest.TestCase):
         table = current.s3db.org_permission_test
         table.truncate()
 
-        # Restore security policy
-        current.deployment_settings.security.policy = self.policy
-
-        # Restore current ownership rule
-        current.deployment_settings.security.strict_ownership = self.strict
-
         # Logout + turn override off
         auth = current.auth
         auth.s3_impersonate(None)
         auth.override = False
+
+        # Restore security policy
+        current.deployment_settings.security.policy = self.policy
+        auth.permission = S3Permission(auth)
+
+        # Restore current ownership rule
+        current.deployment_settings.security.strict_ownership = self.strict
+
 
     # -------------------------------------------------------------------------
     def testPolicy3(self):
@@ -2806,18 +2837,20 @@ class DelegationTests(unittest.TestCase):
         auth.s3_impersonate(None)
         auth.override = False
 
+    # -------------------------------------------------------------------------
     def tearDown(self):
 
         # Rollback
         current.db.rollback()
 
-        # Restore security policy
-        current.deployment_settings.security.policy = self.policy
-
         # Logout + turn override off
         auth = current.auth
         auth.s3_impersonate(None)
         auth.override = False
+
+        # Restore security policy
+        current.deployment_settings.security.policy = self.policy
+        auth.permission = S3Permission(auth)
 
     # -------------------------------------------------------------------------
     def testRoleDelegation(self):
@@ -2948,6 +2981,7 @@ class RecordApprovalTests(unittest.TestCase):
 
         self.policy = settings.get_security_policy()
         settings.security.policy = 5
+        auth.permission = S3Permission(auth)
 
         self.approval = settings.get_auth_record_approval()
         settings.auth.record_approval = False
@@ -2957,6 +2991,22 @@ class RecordApprovalTests(unittest.TestCase):
 
         auth.override = False
         auth.s3_impersonate(None)
+
+    # -------------------------------------------------------------------------
+    def tearDown(self):
+
+        settings = current.deployment_settings
+
+        settings.auth.record_approval = self.approval
+        settings.auth.record_approval_required_for = self.approval_for
+
+        current.auth.s3_impersonate(None)
+
+        # Restore security policy
+        settings.security.policy = self.policy
+        current.auth.permission = S3Permission(current.auth)
+
+        current.db.rollback()
 
     # -------------------------------------------------------------------------
     def testRecordApprovedBy(self):
@@ -3746,18 +3796,6 @@ class RecordApprovalTests(unittest.TestCase):
             settings.auth.record_approval_required_for = approval_required
             auth.s3_impersonate(None)
 
-    # -------------------------------------------------------------------------
-    def tearDown(self):
-
-        settings = current.deployment_settings
-
-        settings.security.policy = self.policy
-        settings.auth.record_approval = self.approval
-        settings.auth.record_approval_required_for = self.approval_for
-
-        current.auth.s3_impersonate(None)
-        current.db.rollback()
-
 # =============================================================================
 class RealmEntityTests(unittest.TestCase):
     """ Test customization hooks for realm entity """
@@ -4432,18 +4470,6 @@ class EntityRoleManagerTests(unittest.TestCase):
         pass
 
 # =============================================================================
-def run_suite(*test_classes):
-    """ Run the test suite """
-
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    for test_class in test_classes:
-        tests = loader.loadTestsFromTestCase(test_class)
-        suite.addTests(tests)
-    if suite is not None:
-        unittest.TextTestRunner(verbosity=2).run(suite)
-    return
-
 if __name__ == "__main__":
 
     run_suite(

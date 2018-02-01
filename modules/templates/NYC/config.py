@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
 
-try:
-    # Python 2.7
-    from collections import OrderedDict
-except:
-    # Python 2.6
-    from gluon.contrib.simplejson.ordered_dict import OrderedDict
+from collections import OrderedDict
 
 from gluon import current
 from gluon.html import A, URL, TR, TD
@@ -55,7 +50,9 @@ def config(settings):
     settings.gis.postcode_selector = False
     # Enable this to change the label for 'Postcode'
     #settings.ui.label_postcode = "ZIP Code"
-    # Custom icon classes
+
+    # Icons
+    settings.ui.icons = "font-awesome3"
     settings.ui.custom_icons = {
         "alert": "icon-alert",
         "event": "icon-event",
@@ -70,6 +67,7 @@ def config(settings):
     # NB This can also be over-ridden for specific contexts later
     # e.g. Activities filtered to those of parent Project
     settings.gis.countries = ("US",)
+    gis_levels = ("L2", "L3", "L4")
 
     settings.fin.currencies = {
         "USD" : "United States Dollars",
@@ -393,7 +391,7 @@ def config(settings):
             S3OptionsFilter("organisation_id",
                             ),
             S3LocationFilter("location_id",
-                             levels = ("L2", "L3", "L4"),
+                             levels = gis_levels,
                              ),
             #S3OptionsFilter("site_org_group.group_id",
             #                represent = "%(name)s",
@@ -457,8 +455,7 @@ def config(settings):
                     field = table.location_id
                     if r.method in ("create", "update"):
                         field.label = "" # Gets replaced by widget
-                    levels = ("L2", "L3", "L4")
-                    field.widget = S3LocationSelector(levels=levels,
+                    field.widget = S3LocationSelector(levels=gis_levels,
                                                       show_address=True,
                                                       # Using L4 instead
                                                       show_postcode=False,
@@ -498,8 +495,9 @@ def config(settings):
     # -------------------------------------------------------------------------
     def org_organisation_postprocess(form):
         """
-            If the user selects the City (L2), or Borough (L3) for Area Served,
-            then add all Zipcodes in instead
+            * If the user selects the City (L2), or Borough (L3) for Area Served,
+            then add all Zipcodes in instead.
+            * RSS Subscriptions handling
         """
 
         db = current.db
@@ -590,8 +588,9 @@ def config(settings):
         s3db.add_components("org_organisation",
                             org_facility = {"name": "main_facility",
                                             "joinby": "organisation_id",
-                                            "filterby": "main_facility",
-                                            "filterfor": True,
+                                            "filterby": {
+                                                "main_facility": True,
+                                                },
                                             },
                             )
 
@@ -647,7 +646,7 @@ def config(settings):
                 # Create form: Default
                 rss_import = None
 
-        s3db.org_organisation_location.location_id.widget = S3LocationSelector(levels=("L2", "L3", "L4"),
+        s3db.org_organisation_location.location_id.widget = S3LocationSelector(levels=gis_levels,
                                                                                show_map=False,
                                                                                labels=False,
                                                                                )
@@ -818,12 +817,12 @@ def config(settings):
                             ),
             S3LocationFilter("org_facility.location_id",
                              label = T("Location"),
-                             levels = ("L2", "L3", "L4"),
+                             levels = gis_levels,
                              #hidden = True,
                              ),
             S3LocationFilter("organisation_location.location_id",
                              label = T("Areas Served"),
-                             levels = ("L2", "L3", "L4"),
+                             levels = gis_levels,
                              #hidden = True,
                              ),
             S3OptionsFilter("service_organisation.service_id",
@@ -888,8 +887,7 @@ def config(settings):
                         field = table.location_id
                         if r.method in ("create", "update"):
                             field.label = "" # Gets replaced by widget
-                        levels = ("L2", "L3", "L4")
-                        field.widget = S3LocationSelector(levels=levels,
+                        field.widget = S3LocationSelector(levels=gis_levels,
                                                           show_address=True,
                                                           # Using L4 instead
                                                           show_postcode=False,
@@ -1705,7 +1703,7 @@ $.filterOptionsS3({
                                         ),
                         S3LocationFilter("location_id",
                                          label = T("Location"),
-                                         levels = ("L2", "L3", "L4"),
+                                         levels = gis_levels,
                                          #hidden = True,
                                          ),
                         S3OptionsFilter("group_membership.group_id",
@@ -1739,7 +1737,7 @@ $.filterOptionsS3({
      'trigger':'organisation_id',
      'target':'site_id',
      'lookupResource':'site',
-     'lookupURL':'/%s/org/sites_for_org/',
+     'lookupURL':'/%s/org/sites_for_org.json/',
      'optional':true
     })''' % r.application
                     s3.jquery_ready.append(script)
@@ -1938,7 +1936,7 @@ $.filterOptionsS3({
                     #                ),
                     S3LocationFilter("location.location_id",
                                      label = T("Location"),
-                                     levels = ("L2", "L3", "L4"),
+                                     levels = gis_levels,
                                      #hidden = True,
                                      ),
                     # @ToDo: Widget to handle Start & End in 1!

@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
 
-try:
-    # Python 2.7
-    from collections import OrderedDict
-except:
-    # Python 2.6
-    from gluon.contrib.simplejson.ordered_dict import OrderedDict
+from collections import OrderedDict
 
 from gluon import current
 from gluon.storage import Storage
@@ -156,12 +151,6 @@ def config(settings):
         #        restricted = True,
         #        module_type = 2
         #    )),
-        ("scenario", Storage(
-                name_nice = T("Scenarios"),
-                #description = "Define Scenarios for allocation of appropriate Resources (Human, Assets & Facilities).",
-                restricted = True,
-                module_type = None,
-            )),
         ("event", Storage(
                 name_nice = T("Events"),
                 #description = "Activate Events (e.g. from Scenario templates) for allocation of appropriate Resources (Human, Assets & Facilities).",

@@ -20,13 +20,21 @@ def download():
     try:
         filename = request.args[0]
     except:
-        session.error("Need to specify the file to download!")
-        redirect(URL(f="index"))
+        # No legitimate interactive request comes here without a filename,
+        # so this hits mainly non-interactive clients, and those do not
+        # recognize an error condition from a HTTP 303 => better to raise
+        # a proper error than to redirect:
+        raise HTTP(400, "No file specified")
+        #session.error = T("Need to specify the file to download!")
+        #redirect(URL(f="index"))
 
-    # Load the Model
+    # Check Permissions
     tablename = filename.split(".", 1)[0]
     if "_" in tablename:
+        # Load the Model
         table = s3db.table(tablename)
+        if table and not auth.s3_has_permission("read", tablename):
+            auth.permission.fail()
 
     return response.download(request, db)
 
@@ -140,6 +148,7 @@ def index():
     title = settings.get_system_name()
     response.title = title
 
+    # CMS Contents for homepage
     item = ""
     has_module = settings.has_module
     if has_module("cms"):
@@ -149,116 +158,128 @@ def index():
                 ((ltable.resource == None) | (ltable.resource == "index")) & \
                 (ltable.post_id == table.id) & \
                 (table.deleted != True)
-        item = db(query).select(table.body,
-                                limitby=(0, 1)).first()
+        item = db(query).select(table.body, limitby=(0, 1)).first()
         if item:
             item = DIV(XML(item.body))
         else:
             item = ""
 
-    if has_module("cr"):
-        table = s3db.cr_shelter
-        SHELTERS = s3.crud_strings["cr_shelter"].title_list
-    else:
-        SHELTERS = ""
-
     # Menu boxes
     from s3layouts import S3HomepageMenuLayout as HM
 
-    sit_dec_res_box = HM(_class="fleft swidth", arrows=True)(
-        HM("Situation")(
-            HM("Staff", c="hrm", f="staff", t="hrm_human_resource"),
-            HM("Volunteers", c="vol", f="volunteer", t="hrm_human_resource"),
-            HM("Incidents", c="event", f="incident_report"),
-            HM("Assessments", c="survey", f="series"),
-            HM("Assets", c="asset", f="asset"),
-            HM("Inventory Items", c="inv", f="inv_item"),
-        ),
-        HM("Decision")(
-            #HM("Gap Map", c="project", f="gap_map"),
-            #HM("Gap Report", c="project", f="gap_report"),
-            HM("Requests", c="req", f="req"),
-        ),
-        HM("Response")(
-            HM("Projects", c="project", f="project"),
-            HM("Commitments", c="req", f="commit"),
-            HM("Sent Shipments", c="inv", f="send"),
-            HM("Received Shipments", c="inv", f="recv"),
-        ),
+    sit_menu = HM("Situation Awareness")(
+        HM("Map", c="gis", f="index", icon="map-marker"),
+        HM("Incidents", c="event", f="incident_report", icon="incident"),
+        HM("Alerts", c="cap", f="alert", icon="alert"),
+        HM("Assessments", c="survey", f="series", icon="assessment"),
+    )
+    org_menu = HM("Who is doing What and Where")(
+        HM("Organizations", c="org", f="organisation", icon="organisation"),
+        HM("Facilities", c="org", f="facility", icon="facility"),
+        HM("Activities", c="project", f="activity", icon="activity"),
+        HM("Projects", c="project", f="project", icon="project"),
+    )
+    res_menu = HM("Manage Resources")(
+        HM("Staff", c="hrm", f="staff", t="hrm_human_resource", icon="staff"),
+        HM("Volunteers", c="vol", f="volunteer", t="hrm_human_resource", icon="volunteer"),
+        HM("Relief Goods", c="inv", f="inv_item", icon="goods"),
+        HM("Assets", c="asset", f="asset", icon="asset"),
+    )
+    aid_menu = HM("Manage Aid")(
+        HM("Requests", c="req", f="req", icon="request"),
+        HM("Commitments", c="req", f="commit", icon="commit"),
+        HM("Sent Shipments", c="inv", f="send", icon="shipment"),
+        HM("Received Shipments", c="inv", f="recv", icon="delivery"),
     )
 
-    facility_box = HM("Facilities", _id="facility_box")(
-        HM("Facilities", c="org", f="facility"),
-        HM("Hospitals", c="hms", f="hospital"),
-        HM("Offices", c="org", f="office"),
-        HM(SHELTERS, c="cr", f="shelter"),
-        HM("Warehouses", c="inv", f="warehouse"),
-        HM("Map", c="gis", f="index",
-           icon="/%s/static/img/map_icon_128.png" % appname,
-           ),
-    )
+    # @todo: re-integrate or deprecate (?)
+    #if has_module("cr"):
+    #    table = s3db.cr_shelter
+    #    SHELTERS = s3.crud_strings["cr_shelter"].title_list
+    #else:
+    #    SHELTERS = ""
+    #facility_box = HM("Facilities", _id="facility_box")(
+    #    HM("Facilities", c="org", f="facility"),
+    #    HM("Hospitals", c="hms", f="hospital"),
+    #    HM("Offices", c="org", f="office"),
+    #    HM(SHELTERS, c="cr", f="shelter"),
+    #    HM("Warehouses", c="inv", f="warehouse"),
+    #    HM("Map", c="gis", f="index",
+    #       icon="/%s/static/img/map_icon_128.png" % appname,
+    #       ),
+    #)
 
     # Check logged in AND permissions
     roles = session.s3.roles
     table = s3db.org_organisation
     has_permission = auth.s3_has_permission
-    if AUTHENTICATED in roles and \
-       has_permission("read", table):
+    if AUTHENTICATED in roles and has_permission("read", table):
+
         org_items = organisation()
         datatable_ajax_source = "/%s/default/organisation.aadata" % appname
+
+        # List of Organisations
+        if has_permission("create", table):
+            create = A(T("Create Organization"),
+                       _href = URL(c = "org",
+                                   f = "organisation",
+                                   args = ["create"],
+                                   ),
+                       _id = "add-org-btn",
+                       _class = "action-btn",
+                       )
+        else:
+            create = ""
+        org_box = DIV(create,
+                      H3(T("Organizations")),
+                      org_items,
+                      _id = "org-box",
+                      _class = "menu-box"
+                      )
+
         s3.actions = None
         response.view = "default/index.html"
+
+        # Quick Access Box for Sites
         permission = auth.permission
         permission.controller = "org"
         permission.function = "site"
         permitted_facilities = auth.permitted_facilities(redirect_on_error=False)
+
         if permitted_facilities:
             facilities = s3db.org_SiteRepresent().bulk(permitted_facilities,
-                                                       include_blank=False)
+                                                       include_blank=False,
+                                                       )
             facility_list = [(fac, facilities[fac]) for fac in facilities]
             facility_list = sorted(facility_list, key=lambda fac: fac[1])
             facility_opts = [OPTION(fac[1], _value=fac[0])
                              for fac in facility_list]
+
             manage_facility_box = DIV(H3(T("Manage Your Facilities")),
-                                      SELECT(_id = "manage_facility_select",
-                                             _style = "max-width:360px",
+                                      SELECT(_id = "manage-facility-select",
                                              *facility_opts
                                              ),
                                       A(T("Go"),
                                         _href = URL(c="default", f="site",
-                                                    args=[facility_list[0][0]]),
-                                        #_disabled = "disabled",
-                                        _id = "manage_facility_btn",
+                                                    args=[facility_list[0][0]],
+                                                    ),
+                                        _id = "manage-facility-btn",
                                         _class = "action-btn"
                                         ),
-                                      _id = "manage_facility_box",
-                                      _class = "menu_box fleft"
+                                      _id = "manage-facility-box",
+                                      _class = "menu-box"
                                       )
-            s3.jquery_ready.append(
-'''$('#manage_facility_select').change(function(){
- $('#manage_facility_btn').attr('href',S3.Ap.concat('/default/site/',$('#manage_facility_select').val()))})
-$('#manage_facility_btn').click(function(){
-if ( ($('#manage_facility_btn').attr('href').toString())===S3.Ap.concat('/default/site/None') )
-{$("#manage_facility_box").append("<div class='alert alert-error'>%s</div>")
+
+            s3.jquery_ready.append('''$('#manage-facility-select').change(function(){
+ $('#manage-facility-btn').attr('href',S3.Ap.concat('/default/site/',$('#manage-facility-select').val()))})
+$('#manage-facility-btn').click(function(){
+if (($('#manage-facility-btn').attr('href').toString())===S3.Ap.concat('/default/site/None'))
+{$("#manage-facility-box").append("<div class='alert alert-error'>%s</div>")
 return false}})''' % (T("Please Select a Facility")))
+
         else:
             manage_facility_box = ""
 
-        if has_permission("create", table):
-            create = A(T("Create Organization"),
-                       _href = URL(c="org", f="organisation",
-                                   args=["create"]),
-                       _id = "add-btn",
-                       _class = "action-btn",
-                       _style = "margin-right: 10px;")
-        else:
-            create = ""
-        org_box = DIV(H3(T("Organizations")),
-                      create,
-                      org_items,
-                      _id = "org_box",
-                      _class = "menu_box fleft"
-                      )
     else:
         datatable_ajax_source = ""
         manage_facility_box = ""
@@ -315,20 +336,18 @@ $('#login-btn').click(function(){
 })''' % post_script
             s3.jquery_ready.append(register_script)
 
-    if settings.frontpage.rss:
-        s3.external_stylesheets.append("http://www.google.com/uds/solutions/dynamicfeed/gfdynamicfeedcontrol.css")
-        s3.scripts.append("http://www.google.com/jsapi?key=notsupplied-wizard")
-        s3.scripts.append("http://www.google.com/uds/solutions/dynamicfeed/gfdynamicfeedcontrol.js")
-        counter = 0
-        feeds = ""
-        for feed in settings.frontpage.rss:
-            counter += 1
-            feeds = "".join((feeds,
-                             "{title:'%s',\n" % feed["title"],
-                             "url:'%s'}" % feed["url"]))
-            # Don't add a trailing comma for old IEs
-            if counter != len(settings.frontpage.rss):
-                feeds += ",\n"
+    # Feed Control
+    rss = settings.frontpage.rss
+    if rss:
+        s3.external_stylesheets.append("//www.google.com/uds/solutions/dynamicfeed/gfdynamicfeedcontrol.css")
+        s3.scripts.append("//www.google.com/jsapi?key=notsupplied-wizard")
+        s3.scripts.append("//www.google.com/uds/solutions/dynamicfeed/gfdynamicfeedcontrol.js")
+
+        feeds = ["{title:'%s',url:'%s'}" % (feed["title"], feed["url"])
+                 for feed in rss
+                 ]
+        feeds = ",".join(feeds)
+
         # feedCycleTime: milliseconds before feed is reloaded (5 minutes)
         feed_control = "".join(('''
 function LoadDynamicFeedControl(){
@@ -346,28 +365,47 @@ function LoadDynamicFeedControl(){
 }
 google.load('feeds','1')
 google.setOnLoadCallback(LoadDynamicFeedControl)'''))
+
         s3.js_global.append(feed_control)
 
-    output = dict(title = title,
-                  item = item,
-                  sit_dec_res_box = sit_dec_res_box,
-                  facility_box = facility_box,
-                  manage_facility_box = manage_facility_box,
-                  org_box = org_box,
-                  r = None, # Required for dataTable to work
-                  datatable_ajax_source = datatable_ajax_source,
-                  self_registration=self_registration,
-                  registered=registered,
-                  login_form=login_form,
-                  login_div=login_div,
-                  register_form=register_form,
-                  register_div=register_div,
-                  )
+    # Output dict for the view
+    output = {"title": title,
+
+              # CMS Contents
+              "item": item,
+
+              # Menus
+              "sit_menu": sit_menu,
+              "org_menu": org_menu,
+              "res_menu": res_menu,
+              "aid_menu": aid_menu,
+              #"facility_box": facility_box,
+
+              # Quick Access Boxes
+              "manage_facility_box": manage_facility_box,
+              "org_box": org_box,
+
+              # Login Form
+              "login_div": login_div,
+              "login_form": login_form,
+
+              # Registration Form
+              "register_div": register_div,
+              "register_form": register_form,
+
+              # Control Data
+              "self_registration": self_registration,
+              "registered": registered,
+              "r": None, # Required for dataTable to work
+              "datatable_ajax_source": datatable_ajax_source,
+
+              }
 
     if get_vars.tour:
         output = s3db.tour_builder(output)
 
     return output
+
 # -----------------------------------------------------------------------------
 def organisation():
     """
@@ -378,9 +416,9 @@ def organisation():
 
     resource = s3db.resource("org_organisation")
     totalrows = resource.count()
-    display_start = int(get_vars.displayStart) if get_vars.displayStart else 0
-    display_length = int(get_vars.pageLength) if get_vars.pageLength else 10
-    limit = 4 * display_length
+    display_start = int(get_vars.start) if get_vars.start else 0
+    display_length = int(get_vars.limit) if get_vars.limit else 10
+    limit = display_length
 
     list_fields = ["id", "name"]
     default_orderby = orderby = "org_organisation.name asc"
@@ -390,6 +428,8 @@ def organisation():
             orderby = default_orderby
         if query:
             resource.add_filter(query)
+    else:
+        limit = 4 * limit
 
     data = resource.select(list_fields,
                            start=display_start,
@@ -513,6 +553,16 @@ def user():
 
     current.menu.oauth = S3MainMenu.menu_oauth()
 
+    if not settings.get_auth_password_changes():
+        # Block Password changes as these are managed externally (OpenID / SMTP / LDAP)
+        auth_settings.actions_disabled = ("change_password",
+                                          "retrieve_password",
+                                          )
+    elif not settings.get_auth_password_retrieval():
+        # Block password retrieval
+        auth_settings.actions_disabled = ("retrieve_password",
+                                          )
+
     # Check for template-specific customisations
     customise = settings.customise_auth_user_controller
     if customise:
@@ -538,11 +588,27 @@ def user():
         title = response.title = T("Change Password")
         form = auth()
         # Add client-side validation
+        js_global = []
+        js_append = js_global.append
+        js_append('''S3.password_min_length=%i''' % settings.get_auth_password_min_length())
+        js_append('''i18n.password_min_chars="%s"''' % T("You must enter a minimum of %d characters"))
+        js_append('''i18n.weak="%s"''' % T("Weak"))
+        js_append('''i18n.normal="%s"''' % T("Normal"))
+        js_append('''i18n.medium="%s"''' % T("Medium"))
+        js_append('''i18n.strong="%s"''' % T("Strong"))
+        js_append('''i18n.very_strong="%s"''' % T("Very Strong"))
+        script = '''\n'''.join(js_global)
+        s3.js_global.append(script)
         if s3.debug:
             s3.scripts.append("/%s/static/scripts/jquery.pstrength.2.1.0.js" % appname)
         else:
             s3.scripts.append("/%s/static/scripts/jquery.pstrength.2.1.0.min.js" % appname)
-        s3.jquery_ready.append("$('.password:eq(1)').pstrength()")
+        s3.jquery_ready.append(
+'''$('.password:eq(1)').pstrength({
+ 'minChar': S3.password_min_length,
+ 'minCharText': i18n.password_min_chars,
+ 'verdicts': [i18n.weak, i18n.normal, i18n.medium, i18n.strong, i18n.very_strong]
+})''')
 
     elif arg == "retrieve_password":
         title = response.title = T("Retrieve Password")
@@ -648,13 +714,13 @@ def person():
                     )
 
     set_method("pr", "person",
-               method="user_profile",
-               action=auth_profile_method)
+               method = "user_profile",
+               action = auth_profile_method)
 
     # Custom Method for Contacts
     set_method("pr", "person",
-               method="contacts",
-               action=s3db.pr_Contacts)
+               method = "contacts",
+               action = s3db.pr_Contacts)
 
     #if settings.has_module("asset"):
     #    # Assets as component of people
@@ -670,7 +736,7 @@ def person():
             table = s3db[tablename]
 
             # Users can not delete their own person record
-            r.resource.configure(deletable=False)
+            r.resource.configure(deletable = False)
 
             s3.crud_strings[tablename].update(
                 title_display = T("Personal Profile"),
@@ -777,7 +843,8 @@ def person():
                 output["add_btn"] = A(T("Assign Asset"),
                                       _href=URL(c="asset", f="asset"),
                                       _id="add-btn",
-                                      _class="action-btn")
+                                      _class="action-btn",
+                                      )
         return output
     s3.postp = postp
 
@@ -839,7 +906,7 @@ def person():
 
     setting = settings.get_pr_contacts_tabs()
     if setting:
-        contacts_tab = (T("Contacts"), "contacts")
+        contacts_tab = (settings.get_pr_contacts_tab_label(), "contacts")
     else:
         contacts_tab = None
 
@@ -862,17 +929,16 @@ def person():
             (T("My Maps"), "config"),
             ]
 
-    output = s3_rest_controller("pr", "person",
-                                rheader = lambda r, tabs=tabs: \
-                                          s3db.pr_rheader(r, tabs=tabs))
-    return output
+    return s3_rest_controller("pr", "person",
+                              rheader = lambda r, tabs=tabs: \
+                                                s3db.pr_rheader(r, tabs=tabs))
 
 # -----------------------------------------------------------------------------
 def group():
     """
         RESTful CRUD controller
         - needed when group add form embedded in default/person
-        - only create method is allowed, when opened in a inline form.
+        - only create method is allowed, when opened in an inline form.
     """
 
     # Check if it is called from a inline form
@@ -886,16 +952,14 @@ def group():
         return True
     s3.prep = prep
 
-    output = s3_rest_controller("pr", "group")
-
-    return output
+    return s3_rest_controller("pr", "group")
 
 # -----------------------------------------------------------------------------
 def skill():
     """
         RESTful CRUD controller
         - needed when skill add form embedded in default/person
-        - only create method is allowed, when opened in a inline form.
+        - only create method is allowed, when opened in an inline form.
     """
 
     # Check if it is called from a inline form
@@ -909,9 +973,7 @@ def skill():
         return True
     s3.prep = prep
 
-    output = s3_rest_controller("hrm", "skill")
-
-    return output
+    return s3_rest_controller("hrm", "skill")
 
 # -----------------------------------------------------------------------------
 def facebook():
@@ -996,8 +1058,10 @@ def about():
         get_vars = {"module": module, "resource": resource}
 
         if item:
+            from s3 import S3XMLContents
+            contents = S3XMLContents(item.body)
             if ADMIN:
-                item = DIV(XML(item.body),
+                item = DIV(contents,
                            BR(),
                            A(T("Edit"),
                              _href=URL(c="cms", f="post",
@@ -1006,7 +1070,7 @@ def about():
                                        ),
                              _class="action-btn"))
             else:
-                item = DIV(XML(item.body))
+                item = DIV(contents)
         elif ADMIN:
             if s3.crud.formstyle == "bootstrap":
                 _class = "btn"
@@ -1026,7 +1090,8 @@ def about():
     response.title = T("About")
 
     # Technical Support Details
-    if settings.get_security_version_info_requires_login() and \
+    if not settings.get_security_version_info() or \
+       settings.get_security_version_info_requires_login() and \
        not auth.s3_logged_in():
 
         return dict(details = "",
@@ -1392,9 +1457,39 @@ def audit():
     return s3_rest_controller("s3", "audit")
 
 # -----------------------------------------------------------------------------
+def tables():
+    """
+        RESTful CRUD Controller for Dynamic Table Models
+    """
+
+    return s3_rest_controller("s3", "table",
+                              rheader = s3db.s3_table_rheader,
+                              csv_template = ("s3", "table"),
+                              csv_stylesheet = ("s3", "table.xsl"),
+                              )
+
+# -----------------------------------------------------------------------------
+def table():
+    """
+        RESTful CRUD Controller for Dynamic Table Contents
+
+        NB: first argument is the resource name, i.e. the name of
+            the dynamic table without prefix, e.g.:
+            default/table/test to access s3dt_test table
+    """
+
+    args = request.args
+    if len(args):
+        return s3_rest_controller(dynamic = args[0].rsplit(".", 1)[0])
+    else:
+        raise HTTP(400, "No resource specified")
+
+# -----------------------------------------------------------------------------
 def get_settings():
     """
-       Function to respond to get requests. Requires admin permissions
+       Function to lookup the value of a deployment_setting
+       Responds to GET requests.
+       Requires admin permissions
     """
 
     # Check if the request has a valid authorization header with admin cred.

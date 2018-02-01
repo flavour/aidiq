@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
 """
-    Data Collection
+    Data Collection:
+    - a front-end UI to manage Assessments which uses the Dynamic Tables back-end
 """
 
 module = request.controller
@@ -19,29 +20,53 @@ def index():
 
 # -----------------------------------------------------------------------------
 def template():
-    """ Manage Data Collection Templates """
+    """ RESTful CRUD controller """
+
+    from s3 import FS
+    s3.filter = FS("master") == "dc_response"
 
     def prep(r):
 
         if r.record and r.component_name == "question":
 
-            # Allow adding of new questions if they are not linked
-            # to this template yet
-            qtable = s3db.dc_question
-            ltable = s3db.dc_template_question
-            left = ltable.on((ltable.question_id == qtable.id) & \
-                             (ltable.deleted != True))
-            query = (qtable.deleted != True) & \
-                    ((ltable.template_id != r.id) | \
-                     (ltable.template_id == None))
+            # If the template has responses then we should make the Questions read-only
+            # @ToDo: Allow Editing unanswered questions?
+            rtable = s3db.dc_response
+            query = (rtable.template_id == r.id) & \
+                    (rtable.deleted == False)
+            if db(query).select(rtable.id,
+                                limitby=(0, 1)
+                                ):
+                s3db.configure("dc_question",
+                               deletable = False,
+                               editable = False,
+                               )
 
-            # Restrict field options accordingly
-            db = current.db
-            field = ltable.question_id
-            field.requires = IS_ONE_OF(db(query),
-                                       "dc_question.id",
-                                       field.represent,
-                                       left=left)
+            # Sections for this template only
+            f = s3db.dc_question.section_id
+            f.requires = IS_EMPTY_OR(
+                            IS_ONE_OF(db, "dc_section.id",
+                                      f.represent,
+                                      filterby="template_id",
+                                      filter_opts=[r.id],
+                                      ))
+
+            # Add JS
+            scripts_append = s3.scripts.append
+            if s3.debug:
+                scripts_append("/%s/static/scripts/tag-it.js" % appname)
+                scripts_append("/%s/static/scripts/S3/s3.dc_question.js" % appname)
+            else:
+                scripts_append("/%s/static/scripts/tag-it.min.js" % appname)
+                scripts_append("/%s/static/scripts/S3/s3.dc_question.min.js" % appname)
+            # Add CSS
+            s3.stylesheets.append("plugins/jquery.tagit.css")
+
+            # Open in native controller to access Translations tabs
+            s3db.configure("dc_question",
+                           linkto = lambda record_id: URL(f="question", args=[record_id, "read"]),
+                           linkto_update = lambda record_id: URL(f="question", args=[record_id, "update"]),
+                           )
 
         return True
     s3.prep = prep
@@ -50,101 +75,114 @@ def template():
 
 # -----------------------------------------------------------------------------
 def question():
-    """ Manage Data Collection Questions """
+    """
+        RESTful CRUD controller
+        - used for imports & to manage translations
+    """
 
-    def prep(r):
-        record = r.record
-        if record and r.component_name == "question_l10n":
-            ttable = r.component.table
-            if r.method != "update":
-                ttable.question.default = record.question
-                ttable.options.default = record.options
-
-            # Remove language options for which we already have
-            # a translation of this question
-            requires = ttable.language.requires
-            if isinstance(requires, IS_ISO639_2_LANGUAGE_CODE):
-                all_options = dict(requires.language_codes())
-                selectable = requires._select
-                if not selectable:
-                    selectable = all_options
-                selectable = dict(selectable)
-                query = (ttable.question_id == r.id) & \
-                        (ttable.deleted != True)
-                if r.component_id:
-                    query &= (ttable.id != r.component_id)
-                rows = db(query).select(ttable.language)
-                for row in rows:
-                    selectable.pop(row.language, None)
-                if len(selectable) == 0 or \
-                    not any(opt in all_options for opt in selectable):
-                    # No more languages to translate into
-                    # => hide create form
-                    r.component.configure(insertable = False)
-                requires._select = selectable
-        return True
-    s3.prep = prep
-
-    return s3_rest_controller(rheader = s3db.dc_rheader)
+    return s3_rest_controller(rheader = s3db.dc_rheader,
+                              )
 
 # -----------------------------------------------------------------------------
-def collection():
-    """ Manage Data Collections """
+def question_l10n():
+    """
+        RESTful CRUD controller
+        - used for imports
+    """
 
+    return s3_rest_controller(#rheader = s3db.dc_rheader,
+                              )
+
+# -----------------------------------------------------------------------------
+def target():
+    """ RESTful CRUD controller """
+
+    # Pre-process
     def prep(r):
+        if r.interactive:
+            if r.component_name == "response":
+                # Default component values from master record
+                record = r.record
+                table = s3db.dc_response
+                table.language.default = record.language
+                table.location_id.default = record.location_id
+                f = table.template_id
+                f.default = record.template_id
+                f.writable = False
+                f.comment = None
 
-        if r.record and r.component_name == "answer":
-
-            # Allow only unanswered questions
-            atable = s3db.dc_answer
-            qtable = s3db.dc_question
-            left = [atable.on((atable.question_id == qtable.id) & \
-                              (atable.collection_id == r.id) & \
-                              (atable.deleted != True))]
-            if r.component_id:
-                query = (atable.id == None) | (atable.id == r.component_id)
-            else:
-                query = (atable.id == None)
-
-            # Allow only questions from the selected template
-            template_id = r.record.template_id
-            if template_id:
-                ltable = s3db.dc_template_question
-                left.append(ltable.on((ltable.question_id == qtable.id) & \
-                                      (ltable.deleted != True)))
-                query &= (ltable.template_id == template_id)
-
-            # Restrict field options accordingly
-            db = current.db
-            field = atable.question_id
-            field.requires = IS_ONE_OF(db(query),
-                                       "dc_question.id",
-                                       field.represent,
-                                       left=left)
-
-            # Hide create form when all questions have been answered
-            if r.method != "update":
-                count = qtable.id.count()
-                row = db(query).select(count,
-                                       left=left,
-                                       limitby=(0, 1)).first()
-                if not row or not row[count]:
-                    r.component.configure(insertable=False)
+                # Open in native controller (cannot just set native as can't call this 'response')
+                s3db.configure("dc_response",
+                               linkto = lambda record_id: URL(f="respnse", args=[record_id, "read"]),
+                               linkto_update = lambda record_id: URL(f="respnse", args=[record_id, "update"]),
+                               )
 
         return True
     s3.prep = prep
 
-    return s3_rest_controller(rheader = s3db.dc_rheader)
+    return s3_rest_controller(rheader = s3db.dc_rheader,
+                              )
 
 # -----------------------------------------------------------------------------
-def template_question():
-    """
-        RESTful CRUD controller for options.s3json lookups
-        - needed for adding questions to a template
-    """
+def respnse(): # Cannot call this 'response' or it will clobber the global
+    """ RESTful CRUD controller """
 
-    s3.prep = lambda r: r.method == "options" and r.representation == "s3json"
+    # All templates use the same component name for answers so need to add the right component manually
+    try:
+        response_id = int(request.args(0))
+    except:
+        # Multiple record method
+        pass
+    else:
+        dtable = s3db.s3_table
+        rtable = s3db.dc_response
+        ttable = s3db.dc_template
+        query = (rtable.id == response_id) & \
+                (rtable.template_id == ttable.id) & \
+                (ttable.table_id == dtable.id)
+        template = db(query).select(dtable.name,
+                                    limitby=(0, 1),
+                                    ).first()
+        try:
+            dtablename = template.name
+        except:
+            # Old URL?
+            pass
+        else:
+            components = {dtablename: {"name": "answer",
+                                       "joinby": "response_id",
+                                       "multiple": False,
+                                       }
+                          }
+            s3db.add_components("dc_response", **components)
 
-    return s3_rest_controller()
+    # Pre-process
+    def prep(r):
+        if r.interactive:
+            if r.component_name == "answer":
+                # CRUD Strings
+                tablename = r.component.tablename
+                s3.crud_strings[tablename] = Storage(
+                    label_create = T("Create Responses"),
+                    title_display = T("Response Details"),
+                    title_list = T("Responses"),
+                    title_update = T("Edit Response"),
+                    label_list_button = T("List Responses"),
+                    label_delete_button = T("Clear Response"),
+                    msg_record_created = T("Response created"),
+                    msg_record_modified = T("Response updated"),
+                    msg_record_deleted = T("Response deleted"),
+                    msg_list_empty = T("No Responses currently defined"),
+                )
+
+                # Custom Form with Questions & Subheadings sorted correctly
+                s3db.dc_answer_form(r, tablename)
+
+        return True
+    s3.prep = prep
+
+    return s3_rest_controller("dc", "response",
+                              rheader = s3db.dc_rheader,
+                              )
 
 # END =========================================================================

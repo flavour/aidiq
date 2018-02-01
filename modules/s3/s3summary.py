@@ -2,7 +2,7 @@
 
 """ Resource Summary Pages
 
-    @copyright: 2013-2016 (c) Sahana Software Foundation
+    @copyright: 2013-2018 (c) Sahana Software Foundation
     @license: MIT
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
@@ -185,11 +185,12 @@ class S3Summary(S3Method):
                         if k not in ("tabs", "sections", "widget"):
                             output[k] = v
                     content = content.get("widget", "EMPTY")
-                elif active_tab == tab_idx and isinstance(content, MAP):
+                elif isinstance(content, MAP) and (common or active_tab == tab_idx):
                     active_map = content
                 s.append(DIV(content,
                              _id="%s-container" % widget_id,
-                             _class="widget-container"))
+                             _class="widget-container",
+                             ))
                 widget_idx += 1
 
             if common:
@@ -209,8 +210,8 @@ class S3Summary(S3Method):
             for s in sections:
                 s.add_class("hide")
         else:
-            # Hide tabs if there's only one section (but then don't hide
-            # the section!)
+            # Hide tabs if there's only one section
+            # - and don't hide the section
             output["tabs"] = ""
         output["sections"] = sections
 

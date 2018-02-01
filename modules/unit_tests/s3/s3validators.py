@@ -12,6 +12,8 @@ from s3.s3datetime import S3Calendar
 from s3.s3fields import *
 from s3.s3validators import *
 
+from unit_tests import run_suite
+
 # =============================================================================
 class ISLatTest(unittest.TestCase):
     """
@@ -1030,27 +1032,344 @@ class IS_UTC_DATE_Tests(unittest.TestCase):
         assertTrue(msg.find("2011-11-20") != -1)
 
 # =============================================================================
-def run_suite(*test_classes):
-    """ Run the test suite """
+class IS_JSONS3_Tests(unittest.TestCase):
+    """ Testing IS_JSONS3 validator """
 
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    for test_class in test_classes:
-        tests = loader.loadTestsFromTestCase(test_class)
-        suite.addTests(tests)
-    if suite is not None:
-        unittest.TextTestRunner(verbosity=2).run(suite)
-    return
+    # -------------------------------------------------------------------------
+    @classmethod
+    def setUpClass(self):
 
+        db = current.db
+
+        # Create a test table
+        db.define_table("test_jsons3",
+                        Field("value", "json",
+                              requires = IS_JSONS3(),
+                              ),
+                        )
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def tearDownClass(self):
+
+        db = current.db
+
+        # Drop the test table
+        db.test_jsons3.drop()
+
+    # -------------------------------------------------------------------------
+    def testCompatibility(self):
+        """ Verify consistency of native JSON implementation """
+
+        db = current.db
+        table = db.test_jsons3
+
+        # PyDAL with native JSON support consistently accepts and
+        # returns a Python object for "json" fields. Older versions
+        # of web2py DAL may raise an exception here:
+        record_id = table.insert(value={"a": 1})
+        row = db(table.id == record_id).select(table.value,
+                                               limitby=(0, 1),
+                                               ).first()
+        self.assertTrue(isinstance(row.value, dict))
+
+    # -------------------------------------------------------------------------
+    def testValidation(self):
+        """ Verify correct validation and conversion of JSON strings """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+
+        validator = IS_JSONS3()
+
+        jsonstr = """{"a": 1}"""
+        value, error = validator(jsonstr)
+        assertEqual(error, None)
+        assertEqual(value, {"a": 1})
+
+        jsonstr = """not valid"""
+        value, error = validator(jsonstr)
+        assertNotEqual(error, None)
+        assertEqual(value, jsonstr)
+
+        # None is not valid JSON (must use IS_EMPTY_OR to allow it)
+        jsonstr = None
+        value, error = validator(jsonstr)
+        assertNotEqual(error, None)
+        assertEqual(value, jsonstr)
+
+    # -------------------------------------------------------------------------
+    def testValidationNative(self):
+        """ Verify correct validation of JSON strings without conversion """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+
+        validator = IS_JSONS3(native_json=True)
+
+        jsonstr = """{"a":1}"""
+        value, error = validator(jsonstr)
+        assertEqual(error, None)
+        assertEqual(value, jsonstr)
+
+        jsonstr = """not valid"""
+        value, error = validator(jsonstr)
+        assertNotEqual(error, None)
+        assertEqual(value, jsonstr)
+
+        # None is not valid JSON (must use IS_EMPTY_OR to allow it)
+        jsonstr = None
+        value, error = validator(jsonstr)
+        assertNotEqual(error, None)
+        assertEqual(value, jsonstr)
+
+    # -------------------------------------------------------------------------
+    def testValidationCSVSyntax(self):
+        """ Verify correct validation and conversion of CSV strings """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+
+        # Pretend CSV import
+        current.response.s3.bulk = True
+
+        try:
+            validator = IS_JSONS3()
+
+            # Invalid syntax (single quotes)
+            jsonstr = """{'a': 1}"""
+            value, error = validator(jsonstr)
+            assertEqual(error, None)
+            assertEqual(value, {"a": 1})
+
+            # Invalid syntax (single quotes with nested quotes)
+            jsonstr = """{'a': 'this ain\\'t a good "example"'}"""
+            value, error = validator(jsonstr)
+            assertEqual(error, None)
+            assertEqual(value, {"a": "this ain't a good \"example\""})
+
+            # Valid syntax should work too
+            jsonstr = """{"a": 1}"""
+            value, error = validator(jsonstr)
+            assertEqual(error, None)
+            assertEqual(value, {"a": 1})
+
+            # Some stuff is just...
+            jsonstr = """not valid"""
+            value, error = validator(jsonstr)
+            assertNotEqual(error, None)
+            assertEqual(value, jsonstr)
+
+        finally:
+            current.response.s3.bulk = False
+
+    # -------------------------------------------------------------------------
+    def testValidationCSVSyntaxNative(self):
+        """ Verify correct validation and JSON syntax conversion of CSV strings """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+
+        # Pretend CSV import
+        current.response.s3.bulk = True
+
+        try:
+            validator = IS_JSONS3(native_json=True)
+
+            # Invalid syntax (single quotes) => returns a valid JSON string
+            jsonstr = """{'a': 1}"""
+            value, error = validator(jsonstr)
+            assertEqual(error, None)
+            assertEqual(value, """{"a":1}""")
+
+            # Invalid syntax (single quotes with nested quotes)
+            jsonstr = """{'a': 'this ain\\'t a good "example"'}"""
+            value, error = validator(jsonstr)
+            assertEqual(error, None)
+            assertEqual(value, """{"a":"this ain't a good \\"example\\""}""")
+
+            # Valid syntax should work too
+            jsonstr = """{"a": 1}"""
+            value, error = validator(jsonstr)
+            assertEqual(error, None)
+            assertEqual(value, """{"a":1}""")
+
+            # Some stuff is just...
+            jsonstr = """not JSON at all"""
+            value, error = validator(jsonstr)
+            assertNotEqual(error, None)
+            assertEqual(value, jsonstr)
+
+        finally:
+            current.response.s3.bulk = False
+
+    # -------------------------------------------------------------------------
+    def testFormatter(self):
+        """ Verify correct formatting of data with conversion """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+
+        validator = IS_JSONS3()
+
+        data = {"a": 1}
+        formatted = validator.formatter(data)
+        assertEqual(formatted, """{"a":1}""")
+
+        # Exception: None gives None
+        # (would give "null" normally, but forms need to know there is no value)
+        data = None
+        formatted = validator.formatter(data)
+        assertEqual(formatted, None)
+
+    # -------------------------------------------------------------------------
+    def testFormatterNative(self):
+        """ Verify correct formatting of data without conversion """
+
+        assertEqual = self.assertEqual
+        assertNotEqual = self.assertNotEqual
+
+        validator = IS_JSONS3(native_json=True)
+
+        data = {"a": 1}
+        formatted = validator.formatter(data)
+        assertEqual(formatted, """{"a":1}""")
+
+        data = """{"a":1}"""
+        formatted = validator.formatter(data)
+        assertEqual(formatted, data)
+
+        # Exception: None gives None
+        # (would give "null" normally, but forms need to know there is no value)
+        data = None
+        formatted = validator.formatter(data)
+        assertEqual(formatted, None)
+
+# =============================================================================
+class IS_DYNAMIC_FIELDNAME_Test(unittest.TestCase):
+    """ Test cases for IS_DYNAMIC_FIELDNAME validator """
+
+    # -------------------------------------------------------------------------
+    def testPass(self):
+        """ Test IS_DYNAMIC_FIELDNAME with valid field names """
+
+        assertEqual = self.assertEqual
+
+        requires = IS_DYNAMIC_FIELDNAME()
+
+        value, error = requires("example")
+        assertEqual(value, "example")
+        assertEqual(error, None)
+
+        value, error = requires("Another_Example")
+        assertEqual(value, "another_example")
+        assertEqual(error, None)
+
+    # -------------------------------------------------------------------------
+    def testFail(self):
+        """ Test IS_DYNAMIC_FIELDNAME with invalid field names """
+
+        assertNotEqual = self.assertNotEqual
+
+        requires = IS_DYNAMIC_FIELDNAME()
+
+        # Must not be None
+        value, error = requires(None)
+        assertNotEqual(error, None)
+
+        # Must not be empty
+        value, error = requires("")
+        assertNotEqual(error, None)
+
+        # Must not contain blanks
+        value, error = requires("must not contain blanks")
+        assertNotEqual(error, None)
+
+        # Must start with a letter
+        value, error = requires("_must_start_with_letter")
+        assertNotEqual(error, None)
+
+        # Must not contain invalid characters
+        value, error = requires("invalid#characters")
+        assertNotEqual(error, None)
+
+        # Must not be "id"
+        value, error = requires("id")
+        assertNotEqual(error, None)
+
+        # Must not be meta-field name
+        value, error = requires("modified_by")
+        assertNotEqual(error, None)
+
+# =============================================================================
+class IS_DYNAMIC_FIELDTYPE_Test(unittest.TestCase):
+    """ Test cases for IS_DYNAMIC_FIELDTYPE validator """
+
+    # -------------------------------------------------------------------------
+    def testPass(self):
+        """ Test IS_DYNAMIC_FIELDTYPE with valid field types """
+
+        assertEqual = self.assertEqual
+
+        requires = IS_DYNAMIC_FIELDTYPE()
+
+        value, error = requires("boolean")
+        assertEqual(value, "boolean")
+        assertEqual(error, None)
+
+        value, error = requires("String")
+        assertEqual(value, "string")
+        assertEqual(error, None)
+
+        value, error = requires(" Integer ")
+        assertEqual(value, "integer")
+        assertEqual(error, None)
+
+        value, error = requires("reference org_organisation")
+        assertEqual(value, "reference org_organisation")
+        assertEqual(error, None)
+
+    # -------------------------------------------------------------------------
+    def testFail(self):
+        """ Test IS_DYNAMIC_FIELDTYPE with invalid field types """
+
+        assertNotEqual = self.assertNotEqual
+
+        requires = IS_DYNAMIC_FIELDTYPE()
+
+        # Must not be None
+        value, error = requires(None)
+        assertNotEqual(error, None)
+
+        # Must not be empty
+        value, error = requires("")
+        assertNotEqual(error, None)
+
+        # Must be a supported field type
+        value, error = requires("nonsense")
+        assertNotEqual(error, None)
+
+        # Must not be "id"
+        value, error = requires("id")
+        assertNotEqual(error, None)
+
+        # Referenced tables must be resolvable
+        value, error = requires("reference nonexistent_table")
+        assertNotEqual(error, None)
+
+# =============================================================================
 if __name__ == "__main__":
 
     run_suite(
-        ISLatTest,
-        ISLonTest,
+        #ISLatTest,
+        #ISLonTest,
         ISONEOFLazyRepresentationTests,
         IS_PHONE_NUMBER_Tests,
         IS_UTC_DATETIME_Tests,
         IS_UTC_DATE_Tests,
+        IS_JSONS3_Tests,
+        IS_DYNAMIC_FIELDNAME_Test,
+        IS_DYNAMIC_FIELDTYPE_Test,
     )
 
 # END ========================================================================

@@ -2,7 +2,7 @@
 
 """ S3 TimePlot Reports Method
 
-    @copyright: 2013-2016 (c) Sahana Software Foundation
+    @copyright: 2013-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -37,16 +37,9 @@ __all__ = ("S3TimePlot",
 
 import datetime
 import dateutil.tz
+import json
 import re
 import sys
-
-try:
-    import json # try stdlib (Python 2.6)
-except ImportError:
-    try:
-        import simplejson as json # try external module
-    except ImportError:
-        import gluon.contrib.simplejson as json # fallback to pure-Python module
 
 from dateutil.relativedelta import *
 from dateutil.rrule import *
@@ -826,10 +819,15 @@ class S3TimeSeries(object):
             representations = []
             append = representations.append()
             stripper = S3MarkupStripper()
+
+            represent = rfield.represent
+            if not represent:
+                represent = s3_unicode
+
             for value in values:
                 if value is None:
                     append((value, "-"))
-                text = s3_unicode(value)
+                text = represent(value)
                 if "<" in text:
                     stripper.feed(text)
                     append((value, stripper.stripped()))
@@ -919,19 +917,21 @@ class S3TimeSeries(object):
             if isinstance(start, basestring):
                 start_dt = dtparse(start, start=now)
             else:
-                if isinstance(start, datetime.date):
-                    start_dt = tp_tzsafe(datetime.datetime.fromordinal(start.toordinal()))
-                else:
+                if isinstance(start, datetime.datetime):
                     start_dt = tp_tzsafe(start)
+                else:
+                    # Date only => start at midnight
+                    start_dt = tp_tzsafe(datetime.datetime.fromordinal(start.toordinal()))
         if end:
             if isinstance(end, basestring):
                 relative_to = start_dt if start_dt else now
                 end_dt = dtparse(end, start=relative_to)
             else:
-                if isinstance(end, datetime.date):
-                    end_dt = tp_tzsafe(datetime.datetime.fromordinal(end.toordinal()))
+                if isinstance(end, datetime.datetime):
+                    end_dt = tp_tzsafe(end)
                 else:
-                    ent_dt = tp_tzsafe(end)
+                    # Date only => end at midnight
+                    end_dt = tp_tzsafe(datetime.datetime.fromordinal(end.toordinal()))
 
         # Fall back to now if end is not specified
         if not end_dt:
@@ -947,8 +947,10 @@ class S3TimeSeries(object):
                                     orderby=event_start.field,
                                     as_rows=True)
             # Remove the filter we just added
-            resource.rfilter.filters.pop()
-            resource.rfilter.query = None
+            rfilter = resource.rfilter
+            rfilter.filters.pop()
+            rfilter.query = None
+            rfilter.transformed = None
             if rows:
                 first_event = rows.first()[event_start.colname]
                 if isinstance(first_event, datetime.date):
@@ -966,8 +968,10 @@ class S3TimeSeries(object):
                                     orderby=event_end.field,
                                     as_rows=True)
             # Remove the filter we just added
-            resource.rfilter.filters.pop()
-            resource.rfilter.query = None
+            rfilter = resource.rfilter
+            rfilter.filters.pop()
+            rfilter.query = None
+            rfilter.transformed = None
             if rows:
                 last_event = rows.first()[event_end.colname]
                 if isinstance(last_event, datetime.date):
@@ -1093,8 +1097,10 @@ class S3TimeSeries(object):
         data = resource.select(fields)
 
         # Remove the filter we just added
-        resource.rfilter.filters.pop()
-        resource.rfilter.query = None
+        rfilter = resource.rfilter
+        rfilter.filters.pop()
+        rfilter.query = None
+        rfilter.transformed = None
 
         # Do we need to convert dates into datetimes?
         convert_start = True if event_start.ftype == "date" else False

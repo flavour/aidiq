@@ -2,7 +2,7 @@
 
 """ Sahana Eden Menu Structure and Layout
 
-    @copyright: 2011-2016 (c) Sahana Software Foundation
+    @copyright: 2011-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -74,10 +74,9 @@ class S3MainMenu(object):
         menu_modules = []
         all_modules = current.deployment_settings.modules
 
-        # Home always 1st
-        module = all_modules["default"]
-
-        menu_modules.append(MM(module.name_nice, c="default", f="index"))
+        # Home always 1st (commented because redundant/unnecessary)
+        #module = all_modules["default"]
+        #menu_modules.append(MM(module.name_nice, c="default", f="index"))
 
         # Modules to hide due to insufficient permissions
         hidden_modules = current.auth.permission.hidden_modules()
@@ -130,16 +129,20 @@ class S3MainMenu(object):
         if not settings.get_L10n_display_toolbar():
             return None
 
-        languages = current.response.s3.l10n_languages
+        T = current.T
         request = current.request
+        languages = settings.get_L10n_languages()
+        represent_local = IS_ISO639_2_LANGUAGE_CODE.represent_local
 
         menu_lang = MM("Language", **attr)
         for language in languages:
-            menu_lang.append(MM(languages[language], r=request,
-                                translate=False,
-                                selectable=False,
-                                vars={"_language":language},
-                                ltr=True
+            # Show Language in it's own Language
+            menu_lang.append(MM(represent_local(language),
+                                r = request,
+                                translate = False,
+                                selectable = False,
+                                vars = {"_language": language},
+                                ltr = True
                                 ))
         return menu_lang
 
@@ -193,6 +196,7 @@ class S3MainMenu(object):
 
         auth = current.auth
         logged_in = auth.is_logged_in()
+        settings = current.deployment_settings
 
         if not logged_in:
             request = current.request
@@ -202,7 +206,7 @@ class S3MainMenu(object):
                "_next" in request.get_vars:
                 login_next = request.get_vars["_next"]
 
-            self_registration = current.deployment_settings.get_security_registration_visible()
+            self_registration = settings.get_security_registration_visible()
             if self_registration == "index":
                 register = MM("Register", c="default", f="index", m="register",
                                vars=dict(_next=login_next),
@@ -212,16 +216,28 @@ class S3MainMenu(object):
                                vars=dict(_next=login_next),
                                check=self_registration)
 
+            if settings.get_auth_password_changes() and \
+               settings.get_auth_password_retrieval():
+                lost_pw = MM("Lost Password", m="retrieve_password")
+            else:
+                lost_pw = None
+
             menu_auth = MM("Login", c="default", f="user", m="login",
                            _id="auth_menu_login",
                            vars=dict(_next=login_next), **attr)(
-                            MM("Login", m="login",
-                               vars=dict(_next=login_next)),
-                            register,
-                            MM("Lost Password", m="retrieve_password")
-                        )
+                                MM("Login", m="login",
+                                   vars=dict(_next=login_next)),
+                                register,
+                                lost_pw,
+                                )
         else:
             # Logged-in
+
+            if settings.get_auth_password_changes():
+                change_pw = MM("Change Password", m="change_password")
+            else:
+                change_pw = None
+
             menu_auth = MM(auth.user.email, c="default", f="user",
                            translate=False, link=False, _id="auth_menu_email",
                            **attr)(
@@ -234,7 +250,7 @@ class S3MainMenu(object):
                             #MM("Subscriptions", c="pr", f="person",
                             #    args="pe_subscription",
                             #    vars={"person.pe_id" : auth.user.pe_id}),
-                            MM("Change Password", m="change_password"),
+                            change_pw,
                             SEP(),
                             MM({"name": current.T("Rapid Data Entry"),
                                "id": "rapid_toggle",
@@ -249,11 +265,11 @@ class S3MainMenu(object):
     def menu_admin(cls, **attr):
         """ Administrator Menu """
 
-        s3_has_role = current.auth.s3_has_role
+        has_role = current.auth.s3_has_role
         settings = current.deployment_settings
         name_nice = settings.modules["admin"].name_nice
 
-        if s3_has_role("ADMIN"):
+        if has_role("ADMIN"):
             translate = settings.has_module("translate")
             menu_admin = MM(name_nice, c="admin", **attr)(
                                 MM("Settings", f="setting"),
@@ -266,7 +282,7 @@ class S3MainMenu(object):
                                    check=translate),
                                 MM("Test Results", f="result"),
                             )
-        elif s3_has_role("ORG_ADMIN"):
+        elif has_role("ORG_ADMIN"):
             menu_admin = MM(name_nice, c="admin", f="user", **attr)()
         else:
             menu_admin = None
@@ -413,7 +429,10 @@ class S3OptionsMenu(object):
 
         try:
             self.menu = getattr(self, name)()
-        except:
+        except AttributeError:
+            if hasattr(self, name):
+                # Error inside the menu function, don't obscure it
+                raise
             self.menu = None
 
     # -------------------------------------------------------------------------
@@ -659,16 +678,18 @@ class S3OptionsMenu(object):
     def dc():
         """ Data Collection Tool """
 
-        ADMIN = current.session.s3.system_roles.ADMIN
+        #ADMIN = current.session.s3.system_roles.ADMIN
 
         return M(c="dc")(
                     M("Templates", f="template")(
                         M("Create", m="create"),
+                        M("Import", f="question", m="import"),
                     ),
-                    M("Questions", f="question")(
+                    M("Targets", f="target")(
                         M("Create", m="create"),
                     ),
-                    M("Data Collections", f="collection")(
+                    # @ToDo: Use settings for label
+                    M("Responses", f="respnse")(
                         M("Create", m="create"),
                     ),
                 )
@@ -821,6 +842,13 @@ class S3OptionsMenu(object):
     def dvr():
         """ DVR Menu """
 
+        if current.deployment_settings.get_dvr_label(): # == "Beneficiary"
+            return M(c="dvr")(
+                        M("Beneficiaries", f="person")(
+                            M("Create", m="create"),
+                        ),
+                    )
+
         return M(c="dvr")(
                     M("Cases", f="person")(
                         M("Create", m="create"),
@@ -850,20 +878,43 @@ class S3OptionsMenu(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
+    def edu():
+        """ Education Module """
+
+        return M()(
+                    M("Schools", c="edu", f="school")(
+                        M("Create", m="create"),
+                        M("Import", m="import", p="create"),
+                    ),
+                    M("School Types", c="edu", f="school_type")(
+                        M("Create", m="create"),
+                        M("Import", m="import", p="create"),
+                    ),
+                )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
     def event():
         """ EVENT / Event Module """
 
+        if current.deployment_settings.get_event_label(): # == "Disaster"
+            EVENTS = "Disasters"
+            EVENT_TYPES = "Disaster Types"
+        else:
+            EVENTS = "Events"
+            EVENT_TYPES = "Event Types"
+
         return M()(
-                    M("Scenarios", c="scenario", f="scenario")(
+                    #M("Scenarios", c="event", f="scenario")(
+                    #    M("Create", m="create"),
+                    #    #M("Import", m="import", p="create"),
+                    #),
+                    M(EVENTS, c="event", f="event")(
                         M("Create", m="create"),
-                        M("Import", m="import", p="create"),
                     ),
-                    M("Events", c="event", f="event")(
+                    M(EVENT_TYPES, c="event", f="event_type")(
                         M("Create", m="create"),
-                    ),
-                    M("Event Types", c="event", f="event_type")(
-                        M("Create", m="create"),
-                        M("Import", m="import", p="create"),
+                        #M("Import", m="import", p="create"),
                     ),
                     M("Incidents", c="event", f="incident")(
                         M("Create", m="create"),
@@ -873,8 +924,12 @@ class S3OptionsMenu(object):
                     ),
                     M("Incident Types", c="event", f="incident_type")(
                         M("Create", m="create"),
-                        M("Import", m="import", p="create"),
+                        #M("Import", m="import", p="create"),
                     ),
+                    #M("Situation Reports", c="event", f="sitrep")(
+                    #    M("Create", m="create"),
+                    #    #M("Import", m="import", p="create"),
+                    #),
                 )
 
     # -------------------------------------------------------------------------
@@ -1034,8 +1089,6 @@ class S3OptionsMenu(object):
 
         # Custom conditions for the check-hook, as lambdas in order
         # to have them checked only immediately before rendering:
-        manager_mode = lambda i: s3.hrm.mode is None
-        personal_mode = lambda i: s3.hrm.mode is not None
         skills = lambda i: settings.get_hrm_use_skills()
         certificates = lambda i: settings.get_hrm_use_certificates()
         is_org_admin = lambda i: s3.hrm.orgs and True or \
@@ -1046,66 +1099,51 @@ class S3OptionsMenu(object):
         vol_enabled = lambda i: settings.has_module("vol")
 
         return M(c="hrm")(
-                    M(settings.get_hrm_staff_label(), f="staff", m="summary",
-                      check=manager_mode)(
+                    M(settings.get_hrm_staff_label(), f="staff", m="summary")(
                         M("Create", m="create"),
                         M("Search by Skills", f="competency", check=skills),
                         M("Import", f="person", m="import",
-                          vars={"group":"staff"}, p="create"),
+                          vars = {"group": "staff"},
+                          p = "create",
+                          ),
                     ),
                     M("Staff & Volunteers (Combined)",
-                      c="hrm", f="human_resource", m="summary",
-                      check=(manager_mode, vol_enabled)),
-                    M(teams, f="group",
-                      check=(manager_mode, use_teams))(
+                      c="hrm", f="human_resource", m="summary", check=vol_enabled),
+                    M(teams, f="group", check=use_teams)(
                         M("Create", m="create"),
                         M("Search Members", f="group_membership"),
                         M("Import", f="group_membership", m="import"),
                     ),
-                    M("Department Catalog", f="department",
-                      check=manager_mode)(
+                    M("Department Catalog", f="department")(
                         M("Create", m="create"),
                     ),
-                    M("Job Title Catalog", f="job_title",
-                      check=manager_mode)(
+                    M("Job Title Catalog", f="job_title")(
                         M("Create", m="create"),
                     ),
-                    M("Skill Catalog", f="skill",
-                      check=(manager_mode, skills))(
+                    M("Skill Catalog", f="skill", check=skills)(
                         M("Create", m="create"),
                         #M("Skill Provisions", f="skill_provision"),
                     ),
-                    M("Training Events", f="training_event",
-                      check=manager_mode)(
+                    M("Training Events", f="training_event")(
                         M("Create", m="create"),
                         M("Search Training Participants", f="training"),
                         M("Import Participant List", f="training", m="import"),
                     ),
-                    M("Training Course Catalog", f="course",
-                      check=manager_mode)(
+                    M("Training Course Catalog", f="course")(
                         M("Create", m="create"),
                         #M("Course Certificates", f="course_certificate"),
                     ),
-                    M("Certificate Catalog", f="certificate",
-                      check=manager_mode)(
+                    M("Certificate Catalog", f="certificate")(
                         M("Create", m="create"),
                         #M("Skill Equivalence", f="certificate_skill"),
                     ),
-                    M("Reports", f="staff", m="report",
-                      check=manager_mode)(
+                    M("Reports", f="staff", m="report")(
                         M("Staff Report", m="report"),
                         M("Expiring Staff Contracts Report",
-                          vars=dict(expiring=1)),
+                          vars = {"expiring": 1},
+                          ),
                         M("Training Report", f="training", m="report"),
                     ),
-                    M("Personal Profile", f="person",
-                      check=personal_mode, vars=dict(access="personal")),
-                    # This provides the link to switch to the manager mode:
-                    M("Staff Management", f="index",
-                      check=[personal_mode, is_org_admin]),
-                    # This provides the link to switch to the personal mode:
-                    M("Personal Profile", f="person",
-                      check=manager_mode, vars=dict(access="personal"))
                 )
 
     # -------------------------------------------------------------------------
@@ -1118,8 +1156,6 @@ class S3OptionsMenu(object):
 
         # Custom conditions for the check-hook, as lambdas in order
         # to have them checked only immediately before rendering:
-        manager_mode = lambda i: s3.hrm.mode is None
-        personal_mode = lambda i: s3.hrm.mode is not None
         is_org_admin = lambda i: s3.hrm.orgs and True or \
                                  ADMIN in s3.roles
 
@@ -1134,83 +1170,66 @@ class S3OptionsMenu(object):
         show_staff = lambda i: settings.get_hrm_show_staff()
 
         return M(c="vol")(
-                    M("Volunteers", f="volunteer", m="summary",
-                      check=(manager_mode))(
+                    M("Volunteers", f="volunteer", m="summary")(
                         M("Create", m="create"),
                         M("Search by skills", f="competency", check=skills),
                         M("Import", f="person", m="import",
-                          vars={"group":"volunteer"}, p="create"),
+                          vars = {"group": "volunteer"},
+                          p = "create",
+                          ),
                     ),
                     M("Staff & Volunteers (Combined)",
-                      c="vol", f="human_resource", m="summary",
-                      check=(manager_mode, show_staff)),
-                    M(teams, f="group",
-                      check=(manager_mode, use_teams))(
+                      c="vol", f="human_resource", m="summary", check=show_staff),
+                    M(teams, f="group", check=use_teams)(
                         M("Create", m="create"),
                         M("Search Members", f="group_membership"),
                         M("Import", f="group_membership", m="import"),
                     ),
-                    M("Department Catalog", f="department",
-                      check=manager_mode)(
+                    M("Department Catalog", f="department")(
                         M("Create", m="create"),
                     ),
-                    M("Volunteer Role Catalog", f="job_title",
-                      check=manager_mode)(
+                    M("Volunteer Role Catalog", f="job_title")(
                         M("Create", m="create"),
                     ),
-                    M("Skill Catalog", f="skill",
-                      check=manager_mode)(
+                    M("Skill Catalog", f="skill")(
                         M("Create", m="create"),
                         #M("Skill Provisions", f="skill_provision"),
                     ),
-                    M("Training Events", f="training_event",
-                      check=manager_mode)(
+                    M("Training Events", f="training_event")(
                         M("Create", m="create"),
                         M("Search Training Participants", f="training"),
                         M("Import Participant List", f="training", m="import"),
                     ),
-                    M("Training Course Catalog", f="course",
-                      check=manager_mode)(
+                    M("Training Course Catalog", f="course")(
                         M("Create", m="create"),
                         #M("Course Certificates", f="course_certificate"),
                     ),
-                    M("Certificate Catalog", f="certificate",
-                      check=(manager_mode, certificates))(
+                    M("Certificate Catalog", f="certificate", check=certificates)(
                         M("Create", m="create"),
                         #M("Skill Equivalence", f="certificate_skill"),
                     ),
-                    M("Programs", f="programme",
-                      check=[manager_mode, show_programmes])(
+                    M("Programs", f="programme", check=show_programmes)(
                         M("Create", m="create"),
                         M("Import Hours", f="programme_hours", m="import"),
                     ),
-                    M("Reports", f="volunteer", m="report",
-                      check=manager_mode)(
+                    M("Reports", f="volunteer", m="report")(
                         M("Volunteer Report", m="report"),
                         M("Hours by Role Report", f="programme_hours", m="report",
-                          vars=Storage(rows="job_title_id",
-                                       cols="month",
-                                       fact="sum(hours)"),
-                          check=show_programmes),
+                          vars = {"rows": "job_title_id",
+                                  "cols": "month",
+                                  "fact": "sum(hours)",
+                                  },
+                          check = show_programmes,
+                          ),
                         M("Hours by Program Report", f="programme_hours", m="report",
-                          vars=Storage(rows="programme_id",
-                                       cols="month",
-                                       fact="sum(hours)"),
-                          check=show_programmes),
+                          vars = {"rows": "programme_id",
+                                  "cols": "month",
+                                  "fact": "sum(hours)",
+                                  },
+                          check = show_programmes,
+                          ),
                         M("Training Report", f="training", m="report"),
                     ),
-                    M("My Profile", f="person",
-                      check=personal_mode, vars=dict(access="personal")),
-                    M("My Tasks", f="task",
-                      check=[personal_mode, show_tasks],
-                      vars=dict(access="personal",
-                                mine=1)),
-                    # This provides the link to switch to the manager mode:
-                    M("Volunteer Management", f="index",
-                      check=[personal_mode, is_org_admin]),
-                    # This provides the link to switch to the personal mode:
-                    M("Personal Profile", f="person",
-                      check=manager_mode, vars=dict(access="personal"))
                 )
 
     # -------------------------------------------------------------------------
@@ -1371,13 +1390,6 @@ class S3OptionsMenu(object):
                 )
 
     # -------------------------------------------------------------------------
-    def scenario(self):
-        """ SCENARIO """
-
-        # Use EVENT menu
-        return self.event()
-
-    # -------------------------------------------------------------------------
     def supply(self):
         """ SUPPLY """
 
@@ -1430,13 +1442,15 @@ class S3OptionsMenu(object):
     def member():
         """ Membership Management """
 
+        types = lambda i: current.deployment_settings.get_member_membership_types()
+
         return M(c="member")(
                     M("Members", f="membership", m="summary")(
                         M("Create", m="create"),
                         #M("Report", m="report"),
                         M("Import", f="person", m="import"),
                     ),
-                    M("Membership Types", f="membership_type")(
+                    M("Membership Types", f="membership_type", check=types)(
                         M("Create", m="create"),
                         #M("Import", m="import"),
                     ),
@@ -1498,7 +1512,6 @@ class S3OptionsMenu(object):
                     M("Administration", restrict=[ADMIN])(settings_messaging)
                 )
 
-
     # -------------------------------------------------------------------------
     @staticmethod
     def org():
@@ -1544,6 +1557,10 @@ class S3OptionsMenu(object):
                     M(SECTORS, f="sector", restrict=[ADMIN])(
                         M("Create", m="create"),
                     ),
+                    M("Resource Types", f="resource_type",
+                      restrict=[ADMIN])(
+                        M("Create", m="create"),
+                    ),
                 )
 
     # -------------------------------------------------------------------------
@@ -1554,7 +1571,7 @@ class S3OptionsMenu(object):
         return M(c="patient")(
                     M("Patients", f="patient")(
                         M("Create", m="create"),
-                    )
+                    ),
                 )
 
     # -------------------------------------------------------------------------
@@ -1584,6 +1601,26 @@ class S3OptionsMenu(object):
                     M("Referral Agencies", f="organisation")(
                         M("Create", m="create"),
                     ),
+                    M("Emotional Needs", f="emotional_need")(
+                        M("Create", m="create"),
+                    ),
+                    M("Practical Needs", f="practical_need")(
+                        M("Create", m="create"),
+                    ),
+                )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def police():
+        """ Police """
+
+        return M(c="police")(
+                    M("Police Stations", f="station")(
+                        M("Create", m="create"),
+                    ),
+                    #M("Station Types", f="station_type")(
+                    #    M("Create", m="create"),
+                    #),
                 )
 
     # -------------------------------------------------------------------------
@@ -1600,6 +1637,9 @@ class S3OptionsMenu(object):
                     M("Groups", f="group")(
                         M("Create", m="create"),
                     ),
+                    #M("Forums", f="forum")(
+                    #    M("Create", m="create"),
+                    #),
                 )
 
     # -------------------------------------------------------------------------
@@ -1622,7 +1662,7 @@ class S3OptionsMenu(object):
         """ PROJECT / Project Tracking & Management """
 
         settings = current.deployment_settings
-        #activities = lambda i: settings.get_project_activities()
+        activities = lambda i: settings.get_project_activities()
         activity_types = lambda i: settings.get_project_activity_types()
         community = settings.get_project_community()
         if community:
@@ -1690,6 +1730,10 @@ class S3OptionsMenu(object):
                       m="import", p="create"),
                     M(IMPORT, f="location",
                       m="import", p="create"),
+                    M("Import Activities", f="activity",
+                      m="import", p="create",
+                      check=activities,
+                      ),
                  ),
                  M("Partner Organizations",  f="partners")(
                     M("Create", m="create"),
@@ -1840,6 +1884,72 @@ class S3OptionsMenu(object):
                         # Not usually dis-aggregated
                         M("Time Plot", m="timeplot"),
                         M("Import", m="import"),
+                    ),
+                )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def stdm():
+        """ Social Tenure Domain Model """
+        ADMIN = current.session.s3.system_roles.ADMIN
+        has_role = current.auth.s3_has_role
+
+        informal = lambda i: has_role("INFORMAL_SETTLEMENT")
+        gov = lambda i: has_role("LOCAL_GOVERNMENT")
+        rural = lambda i: has_role("RURAL_AGRICULTURE")
+
+        return M(c="stdm")(
+                    M("Administrative Units", c="gis", f="location",
+                                              vars={"~.level__ne": None},
+                      restrict=ADMIN)(
+                        M("Create", m="create",
+                                    vars={"~.level__ne": None}),
+                    ),
+                    #M("Spatial Units", c="gis", f="location",
+                    #                   vars={"~.level": None})(
+                    #    M("Create", m="create", vars={"~.level": None}),
+                    #),
+                    M("Gardens", f="garden",
+                      check=rural)(
+                        M("Create", m="create"),
+                        M("Import", m="import"),
+                    ),
+                    M("Parcels", f="parcel",
+                      check=gov)(
+                        M("Create", m="create"),
+                        M("Import", m="import"),
+                    ),
+                    M("Structures", f="structure",
+                      check=informal)(
+                        M("Create", m="create"),
+                        M("Import", m="import"),
+                    ),
+                    M("Parties")(
+                        M("People", f="person"),
+                        M("Groups", f="group"),
+                        M("Farmers", f="farmer", check=rural),
+                        M("Planners", f="planner", check=gov),
+                        M("Surveyors", f="surveyor", check=gov),
+                    ),
+                    M("Surveys", f="gov_survey", check=gov)(
+                        M("Create", m="create"),
+                    ),
+                    M("Surveys", f="rural_survey", check=rural)(
+                        M("Create", m="create"),
+                    ),
+                    M("Tenures", f="tenure")(
+                        M("Create", m="create"),
+                    ),
+                    M("Lookup Lists", restrict=ADMIN)(
+                        M("Disputes", f="dispute"),
+                        M("Household Relations", f="group_member_role"),
+                        M("Input Services", f="input_service"),
+                        M("Land Uses", f="landuse"),
+                        M("Officer Ranks", f="job_title"),
+                        M("Ownership Types", f="ownership_type"),
+                        M("Parcel Types", f="parcel_type"),
+                        M("Socio-economic Impacts", f="socioeconomic_impact"),
+                        M("Tenure Types", f="tenure_type"),
                     ),
                 )
 

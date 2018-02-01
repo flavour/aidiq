@@ -2,7 +2,7 @@
 
 """ S3 Hierarchy Toolkit
 
-    @copyright: 2013-2016 (c) Sahana Software Foundation
+    @copyright: 2013-2018 (c) Sahana Software Foundation
     @license: MIT
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
@@ -31,13 +31,7 @@
 
 __all__ = ("S3Hierarchy", "S3HierarchyCRUD")
 
-try:
-    import json # try stdlib (Python 2.6)
-except ImportError:
-    try:
-        import simplejson as json # try external module
-    except:
-        import gluon.contrib.simplejson as json # fallback to pure-Python module
+import json
 
 from gluon import *
 from gluon.storage import Storage
@@ -86,7 +80,8 @@ class S3HierarchyCRUD(S3Method):
 
         output = {}
 
-        tablename = self.resource.tablename
+        resource = self.resource
+        tablename = resource.tablename
 
         # Widget ID
         widget_id = "%s-hierarchy" % tablename
@@ -113,28 +108,50 @@ class S3HierarchyCRUD(S3Method):
         output["form"] = form
 
         # Widget options and scripts
-        # @todo: simplify CRUD URL handlign
         T = current.T
         crud_string = lambda name: self.crud_string(tablename, name)
+
         widget_opts = {
             "widgetID": widget_id,
+
             "openLabel": str(T("Open")),
             "openURL": r.url(method="read", id="[id]"),
             "ajaxURL": r.url(id=None, representation="json"),
+
             "editLabel": str(T("Edit")),
             "editTitle": str(crud_string("title_update")),
-            "editURL": r.url(method="update",
-                             id="[id]",
-                             representation="popup"),
+
             "addLabel": str(T("Add")),
             "addTitle": str(crud_string("label_create")),
+
             "deleteLabel": str(T("Delete")),
-            "deleteURL": r.url(method="delete",
-                               id="[id]",
-                               representation="json"),
-            # @todo: disable root node deletion if r.record is not None
-            "addURL": r.url(method="create", representation="popup"),
+            "deleteRoot": False if r.record else True
         }
+
+        # Check permissions and add CRUD URLs
+        resource_config = resource.get_config
+        has_permission = current.auth.s3_has_permission
+        if resource_config("editable", True) and \
+           has_permission("update", tablename):
+            widget_opts["editURL"] = r.url(method = "update",
+                                           id = "[id]",
+                                           representation = "popup",
+                                           )
+
+        if resource_config("deletable", True) and \
+           has_permission("delete", tablename):
+            widget_opts["deleteURL"] = r.url(method = "delete",
+                                             id = "[id]",
+                                             representation = "json",
+                                             )
+
+        if resource_config("insertable", True) and \
+           has_permission("create", tablename):
+            widget_opts["addURL"] = r.url(method = "create",
+                                          representation = "popup",
+                                          )
+
+        # Theme options
         theme = current.deployment_settings.get_ui_hierarchy_theme()
         icons = theme.get("icons", False)
         if icons:
@@ -828,8 +845,14 @@ class S3Hierarchy(object):
                 self.__lkey = None
                 self.__left = None
             else:
-                alias = rfield.tname.split("_", 1)[1]
-                link = resource.links.get(alias)
+                # Try to find the link table resource from parent selector
+                links = resource.links
+                alias = parent.split(".%s" % rfield.fname)[0]
+                link = links.get(alias)
+                if not link:
+                    # Fall back to table name of parent field
+                    alias = rfield.tname.split("_", 1)[1]
+                    link = links.get(alias)
                 if link:
                     fkey = rfield.field
                     self.__link = rfield.tname

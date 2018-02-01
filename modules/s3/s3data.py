@@ -2,7 +2,7 @@
 
 """ S3 Data Views
 
-    @copyright: 2009-2016 (c) Sahana Software Foundation
+    @copyright: 2009-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -38,8 +38,8 @@ from gluon import current
 from gluon.html import *
 from gluon.storage import Storage
 
-from s3dal import Expression
-from s3utils import s3_orderby_fields, s3_unicode, s3_set_extension
+from s3dal import Expression, S3DAL
+from s3utils import s3_orderby_fields, s3_str, s3_unicode, s3_set_extension
 
 # =============================================================================
 class S3DataTable(object):
@@ -88,17 +88,17 @@ class S3DataTable(object):
         self.colnames = colnames
         self.heading = heading
 
-        max = len(data)
+        data_len = len(data)
         if start < 0:
             start = 0
-        if start > max:
-            start = max
+        if start > data_len:
+            start = data_len
         if limit == None:
-            end = max
+            end = data_len
         else:
             end = start + limit
-            if end > max:
-                end = max
+            if end > data_len:
+                end = data_len
         self.start = start
         self.end = end
         self.filterString = filterString
@@ -108,8 +108,11 @@ class S3DataTable(object):
             # Resolve orderby expression into column names
             orderby_dirs = {}
             orderby_cols = []
+
+            adapter = S3DAL()
+            INVERT = adapter.INVERT
+
             append = orderby_cols.append
-            INVERT = current.db._adapter.INVERT
             for f in s3_orderby_fields(None, orderby, expr=True):
                 if type(f) is Expression:
                     colname = str(f.first)
@@ -232,7 +235,6 @@ class S3DataTable(object):
             real_end = self.end
             self.end = self.start + 1
         table = self.table(id, flist, action_col)
-        cache = None
         if pagination:
             self.end = real_end
             aadata = self.aadata(totalrows,
@@ -247,6 +249,8 @@ class S3DataTable(object):
                      "cacheUpper": self.end if filteredrows > self.end else filteredrows,
                      "cacheLastJson": aadata,
                      }
+        else:
+            cache = None
 
         html = self.htmlConfig(table,
                                id,
@@ -421,7 +425,6 @@ class S3DataTable(object):
         """
             Calculate the export formats that can be added to the table
 
-            @param id: the unique dataTable ID
             @param rfields: optional list of field selectors for exports
             @param permalink: search result URL
             @param base_url: the base URL of the datatable (without
@@ -505,7 +508,8 @@ class S3DataTable(object):
                      _href=permalink,
                      _class="permalink")
             export_options.append(link)
-            export_options.append(" | ")
+            if len(icons):
+                export_options.append(" | ")
 
         # Append the icons
         export_options.append(icons)
@@ -639,7 +643,7 @@ class S3DataTable(object):
                    dt_text_maximum_len: The maximum length of text before it is condensed
                    dt_text_condense_len: The length displayed text is condensed down to
                    dt_shrink_groups: If set then the rows within a group will be hidden
-                                     two types are supported, 'individulal' and 'accordion'
+                                     two types are supported, 'individual' and 'accordion'
                    dt_group_types: The type of indicator for groups that can be 'shrunk'
                                    Permitted valies are: 'icon' (the default) 'text' and 'none'
                    dt_base_url: base URL to construct export format URLs, resource
@@ -668,7 +672,7 @@ class S3DataTable(object):
         config.dom = _aget("dt_dom", settings.get_ui_datatables_dom())
         config.lengthMenu = _aget("dt_lengthMenu",
                                   [[25, 50, -1],
-                                   [25, 50, str(current.T("All"))]
+                                   [25, 50, s3_str(current.T("All"))]
                                    ]
                                   )
         config.pageLength = _aget("dt_pageLength", s3.ROWSPERPAGE)
@@ -733,10 +737,7 @@ class S3DataTable(object):
 
         # Wrap the table in a form and add some data in hidden fields
         form = FORM(_class="dt-wrapper")
-        if not s3.no_formats and len(html) > 0:
-            # @todo: always *render* both export options and permalink,
-            #        even if the initial table is empty, so that
-            #        Ajax-update can unhide them once there are results
+        if not s3.no_formats:
             # @todo: move export-format update into drawCallback()
             # @todo: poor UX with onclick-JS, better to render real
             #        links which can be bookmarked, and then update them
@@ -797,7 +798,7 @@ class S3DataTable(object):
     def table(self, id, flist=None, action_col=0):
         """
             Method to render the data as an html table. This is of use if
-            and html table is required without the dataTable goodness. However
+            an html table is required without the dataTable goodness. However
             if you want html for a dataTable then use the html() method
 
             @param id: The id of the table
@@ -901,7 +902,7 @@ class S3DataTable(object):
                 else:
                     details.append(s3_unicode(row[field]))
             aadata.append(details)
-        structure["dataTable_id"] = id
+        structure["dataTable_id"] = id # Is this used anywhere? Can't see it used, so could be removed?
         structure["dataTable_filter"] = self.filterString
         structure["dataTable_groupTotals"] = attr.get("dt_group_totals", [])
         structure["dataTable_sort"] = self.orderby
@@ -917,7 +918,10 @@ class S3DataTable(object):
 
 # =============================================================================
 class S3DataList(object):
-    """ Class representing a data list """
+    """
+        Class representing a list of data cards
+        -clien-side implementation in static/scripts/S3/s3.dataLists.js
+    """
 
     # -------------------------------------------------------------------------
     # Standard API
@@ -987,6 +991,7 @@ class S3DataList(object):
             @param pagesize: maximum number of items per page
             @param rowsize: number of items per row
             @param ajaxurl: the URL to Ajax-update the datalist
+            @param empty: message to display if the list is empty
             @param popup_url: the URL for the modal used for the 'more'
                               button (=> we deactivate InfiniteScroll)
             @param popup_title: the title for the modal

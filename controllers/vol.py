@@ -10,19 +10,22 @@ resourcename = request.function
 if not settings.has_module(module):
     raise HTTP(404, body="Module disabled: %s" % module)
 
-s3db.hrm_vars()
-
 # =============================================================================
 def index():
-    """ Dashboard """
+    """ Customisable module homepage """
 
-    mode = session.s3.hrm.mode
-    if mode is not None:
-        # Go to Personal Profile
-        s3_redirect_default(URL(f="person"))
-    else:
-        # Bypass home page & go direct to Volunteers Summary
-        s3_redirect_default(URL(f="volunteer", args=["summary"]))
+    return settings.customise_home(module, alt_function="index_alt")
+
+# -----------------------------------------------------------------------------
+def index_alt():
+    """
+        Fallback for module homepage when not customised and
+        no CMS content found (ADMINs will see CMS edit unless
+        disabled globally via settings.cms.hide_index)
+    """
+
+    # Bypass home page & go direct to searchable list of Staff
+    s3_redirect_default(URL(f="volunteer", args="summary"))
 
 # =============================================================================
 # People
@@ -141,8 +144,8 @@ def group_membership():
     s3.prep = prep
 
     return s3_rest_controller("pr", "group_membership",
-                              csv_template=("hrm", "group_membership"),
-                              csv_stylesheet=("hrm", "group_membership.xsl"),
+                              csv_stylesheet = ("hrm", "group_membership.xsl"),
+                              csv_template = ("hrm", "group_membership"),
                               )
 
 # =============================================================================
@@ -150,13 +153,6 @@ def group_membership():
 # =============================================================================
 def department():
     """ Departments Controller """
-
-    mode = session.s3.hrm.mode
-    def prep(r):
-        if mode is not None:
-            auth.permission.fail()
-        return True
-    s3.prep = prep
 
     if not auth.s3_has_role(ADMIN):
         s3.filter = auth.filter_by_root_org(s3db.hrm_department)
@@ -167,10 +163,18 @@ def department():
 def job_title():
     """ Job Titles Controller """
 
-    mode = session.s3.hrm.mode
     def prep(r):
-        if mode is not None:
-            auth.permission.fail()
+        if r.representation == "xls":
+            # Export format should match Import format
+            current.messages["NONE"] = ""
+            table = s3db.hrm_job_title
+            table.organisation_id.represent = \
+                s3db.org_OrganisationRepresent(acronym=False,
+                                               parent=False)
+            table.organisation_id.label = None
+            table.type.label = None
+            table.comments.label = None
+            table.comments.represent = lambda v: v or ""
         return True
     s3.prep = prep
 
@@ -180,8 +184,8 @@ def job_title():
         s3.filter &= auth.filter_by_root_org(s3db.hrm_job_title)
 
     return s3_rest_controller("hrm", resourcename,
-                              csv_template=("hrm", "job_title"),
-                              csv_stylesheet=("hrm", "job_title.xsl"),
+                              csv_stylesheet = ("hrm", "job_title.xsl"),
+                              csv_template = ("hrm", "job_title"),
                               )
 
 # =============================================================================
@@ -190,28 +194,14 @@ def job_title():
 def skill():
     """ Skills Controller """
 
-    mode = session.s3.hrm.mode
-    def prep(r):
-        if mode is not None:
-            auth.permission.fail()
-        return True
-    s3.prep = prep
-
     return s3_rest_controller("hrm", resourcename,
-                              csv_template=("hrm", "skill"),
-                              csv_stylesheet=("hrm", "skill.xsl"),
+                              csv_stylesheet = ("hrm", "skill.xsl"),
+                              csv_template = ("hrm", "skill"),
                               )
 
 # -----------------------------------------------------------------------------
 def skill_type():
     """ Skill Types Controller """
-
-    mode = session.s3.hrm.mode
-    def prep(r):
-        if mode is not None:
-            auth.permission.fail()
-        return True
-    s3.prep = prep
 
     return s3_rest_controller("hrm", resourcename)
 
@@ -219,28 +209,14 @@ def skill_type():
 def competency_rating():
     """ Competency Rating for Skill Types Controller """
 
-    mode = session.s3.hrm.mode
-    def prep(r):
-        if mode is not None:
-            auth.permission.fail()
-        return True
-    s3.prep = prep
-
     return s3_rest_controller("hrm", resourcename,
-                              csv_template=("hrm", "competency_rating"),
-                              csv_stylesheet=("hrm", "competency_rating.xsl"),
+                              csv_stylesheet = ("hrm", "competency_rating.xsl"),
+                              csv_template = ("hrm", "competency_rating"),
                               )
 
 # -----------------------------------------------------------------------------
 def skill_provision():
     """ Skill Provisions Controller """
-
-    mode = session.s3.hrm.mode
-    def prep(r):
-        if mode is not None:
-            auth.permission.fail()
-        return True
-    s3.prep = prep
 
     return s3_rest_controller("hrm", resourcename)
 
@@ -248,32 +224,18 @@ def skill_provision():
 def course():
     """ Courses Controller """
 
-    mode = session.s3.hrm.mode
-    def prep(r):
-        if mode is not None:
-            auth.permission.fail()
-        return True
-    s3.prep = prep
-
     if not auth.s3_has_role(ADMIN):
         s3.filter = auth.filter_by_root_org(s3db.hrm_course)
 
     return s3_rest_controller("hrm", resourcename,
-                              rheader=s3db.hrm_rheader,
-                              csv_template=("hrm", "course"),
-                              csv_stylesheet=("hrm", "course.xsl"),
+                              csv_stylesheet = ("hrm", "course.xsl"),
+                              csv_template = ("hrm", "course"),
+                              rheader = s3db.hrm_rheader,
                               )
 
 # -----------------------------------------------------------------------------
 def course_certificate():
     """ Courses to Certificates Controller """
-
-    mode = session.s3.hrm.mode
-    def prep(r):
-        if mode is not None:
-            auth.permission.fail()
-        return True
-    s3.prep = prep
 
     return s3_rest_controller("hrm", resourcename)
 
@@ -281,33 +243,19 @@ def course_certificate():
 def certificate():
     """ Certificates Controller """
 
-    mode = session.s3.hrm.mode
-    def prep(r):
-        if mode is not None:
-            auth.permission.fail()
-        return True
-    s3.prep = prep
-
     if settings.get_hrm_filter_certificates() and \
        not auth.s3_has_role(ADMIN):
         s3.filter = auth.filter_by_root_org(s3db.hrm_certificate)
 
     return s3_rest_controller("hrm", resourcename,
-                              rheader=s3db.hrm_rheader,
-                              csv_template=("hrm", "certificate"),
-                              csv_stylesheet=("hrm", "certificate.xsl"),
+                              csv_stylesheet = ("hrm", "certificate.xsl"),
+                              csv_template = ("hrm", "certificate"),
+                              rheader = s3db.hrm_rheader,
                               )
 
 # -----------------------------------------------------------------------------
 def certificate_skill():
     """ Certificates to Skills Controller """
-
-    mode = session.s3.hrm.mode
-    def prep(r):
-        if mode is not None:
-            auth.permission.fail()
-        return True
-    s3.prep = prep
 
     return s3_rest_controller("hrm", resourcename)
 
@@ -476,13 +424,6 @@ def activity_hours():
         - used for Imports & Reports
     """
 
-    mode = session.s3.hrm.mode
-    def prep(r):
-        if mode is not None:
-            auth.permission.fail()
-        return True
-    s3.prep = prep
-
     return s3_rest_controller()
 
 # =============================================================================
@@ -503,14 +444,10 @@ def facility():
 def programme():
     """ Volunteer Programmes controller """
 
-    mode = session.s3.hrm.mode
-
     if not auth.s3_has_role(ADMIN):
         s3.filter = auth.filter_by_root_org(s3db.hrm_programme)
 
     def prep(r):
-        if mode is not None:
-            auth.permission.fail()
         if r.component_name == "person":
             s3db.configure("hrm_programme_hours",
                            list_fields = ["person_id",
@@ -523,9 +460,9 @@ def programme():
     s3.prep = prep
 
     return s3_rest_controller("hrm", resourcename,
-                              rheader=s3db.hrm_rheader,
                               csv_stylesheet = ("hrm", "programme.xsl"),
-                              csv_template = ("hrm", "programme")
+                              csv_template = ("hrm", "programme"),
+                              rheader = s3db.hrm_rheader,
                               )
 
 # -----------------------------------------------------------------------------
@@ -535,16 +472,9 @@ def programme_hours():
         - used for Imports & Reports
     """
 
-    mode = session.s3.hrm.mode
-    def prep(r):
-        if mode is not None:
-            auth.permission.fail()
-        return True
-    s3.prep = prep
-
     return s3_rest_controller("hrm", resourcename,
-                              csv_stylesheet=("hrm", "programme_hours.xsl"),
-                              csv_template=("hrm", "programme_hours")
+                              csv_stylesheet = ("hrm", "programme_hours.xsl"),
+                              csv_template = ("hrm", "programme_hours")
                               )
 
 # =============================================================================

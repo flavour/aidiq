@@ -2,7 +2,7 @@
 
 """ Sahana Eden Supply Model
 
-    @copyright: 2009-2016 (c) Sahana Software Foundation
+    @copyright: 2009-2018 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -29,6 +29,7 @@
 
 __all__ = ("S3SupplyModel",
            "S3SupplyDistributionModel",
+           "S3SupplyDistributionDVRActivityModel",
            "supply_item_rheader",
            "supply_item_controller",
            "supply_item_entity_controller",
@@ -124,6 +125,12 @@ class S3SupplyModel(S3Model):
         define_table(tablename,
                      Field("name", length=128, notnull=True, unique=True,
                            label = T("Name"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(128),
+                                       IS_NOT_ONE_OF(db,
+                                                     "%s.name" % tablename,
+                                                     ),
+                                       ],
                            ),
                      s3_comments(),
                      *s3_meta_fields())
@@ -169,6 +176,12 @@ class S3SupplyModel(S3Model):
         define_table(tablename,
                      Field("name", length=128, notnull=True, unique=True,
                            label = T("Name"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(128),
+                                       IS_NOT_ONE_OF(db,
+                                                     "%s.name" % tablename,
+                                                     ),
+                                       ],
                            ),
                      self.org_organisation_id(),
                      s3_comments(),
@@ -235,6 +248,12 @@ class S3SupplyModel(S3Model):
         else:
             parent_represent = item_category_represent
 
+        item_category_requires = IS_EMPTY_OR(
+                                    IS_ONE_OF(db, "supply_item_category.id",
+                                              item_category_represent_nocodes,
+                                              sort=True)
+                                    )
+
         tablename = "supply_item_category"
         define_table(tablename,
                      catalog_id(),
@@ -247,10 +266,11 @@ class S3SupplyModel(S3Model):
                            ),
                      Field("code", length=16,
                            label = T("Code"),
-                           #required = True,
+                           requires = IS_LENGTH(16),
                            ),
                      Field("name", length=128,
                            label = T("Name"),
+                           requires = IS_LENGTH(128),
                            ),
                      Field("can_be_asset", "boolean",
                            default = True,
@@ -274,7 +294,11 @@ class S3SupplyModel(S3Model):
                            writable = vehicle,
                            ),
                      s3_comments(),
-                     *s3_meta_fields())
+                     *s3_meta_fields(),
+                     on_define = lambda table: \
+                        [table.parent_item_category_id.set_attributes(requires = item_category_requires),
+                         ]
+                     )
 
         # CRUD strings
         ADD_ITEM_CATEGORY = T("Create Item Category")
@@ -291,22 +315,12 @@ class S3SupplyModel(S3Model):
             msg_list_empty = T("No Item Categories currently registered"))
 
         # Reusable Field
-        item_category_requires = IS_EMPTY_OR(
-                                    IS_ONE_OF(db, "supply_item_category.id",
-                                              item_category_represent_nocodes,
-                                              sort=True)
-                                    )
-
         item_category_comment = S3PopupLink(c = "supply",
                                             f = "item_category",
                                             label = ADD_ITEM_CATEGORY,
                                             title = T("Item Category"),
                                             tooltip = ADD_ITEM_CATEGORY,
                                             )
-
-        # @todo: make lazy_table
-        table = db[tablename]
-        table.parent_item_category_id.requires = item_category_requires
 
         item_category_id = S3ReusableField("item_category_id", "reference %s" % tablename,
                                            comment = item_category_comment,
@@ -341,6 +355,9 @@ $.filterOptionsS3({
         #  These are Template items
         #  Instances of these become Inventory Items & Request items
         #
+
+        track_pack_values = settings.get_inv_track_pack_values()
+
         tablename = "supply_item"
         define_table(tablename,
                      catalog_id(),
@@ -350,15 +367,33 @@ $.filterOptionsS3({
                      ),
                      Field("name", length=128, notnull=True,
                            label = T("Name"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(128),
+                                       ],
                            ),
                      Field("code", length=16,
                            label = T("Code"),
                            represent = lambda v: v or NONE,
+                           requires = IS_LENGTH(16),
                            ),
                      Field("um", length=128, notnull=True,
                            default = "piece",
                            label = T("Unit of Measure"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(128),
+                                       ],
                            ),
+                     Field("unit_value", "double",
+                           label = T("Value per Unit"),
+                           represent = lambda v: \
+                                IS_FLOAT_AMOUNT.represent(v, precision=2),
+                           readable = track_pack_values,
+                           writable = track_pack_values,
+                           ),
+                     # @ToDo: Move this into a Currency Widget for the pack_value field
+                     s3_currency(readable = track_pack_values,
+                                 writable = track_pack_values,
+                                 ),
                      brand_id(),
                      Field("kit", "boolean",
                            default = False,
@@ -369,6 +404,7 @@ $.filterOptionsS3({
                      Field("model", length=128,
                            label = T("Model/Type"),
                            represent = lambda v: v or NONE,
+                           requires = IS_LENGTH(128),
                            ),
                      Field("year", "integer",
                            label = T("Year of Manufacture"),
@@ -511,6 +547,8 @@ $.filterOptionsS3({
                        supply_catalog_item = "item_id",
                        # Packs
                        supply_item_pack = "item_id",
+                       # Distribution Items
+                       supply_distribution_item = "item_id",
                        # Inventory Items
                        inv_inv_item = "item_id",
                        # Order Items
@@ -535,7 +573,7 @@ $.filterOptionsS3({
             add_components(tablename,
                            # Alternative Items
                            supply_item_alt="item_id",
-                          )
+                           )
 
         # =====================================================================
         # Catalog Item
@@ -549,7 +587,7 @@ $.filterOptionsS3({
                      item_category_id(
                         script = item_category_script
                      ),
-                     supply_item_id(script=None), # No Item Pack Filter
+                     supply_item_id(script = None), # No Item Pack Filter
                      s3_comments(), # These comments do *not* pull through to an Inventory's Items or a Request's Items
                      *s3_meta_fields())
 
@@ -613,7 +651,7 @@ $.filterOptionsS3({
         configure(tablename,
                   deduplicate = self.supply_catalog_item_duplicate,
                   filter_widgets = filter_widgets,
-                 )
+                  )
 
         # =====================================================================
         # Item Pack
@@ -627,6 +665,9 @@ $.filterOptionsS3({
                            notnull=True, # Ideally this would reference another table for normalising Pack names
                            default = T("piece"),
                            label = T("Name"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(128),
+                                       ],
                            ),
                      Field("quantity", "double", notnull=True,
                            default = 1,
@@ -634,6 +675,17 @@ $.filterOptionsS3({
                            represent = lambda v: \
                                        float_represent(v, precision=2),
                            ),
+                     Field("pack_value", "double",
+                           label = T("Value per Pack"),
+                           represent = lambda v: \
+                                IS_FLOAT_AMOUNT.represent(v, precision=2),
+                           readable = track_pack_values,
+                           writable = track_pack_values,
+                           ),
+                     # @ToDo: Move this into a Currency Widget for the pack_value field
+                     s3_currency(readable = track_pack_values,
+                                 writable = track_pack_values,
+                                 ),
                      s3_comments(),
                      *s3_meta_fields())
 
@@ -799,17 +851,17 @@ $.filterOptionsS3({
                           *s3_ownerstamp())
 
         # Reusable Field
-        item_id = super_link("item_entity_id", "supply_item_entity",
-                             #writable = True,
-                             #readable = True,
-                             #label = T("Status"),
-                             #represent = item_represent,
-                             # Comment these to use a Dropdown & not an Autocomplete
-                             #widget = S3ItemAutocompleteWidget(),
-                             #comment = DIV(_class="tooltip",
-                             #              _title="%s|%s" % (T("Item"),
-                             #                                current.messages.AUTOCOMPLETE_HELP))
-                             )
+        item_id = lambda: super_link("item_entity_id", "supply_item_entity",
+                                     #writable = True,
+                                     #readable = True,
+                                     #label = T("Status"),
+                                     #represent = item_represent,
+                                     # Comment these to use a Dropdown & not an Autocomplete
+                                     #widget = S3ItemAutocompleteWidget(),
+                                     #comment = DIV(_class="tooltip",
+                                     #              _title="%s|%s" % (T("Item"),
+                                     #                                current.messages.AUTOCOMPLETE_HELP))
+                                     )
 
         # Filter Widgets
         filter_widgets = [
@@ -867,7 +919,7 @@ $.filterOptionsS3({
                                                   readable=False)
         item_id = S3ReusableField("item_entity_id", "integer",
                                   writable=False,
-                                  readable=False)()
+                                  readable=False)
         item_pack_id = S3ReusableField("item_pack_id", "integer",
                                        writable=False,
                                        readable=False)
@@ -1160,6 +1212,8 @@ class S3SupplyDistributionModel(S3Model):
 
     names = ("supply_distribution_item",
              "supply_distribution",
+             "supply_distribution_id",
+             "supply_distribution_person",
              )
 
     def model(self):
@@ -1167,7 +1221,7 @@ class S3SupplyDistributionModel(S3Model):
         settings = current.deployment_settings
         if not settings.has_module("stats"):
             # Distribution Model needs Stats module enabling
-            return {}
+            return self.defaults()
 
         T = current.T
         db = current.db
@@ -1184,20 +1238,24 @@ class S3SupplyDistributionModel(S3Model):
         tablename = "supply_distribution_item"
         define_table(tablename,
                      super_link("parameter_id", "stats_parameter"),
-                     self.supply_item_entity_id,
+                     self.supply_item_entity_id(),
                      self.supply_item_id(ondelete = "RESTRICT",
                                          required = True,
                                          ),
+                     # @ToDo: Hide this field & populate onaccept from the item_id represent
                      Field("name", length=128, unique=True,
-                           label = T("Distribution Item Name"),
-                           requires = IS_NOT_IN_DB(db,
+                           #label = T("Distribution Item Name"),
+                           label = T("Label"),
+                           requires = [IS_LENGTH(128),
+                                       IS_NOT_IN_DB(db,
                                                    "supply_distribution_item.name",
                                                    ),
+                                       ],
                            ),
                      *s3_meta_fields())
 
         # CRUD Strings
-        ADD_ITEM = T("Add Distribution Item")
+        ADD_ITEM = T("Create Distribution Item")
         crud_strings[tablename] = Storage(
             label_create = ADD_ITEM,
             title_display = T("Distribution Item"),
@@ -1240,10 +1298,11 @@ class S3SupplyDistributionModel(S3Model):
                                                       f = "distribution_item",
                                                       vars = {"prefix": "supply",
                                                               "child": "parameter_id"},
-                                                      title=ADD_ITEM,
+                                                      title = ADD_ITEM,
                                                       ),
                                 ),
                      self.gis_location_id(),
+                     # @ToDo: (Optionally) Populate this value based on the # Beneficiaries
                      Field("value", "integer",
                            label = T("Quantity"),
                            requires = IS_INT_IN_RANGE(0, None),
@@ -1259,6 +1318,10 @@ class S3SupplyDistributionModel(S3Model):
                              label = T("End Date"),
                              start_field = "supply_distribution_date",
                              default_interval = 12,
+                             # Most Distributions happen on a single day
+                             # Enable in-template if-required
+                             readable = False,
+                             writable = False,
                              ),
                      #self.stats_source_id(),
                      Field.Method("year", self.supply_distribution_year),
@@ -1266,9 +1329,8 @@ class S3SupplyDistributionModel(S3Model):
                      *s3_meta_fields())
 
         # CRUD Strings
-        ADD_DIST = T("Add Distribution")
         crud_strings[tablename] = Storage(
-            label_create = ADD_DIST,
+            label_create = T("Add Distribution"),
             title_display = T("Distribution Details"),
             title_list = T("Distributions"),
             title_update = T("Edit Distribution"),
@@ -1284,8 +1346,16 @@ class S3SupplyDistributionModel(S3Model):
         #represent = S3Represent(lookup=tablename,
         #                        field_sep = " ",
         #                        fields=["value", "parameter_id"])
+        distribution_id = S3ReusableField("distribution_id",
+                                          "reference %s" % tablename,
+                                          ondelete = "CASCADE",
+                                          #represent = represent,
+                                          requires = IS_ONE_OF(db,
+                                                        "%s.id" % tablename,
+                                                        #represent,
+                                                        ),
+                                          )
 
-        # Resource Configuration
         # ---------------------------------------------------------------------
         def year_options():
             """
@@ -1450,17 +1520,64 @@ class S3SupplyDistributionModel(S3Model):
                   context = {"location": "location_id",
                              "organisation": "activity_id$organisation_activity.organisation_id",
                              },
-                  deduplicate = self.supply_distribution_deduplicate,
+                  deduplicate = S3Duplicate(primary = ("activity_id",
+                                                       "location_id",
+                                                       "parameter_id",
+                                                       ),
+                                            ),
                   filter_widgets = filter_widgets,
                   onaccept = self.supply_distribution_onaccept,
                   report_options = report_options,
                   super_entity = "stats_data",
                   )
 
-        # Pass names back to global scope (s3.*)
-        return {}
+        # ---------------------------------------------------------------------
+        # Supply Distributions <> Named Beneficiaries Link Table
+        #
+        tablename = "supply_distribution_person"
+        define_table(tablename,
+                     self.pr_person_id(empty = False,
+                                       label = T("Head of Household"),
+                                       ondelete = "CASCADE",
+                                       ),
+                     Field("supply_distribution_id", "reference supply_distribution",
+                           label = T("Item"),
+                           ondelete = "CASCADE",
+                           #represent = represent,
+                           #requires = IS_ONE_OF(current.db, "supply_distribution.id",
+                           #                     #represent,
+                           #                     sort=True)),
+                           requires = IS_IN_DB(db, "supply_distribution.id"),
+                           ),
+                     Field("received", "boolean",
+                           default = True,
+                           label = T("Received?"),
+                           represent = s3_yes_no_represent,
+                           ),
+                     s3_comments(),
+                     *s3_meta_fields())
 
-    # ---------------------------------------------------------------------
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        #
+        return {"supply_distribution_id": distribution_id,
+                }
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def defaults():
+        """ Safe defaults for names in case the module is disabled """
+
+        dummy = S3ReusableField("dummy_id", "integer",
+                                readable = False,
+                                writable = False,
+                                )
+
+        return {"supply_distribution_id": lambda name="distribution_id", **attr: \
+                                                 dummy(name, **attr),
+                }
+
+    # -------------------------------------------------------------------------
     @staticmethod
     def supply_distribution_item_onaccept(form):
         """
@@ -1482,29 +1599,7 @@ class S3SupplyDistributionModel(S3Model):
             db(dtable.id == record_id).update(name = item[ltable.name])
         return
 
-    # ---------------------------------------------------------------------
-    @staticmethod
-    def supply_distribution_deduplicate(item):
-        """ Import item de-duplication """
-
-        data = item.data
-        activity_id = data.get("activity_id")
-        location_id = data.get("location_id")
-        parameter_id = data.get("parameter_id")
-
-        if activity_id and location_id and parameter_id:
-            # Match distribution by activity, item and location
-            table = item.table
-            query = (table.activity_id == activity_id) & \
-                    (table.location_id == location_id) & \
-                    (table.parameter_id == parameter_id)
-            duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
-            if duplicate:
-                item.id = duplicate.id
-                item.method = item.METHOD.UPDATE
-
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     @staticmethod
     def supply_distribution_onaccept(form):
         """
@@ -1568,7 +1663,7 @@ class S3SupplyDistributionModel(S3Model):
             # Update Distribution details
             db(dtable.id == record_id).update(**data)
 
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     @staticmethod
     def supply_distribution_year(row):
         """ Virtual field for the supply_distribution table """
@@ -1593,6 +1688,42 @@ class S3SupplyDistributionModel(S3Model):
             return [end_date.year]
         else:
             return list(xrange(date.year, end_date.year + 1))
+
+# =============================================================================
+class S3SupplyDistributionDVRActivityModel(S3Model):
+    """
+        Model to link distributions to DVR activities / case activities
+    """
+
+    names = ("supply_distribution_case_activity",
+             )
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+        s3 = current.response.s3
+
+        define_table = self.define_table
+
+        # ---------------------------------------------------------------------
+        # Supply Distributions <=> Case Activity Link Table
+        #
+        tablename = "supply_distribution_case_activity"
+        self.define_table(tablename,
+                          self.dvr_activity_id(ondelete = "CASCADE",
+                                               ),
+                          self.dvr_case_activity_id(ondelete = "CASCADE",
+                                                    ),
+                          self.supply_distribution_id(empty = False,
+                                                      ondelete = "CASCADE",
+                                                      ),
+                          *s3_meta_fields())
+
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        #
+        return {}
 
 # =============================================================================
 class supply_ItemRepresent(S3Represent):
@@ -2022,7 +2153,7 @@ def supply_item_entity_category(row):
     else:
         return current.messages["NONE"]
 
-# -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 def supply_item_entity_country(row):
     """ Virtual field: country """
 
@@ -2088,7 +2219,7 @@ def supply_item_entity_country(row):
     else:
         return current.messages["NONE"]
 
-# -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 def supply_item_entity_organisation(row):
     """ Virtual field: organisation """
 
@@ -2151,7 +2282,7 @@ def supply_item_entity_organisation(row):
     else:
         return current.messages["NONE"]
 
-# -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 def supply_item_entity_contacts(row):
     """ Virtual field: contacts (site_id) """
 
@@ -2234,7 +2365,7 @@ def supply_item_entity_contacts(row):
         return default
 
 
-# -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 def supply_item_entity_status(row):
     """ Virtual field: status """
 
@@ -2614,7 +2745,7 @@ $('#organisation_dropdown').change(function(){
                                     )
     return output
 
-# -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 def supply_get_shipping_code(type, site_id, field):
 
     db = current.db

@@ -1,7 +1,7 @@
 /**
  * jQuery UI HierarchicalOpts Widget for S3HierarchyWidget/S3HierarchyFilter
  *
- * @copyright 2013-2016 (c) Sahana Software Foundation
+ * @copyright 2013-2018 (c) Sahana Software Foundation
  * @license MIT
  *
  * requires jQuery 1.9.1+
@@ -90,7 +90,7 @@
             this.input.data('input', true);
             var s = opts.selected;
             if (s) {
-                this.input.val(JSON.stringify(s));
+                this.input.val(this._stringifySelection(s));
             }
 
             // The button
@@ -110,6 +110,7 @@
                                     .before(this.button)
                                     .detach()
                                     .appendTo('body');
+
             this._isOpen = false;
             this._isBulk = false;
             this.manualCascadeOption = false;
@@ -146,7 +147,8 @@
             this._unbindEvents();
 
             var opts = this.options,
-                tree = this.tree;
+                tree = this.tree,
+                self = this;
 
             if (!tree.find('li').length) {
                 this.button.hide();
@@ -157,11 +159,16 @@
                 this.button.show();
             }
 
+            // Move error-wrapper behind button
+            this.input.next('.error_wrapper')
+                      .insertAfter(this.button)
+                      .one('click', function() { $(this).fadeOut(); });
+
             // Initially selected nodes
             var currentValue = this.input.val();
             if (currentValue) {
-                var selectedValues = JSON.parse(currentValue);
-                var treeID = this.treeID;
+                var selectedValues = this._parseSelection(currentValue),
+                    treeID = this.treeID;
                 $.each(selectedValues, function() {
                     $('#' + treeID + '-' + this).data('jstree', {selected: true});
                 });
@@ -189,7 +196,6 @@
             } else if (multiple) {
                 // Provide a manual cascade-select option
                 if (!opts.cascadeOptionInTree) {
-                    var self = this;
                     contextMenu = function(node) {
                         if (tree.jstree('is_parent', node)) {
                             // Context menu for "manual" cascade select
@@ -282,16 +288,46 @@
                                 'rel': 'bulk',
                                 'class': 's3-hierarchy-action-node'
                             }
-                        }, "first"
-                    );
+                        }, "first");
                 } else {
                     this.wrapper.find('.s3-hierarchy-header').removeClass('hide').show();
                 }
             }
 
-            var selected = inst.get_checked();
-            this._updateButtonText(selected);
+            // Initial update of button text (wait for ready-event)
+            tree.on('ready.jstree', function() {
+                var selected = inst.get_checked();
+                self._updateButtonText(selected);
+            });
+
             this._bindEvents();
+        },
+
+        /**
+         * Custom actions for option updates
+         *
+         * @param {string} key - they option key
+         * @param {mixed} value - the option value
+         */
+        _setOption: function(key, value) {
+
+            if ( key === "selected" ) {
+
+                // Check selected nodes and update hidden input
+                var inst = jQuery.jstree.reference($(this.tree));
+                if (inst) {
+                    inst.uncheck_all();
+                    if (value) {
+                        this.input.val(this._stringifySelection(value));
+                        var treeID = this.treeID;
+                        $.each(value, function() {
+                            inst.check_node('#' + treeID + '-' + this);
+                        });
+                        this._updateButtonText(value);
+                    }
+                }
+            }
+            this._super(key, value);
         },
 
         /**
@@ -301,15 +337,9 @@
 
             var inst = jQuery.jstree.reference($(this.tree));
 
-            var old_selected = this.input.val();
-            if (old_selected) {
-                old_selected = JSON.parse(old_selected);
-            } else {
-                old_selected = [];
-            }
-
-            var new_selected = [],
-                selected_ids = [],
+            var oldSelected = this._parseSelection(this.input.val()),
+                newSelected = [],
+                selectedIDs = [],
                 multiple = this.options.multiple,
                 leafonly = this.options.leafonly;
 
@@ -326,27 +356,28 @@
                         record_id = parseInt(record_id);
                     }
                     if (record_id) {
-                        new_selected.push(record_id);
-                        selected_ids.push(id);
+                        newSelected.push(record_id);
+                        selectedIDs.push(id);
                     }
                 }
             });
 
             var changed = false,
-                diff = $(new_selected).not(old_selected).get();
+                diff = $(newSelected).not(oldSelected).get();
             if (diff.length) {
                 changed = true;
             } else {
-                diff = $(old_selected).not(new_selected).get();
+                diff = $(oldSelected).not(newSelected).get();
                 if (diff.length) {
                     changed = true;
                 }
             }
 
-            this.input.val(JSON.stringify(new_selected));
-            this._updateButtonText(selected_ids);
+            var input = this.input.val(this._stringifySelection(newSelected));
+
+            this._updateButtonText(selectedIDs);
             if (changed) {
-                this.input.change();
+                input.change();
                 $(this.element).trigger('select.s3hierarchy');
             }
             return true;
@@ -355,17 +386,17 @@
         /**
          * Update the button text with the number of selected items
          *
-         * @param {Array} selected_ids - the HTML element IDs of the currently selected nodes
+         * @param {Array} selectedIDs - the HTML element IDs of the currently selected nodes
          */
-        _updateButtonText: function(selected_ids) {
+        _updateButtonText: function(selectedIDs) {
 
             var text = null,
                 options = this.options,
                 limit = 1, // @todo: make configurable?
                 numSelected = 0;
 
-            if (selected_ids) {
-                numSelected = selected_ids.length;
+            if (selectedIDs) {
+                numSelected = selectedIDs.length;
             }
             if (numSelected) {
                 if (numSelected > limit) {
@@ -373,7 +404,7 @@
                 } else {
                     var items = [];
                     for (var i=0; i < numSelected; i++) {
-                        items.push($('#' + selected_ids[i] + " > a").text().replace(/^\s+|\s+$/g, ''));
+                        items.push($('#' + selectedIDs[i] + " > a").text().replace(/^\s+|\s+$/g, ''));
                     }
                     text = items.length ? items.join(' ') : options.noneSelectedText;
                 }
@@ -577,19 +608,44 @@
         /**
          * Check particular nodes (used by setCurrentFilters)
          *
-         * @param {Array} values - the nodeIDs of the nodes to select
+         * @param {Array} values - the record IDs of the nodes to select
          */
         set: function(values) {
 
-            var inst = jQuery.jstree.reference($(this.tree));
+            var inst = jQuery.jstree.reference($(this.tree)),
+                node,
+                self = this,
+                treeID = this.treeID;
 
+            this._isBulk = true;
             inst.uncheck_all();
+            inst.close_all();
             if (values) {
-                for (var i=0, len=values.length, nodeID; i < len; i++) {
-                    nodeID = $('#' + this.treeID + '-' + values[i]);
-                    inst.check_node(nodeID);
-                }
+                var openAncestors = function(nodeID, callback) {
+                    var parent = inst.get_parent(nodeID);
+                    if (parent) {
+                        if (parent != '#') {
+                            openAncestors(parent);
+                            inst.open_node(parent, callback);
+                        } else if (callback) {
+                            callback();
+                        }
+                    }
+                };
+                values.forEach(function(index) {
+                    var node = inst.get_node(treeID + '-' + index);
+                    if (node) {
+                        // must open all ancestors to make sure
+                        // there is a DOM node for check_node (otherwise
+                        // nothing gets checked), and for better UX anyway
+                        openAncestors(node, function() {
+                            inst.check_node(node);
+                        });
+                    }
+                });
             }
+            this._isBulk = false;
+            this._updateSelectedNodes();
         },
 
         /**
@@ -599,12 +655,7 @@
          */
         get: function() {
 
-            var value = this.input.val();
-            if (value) {
-                return JSON.parse(value);
-            } else {
-                return [];
-            }
+            return this._parseSelection(this.input.val());
         },
 
         /**
@@ -612,12 +663,40 @@
          */
         reset: function() {
 
-            this._isBulk = true;
-            this.tree.jstree('uncheck_all');
-            this._isBulk = false;
-            this._updateSelectedNodes();
+            var inst = jQuery.jstree.reference($(this.tree));
 
+            this._isBulk = true;
+            inst.uncheck_all();
+            inst.close_all();
+            this._isBulk = false;
+
+            this._updateSelectedNodes();
             return true;
+        },
+
+        /**
+         * Helper to set correct position of menu
+         *
+         * @param {jQuery} wrapper - the menu wrapper
+         * @param {jQuery} button - the menu button
+         */
+        _setMenuPosition: function(wrapper, button) {
+
+            var pos = button.offset(),
+                css = {
+                    position: 'absolute',
+                    top: pos.top + button.outerHeight(),
+                    minWidth: button.outerWidth() - 8
+                };
+
+            if ($('body').css('direction') === 'rtl') {
+                // Right-align with button
+                css.right = ($(window).width() - (pos.left + button.outerWidth()));
+            } else {
+                // Left-align with button
+                css.left = pos.left;
+            }
+            wrapper.css(css);
         },
 
         /**
@@ -629,17 +708,20 @@
                 this.closeMenu();
             }
 
-            var button = $(this.button);
-            var pos = button.offset();
+            // Set correct menu position (+update on resize)
+            var button = $(this.button),
+                wrapper = $(this.wrapper),
+                self = this;
 
-            $(this.wrapper).css({
-                position: 'absolute',
-                top: pos.top + button.outerHeight(),
-                left: pos.left,
-                minWidth: button.outerWidth() - 8
-            }).show();
+            this._setMenuPosition(wrapper, button);
+            $(window).on('resize' + this._namespace + '-mpos', function() {
+                self._setMenuPosition(wrapper, button);
+            });
+
+            wrapper.show();
 
             $(this.tree).jstree('set_focus');
+
             this._isOpen = true;
             button.addClass('ui-state-active');
 
@@ -650,6 +732,9 @@
          * Close the tree (triggers 'close'-event)
          */
         closeMenu: function() {
+
+            // Disable resize event handler
+            $(window).off(this._namespace + '-mpos');
 
             $(this.tree).jstree('unset_focus')
                         .unbind('click.hierarchicalopts')
@@ -701,6 +786,50 @@
             if (check) {
                 tree.jstree('check_node', $('#' + nodeID));
             }
+        },
+
+        /**
+         * Parse the current selection from the real input (JSON)
+         *
+         * @param {string} value - the JSON value of the real input
+         * @returns {Array} - the selected values as Array
+         */
+        _parseSelection: function(value) {
+
+            if (!!value) {
+                var selected = JSON.parse(value);
+            } else {
+                return [];
+            }
+
+            if (!!selected) {
+                if (selected.constructor !== Array) {
+                    // Single select => convert to array
+                    selected = [selected];
+                }
+            } else {
+                selected = [];
+            }
+            return selected;
+        },
+
+        /**
+         * Stringify the current selection for the real input (JSON)
+         *
+         * @param {Array} selected - the selected node IDs
+         * @returns {string} - the value for the real input (JSON)
+         */
+        _stringifySelection: function(selected) {
+
+            if (!this.options.multiple) {
+                if (selected.length) {
+                    // Single select => convert to single value
+                    selected = selected[0];
+                } else {
+                    return '';
+                }
+            }
+            return JSON.stringify(selected);
         },
 
         /**
