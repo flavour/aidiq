@@ -58,7 +58,6 @@ from gluon.storage import Storage
 
 from ..s3 import *
 from s3layouts import S3PopupLink
-from s3.s3widgets import set_match_strings
 
 # Compact JSON encoding
 SEPARATORS = (",", ":")
@@ -319,11 +318,6 @@ class S3LocationModel(S3Model):
                                       sortby = "name",
                                       widget = S3LocationSelector(show_address = True,
                                                                   ),
-                                      # Alternate LocationSelector for when you don't have the Location Hierarchy available to load
-                                      #requires = IS_EMPTY_OR(
-                                      #              IS_LOCATION_SELECTOR()
-                                      #              ),
-                                      #widget = S3LocationSelectorWidget(),
                                       # Alternate simple Autocomplete (e.g. used by pr_person_presence)
                                       #requires = IS_EMPTY_OR(IS_LOCATION()),
                                       #widget = S3LocationAutocompleteWidget(),
@@ -971,6 +965,7 @@ class S3LocationModel(S3Model):
         loc_select = _vars.get("loc_select", None)
         if loc_select:
             # S3LocationSelectorWidget
+            # @todo: obsolete?
             fields = ["id",
                       "name",
                       ]
@@ -1026,6 +1021,7 @@ class S3LocationModel(S3Model):
         if field2:
             # S3LocationSelectorWidget's s3_gis_autocomplete_search
             # addr_street
+            # @todo: obsolete?
             fieldname = str.lower(field2)
             fields.append(fieldname)
             query |= FS(fieldname).lower().like(value + "%")
@@ -1048,6 +1044,7 @@ class S3LocationModel(S3Model):
                 query = (table.level.belongs(level))
             elif level == "NULLNONE":
                 # S3LocationSelectorWidget's s3_gis_autocomplete_search
+                # @todo: obsolete?
                 query = (table.level == None)
             elif level == "NOTNONE":
                 # Vulnerability Search
@@ -1212,12 +1209,12 @@ class S3LocationModel(S3Model):
                         # Insert other possible names, if matched
                         _alternate["name"] = name
                         # Populate match information
-                        set_match_strings(_alternate, value)
+                        s3_set_match_strings(_alternate, value)
                         iappend(_alternate)
 
                 if item["name"][:l].lower() == value:
                     # Include Actual name also, if matched
-                    set_match_strings(item, value)
+                    s3_set_match_strings(item, value)
                     iappend(item)
 
             output = json.dumps(items, separators=SEPARATORS)

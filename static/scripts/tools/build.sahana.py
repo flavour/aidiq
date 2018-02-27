@@ -437,8 +437,7 @@ def dojs(dogis = False, warnings = True):
     # -------------------------------------------------------------------------
     # Build single-component S3 scripts
     #
-    for filename in ("add_person",
-                     "cap",
+    for filename in ("cap",
                      "dc_answer",
                      "dc_question",
                      "dvr",
@@ -448,7 +447,6 @@ def dojs(dogis = False, warnings = True):
                      "gis.latlon",
                      "gis.loader",
                      "gis.pois",
-                     "locationselector.widget",
                      "msg",
                      "popup",
                      "register_validation",
