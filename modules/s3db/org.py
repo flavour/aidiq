@@ -373,8 +373,9 @@ class S3OrganisationModel(S3Model):
                            label = T("Home Country"),
                            represent = self.gis_country_code_represent,
                            requires = IS_EMPTY_OR(IS_IN_SET_LAZY(
-                                lambda: gis.get_countries(key_type="code"),
-                                                          zero=messages.SELECT_LOCATION)),
+                                        lambda: gis.get_countries(key_type="code"),
+                                        zero = messages.SELECT_LOCATION
+                                        )),
                            ),
                      # Simple free-text contact field, can be enabled
                      # in templates as needed
@@ -4127,7 +4128,7 @@ class S3FacilityModel(S3Model):
             filter_widgets.append(
                 S3OptionsFilter("reqs",
                                 label = T("Highest Priority Open Requests"),
-                                options = self.req_priority_opts,
+                                options = lambda: self.req_priority_opts,
                                 cols = 3,
                                 ))
 
@@ -7835,7 +7836,7 @@ class org_AssignMethod(S3Method):
         e.g. Organisation Group
     """
 
-    def __init__(self, component, types=None):
+    def __init__(self, component):
         """
             @param component: the Component in which to create records
         """
@@ -7850,18 +7851,14 @@ class org_AssignMethod(S3Method):
             @param attr: controller options for this request
         """
 
-        component = self.component
-        components = r.resource.components
-        for c in components:
-            if c == component:
-                component = components[c]
-                break
         try:
-            if component.link:
-                component = component.link
-        except:
+            component = r.resource.components[self.component]
+        except KeyError:
             current.log.error("Invalid Component!")
             raise
+
+        if component.link:
+            component = component.link
 
         tablename = component.tablename
 
