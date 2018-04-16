@@ -4,11 +4,18 @@
 # Tasks to be callable async
 # =============================================================================
 
-tasks = {}
 has_module = settings.has_module
 
 # -----------------------------------------------------------------------------
-def maintenance(period="daily"):
+def dummy():
+    """
+        Dummy Task
+        - can be used to populate a table with a task_id
+    """
+    return
+
+# -----------------------------------------------------------------------------
+def maintenance(period = "daily"):
     """
         Run all maintenance tasks which should be done daily
         - these are read from the template
@@ -46,8 +53,6 @@ def maintenance(period="daily"):
 
     return result
 
-tasks["maintenance"] = maintenance
-
 # -----------------------------------------------------------------------------
 # GIS: always-enabled
 # -----------------------------------------------------------------------------
@@ -71,8 +76,6 @@ def gis_download_kml(record_id, filename, session_id_name, session_id,
     db.commit()
     return result
 
-tasks["gis_download_kml"] = gis_download_kml
-
 # -----------------------------------------------------------------------------
 def gis_update_location_tree(feature, user_id=None):
     """
@@ -91,8 +94,6 @@ def gis_update_location_tree(feature, user_id=None):
     db.commit()
     return path
 
-tasks["gis_update_location_tree"] = gis_update_location_tree
-
 # -----------------------------------------------------------------------------
 # Org: always-enabled
 # -----------------------------------------------------------------------------
@@ -109,8 +110,6 @@ def org_facility_geojson(user_id=None):
     # Run the Task & return the result
     s3db.org_facility_geojson()
 
-tasks["org_facility_geojson"] = org_facility_geojson
-
 # -----------------------------------------------------------------------------
 def org_site_check(site_id, user_id=None):
     """ Check the Status for Sites """
@@ -125,7 +124,14 @@ def org_site_check(site_id, user_id=None):
         customise(site_id)
         db.commit()
 
-tasks["org_site_check"] = org_site_check
+# -----------------------------------------------------------------------------
+tasks = {"dummy": dummy,
+         "maintenance": maintenance,
+         "gis_download_kml": gis_download_kml,
+         "gis_update_location_tree": gis_update_location_tree,
+         "org_facility_geojson": org_facility_geojson,
+         "org_site_check": org_site_check,
+         }
 
 # -----------------------------------------------------------------------------
 # Optional Modules
@@ -170,6 +176,25 @@ if has_module("dc"):
         return result
 
     tasks["dc_target_check"] = dc_target_check
+
+    # -------------------------------------------------------------------------
+    def dc_target_report(target_id, user_id=None):
+        """
+            Notify that Survey Report is ready
+
+            @param target_id: Target record_id
+            @param user_id: calling request's auth.user.id or None
+        """
+        if user_id:
+            # Authenticate
+            auth.s3_impersonate(user_id)
+
+        # Run the Task & return the result
+        result = s3db.dc_target_report(target_id)
+        #db.commit()
+        return result
+
+    tasks["dc_target_report"] = dc_target_report
 
 # -----------------------------------------------------------------------------
 if has_module("doc"):
@@ -282,37 +307,6 @@ if has_module("hrm"):
         return result
 
     tasks["hrm_training_event_survey"] = hrm_training_event_survey
-
-# -----------------------------------------------------------------------------
-if has_module("monitor"):
-
-    # -------------------------------------------------------------------------
-    def monitor_run_task(task_id, user_id=None):
-        """
-            Run a Monitoring Task
-        """
-        if user_id:
-            auth.s3_impersonate(user_id)
-        # Run the Task & return the result
-        result = s3db.monitor_run_task(task_id)
-        db.commit()
-        return result
-
-    tasks["monitor_run_task"] = monitor_run_task
-
-    # -------------------------------------------------------------------------
-    def monitor_check_email_reply(run_id, user_id=None):
-        """
-            Check whether we have received a reply to an Email check
-        """
-        if user_id:
-            auth.s3_impersonate(user_id)
-        # Run the Task & return the result
-        result = s3db.monitor_check_email_reply(run_id)
-        db.commit()
-        return result
-
-    tasks["monitor_check_email_reply"] = monitor_check_email_reply
 
 # -----------------------------------------------------------------------------
 if has_module("msg"):
@@ -472,14 +466,15 @@ if has_module("req"):
 # -----------------------------------------------------------------------------
 if has_module("setup"):
 
-    def deploy(playbook,
-               hosts = ["127.0.0.1"],
-               tags = None,
-               private_key = None,
-               user_id = None,
-               ):
+    def setup_run_playbook(playbook,
+                           hosts = ["127.0.0.1"],
+                           tags = None,
+                           private_key = None,
+                           user_id = None,
+                           ):
         """
-            Deploy a new Eden instance by running an Ansible Playbook
+            Run an Ansible Playbook
+            - to Deploy a new Eden instance
         """
         if user_id:
             # Authenticate
@@ -490,7 +485,36 @@ if has_module("setup"):
         #db.commit()
         return result
 
-    tasks["deploy"] = deploy
+    tasks["setup_run_playbook"] = setup_run_playbook
+
+    # -------------------------------------------------------------------------
+    def setup_monitor_run_task(task_id, user_id=None):
+        """
+            Run a Monitoring Task
+        """
+        if user_id:
+            auth.s3_impersonate(user_id)
+        # Run the Task & return the result
+        result = s3db.setup_monitor_run_task(task_id)
+        db.commit()
+        return result
+
+    tasks["setup_monitor_run_task"] = setup_monitor_run_task
+
+    # -------------------------------------------------------------------------
+    def setup_monitor_check_email_reply(run_id, user_id=None):
+        """
+            Check whether we have received a reply to an Email check
+        """
+        if user_id:
+            auth.s3_impersonate(user_id)
+        # Run the Task & return the result
+        result = s3db.setup_monitor_check_email_reply(run_id)
+        db.commit()
+        return result
+
+    tasks["setup_monitor_check_email_reply"] = setup_monitor_check_email_reply
+
 
 # -----------------------------------------------------------------------------
 if has_module("stats"):

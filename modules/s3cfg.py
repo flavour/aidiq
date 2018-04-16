@@ -56,37 +56,85 @@ class S3Config(Storage):
                  }
 
     # Formats from static/scripts/ui/i18n converted to Python style
-    date_formats = {"ar": "%d/%m/%Y",
+    date_formats = {"af": "%d/%m/%Y",
+                    "ar": "%d/%m/%Y",
+                    "ar-dz": "%d/%m/%Y",
+                    "az": "%d.%m.%Y",
+                    "be": "%d.%m.%Y",
+                    "bg": "%d.%m.%Y",
                     "bs": "%d.%m.%Y",
+                    "ca": "%d/%m/%Y",
+                    "cs": "%d.%m.%Y",
+                    "cy-gb": "%d/%m/%Y",
+                    "da": "%d-%m-%Y",
                     "de": "%d.%m.%Y",
                     #"dv": "",
                     "el": "%d/%m/%Y",
+                    "eo": "%d/%m/%Y",
                     "es": "%d/%m/%Y",
+                    "et": "%d.%m.%Y",
+                    "eu": "%Y-%m-%d",
+                    "fa": "%Y/%m/%d",
+                    "fi": "%d.%m.%Y",
+                    "fo": "%d-%m-%Y",
                     "fr": "%d/%m/%Y",
+                    "fr-ca": "%Y-%m-%d",
+                    "fr-ch": "%d.%m.%Y",
+                    "gl": "%d/%m/%Y",
+                    "he": "%d/%m/%Y",
+                    "hi": "%d/%m/%Y",
                     "hr": "%d.%m.%Y",
+                    "hu": "%Y.%m.%d.",
+                    "hy": "%d.%m.%Y",
+                    "id": "%d/%m/%Y",
+                    "is": "%d.%m.%Y",
                     "it": "%d/%m/%Y",
                     "ja": "%Y/%m/%d",
+                    "ka": "%d-%m-%Y",
+                    "kk": "%d.%m.%Y",
                     "km": "%d-%m-%Y",
                     "ko": "%Y-%m-%d",
+                    "ky": "%d.%m.%Y",
+                    "lb": "%d.%m.%Y",
+                    "lt": "%Y-%m-%d",
+                    "lv": "%d.%m.%Y",
+                    "mk": "%d.%m.%Y",
+                    "ml": "%d/%m/%Y",
                     #"mn": "",
+                    "ms": "%d/%m/%Y",
                     #"my": "",
+                    "nb": "%d.%m.%Y",
                     "ne": "%d/%m/%Y",
+                    "nl": "%d-%m-%Y",
+                    "nl-be": "%d/%m/%Y",
+                    "nn": "%d.%m.%Y",
+                    "no": "%d.%m.%Y",
+                    "pl": "%d.%m.%Y",
                     "prs": "%Y/%m/%d",
                     "ps": "%Y/%m/%d",
                     "pt": "%d/%m/%Y",
                     "pt-br": "%d/%m/%Y",
+                    "rm": "%d/%m/%Y",
+                    "ro": "%d.%m.%Y",
                     "ru": "%d.%m.%Y",
                     #"si": "",
+                    "sk": "%d.%m.%Y",
+                    "sl": "%d.%m.%Y",
+                    "sq": "%d.%m.%Y",
                     "sr": "%d.%m.%Y",
+                    "sr-sr": "%d.%m.%Y",
                     "sv": "%Y-%m-%d",
                     "ta": "%d/%m/%Y",
                     #"tet": "",
                     "th": "%d/%m/%Y",
+                    "tj": "%d.%m.%Y",
                     #"tl": "",
                     "tr": "%d.%m.%Y",
+                    "uk": "%d.%m.%Y",
                     #"ur": "",
                     "vi": "%d/%m/%Y",
                     "zh-cn": "%Y-%m-%d",
+                    "zh-hk": "%Y-%m-%d",
                     "zh-tw": "%Y/%m/%d",
                     }
 
@@ -151,7 +199,6 @@ class S3Config(Storage):
         self.mail = Storage()
         self.member = Storage()
         self.mobile = Storage()
-        self.monitor = Storage()
         self.msg = Storage()
         self.org = Storage()
         self.police = Storage()
@@ -159,9 +206,10 @@ class S3Config(Storage):
         self.proc = Storage()
         self.project = Storage()
         self.req = Storage()
-        self.supply = Storage()
         self.search = Storage()
         self.security = Storage()
+        self.setup = Storage()
+        self.supply = Storage()
         self.sync = Storage()
         self.ui = Storage()
         self.vulnerability = Storage()
@@ -2425,8 +2473,7 @@ class S3Config(Storage):
 
     # =========================================================================
     # Search
-
-    # -------------------------------------------------------------------------
+    #
     def get_search_max_results(self):
         """
             The maximum number of results to return in an Autocomplete Search
@@ -2446,7 +2493,6 @@ class S3Config(Storage):
         """
         return self.search.get("dates_auto_range", False)
 
-    # -------------------------------------------------------------------------
     # Filter Manager Widget
     def get_search_filter_manager(self):
         """ Enable the filter manager widget """
@@ -2471,6 +2517,15 @@ class S3Config(Storage):
     def get_search_filter_manager_load(self):
         """ Text for saved filter load-button """
         return self.search.get("filter_manager_load")
+
+    # =========================================================================
+    # Setup
+    #
+    def get_setup_monitor_template(self):
+        """
+            Which template folder to use to load monitor.py
+        """
+        return self.setup.get("monitor_template", "default")
 
     # =========================================================================
     # Sync
@@ -3133,11 +3188,29 @@ class S3Config(Storage):
         """
         return self.dvr.get("manage_response_actions", False)
 
+    def get_dvr_response_types(self):
+        """
+            Use response type categories
+        """
+        return self.dvr.get("response_types", True)
+
     def get_dvr_response_types_hierarchical(self):
         """
             Response types are hierarchical
         """
         return self.dvr.get("response_types_hierarchical", False)
+
+    def get_dvr_response_themes(self):
+        """
+            Use themes for response actions
+        """
+        return self.dvr.get("response_themes", False)
+
+    def get_dvr_response_themes_org_specific(self):
+        """
+            Response themes are org-specific
+        """
+        return self.dvr.get("response_themes_org_specific", True)
 
     # -------------------------------------------------------------------------
     # Education
