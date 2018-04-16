@@ -665,6 +665,8 @@ class S3OrganisationModel(S3Model):
                        hrm_human_resource = "organisation_id",
                        # Members
                        member_membership = "organisation_id",
+                       # DVR response themes
+                       dvr_response_theme = "organisation_id",
                        # Evacuees
                        evr_case = "organisation_id",
                        # Locations served
@@ -1067,9 +1069,7 @@ class S3OrganisationModel(S3Model):
         value = s3_unicode(value).lower().strip()
 
         if not value:
-            output = current.xml.json_message(False, 400,
-                            "Missing option! Require value")
-            raise HTTP(400, body=output)
+            r.error(400, "Missing option! Require value")
 
         response = current.response
         resource = r.resource
@@ -2083,7 +2083,7 @@ class S3OrganisationResourceModel(S3Model):
                                      ),
                           Field("value", "integer",
                                 label = T("Quantity"),
-                                requires = IS_INT_IN_RANGE(0, 999999),
+                                requires = IS_INT_IN_RANGE(0, None),
                                 ),
                           s3_comments(),
                           *s3_meta_fields())
@@ -2935,11 +2935,11 @@ class S3OrganisationSummaryModel(S3Model):
                           self.org_organisation_id(ondelete="CASCADE"),
                           Field("national_staff", "integer", # national is a reserved word in Postgres
                                 label = T("# of National Staff"),
-                                requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, 9999)),
+                                requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, None)),
                                 ),
                           Field("international_staff", "integer",
                                 label = T("# of International Staff"),
-                                requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, 9999)),
+                                requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, None)),
                                 ),
                           *s3_meta_fields())
 
@@ -3223,14 +3223,11 @@ class S3SiteModel(S3Model):
         # Components
         add_components(tablename,
                        # Facility Types
-                       # Format for S3SQLInlineComponentCheckbox
                        org_facility_type = {"link": "org_site_facility_type",
                                             "joinby": "site_id",
                                             "key": "facility_type_id",
                                             "actuate": "hide",
                                             },
-                       # Format for filter_widgets & imports
-                       org_site_facility_type = "site_id",
 
                        # Locations
                        org_site_location = ({"name": "location",
@@ -3431,8 +3428,7 @@ class S3SiteModel(S3Model):
 
         site_id = r.id
         if not site_id:
-            output = current.xml.json_message(False, 400, "No id provided!")
-            raise HTTP(400, body=output)
+            r.error(400, "No id provided!")
 
         db = current.db
         s3db = current.s3db
@@ -3482,9 +3478,7 @@ class S3SiteModel(S3Model):
         value = s3_unicode(value).lower().strip()
 
         if not value:
-            output = current.xml.json_message(False, 400,
-                            "Missing option! Require value")
-            raise HTTP(400, body=output)
+            r.error(400, "Missing option! Require value")
 
         # Construct query
         query = (FS("name").lower().like(value + "%"))
@@ -4941,11 +4935,11 @@ class S3OfficeSummaryModel(S3Model):
                                 ),
                           Field("national_staff", "integer", # national is a reserved word in Postgres
                                 label = T("# of National Staff"),
-                                requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, 9999)),
+                                requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, None)),
                                 ),
                           Field("international_staff", "integer",
                                 label = T("# of International Staff"),
-                                requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, 9999)),
+                                requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, None)),
                                 ),
                           *s3_meta_fields())
 
@@ -8325,7 +8319,7 @@ class org_CapacityReport(S3Method):
         # Create the file
         try:
             from cStringIO import StringIO    # Faster, where available
-        except:
+        except ImportError:
             from StringIO import StringIO
 
         output = StringIO()
@@ -8576,20 +8570,22 @@ def org_resource_list_layout(list_id, item_id, resource, rfields, record):
     permit = current.auth.s3_has_permission
     table = current.db.org_resource
     if permit("update", table, record_id=record_id):
-        vars = {"refresh": list_id,
-                "record": record_id,
-                }
+        link_vars = {"refresh": list_id,
+                     "record": record_id,
+                     }
         f = current.request.function
         if f == "organisation" and organisation_id:
-            vars["(organisation)"] = organisation_id
+            link_vars["(organisation)"] = organisation_id
         elif f == "location" and location_id:
-            vars["(location)"] = location_id
+            link_vars["(location)"] = location_id
         edit_btn = A(ICON("edit"),
-                     _href=URL(c="org", f="resource",
-                               args=[record_id, "update.popup"],
-                               vars=vars),
-                     _class="s3_modal",
-                     _title=current.response.s3.crud_strings.org_resource.title_update,
+                     _href = URL(c = "org",
+                                 f = "resource",
+                                 args = [record_id, "update.popup"],
+                                 vars = link_vars,
+                                 ),
+                     _class = "s3_modal",
+                     _title = current.response.s3.crud_strings.org_resource.title_update,
                      )
     else:
         edit_btn = ""

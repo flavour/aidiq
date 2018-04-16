@@ -1261,6 +1261,8 @@ class S3StatsImpactModel(S3Model):
         # ---------------------------------------------------------------------
         # Impact
         #
+        # @ToDo: Add Time & Organisation
+        #
         tablename = "stats_impact"
         define_table(tablename,
                      # Instance
@@ -1419,7 +1421,7 @@ class S3StatsPeopleModel(S3Model):
                      Field("value", "integer",
                            label = T("Number of People"),
                            represent = IS_INT_AMOUNT.represent,
-                           requires = IS_INT_IN_RANGE(0, 999999),
+                           requires = IS_INT_IN_RANGE(0, None),
                            ),
                      self.gis_location_id(label = T("Address"),
                                           ),

@@ -671,7 +671,7 @@ class S3EventModel(S3Model):
         user = current.auth.user
         user_id = user and user.id
         if not event_id or not user_id:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         db = current.db
         s3db = current.s3db
@@ -714,7 +714,7 @@ class S3EventModel(S3Model):
         user = current.auth.user
         user_id = user and user.id
         if not event_id or not user_id:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         s3db = current.s3db
         ltable = s3db.event_bookmark
@@ -744,7 +744,7 @@ class S3EventModel(S3Model):
 
         event_id = r.id
         if not event_id or len(r.args) < 3:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         db = current.db
         s3db = current.s3db
@@ -804,7 +804,7 @@ class S3EventModel(S3Model):
 
         event_id = r.id
         if not event_id or len(r.args) < 3:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         db = current.db
         s3db = current.s3db
@@ -844,7 +844,7 @@ class S3EventModel(S3Model):
 
         event_id = r.id
         if not event_id or len(r.args) < 3:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         db = current.db
         s3db = current.s3db
@@ -894,7 +894,7 @@ class S3EventModel(S3Model):
 
         event_id = r.id
         if not event_id or len(r.args) < 3:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         db = current.db
         s3db = current.s3db
@@ -1569,7 +1569,7 @@ class S3IncidentModel(S3Model):
         user = current.auth.user
         user_id = user and user.id
         if not incident_id or not user_id:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         db = current.db
         s3db = current.s3db
@@ -1612,7 +1612,7 @@ class S3IncidentModel(S3Model):
         user = current.auth.user
         user_id = user and user.id
         if not incident_id or not user_id:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         s3db = current.s3db
         ltable = s3db.event_bookmark
@@ -1642,7 +1642,7 @@ class S3IncidentModel(S3Model):
 
         incident_id = r.id
         if not incident_id or len(r.args) < 3:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         tag = r.args[2]
         db = current.db
@@ -1701,7 +1701,7 @@ class S3IncidentModel(S3Model):
 
         incident_id = r.id
         if not incident_id or len(r.args) < 3:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         tag = r.args[2]
         db = current.db
@@ -1740,7 +1740,7 @@ class S3IncidentModel(S3Model):
 
         incident_id = r.id
         if not incident_id or len(r.args) < 3:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         db = current.db
         s3db = current.s3db
@@ -1790,7 +1790,7 @@ class S3IncidentModel(S3Model):
 
         incident_id = r.id
         if not incident_id or len(r.args) < 3:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         db = current.db
         s3db = current.s3db
@@ -2159,7 +2159,7 @@ class S3EventResourceModel(S3Model):
                           Field("value", "integer",
                                 default = 1,
                                 label = T("Quantity"),
-                                requires = IS_INT_IN_RANGE(0, 999),
+                                requires = IS_INT_IN_RANGE(0, None),
                                 ),
                           self.org_organisation_id(),
                           self.pr_person_id(label = T("Contact")),
@@ -3945,13 +3945,13 @@ class S3EventSitRepModel(S3Model):
                           #      readable = sitrep_edxl,
                           #      writable = sitrep_edxl,
                           #      ),
+                          Field("number", "integer",
+                                label = T("Number"),
+                                requires = IS_INT_IN_RANGE(1, None),
+                                ),
                           Field("name", length=128,
                                 label = T("Title"),
                                 requires = IS_LENGTH(128),
-                                ),
-                          Field("number", "integer",
-                                label = T("Number"),
-                                requires = IS_INT_IN_RANGE(1, 999),
                                 ),
                           #Field("version", length=16,
                           #      label = T("Version"),
@@ -3973,7 +3973,9 @@ class S3EventSitRepModel(S3Model):
                                 #writable = not sitrep_edxl,
                                 ),
                           self.gis_location_id(
-                            widget = S3LocationSelector(show_map = False),
+                            widget = S3LocationSelector(show_map = False,
+                                                        show_postcode = False,
+                                                        ),
                             ),
                           #Field("action_plan", "text",
                           #      label = T("Action Plan"),
@@ -4057,8 +4059,8 @@ class S3EventSitRepModel(S3Model):
         else:
             crud_form = S3SQLCustomForm("event_id",
                                         "incident_id",
-                                        "name",
                                         "number",
+                                        "name",
                                         "organisation_id",
                                         "location_id",
                                         "date",
@@ -4102,6 +4104,7 @@ class S3EventSitRepModel(S3Model):
                                       "location_id$L2",
                                       "location_id$L3",
                                       "organisation_id",
+                                      "number",
                                       "name",
                                       (T("Attachments"), "document.file"),
                                       "comments",
@@ -4504,7 +4507,7 @@ class event_ActionPlan(S3Method):
             return output
 
         else:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
 # =============================================================================
 class event_ScenarioActionPlan(S3Method):
@@ -4682,7 +4685,7 @@ class event_ScenarioActionPlan(S3Method):
             return output
 
         else:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
 # =============================================================================
 class event_ApplyScenario(S3Method):
@@ -4713,12 +4716,12 @@ class event_ApplyScenario(S3Method):
         """
 
         if r.http != "POST":
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         incident_id = r.id
         scenario_id = r.post_vars.get("scenario_id")
         if not incident_id or not scenario_id:
-            raise HTTP(405, current.ERROR.BAD_METHOD)
+            r.error(405, current.ERROR.BAD_METHOD)
 
         db = current.db
         s3db = current.s3db
@@ -5261,7 +5264,7 @@ def event_notification_dispatcher(r, **attr):
         return output
 
     else:
-        raise HTTP(501, current.messages.BADMETHOD)
+        r.error(405, current.messages.BAD_METHOD)
 
 # =============================================================================
 def event_event_list_layout(list_id, item_id, resource, rfields, record,
