@@ -3,15 +3,9 @@
 
 """ Monitoring
 
-<<<<<<< HEAD
-    Template-specific Message Parsers are defined here.
-
-    @copyright: 2014-15 (c) Sahana Software Foundation
-=======
     Template-specific Monitoring Tasks are defined here.
 
     @copyright: 2014-2018 (c) Sahana Software Foundation
->>>>>>> e0e0d1f705b2877f1a99c428e0fd6c6cd2c009d2
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -39,11 +33,8 @@
 __all__ = ("S3Monitor",)
 
 import datetime
-<<<<<<< HEAD
-=======
 import platform
 import subprocess
->>>>>>> e0e0d1f705b2877f1a99c428e0fd6c6cd2c009d2
 
 from gluon import current
 #from gluon.tools import fetch
@@ -56,14 +47,6 @@ class S3Monitor(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
-<<<<<<< HEAD
-    def example(task_id, run_id):
-        """
-            Skeleton of a Check Script
-        """
-
-        return
-=======
     def ping(task_id, run_id):
         """
             Ping a server
@@ -161,6 +144,5 @@ class S3Monitor(object):
         else:
             # Critical: Unable to send Email
             return 3
->>>>>>> e0e0d1f705b2877f1a99c428e0fd6c6cd2c009d2
 
 # END =========================================================================
