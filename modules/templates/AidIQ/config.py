@@ -79,7 +79,7 @@ def config(settings):
     # -------------------------------------------------------------------------
     def customise_project_project_resource(r, tablename):
 
-        from s3.s3forms import S3SQLCustomForm, S3SQLInlineComponentCheckbox
+        from s3.s3forms import S3SQLCustomForm, S3SQLInlineLink
         crud_form = S3SQLCustomForm("organisation_id",
                                     "name",
                                     "description",
@@ -88,12 +88,12 @@ def config(settings):
                                     "end_date",
                                     "calendar",
                                     "human_resource_id",
-                                    S3SQLInlineComponentCheckbox(
+                                    S3SQLInlineLink(
                                         "sector",
                                         label = T("Sectors"),
                                         field = "sector_id",
                                         cols = 3,
-                                    ),
+                                        ),
                                     "budget",
                                     "currency",
                                     "comments",
@@ -101,8 +101,8 @@ def config(settings):
         current.s3db.configure(tablename,
                                crud_form = crud_form,
                                )
-        
-        
+
+
     settings.customise_project_project_resource = customise_project_project_resource
 
     # -------------------------------------------------------------------------
@@ -139,9 +139,9 @@ def config(settings):
 
             return result
         s3.prep = custom_prep
-        
+
         return attr
-                
+
     #settings.customise_project_task_controller = customise_project_task_controller
 
     # -------------------------------------------------------------------------
@@ -173,13 +173,13 @@ def config(settings):
                                                   totals = True,
                                                   )
                                  )
-        
+
         current.s3db.configure(tablename,
                                filter_widgets = filter_widgets,
                                report_options = report_options,
                                )
-        
-        
+
+
     settings.customise_project_activity_resource = customise_project_activity_resource
 
     # -------------------------------------------------------------------------
