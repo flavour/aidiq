@@ -61,8 +61,8 @@ def config(settings):
         "news": "icon-news",
     }
 
-    # PDF to Letter
-    settings.base.paper_size = T("Letter")
+    # PDF default size Letter
+    settings.base.pdf_size = "Letter"
 
     # Restrict the Location Selector to just certain countries
     # NB This can also be over-ridden for specific contexts later
@@ -103,7 +103,7 @@ def config(settings):
     #settings.auth.registration_link_user_to = {"staff":T("Staff"),
     #                                           #"volunteer":T("Volunteer")
     #                                           }
-    settings.auth.registration_link_user_to_default = "staff"
+    settings.auth.registration_link_user_to_default = ["staff"]
 
     # Record Approval
     settings.auth.record_approval = True
@@ -694,8 +694,7 @@ def config(settings):
                        S3SQLInlineComponent(
                             "organisation_location",
                             label = T("Areas Served"),
-                            fields = [("", "location_id"),
-                                      ],
+                            fields = [("", "location_id")],
                             ),
                        S3SQLInlineComponent(
                             "facility",
@@ -1303,8 +1302,7 @@ $.filterOptionsS3({
                                            "options": 2,
                                            }]
                         # Hide access-level
-                        contact_fields = [("", "value"),
-                                          ]
+                        contact_fields = [("", "value")]
 
                     # Custom CRUD form
                     crud_fields = ["first_name",
@@ -1325,8 +1323,8 @@ $.filterOptionsS3({
                                         #multiple = True,
                                         fields = contact_fields,
                                         filterby = [{"field": "contact_method",
-                                                        "options": "EMAIL",
-                                                        },
+                                                     "options": "EMAIL",
+                                                     },
                                                     ] + contact_filter,
                                         ),
                                    S3SQLInlineComponent(

@@ -15,9 +15,11 @@ def config(settings):
 
     # Uncomment to restrict to specific country/countries
     settings.gis.countries.append("MM")
+    # Disable the Postcode selector in the LocationSelector
+    settings.gis.postcode_selector = False
 
     # L10n (Localization) settings
-    settings.L10n.languages["my"] = "မြန်မာစာ"
+    settings.L10n.languages["my"] = "Burmese"
     # Default Language (put this in custom template if-required)
     #settings.L10n.default_language = "my"
     # Default timezone for users

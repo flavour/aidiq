@@ -23,6 +23,7 @@ def config(settings):
 
     # Theme (folder to use for views/layout.html)
     settings.base.theme = "SCPHIMS"
+    settings.base.theme_base = "default"
     settings.ui.menu_logo = "/%s/static/themes/SCPHIMS/img/logo.png" % current.request.application
 
     # Authentication settings
@@ -809,8 +810,7 @@ def config(settings):
                        "person_details.disabled",
                        S3SQLInlineComponent(
                             "phone",
-                            fields = [("", "value"),
-                                      ],
+                            fields = [("", "value")],
                             #filterby = {"field": "contact_method",
                             #            "options": "SMS",
                             #            },
@@ -820,8 +820,7 @@ def config(settings):
                             ),
                        #S3SQLInlineComponent(
                        #     "email",
-                       #     fields = [("", "value"),
-                       #               ],
+                       #     fields = [("", "value")],
                        #     #filterby = {"field": "contact_method",
                        #     #            "options": "EMAIL",
                        #     #            },
@@ -832,8 +831,7 @@ def config(settings):
                        S3SQLInlineComponent(
                             "address",
                             label = T("Current Address"),
-                            fields = [("", "location_id"),
-                                      ],
+                            fields = [("", "location_id")],
                             filterby = {"field": "type",
                                         "options": "1",
                                         },
@@ -1380,8 +1378,7 @@ def config(settings):
                                     "start_date",
                                     S3SQLInlineComponent(
                                         "event_tag",
-                                        fields = [("", "value"),
-                                                  ],
+                                        fields = [("", "value")],
                                         filterby = {"field": "tag",
                                                     "options": "category",
                                                     },

@@ -339,6 +339,11 @@ S3.search = {};
     };
 
     /**
+     * Regex for the operator in a filter expression
+     */
+    var FILTEROP = /__(?!link\.)([a-z_]+)$/;
+
+    /**
      * getCurrentFilters: retrieve all current filters
      *
      * - returns: [[key, value], [key, value], ...]
@@ -529,9 +534,9 @@ S3.search = {};
                     urlValue = isoFormat(jsDate);
                 if (end && $this.hasClass('end_date')) {
                     // end_date
-                    urlVar = urlVar.split('__')[0];
+                    var selector = urlVar.replace(FILTEROP, '');
                     // @ToDo: filterURL should AND multiple $filter into 1 (will be required when we have multiple $filter in a single page)
-                    queries.push(['$filter', '(' + urlVar + ' ' + operator + ' "' + urlValue + '") or (' + urlVar + ' eq None)']);
+                    queries.push(['$filter', '(' + selector + ' ' + operator + ' "' + urlValue + '") or (' + selector + ' eq None)']);
                 } else {
                     // Single field or start_date
                     queries.push([urlVar, urlValue]);
@@ -627,7 +632,8 @@ S3.search = {};
 
             var years = value - 0;
             if (value && !isNaN(years)) {
-                if (urlVar.split('__')[1] == 'gt') {
+                var m = urlVar.match(FILTEROP);
+                if (m && m[1] == 'gt') {
                     // Age in years is the same until one day before
                     // the next birthday, so must add one year here:
                     years += 1;
@@ -731,8 +737,8 @@ S3.search = {};
             expression = $('#' + id + '-data').val();
             var operator = $('input:radio[name="' + id + '_filter"]:checked').val();
             if (this.tagName && this.tagName.toLowerCase() == 'select') {
-                var refresh = false;
-                var selector = expression.split('__')[0];
+                var refresh = false,
+                    selector = expression.replace(FILTEROP, '');
                 if (q.hasOwnProperty(selector + '__eq')) {
                     values = q[selector + '__eq'];
                     refresh = true;
@@ -820,7 +826,7 @@ S3.search = {};
 
             var $this = $(this),
                 expression = $('#' + $this.attr('id') + '-data').val(),
-                selector = expression.split('__')[0],
+                selector = expression.replace(FILTEROP, ''),
                 values = false;
 
             if (q.hasOwnProperty(expression)) {
@@ -859,7 +865,7 @@ S3.search = {};
                     refresh = true;
                 } else
                 if (operator == 'any' || operator == 'all') {
-                    var selector = expression.split('__')[0];
+                    var selector = expression.replace(FILTEROP, '');
                     if (q.hasOwnProperty(selector + '__anyof')) {
                         values = q[selector + '__anyof'];
                         refresh = true;
@@ -1418,15 +1424,30 @@ S3.search = {};
     S3.search.setup_hidden_widget = setup_hidden_widget;
 
     /**
-     * Helper method to trigger re-calculation of column width in
-     * responsive data tables after unhiding them
+     * Helper method to
+     *
+     * - re-calculate the column width in responsive data tables, or
+     * - adjust the top scrollbar width in non-responsive data tables
+     *
+     * ...after unhiding them on a summary tab
      *
      * @param {jQuery} datatable - the datatable
      */
     var recalcResponsive = function(datatable) {
-        var dt = $(datatable).DataTable();
-        if (dt && dt.responsive) {
-            dt.responsive.recalc();
+
+        var dt = $(datatable);
+
+        if (dt.hasClass('responsive')) {
+            var instance = dt.DataTable();
+            if (instance && instance.responsive) {
+                instance.responsive.recalc();
+            }
+        } else if (dt.hasClass('doublescroll')) {
+            try {
+                dt.dataTableS3('doubleScroll');
+            } catch(e) {
+                // pass
+            }
         }
     };
 
@@ -1473,7 +1494,7 @@ S3.search = {};
             updatePendingTargets(form);
         }
         // Setup any Responsive dataTables
-        section.find('table.dataTable.display.responsive')
+        section.find('table.dataTable.display')
                .each(function() {
             recalcResponsive(this);
         });
@@ -1509,29 +1530,37 @@ S3.search = {};
             }
         }
 
-        // Initialise jQueryUI Tabs
-        $('#summary-tabs').tabs({
-            active: active_tab,
-            activate: function(event, ui) {
-                var newPanel = $(ui.newPanel);
-                // Unhide the section (.ui-tab's display: block overrides anyway but hey ;)
-                newPanel.removeClass('hide');
-                // A New Tab has been selected
-                if (ui.newTab.length) {
-                    // Update the Filter Query URL to show which tab is active
-                    updateFilterSubmitURL(form, 't', $(ui.newTab).index());
+        if (active_tab != undefined) {
+            // Initialise jQueryUI Tabs
+            $('#summary-tabs').tabs({
+                active: active_tab,
+                activate: function(event, ui) {
+                    var newPanel = $(ui.newPanel);
+                    // Unhide the section (.ui-tab's display: block overrides anyway but hey ;)
+                    newPanel.removeClass('hide');
+                    // A New Tab has been selected
+                    if (ui.newTab.length) {
+                        // Update the Filter Query URL to show which tab is active
+                        updateFilterSubmitURL(form, 't', $(ui.newTab).index());
+                    }
+                    unhide_section(form, newPanel);
                 }
-                unhide_section(form, newPanel);
-            }
-        }).css({visibility: 'visible'});
-
-        // Activate not called? Unhide initial section anyway:
-        $('.ui-tabs-panel[aria-hidden="false"]').first()
-                                                .removeClass('hide')
-                                                .find('table.dataTable.display.responsive')
-                                                .each(function() {
-                                                    recalcResponsive(this);
-                                                });
+            }).css({visibility: 'visible'});
+            // Activate not called? Unhide initial section anyway:
+            $('.ui-tabs-panel[aria-hidden="false"]').first()
+                                                    .removeClass('hide')
+                                                    .find('table.dataTable.display')
+                                                    .each(function() {
+                                                        recalcResponsive(this);
+                                                    });
+        } else {
+            // Unhide initial section anyway:
+            $('#summary-tabs').css({visibility: 'visible'})
+                              .find('table.dataTable.display')
+                              .each(function() {
+                                recalcResponsive(this);
+                              });
+        }
     };
 
     /**

@@ -117,6 +117,8 @@ def user():
     link_user_to = settings.get_auth_registration_link_user_to()
     if link_user_to and len(link_user_to) > 1 and settings.get_auth_show_link():
         lappend("link_user_to")
+        table.link_user_to.represent = lambda v: ", ".join([s3_str(link_user_to_opts[opt]) for opt in v]) \
+                                                 if v else current.messages["NONE"]
     lappend((T("Registration"), "created_on"))
     table.created_on.represent = s3base.S3DateTime.date_represent
     lappend((T("Roles"), "membership.group_id"))
@@ -166,17 +168,21 @@ def user():
 
     # Custom Methods
     set_method = s3db.set_method
-    set_method("auth", "user", method="roles",
-               action=s3base.S3RoleManager())
+    set_method("auth", "user",
+               method = "roles",
+               action = s3base.S3RoleManager())
 
-    set_method("auth", "user", method="disable",
-               action=disable_user)
+    set_method("auth", "user",
+               method = "disable",
+               action = disable_user)
 
-    set_method("auth", "user", method="approve",
-               action=approve_user)
+    set_method("auth", "user",
+               method = "approve",
+               action = approve_user)
 
-    set_method("auth", "user", method="link",
-               action=link_user)
+    set_method("auth", "user",
+               method = "link",
+               action = link_user)
 
     # CRUD Strings
     s3.crud_strings["auth_user"] = Storage(
@@ -250,6 +256,7 @@ def user():
                            listadd = False,
                            sortby = [[2, "asc"], [1, "asc"]],
                            )
+
         elif r.representation == "xls":
             lappend((T("Status"), "registration_key"))
 
@@ -263,6 +270,7 @@ def user():
 
         if r.http == "GET" and not r.method:
             session.s3.cancel = r.url()
+
         return True
     s3.prep = prep
 
@@ -274,24 +282,31 @@ def user():
                     (table.registration_key == "")
             rows = db(query).select(table.id)
             restrict = [str(row.id) for row in rows]
-            s3.actions = [dict(label=str(UPDATE), _class="action-btn",
-                               url=URL(c="admin", f="user",
-                                       args=["[id]", "update"])),
-                          dict(label=str(T("Roles")), _class="action-btn",
-                               url=URL(c="admin", f="user",
-                                       args=["[id]", "roles"])),
-                          dict(label=str(T("Disable")), _class="action-btn",
-                               url=URL(c="admin", f="user",
-                                       args=["[id]", "disable"]),
-                               restrict = restrict)
+            s3.actions = [{"label": s3_str(UPDATE),
+                           "url": URL(c="admin", f="user",
+                                      args=["[id]", "update"]),
+                           "_class": "action-btn",
+                           },
+                          {"label": s3_str(T("Roles")),
+                           "url": URL(c="admin", f="user",
+                                      args=["[id]", "roles"]),
+                           "_class": "action-btn",
+                           },
+                          {"label": s3_str(T("Disable")),
+                           "url": URL(c="admin", f="user",
+                                      args=["[id]", "disable"]),
+                           "_class": "action-btn",
+                           "restrict": restrict,
+                           },
                           ]
             if settings.get_auth_show_link():
-                s3.actions.insert(1, dict(label=str(T("Link")),
-                                          _class="action-btn",
-                                          _title = str(T("Link (or refresh link) between User, Person & HR Record")),
-                                          url=URL(c="admin", f="user",
-                                                  args=["[id]", "link"]),
-                                          restrict = restrict)
+                s3.actions.insert(1, {"label": s3_str(T("Link")),
+                                      "url": URL(c="admin", f="user",
+                                                 args=["[id]", "link"]),
+                                      "_class": "action-btn",
+                                      "_title": s3_str(T("Link (or refresh link) between User, Person & HR Record")),
+                                      "restrict": restrict,
+                                      }
                                   )
             # Only show the approve button if the user is currently pending
             query = (table.registration_key != "disabled") & \
@@ -313,10 +328,10 @@ def user():
             s3.dataTableStyleAlert = [str(row.id) for row in rows if row.registration_key == "pending"]
 
             # Translate the status values
-            values = [dict(col=6, key="", display=str(T("Active"))),
-                      dict(col=6, key="None", display=str(T("Active"))),
-                      dict(col=6, key="pending", display=str(T("Pending"))),
-                      dict(col=6, key="disabled", display=str(T("Disabled")))
+            values = [{"col": 6, "key": "", "display": s3_str(T("Active"))},
+                      {"col": 6, "key": "None", "display": s3_str(T("Active"))},
+                      {"col": 6, "key": "pending", "display": s3_str(T("Pending"))},
+                      {"col": 6, "key": "disabled", "display": s3_str(T("Disabled"))}
                       ]
             s3.dataTableDisplay = values
 
@@ -559,30 +574,6 @@ def errors():
                      reverse=True)
 
     return dict(app=appname, tickets=tickets)
-
-# =============================================================================
-# Management scripts
-# =============================================================================
-@auth.s3_requires_membership(1)
-def clean():
-    """
-        Run an external script to clean this instance & reset to default values
-
-        visudo
-        web2py ALL=(ALL)NOPASSWD:/usr/local/bin/clean
-    """
-
-    from subprocess import check_call
-
-    instance = settings.get_instance_name()
-    try:
-        check_call(["sudo /usr/local/bin/clean %s" % instance], shell=True)
-    except:
-        import sys
-        error = sys.exc_info()[1]
-        status = current.xml.json_message(False, 400,
-                                          "Script cannot be run: %s" % error)
-        raise HTTP(400, body=status)
 
 # =============================================================================
 # Create portable app

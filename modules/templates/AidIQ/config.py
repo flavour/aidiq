@@ -106,6 +106,18 @@ def config(settings):
     settings.customise_project_project_resource = customise_project_project_resource
 
     # -------------------------------------------------------------------------
+    def customise_project_task_resource(r, tablename):
+
+        from gluon import DIV
+
+        current.s3db.project_task.comment = DIV(_class="tooltip",
+                                                _title="%s|%s" % (T("Detailed Description/URL"),
+                                                                  T("Please provide as much detail as you can, including the URL(s) where the bug occurs or you'd like the new feature to go.")))
+
+
+    settings.customise_project_task_resource = customise_project_task_resource
+
+    # -------------------------------------------------------------------------
     def customise_project_task_controller(**attr):
 
         s3 = current.response.s3

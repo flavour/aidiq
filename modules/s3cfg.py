@@ -145,6 +145,7 @@ class S3Config(Storage):
     # Unifont can be downloaded from http://unifoundry.com/pub/unifont-7.0.06/font-builds/unifont-7.0.06.ttf
     fonts = {"ar": ["unifont", "unifont"],
              #"dv": ["unifont", "unifont"],
+             #"dz": ["unifont", "unifont"],
              "km": ["unifont", "unifont"],
              "ko": ["unifont", "unifont"],
              "mn": ["unifont", "unifont"],
@@ -211,9 +212,10 @@ class S3Config(Storage):
         self.setup = Storage()
         self.supply = Storage()
         self.sync = Storage()
+        self.tasks = Storage()
+        self.transport = Storage()
         self.ui = Storage()
         self.vulnerability = Storage()
-        self.transport = Storage()
         self.xforms = Storage()
 
         # Lazy property
@@ -310,20 +312,6 @@ class S3Config(Storage):
         """
         return self.base.get("template", "default")
 
-    def get_template_location(self):
-
-        return self.base.get("template_location", "modules")
-
-    def exec_template(self, path):
-        """
-            Legacy function, retained for backwards-compatibility with
-            existing 000_config.py instances => modern 000_config.py
-            should just call settings.import_template()
-
-            @todo: deprecate
-        """
-        self.import_template()
-
     def import_template(self, config="config"):
         """
             Import and invoke the template config (new module pattern). Allows
@@ -334,9 +322,6 @@ class S3Config(Storage):
             Configurations will be imported and executed in order of appearance
 
             @param config: name of the config-module
-
-            @todo: remove fallback when migration complete (+giving some
-                   time for downstream projects to adapt)
         """
 
         names = self.get_template()
@@ -353,71 +338,122 @@ class S3Config(Storage):
                 # Import the template
                 template = getattr(__import__(package, fromlist=[config]), config)
             except ImportError:
-                # Legacy template in "private"?
-                if len(names) > 1:
-                    raise SyntaxError("Cascading templates not supported for script pattern")
-                self.execute_template(name)
-                break
+                raise RuntimeError("Template not found: %s" % name)
             else:
                 template.config(self)
 
-        # Store location in response.s3 for compiled views
-        # No longer supported
-        #current.response.s3.template_location = "modules"
-
         return self
-
-    def execute_template(self, name):
-        """
-            Fallback for legacy templates - execute config.py
-        """
-
-        import os
-
-        location = "private"
-        path = os.path.join(current.request.folder,
-                            location,
-                            "templates",
-                            name,
-                            "config.py")
-
-        if os.path.exists(path):
-            # Old-style config.py => deprecation warning (S3Log not available yet)
-            import sys
-            sys.stderr.write("%s/config.py: script pattern deprecated.\n" % name)
-            # Remember the non-standard location
-            # (need to be in response.s3 for compiled views)
-            # No longer supported
-            #current.response.s3.template_location =
-            self.base.template_location = location
-            # Execute config.py
-            from gluon.fileutils import read_file
-            from gluon.restricted import restricted
-            code = read_file(path)
-            restricted(code, layer=path)
-        else:
-            # Nonexistent template
-            # => could be ignored here, but would crash later anyway,
-            #    so exit early with a clear error message
-            raise RuntimeError("Template not found: %s" % name)
 
     # -------------------------------------------------------------------------
     # Theme
+    #
+    def set_theme(self):
+        """
+            Inspect base.theme_* settings and cache paths in response.s3
+            accordingly (this needs to be run only once, getters will then
+            use cached paths)
+
+            @returns: the theme name
+        """
+
+        s3 = current.response.s3
+
+        #import os
+        path_to = lambda names: "/".join(names) #os.path.join(*names)
+
+        default = self.base.get("theme", "default")
+
+        theme = default.split(".")
+        theme_path = path_to(theme)
+
+        # The theme name
+        s3.theme = theme_name = theme[-1]
+
+        # Path under modules/templates/ for layouts (views, e.g. layout.html)
+        layouts = self.base.get("theme_layouts")
+        if layouts:
+            s3.theme_layouts = path_to(layouts.split("."))
+        else:
+            s3.theme_layouts = theme_path
+
+        # Path under modules/templates/ for css.cfg
+        # NB this is also the path under static/themes/ for eden.min.css
+        styles = self.base.get("theme_styles")
+        if styles:
+            s3.theme_styles = path_to(styles.split("."))
+        else:
+            s3.theme_styles = theme_path
+
+        # Path under static/themes/ for base styles (e.g. foundation/*.css)
+        base = self.base.get("theme_base")
+        if base:
+            s3.theme_base = path_to(base.split("."))
+        else:
+            s3.theme_base = s3.theme_styles
+
+        return theme_name
+
     def get_theme(self):
         """
-            Which template folder to use for views/layout.html
+            The location of the current theme, relative to modules/templates
+            and static/themes, respectively. Uses "." as path separator, e.g.:
 
-            NB Only themes in modules/templates are supported now
+                settings.base.theme = "SAMBRO.AlertHub"
+
+            This is the default location of theme components, which can be
+            individually adjusted with theme_layouts, theme_styles and
+            theme_base settings if required.
         """
 
-        theme = self.base.get("theme", "default")
-        if "." in theme:
-            theme_location, theme = theme.split(".", 1)
-            # Result cached in response.s3 for compiled views
-            current.response.s3.theme_location = "%s/" % theme_location
-        else:
-            current.response.s3.theme_location = ""
+        theme = current.response.s3.theme
+        if not theme:
+            theme = self.set_theme()
+
         return theme
+
+    def get_theme_layouts(self):
+        """
+            The location of the layouts for the current theme:
+            - modules/templates/[theme_layouts]/layouts.py
+            - modules/templates/[theme_layouts]/views
+
+            => defaults to theme
+        """
+
+        layouts = current.response.s3.theme_layouts
+        if not layouts:
+            self.set_theme()
+            layouts = current.response.s3.theme_layouts
+        return layouts
+
+    def get_theme_styles(self):
+        """
+            The location of the theme styles:
+            - modules/templates/[theme_styles]/css.cfg
+            - static/themes/[theme_styles]/eden.min.css
+
+            => defaults to theme
+        """
+
+        styles = current.response.s3.theme_styles
+        if not styles:
+            self.set_theme()
+            styles = current.response.s3.theme_styles
+        return styles
+
+    def get_theme_base(self):
+        """
+            The location of the theme base styles (Foundation):
+            - static/themes/[theme_base]/foundation
+
+            => defaults to theme_styles
+        """
+
+        base = current.response.s3.theme_base
+        if not base:
+            self.set_theme()
+            base = current.response.s3.theme_base
+        return base
 
     def get_base_xtheme(self):
         """
@@ -468,13 +504,6 @@ class S3Config(Storage):
         return module_name in self.modules
 
     # -------------------------------------------------------------------------
-    def is_cd_version(self):
-        """
-            Whether we're running from a non-writable CD
-        """
-        return self.base.get("cd_version", False)
-
-    # -------------------------------------------------------------------------
     def get_google_analytics_tracking_id(self):
         """
             Google Analytics Key
@@ -487,6 +516,22 @@ class S3Config(Storage):
             List of YouTube IDs for the /default/video page
         """
         return self.base.get("youtube_id", [])
+
+    # -------------------------------------------------------------------------
+    def is_cd_version(self):
+        """
+            Whether we're running from a non-writable CD
+        """
+        return self.base.get("cd_version", False)
+
+    # -------------------------------------------------------------------------
+    # Tasks
+    # -------------------------------------------------------------------------
+    def get_task(self, taskname):
+        """
+            Ability to define custom Tasks in the Template
+        """
+        return self.tasks.get(taskname)
 
     # -------------------------------------------------------------------------
     # Authentication settings
@@ -617,6 +662,7 @@ class S3Config(Storage):
             * Staff
             * Volunteer
             * Member
+            Should be an iterable.
         """
         return self.auth.get("registration_link_user_to_default")
 
@@ -652,26 +698,29 @@ class S3Config(Storage):
         " Make the selection of Organisation required during registration "
         return self.auth.get("registration_organisation_required", False)
 
+    def get_auth_registration_organisation_link_create(self):
+        """ Show a link to create new orgs in registration form """
+        return self.auth.get("registration_organisation_link_create", True)
+
     def get_auth_registration_organisation_hidden(self):
         " Hide the Organisation field in the registration form unless an email is entered which isn't whitelisted "
         return self.auth.get("registration_organisation_hidden", False)
 
     def get_auth_registration_organisation_default(self):
-        " Default the Organisation during registration "
-        return self.auth.get("registration_organisation_default")
-
-    def get_auth_registration_organisation_id_default(self):
         " Default the Organisation during registration - will return the organisation_id"
-        name = self.auth.get("registration_organisation_default")
-        if name:
-            otable = current.s3db.org_organisation
-            orow = current.db(otable.name == name).select(otable.id).first()
-            if orow:
-                organisation_id = orow.id
-            else:
-                organisation_id = otable.insert(name = name)
-        else:
-            organisation_id = None
+        organisation_id = self.__lazy("auth", "registration_organisation_default", default=None)
+        if organisation_id:
+            try:
+                int(organisation_id)
+            except:
+                # Must be a Name
+                table = current.s3db.org_organisation
+                row = current.db(table.name == organisation_id).select(table.id,
+                                                                       ).first()
+                if row:
+                    organisation_id = row.id
+                else:
+                    organisation_id = table.insert(name = organisation_id)
         return organisation_id
 
     def get_auth_registration_requests_organisation_group(self):
@@ -857,11 +906,6 @@ class S3Config(Storage):
 
     # -------------------------------------------------------------------------
     # Base settings
-    def get_instance_name(self):
-        """
-            Instance Name - for management scripts. e.g. prod or test
-        """
-        return self.base.get("instance_name", "")
     def get_system_name(self):
         """
             System Name - for the UI & Messaging
@@ -1769,15 +1813,30 @@ class S3Config(Storage):
     # -------------------------------------------------------------------------
     # PDF settings
     #
-    def get_paper_size(self):
-        return self.base.get("paper_size", "A4")
+    def get_pdf_size(self):
+        """
+            PDF default page size
+                * "A4"
+                * "Letter"
+                * or a tuple (width, height) in points (1 inch = 72 points)
+                  => pre-defined tuples in reportlab.lib.pagesizes
+        """
+        return self.base.get("pdf_size", "A4")
+
+    def get_pdf_orientation(self):
+        """
+            PDF default page orientation
+                * Auto (Portrait if possible, Landscape for wide tables)
+                * Portrait
+                * Landscape
+        """
+        return self.base.get("pdf_orientation", "Auto")
 
     def get_pdf_bidi(self):
         """
-            Whether to enable BiDi support for PDF exports
-            - without this RTL text will be LTR
-
-            Defaults to off to enhance performance
+            Enable BiDi support for PDF exports
+                - without this RTL text will be LTR
+                - default off to enhance performance
         """
         return self.__lazy("L10n", "pdf_bidi", False)
 
@@ -1912,9 +1971,14 @@ class S3Config(Storage):
         return self.ui.get("datatables_pagingType", "full_numbers")
 
     def get_ui_datatables_responsive(self):
-        """ Whether dataTables should be responsive when resized """
+        """ Make data tables responsive (auto-collapsing columns when too wide) """
 
         return self.ui.get("datatables_responsive", True)
+
+    def get_ui_datatables_double_scroll(self):
+        """ Render double scroll bars (top+bottom) for non-responsive data tables """
+
+        return self.ui.get("datatables_double_scroll", False)
 
     def get_ui_default_cancel_button(self):
         """
@@ -2067,8 +2131,9 @@ class S3Config(Storage):
     def get_ui_label_permalink(self):
         """
             Label for the Permalink on dataTables
+            - set to None to disable
         """
-        return current.T(self.ui.get("label_permalink", "Link to this result"))
+        return self.ui.get("label_permalink", "Link to this result")
 
     def get_ui_label_postcode(self):
         """
@@ -2561,6 +2626,11 @@ class S3Config(Storage):
             identifier characters (like: ${placeholder}text).
         """
         return self.sync.get("upload_filename", "$s $r")
+
+    def get_sync_data_repository(self):
+        """ This deployment is a public data repository """
+
+        return self.sync.get("data_repository", False)
 
     # =========================================================================
     # Modules
@@ -3164,6 +3234,13 @@ class S3Config(Storage):
         """
         return self.dvr.get("case_activity_needs_multiple", False)
 
+    def get_dvr_case_include_activity_docs(self):
+        """
+            Documents-tab of beneficiaries includes case
+            activity attachments
+        """
+        return self.dvr.get("case_include_activity_docs", False)
+
     def get_dvr_needs_use_service_type(self):
         """
             Use service type in needs
@@ -3232,6 +3309,12 @@ class S3Config(Storage):
         """
         return self.event.get("label", None)
 
+    def get_event_incident(self):
+        """
+            Whether Events have Incidents
+        """
+        return self.event.get("incident", True)
+
     def get_event_cascade_delete_incidents(self):
         """
             Whether deleting an Event cascades to deleting all Incidents or whether it sets NULL
@@ -3285,18 +3368,6 @@ class S3Config(Storage):
         """
         return self.event.get("dc_target_tab", True)
 
-    def get_event_impact_tab(self):
-        """
-            Whether to show the impact tab for events
-        """
-        return self.event.get("impact_tab", True)
-
-    def get_incident_impact_tab(self):
-        """
-            Whether to show the impact tab for incidents
-        """
-        return self.event.get("incident_impact_tab", False)
-
     def get_event_dispatch_tab(self):
         """
             Whether to show the dispatch tab for events
@@ -3306,6 +3377,12 @@ class S3Config(Storage):
         else:
             return False
 
+    def get_event_impact_tab(self):
+        """
+            Whether to show the impact tab for events
+        """
+        return self.event.get("impact_tab", True)
+
     def get_incident_dispatch_tab(self):
         """
             Whether to show the dispatch tab for incidents
@@ -3314,6 +3391,12 @@ class S3Config(Storage):
             return self.event.get("incident_dispatch_tab", True)
         else:
             return False
+
+    def get_incident_impact_tab(self):
+        """
+            Whether to show the impact tab for incidents
+        """
+        return self.event.get("incident_impact_tab", False)
 
     def get_incident_teams_tab(self):
         """
@@ -4123,11 +4206,23 @@ class S3Config(Storage):
                         current.session.s3.default_site_id = default_site
         return default_site
 
+    def get_org_country(self):
+        """
+            Whether to expose the "country" field of organisations
+        """
+        return self.org.get("country", True)
+
     def get_org_sector(self):
         """
             Whether to use an Organization Sector field
         """
         return self.org.get("sector", False)
+
+    def get_org_sector_rheader(self):
+        """
+            Whether Sectors should be visible in the rheader
+        """
+        return self.org.get("sector_rheader", self.get_org_sector())
 
     def get_org_branches(self):
         """
@@ -4166,6 +4261,12 @@ class S3Config(Storage):
             Whether Organisation Types are Multiple or not
         """
         return self.org.get("organisation_types_multiple", False)
+
+    def get_org_organisation_type_rheader(self):
+        """
+            Whether Organisation Types are visible in the rheader
+        """
+        return self.org.get("organisation_type_rheader", False)
 
     def get_org_facilities_tab(self):
         """
@@ -4560,6 +4661,24 @@ class S3Config(Storage):
             Use Activities in Projects & Tasks
         """
         return self.project.get("activities", False)
+
+    def get_project_activity_beneficiaries(self):
+        """
+            Use Beneficiaries in Activities
+        """
+        setting = self.project.get("activity_beneficiaries", None)
+        if setting is None:
+            setting = self.has_module("stats")
+        return setting
+
+    def get_project_activity_items(self):
+        """
+            Use Items in Activities
+        """
+        setting = self.project.get("activity_items", None)
+        if setting is None:
+            setting = self.has_module("supply")
+        return setting
 
     def get_project_activity_sectors(self):
         """
@@ -5023,9 +5142,21 @@ class S3Config(Storage):
     # Supply
     #
     def get_supply_catalog_default(self):
-        return self.inv.get("catalog_default", "Default")
+        """
+            The name of the Default Item Catalog
+        """
+        return self.supply.get("catalog_default", "Default")
+
+    def get_supply_catalog_multi(self):
+        """
+            Whether to use Multiple Item Catalogs
+        """
+        return self.supply.get("catalog_multi", True)
 
     def get_supply_use_alt_name(self):
+        """
+            Whether to allow Alternative Items to be defined
+        """
         return self.supply.get("use_alt_name", True)
 
     # -------------------------------------------------------------------------

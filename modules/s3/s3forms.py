@@ -39,7 +39,6 @@ __all__ = ("S3SQLCustomForm",
 
 import json
 
-from collections import OrderedDict
 from itertools import chain
 
 from gluon import *
@@ -48,8 +47,9 @@ from gluon.sqlhtml import StringWidget
 from gluon.tools import callback
 from gluon.validators import Validator
 
+from s3dal import original_tablename
 from s3query import FS
-from s3utils import s3_mark_required, s3_represent_value, s3_store_last_record_id, s3_str, s3_validate
+from s3utils import s3_mark_required, s3_store_last_record_id, s3_str, s3_validate
 from s3widgets import S3Selector, S3UploadWidget
 
 # Compact JSON encoding
@@ -896,7 +896,7 @@ class S3SQLCustomForm(S3SQLForm):
                     customise(r, tablename)
 
                 # Apply customised attributes to renamed fields
-                # => except label and widget, which can be overridden
+                # => except default, label, requires and widget, which can be overridden
                 #    in S3SQLField.resolve instead
                 renamed_fields = subtable_fields.get(alias)
                 if renamed_fields:
@@ -1556,9 +1556,9 @@ class S3SQLFormElement(object):
     @staticmethod
     def _rename_field(field, name,
                       comments=True,
+                      label=DEFAULT,
                       popup=None,
                       skip_post_validation=False,
-                      label=DEFAULT,
                       widget=DEFAULT):
         """
             Rename a field (actually: create a new Field instance with the
@@ -1569,15 +1569,21 @@ class S3SQLFormElement(object):
             @param comments: render comments - if set to False, only
                              navigation items with an inline() renderer
                              method will be rendered (unless popup is None)
+            @param label: override option for the original field label
             @param popup: only if comments=False, additional vars for comment
                           navigation items (e.g. AddResourceLink), None prevents
                           rendering of navigation items
             @param skip_post_validation: skip field validation during POST,
                                          useful for client-side processed
                                          dummy fields.
-            @param label: override option for the original field label
             @param widget: override option for the original field widget
         """
+
+        if label is DEFAULT:
+            label = field.label
+        if widget is DEFAULT:
+            # Some widgets may need disabling during POST
+            widget = field.widget
 
         if not hasattr(field, "type"):
             # Virtual Field
@@ -1608,12 +1614,6 @@ class S3SQLFormElement(object):
             required = field.required
             notnull = field.notnull
 
-        if widget is DEFAULT:
-            # Some widgets may need disabling during POST
-            widget = field.widget
-        if label is DEFAULT:
-            label = field.label
-
         if not comments:
             if popup:
                 comment = field.comment
@@ -1642,14 +1642,15 @@ class S3SQLFormElement(object):
                   uploadfolder = field.uploadfolder,
                   autodelete = field.autodelete,
 
-                  widget = widget,
-                  label = label,
                   comment = comment,
+                  label = label,
+                  widget = widget,
+
+                  default = field.default,
 
                   writable = field.writable,
                   readable = field.readable,
 
-                  default = field.default,
                   update = field.update,
                   compute = field.compute,
 
@@ -1692,9 +1693,9 @@ class S3SQLField(S3SQLFormElement):
 
         tname = rfield.tname
 
-        options = self.options
-        label = options.get("label", DEFAULT)
-        widget = options.get("widget", DEFAULT)
+        options_get = self.options.get
+        label = options_get("label", DEFAULT)
+        widget = options_get("widget", DEFAULT)
 
         if resource._alias:
             tablename = resource._alias
@@ -2421,16 +2422,11 @@ class S3SQLInlineComponent(S3SQLSubForm):
 
         fields_opt = options.get("fields", None)
         labels = {}
-        widgets = {}
         if fields_opt:
             fields = []
             for f in fields_opt:
                 if isinstance(f, tuple):
-                    if len(f) > 2:
-                        label, f, w = f
-                        widgets[f] = w
-                    else:
-                        label, f = f
+                    label, f = f
                     labels[f] = label
                 if f in table.fields:
                     fields.append(f)
@@ -2507,8 +2503,6 @@ class S3SQLInlineComponent(S3SQLSubForm):
                     "label": s3_str(rfield.label),
                     }
                     for rfield in rfields if rfield.fname != pkey]
-
-        self.widgets = widgets
 
         items = []
         has_permission = current.auth.s3_has_permission
@@ -2823,7 +2817,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
 
         # Real input: a hidden text field to store the JSON data
         real_input = "%s_%s" % (resource.tablename, field.name)
-        default = {"_type": "text",
+        default = {"_type": "hidden",
                    "_value": value,
                    "requires": lambda v: (v, None),
                    }
@@ -2898,7 +2892,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
         # Reset the layout
         layout.set_columns(None)
 
-        return output
+        return DIV(output, _class="inline-component readonly")
 
     # -------------------------------------------------------------------------
     def accept(self, form, master_id=None, format=None):
@@ -2970,51 +2964,54 @@ class S3SQLInlineComponent(S3SQLSubForm):
                     # No changes made to this item - skip
                     continue
 
-                # Get the values
+                delete = item.get("_delete")
                 values = Storage()
                 valid = True
-                for f, d in item.iteritems():
-                    if f[0] != "_" and d and isinstance(d, dict):
 
-                        field = table[f]
-                        widget = field.widget
-                        if not hasattr(field, "type"):
-                            # Virtual Field
-                            continue
-                        elif field.type == "upload":
-                            # Find, rename and store the uploaded file
-                            rowindex = item.get("_index", None)
-                            if rowindex is not None:
-                                filename = self._store_file(table, f, rowindex)
-                                if filename:
-                                    values[f] = filename
-                        elif isinstance(widget, S3Selector):
-                            # Value must be processed by widget post-process
-                            value, error = widget.postprocess(d["value"])
-                            if not error:
-                                values[f] = value
-                            else:
-                                valid = False
-                                break
-                        else:
-                            # Must run through validator again (despite pre-validation)
-                            # in order to post-process widget output properly (e.g. UTC
-                            # offset subtraction)
-                            try:
-                                value, error = s3_validate(table, f, d["value"])
-                            except AttributeError:
+                if not delete:
+                    # Get the values
+                    for f, d in item.iteritems():
+                        if f[0] != "_" and d and isinstance(d, dict):
+
+                            field = table[f]
+                            widget = field.widget
+                            if not hasattr(field, "type"):
+                                # Virtual Field
                                 continue
-                            if not error:
-                                values[f] = value
+                            elif field.type == "upload":
+                                # Find, rename and store the uploaded file
+                                rowindex = item.get("_index", None)
+                                if rowindex is not None:
+                                    filename = self._store_file(table, f, rowindex)
+                                    if filename:
+                                        values[f] = filename
+                            elif isinstance(widget, S3Selector):
+                                # Value must be processed by widget post-process
+                                value, error = widget.postprocess(d["value"])
+                                if not error:
+                                    values[f] = value
+                                else:
+                                    valid = False
+                                    break
                             else:
-                                valid = False
-                                break
+                                # Must run through validator again (despite pre-validation)
+                                # in order to post-process widget output properly (e.g. UTC
+                                # offset subtraction)
+                                try:
+                                    value, error = s3_validate(table, f, d["value"])
+                                except AttributeError:
+                                    continue
+                                if not error:
+                                    values[f] = value
+                                else:
+                                    valid = False
+                                    break
+
                 if not valid:
                     # Skip invalid items
                     continue
 
                 record_id = item.get("_id")
-                delete = item.get("_delete")
 
                 if not record_id:
                     if delete:
@@ -3234,7 +3231,6 @@ class S3SQLInlineComponent(S3SQLSubForm):
         data = {}
         formfields = []
         formname = self._formname()
-        widgets = self.widgets
         for f in fields:
 
             # Construct a row-specific field name
@@ -3243,19 +3239,21 @@ class S3SQLInlineComponent(S3SQLSubForm):
 
             # Parent and caller for add-popup
             if not readonly:
-                parent = table._tablename.split("_", 1)[1]
+                # Use unaliased name to avoid need to create additional controllers
+                parent = original_tablename(table).split("_", 1)[1]
                 caller = "sub_%s_%s" % (formname, idxname)
                 popup = Storage(parent=parent, caller=caller)
             else:
                 popup = None
 
-            # Custom label and widget
+            # Custom label
             label = f.get("label", DEFAULT)
-            widget = widgets.get(fname, DEFAULT)
 
             # Use S3UploadWidget for upload fields
-            if widget is DEFAULT and str(table[fname].type) == "upload":
+            if str(table[fname].type) == "upload":
                 widget = S3UploadWidget.widget
+            else:
+                widget = DEFAULT
 
             # Get a Field instance for SQLFORM.factory
             formfield = self._rename_field(table[fname],
@@ -3278,9 +3276,9 @@ class S3SQLInlineComponent(S3SQLSubForm):
                     formfield.requires = SKIP_POST_VALIDATION(requires)
 
             # Get filterby-default
-            defaults = self._filterby_defaults()
-            if defaults and fname in defaults:
-                default = defaults[fname]["value"]
+            filterby_defaults = self._filterby_defaults()
+            if filterby_defaults and fname in filterby_defaults:
+                default = filterby_defaults[fname]["value"]
                 formfield.default = default
 
             # Add the data for this field (for existing rows)
@@ -3632,8 +3630,8 @@ class S3SQLInlineLink(S3SQLInlineComponent):
                       resource.name,
                       # Current request args/vars could be in a different
                       # resource context, so must override them here:
-                      args=[],
-                      get_vars={},
+                      args = [],
+                      get_vars = {},
                       )
         customise_resource = current.deployment_settings.customise_resource
         for tablename in (component.tablename, link.tablename):

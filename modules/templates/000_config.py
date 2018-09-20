@@ -130,9 +130,6 @@ settings.auth.hmac_key = "akeytochange"
 # Uncomment to enable a guided tour
 #settings.base.guided_tour = True
 
-# Instance Name - for management scripts
-#settings.base.instance_name = "test"
-
 # Bing API Key (for Map layers)
 # http://www.microsoft.com/maps/create-a-bing-maps-key.aspx
 #settings.gis.api_bing = ""

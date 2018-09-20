@@ -67,6 +67,7 @@ from s3rest import S3Method, S3Request
 from s3resource import S3Resource
 from s3utils import s3_auth_user_represent_name, s3_get_foreign_key, \
                     s3_has_foreign_key, s3_mark_required, s3_unicode
+from s3validators import IS_JSONS3
 
 # =============================================================================
 class S3Importer(S3Method):
@@ -886,11 +887,14 @@ class S3Importer(S3Method):
                                    limit=None)["rows"]
             return (upload_id, select_list, rows)
 
-        s3.actions = [dict(label=str(self.messages.item_show_details),
-                           _class="action-btn",
-                           _jqclick="$('.importItem.'+id).toggle();",
-                           ),
+        # Toggle-button for item details
+        s3.actions = [{"label": str(self.messages.item_show_details),
+                       "_class": "action-btn toggle-item",
+                       },
                       ]
+        s3.jquery_ready.append('''
+$('#import-items').on('click','.toggle-item',function(){$('.importItem.item-'+$(this).attr('db_id')).toggle();})''')
+
         output = self._dataTable(["id", "element", "error"],
                                  #sort_by = [[1, "asc"]],
                                  represent=represent,
@@ -1309,7 +1313,7 @@ class S3Importer(S3Method):
         # Build the datatable
         rfields = resource.resolve_selectors(list_fields)[0]
         dt = S3DataTable(rfields, rows, orderby=orderby)
-        datatable_id = "s3import_1"
+        datatable_id = "import-items"
         if representation == "aadata":
             # Ajax callback
             output = dt.json(totalrows,
@@ -1353,7 +1357,7 @@ class S3Importer(S3Method):
         table = db[tablename]
 
         output = DIV()
-        details = TABLE(_class="importItem %s" % item_id)
+        details = TABLE(_class="importItem item-%s" % item_id)
         header, rows = self._add_item_details(element.findall("data"), table)
         if header is not None:
             output.append(header)
@@ -1378,7 +1382,7 @@ class S3Importer(S3Method):
             # At this stage we don't have anything to display to see if we can
             # find something to show. This could be the case when a table being
             # imported is a resolver for a many to many relationship
-            refdetail = TABLE(_class="importItem %s" % item_id)
+            refdetail = TABLE(_class="importItem item-%s" % item_id)
             references = element.findall("reference")
             for reference in references:
                 tuid = reference.get("tuid")
@@ -1387,7 +1391,7 @@ class S3Importer(S3Method):
             output.append(refdetail)
         else:
             output.append(details)
-        return str(output)
+        return output
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -3049,19 +3053,28 @@ class S3ImportJob():
             cnames = Storage()
             cinfos = Storage()
             for alias in components:
+
                 component = components[alias]
+
+                ctable = component.table
+                if ctable._id != "id" and "instance_type" in ctable.fields:
+                    # Super-entities cannot be imported to directly => skip
+                    continue
+
+                # Determine the keys
                 pkey = component.pkey
                 if component.linktable:
                     ctable = component.linktable
                     fkey = component.lkey
                 else:
-                    ctable = component.table
                     fkey = component.fkey
+
                 ctablename = ctable._tablename
                 if ctablename in cnames:
                     cnames[ctablename].append(alias)
                 else:
                     cnames[ctablename] = [alias]
+
                 cinfos[(ctablename, alias)] = Storage(component = component,
                                                       ctable = ctable,
                                                       pkey = pkey,
@@ -4417,13 +4430,12 @@ class S3BulkImporter(object):
         """
 
         if url == "unifont":
-            #UNIFONT = True
-            url = "http://unifoundry.com/pub/unifont-7.0.06/font-builds/unifont-7.0.06.ttf"
+            #url = "http://unifoundry.com/pub/unifont-7.0.06/font-builds/unifont-7.0.06.ttf"
+            url = "http://unifoundry.com/pub/unifont-10.0.07/font-builds/unifont-10.0.07.ttf"
             # Rename to make version upgrades be transparent
             filename = "unifont.ttf"
             extension = "ttf"
         else:
-            #UNIFONT = False
             filename = url.split("/")[-1]
             filename, extension = filename.rsplit(".", 1)
 
@@ -4483,13 +4495,18 @@ class S3BulkImporter(object):
         # Copy the current working directory to revert back to later
         cwd = os.getcwd()
 
+        # Shortcut
+        os_path = os.path
+        os_path_exists = os_path.exists
+        os_path_join = os_path.join
+
         # Create the working directory
-        TEMP = os.path.join(cwd, "temp")
-        if not os.path.exists(TEMP): # use web2py/temp/remote_csv as a cache
+        TEMP = os_path_join(cwd, "temp")
+        if not os_path_exists(TEMP): # use web2py/temp/remote_csv as a cache
             import tempfile
             TEMP = tempfile.gettempdir()
-        tempPath = os.path.join(TEMP, "remote_csv")
-        if not os.path.exists(tempPath):
+        tempPath = os_path_join(TEMP, "remote_csv")
+        if not os_path_exists(tempPath):
             try:
                 os.mkdir(tempPath)
             except OSError:
@@ -4499,7 +4516,7 @@ class S3BulkImporter(object):
         filename = url.split("/")[-1]
         if extension == "zip":
             filename = filename.replace(".zip", ".csv")
-        if os.path.exists(os.path.join(tempPath, filename)):
+        if os_path_exists(os_path_join(tempPath, filename)):
             current.log.warning("Using cached copy of %s" % filename)
         else:
             # Download if we have no cached copy
@@ -4544,8 +4561,8 @@ class S3BulkImporter(object):
             os.chdir(cwd)
 
         task = [1, prefix, resource,
-                os.path.join(tempPath, filename),
-                os.path.join(current.request.folder,
+                os_path_join(tempPath, filename),
+                os_path_join(current.request.folder,
                              "static",
                              "formats",
                              "s3csv",
@@ -4579,6 +4596,60 @@ class S3BulkImporter(object):
 
         code = getcfs(filename, filename, None)
         restricted(code, environment, layer=filename)
+
+    # -------------------------------------------------------------------------
+    def import_task(self, task_name, args_json=None, vars_json=None):
+        """
+            Import a Scheduled Task
+        """
+
+        # Store current value of Bulk
+        bulk = current.response.s3.bulk
+        # Set Bulk to true for this parse
+        current.response.s3.bulk = True
+        validator = IS_JSONS3()
+        if args_json:
+            task_args, error = validator(args_json)
+            if error:
+                self.errorList.append(error)
+                return
+        else:
+            task_args = []
+        if vars_json:
+            all_vars, error = validator(vars_json)
+            if error:
+                self.errorList.append(error)
+                return
+        else:
+            all_vars = {}
+        # Restore bulk setting
+        current.response.s3.bulk = bulk
+
+        kwargs = {}
+        task_vars = {}
+        options = ("function_name",
+                   "start_time",
+                   "next_run_time",
+                   "stop_time",
+                   "repeats",
+                   "period", # seconds
+                   "timeout", # seconds
+                   "enabled", # None = Enabled
+                   "group_name",
+                   "ignore_duplicate",
+                   "sync_output",
+                   )
+        for var in all_vars:
+            if var in options:
+                kwargs[var] = all_vars[var]
+            else:
+                task_vars[var] = all_vars[var]
+
+        current.s3task.schedule_task(task_name.split(os.path.sep)[-1], # Strip the path
+                                     args = task_args,
+                                     vars = task_vars,
+                                     **kwargs
+                                     )
 
     # -------------------------------------------------------------------------
     def import_xml(self,

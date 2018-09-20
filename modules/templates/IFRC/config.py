@@ -286,6 +286,8 @@ def config(settings):
     # L10n (Localization) settings
     settings.L10n.languages = OrderedDict([
         ("ar", "Arabic"),
+        #("dv", "Divehi"), # Maldives
+        #("dz", "Dzongkha"), # Bhutan
         ("en-gb", "English"),
         ("es", "Spanish"),
         ("fr", "French"),
@@ -715,6 +717,13 @@ def config(settings):
                 restricted = False,
                 #module_type = None  # No Menu
             )),
+        ("setup", Storage(
+            name_nice = T("Setup"),
+            #description = "WebSetup",
+            restricted = True,
+            access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
+             module_type = None  # No Menu
+        )),
         ("sync", Storage(
                 name_nice = T("Synchronization"),
                 #description = "Synchronization",
@@ -1557,9 +1566,9 @@ def config(settings):
                                         "group",
                                         label = T("Team"),
                                         fields = [("", "group_id")],
-                                        filterby = dict(field = "group_type",
-                                                        options = 3,
-                                                        ),
+                                        filterby = {"field": "group_type",
+                                                    "options": 3,
+                                                    },
                                         multiple = False,
                                         ),
                                     "comments",
@@ -1640,10 +1649,16 @@ def config(settings):
 
             elif tablename == "dc_response":
 
-                tabs = (#(T("Basic Details"), None, {"native": 1}),
-                        (T("Answers"), "answer"),
-                        #(T("Attachments"), "document"),
-                        )
+                auth = current.auth
+                if not auth.s3_has_role("ADMIN") and \
+                       auth.s3_has_roles(("EVENT_MONITOR", "EVENT_ORGANISER", "EVENT_OFFICE_MANAGER")):
+                    # MFP shouldn't see the Individual Answers
+                    tabs = []
+                else:
+                    tabs = (#(T("Basic Details"), None, {"native": 1}),
+                            (T("Answers"), "answer"),
+                            #(T("Attachments"), "document"),
+                            )
 
                 from gluon import A, URL
 
@@ -1836,6 +1851,213 @@ def config(settings):
         response.update_record(date = current.request.utcnow)
 
     # -------------------------------------------------------------------------
+    def dc_target_check(target_id):
+        """
+            Check whether a Survey has been Approved/Rejected & notify OM if not
+
+            @param target_id: Target record_id
+        """
+
+        #from gluon import URL
+        from s3 import S3DateTime, s3_str
+
+        db = current.db
+        s3db = current.s3db
+
+        # Read Survey Record
+        ttable = s3db.dc_target
+        ltable = s3db.hrm_event_target
+        etable = s3db.hrm_training_event
+        query = (ttable.id == target_id)
+        left = etable.on((ttable.id == ltable.target_id) & \
+                         (etable.id == ltable.training_event_id))
+        survey = db(query).select(ttable.approved_by,
+                                  ttable.deleted,
+                                  etable.name,
+                                  etable.location_id,
+                                  etable.start_date,
+                                  left = left,
+                                  limitby = (0, 1)
+                                  ).first()
+
+        if not survey:
+            return
+
+        if survey["dc_target"].deleted:
+            # Presumably it was Rejected
+            return
+
+        if survey["dc_target"].approved_by:
+            # Survey was Approved
+            return
+
+        # List of recipients, grouped by language
+        # Recipients: OM
+        languages = {}
+
+        utable = db.auth_user
+        gtable = db.auth_group
+        mtable = db.auth_membership
+        ltable = s3db.pr_person_user
+        query = (utable.id == mtable.user_id) & \
+                (mtable.group_id == gtable.id) & \
+                (gtable.uuid == "EVENT_OFFICE_MANAGER") & \
+                (ltable.user_id == utable.id)
+        users = db(query).select(ltable.pe_id,
+                                 utable.language,
+                                 distinct = True,
+                                 )
+        for user in users:
+            language = user["auth_user.language"]
+            if language in languages:
+                languages[language].append(user["pr_person_user.pe_id"])
+            else:
+                languages[language] = [user["pr_person_user.pe_id"]]
+
+        # Build Message
+        event = survey["hrm_training_event"]
+        event_date = event.start_date
+        location_id = event.location_id
+        #url = "%s%s" % (settings.get_base_public_url(),
+        #                URL(c="dc", f="target", args=[target_id, "review"]),
+        #                )
+        subject_T = T("Post-Event Survey hasn't been Approved/Rejected")
+        message = "The post-Event Survey for %(event_name)s on %(date)s in %(location)s has not been Approved or Rejected" % \
+                    {"date": "%(date)s", # Localise per-language
+                     "event_name": event.name,
+                     "location": "%(location)s", # Localise per-language
+                     #"url": url,
+                     }
+        message_T = T(message)
+
+        # Send Localised Mail(s)
+        send_email = current.msg.send_by_pe_id
+        session_s3 = current.session.s3
+        date_represent = S3DateTime.date_represent # We want Dates not datetime which etable.start_date uses
+        location_represent = s3db.gis_LocationRepresent()
+        for language in languages:
+            T.force(language)
+            subject = s3_str(subject_T)
+            session_s3.language = language # for date_represent
+            message = s3_str(message_T) % {"date": date_represent(event_date),
+                                           "location": location_represent(location_id),
+                                           }
+            users = languages[language]
+            for pe_id in users:
+                send_email(pe_id,
+                           subject = subject,
+                           message = message,
+                           )
+
+        # NB No need to restore UI language as this is run as an async task w/o UI
+        return
+
+    settings.tasks.dc_target_check = dc_target_check
+
+    # -------------------------------------------------------------------------
+    def dc_target_report(target_id):
+        """
+            Notify EO & MFP that a Survey Report is ready
+
+            @param target_id: Target record_id
+        """
+
+        from gluon import URL
+        from s3 import S3DateTime, s3_str
+
+        db = current.db
+        s3db = current.s3db
+
+        # Read Survey Record
+        ttable = s3db.dc_target
+        ltable = s3db.hrm_event_target
+        etable = s3db.hrm_training_event
+        query = (ttable.id == target_id)
+        left = etable.on((ttable.id == ltable.target_id) & \
+                         (etable.id == ltable.training_event_id))
+        survey = db(query).select(ttable.approved_by,
+                                  ttable.deleted,
+                                  etable.created_by,
+                                  etable.name,
+                                  etable.location_id,
+                                  etable.start_date,
+                                  left = left,
+                                  limitby = (0, 1)
+                                  ).first()
+
+        if not survey:
+            return
+
+        if survey["dc_target"].deleted:
+            # Presumably it was Rejected
+            return
+
+        # List of recipients, grouped by language
+        # Recipients: EO, MFP
+        languages = {}
+
+        event = survey["hrm_training_event"]
+
+        utable = db.auth_user
+        gtable = db.auth_group
+        mtable = db.auth_membership
+        ltable = s3db.pr_person_user
+        query = ((utable.id == event.created_by) | \
+                 ((utable.id == mtable.user_id) & \
+                  (mtable.group_id == gtable.id) & \
+                  (gtable.uuid == "EVENT_MONITOR"))) & \
+                (ltable.user_id == utable.id)
+        users = db(query).select(ltable.pe_id,
+                                 utable.language,
+                                 distinct = True,
+                                 )
+        for user in users:
+            language = user["auth_user.language"]
+            if language in languages:
+                languages[language].append(user["pr_person_user.pe_id"])
+            else:
+                languages[language] = [user["pr_person_user.pe_id"]]
+
+        # Build Message
+        event_date = event.start_date
+        location_id = event.location_id
+        url = "%s%s" % (settings.get_base_public_url(),
+                        URL(c="dc", f="target", args=[target_id, "results"]),
+                        )
+        subject_T = T("Post-Event Survey Report is Ready")
+        message = "The Report on the post-Event Survey for %(event_name)s on %(date)s in %(location)s is Ready: %(url)s" % \
+                    {"date": "%(date)s", # Localise per-language
+                     "event_name": event.name,
+                     "location": "%(location)s", # Localise per-language
+                     "url": url,
+                     }
+        message_T = T(message)
+
+        # Send Localised Mail(s)
+        send_email = current.msg.send_by_pe_id
+        session_s3 = current.session.s3
+        date_represent = S3DateTime.date_represent # We want Dates not datetime which etable.start_date uses
+        location_represent = s3db.gis_LocationRepresent()
+        for language in languages:
+            T.force(language)
+            subject = s3_str(subject_T)
+            session_s3.language = language # for date_represent
+            message = s3_str(message_T) % {"date": date_represent(event_date),
+                                           "location": location_represent(location_id),
+                                           }
+            users = languages[language]
+            for pe_id in users:
+                send_email(pe_id,
+                           subject = subject,
+                           message = message,
+                           )
+
+        # NB No need to restore UI language as this is run as an async task w/o UI
+        return
+
+    settings.tasks.dc_target_report = dc_target_report
+
+    # -------------------------------------------------------------------------
     def customise_dc_response_controller(**attr):
         """
             Only used by Bangkok CCST currently
@@ -1850,59 +2072,60 @@ def config(settings):
             if callable(standard_prep):
                 result = standard_prep(r)
 
-            if r.interactive:
-                if not current.auth.s3_has_roles(("EVENT_MONITOR", "EVENT_ORGANISER", "EVENT_OFFICE_MANAGER")):
-                    # Simplify Interface
-                    menu = current.menu
-                    menu.breadcrumbs = None
-                    menu.main = ""
-                    menu.options = None
-                    s3.crud_strings["dc_response"]["title_display"] = ""
-                    if r.component_name == "answer":
-                        # CRUD Strings
-                        tablename = r.component.tablename
-                        s3.crud_strings[tablename].msg_record_created = T("Thank you for taking this survey and helping us to increase the quality of our trainings.")
-                        current.s3db.configure(tablename,
-                                               create_onaccept = dc_answer_onaccept,
-                                               )
-                        # Store tablename for onaccept
-                        s3.dc_dtablename = tablename
-                    #elif r.method == "create":
-                    #    target_id = r.get_vars.get("target_id")
-                    #    if target_id:
-                    #        s3db = current.s3db
-                    #        table = s3db.dc_response
-                    #        table.target_id.default = target_id
-                    #        ttable = s3db.dc_target
-                    #        target = current.db(ttable.id == target_id).select(ttable.template_id,
-                    #                                                           limitby = (0, 1)
-                    #                                                           ).first()
-                    #        try:
-                    #            table.template_id.default = target.template_id
-                    #        except:
-                    #            # Template not found?
-                    #            pass
-                    #        # Auto-submit form
-                    #        script = '''$('form').submit()'''
-                    #        s3.jquery_ready.append(script)
-                    #    else:
-                    #        # Block create
-                    #        current.response.error = T("Survey not specified, please click on original link to take survey")
-                    #        current.s3db.configure("dc_response",
-                    #                               insertable = False,
-                    #                               )
-                else:
-                    # Filter out date is None (unfilled responses)
-                    from s3 import FS
-                    r.resource.add_filter(FS("date") != None)
-
-                    current.s3db.configure("dc_response",
-                                           insertable = False,
-                                           list_fields = [(T("Event"), "target_id$training_event__link.training_event_id"),
-                                                          "date",
-                                                          "person_id",
-                                                          ],
+            # Need POST too to set Date properly
+            #if r.interactive:
+            if not current.auth.s3_has_roles(("EVENT_MONITOR", "EVENT_ORGANISER", "EVENT_OFFICE_MANAGER")):
+                # Simplify Interface
+                menu = current.menu
+                menu.breadcrumbs = None
+                menu.main = ""
+                menu.options = None
+                s3.crud_strings["dc_response"]["title_display"] = ""
+                if r.component_name == "answer":
+                    # CRUD Strings
+                    tablename = r.component.tablename
+                    s3.crud_strings[tablename].msg_record_created = T("Thank you for taking this survey and helping us to increase the quality of our trainings.")
+                    current.s3db.configure(tablename,
+                                           create_onaccept = dc_answer_onaccept,
                                            )
+                    # Store tablename for onaccept
+                    s3.dc_dtablename = tablename
+                #elif r.method == "create":
+                #    target_id = r.get_vars.get("target_id")
+                #    if target_id:
+                #        s3db = current.s3db
+                #        table = s3db.dc_response
+                #        table.target_id.default = target_id
+                #        ttable = s3db.dc_target
+                #        target = current.db(ttable.id == target_id).select(ttable.template_id,
+                #                                                           limitby = (0, 1)
+                #                                                           ).first()
+                #        try:
+                #            table.template_id.default = target.template_id
+                #        except:
+                #            # Template not found?
+                #            pass
+                #        # Auto-submit form
+                #        script = '''$('form').submit()'''
+                #        s3.jquery_ready.append(script)
+                #    else:
+                #        # Block create
+                #        current.response.error = T("Survey not specified, please click on original link to take survey")
+                #        current.s3db.configure("dc_response",
+                #                               insertable = False,
+                #                               )
+            elif r.interactive:
+                # Filter out date is None (unfilled responses)
+                from s3 import FS
+                r.resource.add_filter(FS("date") != None)
+
+                current.s3db.configure("dc_response",
+                                       insertable = False,
+                                       list_fields = [(T("Event"), "target_id$training_event__link.training_event_id"),
+                                                      "date",
+                                                      "person_id",
+                                                      ],
+                                       )
 
             return result
         s3.prep = custom_prep
@@ -1981,28 +2204,29 @@ def config(settings):
                 current.s3db.configure("dc_response",
                                        insertable = False,
                                        list_fields = ["person_id",
-                                                      "date",
+                                                      (T("Date Responded"), "date"),
                                                       ],
                                        )
 
             return result
         s3.prep = custom_prep
 
+        # MFP should NOT be able to see individual responses
         # Custom postp
-        standard_postp = s3.postp
-        def custom_postp(r, output):
-            # Call standard postp
-            if callable(standard_postp):
-                output = standard_postp(r, output)
+        #standard_postp = s3.postp
+        #def custom_postp(r, output):
+        #    # Call standard postp
+        #    if callable(standard_postp):
+        #        output = standard_postp(r, output)
 
-            if r.interactive and r.component_name == "response":
-                from gluon import URL
-                from s3 import S3CRUD
-                open_url = URL(f="respnse", args = ["[id]", "answer"])
-                S3CRUD.action_buttons(r, read_url=open_url, update_url=open_url)
+        #    if r.interactive and r.component_name == "response":
+        #        from gluon import URL
+        #        from s3 import S3CRUD
+        #        open_url = URL(f="respnse", args = ["[id]", "answer"])
+        #        S3CRUD.action_buttons(r, read_url=open_url, update_url=open_url)
 
-            return output
-        s3.postp = custom_postp
+        #    return output
+        #s3.postp = custom_postp
 
         attr["rheader"] = dc_rheader
 
@@ -2095,6 +2319,7 @@ def config(settings):
                                    utable.id,
                                    utable.language,
                                    left = left,
+                                   distinct = True,
                                    )
 
         # Build localised mail for each language
@@ -2244,24 +2469,24 @@ def config(settings):
                 gender = person.gender
                 if gender == 3:
                     # Male
-                    line1 = s3_str(T("Dear Brother %(person_name)s")) % dict(#person_title = p.title,
-                                                                     person_name = s3_fullname(person),
-                                                                     )
+                    line1 = s3_str(T("Dear Brother %(person_name)s")) %  {#"person_title" : p.title,
+                                                                          "person_name" : s3_fullname(person),
+                                                                          }
                 elif gender == 2:
                     # Female
-                    line1 = s3_str(T("Dear Sister %(person_name)s")) % dict(#person_title = p.title,
-                                                                            person_name = s3_fullname(person),
-                                                                            )
+                    line1 = s3_str(T("Dear Sister %(person_name)s")) % {#"person_title":  p.title,
+                                                                        "person_name" : s3_fullname(person),
+                                                                        }
                 else:
                     # Unknown, Trans, etc
-                    line1 = s3_str(T("Dear %(person_name)s")) % dict(#person_title = p.title,
-                                                                     person_name = s3_fullname(person),
-                                                                     )
+                    line1 = s3_str(T("Dear %(person_name)s")) % {#"person_title" : p.title,
+                                                                 "person_name" : s3_fullname(person),
+                                                                 }
             else:
                 # @ToDo: Automate title in some cases?
-                line1 = s3_str(T("Dear %(person_name)s")) % dict(#person_title = p.title,
-                                                                 person_name = s3_fullname(person),
-                                                                 )
+                line1 = s3_str(T("Dear %(person_name)s")) % {#"person_title": p.title,
+                                                             "person_name" : s3_fullname(person),
+                                                             }
             translation = translations[lang]
             message = "%s\n%s\n%s\n%s\n\n%s\n%s\n\n%s" % (line1,
                                                           translation[1] % dict(event_name = event_name,
@@ -2321,14 +2546,15 @@ def config(settings):
             import json
             from dateutil.relativedelta import relativedelta
             ttable = s3db.scheduler_task
-            schedule_task = current.s3task.schedule_task
-            task_name = "dc_target_report"
+            task_name = "settings_task"
 
             # 1 month reminder
             start_time = now + relativedelta(months = 1)
-            args = [target_id]
+            args = ["dc_target_report"]
+            vars = {"target_id": target_id}
             query = (ttable.task_name == task_name) & \
-                    (ttable.args == json.dumps(args))
+                    (ttable.args == json.dumps(args)) & \
+                    (ttable.vars == json.dumps(vars))
             exists = db(query).select(ttable.id,
                                       ttable.start_time,
                                       limitby = (0, 1)
@@ -2337,13 +2563,207 @@ def config(settings):
                 if exists.start_time != start_time:
                     exists.update_record(start_time = start_time)
             else:
-                schedule_task(task_name,
-                              args = args,
-                              start_time = start_time,
-                              #period = 300,  # seconds
-                              timeout = 300, # seconds
-                              repeats = 1    # run once
-                              )
+                current.s3task.schedule_task(task_name,
+                                             args = args,
+                                             vars = vars,
+                                             start_time = start_time,
+                                             #period = 300,  # seconds
+                                             timeout = 300, # seconds
+                                             repeats = 1    # run once
+                                             )
+
+    # -------------------------------------------------------------------------
+    def hrm_training_event_survey(training_event_id, survey_type):
+        """
+            Notify Event Organiser (EO) that they should consider sending out a Survey
+
+            @param training_event_id: (Training) Event record_id
+            @param survey_type: Survey Type (3 month or 6 month currently)
+        """
+
+        try:
+            import arrow
+        except ImportError:
+            current.log.error("Arrow library needed for hrm_training_event_survey")
+            return
+
+        from gluon import URL
+        from s3 import s3_str
+
+        db = current.db
+        s3db = current.s3db
+
+        # Read Event Record
+        etable = s3db.hrm_training_event
+        event = db(etable.id == training_event_id).select(etable.name,
+                                                          etable.start_date,
+                                                          etable.end_date,
+                                                          etable.location_id,
+                                                          etable.created_by,
+                                                          limitby = (0, 1)
+                                                          ).first()
+
+        event_date = event.end_date or event.start_date # Use end_date where-available, otherwise use start_date
+        event_date = arrow.get(event_date)
+        location_id = event.location_id
+        EO = event.created_by
+
+        # Create Survey (unapproved)
+        # Default the template
+        ttable = s3db.dc_template
+        template = db(ttable.name == "Training Evaluation").select(ttable.id,
+                                                                   limitby = (0, 1)
+                                                                   ).first()
+        try:
+            template_id = template.id
+        except AttributeError:
+            current.log.error("Cannot find 'Training Evaluation' template so cannot run hrm_training_event_survey")
+            return
+
+        stable = s3db.dc_target
+        ltable = s3db.hrm_event_target
+        target_id = stable.insert(template_id = template_id,
+                                  date = None, # Gets set when notifications sent (onapprove here)
+                                  owned_by_user = EO,
+                                  )
+        ltable.insert(training_event_id = training_event_id,
+                      target_id = target_id,
+                      survey_type = survey_type,
+                      )
+
+        # Create Task to check if Survey has been Approved/Rejected
+        start_time = arrow.utcnow()
+        start_time = start_time.shift(months = 1)
+        current.s3task.schedule_task("settings_task",
+                                     args = ["dc_target_check"],
+                                     vars = {"target_id": target_id},
+                                     start_time = start_time.datetime,
+                                     #period = 300,  # seconds
+                                     timeout = 300, # seconds
+                                     repeats = 1    # run once
+                                     )
+
+        # List of recipients, grouped by language
+        # Recipients: EO (created_by) & MFP(s)
+        languages = {}
+
+        utable = db.auth_user
+        gtable = db.auth_group
+        mtable = db.auth_membership
+        ltable = s3db.pr_person_user
+        query = ((utable.id == EO) & \
+                 (ltable.user_id == utable.id)) | \
+                ((utable.id == mtable.user_id) & \
+                 (mtable.group_id == gtable.id) & \
+                 (gtable.uuid == "EVENT_MONITOR") & \
+                 (ltable.user_id == utable.id))
+        users = db(query).select(ltable.pe_id,
+                                 utable.language,
+                                 distinct = True,
+                                 )
+        for user in users:
+            language = user["auth_user.language"]
+            if language in languages:
+                languages[language].append(user["pr_person_user.pe_id"])
+            else:
+                languages[language] = [user["pr_person_user.pe_id"]]
+
+        # Build Message
+        url = "%s%s" % (settings.get_base_public_url(),
+                        URL(c="dc", f="target", args=[target_id, "review"]),
+                        )
+        subject_T = T("Consider sending a post-Event Survey")
+        message = "It is now %(date)s since the event %(event_name)s in %(location)s so you should consider creating a survey by visiting this link: %(url)s" % \
+                {"date": "%(date)s", # Localise per-language
+                 "event_name": event.name,
+                 "location": "%(location)s", # Localise per-language
+                 "url": url,
+                 }
+        message_T = T(message)
+
+        # Send Localised Mail(s)
+        send_email = current.msg.send_by_pe_id
+        location_represent = s3db.gis_LocationRepresent()
+        for language in languages:
+            T.force(language)
+            subject = s3_str(subject_T)
+            humanized_date = event_date.humanize(locale=language.replace("-", "_"))
+            message = s3_str(message_T) % {"date": humanized_date,
+                                           "location": location_represent(location_id),
+                                           }
+            users = languages[language]
+            for pe_id in users:
+                send_email(pe_id,
+                           subject = subject,
+                           message = message,
+                           )
+
+        # NB No need to restore UI language as this is run as an async task w/o UI
+        return
+
+    settings.tasks.hrm_training_event_survey = hrm_training_event_survey
+
+    # -------------------------------------------------------------------------
+    def hrm_training_dashboard_notify():
+        """
+            Notify Event Office Managers (OMs) & MFP that they should check
+            the Event Dashboard
+        """
+
+        from gluon import URL
+        from s3 import s3_str
+
+        db = current.db
+        s3db = current.s3db
+
+        # List of recipients, grouped by language
+        # Recipients: OMs & MFP(s)
+        languages = {}
+
+        utable = db.auth_user
+        gtable = db.auth_group
+        mtable = db.auth_membership
+        ltable = s3db.pr_person_user
+        query = (utable.id == mtable.user_id) & \
+                (mtable.group_id == gtable.id) & \
+                (gtable.uuid.belongs(("EVENT_MONITOR", "EVENT_OFFICE_MANAGER"))) & \
+                (ltable.user_id == utable.id)
+        users = db(query).select(ltable.pe_id,
+                                 utable.language,
+                                 distinct = True,
+                                 )
+        for user in users:
+            language = user["auth_user.language"]
+            if language in languages:
+                languages[language].append(user["pr_person_user.pe_id"])
+            else:
+                languages[language] = [user["pr_person_user.pe_id"]]
+
+        # Build Message
+        url = "%s%s" % (settings.get_base_public_url(),
+                        URL(c="hrm", f="training_event", vars={"dashboard": 1}),
+                        )
+        subject_T = T("Check the Event Dashboard")
+        message = "This is your monthly reminder to check the Event Dashboard by visiting this link: %(url)s" % {"url": url}
+        message_T = T(message)
+
+        # Send Localised Mail(s)
+        send_email = current.msg.send_by_pe_id
+        for language in languages:
+            T.force(language)
+            subject = s3_str(subject_T)
+            message = s3_str(message_T)
+            users = languages[language]
+            for pe_id in users:
+                send_email(pe_id,
+                           subject = subject,
+                           message = message,
+                           )
+
+        # NB No need to restore UI language as this is run as an async task w/o UI
+        return
+
+    settings.tasks.hrm_training_dashboard_notify = hrm_training_dashboard_notify
 
     # -------------------------------------------------------------------------
     def dc_target_onapprove(row):
@@ -2976,22 +3396,22 @@ def config(settings):
                                                 "document",
                                                 name = "file",
                                                 label = T("Files"),
-                                                fields = ["file", "comments"],
-                                                filterby = dict(field = "file",
-                                                                options = "",
-                                                                invert = True,
-                                                                )
+                                                fields = ("file", "comments"),
+                                                filterby = {"field": "file",
+                                                            "options": "",
+                                                            "invert": True,
+                                                            }
                                             ),
                                             # Links
                                             S3SQLInlineComponent(
                                                 "document",
                                                 name = "url",
                                                 label = T("Links"),
-                                                fields = ["url", "comments"],
-                                                filterby = dict(field = "url",
-                                                                options = None,
-                                                                invert = True,
-                                                                )
+                                                fields = ("url", "comments"),
+                                                filterby = {"field": "url",
+                                                            "options": None,
+                                                            "invert": True,
+                                                            }
                                             ),
                                             "comments",
                                             "date",
@@ -3497,8 +3917,7 @@ def config(settings):
                                             "person_id",
                                             S3SQLInlineComponent("home_address",
                                                                  label = T("Address"),
-                                                                 fields = [("", "location_id"),
-                                                                           ],
+                                                                 fields = [("", "location_id")],
                                                                  default = {"type": 1}, # Current Home Address
                                                                  link = False,
                                                                  multiple = False,
@@ -3508,20 +3927,20 @@ def config(settings):
                                             "code",
                                             S3SQLInlineComponent("programme_hours",
                                                                  label = T("Contract"),
-                                                                 fields = ["programme_id",
+                                                                 fields = ("programme_id",
                                                                            "date",
                                                                            (T("End Date"), "end_date"),
                                                                            "contract",
-                                                                           ],
+                                                                           ),
                                                                  link = False,
                                                                  multiple = False,
                                                                  ),
                                             S3SQLInlineComponent("education",
                                                                  label = T("Education"),
-                                                                 fields = [(T("Education Level"), "level_id"),
+                                                                 fields = ((T("Education Level"), "level_id"),
                                                                            "institute",
                                                                            "year",
-                                                                           ],
+                                                                           ),
                                                                  link = False,
                                                                  multiple = False,
                                                                  ),
@@ -3573,10 +3992,10 @@ def config(settings):
                                "start_date",
                                "code",
                                S3SQLInlineComponent("contract",
-                                                    label=T("Contract"),
-                                                    fields=["name",
-                                                            "date"
-                                                            ],
+                                                    label = T("Contract"),
+                                                    fields = ("name",
+                                                              "date",
+                                                              ),
                                                     multiple=True,
                                                     ),
                                "comments",
@@ -3781,8 +4200,8 @@ def config(settings):
                     ptable.first_name.label = T("Name")
                     ptable.gender.label = T("Gender")
                     # Ensure that + appears at the beginning of the number
-                    # Done in Model
-                    #f = s3db.pr_phone_contact.value
+                    # Done in Model's controller prep
+                    #f = s3db.get_aliased(s3db.pr_contact, "pr_phone_contact").value
                     #f.represent = s3_phone_represent
                     #f.widget = S3PhoneWidget()
                     s3db.pr_address.location_id.widget = S3LocationSelector(show_address = T("Village"),
@@ -3844,9 +4263,8 @@ def config(settings):
                                                       "key": "pe_id",
                                                       "fkey": "pe_id",
                                                       "pkey": "person_id",
-                                                      "filterby": {
-                                                          "type": "2",
-                                                          },
+                                                      "filterby": {"type": "2",
+                                                                   },
                                                       },
                                         pr_education = ({"name": "current_education",
                                                          "link": "pr_person",
@@ -3854,9 +4272,8 @@ def config(settings):
                                                          "key": "id",
                                                          "fkey": "person_id",
                                                          "pkey": "person_id",
-                                                         "filterby": {
-                                                             "current": True,
-                                                             },
+                                                         "filterby": {"current": True,
+                                                                      },
                                                          "multiple": False,
                                                          },
                                                         {"name": "previous_education",
@@ -3865,9 +4282,8 @@ def config(settings):
                                                          "key": "id",
                                                          "fkey": "person_id",
                                                          "pkey": "person_id",
-                                                         "filterby": {
-                                                             "current": False,
-                                                             },
+                                                         "filterby": {"current": False,
+                                                                      },
                                                          "multiple": False,
                                                          },
                                                         ),
@@ -3877,9 +4293,8 @@ def config(settings):
                                                     "key": "pe_id",
                                                     "fkey": "pe_id",
                                                     "pkey": "person_id",
-                                                    "filterby": {
-                                                        "profile": True,
-                                                        },
+                                                    "filterby": {"profile": True,
+                                                                 },
                                                     "multiple": False,
                                                     },
                                         )
@@ -3888,15 +4303,14 @@ def config(settings):
                                                 "code",
                                                 S3SQLInlineComponent("programme_hours",
                                                                      label = "",
-                                                                     fields = ["programme_id",
-                                                                               ],
+                                                                     fields = ["programme_id"],
                                                                      link = False,
                                                                      multiple = False,
                                                                      ),
                                                 "person_id",
                                                 S3SQLInlineComponent("perm_address",
                                                                      label = T("Address"),
-                                                                     fields = (("", "location_id"),),
+                                                                     fields = [("", "location_id")],
                                                                      filterby = {"field": "type",
                                                                                  "options": 2,
                                                                                  },
@@ -3906,8 +4320,7 @@ def config(settings):
                                                                      ),
                                                 S3SQLInlineComponent("current_education",
                                                                      label = T("School / University"),
-                                                                     fields = [("", "institute"),
-                                                                               ],
+                                                                     fields = [("", "institute")],
                                                                      filterby = {"field": "current",
                                                                                  "options": True,
                                                                                  },
@@ -3917,7 +4330,7 @@ def config(settings):
                                                                      ),
                                                 S3SQLInlineComponent("phone",
                                                                      label = T("Phone Number"),
-                                                                     fields = (("", "value"),),
+                                                                     fields = [("", "value")],
                                                                      filterby = {"field": "contact_method",
                                                                                  "options": "SMS",
                                                                                  },
@@ -3927,16 +4340,14 @@ def config(settings):
                                                                      ),
                                                 S3SQLInlineComponent("contact_emergency",
                                                                      label = T("Emergency Contact Number"),
-                                                                     fields = [("", "phone"),
-                                                                               ],
+                                                                     fields = [("", "phone")],
                                                                      link = False,
                                                                      update_link = False,
                                                                      multiple = False,
                                                                      ),
                                                 S3SQLInlineComponent("previous_education",
                                                                      label = T("Education Level"),
-                                                                     fields = [("", "level_id"),
-                                                                               ],
+                                                                     fields = [("", "level_id")],
                                                                      filterby = {"field": "current",
                                                                                  "options": False,
                                                                                  },
@@ -3958,7 +4369,7 @@ def config(settings):
                                                 (T("Remarks"), "comments"),
                                                 S3SQLInlineComponent("pr_image",
                                                                      label = T("Photo"),
-                                                                     fields = (("", "image"),),
+                                                                     fields = [("", "image")],
                                                                      filterby = {"field": "profile",
                                                                                  "options": True,
                                                                                  },
@@ -4895,13 +5306,13 @@ def config(settings):
         else:
             auth = current.auth
 
-            s3db.set_method("hrm", "training_event",
-                            method = "notify",
-                            action = hrm_training_event_notify)
+            set_method = s3db.set_method
+            set_method("hrm", "training_event",
+                       method = "notify",
+                       action = hrm_training_event_notify)
 
             if not auth.s3_has_role("ADMIN"):
-                OM = auth.s3_has_role("EVENT_OFFICE_MANAGER")
-                if OM or auth.s3_has_roles(("EVENT_MONITOR", "EVENT_ORGANISER")):
+                if auth.s3_has_roles(("EVENT_MONITOR", "EVENT_ORGANISER", "EVENT_OFFICE_MANAGER")):
                     # Bangkok CCST
                     EVENTS = True
 
@@ -4949,7 +5360,7 @@ def config(settings):
 
             elif EVENTS:
                 if not r.component:
-                    if OM:
+                    if r.get_vars.get("dashboard"):
                         # Dashboard for Office Manager
                         #from dateutil.relativedelta import relativedelta
                         from s3 import S3DateTime, s3_auth_user_represent_name, s3_fieldmethod
@@ -5040,8 +5451,8 @@ def config(settings):
                                        ]
 
                         s3db.configure("hrm_training_event",
-                                       extra_fields = ["deleted",
-                                                       ],
+                                       extra_fields = ["deleted"],
+                                       listadd = False,
                                        list_fields = list_fields,
                                        )
                     else:
@@ -5165,16 +5576,21 @@ def config(settings):
             return
 
         import json
+        json_dumps = json.dumps
         from dateutil.relativedelta import relativedelta
         ttable = s3db.scheduler_task
         schedule_task = current.s3task.schedule_task
-        task_name = "hrm_training_event_survey"
+        task_name = "settings_task"
 
         # 3 month reminder
         start_time = end_date + relativedelta(months = 3)
-        args = [training_event_id, 3]
+        args = ["hrm_training_event_survey"]
+        vars = {"training_event_id": training_event_id,
+                "survey_type": 3,
+                }
         query = (ttable.task_name == task_name) & \
-                (ttable.args == json.dumps(args))
+                (ttable.args == json_dumps(args)) & \
+                (ttable.vars == json_dumps(vars))
         exists = db(query).select(ttable.id,
                                   ttable.start_time,
                                   limitby = (0, 1)
@@ -5185,6 +5601,7 @@ def config(settings):
         else:
             schedule_task(task_name,
                           args = args,
+                          vars = vars,
                           start_time = start_time,
                           #period = 300,  # seconds
                           timeout = 300, # seconds
@@ -5193,9 +5610,12 @@ def config(settings):
 
         # 12 month reminder
         start_time = end_date + relativedelta(months = 12)
-        args = [training_event_id, 12]
+        vars = {"training_event_id": training_event_id,
+                "survey_type": 12,
+                }
         query = (ttable.task_name == task_name) & \
-                (ttable.args == json.dumps(args))
+                (ttable.args == json_dumps(args)) & \
+                (ttable.vars == json_dumps(vars))
         exists = db(query).select(ttable.id,
                                   ttable.start_time,
                                   limitby = (0, 1)
@@ -5206,6 +5626,7 @@ def config(settings):
         else:
             schedule_task(task_name,
                           args = args,
+                          vars = vars,
                           start_time = start_time,
                           #period = 300,  # seconds
                           timeout = 300, # seconds
@@ -5381,8 +5802,8 @@ def config(settings):
             f.readable = f.writable = True
             mtable.comments.label = T("Remarks")
             # Ensure that + appears at the beginning of the number
-            # Done in Model
-            #f = s3db.pr_phone_contact.value
+            # Done in controllers/member.py
+            #f = s3db.get_aliased(s3db.pr_contact, "pr_phone_contact").value
             #f.represent = s3_phone_represent
             #f.widget = S3PhoneWidget()
             s3db.pr_address.location_id.widget = S3LocationSelector(show_address = T("Village"),
@@ -5433,9 +5854,8 @@ def config(settings):
                                                "key": "pe_id",
                                                "fkey": "pe_id",
                                                "pkey": "person_id",
-                                               "filterby": {
-                                                   "type": "2",
-                                                   },
+                                               "filterby": {"type": "2",
+                                                            },
                                                },
                                               {"name": "temp_address",
                                                "link": "pr_person",
@@ -5443,9 +5863,8 @@ def config(settings):
                                                "key": "pe_id",
                                                "fkey": "pe_id",
                                                "pkey": "person_id",
-                                               "filterby": {
-                                                   "type": "1",
-                                                   },
+                                               "filterby": {"type": "1",
+                                                            },
                                                },
                                               ),
                                 pr_contact = {"link": "pr_person",
@@ -5453,9 +5872,8 @@ def config(settings):
                                               "key": "pe_id",
                                               "fkey": "pe_id",
                                               "pkey": "person_id",
-                                              "filterby": {
-                                                  "contact_method": "SMS",
-                                                  },
+                                              "filterby": {"contact_method": "SMS",
+                                                           },
                                               },
                                 pr_contact_emergency = {"link": "pr_person",
                                                         "joinby": "id",
@@ -5475,9 +5893,8 @@ def config(settings):
                                                "key": "id",
                                                "fkey": "person_id",
                                                "pkey": "person_id",
-                                               "filterby": {
-                                                   "type": 2,
-                                                   },
+                                               "filterby": {"type": 2,
+                                                            },
                                                "multiple": False,
                                                },
                                 pr_image = {"link": "pr_person",
@@ -5485,9 +5902,8 @@ def config(settings):
                                             "key": "pe_id",
                                             "fkey": "pe_id",
                                             "pkey": "person_id",
-                                            "filterby": {
-                                                "profile": True,
-                                                },
+                                            "filterby": {"profile": True,
+                                                         },
                                             "multiple": False,
                                             },
                                 pr_person_details = {"link": "pr_person",
@@ -5509,7 +5925,7 @@ def config(settings):
                                         "person_id",
                                         S3SQLInlineComponent("perm_address",
                                                              label = T("Permanent Address"),
-                                                             fields = (("", "location_id"),),
+                                                             fields = [("", "location_id")],
                                                              filterby = {"field": "type",
                                                                          "options": 2,
                                                                          },
@@ -5519,7 +5935,7 @@ def config(settings):
                                                              ),
                                         S3SQLInlineComponent("temp_address",
                                                              label = T("Temporary Address"),
-                                                             fields = (("", "location_id"),),
+                                                             fields = [("", "location_id")],
                                                              filterby = {"field": "type",
                                                                          "options": 1,
                                                                          },
@@ -5529,21 +5945,21 @@ def config(settings):
                                                              ),
                                         S3SQLInlineComponent("person_details",
                                                              label = T("Place of Work"),
-                                                             fields = (("", "company"),),
+                                                             fields = [("", "company")],
                                                              link = False,
                                                              update_link = False,
                                                              multiple = False,
                                                              ),
                                         S3SQLInlineComponent("education",
                                                              label = T("Education Level"),
-                                                             fields = (("", "level_id"),),
+                                                             fields = [("", "level_id")],
                                                              link = False,
                                                              update_link = False,
                                                              multiple = False,
                                                              ),
                                         S3SQLInlineComponent("idcard",
                                                              label = T("ID Number"),
-                                                             fields = (("", "value"),),
+                                                             fields = [("", "value")],
                                                              filterby = {"field": "type",
                                                                          "options": 2,
                                                                          },
@@ -5553,14 +5969,14 @@ def config(settings):
                                                              ),
                                         S3SQLInlineComponent("physical_description",
                                                              label = T("Blood Group"),
-                                                             fields = (("", "blood_type"),),
+                                                             fields = [("", "blood_type")],
                                                              link = False,
                                                              update_link = False,
                                                              multiple = False,
                                                              ),
                                         S3SQLInlineComponent("phone",
                                                              label = T("Phone Number"),
-                                                             fields = (("", "value"),),
+                                                             fields = [("", "value")],
                                                              filterby = {"field": "contact_method",
                                                                          "options": "SMS",
                                                                          },
@@ -5570,7 +5986,7 @@ def config(settings):
                                                              ),
                                         S3SQLInlineComponent("contact_emergency",
                                                              label = T("Relatives Contact #"),
-                                                             fields = (("", "phone"),),
+                                                             fields = [("", "phone")],
                                                              link = False,
                                                              update_link = False,
                                                              multiple = False,
@@ -5595,7 +6011,7 @@ def config(settings):
                                         "comments",
                                         S3SQLInlineComponent("image",
                                                              label = T("Photo"),
-                                                             fields = (("", "image"),),
+                                                             fields = [("", "image")],
                                                              filterby = {"field": "profile",
                                                                          "options": True,
                                                                          },
@@ -5843,8 +6259,6 @@ def config(settings):
                         # Custom CRUD form
                         if r.interactive:
                             from s3 import S3SQLCustomForm, S3SQLInlineLink, S3SQLInlineComponent
-                            # Filter inline address for type "office address", also sets default
-                            OFFICE = {"field": "type", "options": 3}
                             crud_form = S3SQLCustomForm(
                                             "name",
                                             "acronym",
@@ -5856,7 +6270,10 @@ def config(settings):
                                             S3SQLInlineComponent("address",
                                                                  fields = [("", "location_id")],
                                                                  multiple = False,
-                                                                 filterby = (OFFICE,),
+                                                                 # Filter inline address for type "office address", also sets default
+                                                                 filterby = ({"field": "type",
+                                                                              "options": 3,
+                                                                              },),
                                                                  ),
                                             "phone",
                                             "website",
@@ -6276,45 +6693,38 @@ def config(settings):
             add_components("pr_person",
                            pr_identity = {"name": "idcard",
                                           "joinby": "person_id",
-                                          "filterby": {
-                                              "type": 2,
-                                              },
+                                          "filterby": {"type": 2,
+                                                       },
                                           "multiple": False,
                                           },
                            pr_person_tag = ({"name": "pte",
                                              "joinby": "person_id",
-                                             "filterby": {
-                                                 "tag": PTE_TAG,
-                                                 },
+                                             "filterby": {"tag": PTE_TAG,
+                                                          },
                                              "multiple": False,
-                                             "defaults": {
-                                                 "tag": PTE_TAG,
-                                                 },
+                                             "defaults": {"tag": PTE_TAG,
+                                                          },
                                              },
                                             {"name": "sme",
                                              "joinby": "person_id",
-                                             "filterby": {
-                                                 "tag": SME_TAG,
-                                                 },
+                                             "filterby": {"tag": SME_TAG,
+                                                          },
                                              "multiple": False,
-                                             "defaults": {
-                                                 "tag": SME_TAG,
-                                                 },
+                                             "defaults": {"tag": SME_TAG,
+                                                          },
                                              },
                                             ),
                            )
             add_components("hrm_human_resource",
                            hrm_insurance = ({"name": "social_insurance",
                                              "joinby": "human_resource_id",
-                                             "filterby": {
-                                                 "type": "SOCIAL",
-                                                 },
+                                             "filterby": {"type": "SOCIAL",
+                                                          },
                                              },
                                             {"name": "health_insurance",
                                              "joinby": "human_resource_id",
-                                             "filterby": {
-                                                 "type": "HEALTH",
-                                                 },
+                                             "filterby": {"type": "HEALTH",
+                                                          },
                                              }),
                            )
             # Remove 'Commune' level for Addresses
@@ -6498,8 +6908,8 @@ def config(settings):
                 from gluon import IS_EMPTY_OR
                 from s3 import IS_ONE_OF, S3SQLCustomForm, S3SQLInlineComponent, S3LocationSelector
                 # Ensure that + appears at the beginning of the number
-                # Done in Model
-                #f = s3db.pr_phone_contact.value
+                # Done in Model's controller prep
+                #f = s3db.get_aliased(s3db.pr_contact, "pr_phone_contact").value
                 #f.represent = s3_phone_represent
                 #f.widget = S3PhoneWidget()
                 s3db.pr_address.location_id.widget = S3LocationSelector(show_address = T("Village"),
@@ -6518,16 +6928,14 @@ def config(settings):
                                     pr_address = {"name": "perm_address",
                                                   "joinby": "pe_id",
                                                   "pkey": "pe_id",
-                                                  "filterby": {
-                                                      "type": 2,
-                                                      },
+                                                  "filterby": {"type": 2,
+                                                               },
                                                   "multiple": False,
                                                   },
                                     pr_education = {"name": "previous_education",
                                                     "joinby": "person_id",
-                                                    "filterby": {
-                                                        "current": False,
-                                                        },
+                                                    "filterby": {"current": False,
+                                                                 },
                                                     "multiple": False,
                                                     },
                                     )
@@ -6591,7 +6999,7 @@ def config(settings):
                                                 (T("Job"), "person_details.occupation"),
                                                 S3SQLInlineComponent("perm_address",
                                                                      label = T("Address"),
-                                                                     fields = (("", "location_id"),),
+                                                                     fields = [("", "location_id")],
                                                                      filterby = {"field": "type",
                                                                                  "options": 2,
                                                                                  },
@@ -6599,8 +7007,7 @@ def config(settings):
                                                                      ),
                                                 S3SQLInlineComponent("current_education",
                                                                      label = T("School / University"),
-                                                                     fields = [("", "institute"),
-                                                                               ],
+                                                                     fields = [("", "institute")],
                                                                      filterby = {"field": "current",
                                                                                  "options": True,
                                                                                  },
@@ -6608,7 +7015,7 @@ def config(settings):
                                                                      ),
                                                 S3SQLInlineComponent("phone",
                                                                      label = T("Phone Number"),
-                                                                     fields = (("", "value"),),
+                                                                     fields = [("", "value")],
                                                                      filterby = {"field": "contact_method",
                                                                                  "options": "SMS",
                                                                                  },
@@ -6616,14 +7023,12 @@ def config(settings):
                                                                      ),
                                                 S3SQLInlineComponent("contact_emergency",
                                                                      label = T("Emergency Contact Number"),
-                                                                     fields = [("", "phone"),
-                                                                               ],
+                                                                     fields = [("", "phone")],
                                                                      multiple = False,
                                                                      ),
                                                 S3SQLInlineComponent("previous_education",
                                                                      label = T("Education Level"),
-                                                                     fields = [("", "level_id"),
-                                                                               ],
+                                                                     fields = [("", "level_id")],
                                                                      filterby = {"field": "current",
                                                                                  "options": False,
                                                                                  },
@@ -6639,7 +7044,7 @@ def config(settings):
                                                                      ),
                                                 S3SQLInlineComponent("volunteer_details",
                                                                      label = T("Active"),
-                                                                     fields = (("", "active"),),
+                                                                     fields = [("", "active")],
                                                                      link = False,
                                                                      update_link = False,
                                                                      multiple = False,
@@ -6647,7 +7052,7 @@ def config(settings):
                                                 (T("Remarks"), "comments"),
                                                 S3SQLInlineComponent("image",
                                                                      label = T("Photo"),
-                                                                     fields = (("", "image"),),
+                                                                     fields = [("", "image")],
                                                                      filterby = {"field": "profile",
                                                                                  "options": True,
                                                                                  },
@@ -6718,7 +7123,7 @@ def config(settings):
                                                 (T("Gender"), "gender"),
                                                 S3SQLInlineComponent("perm_address",
                                                                      label = T("Permanent Address"),
-                                                                     fields = (("", "location_id"),),
+                                                                     fields = [("", "location_id")],
                                                                      filterby = {"field": "type",
                                                                                  "options": 2,
                                                                                  },
@@ -6726,7 +7131,7 @@ def config(settings):
                                                                      ),
                                                 S3SQLInlineComponent("temp_address",
                                                                      label = T("Temporary Address"),
-                                                                     fields = (("", "location_id"),),
+                                                                     fields = [("", "location_id")],
                                                                      filterby = {"field": "type",
                                                                                  "options": 1,
                                                                                  },
@@ -6735,8 +7140,7 @@ def config(settings):
                                                 (T("Place of Work"), "person_details.company"),
                                                 S3SQLInlineComponent("previous_education",
                                                                      label = T("Education Level"),
-                                                                     fields = [("", "level_id"),
-                                                                               ],
+                                                                     fields = [("", "level_id")],
                                                                      filterby = {"field": "current",
                                                                                  "options": False,
                                                                                  },
@@ -6744,7 +7148,7 @@ def config(settings):
                                                                      ),
                                                 S3SQLInlineComponent("identity",
                                                                      label = T("ID Number"),
-                                                                     fields = (("", "value"),),
+                                                                     fields = [("", "value")],
                                                                      filterby = {"field": "type",
                                                                                  "options": 2,
                                                                                  },
@@ -6752,12 +7156,12 @@ def config(settings):
                                                                      ),
                                                 S3SQLInlineComponent("physical_description",
                                                                      label = T("Blood Group"),
-                                                                     fields = (("", "blood_type"),),
+                                                                     fields = [("", "blood_type")],
                                                                      multiple = False,
                                                                      ),
                                                 S3SQLInlineComponent("phone",
                                                                      label = T("Phone Number"),
-                                                                     fields = (("", "value"),),
+                                                                     fields = [("", "value")],
                                                                      filterby = {"field": "contact_method",
                                                                                  "options": "SMS",
                                                                                  },
@@ -6765,7 +7169,7 @@ def config(settings):
                                                                      ),
                                                 S3SQLInlineComponent("contact_emergency",
                                                                      label = T("Relatives Contact #"),
-                                                                     fields = (("", "phone"),),
+                                                                     fields = [("", "phone")],
                                                                      multiple = False,
                                                                      ),
                                                 (T("Date of Recruitment"), "membership.start_date"),
@@ -6786,7 +7190,7 @@ def config(settings):
                                                 "membership.comments",
                                                 S3SQLInlineComponent("image",
                                                                      label = T("Photo"),
-                                                                     fields = (("", "image"),),
+                                                                     fields = [("", "image")],
                                                                      filterby = {"field": "profile",
                                                                                  "options": True,
                                                                                  },
@@ -6854,7 +7258,7 @@ def config(settings):
                         from s3 import S3SQLInlineComponent
                         idcard_number = S3SQLInlineComponent("idcard",
                                                              label = T("ID Card Number"),
-                                                             fields = (("", "value"),),
+                                                             fields = [("", "value")],
                                                              default = {"type": 2,
                                                                         },
                                                              multiple = False,
@@ -6997,29 +7401,29 @@ def config(settings):
                                        "department_id",
                                        "status",
                                        S3SQLInlineComponent("contract",
-                                                            label=T("Contract Details"),
-                                                            fields=["term",
-                                                                    (T("Hours Model"), "hours"),
-                                                                    ],
-                                                            multiple=False,
+                                                            label = T("Contract Details"),
+                                                            fields = ("term",
+                                                                      (T("Hours Model"), "hours"),
+                                                                      ),
+                                                            multiple = False,
                                                             ),
                                        S3SQLInlineComponent("social_insurance",
-                                                            label=T("Social Insurance"),
-                                                            name="social",
-                                                            fields=["insurance_number",
-                                                                    "insurer",
-                                                                    ],
-                                                            default={"type": "SOCIAL"},
-                                                            multiple=False,
+                                                            label = T("Social Insurance"),
+                                                            name = "social",
+                                                            fields = ("insurance_number",
+                                                                      "insurer",
+                                                                      ),
+                                                            default = {"type": "SOCIAL"},
+                                                            multiple = False,
                                                             ),
                                        S3SQLInlineComponent("health_insurance",
-                                                            label=T("Health Insurance"),
-                                                            name="health",
-                                                            fields=["insurance_number",
-                                                                    "provider",
-                                                                    ],
-                                                            default={"type": "HEALTH"},
-                                                            multiple=False,
+                                                            label = T("Health Insurance"),
+                                                            name = "health",
+                                                            fields = ("insurance_number",
+                                                                      "provider",
+                                                                      ),
+                                                            default = {"type": "HEALTH"},
+                                                            multiple = False,
                                                             ),
                                        "comments",
                                        ]
@@ -7121,8 +7525,8 @@ def config(settings):
                                                 "membership_paid",
                                                 "fee_exemption",
                                                 S3SQLInlineLink("programme",
-                                                                field="programme_id",
-                                                                label=PROGRAMMES,
+                                                                field = "programme_id",
+                                                                label = PROGRAMMES,
                                                                 ),
                                                 )
 
@@ -7452,10 +7856,10 @@ def config(settings):
                                           label = T("Budget"),
                                           #link = False,
                                           multiple = False,
-                                          fields = ["total_budget",
+                                          fields = ("total_budget",
                                                     "currency",
                                                     #"monitoring_frequency",
-                                                    ],
+                                                    ),
                                           )
             btable = s3db.budget_budget
             # Need to provide a name
@@ -7472,11 +7876,10 @@ def config(settings):
             HFA = "drr.hfa"
             budget = None
             objectives = "objectives"
-            outputs = S3SQLInlineComponent(
-                "output",
-                label = T("Outputs"),
-                fields = ["name", "status"],
-            )
+            outputs = S3SQLInlineComponent("output",
+                                           label = T("Outputs"),
+                                           fields = ("name", "status"),
+                                           )
 
         crud_form = S3SQLCustomForm(
             "organisation_id",

@@ -486,13 +486,11 @@ class S3RangeFilter(S3FilterWidget):
                 operators = [operators]
             variables = self._variable(self.selector, operators)
         else:
-
             # Split the operators off the ends of the variables.
             if type(variables) is not list:
                 variables = [variables]
-            operators = [v.split("__")[1]
-                         if "__" in v else "eq"
-                         for v in variables]
+            parse_key = S3URLQuery.parse_key
+            operators = [parse_key(v)[1] for v in variables]
 
         elements = []
         widget_id = self.attr["_id"]
@@ -1097,7 +1095,10 @@ class S3DateFilter(S3RangeFilter):
                     # URL filter or filter default come as string in
                     # Gregorian calendar and ISO format => convert into
                     # a datetime
-                    dt = s3_decode_iso_datetime(value)
+                    try:
+                        dt = s3_decode_iso_datetime(value)
+                    except ValueError:
+                        dt = None
                 else:
                     # Assume datetime
                     dt = value
@@ -2616,7 +2617,7 @@ class S3OptionsFilter(S3FilterWidget):
             return []
 
         # Match __eq before checking any other operator
-        selector = variable.split("__", 1)[0]
+        selector = S3URLQuery.parse_key(variable)[0]
         for key in ("%s__eq" % selector, selector, variable):
             if key in get_vars:
                 values = S3URLQuery.parse_value(get_vars[key])
@@ -3252,10 +3253,9 @@ class S3FilterForm(object):
                 widget_default = {}
 
             for variable in defaults:
-                if "__" in variable:
-                    selector, operator = variable.split("__", 1)
-                else:
-                    selector, operator = variable, None
+                selector, operator, invert = S3URLQuery.parse_key(variable)
+                if invert:
+                    operator = "%s!" % operator
 
                 if filter_defaults and selector in filter_defaults:
                     applicable_defaults = filter_defaults[selector]

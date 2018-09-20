@@ -4,10 +4,9 @@ import json
 
 from os import path
 
-from gluon import current
+from gluon import current, redirect
 from gluon.html import *
 from gluon.storage import Storage
-from gluon.http import redirect
 
 from s3 import FS, S3CustomController
 from s3theme import formstyle_foundation_inline
@@ -727,9 +726,9 @@ def update_transferability(site_id=None):
     left = [mtable.on((mtable.person_id == ctable.person_id) & \
                       (mtable.group_id.belongs(group_ids)) & \
                       (mtable.deleted != True)),
-            gtable.on((ftable.person_id == ctable.person_id) & \
-                      (ftable.deleted != True) & \
-                      (gtable.id == ftable.group_id) & \
+            ftable.on((ftable.person_id == ctable.person_id) & \
+                      (ftable.deleted != True)),
+            gtable.on((gtable.id == ftable.group_id) & \
                       (gtable.group_type == 7)),
             ]
     query = (mtable.id == None) & (ctable.deleted != True)

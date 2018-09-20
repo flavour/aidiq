@@ -58,7 +58,7 @@ from gluon.validators import IS_EMPTY_OR
 from gluon.storage import Storage
 from gluon.tools import callback
 
-from s3dal import Expression, Field, Row, Rows, Table, S3DAL
+from s3dal import Expression, Field, Row, Rows, Table, S3DAL, VirtualCommand
 from s3data import S3DataTable, S3DataList
 from s3datetime import s3_format_datetime
 from s3fields import S3Represent, s3_all_meta_field_names
@@ -718,6 +718,7 @@ class S3Resource(object):
                         callback(ondelete_cascade, row, tablename=tablename)
                     except:
                         # Custom RESTRICT or cascade failure: row not deletable
+                        deletable.discard(record_id)
                         continue
                     if record_id not in deletable:
                         # Check deletability again
@@ -2353,6 +2354,11 @@ class S3Resource(object):
                     calias = c.alias
                     lalias = None
 
+                # If msince is requested (sync), skip components
+                # without modified_on timestamp:
+                if msince and MTIME not in c.fields:
+                    continue
+
                 ctablename = c.tablename
                 cpkey = c.table._id
 
@@ -2375,7 +2381,7 @@ class S3Resource(object):
                     # Msince filter
                     if msince and (alias != hierarchy_link or add) and \
                        MTIME in cfields:
-                        query = FS(MTIME) > msince
+                        query = FS(MTIME) >= msince
                         c.add_filter(query)
 
                     # Load only records which have not been exported yet
@@ -2583,6 +2589,12 @@ class S3Resource(object):
         # Restore normal user_id representations
         for fn in auth_user_represent:
             ogetattr(table, fn).represent = auth_user_represent[fn]
+
+        # Update muntil date if record is younger
+        if "modified_on" in record:
+            muntil = record.modified_on
+            if muntil and not self.muntil or muntil > self.muntil:
+                self.muntil = muntil
 
         return (element, rmap)
 
@@ -5917,7 +5929,7 @@ class S3ResourceData(object):
                         for row in rows:
                             for f, v in fields_lazy:
                                 try:
-                                    row[f] = v.handler(v.f, row)
+                                    row[f] = (v.handler or VirtualCommand)(v.f, row)
                                 except (AttributeError, KeyError):
                                     pass
             else:

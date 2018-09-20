@@ -31,10 +31,14 @@ from __future__ import division
 
 __all__ = ("S3ProjectModel",
            "S3ProjectActivityModel",
+           "S3ProjectActivityDemographicsModel",
+           "S3ProjectActivityItemModel",
            "S3ProjectActivityTypeModel",
            "S3ProjectActivityPersonModel",
            "S3ProjectActivityOrganisationModel",
+           "S3ProjectActivityOrganisationGroupModel",
            "S3ProjectActivitySectorModel",
+           "S3ProjectActivityTagModel",
            "S3ProjectAnnualBudgetModel",
            "S3ProjectBeneficiaryModel",
            "S3ProjectCampaignModel",
@@ -57,6 +61,7 @@ __all__ = ("S3ProjectModel",
            "S3ProjectTaskForumModel",
            "S3ProjectTaskHRMModel",
            "S3ProjectTaskIReportModel",
+           "S3ProjectWindowModel",
            "project_ActivityRepresent",
            "project_activity_year_options",
            "project_ckeditor",
@@ -693,9 +698,9 @@ class S3ProjectModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict(project_project_id = project_id,
-                    project_project_represent = project_represent,
-                    )
+        return {"project_project_id": project_id,
+                "project_project_represent": project_represent,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -706,8 +711,8 @@ class S3ProjectModel(S3Model):
                                 readable = False,
                                 writable = False)
 
-        return dict(project_project_id = lambda **attr: dummy("project_id"),
-                    )
+        return {"project_project_id": lambda **attr: dummy("project_id"),
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1105,7 +1110,7 @@ class S3ProjectActivityModel(S3Model):
                      self.gis_location_id(readable = not mode_task,
                                           writable = not mode_task,
                                           ),
-                     s3_date("date",
+                     s3_date(#"date", # default
                              label = T("Start Date"),
                              set_min = "#project_activity_end_date",
                              ),
@@ -1260,8 +1265,7 @@ class S3ProjectActivityModel(S3Model):
                                 #represent = "%(name)s",
                                 ))
 
-        # @ToDo: deployment_setting
-        if settings.has_module("supply"):
+        if settings.get_project_activity_items():
             rappend("distribution.parameter_id")
             # This has the wrong perspective to be meaningful, use supply/distribution/report instead
             #fact_fields.insert(0,
@@ -1277,8 +1281,7 @@ class S3ProjectActivityModel(S3Model):
                                (T("Items"), "distribution.parameter_id"))
             list_index += 1
 
-        # @ToDo: deployment_setting
-        if settings.has_module("stats"):
+        if settings.get_project_activity_beneficiaries():
             rappend("beneficiary.parameter_id")
             # This has the wrong perspective to be meaningful, use project/beneficiary/report instead
             #fact_fields.insert(0,
@@ -1359,7 +1362,6 @@ class S3ProjectActivityModel(S3Model):
                   filter_widgets = filter_widgets,
                   list_fields = list_fields,
                   list_layout = project_activity_list_layout,
-                  #onaccept = self.project_activity_onaccept,
                   realm_entity = self.project_activity_realm_entity,
                   report_options = report_options,
                   super_entity = "doc_entity",
@@ -1418,8 +1420,24 @@ class S3ProjectActivityModel(S3Model):
                                     #"actuate": "hide",
                                     "actuate": "replace",
                                     },
+                       # Data
+                       project_activity_data = "activity_id",
+                       # Demographic
+                       project_activity_demographic = "activity_id",
+                       #stats_demographic = {"link": "project_activity_demographic",
+                       #                     "joinby": "activity_id",
+                       #                     "key": "parameter_id",
+                       #                     "actuate": "hide",
+                       #                     },
                        # Distributions
                        supply_distribution = "activity_id",
+                       # Items
+                       project_activity_item = "activity_id",
+                       #supply_item = {"link": "project_activity_item",
+                       #               "joinby": "activity_id",
+                       #               "key": "item_id",
+                       #               "actuate": "hide",
+                       #               },
                        # Events
                        event_event = {"link": "event_activity",
                                       "joinby": "activity_id",
@@ -1450,6 +1468,10 @@ class S3ProjectActivityModel(S3Model):
                                      },
                        # Format for InlineComponent/filter_widget
                        project_sector_activity = "activity_id",
+                       # Tags
+                       project_activity_tag = {"name": "tag",
+                                               "joinby": "activity_id",
+                                               },
                        # Tasks
                        project_task = {"link": "project_task_activity",
                                        "joinby": "activity_id",
@@ -1466,6 +1488,12 @@ class S3ProjectActivityModel(S3Model):
                                         },
                        # Format for InlineComponent/filter_widget
                        project_theme_activity = "activity_id",
+                       # Needs
+                       req_need = {"link": "req_need_activity",
+                                   "joinby": "activity_id",
+                                   "key": "need_id",
+                                   "actuate": "hide",
+                                   },
                        )
 
         # ---------------------------------------------------------------------
@@ -1501,8 +1529,8 @@ class S3ProjectActivityModel(S3Model):
                       )
 
         # Pass names back to global scope (s3.*)
-        return dict(project_activity_id = activity_id,
-                    )
+        return {"project_activity_id": activity_id,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1513,8 +1541,8 @@ class S3ProjectActivityModel(S3Model):
                                 readable = False,
                                 writable = False)
 
-        return dict(project_activity_id = lambda **attr: dummy("activity_id"),
-                    )
+        return {"project_activity_id": lambda **attr: dummy("activity_id"),
+                }
 
     # ---------------------------------------------------------------------
     @staticmethod
@@ -1747,7 +1775,7 @@ class S3ProjectActivityTypeModel(S3Model):
                            )
 
         # ---------------------------------------------------------------------
-        # Activity Type - Sector Link Table
+        # Activity Type <> Sector Link Table
         #
         tablename = "project_activity_type_sector"
         define_table(tablename,
@@ -1761,7 +1789,7 @@ class S3ProjectActivityTypeModel(S3Model):
                      *s3_meta_fields())
 
         # ---------------------------------------------------------------------
-        # Activity Type - Project Location Link Table
+        # Activity Type <> Project Location Link Table
         #
         tablename = "project_activity_type_location"
         define_table(tablename,
@@ -1774,7 +1802,7 @@ class S3ProjectActivityTypeModel(S3Model):
                      *s3_meta_fields())
 
         # ---------------------------------------------------------------------
-        # Activity Type - Project Link Table
+        # Activity Type <> Project Link Table
         #
         tablename = "project_activity_type_project"
         define_table(tablename,
@@ -1800,8 +1828,8 @@ class S3ProjectActivityTypeModel(S3Model):
         )
 
         # Pass names back to global scope (s3.*)
-        return dict(project_activity_type_id = activity_type_id,
-                    )
+        return {"project_activity_type_id": activity_type_id,
+                }
 
 # =============================================================================
 class S3ProjectActivityPersonModel(S3Model):
@@ -1874,35 +1902,42 @@ class S3ProjectActivityOrganisationModel(S3Model):
         Project Activity Organisation Model
 
         This model allows Activities to link to Organisations
-                                           &/or Organisation Groups
         - useful when we don't have the details of the Projects
     """
 
     names = ("project_activity_organisation",
-             "project_activity_group",
              )
 
     def model(self):
 
         T = current.T
 
-        configure = self.configure
-        define_table = self.define_table
-        project_activity_id = self.project_activity_id
+        NONE = current.messages["NONE"]
 
         # ---------------------------------------------------------------------
         # Activities <> Organisations - Link table
         #
+        project_organisation_roles = current.deployment_settings.get_project_organisation_roles()
+
         tablename = "project_activity_organisation"
-        define_table(tablename,
-                     project_activity_id(empty = False,
-                                         # Default:
-                                         #ondelete = "CASCADE",
-                                         ),
-                     self.org_organisation_id(empty = False,
-                                              ondelete = "CASCADE",
-                                              ),
-                     *s3_meta_fields())
+        self.define_table(tablename,
+                          self.project_activity_id(empty = False,
+                                                   # Default:
+                                                   #ondelete = "CASCADE",
+                                                   ),
+                          self.org_organisation_id(empty = False,
+                                                   ondelete = "CASCADE",
+                                                   ),
+                          Field("role", "integer",
+                                default = 1, # Lead
+                                label = T("Role"),
+                                requires = IS_EMPTY_OR(
+                                            IS_IN_SET(project_organisation_roles)
+                                            ),
+                                represent = lambda opt: \
+                                            project_organisation_roles.get(opt,
+                                                                           NONE)),
+                          *s3_meta_fields())
 
         # CRUD Strings
         current.response.s3.crud_strings[tablename] = Storage(
@@ -1917,33 +1952,182 @@ class S3ProjectActivityOrganisationModel(S3Model):
             msg_list_empty = T("No Activity Organizations Found")
         )
 
-        configure(tablename,
-                  deduplicate = S3Duplicate(primary = ("activity_id",
-                                                       "organisation_id",
-                                                       ),
-                                            ),
-                  )
+        self.configure(tablename,
+                       deduplicate = S3Duplicate(primary = ("activity_id",
+                                                            "organisation_id",
+                                                            "role",
+                                                            ),
+                                                 ),
+                       )
+
+        # Pass names back to global scope (s3.*)
+        return {}
+
+# =============================================================================
+class S3ProjectActivityOrganisationGroupModel(S3Model):
+    """
+        Project Activity Organisation Group Model
+
+        This model allows Activities to link to Organisation Groups
+        - useful when we don't have the details of the Projects
+    """
+
+    names = ("project_activity_group",
+             )
+
+    def model(self):
+
+        #T = current.T
 
         # ---------------------------------------------------------------------
         # Activities <> Organisation Groups - Link table
         #
         tablename = "project_activity_group"
-        define_table(tablename,
-                     project_activity_id(empty = False,
-                                         # Default:
-                                         #ondelete = "CASCADE",
-                                         ),
-                     self.org_group_id(empty = False,
-                                       ondelete = "CASCADE",
-                                       ),
-                     *s3_meta_fields())
-
-        configure(tablename,
-                  deduplicate = S3Duplicate(primary = ("activity_id",
-                                                       "group_id",
-                                                       ),
+        self.define_table(tablename,
+                          self.project_activity_id(empty = False,
+                                                   # Default:
+                                                   #ondelete = "CASCADE",
+                                                   ),
+                          self.org_group_id(empty = False,
+                                            ondelete = "CASCADE",
                                             ),
-                  )
+                          *s3_meta_fields())
+
+        self.configure(tablename,
+                       deduplicate = S3Duplicate(primary = ("activity_id",
+                                                            "group_id",
+                                                            ),
+                                                 ),
+                       )
+
+        # Pass names back to global scope (s3.*)
+        return {}
+
+# =============================================================================
+class S3ProjectActivityDemographicsModel(S3Model):
+    """
+        Project Activity Demographics Model
+
+        Activities Target Beneficiaries
+        - alternate, simpler, model to project_beneficiary_activity
+    """
+
+    names = ("project_activity_demographic",)
+
+    def model(self):
+
+        T = current.T
+
+        # ---------------------------------------------------------------------
+        # Project Activities <> Demographics Link Table
+        #
+        if current.s3db.table("stats_demographic"):
+            title = current.response.s3.crud_strings["stats_demographic"].label_create
+            parameter_id_comment = S3PopupLink(c = "stats",
+                                               f = "demographic",
+                                               vars = {"child": "parameter_id"},
+                                               title = title,
+                                               )
+        else:
+            parameter_id_comment = None
+
+        tablename = "project_activity_demographic"
+        self.define_table(tablename,
+                          self.project_activity_id(empty = False,
+                                                   # Default:
+                                                   #ondelete = "CASCADE",
+                                                   ),
+                          self.super_link("parameter_id", "stats_parameter",
+                                          instance_types = ("stats_demographic",),
+                                          label = T("Demographic"),
+                                          represent = self.stats_parameter_represent,
+                                          readable = True,
+                                          writable = True,
+                                          empty = False,
+                                          comment = parameter_id_comment,
+                                          ),
+                          self.req_timeframe(),
+                          Field("target_value", "integer",
+                                label = T("Target Value"),
+                                represent = IS_INT_AMOUNT.represent,
+                                requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, None)),
+                                ),
+                          Field("value", "integer",
+                                label = T("Actual Value"),
+                                represent = IS_INT_AMOUNT.represent,
+                                requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, None)),
+                                ),
+                          *s3_meta_fields())
+
+        self.configure(tablename,
+                       deduplicate = S3Duplicate(primary = ("activity_id",
+                                                            "parameter_id",
+                                                            ),
+                                                 ),
+                       )
+
+        # Pass names back to global scope (s3.*)
+        return {}
+
+# =============================================================================
+class S3ProjectActivityItemModel(S3Model):
+    """
+        Project Activity Item Model
+
+        Activities can be used to distribute Items
+        - alternate, simpler, model to supply_distribution / supply_distribution_item
+    """
+
+    names = ("project_activity_item",)
+
+    def model(self):
+
+        T = current.T
+
+        # ---------------------------------------------------------------------
+        # Project Activities <> Items Link Table
+        #
+        tablename = "project_activity_item"
+        self.define_table(tablename,
+                          self.project_activity_id(empty = False,
+                                                   # Default:
+                                                   #ondelete = "CASCADE",
+                                                   ),
+                          self.supply_item_category_id(),
+                          self.supply_item_id(empty = False,
+                                              # Default:
+                                              #ondelete = "RESTRICT",
+                                              # Filter Item dropdown based on Category
+                                              script = '''
+$.filterOptionsS3({
+ 'trigger':'item_category_id',
+ 'target':'item_id',
+ 'lookupPrefix':'supply',
+ 'lookupResource':'item',
+})''',
+                                              # Don't use Auto-complete
+                                              widget = None,
+                                              ),
+                          self.supply_item_pack_id(),
+                          self.req_timeframe(),
+                          Field("target_value", "integer",
+                                label = T("Target Value"),
+                                represent = IS_INT_AMOUNT.represent,
+                                requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, None)),
+                                ),
+                          Field("value", "integer",
+                                label = T("Actual Value"),
+                                represent = IS_INT_AMOUNT.represent,
+                                requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, None)),
+                                ),
+                          *s3_meta_fields())
+
+        self.configure(tablename,
+                       deduplicate = S3Duplicate(primary = ("activity_id",
+                                                            "item_id",
+                                                            ),
+                                                 ),
+                       )
 
         # Pass names back to global scope (s3.*)
         return {}
@@ -1979,6 +2163,49 @@ class S3ProjectActivitySectorModel(S3Model):
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("activity_id",
                                                             "sector_id",
+                                                            ),
+                                                 ),
+                       )
+
+        # Pass names back to global scope (s3.*)
+        return {}
+
+# =============================================================================
+class S3ProjectActivityTagModel(S3Model):
+    """
+        Activity Tags
+    """
+
+    names = ("project_activity_tag",)
+
+    def model(self):
+
+        T = current.T
+
+        # ---------------------------------------------------------------------
+        # Activity Tags
+        # - Key-Value extensions
+        # - can be used to provide conversions to external systems, such as:
+        #   * HXL, IATI
+        # - can be a Triple Store for Semantic Web support
+        # - can be used to add custom fields
+        #
+        tablename = "project_activity_tag"
+        self.define_table(tablename,
+                          self.project_activity_id(),
+                          # key is a reserved word in MySQL
+                          Field("tag",
+                                label = T("Key"),
+                                ),
+                          Field("value",
+                                label = T("Value"),
+                                ),
+                          s3_comments(),
+                          *s3_meta_fields())
+
+        self.configure(tablename,
+                       deduplicate = S3Duplicate(primary = ("activity_id",
+                                                            "tag",
                                                             ),
                                                  ),
                        )
@@ -2094,8 +2321,7 @@ class S3ProjectBeneficiaryModel(S3Model):
         define_table = self.define_table
         super_link = self.super_link
 
-        stats_parameter_represent = S3Represent(lookup="stats_parameter",
-                                                translate=True)
+        parameter_represent = self.stats_parameter_represent
 
         # ---------------------------------------------------------------------
         # Project Beneficiary Type
@@ -2118,10 +2344,10 @@ class S3ProjectBeneficiaryModel(S3Model):
                      # Link to the Beneficiary Type which is the Total, so that we can calculate percentages
                      Field("total_id", self.stats_parameter,
                            label = T("Total"),
-                           represent = stats_parameter_represent,
+                           represent = parameter_represent,
                            requires = IS_EMPTY_OR(
                                         IS_ONE_OF(db, "stats_parameter.parameter_id",
-                                                  stats_parameter_represent,
+                                                  parameter_represent,
                                                   instance_types = ("project_beneficiary_type",),
                                                   sort=True)),
                            ),
@@ -2168,7 +2394,7 @@ class S3ProjectBeneficiaryModel(S3Model):
                                 empty = False,
                                 instance_types = ("project_beneficiary_type",),
                                 label = T("Beneficiary Type"),
-                                represent = stats_parameter_represent,
+                                represent = parameter_represent,
                                 readable = True,
                                 writable = True,
                                 comment = S3PopupLink(c = "project",
@@ -3005,8 +3231,8 @@ class S3ProjectHazardModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return dict(project_hazard_id = hazard_id,
-                    )
+        return {"project_hazard_id": hazard_id,
+                }
 
 # =============================================================================
 class S3ProjectHRModel(S3Model):
@@ -3731,9 +3957,9 @@ class S3ProjectLocationModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict(project_location_id = project_location_id,
-                    project_location_represent = project_location_represent,
-                    )
+        return {"project_location_id": project_location_id,
+                "project_location_represent": project_location_represent,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -3745,8 +3971,7 @@ class S3ProjectLocationModel(S3Model):
                                 writable = False,
                                 )
 
-        return {"project_location_id": lambda **attr: \
-                                       dummy("project_location_id"),
+        return {"project_location_id": lambda **attr: dummy("project_location_id"),
                 "project_location_represent": lambda v, row=None: "",
                 }
 
@@ -4888,18 +5113,24 @@ class S3ProjectPlanningModel(S3Model):
         # Indicators <> Activities link table 2
         # - only used if status_from_activities is True
         #
+        activity_id = self.project_activity_id
         tablename = "project_indicator_activity_activity"
         define_table(tablename,
                      indicator_activity_id(ondelete = "CASCADE"),
-                     self.project_activity_id(empty = False,
-                                              # Default:
-                                              #ondelete = "CASCADE",
-                                              ),
+                     activity_id(empty = False,
+                                 # Default:
+                                 #ondelete = "CASCADE",
+                                 ),
                      *s3_meta_fields())
 
         # ---------------------------------------------------------------------
         # Activity Data
         # - only used if status_from_activities is False
+        #
+        # @ ToDo: make this a stats_data instance?
+        #         - easier to keep consistent with e.g.
+        #           stats_impact_type parameters
+        #           supply[_distribution]_item parameters
         #
         tablename = "project_activity_data"
         define_table(tablename,
@@ -4910,9 +5141,12 @@ class S3ProjectPlanningModel(S3Model):
                                              project_represent,
                                              )
                         ),
+                     # Used for SHARE
+                     activity_id(),
                      indicator_id(readable = False,
                                   writable = False,
                                   ),
+                     # Used as linktable for RMSAmericas HNRC for their UI
                      indicator_activity_id(),
                      # Populated Automatically
                      # Used for Timeplot &, in future, to ease changing the monitoring frequency
@@ -4991,18 +5225,18 @@ class S3ProjectPlanningModel(S3Model):
                   )
 
         # Pass names back to global scope (s3.*)
-        return dict(#project_goal_id = goal_id,
-                    project_goal_represent = goal_represent,
-                    #project_outcome_id = outcome_id,
-                    project_outcome_represent = outcome_represent,
-                    #project_output_id = output_id,
-                    project_output_represent = output_represent,
-                    #project_indicator_id = indicator_id,
-                    project_indicator_represent = indicator_represent,
-                    #project_indicator_activity_id = indicator_activity_id,
-                    project_indicator_activity_represent = indicator_activity_represent,
-                    project_planning_status_update = self.project_planning_status_update,
-                    )
+        return {#"project_goal_id": goal_id,
+                "project_goal_represent": goal_represent,
+                #"project_outcome_id": outcome_id,
+                "project_outcome_represent": outcome_represent,
+                #"project_output_id": output_id,
+                "project_output_represent": output_represent,
+                #"project_indicator_id": indicator_id,
+                "project_indicator_represent": indicator_represent,
+                #"project_indicator_activity_id": indicator_activity_id,
+                "project_indicator_activity_represent": indicator_activity_represent,
+                "project_planning_status_update": self.project_planning_status_update,
+                }
 
     # -------------------------------------------------------------------------
     def project_planning_status_update(self, project_id):
@@ -5063,14 +5297,18 @@ class S3ProjectPlanningModel(S3Model):
                     indicator_data[key] = {"project_id": project_id,
                                            "indicator_id": indicator_id,
                                            "end_date": end_date,
-                                           "value": d.value,
-                                           "target_value": d.target_value,
+                                           "value": d.value or 0,
+                                           "target_value": d.target_value or 0,
                                            }
                 else:
                     # Add this data to Totals
                     i = indicator_data[key]
-                    i["value"] += d.value
-                    i["target_value"] += d.target_value
+                    value = d.value
+                    if value:
+                        i["value"] += value
+                    target_value = d.target_value
+                    if target_value:
+                        i["target_value"] += target_value
 
             insert = table.insert
             for key in indicator_data:
@@ -5099,7 +5337,7 @@ class S3ProjectPlanningModel(S3Model):
                     total_percentage_target = 100
                 value = d.value
                 if value:
-                    total_percentage_value = value / target_value * 100
+                    total_percentage_value = min(100, value / target_value * 100)
                 else:
                     total_percentage_value = 0
                 if end_date.year == current_year:
@@ -6532,6 +6770,11 @@ class S3ProjectPlanningModel(S3Model):
             current.log.error("Cannot find Project Activity Data record (no record for this ID), so cannot update start_date or statuses")
             return
 
+        if not indicator_activity_id:
+            # SHARE
+            return
+
+        # RMS HNRC
         # Populate the Indicator from the Activity
         atable = s3db.project_indicator_activity
         activity = db(atable.id == indicator_activity_id).select(atable.indicator_id,
@@ -6608,6 +6851,12 @@ class S3ProjectPlanningModel(S3Model):
         except:
             current.log.error("Cannot find Project Activity Data record (no record for this ID), so cannot update start_date or statuses")
             return
+
+        if not indicator_activity_id:
+            # SHARE
+            return
+
+        # RMS HNRC
         start_date = record.start_date
         end_date = record.end_date
 
@@ -6748,7 +6997,7 @@ class S3ProjectPlanningModel(S3Model):
                     # Treat as complete
                     return project_status_represent(100.0)
             # Calculate
-            percentage = actual / planned * 100
+            percentage = min(100, actual / planned * 100)
             return project_status_represent(percentage)
 
         # Ignored
@@ -6882,22 +7131,20 @@ class project_SummaryReport(S3Method):
 
             if status_from_activities:
                 for row in rows:
-                    goals[row.id] = \
-                        dict(code = row.code,
-                             name = row.name,
-                             outcomes = {},
-                             actual_progress = row.actual_progress_by_activities,
-                             planned_progress = row.planned_progress_by_activities,
-                             )
+                    goals[row.id] = {"code" : row.code,
+                                     "name" : row.name,
+                                     "outcomes" : {},
+                                     "actual_progress" : row.actual_progress_by_activities,
+                                     "planned_progress" : row.planned_progress_by_activities,
+                                     }
             else:
                 for row in rows:
-                    goals[row.id] = \
-                        dict(code = row.code,
-                             name = row.name,
-                             outcomes = {},
-                             current_status = row.current_status_by_indicators,
-                             overall_status = row.overall_status_by_indicators,
-                             )
+                    goals[row.id] = {"code" : row.code,
+                                     "name" : row.name,
+                                     "outcomes" : {},
+                                     "current_status" : row.current_status_by_indicators,
+                                     "overall_status" : row.overall_status_by_indicators,
+                                     }
 
             # Outcomes
             table = s3db.project_outcome
@@ -6922,22 +7169,20 @@ class project_SummaryReport(S3Method):
 
             if status_from_activities:
                 for row in rows:
-                    goals[row.goal_id]["outcomes"][row.id] = \
-                        dict(code = row.code,
-                             name = row.name,
-                             outputs = {},
-                             actual_progress = row.actual_progress_by_activities,
-                             planned_progress = row.planned_progress_by_activities,
-                             )
+                    goals[row.goal_id]["outcomes"][row.id] = {"code" : row.code,
+                                                              "name" : row.name,
+                                                              "outputs" : {},
+                                                              "actual_progress" : row.actual_progress_by_activities,
+                                                              "planned_progress" : row.planned_progress_by_activities,
+                                                              }
             else:
                 for row in rows:
-                    goals[row.goal_id]["outcomes"][row.id] = \
-                        dict(code = row.code,
-                             name = row.name,
-                             outputs = {},
-                             current_status = row.current_status_by_indicators,
-                             overall_status = row.overall_status_by_indicators,
-                             )
+                    goals[row.goal_id]["outcomes"][row.id] = {"code" : row.code,
+                                                              "name" : row.name,
+                                                              "outputs" : {},
+                                                              "current_status" : row.current_status_by_indicators,
+                                                              "overall_status" : row.overall_status_by_indicators,
+                                                              }
 
             # Outputs
             table = s3db.project_output
@@ -6963,22 +7208,20 @@ class project_SummaryReport(S3Method):
 
             if status_from_activities:
                 for row in rows:
-                    goals[row.goal_id]["outcomes"][row.outcome_id]["outputs"][row.id] = \
-                        dict(code = row.code,
-                             name = row.name,
-                             indicators = {},
-                             actual_progress = row.actual_progress_by_activities,
-                             planned_progress = row.planned_progress_by_activities,
-                             )
+                    goals[row.goal_id]["outcomes"][row.outcome_id]["outputs"][row.id] = {"code" : row.code,
+                                                                                         "name" : row.name,
+                                                                                         "indicators" : {},
+                                                                                         "actual_progress" : row.actual_progress_by_activities,
+                                                                                         "planned_progress" : row.planned_progress_by_activities,
+                                                                                         }
             else:
                 for row in rows:
-                    goals[row.goal_id]["outcomes"][row.outcome_id]["outputs"][row.id] = \
-                        dict(code = row.code,
-                             name = row.name,
-                             indicators = {},
-                             current_status = row.current_status_by_indicators,
-                             overall_status = row.overall_status_by_indicators,
-                             )
+                    goals[row.goal_id]["outcomes"][row.outcome_id]["outputs"][row.id] = {"code" : row.code,
+                                                                                         "name" : row.name,
+                                                                                         "indicators" : {},
+                                                                                         "current_status" : row.current_status_by_indicators,
+                                                                                         "overall_status" : row.overall_status_by_indicators,
+                                                                                         }
 
             # Indicators
             table = s3db.project_indicator
@@ -7009,25 +7252,23 @@ class project_SummaryReport(S3Method):
                     goal_id = row.goal_id
                     outcome_id = row.outcome_id
                     output_id = row.output_id
-                    goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id] = \
-                        dict(code = row.code,
-                             name = row.name,
-                             activities = {},
-                             actual_progress = row.actual_progress_by_activities,
-                             planned_progress = row.planned_progress_by_activities,
-                             )
+                    goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id] = {"code" : row.code,
+                                                                                                                "name" : row.name,
+                                                                                                                "activities" : {},
+                                                                                                                "actual_progress" : row.actual_progress_by_activities,
+                                                                                                                "planned_progress" : row.planned_progress_by_activities,
+                                                                                                                }
             else:
                 for row in rows:
                     indicator_id = row.id
                     goal_id = row.goal_id
                     outcome_id = row.outcome_id
                     output_id = row.output_id
-                    goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id] = \
-                        dict(code = row.code,
-                             name = row.name,
-                             current_status = row.current_status_by_indicators,
-                             overall_status = row.overall_status_by_indicators,
-                             )
+                    goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id] = {"code" : row.code,
+                                                                                                                "name" : row.name,
+                                                                                                                "current_status" : row.current_status_by_indicators,
+                                                                                                                "overall_status" : row.overall_status_by_indicators,
+                                                                                                                }
 
             if status_from_activities:
                 # Activities
@@ -7057,17 +7298,16 @@ class project_SummaryReport(S3Method):
                     outcome_id = row.outcome_id
                     output_id = row.output_id
                     indicator_id = row.indicator_id
-                    goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id]["activities"][activity_id] = \
-                        dict(name = name,
-                             actual_progress = row.actual_progress,
-                             planned_progress = row.planned_progress,
-                             )
+                    goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id]["activities"][activity_id] = {"name" : name,
+                                                                                                                                           "actual_progress" : row.actual_progress,
+                                                                                                                                           "planned_progress" : row.planned_progress,
+                                                                                                                                           }
 
             return project, goals
 
 
         # Filtered, so we need to recalculate dynamically
-        if current.deployment_settings.get_project_status_from_activities():
+        if status_from_activities:
             # Progress from Activities
             if start_date:
                 start_date = s3_decode_iso_datetime(start_date)
@@ -7088,6 +7328,12 @@ class project_SummaryReport(S3Method):
             outcomes = {}
             outputs = {}
             indicators = {}
+
+            if indicator_ids:
+                indicator_ids = indicator_ids.split(",")
+
+            if goal_ids:
+                goal_ids = goal_ids.split(",")
 
             # Read all the relevant Activities
             limitby = None
@@ -7490,10 +7736,9 @@ class project_SummaryReport(S3Method):
                                     )
             for row in rows:
                 goal_id = row.id
-                goal_name = row.name
                 if goal_id in goals:
                     goals[goal_id].update(code = row.code,
-                                          name = goal_name,
+                                          name = row.name,
                                           #actual_progress = actual_progress,
                                           #planned_progress = planned_progress,
                                           )
@@ -7501,7 +7746,7 @@ class project_SummaryReport(S3Method):
                     actual_progress = 0
                     planned_progress = 0
                     goals[goal_id] = {"outcomes": {},
-                                      "name": goal_name,
+                                      "name": row.name,
                                       "code": row.code,
                                       "actual_progress": actual_progress,
                                       "planned_progress": planned_progress,
@@ -7551,22 +7796,20 @@ class project_SummaryReport(S3Method):
 
         if status_from_activities:
             for row in rows:
-                goals[row.id] = \
-                    dict(code = row.code,
-                         name = row.name,
-                         outcomes = {},
-                         actual_progress = row.actual_progress_by_activities,
-                         planned_progress = row.planned_progress_by_activities,
-                         )
+                goals[row.id] = {"code" : row.code,
+                                 "name" : row.name,
+                                 "outcomes" : {},
+                                 "actual_progress" : row.actual_progress_by_activities,
+                                 "planned_progress" : row.planned_progress_by_activities,
+                                 }
         else:
             for row in rows:
-                goals[row.id] = \
-                    dict(code = row.code,
-                         name = row.name,
-                         outcomes = {},
-                         current_status = row.current_status_by_indicators,
-                         overall_status = row.overall_status_by_indicators,
-                         )
+                goals[row.id] = {"code" : row.code,
+                                 "name" : row.name,
+                                 "outcomes" : {},
+                                 "current_status" : row.current_status_by_indicators,
+                                 "overall_status" : row.overall_status_by_indicators,
+                                 }
 
         # Outcomes
         table = s3db.project_outcome
@@ -7597,22 +7840,20 @@ class project_SummaryReport(S3Method):
 
         if status_from_activities:
             for row in rows:
-                goals[row.goal_id]["outcomes"][row.id] = \
-                    dict(code = row.code,
-                         name = row.name,
-                         outputs = {},
-                         actual_progress = row.actual_progress_by_activities,
-                         planned_progress = row.planned_progress_by_activities,
-                         )
+                goals[row.goal_id]["outcomes"][row.id] = {"code" : row.code,
+                                                          "name" : row.name,
+                                                          "outputs" : {},
+                                                          "actual_progress" : row.actual_progress_by_activities,
+                                                          "planned_progress" : row.planned_progress_by_activities,
+                                                          }
         else:
             for row in rows:
-                goals[row.goal_id]["outcomes"][row.id] = \
-                    dict(code = row.code,
-                         name = row.name,
-                         outputs = {},
-                         current_status = row.current_status_by_indicators,
-                         overall_status = row.overall_status_by_indicators,
-                         )
+                goals[row.goal_id]["outcomes"][row.id] = {"code" : row.code,
+                                                          "name" : row.name,
+                                                          "outputs" : {},
+                                                          "current_status" : row.current_status_by_indicators,
+                                                          "overall_status" : row.overall_status_by_indicators,
+                                                          }
 
         # Outputs
         table = s3db.project_output
@@ -7644,22 +7885,20 @@ class project_SummaryReport(S3Method):
 
         if status_from_activities:
             for row in rows:
-                goals[row.goal_id]["outcomes"][row.outcome_id]["outputs"][row.id] = \
-                    dict(code = row.code,
-                         name = row.name,
-                         indicators = {},
-                         actual_progress = row.actual_progress_by_activities,
-                         planned_progress = row.planned_progress_by_activities,
-                         )
+                goals[row.goal_id]["outcomes"][row.outcome_id]["outputs"][row.id] = {"code" : row.code,
+                                                                                     "name" : row.name,
+                                                                                     "indicators" : {},
+                                                                                     "actual_progress" : row.actual_progress_by_activities,
+                                                                                     "planned_progress" : row.planned_progress_by_activities,
+                                                                                     }
         else:
             for row in rows:
-                goals[row.goal_id]["outcomes"][row.outcome_id]["outputs"][row.id] = \
-                    dict(code = row.code,
-                         name = row.name,
-                         indicators = {},
-                         current_status = row.current_status_by_indicators,
-                         overall_status = row.overall_status_by_indicators,
-                         )
+                goals[row.goal_id]["outcomes"][row.outcome_id]["outputs"][row.id] = {"code" : row.code,
+                                                                                     "name" : row.name,
+                                                                                     "indicators" : {},
+                                                                                     "current_status" : row.current_status_by_indicators,
+                                                                                     "overall_status" : row.overall_status_by_indicators,
+                                                                                     }
 
         # Indicators
         limitby = None
@@ -7718,13 +7957,12 @@ class project_SummaryReport(S3Method):
                                                 outcome = outcome_id,
                                                 output = output_id,
                                                 )
-                goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id] = \
-                    dict(code = row.code,
-                         name = row.name,
-                         #comments = NONE,
-                         actual_progress = row.actual_progress_by_activities,
-                         planned_progress = row.planned_progress_by_activities,
-                         )
+                goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id] = {"code" : row.code,
+                                                                                                            "name" : row.name,
+                                                                                                            #"comments" : NONE,
+                                                                                                            "actual_progress" : row.actual_progress_by_activities,
+                                                                                                            "planned_progress" : row.planned_progress_by_activities,
+                                                                                                            }
         else:
             for row in rows:
                 indicator_id = row.id
@@ -7736,12 +7974,11 @@ class project_SummaryReport(S3Method):
                                                 outcome = outcome_id,
                                                 output = output_id,
                                                 )
-                goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id] = \
-                    dict(code = row.code,
-                         name = row.name,
-                         current_status = row.current_status_by_indicators,
-                         overall_status = row.overall_status_by_indicators,
-                         )
+                goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id] = {"code" : row.code,
+                                                                                                            "name" : row.name,
+                                                                                                            "current_status" : row.current_status_by_indicators,
+                                                                                                            "overall_status" : row.overall_status_by_indicators,
+                                                                                                            }
 
         if status_from_activities:
             # Activities
@@ -7804,11 +8041,10 @@ class project_SummaryReport(S3Method):
                                                 outcome = outcome_id,
                                                 output = output_id,
                                                 )
-                goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id] = \
-                    dict(name = name,
-                         actual_progress = row.actual_progress_by_activities,
-                         planned_progress = row.planned_progress_by_activities,
-                         )
+                goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id] = {"name" : name,
+                                                                                                            "actual_progress" : row.actual_progress_by_activities,
+                                                                                                            "planned_progress" : row.planned_progress_by_activities,
+                                                                                                            }
 
         # Indicator Data
         #date = None
@@ -8016,7 +8252,7 @@ class project_SummaryReport(S3Method):
             -the actual report
         """
 
-        from s3.s3codecs.pdf import EdenDocTemplate, S3RL_PDF
+        from s3.codecs.pdf import EdenDocTemplate, S3RL_PDF
 
         T = current.T
         db = current.db
@@ -8770,7 +9006,7 @@ class project_IndicatorSummaryReport(S3Method):
             XLS Representation
         """
 
-        from s3.s3codecs import S3XLS
+        from s3.codecs.xls import S3XLS
 
         try:
             import xlwt
@@ -9758,8 +9994,22 @@ class S3ProjectStatusModel(S3Model):
                         )
 
         # Pass names back to global scope (s3.*)
-        return dict(project_status_id = status_id,
-                    )
+        return {"project_status_id": status_id,
+                }
+
+    # -------------------------------------------------------------------------
+    def defaults(self):
+        """
+            Safe defaults for model-global names in case module is disabled
+        """
+
+        dummy = S3ReusableField("dummy", "string",
+                                readable = False,
+                                writable = False,
+                                )
+
+        return {"project_status_id": lambda **attr: dummy("status_id"),
+                }
 
 # =============================================================================
 class S3ProjectStrategyModel(S3Model):
@@ -9826,8 +10076,8 @@ class S3ProjectStrategyModel(S3Model):
                         )
 
         # Pass names back to global scope (s3.*)
-        return dict(project_strategy_id = strategy_id,
-                    )
+        return {"project_strategy_id": strategy_id,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -9838,8 +10088,8 @@ class S3ProjectStrategyModel(S3Model):
                                 readable = False,
                                 writable = False)
 
-        return dict(project_strategy_id = lambda **attr: dummy("strategy_id"),
-                    )
+        return {"project_strategy_id": lambda **attr: dummy("strategy_id"),
+                }
 
 # =============================================================================
 class S3ProjectThemeModel(S3Model):
@@ -10094,8 +10344,8 @@ class S3ProjectThemeModel(S3Model):
         )
 
         # Pass names back to global scope (s3.*)
-        return dict(project_theme_id = theme_id,
-                    )
+        return {"project_theme_id": theme_id,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -10595,10 +10845,10 @@ class S3ProjectTaskModel(S3Model):
                                        ]
                            ),
                      Field("description", "text",
-                           label = T("Detailed Description/URL"),
+                           label = T("Detailed Description"),
                            comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Detailed Description/URL"),
-                                                           T("Please provide as much detail as you can, including the URL(s) where the bug occurs or you'd like the new feature to go."))),
+                                         _title="%s|%s" % (T("Detailed Description"),
+                                                           T("Please provide as much detail as you can, including any URL(s) for more information."))),
                            ),
                      self.org_site_id(),
                      self.gis_location_id(
@@ -10614,6 +10864,9 @@ class S3ProjectTaskModel(S3Model):
                            label = T("Source Link"),
                            represent = s3_url_represent,
                            requires = IS_EMPTY_OR(IS_URL()),
+                           # Can be enabled & labelled within a Template as-required
+                           readable = False,
+                           writable = False
                            ),
                      Field("priority", "integer",
                            default = 3,
@@ -11320,12 +11573,11 @@ class S3ProjectTaskModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict(
-            project_task_id = task_id,
-            project_task_active_statuses = project_task_active_statuses,
-            project_task_represent_w_project = project_task_represent_w_project,
-            project_task_project_opts = self.project_task_project_opts
-        )
+        return {"project_task_id": task_id,
+                "project_task_active_statuses": project_task_active_statuses,
+                "project_task_represent_w_project": project_task_represent_w_project,
+                "project_task_project_opts": self.project_task_project_opts,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -11336,9 +11588,9 @@ class S3ProjectTaskModel(S3Model):
                                 readable = False,
                                 writable = False)
 
-        return dict(project_task_id = lambda **attr: dummy("task_id"),
-                    project_task_active_statuses = [],
-                    )
+        return {"project_task_id": lambda **attr: dummy("task_id"),
+                "project_task_active_statuses": [],
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -12001,6 +12253,41 @@ class S3ProjectTaskIReportModel(S3Model):
         db(query).update(location_id=location_id)
 
 # =============================================================================
+class S3ProjectWindowModel(S3Model):
+    """
+        Project Window Model
+
+        Allow setting of a Window of Time/Dates when values may be entered
+
+        Used by Honduran Red Cross
+    """
+
+    names = ("project_window",)
+
+    def model(self):
+
+        T = current.T
+
+        # ---------------------------------------------------------------------
+        # Time Window
+        #
+        tablename = "project_window"
+        self.define_table(tablename,
+                          s3_date("start_date",
+                                  label = T("Start Date"),
+                                  ),
+                          s3_date("end_date",
+                                  label = T("End Date"),
+                                  start_field = "project_window_date",
+                                  ),
+                          *s3_meta_fields())
+
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        #
+        return {}
+
+# =============================================================================
 def multi_theme_percentage_represent(record_id):
     """
         Representation for Theme Percentages
@@ -12363,9 +12650,10 @@ class project_ActivityRepresent(S3Represent):
     """ Representation of Project Activities """
 
     def __init__(self,
-                 translate=False,
-                 show_link=False,
-                 multiple=False):
+                 translate = False,
+                 show_link = False,
+                 multiple = False,
+                 ):
 
         if current.deployment_settings.get_project_projects():
             # Need a custom lookup
@@ -12398,7 +12686,6 @@ class project_ActivityRepresent(S3Represent):
             @param values: the activity IDs
         """
 
-        db = current.db
         s3db = current.s3db
         atable = s3db.project_activity
         ptable = s3db.project_project
@@ -12413,11 +12700,11 @@ class project_ActivityRepresent(S3Represent):
             query = (atable.id.belongs(values))
             limitby = (0, qty)
 
-        rows = db(query).select(atable.id,
-                                atable.name,
-                                ptable.code,
-                                left=left,
-                                limitby=limitby)
+        rows = current.db(query).select(atable.id,
+                                        atable.name,
+                                        ptable.code,
+                                        left=left,
+                                        limitby=limitby)
         self.queries += 1
         return rows
 
@@ -12780,7 +13067,7 @@ def project_rheader(r):
         tabs = [(T("Details"), None),
                 (T("Contact People"), "contact"),
                 ]
-        if settings.has_module("supply"):
+        if settings.get_project_activity_items():
             tabs.append((T("Distribution Items"), "distribution"))
         if settings.has_module("dvr"):
             tabs.append((T("Beneficiaries"), "person"))

@@ -2,7 +2,7 @@
 
 from collections import OrderedDict
 
-from gluon import current
+from gluon import current, URL
 from gluon.storage import Storage
 
 def config(settings):
@@ -188,12 +188,12 @@ def config(settings):
             restricted = True,
             module_type = 10,
         )),
-        ("req", Storage(
-            name_nice = "Requests",
-            #description = "Manage requests for supplies, assets, staff or other resources. Matches against Inventories where supplies are requested.",
-            restricted = True,
-            module_type = 10,
-        )),
+        #("req", Storage(
+        #    name_nice = "Requests",
+        #    #description = "Manage requests for supplies, assets, staff or other resources. Matches against Inventories where supplies are requested.",
+        #    restricted = True,
+        #    module_type = 10,
+        #)),
         ("project", Storage(
             name_nice = "Tasks",
             #description = "Tracking of Projects, Activities and Tasks",
@@ -246,7 +246,7 @@ def config(settings):
         record = r.record
         if record and r.representation == "html":
 
-            from gluon import DIV, TABLE, TR, TH
+            from gluon import A, DIV, TABLE, TR, TH
             from s3 import s3_rheader_tabs
 
             name = r.name
@@ -263,7 +263,9 @@ def config(settings):
 
                 rheader_tabs = s3_rheader_tabs(r, tabs)
 
+                record_id = r.id
                 incident_type_id = record.incident_type_id
+
                 # Dropdown of Scenarios to select
                 stable = current.s3db.event_scenario
                 query = (stable.incident_type_id == incident_type_id) & \
@@ -271,10 +273,10 @@ def config(settings):
                 scenarios = current.db(query).select(stable.id,
                                                      stable.name,
                                                      )
-                if len(scenarios):
+                if len(scenarios) and r.method != "event":
                     from gluon import SELECT, OPTION
                     dropdown = SELECT(_id="scenarios")
-                    dropdown["_data-incident_id"] = r.id
+                    dropdown["_data-incident_id"] = record_id
                     dappend = dropdown.append
                     dappend(OPTION(T("Select Scenario")))
                     for s in scenarios:
@@ -298,6 +300,18 @@ def config(settings):
                     closed = TH(T("CLOSED"))
                 else:
                     closed = TH()
+
+                if record.event_id or r.method == "event":
+                    event = ""
+                else:
+                    event = A(T("Assign to Event"),
+                                _href = URL(c = "event",
+                                            f = "incident",
+                                            args = [record_id, "event"],
+                                            ),
+                                _class = "action-btn"
+                                )
+
                 table = r.table
                 rheader = DIV(TABLE(TR(exercise),
                                     TR(TH("%s: " % table.name.label),
@@ -320,6 +334,32 @@ def config(settings):
                                        table.date.represent(record.date),
                                        ),
                                     TR(closed),
+                                    event,
+                                    ), rheader_tabs)
+
+            elif name == "event":
+                # Events Controller
+                tabs = [(T("Event Details"), None),
+                        (T("Incidents"), "incident"),
+                        (T("Documents"), "document"),
+                        (T("Photos"), "image"),
+                        ]
+
+                rheader_tabs = s3_rheader_tabs(r, tabs)
+
+                table = r.table
+                rheader = DIV(TABLE(TR(TH("%s: " % table.event_type_id.label),
+                                       table.event_type_id.represent(record.event_type_id),
+                                       ),
+                                    TR(TH("%s: " % table.name.label),
+                                       record.name,
+                                       ),
+                                    TR(TH("%s: " % table.start_date.label),
+                                       table.start_date.represent(record.start_date),
+                                       ),
+                                    TR(TH("%s: " % table.comments.label),
+                                       record.comments,
+                                       ),
                                     ), rheader_tabs)
 
             elif name == "scenario":
@@ -349,9 +389,22 @@ def config(settings):
         return rheader
 
     # -------------------------------------------------------------------------
+    def customise_event_event_controller(**attr):
+
+        #s3 = current.response.s3
+
+        # No sidebar menu
+        #current.menu.options = None
+        attr["rheader"] = event_rheader
+
+        return attr
+
+    settings.customise_event_event_controller = customise_event_event_controller
+
+    # -------------------------------------------------------------------------
     def customise_event_incident_report_controller(**attr):
 
-        from gluon import A, URL
+        from gluon import A
 
         s3 = current.response.s3
 
@@ -361,6 +414,8 @@ def config(settings):
             # Call standard postp
             if callable(standard_prep):
                 result = standard_prep(r)
+                if not result:
+                    return False
 
             if r.method in (None, "create"):
                 current.s3db.gis_location.addr_street.label = T("Street Address or Location Details")
@@ -402,25 +457,29 @@ def config(settings):
         s3db = current.s3db
         s3 = current.response.s3
 
-        # Load default model, so we can over-ride
-        s3db.event_incident
-
-        from gluon import URL
-        s3db.configure("event_incident",
-                       create_next = URL(c="event", f="incident",
-                                         args=["[id]", "plan"]),
-                       )
-
         # Custom prep
         standard_prep = s3.prep
         def custom_prep(r):
             # Call standard postp
             if callable(standard_prep):
                 result = standard_prep(r)
+                if not result:
+                    return False
+
+            resource = r.resource
+
+            # Redirect to action plan after create
+            resource.configure(create_next = URL(c="event", f="incident",
+                                                 args = ["[id]", "plan"]),
+                               )
 
             if r.method == "create":
                 incident_report_id = r.get_vars.get("incident_report_id")
                 if incident_report_id:
+                    # Got here from incident report assign => "New Incident"
+                    # - prepopulate incident name from report title
+                    # - copy incident type and location from report
+                    # - onaccept: link the incident report to the incident
                     if r.http == "GET":
                         from s3 import s3_truncate
                         rtable = s3db.event_incident_report
@@ -440,9 +499,8 @@ def config(settings):
                                                                        incident_report_id = incident_report_id,
                                                                        )
 
-                        r.resource.configure(create_onaccept = create_onaccept,
-                                             )
-
+                        resource.configure(create_onaccept = create_onaccept,
+                                           )
             return True
         s3.prep = custom_prep
 
@@ -519,11 +577,12 @@ def config(settings):
             # Call standard postp
             if callable(standard_prep):
                 result = standard_prep(r)
+                if not result:
+                    return False
 
             if r.method == "create"and r.http == "POST":
-                from gluon import URL
                 r.resource.configure(create_next = URL(c="event", f="scenario",
-                                                       args=["[id]", "plan"]),
+                                                       args = ["[id]", "plan"]),
                                      )
 
             return True
@@ -597,5 +656,19 @@ def config(settings):
             msg_list_empty = T("No Positions currently registered"))
 
     settings.customise_hrm_job_title_resource = customise_hrm_job_title_resource
+
+    # -------------------------------------------------------------------------
+    # Projects
+    # -------------------------------------------------------------------------
+
+    # -------------------------------------------------------------------------
+    def customise_project_task_resource(r, tablename):
+
+        # No need to see log time: KISS
+        current.s3db.configure(tablename,
+                               crud_form = None,
+                               )
+
+    settings.customise_project_task_resource = customise_project_task_resource
 
 # END =========================================================================
