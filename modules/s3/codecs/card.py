@@ -40,9 +40,12 @@ try:
     from reportlab.lib.pagesizes import A4, LETTER, landscape, portrait
     from reportlab.platypus import BaseDocTemplate, PageTemplate, Flowable, \
                                    Frame, NextPageTemplate, PageBreak
+    from reportlab.lib.utils import ImageReader
+    from reportlab.graphics.barcode import code39, code128
     REPORTLAB = True
 except ImportError:
     BaseDocTemplate = object
+    Flowable = object
     REPORTLAB = False
 
 from gluon import current, HTTP
@@ -62,21 +65,19 @@ class S3PDFCard(S3Codec):
         """
             API Method to encode a resource as cards
 
-            @param resource: the S3Resource
+            @param resource: the S3Resource, or
+                             - the data items as list [{fieldname: representation, ...}, ...], or
+                             - a callable that produces such a list of items
             @param attr: additional encoding parameters (see below)
 
-            @keyword fields: the fields to extract from resource,
-                             - a list of field selectors, or
-                             - a callable that extracts the data and returns
-                               them as an array [{fieldname: representation, ...}, ...],
-                             - defaults to list_fields of the resource
-            @keyword orderby: orderby-expression for data extraction
+            @keyword layout: the layout (a S3PDFCardLayout subclass, overrides
+                             the resource's pdf_card_layout setting
+            @keyword orderby: orderby-expression for data extraction, overrides
+                              the resource's orderby setting
             @keyword labels: the labels for the fields,
                              - a dict {colname: label}, or
                              - a callable that produces it,
-                             - defaults to the labels of list_fields
-            @keyword layout: the layout (a S3PDFCardLayout subclass, overrides
-                             the resource pdf_card_layout setting)
+                             - defaults to the labels of the extracted fields
             @keyword pagesize: the PDF page size,
                                - a string "A4" or "Letter", or
                                - a tuple (width, height), in points
@@ -128,17 +129,15 @@ class S3PDFCard(S3Codec):
         pagesize = orientation(pagesize)
 
         # Extract the data
-        fields = attr.get("fields")
-        if callable(fields):
-            # External getter => call with resource, returns the data items
-            data = None
-            items = fields(resource)
-        elif is_resource:
+        if is_resource:
             # Extract the data items from the resource
-            if not isinstance(fields, (tuple, list)):
-                fields = resource.list_fields()
+            fields = layout.fields(resource)
             data = self.extract(resource, fields, orderby=attr.get("orderby"))
             items = data.rows
+        elif callable(resource):
+            # External getter => call with resource, returns the data items
+            data = None
+            items = resource()
         else:
             # The data items have been passed-in in place of the resource
             data = None
@@ -201,6 +200,11 @@ class S3PDFCard(S3Codec):
             @returns: an S3ResourceData instance
         """
 
+        if orderby is None:
+            orderby = resource.get_config("orderby")
+        if orderby is None:
+            orderby = resource._id
+
         return resource.select(fields,
                                represent = True,
                                show_links = False,
@@ -221,9 +225,16 @@ class S3PDFCard(S3Codec):
             @param cards_per_page: the number of cards per page
         """
 
+        if not len(items):
+            # Need at least one flowable even to produce an empty doc
+            return [PageBreak()]
+
         # Determine the number of pages
         number_of_pages = int(len(items) / cards_per_page) + 1
         multiple = cards_per_page > 1
+
+        # Look up common data
+        common = layout.lookup(resource, items)
 
         # Generate the pages
         flowables = []
@@ -240,7 +251,12 @@ class S3PDFCard(S3Codec):
             if i > 0:
                 append(PageBreak())
             for item in batch:
-                append(layout(resource, item, multiple=multiple))
+                append(layout(resource,
+                              item,
+                              labels = labels,
+                              common = common,
+                              multiple = multiple,
+                              ))
 
             if layout.doublesided:
                 # Add the flowables for the backsides on a new page
@@ -249,6 +265,8 @@ class S3PDFCard(S3Codec):
                 for item in batch:
                     append(layout(resource,
                                   item,
+                                  labels = labels,
+                                  common = common,
                                   multiple = multiple,
                                   backside = True,
                                   ))
@@ -457,12 +475,21 @@ class S3PDFCardLayout(Flowable):
     orientation = "Portrait"
     doublesided = True
 
-    def __init__(self, resource, item, labels=None, backside=False, multiple=False):
+    def __init__(self,
+                 resource,
+                 item,
+                 labels=None,
+                 common=None,
+                 backside=False,
+                 multiple=False,
+                 ):
         """
             Constructor
 
+            @param resource: the resource
             @param item: the data item
             @param labels: the field labels
+            @param common: common data for all cards
             @param backside: this instance should render a card backside
             @param multiple: there are multiple cards per page
         """
@@ -474,10 +501,8 @@ class S3PDFCardLayout(Flowable):
         self.resource = resource
         self.item = item
 
-        if labels is None:
-            self.labels = {}
-        else:
-            self.labels = labels
+        self.labels = labels if labels is not None else {}
+        self.common = common if common is not None else {}
 
         self.backside = backside
         self.multiple = multiple
@@ -526,6 +551,174 @@ class S3PDFCardLayout(Flowable):
                 c.drawCentredString(x, y - 10, "Record #%s" % item[pid])
 
     # -------------------------------------------------------------------------
+    @classmethod
+    def fields(cls, resource):
+        """
+            Get the fields to look up from the resource, can be overridden
+            in subclasses (as the field list is usually layout-specific)
+
+            @param resource: the resource
+
+            @returns: list of field selectors
+        """
+
+        return resource.list_fields()
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def lookup(cls, resource, items):
+        """
+            Look up common data for all cards
+
+            @param resource: the resource
+            @param items: the items
+
+            @returns: a dict with common data for all cards, will be
+                      passed to the individual flowables
+        """
+
+        return {}
+
+    # -------------------------------------------------------------------------
+    def draw_barcode(self,
+                     value,
+                     x,
+                     y,
+                     bctype="code128",
+                     height=12,
+                     halign=None,
+                     valign=None,
+                     ):
+        """
+            Helper function to render a barcode
+
+            @param value: the string to encode
+            @param x: drawing position
+            @param y: drawing position
+            @param bctype: the barcode type
+            @param height: the height of the barcode (in points)
+            @param halign: horizontal alignment ("left"|"center"|"right"), default left
+            @param valign: vertical alignment ("top"|"middle"|"bottom"), default bottom
+        """
+
+        # For arbitrary alphanumeric values, these would be the most
+        # commonly used symbologies:
+        types = {"code39": code39.Standard39,
+                 "code128": code128.Code128,
+                 }
+
+        encode = types.get(bctype)
+        if not encode:
+            raise RuntimeError("Barcode type %s not supported" % bctype)
+        else:
+            barcode = encode(value, barHeight=height)
+
+        width, height = barcode.width, barcode.height
+
+        hshift = vshift = 0
+        if halign == "right":
+            hshift = width
+        elif halign == "center":
+            hshift = width / 2.0
+
+        if valign == "top":
+            vshift = height
+        elif valign == "middle":
+            vshift = height / 2.0
+
+        barcode.drawOn(self.canv, x - hshift, y - vshift)
+
+    # -------------------------------------------------------------------------
+    def draw_image(self,
+                   img,
+                   x,
+                   y,
+                   width=None,
+                   height=None,
+                   proportional=True,
+                   scale=None,
+                   halign=None,
+                   valign=None,
+                   ):
+        """
+            Helper function to draw an image
+            - requires PIL (required for ReportLab image handling anyway)
+
+            @param img: the image (filename or StringIO buffer)
+            @param x: drawing position
+            @param y: drawing position
+            @param width: the target width of the image (in points)
+            @param height: the target height of the image (in points)
+            @param proportional: keep image proportions when scaling to width/height
+            @param scale: scale the image by this factor (overrides width/height)
+            @param halign: horizontal alignment ("left"|"center"|"right"), default left
+            @param valign: vertical alignment ("top"|"middle"|"bottom"), default bottom
+        """
+
+        if hasattr(img, "seek"):
+            is_buffer = True
+            img.seek(0)
+        else:
+            is_buffer = False
+
+        try:
+            from PIL import Image as pImage
+        except ImportError:
+            current.log.error("Image rendering failed: PIL not installed")
+            return
+
+        pimg = pImage.open(img)
+        img_size = pimg.size
+
+        if not img_size[0] or not img_size[1]:
+            # This image has at least one dimension of zero
+            return
+
+        # Compute drawing width/height
+        if scale:
+            width = img_size[0] * scale
+            height = img_size[1] * scale
+        elif width and height:
+            if proportional:
+                scale = min(float(width) / img_size[0], float(height) / img_size[1])
+                width = img_size[0] * scale
+                height = img_size[1] * scale
+        elif width:
+            height = img_size[1] * (float(width) / img_size[0])
+        elif height:
+            width = img_size[0] * (float(height) / img_size[1])
+        else:
+            width = img_size[0]
+            height = img_size[1]
+
+        # Compute drawing position from alignment options
+        hshift = vshift = 0
+        if halign == "right":
+            hshift = width
+        elif halign == "center":
+            hshift = width / 2.0
+
+        if valign == "top":
+            vshift = height
+        elif valign == "middle":
+            vshift = height / 2.0
+
+        # Draw the image
+        if is_buffer:
+            img.seek(0)
+        ir = ImageReader(img)
+
+        c = self.canv
+        c.drawImage(ir,
+                    x - hshift,
+                    y - vshift,
+                    width = width,
+                    height = height,
+                    preserveAspectRatio = proportional,
+                    mask = "auto",
+                    )
+
+    # -------------------------------------------------------------------------
     def draw_outline(self):
         """
             Helper function to draw the outline of the card, useful as cutting
@@ -535,6 +728,6 @@ class S3PDFCardLayout(Flowable):
         c = self.canv
 
         c.setLineWidth(1)
-        c.rect(0, 0, self.width, self.height)
+        c.rect(-1, -1, self.width + 2, self.height + 2)
 
 # END =========================================================================
