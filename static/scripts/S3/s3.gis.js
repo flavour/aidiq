@@ -3454,8 +3454,8 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
 
     // In Global scope as called from HTML (iframe onLoad)
     S3.gis.popupLoaded = function(id) {
-        // Display the hidden form
-        $('#' + id + '_contentDiv iframe').contents().find('#popup form').show();
+        // Display the hidden contents
+        $('#' + id + '_contentDiv iframe').contents().find('#popup').show();
         // Iterate through all Maps (usually just 1)
         var maps = S3.gis.maps;
         var map_id, map, popup, popups, i, len;
@@ -3580,7 +3580,6 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
         // Style the feature as highlighted
         feature.renderIntent = 'select';
         layer.drawFeature(feature);
-        var layer_type = layer.s3_layer_type;
         var centerPoint = geometry.getBounds().getCenterLonLat();
         //var popup_id = S3.uid();
         var popup_id = feature.id + '_popup';
@@ -3658,7 +3657,8 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
             contents += "<div align='center'><a href='javascript:S3.gis.zoomToSelectedFeature(" + "\"" + map_id + "\", " + centerPoint.lon + "," + centerPoint.lat + ", 3)'>" + i18n.gis_zoomin + '</a></div>';
         } else {
             // Single Feature
-            if (layer_type == 'kml') {
+            var layerType = layer.s3_layer_type;
+            if (layerType == 'kml') {
                 var attributes = feature.attributes;
                 if (undefined != feature.style.balloonStyle) {
                     // Use the provided BalloonStyle
@@ -3706,9 +3706,9 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
                 if (contents.search('<script') != -1) {
                     contents = 'Content contained Javascript! Escaped content below.<br />' + contents.replace(/</g, '<');
                 }
-            } else if (layer_type == 'gpx') {
+            } else if (layerType == 'gpx') {
                 // @ToDo: display as many attributes as we can: Description (Points), Date, Author?, Lat, Lon
-            } else if ((layer_type == 'shapefile') || (layer_type == 'geojson')) {
+            } else if ((layerType == 'shapefile') || (layerType == 'geojson')) {
                 // We don't have control of attributes, so simply display all
                 // @ToDo: have an optional style.popup (like KML's balloonStyle)
                 var attributes = feature.attributes;
@@ -3723,7 +3723,7 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
                     contents += row;
                 });
                 contents += '</div>';
-            } else if (layer_type == 'wfs') {
+            } else if (layerType == 'wfs') {
                 var attributes = feature.attributes;
                 var title = attributes[titleField];
                 contents = '<h3>' + title + '</h3>';
@@ -5212,6 +5212,7 @@ OpenLayers.ProxyHost = S3.Ap.concat('/gis/proxy?url=');
                     draftLayer.features[0].destroy();
                 }
                 // Enable this if adding Circle tool support to S3LocationSelectorWidget
+                // NB For S3LocationSelector we use a POINT with a radius instead
                 /*var wkt_field = $('#gis_location_wkt');
                 if (wkt_field.length) {
                     // Update form fields in S3LocationSelectorWidget

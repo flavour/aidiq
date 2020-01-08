@@ -2,7 +2,7 @@
 
 """ Sahana Eden Supply Model
 
-    @copyright: 2009-2018 (c) Sahana Software Foundation
+    @copyright: 2009-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -30,6 +30,7 @@
 __all__ = ("S3SupplyModel",
            "S3SupplyDistributionModel",
            "S3SupplyDistributionDVRActivityModel",
+           "S3SupplyPersonModel",
            "supply_item_rheader",
            "supply_item_controller",
            "supply_item_entity_controller",
@@ -51,6 +52,7 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
+from s3compat import xrange
 from s3dal import Row
 from s3layouts import S3PopupLink
 
@@ -480,7 +482,7 @@ $.filterOptionsS3({
         supply_item_represent = supply_ItemRepresent(show_link = True)
 
         # Reusable Field
-        supply_item_tootip = T("Type the name of an existing catalog item OR Click 'Create Item' to add an item which is not in the catalog.")
+        supply_item_tooltip = T("Type the name of an existing catalog item OR Click 'Create Item' to add an item which is not in the catalog.")
         supply_item_id = S3ReusableField("item_id",
             "reference %s" % tablename, # 'item_id' for backwards-compatibility
             label = T("Item"),
@@ -496,7 +498,7 @@ $.filterOptionsS3({
                                   f = "item",
                                   label = ADD_ITEM,
                                   title = T("Item"),
-                                  tooltip = supply_item_tootip,
+                                  tooltip = supply_item_tooltip,
                                   ),
             )
 
@@ -830,7 +832,7 @@ $.filterOptionsS3({
                                                           f = "item",
                                                           label = ADD_ITEM,
                                                           title = T("Item"),
-                                                          tooltip = supply_item_tootip,
+                                                          tooltip = supply_item_tooltip,
                                                           vars = {"child": "alt_item_id"
                                                                   },
                                                           ),
@@ -1744,6 +1746,108 @@ class S3SupplyDistributionDVRActivityModel(S3Model):
         return {}
 
 # =============================================================================
+class S3SupplyPersonModel(S3Model):
+    """
+        Link table between People & Items
+        - e.g. Donations
+    """
+
+    names = ("supply_person_item",
+             "supply_person_item_status",
+             )
+
+    def model(self):
+
+        T = current.T
+        crud_strings = current.response.s3.crud_strings
+        define_table = self.define_table
+
+        # ---------------------------------------------------------------------
+        # Person Item Status
+        #
+        tablename = "supply_person_item_status"
+        define_table(tablename,
+                     Field("name", length=128, notnull=True, unique=True,
+                           label = T("Name"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(128),
+                                       ],
+                           ),
+                     s3_comments(),
+                     *s3_meta_fields())
+
+        crud_strings[tablename] = Storage(
+            label_create = T("Add Status"),
+            title_display = T("Status Details"),
+            title_list = T("Statuses"),
+            title_update = T("Edit Status"),
+            #title_upload = T("Import Statuses"),
+            label_list_button = T("List Statuses"),
+            label_delete_button = T("Remove Status"),
+            msg_record_created = T("Status added"),
+            msg_record_modified = T("Status updated"),
+            msg_record_deleted = T("Status removed"),
+            msg_list_empty = T("No Statuses currently defined")
+        )
+
+        # Reusable Field
+        represent = S3Represent(lookup = tablename)
+        status_id = S3ReusableField("status_id", "reference %s" % tablename,
+                                    label = T("Status"),
+                                    ondelete = "SET NULL",
+                                    represent = represent,
+                                    requires = IS_EMPTY_OR(
+                                                IS_ONE_OF(current.db,
+                                                          "%s.id" % tablename,
+                                                          represent,
+                                                          )),
+                                    )
+
+        # ---------------------------------------------------------------------
+        # Link table between People & Items
+        #
+        tablename = "supply_person_item"
+        define_table(tablename,
+                     self.supply_item_id(comment = None,
+                                         empty = False,
+                                         ondelete = "CASCADE",
+                                         widget = None, # Dropdown not AC
+                                         ),
+                     self.pr_person_id(empty = False,
+                                       ondelete = "CASCADE",
+                                       ),
+                     status_id(empty = False),
+                     # Requested By / Taken By
+                     self.org_organisation_id(ondelete = "SET NULL",
+                                              ),
+                     s3_comments(comment = None),
+                     *s3_meta_fields())
+
+        crud_strings[tablename] = Storage(
+            label_create = T("Add Item"),
+            title_display = T("Item Details"),
+            title_list = T("Items"),
+            title_update = T("Edit Item"),
+            #title_upload = T("Import Items"),
+            label_list_button = T("List Items"),
+            label_delete_button = T("Remove Item"),
+            msg_record_created = T("Item added"),
+            msg_record_modified = T("Item updated"),
+            msg_record_deleted = T("Item removed"),
+            msg_list_empty = T("No Items currently registered for this person")
+        )
+
+        self.configure(tablename,
+                       deduplicate = S3Duplicate(primary = ("item_id",
+                                                            "person_id",
+                                                            ),
+                                                 ),
+                       )
+
+        # Pass names back to global scope (s3.*)
+        return {}
+
+# =============================================================================
 class supply_ItemRepresent(S3Represent):
     """ Representation of Supply Items """
 
@@ -1762,7 +1866,6 @@ class supply_ItemRepresent(S3Represent):
         self.truncate = truncate
 
         # Need a custom lookup to join with Brand
-        self.lookup_rows = self.custom_lookup_rows
         fields = ["supply_item.id",
                   "supply_item.name",
                   "supply_item.model",
@@ -1779,7 +1882,7 @@ class supply_ItemRepresent(S3Represent):
                              multiple=multiple)
 
     # -------------------------------------------------------------------------
-    def custom_lookup_rows(self, key, values, fields=None):
+    def lookup_rows(self, key, values, fields=None):
         """
             Custom lookup method for item rows, does a
             left join with the brand. Parameters
@@ -1923,7 +2026,6 @@ class supply_ItemCategoryRepresent(S3Represent):
         self.use_code = use_code
 
         # Need a custom lookup to join with Parent/Catalog
-        self.lookup_rows = self.custom_lookup_rows
         fields = ["supply_item_category.id",
                   "supply_item_category.name",
                   # Always-included since used as fallback if no name
@@ -1943,7 +2045,7 @@ class supply_ItemCategoryRepresent(S3Represent):
                              multiple = multiple)
 
     # -------------------------------------------------------------------------
-    def custom_lookup_rows(self, key, values, fields=None):
+    def lookup_rows(self, key, values, fields=None):
         """
             Custom lookup method for item category rows, does a
             left join with the parent category. Parameters
@@ -2528,6 +2630,20 @@ def supply_item_controller():
                 # field = r.table.kit
                 # field.default = True
                 # field.readable = field.writable = False
+
+        elif r.get_vars.get("caller") in ("event_asset_item_id", "event_scenario_asset_item_id"):
+            # Category is mandatory
+            f = s3db.supply_item.item_category_id
+            f.requires = f.requires.other
+            # Need to tell Item Category controller that new categories must be 'Can be Assets'
+            ADD_ITEM_CATEGORY = s3.crud_strings["supply_item_category"].label_create
+            f.comment = S3PopupLink(c = "supply",
+                                    f = "item_category",
+                                    vars = {"assets": 1},
+                                    label = ADD_ITEM_CATEGORY,
+                                    title = current.T("Item Category"),
+                                    tooltip = ADD_ITEM_CATEGORY,
+                                    )
 
         elif r.representation == "xls":
             # Use full Category names in XLS output

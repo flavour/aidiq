@@ -2,7 +2,7 @@
 
 """ Sahana Eden Messaging Model
 
-    @copyright: 2009-2018 (c) Sahana Software Foundation
+    @copyright: 2009-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -30,6 +30,8 @@
 __all__ = ("S3ChannelModel",
            "S3MessageModel",
            "S3MessageAttachmentModel",
+           "S3MessageContactModel",
+           "S3MessageTagModel",
            "S3EmailModel",
            "S3FacebookModel",
            "S3MCommonsModel",
@@ -160,14 +162,14 @@ class S3ChannelModel(S3Model):
                      *s3_meta_fields())
 
         # ---------------------------------------------------------------------
-        return dict(msg_channel_id = channel_id,
-                    msg_channel_enable = self.channel_enable,
-                    msg_channel_disable = self.channel_disable,
-                    msg_channel_enable_interactive = self.channel_enable_interactive,
-                    msg_channel_disable_interactive = self.channel_disable_interactive,
-                    msg_channel_onaccept = self.channel_onaccept,
-                    msg_channel_poll = self.channel_poll,
-                    )
+        return {"msg_channel_id": channel_id,
+                "msg_channel_enable": self.channel_enable,
+                "msg_channel_disable": self.channel_disable,
+                "msg_channel_enable_interactive": self.channel_enable_interactive,
+                "msg_channel_disable_interactive": self.channel_disable_interactive,
+                "msg_channel_onaccept": self.channel_onaccept,
+                "msg_channel_poll": self.channel_poll,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -333,7 +335,8 @@ class S3ChannelModel(S3Model):
         """
 
         tablename = r.tablename
-        current.s3task.async("msg_poll", args=[tablename, r.record.channel_id])
+        current.s3task.run_async("msg_poll",
+                                 args = [tablename, r.record.channel_id])
         current.session.confirmation = \
             current.T("The poll request has been submitted, so new messages should appear shortly - refresh to see them")
         if tablename == "msg_email_channel":
@@ -383,7 +386,8 @@ class S3MessageModel(S3Model):
         # Message Super Entity - all Inbound & Outbound Messages
         #
 
-        message_types = Storage(msg_email = T("Email"),
+        message_types = Storage(msg_contact = T("Contact"),
+                                msg_email = T("Email"),
                                 msg_facebook = T("Facebook"),
                                 msg_rss = T("RSS"),
                                 msg_sms = T("SMS"),
@@ -443,6 +447,7 @@ class S3MessageModel(S3Model):
 
         self.add_components(tablename,
                             msg_attachment = "message_id",
+                            msg_tag = "message_id",
                             deploy_response = "message_id",
                             )
 
@@ -516,9 +521,9 @@ class S3MessageModel(S3Model):
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
-        return dict(msg_message_id = message_id,
-                    msg_message_represent = message_represent,
-                    )
+        return {"msg_message_id": message_id,
+                "msg_message_represent": message_represent,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -531,8 +536,8 @@ class S3MessageModel(S3Model):
                                 readable = False,
                                 writable = False)
 
-        return dict(msg_message_id = lambda **attr: dummy("message_id"),
-                    )
+        return {"msg_message_id": lambda **attr: dummy("message_id"),
+                }
 
 # =============================================================================
 class S3MessageAttachmentModel(S3Model):
@@ -555,6 +560,146 @@ class S3MessageAttachmentModel(S3Model):
                           *s3_meta_fields())
 
         # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        return {}
+
+# =============================================================================
+class S3MessageContactModel(S3Model):
+    """
+        Contact Form
+    """
+
+    names = ("msg_contact",
+             )
+
+    def model(self):
+
+        T = current.T
+
+        # ---------------------------------------------------------------------
+        # Contact Messages: InBox
+        #
+        # Should probably use project_task if this kind of functionality is desired:
+        #priority_opts = {1: T("Low"),
+        #                 2: T("Medium"),
+        #                 3: T("High"),
+        #                 }
+
+        #status_opts = {1: T("New"),
+        #               2: T("In-Progress"),
+        #               3: T("Closed"),
+        #               }
+
+        tablename = "msg_contact"
+        self.define_table(tablename,
+                          # Instance
+                          self.super_link("message_id", "msg_message"),
+                          self.msg_channel_id(), # Unused
+                          s3_datetime(default = "now"),
+                          Field("subject", length=78,    # RFC 2822
+                                label = T("Subject"),
+                                requires = IS_LENGTH(78),
+                                ),
+                          Field("name",
+                                label = T("Name"),
+                                ),
+                          Field("body", "text",
+                                label = T("Message"),
+                                ),
+                          Field("phone",
+                                label = T("Phone"),
+                                requires = IS_EMPTY_OR(s3_phone_requires),
+                                ),
+                          Field("from_address",
+                                label = T("Email"),
+                                requires = IS_EMPTY_OR(IS_EMAIL()),
+                                ),
+                          #Field("priority", "integer",
+                          #      default = 1,
+                          #      label = T("Priority"),
+                          #      represent = S3Represent(options = priority_opts),
+                          #      requires = IS_IN_SET(priority_opts,
+                          #                           zero = None),
+                          #      ),
+                          #Field("status", "integer",
+                          #      default = 3,
+                          #      label = T("Status"),
+                          #      represent = S3Represent(options = status_opts),
+                          #      requires = IS_IN_SET(status_opts,
+                          #                           zero = None),
+                          #      ),
+                          Field("inbound", "boolean",
+                                default = True,
+                                label = T("Direction"),
+                                represent = lambda direction: \
+                                            (direction and [T("In")] or [T("Out")])[0],
+                                readable = False,
+                                writable = False,
+                                ),
+                          *s3_meta_fields())
+
+        self.configure(tablename,
+                       orderby = "msg_contact.date desc",
+                       super_entity = "msg_message",
+                       )
+
+        # CRUD strings
+        current.response.s3.crud_strings[tablename] = Storage(
+            label_create=T("Contact Form"),
+            title_display=T("Contact Details"),
+            title_list=T("Contacts"),
+            title_update=T("Edit Contact"),
+            label_list_button=T("List Contacts"),
+            label_delete_button=T("Delete Contact"),
+            msg_record_created=T("Contact added"),
+            msg_record_modified=T("Contact updated"),
+            msg_record_deleted=T("Contact deleted"),
+            msg_list_empty=T("No Contacts currently registered"))
+
+        # ---------------------------------------------------------------------
+        return {}
+
+# =============================================================================
+class S3MessageTagModel(S3Model):
+    """
+        Message Tags
+    """
+
+    names = ("msg_tag",)
+
+    def model(self):
+
+        T = current.T
+
+        # ---------------------------------------------------------------------
+        # Message Tags
+        # - Key-Value extensions
+        # - can be used to provide conversions to external systems, such as:
+        #   * HXL, FTS
+        # - can be a Triple Store for Semantic Web support
+        # - can be used to add custom fields
+        #
+        tablename = "msg_tag"
+        self.define_table(tablename,
+                          # FK not instance
+                          self.msg_message_id(ondelete="CASCADE"),
+                          # key is a reserved word in MySQL
+                          Field("tag",
+                                label = T("Key"),
+                                ),
+                          Field("value",
+                                label = T("Value"),
+                                ),
+                          s3_comments(),
+                          *s3_meta_fields())
+
+        self.configure(tablename,
+                       deduplicate = S3Duplicate(primary = ("message_id",
+                                                            "tag",
+                                                            ),
+                                                 ),
+                       )
+
         # Pass names back to global scope (s3.*)
         return {}
 
@@ -804,16 +949,16 @@ class S3FacebookModel(S3ChannelModel):
                   )
 
         # ---------------------------------------------------------------------
-        return dict(msg_facebook_login = self.msg_facebook_login,
-                    )
+        return {"msg_facebook_login": self.msg_facebook_login,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        return dict(msg_facebook_login = lambda: False,
-                    )
+        return {"msg_facebook_login": lambda: False,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1114,10 +1259,10 @@ class S3ParsingModel(S3Model):
                      *s3_meta_fields())
 
         # ---------------------------------------------------------------------
-        return dict(msg_parser_enabled = self.parser_enabled,
-                    msg_parser_enable = self.parser_enable,
-                    msg_parser_disable = self.parser_disable,
-                    )
+        return {"msg_parser_enabled": self.parser_enabled,
+                "msg_parser_enable": self.parser_enable,
+                "msg_parser_disable": self.parser_disable,
+                }
 
     # -----------------------------------------------------------------------------
     @staticmethod
@@ -1129,7 +1274,9 @@ class S3ParsingModel(S3Model):
         """
 
         record = r.record
-        current.s3task.async("msg_parse", args=[record.channel_id, record.function_name])
+        current.s3task.run_async("msg_parse",
+                                 args = [record.channel_id,
+                                         record.function_name])
         current.session.confirmation = \
             current.T("The parse request has been submitted")
         redirect(URL(f="parser"))
@@ -2245,7 +2392,7 @@ class S3TwitterSearchModel(S3ChannelModel):
 
         id = r.id
         tablename = r.tablename
-        current.s3task.async("msg_twitter_search", args=[id])
+        current.s3task.run_async("msg_twitter_search", args=[id])
         current.session.confirmation = \
             current.T("The search request has been submitted, so new messages should appear shortly - refresh to see them")
         # Filter results to this Search
@@ -2262,7 +2409,7 @@ class S3TwitterSearchModel(S3ChannelModel):
         """
 
         tablename = r.tablename
-        current.s3task.async("msg_process_keygraph", args=[r.id])
+        current.s3task.run_async("msg_process_keygraph", args=[r.id])
         current.session.confirmation = \
             current.T("The search results are now being processed with KeyGraph")
         # @ToDo: Link to KeyGraph results
@@ -2344,7 +2491,7 @@ S3.timeline.now="''', now.isoformat(), '''"
             # Create the DIV
             item = DIV(_id="s3timeline", _class="s3-timeline")
 
-            output = dict(item=item)
+            output = {"item": item}
 
             # Maintain RHeader for consistency
             if attr.get("rheader"):

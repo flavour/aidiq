@@ -10,7 +10,7 @@
  *
  * Server-side script in modules/s3/s3data.py.
  *
- * @copyright 2018 (c) Sahana Software Foundation
+ * @copyright 2018-2019 (c) Sahana Software Foundation
  * @license MIT
  *
  * requires jQuery 1.9.1+
@@ -455,6 +455,19 @@
                     'sTitle': '<div class="bulk-select-options"><input class="bulk-select-all" type="checkbox">' + i18n.selectAll + '</input></div>',
                     'bSortable': false
                 };
+            }
+            if (tableConfig.colWidths) {
+                var col,
+                    _colWidths = tableConfig.colWidths;
+                for (col in _colWidths) {
+                    if (columnConfig[col] != null) {
+                        columnConfig[col].sWidth = _colWidths[col];
+                    } else {
+                        columnConfig[col] = {
+                            'sWidth': _colWidths[col]
+                        };
+                    }
+                }
             }
             this.columnConfigs = columnConfig;
 
@@ -993,8 +1006,8 @@
 
             // Construct button label and on-hover title
             var label = action.label;
-            if (!this.tableConfig.rowActionsJSON) {
-                label = S3.Utf8.decode(action.label);
+            if (!this.tableConfig.rowActionsJSON && this.tableConfig.utf8) {
+               label = S3.Utf8.decode(action.label);
             }
             var title = action._title || label;
 
@@ -1246,16 +1259,23 @@
                 } else {
                     deselected.remove();
                 }
+                var bulkSingle = tableConfig.bulkSingle;
                 if (index == -1) {
                     // Row is not currently selected
                     $(row).removeClass('row_selected');
                     $('.bulkcheckbox', row).prop('checked', false);
                 } else {
                     // Row is currently selected
+                    if (bulkSingle) {
+                        // Deselect all other rows
+                        $(row).closest('table').find('tr').removeClass('row_selected')
+                                               .find('.bulkcheckbox').prop('checked', false);
+                    }
                     $(row).addClass('row_selected');
                     $('.bulkcheckbox', row).prop('checked', true);
+
                 }
-                if (numSelected == totalRecords) {
+                if (!bulkSingle && (numSelected == totalRecords)) {
                     // All rows have been selected => switch to exclusive mode
                     selectAll.prop('checked', true);
                     this.selectionMode = 'Exclusive';
@@ -1330,7 +1350,11 @@
 
                 var posn = inList(id, rows);
                 if (posn == -1) {
-                    rows.push(id);
+                    if (self.tableConfig.bulkSingle){
+                        self.selectedRows = [id];
+                    } else {
+                        rows.push(id);
+                    }
                     posn = 0; // toggle selection class
                 } else {
                     rows.splice(posn, 1);
@@ -1761,6 +1785,45 @@
             };
         },
 
+        /**
+         * Update export URLs with initial filters:
+         * - Export URLs are initially unfiltered until the filter
+         *   form updates them for the first time; however, there
+         *   may be filter defaults which also must be respected
+         *   by exports => copy initial filters from the Ajax URL
+         */
+        _initExportFormats: function() {
+
+            var tableConfig = this._parseConfig();
+            if (tableConfig === undefined) {
+                // No table config found => abort
+                return;
+            }
+
+            var ajaxURL = tableConfig.ajaxUrl;
+            if (ajaxURL && S3.search !== undefined) {
+                var link = document.createElement('a');
+                link.href = ajaxURL;
+                if (link.search) {
+                    var items = link.search.slice(1).split('&'),
+                        queries = items.map(function(item) {
+                            return item.split('=');
+                        }).filter(function(item) {
+                            return item[0].indexOf('.') != -1;
+                        });
+                    $(this.element).closest('.dt-wrapper')
+                                   .find('.dt-export')
+                                   .each(function() {
+                        var $this = $(this);
+                        var url = $this.data('url');
+                        if (url) {
+                            $this.data('url', S3.search.filterURL(url, queries));
+                        }
+                    });
+                }
+            }
+        },
+
         // --------------------------------------------------------------------
         // EVENT HANDLING
 
@@ -1780,6 +1843,7 @@
             });
 
             // Export formats
+            this._initExportFormats();
             el.closest('.dt-wrapper').find('.dt-export')
                                      .on('click' + ns, this._exportFormat());
 
@@ -1802,11 +1866,16 @@
             // Bulk selection
             if (this.tableConfig.bulkActions) {
 
+                if (this.tableConfig.bulkSingle) {
+                    // Hide Select All if only 1 can be selected
+                    $('.bulk-select-options', el).hide();
+                } else {
+                    // Bulk action select-all handler
+                    el.on('click' + ns, '.bulk-select-all', this._bulkSelectAll());
+                }
+
                 // Bulk action checkbox handler
                 el.on('click' + ns, '.bulkcheckbox', this._bulkSelectRow());
-
-                // Bulk action select-all handler
-                el.on('click' + ns, '.bulk-select-all', this._bulkSelectAll());
             }
 
             return true;

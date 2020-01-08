@@ -2,7 +2,7 @@
 
 """ Sahana Eden Fire Models
 
-    @copyright: 2009-2018 (c) Sahana Software Foundation
+    @copyright: 2009-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -220,7 +220,7 @@ class S3FireStationModel(S3Model):
                            ),
                      Field("website",
                            label = T("Website"),
-                           represent = lambda url: s3_url_represent(url),
+                           represent = s3_url_represent,
                            requires = IS_EMPTY_OR(IS_URL()),
                            ),
                      #Field("fax",
@@ -547,7 +547,7 @@ class S3FireStationModel(S3Model):
         try:
             return "%s - %s" % (row.start_time, row.end_time)
         except:
-            current.messages.UNKNOWN_OPT
+            return current.messages.UNKNOWN_OPT
 
     # -------------------------------------------------------------------------
     @staticmethod

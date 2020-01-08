@@ -2,7 +2,7 @@
 
 """ Sahana Eden Situation Model
 
-    @copyright: 2009-2018 (c) Sahana Software Foundation
+    @copyright: 2009-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -27,11 +27,13 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ("S3SituationModel",)
+__all__ = ("S3SituationModel",
+           )
 
 from gluon import *
 from gluon.storage import Storage
 from ..s3 import *
+#from s3layouts import S3PopupLink
 
 # =============================================================================
 class S3SituationModel(S3Model):
@@ -57,7 +59,8 @@ class S3SituationModel(S3Model):
         # ---------------------------------------------------------------------
         # Situation Super-Entity
         #
-        situation_types = Storage(irs_incident = T("Incident"),
+        situation_types = Storage(# @ToDo: Deprecate
+                                  #irs_incident = T("Incident"),
                                   rms_req = T("Request"),
                                   pr_presence = T("Presence"),
                                   )
@@ -145,8 +148,8 @@ class S3SituationModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict(sit_location = self.sit_location,
-                    )
+        return {"sit_location": self.sit_location,
+                }
 
     # ---------------------------------------------------------------------
     @staticmethod

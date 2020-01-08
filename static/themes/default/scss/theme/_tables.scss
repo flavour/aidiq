@@ -120,7 +120,7 @@ table.dataTable {
     }
     select {
         height: auto;
-        padding: 2px;
+        padding: 0.2rem 1.1rem 0.2rem 0!important;
         font-size: 0.75rem;
     }
 }
@@ -140,10 +140,15 @@ table.dataTable {
     float: right;
     .list_formats {
         padding-top: 0;
-        margin-left: 5px;
+        margin: 0 0.2rem;
     }
     .dt-export {
-        margin: 0 0.085rem;
+        margin: 0 0.1rem;
+        &.fa {
+            font-size: 14px;
+            padding: 0;
+            padding-top: 2px;
+        }
     }
 }
 body.rtl {
@@ -160,6 +165,12 @@ body.rtl {
 }
 .empty {
     @include empty_section();
+}
+
+// TODO: move into separate file
+.fc table,
+.fc table tr {
+    background: transparent;
 }
 
 // END ========================================================================

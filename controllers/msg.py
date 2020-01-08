@@ -48,8 +48,8 @@ def message():
         title_display = T("Message Details"),
         title_list = T("Message Log"),
         label_list_button = T("View Message Log"),
-        msg_list_empty = T("No Messages currently in the Message Log")
-    )
+        msg_list_empty = T("No Messages currently in the Message Log"),
+        )
 
     def postp(r, output):
         if r.interactive:
@@ -57,9 +57,10 @@ def message():
             s3_action_buttons(r)
             # Custom Action Buttons
             s3.actions += [{"label": s3_str(T("Mark Sender")),
+                            "url": URL(f = "mark_sender",
+                                       args = ["[id]"],
+                                       ),
                             "_class": "action-btn",
-                            "url": URL(f="mark_sender",
-                                       args="[id]"),
                             },
                            ]
 
@@ -71,6 +72,20 @@ def message():
                    editable = False,
                    insertable = False,
                    )
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def contact():
+    """
+        RESTful CRUD controller for the Contact Form
+    """
+
+    def prep(r):
+        if not auth.s3_has_role("ADMIN"):
+            r.method = "create"
+        return True
+    s3.prep = prep
 
     return s3_rest_controller()
 
@@ -473,7 +488,7 @@ def rss():
        RESTful CRUD controller for RSS feed posts
     """
 
-    if not auth.s3_has_role(ADMIN):
+    if not auth.s3_has_role("ADMIN"):
         auth.permission.fail()
 
     tablename = "msg_rss"
@@ -675,16 +690,16 @@ def sms_outbound_gateway():
 
     # CRUD Strings
     s3.crud_strings["msg_sms_outbound_gateway"] = Storage(
-        label_create=T("Create SMS Outbound Gateway"),
-        title_display=T("SMS Outbound Gateway Details"),
-        title_list=T("SMS Outbound Gateways"),
-        title_update=T("Edit SMS Outbound Gateway"),
-        label_list_button=T("List SMS Outbound Gateways"),
-        label_delete_button=T("Delete SMS Outbound Gateway"),
-        msg_record_created=T("SMS Outbound Gateway added"),
-        msg_record_modified=T("SMS Outbound Gateway updated"),
-        msg_record_deleted=T("SMS Outbound Gateway deleted"),
-        msg_list_empty=T("No SMS Outbound Gateways currently registered"))
+        label_create = T("Create SMS Outbound Gateway"),
+        title_display = T("SMS Outbound Gateway Details"),
+        title_list = T("SMS Outbound Gateways"),
+        title_update = T("Edit SMS Outbound Gateway"),
+        label_list_button = T("List SMS Outbound Gateways"),
+        label_delete_button = T("Delete SMS Outbound Gateway"),
+        msg_record_created = T("SMS Outbound Gateway added"),
+        msg_record_modified = T("SMS Outbound Gateway updated"),
+        msg_record_deleted = T("SMS Outbound Gateway deleted"),
+        msg_list_empty = T("No SMS Outbound Gateways currently registered"))
 
     return s3_rest_controller()
 
@@ -704,7 +719,7 @@ def email_channel():
             - appears in the administration menu
     """
 
-    if not auth.s3_has_role(ADMIN):
+    if not auth.s3_has_role("ADMIN"):
         auth.permission.fail()
 
     tablename = "msg_email_channel"
@@ -750,7 +765,6 @@ def email_channel():
             restrict_e = [str(row.id) for row in rows if not row.enabled]
             restrict_d = [str(row.id) for row in rows if row.enabled]
 
-            from s3 import s3_str
             s3.actions += [{"label": s3_str(T("Enable")),
                             "_class": "action-btn",
                             "url": URL(args=["[id]", "enable"]),
@@ -782,7 +796,7 @@ def facebook_channel():
             - appears in the administration menu
     """
 
-    if not auth.s3_has_role(ADMIN):
+    if not auth.s3_has_role("ADMIN"):
         auth.permission.fail()
 
     tablename = "msg_facebook_channel"
@@ -814,7 +828,6 @@ def facebook_channel():
             restrict_e = [str(row.id) for row in rows if not row.enabled]
             restrict_d = [str(row.id) for row in rows if row.enabled]
 
-            from s3 import s3_str
             s3.actions += [{"label": s3_str(T("Enable")),
                             "_class": "action-btn",
                             "url": URL(args=["[id]", "enable"]),
@@ -846,7 +859,7 @@ def mcommons_channel():
             - appears in the administration menu
     """
 
-    if not auth.s3_has_role(ADMIN):
+    if not auth.s3_has_role("ADMIN"):
         auth.permission.fail()
 
     tablename = "msg_mcommons_channel"
@@ -895,7 +908,6 @@ def mcommons_channel():
             restrict_e = [str(row.id) for row in rows if not row.enabled]
             restrict_d = [str(row.id) for row in rows if row.enabled]
 
-            from s3 import s3_str
             s3.actions += [{"label": s3_str(T("Enable")),
                             "_class": "action-btn",
                             "url": URL(args=["[id]", "enable"]),
@@ -927,7 +939,7 @@ def gcm_channel():
             - appears in the administration menu
     """
 
-    if not auth.s3_has_role(ADMIN):
+    if not auth.s3_has_role("ADMIN"):
         auth.permission.fail()
 
     tablename = "msg_gcm_channel"
@@ -966,7 +978,6 @@ def gcm_channel():
             restrict_e = [str(row.id) for row in rows if not row.enabled]
             restrict_d = [str(row.id) for row in rows if row.enabled]
 
-            from s3 import s3_str
             s3.actions += [{"label": s3_str(T("Enable")),
                             "_class": "action-btn",
                             "url": URL(args=["[id]", "enable"]),
@@ -998,7 +1009,7 @@ def rss_channel():
        - appears in the administration menu
     """
 
-    if not auth.s3_has_role(ADMIN):
+    if not auth.s3_has_role("ADMIN"):
         auth.permission.fail()
 
     tablename = "msg_rss_channel"
@@ -1049,7 +1060,6 @@ def rss_channel():
             restrict_e = [str(row.id) for row in rows if not row.enabled]
             restrict_d = [str(row.id) for row in rows if row.enabled]
 
-            from s3 import s3_str
             s3.actions += [{"label": s3_str(T("Subscribe")),
                             "_class": "action-btn",
                             "url": URL(args=["[id]", "enable"]),
@@ -1081,7 +1091,7 @@ def twilio_channel():
             - appears in the administration menu
     """
 
-    if not auth.s3_has_role(ADMIN):
+    if not auth.s3_has_role("ADMIN"):
         auth.permission.fail()
 
     tablename = "msg_twilio_channel"
@@ -1125,7 +1135,6 @@ def twilio_channel():
             restrict_e = [str(row.id) for row in rows if not row.enabled]
             restrict_d = [str(row.id) for row in rows if row.enabled]
 
-            from s3 import s3_str
             s3.actions += [{"label": s3_str(T("Enable")),
                             "_class": "action-btn",
                             "url": URL(args=["[id]", "enable"]),
@@ -1401,7 +1410,6 @@ def twitter_channel():
             restrict_e = [str(row.id) for row in rows if not row.enabled]
             restrict_d = [str(row.id) for row in rows if row.enabled]
 
-            from s3 import s3_str
             s3.actions += [{"label": s3_str(T("Enable")),
                             "_class": "action-btn",
                             "url": URL(args=["[id]", "enable"]),
@@ -1473,7 +1481,7 @@ def action_after_save(form):
     """
 
     if request.post_vars.get("search_after_save"):
-        s3task.async("msg_twitter_search", args=[form.vars.id])
+        s3task.run_async("msg_twitter_search", args=[form.vars.id])
         session.information = T("The search results should appear shortly - refresh to see them")
 
 # -----------------------------------------------------------------------------
@@ -1491,10 +1499,7 @@ def twitter_search():
     table.is_processed.readable = False
     table.is_searched.readable = False
 
-    langs = settings.get_L10n_languages().keys()
-
     # Tweak languages to those supported by Twitter
-
     S3Msg = s3base.S3Msg()
     try:
         import tweepy
@@ -1509,7 +1514,7 @@ def twitter_search():
         twitter_api = twitter_settings[0]
 
         try:
-            supported_languages = map(lambda x: str(x["code"]), twitter_api.supported_languages())
+            supported_languages = [str(x["code"]) for x in twitter_api.supported_languages()]
         except (tweepy.TweepError, AttributeError):
             # List according to Twitter 1.1 API https://dev.twitter.com/docs/api/1.1/get/help/languages
             pass
@@ -1520,6 +1525,7 @@ def twitter_search():
     new_langs = []
     lang_default = current.response.s3.language
 
+    langs = set(settings.get_L10n_languages().keys())
     for l in langs:
         if l in supported_languages:
             new_langs.append(l)
@@ -1599,7 +1605,6 @@ def twitter_search():
             restrict_k = [str(record.id) for record in records]
 
             # @ToDo: Make these S3Methods rather than additional controllers
-            from s3 import s3_str
             s3.actions += [{"label": s3_str(T("Search")),
                             "_class": "action-btn",
                             "url": URL(args=["[id]", "poll"]),
@@ -1761,7 +1766,7 @@ def parser():
             - appears in the administration menu
     """
 
-    if not auth.s3_has_role(ADMIN):
+    if not auth.s3_has_role("ADMIN"):
         auth.permission.fail()
 
     def prep(r):
@@ -1823,7 +1828,6 @@ def parser():
             restrict_e = [str(row.id) for row in rows if not row.enabled]
             restrict_d = [str(row.id) for row in rows if row.enabled]
 
-            from s3 import s3_str
             s3.actions += [{"label": s3_str(T("Enable")),
                             "_class": "action-btn",
                             "url": URL(args=["[id]", "enable"]),
@@ -1894,11 +1898,14 @@ def group_membership():
     return s3_rest_controller("pr", resourcename)
 
 # -----------------------------------------------------------------------------
-def contact():
-    """ Allow the user to add, update and delete their contacts """
+def contacts():
+    """
+        Allow the user to add, update and delete their contacts
+        - seems to be unused (was called 'contact' & was broken)
+    """
 
-    table = s3db.pr.contact
-    ptable = s3db.pr_person
+    table = s3db.pr_contact
+    #ptable = s3db.pr_person
 
     if auth.is_logged_in() or auth.basic():
         s3.filter = (table.pe_id == auth.user.pe_id)
@@ -1935,7 +1942,8 @@ def contact():
     s3.prep = prep
 
     response.menu_options = []
-    return s3_rest_controller("pr", resourcename)
+
+    return s3_rest_controller("pr", "contact")
 
 # -----------------------------------------------------------------------------
 def search():
@@ -2238,14 +2246,6 @@ def twitter_post():
 def tag():
     """ RESTful CRUD controller """
 
-    tablename = "%s_%s" % (module, resourcename)
-    table = s3db[tablename]
-
-    # Load all models
-    s3db.load_all_models()
-    table.resource.requires = IS_IN_SET(db.tables)
-
-    s3db.configure(tablename, listadd=False)
     return s3_rest_controller()
 
 # =============================================================================
@@ -2259,16 +2259,16 @@ def readKeyGraph(queryID):
 
     f = open("%s.txt" % queryID, "r")
 
-    topics = int(f.next())
+    topics = int(next(f))
 
     nodelabel = {}
     E = []
     nodetopic = {}
     for x in range(0, topics):
         thisnodes = []
-        nodes = int(f.next().split("KEYGRAPH_NODES:")[1])
+        nodes = int(next(f).split("KEYGRAPH_NODES:")[1])
         for y in range(0, nodes):
-            s = f.next()
+            s = next(f)
             nodeid = s.split(":")[0]
             nodetopic[str(nodeid)] = x
             l1 = s.split(":")[1]
@@ -2277,17 +2277,17 @@ def readKeyGraph(queryID):
                 nodelabel[str(nodeid)] = unicode(l2.strip())
             except:
                 pass
-        edges = int(f.next().split("KEYGRAPH_EDGES:")[1])
+        edges = int(next(f).split("KEYGRAPH_EDGES:")[1])
         edges = edges / 2
         for y in range(0,edges):
-            s = f.next()
+            s = next(f)
             n1 = s.split(" ")[0].strip()
             n2 = s.split(" ")[1].strip()
             if (n1 in nodelabel.keys()) and (n2 in nodelabel.keys()):
                 E.append((str(n1), str(n2)))
 
-        f.next()
-        f.next()
+        next(f)
+        next(f)
 
     """
     for x in range(0,len(E)):
@@ -2302,9 +2302,9 @@ def readKeyGraph(queryID):
     g.add_vertices([ str(s) for s in nodelabel.keys()])
     #g.add_nodes_from(nodelabel)
     g.add_edges(E)
-    g.vs["name"] = nodelabel.values()
+    g.vs["name"] = list(nodelabel.values())
     g.vs["label"] = g.vs["name"]
-    g.vs["doc_id"] = nodelabel.keys()
+    g.vs["doc_id"] = list(nodelabel.keys())
     layout = g.layout_lgl()
     #layout = g.layout_kamada_kawai()
     visual_style = {}

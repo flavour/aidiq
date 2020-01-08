@@ -80,6 +80,26 @@ class IDCardLayout(S3PDFCardLayout):
         path = field.uploadfolder if field.uploadfolder else defaultpath
         logos = {row.id: os.path.join(path, row.logo) for row in rows if row.logo}
 
+        # Get localized root organisation names
+        ctable = s3db.doc_card_config
+        represent = ctable.organisation_id.represent
+        if represent.bulk:
+            root_org_names = represent.bulk(list(root_orgs), show_link=False)
+        else:
+            root_org_names = None
+
+        # Look up VOLID card configs for all root orgs
+        query = (ctable.card_type == "VOLID") & \
+                (ctable.organisation_id.belongs(root_orgs)) & \
+                (ctable.deleted == False)
+        configs = db(query).select(ctable.organisation_id,
+                                   ctable.authority_statement,
+                                   ctable.org_statement,
+                                   ctable.signature,
+                                   ctable.signature_text,
+                                   ctable.validity_period,
+                                   ).as_dict(key="organisation_id")
+
         # Get all PE IDs
         pe_ids = set(item["_row"]["pr_person.pe_id"] for item in items)
 
@@ -96,6 +116,8 @@ class IDCardLayout(S3PDFCardLayout):
 
         return {"logos": logos,
                 "pictures": pictures,
+                "configs": configs,
+                "root_org_names": root_org_names,
                 }
 
     # -------------------------------------------------------------------------
@@ -130,19 +152,32 @@ class IDCardLayout(S3PDFCardLayout):
         item = self.item
         raw = item["_row"]
 
+        root_org = raw["org_organisation.root_organisation"]
+
         # Get the org logo
         logos = common.get("logos")
         if logos:
-            root_org = raw["org_organisation.root_organisation"]
             logo = logos.get(root_org)
         else:
             logo = None
 
-        if not self.backside:
+        # Get the root org's card configuration
+        configs = common.get("configs")
+        if configs:
+            config = configs.get(root_org)
+        else:
+            config = None
 
-            draw_field = self.draw_field
-            draw_value = self.draw_value
-            draw_label = self.draw_label
+        # Get the localized root org name
+        org_names = common.get("root_org_names")
+        if org_names:
+            root_org_name = org_names.get(root_org)
+
+        draw_field = self.draw_field
+        draw_value = self.draw_value
+        draw_label = self.draw_label
+
+        if not self.backside:
 
             # Horizontal alignments
             LEFT = w / 4 - 5
@@ -156,14 +191,31 @@ class IDCardLayout(S3PDFCardLayout):
 
             # Org Logo
             if logo:
-                self.draw_image(logo, LEFT, TOP, width=60, height=60, valign="middle", halign="center")
+                self.draw_image(logo, LEFT, TOP,
+                                width = 55,
+                                height = 55,
+                                valign = "middle",
+                                halign = "center",
+                                )
+            elif root_org_name:
+                draw_value(LEFT, TOP, root_org_name,
+                           width = 55,
+                           height = 55,
+                           size = 10,
+                           valign = "middle",
+                           )
 
             # Get the profile picture
             pictures = common.get("pictures")
             if pictures:
                 picture = pictures.get(raw["pr_person.pe_id"])
                 if picture:
-                    self.draw_image(picture, RIGHT, TOP, width=60, height=60, valign="middle", halign="center")
+                    self.draw_image(picture, RIGHT, TOP,
+                                    width = 60,
+                                    height = 55,
+                                    valign = "middle",
+                                    halign = "center",
+                                    )
 
             # Center fields in reverse order so that vertical positions
             # can be adjusted for very long and hence wrapping strings
@@ -204,11 +256,11 @@ class IDCardLayout(S3PDFCardLayout):
             draw_label(RIGHT, LOWER[1], None, T("Allergic"))
 
             # Issuing/Expirey Dates
-            # TODO adjust interval per org (org_idcard)
+            vp = config.get("validity_period", 24) if config else 24
             today = current.request.now.date()
             format_date = current.calendar.format_date
             issued_on = format_date(today)
-            expires_on = format_date(today + relativedelta(months=24))
+            expires_on = format_date(today + relativedelta(months=vp))
 
             c.setFont(BOLD, 7)
             c.drawCentredString(LEFT, LOWER[2], issued_on)
@@ -220,7 +272,11 @@ class IDCardLayout(S3PDFCardLayout):
             # Barcode
             code = raw["hrm_human_resource.code"]
             if code:
-                self.draw_barcode(s3_str(code), CENTER, BOTTOM, height=12, halign="center")
+                self.draw_barcode(s3_str(code), CENTER, BOTTOM,
+                                  height = 12,
+                                  halign = "center",
+                                  maxwidth = w - 15,
+                                  )
 
             # Graphics
             c.setFillColor(orange)
@@ -237,18 +293,66 @@ class IDCardLayout(S3PDFCardLayout):
 
             # Vertical alignments
             TOP = 200
+            MIDDLE = 85
             BOTTOM = 16
 
-            # TODO Mission statement
+            if config:
+                # Organisation Statement
+                org_statement = config.get("org_statement")
+                if org_statement:
+                    aH = draw_value(CENTER,
+                                    MIDDLE,
+                                    org_statement,
+                                    height = 40,
+                                    size = 6,
+                                    )
 
-            # TODO IFRC membership statement
+                # Authority Statement
+                authority_statement = config.get("authority_statement")
+                if authority_statement:
+                    draw_value(CENTER,
+                               MIDDLE + aH + 10,
+                               authority_statement,
+                               height = 40,
+                               size = 7,
+                               bold = False,
+                               )
 
-            # TODO Signature and caption
+                # Signature
+                signature = config.get("signature")
+                if signature:
+                    field = current.s3db.doc_card_config.signature
+                    path = field.uploadfolder
+                    if not path:
+                        path = os.path.join(current.request.folder, 'uploads')
+                    self.draw_image(os.path.join(path, signature),
+                                    CENTER,
+                                    MIDDLE - 25,
+                                    height = 40,
+                                    width = 60,
+                                    valign = "middle",
+                                    halign = "center",
+                                    )
+
+                # Signature Text
+                signature_text = config.get("signature_text")
+                if signature_text:
+                    draw_value(CENTER,
+                               MIDDLE - (50 if signature else 25),
+                               signature_text,
+                               height = 20,
+                               size = 5,
+                               bold = False,
+                               )
 
             # Barcode
             code = raw["hrm_human_resource.code"]
             if code:
-                self.draw_barcode(s3_str(code), CENTER, BOTTOM, height=12, halign="center")
+                self.draw_barcode(s3_str(code), CENTER, BOTTOM,
+                                  height = 12,
+                                  halign = "center",
+                                  maxwidth = w - 15
+                                  )
 
             # Graphics
             if logo:
@@ -279,7 +383,7 @@ class IDCardLayout(S3PDFCardLayout):
             c.drawCentredString(x, y, s3_str(value))
 
     # -------------------------------------------------------------------------
-    def draw_value(self, x, y, value, width=120, height=40, size=7, bold=True):
+    def draw_value(self, x, y, value, width=120, height=40, size=7, bold=True, valign=None):
         """
             Helper function to draw a centered text above position (x, y);
             allows the text to wrap if it would otherwise exceed the given
@@ -292,27 +396,41 @@ class IDCardLayout(S3PDFCardLayout):
             @param height: the maximum available height (points)
             @param size: the font size (points)
             @param bold: use bold font
+            @param valign: vertical alignment ("top"|"middle"|"bottom"),
+                           default "bottom"
 
             @returns: the actual height of the text element drawn
         """
+
+        # Preserve line breaks by replacing them with <br/> tags
+        value = s3_str(value).strip("\n").replace('\n','<br />\n')
 
         styleSheet = getSampleStyleSheet()
         style = styleSheet["Normal"]
         style.fontName = BOLD if bold else NORMAL
         style.fontSize = size
-        style.leading = size
+        style.leading = size + 2
+        style.splitLongWords = False
         style.alignment = TA_CENTER
 
         para = Paragraph(value, style)
-        aH = para.wrap(width, height)[1]
+        aW, aH = para.wrap(width, height)
 
-        while(aH > height and style.fontSize > 4):
+        while((aH > height or aW > width) and style.fontSize > 4):
             # Reduce font size to make fit
             style.fontSize -= 1
-            style.leading = style.fontSize
-            aH = para.wrap(width, height)[1]
+            style.leading = style.fontSize + 2
+            para = Paragraph(value, style)
+            aW, aH = para.wrap(width, height)
 
-        para.drawOn(self.canv, x - para.width / 2, y)
+        if valign == "top":
+            vshift = aH
+        elif valign == "middle":
+            vshift = aH / 2.0
+        else:
+            vshift = 0
+
+        para.drawOn(self.canv, x - para.width / 2, y - vshift)
         return aH
 
     # -------------------------------------------------------------------------
@@ -334,6 +452,6 @@ class IDCardLayout(S3PDFCardLayout):
 
         c = self.canv
         c.setFont(NORMAL, 5)
-        c.drawCentredString(x, y - 7, s3_str(label))
+        c.drawCentredString(x, y - 6, s3_str(label))
 
 # END =========================================================================

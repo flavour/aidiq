@@ -2,7 +2,7 @@
 
 """ Sahana Eden Stats Model
 
-    @copyright: 2012-2018 (c) Sahana Software Foundation
+    @copyright: 2012-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -47,6 +47,7 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
+from s3compat import basestring, xrange
 from s3layouts import S3PopupLink
 
 # =============================================================================
@@ -612,10 +613,10 @@ class S3StatsDemographicModel(S3Model):
                                    )
 
         # Fire off a rebuild task
-        current.s3task.async("stats_demographic_update_aggregates",
-                             vars = {"records": records.json()},
-                             timeout = 21600 # 6 hours
-                             )
+        current.s3task.run_async("stats_demographic_update_aggregates",
+                                 vars = {"records": records.json()},
+                                 timeout = 21600 # 6 hours
+                                 )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1030,7 +1031,7 @@ class S3StatsDemographicModel(S3Model):
 
         # Now that the time aggregate types have been set up correctly,
         # fire off requests for the location aggregates to be calculated
-        run_async = current.s3task.async
+        run_async = current.s3task.run_async
         for (param_id, loc_dict) in parents_data.items():
             total_id = param_total_dict[param_id]
             for (loc_id, (changed_periods, loc_level)) in loc_dict.items():
@@ -1695,7 +1696,7 @@ class stats_SourceRepresent(S3Represent):
         show_link = show_link and self.show_link
         if show_link and not rows:
             # Retrieve the rows
-            rows = self.custom_lookup_rows(None, values)
+            rows = self.lookup_rows(None, values)
 
         self._setup()
 
@@ -1711,8 +1712,7 @@ class stats_SourceRepresent(S3Represent):
             if show_link:
                 link = self.link
                 rows = self.rows
-                labels = dict((k, link(k, v, rows.get(k)))
-                               for k, v in labels.items())
+                labels = {k: link(k, v, rows.get(k)) for k, v in labels.items()}
             for v in values:
                 if v not in labels:
                     labels[v] = self.default

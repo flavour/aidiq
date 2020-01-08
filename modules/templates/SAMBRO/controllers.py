@@ -48,27 +48,32 @@ class index(S3CustomController):
         try:
             layer_id = layer.layer_id
         except:
-            current.log.error("Cannot find Layer for Map")
+            error = "Cannot find CAP Alerts Layer for Map"
+            current.log.error(error)
             layer_id = None
+            output["_map"] = DIV(T(error),
+                                 error,
+                                 _class="mapError"
+                                 )
+        else:
+            feature_resources = [{"name"      : T("Alerts"),
+                                  "id"        : "search_results",
+                                  "layer_id"  : layer_id,
+                                  # @ToDo: Make the filter update timestamp on refresh in the client side
+                                  "filter"    : "~.info.expires__gt=%s&~.external__ne=True" % request.utcnow,
+                                  # We activate in callback after ensuring URL is updated for current filter status
+                                  "active"    : False,
+                                  }]
 
-        feature_resources = [{"name"      : T("Alerts"),
-                              "id"        : "search_results",
-                              "layer_id"  : layer_id,
-                              # @ToDo: Make the filter update timestamp on refresh in the client side
-                              "filter"    : "~.info.expires__gt=%s&~.external__ne=True" % request.utcnow,
-                              # We activate in callback after ensuring URL is updated for current filter status
-                              "active"    : False,
-                              }]
-
-        _map = current.gis.show_map(callback='''S3.search.s3map()''',
-                                    catalogue_layers=True,
-                                    collapsed=True,
-                                    feature_resources=feature_resources,
-                                    save=False,
-                                    search=True,
-                                    toolbar=True,
-                                    )
-        output["_map"] = _map
+            _map = current.gis.show_map(callback='''S3.search.s3map()''',
+                                        catalogue_layers=True,
+                                        collapsed=True,
+                                        feature_resources=feature_resources,
+                                        save=False,
+                                        search=True,
+                                        toolbar=True,
+                                        )
+            output["_map"] = _map
 
         # Filterable List of Alerts
         # - most recent first
@@ -1568,7 +1573,7 @@ class user_info(S3CustomController):
             response = {"r": roles,
                         "uid": user.id,
                         "pid": auth.s3_logged_in_person(),
-                        "o": current.deployment_settings.get_cap_expire_offset(),
+                        "o": current.deployment_settings.get_cap_info_effective_period(),
                         }
             current.response.headers["Content-Type"] = "application/json"
             return json.dumps(response)

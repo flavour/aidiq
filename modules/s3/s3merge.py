@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2012-2018 (c) Sahana Software Foundation
+    @copyright: 2012-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -35,10 +35,10 @@ from gluon import current, IS_NOT_IN_DB, \
 from gluon.storage import Storage
 
 from s3dal import Field
-from s3data import S3DataTable
-from s3query import FS
-from s3rest import S3Method
-from s3utils import s3_get_foreign_key, s3_represent_value, s3_str
+from .s3data import S3DataTable
+from .s3query import FS
+from .s3rest import S3Method
+from .s3utils import s3_get_foreign_key, s3_represent_value, s3_str
 
 # =============================================================================
 class S3Merge(S3Method):
@@ -61,7 +61,7 @@ class S3Merge(S3Method):
             @return: output object to send to the view
         """
 
-        output = dict()
+        output = {}
 
         auth = current.auth
         system_roles = auth.get_system_roles()
@@ -395,7 +395,7 @@ class S3Merge(S3Method):
         session = current.session
         response = current.response
 
-        output = dict()
+        output = {}
         tablename = self.tablename
 
         # Get the duplicate bookmarks
@@ -444,7 +444,7 @@ class S3Merge(S3Method):
         init_requires = self.init_requires
         index = 1
         num_fields = len(formfields)
-        
+
         for f in formfields:
 
             # Render the widgets
@@ -490,7 +490,7 @@ class S3Merge(S3Method):
             trs.append(TR(TD(owidget, _class="mwidget"),
                           TD(swap),
                           TD(dwidget, _class="mwidget")))
-            
+
             index = index + 1
         # Show created_on/created_by for each record
         if "created_on" in table:
@@ -751,7 +751,7 @@ class S3Merge(S3Method):
         elif ftype == "blob":
             inp = None
         else:
-            ftype = ftype in widgets and ftype or "string"
+            ftype = ftype if ftype in widgets else "string"
             inp = widgets[ftype].widget(field, value, **attr)
 
         return inp
@@ -816,7 +816,8 @@ class S3RecordMerger(object):
         return success
 
     # -------------------------------------------------------------------------
-    def merge_realms(self, table, original, duplicate):
+    @staticmethod
+    def merge_realms(table, original, duplicate):
         """
             Merge the realms of two person entities (update all
             realm_entities in all records from duplicate to original)

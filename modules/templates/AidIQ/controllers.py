@@ -3,7 +3,7 @@
 from gluon import current
 from gluon.html import *
 
-from s3 import S3CustomController, S3DataTable
+from s3 import S3CustomController
 
 THEME = "AidIQ"
 
@@ -13,12 +13,7 @@ class index(S3CustomController):
 
     def __call__(self):
 
-        request = current.request
-        response = current.response
-
-        T = current.T
-
-        page = request.get_vars.get("page", None)
+        page = current.request.get_vars.get("page", None)
         if page:
             vars = {"page":page}
             table = current.s3db.cms_post
@@ -47,7 +42,7 @@ class index(S3CustomController):
             if current.auth.s3_has_role(current.session.s3.system_roles.ADMIN):
                 item = DIV(XML(row.body),
                            BR(),
-                           A(T("Edit"),
+                           A(current.T("Edit"),
                              _href=URL(c="cms", f="post",
                                        args=[row.id, "update"],
                                        vars=vars),
@@ -56,7 +51,7 @@ class index(S3CustomController):
                 item = XML(row.body)
 
         elif current.auth.s3_has_role(current.session.s3.system_roles.ADMIN):
-            item = A(T("Edit"),
+            item = A(current.T("Edit"),
                      _href=URL(c="cms", f="post", args="create",
                                vars=vars),
                      _class="action-btn")
@@ -65,10 +60,11 @@ class index(S3CustomController):
 
         if not title:
             title = current.deployment_settings.get_system_name()
-        response.title = title
+        current.response.title = title
 
         self._view(THEME, "index.html")
-        return dict(content=item)
+        return {"content": item,
+                }
 
 # =============================================================================
 class contact(S3CustomController):
@@ -152,6 +148,7 @@ class contact(S3CustomController):
         response.title = "Contact | AidIQ.com"
 
         self._view(THEME, "contact.html")
-        return dict(form=form)
+        return {"form": form,
+                }
 
 # END =========================================================================

@@ -502,6 +502,9 @@ div.dl {
 .dl-3-cols {
     width: 31%;
 }
+.dl-4-cols {
+    width: 22%;
+}
 
 .dl-field {
     clear: left;
@@ -566,6 +569,10 @@ ul.ui-autocomplete {
 .req_key {
     color: red;
     font-weight: bold;
+}
+
+.mapError {
+  border: solid 1px red;
 }
 
 /* Help Popup */

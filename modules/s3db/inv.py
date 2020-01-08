@@ -2,7 +2,7 @@
 
 """ Sahana Eden Inventory Model
 
-    @copyright: 2009-2018 (c) Sahana Software Foundation
+    @copyright: 2009-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -49,13 +49,13 @@ __all__ = ("S3WarehouseModel",
            )
 
 import datetime
-import itertools
 
 from gluon import *
 from gluon.sqlhtml import RadioWidget
 from gluon.storage import Storage
 
 from ..s3 import *
+from s3compat import zip_longest
 from s3layouts import S3PopupLink
 
 SHIP_STATUS_IN_PROCESS = 0
@@ -724,11 +724,11 @@ $.filterOptionsS3({
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return dict(inv_item_id = inv_item_id,
-                    inv_item_represent = inv_item_represent,
-                    inv_remove = self.inv_remove,
-                    inv_prep = self.inv_prep,
-                    )
+        return {"inv_item_id": inv_item_id,
+                "inv_item_represent": inv_item_represent,
+                "inv_remove": self.inv_remove,
+                "inv_prep": self.inv_prep,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -3508,11 +3508,11 @@ $.filterOptionsS3({
             now = request.utcnow
             tl_start = tl_end = now
             events = []
-            if r.name is "send":
+            if r.name == "send":
                 rr = (rows, rows2)
             else:
                 rr = (rows1, rows)
-            for (row_send, row_recv) in itertools.izip_longest(rr[0], rr[0]):
+            for (row_send, row_recv) in zip_longest(rr[0], rr[0]):
                 # send  Dates
                 start = row_send.date  or ""
                 if start:

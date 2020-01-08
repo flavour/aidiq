@@ -88,6 +88,7 @@ s3.stylesheets = []
 s3.external_stylesheets = []
 # To get included at the end of <BODY>
 s3.scripts = []
+s3.scripts_modules = []
 s3.js_global = []
 s3.jquery_ready = []
 
@@ -194,7 +195,8 @@ _settings.allow_basic_login = True
 
 _settings.logout_onlogout = s3_auth_on_logout
 _settings.login_onaccept = s3_auth_on_login
-_settings.login_next = settings.get_auth_login_next()
+# Now read in auth.login() to avoid setting unneccesarily in every request
+#_settings.login_next = settings.get_auth_login_next()
 if settings.has_module("vol") and \
    settings.get_auth_registration_volunteer():
     _settings.register_next = URL(c="vol", f="person")
@@ -243,14 +245,14 @@ session.information = []
 session.warning = []
 
 # Shortcuts for system role IDs, see modules/s3aaa.py/AuthS3
-system_roles = auth.get_system_roles()
-ADMIN = system_roles.ADMIN
-AUTHENTICATED = system_roles.AUTHENTICATED
-ANONYMOUS = system_roles.ANONYMOUS
-EDITOR = system_roles.EDITOR
-MAP_ADMIN = system_roles.MAP_ADMIN
-ORG_ADMIN = system_roles.ORG_ADMIN
-ORG_GROUP_ADMIN = system_roles.ORG_GROUP_ADMIN
+#system_roles = auth.get_system_roles()
+#ADMIN = system_roles.ADMIN
+#AUTHENTICATED = system_roles.AUTHENTICATED
+#ANONYMOUS = system_roles.ANONYMOUS
+#EDITOR = system_roles.EDITOR
+#MAP_ADMIN = system_roles.MAP_ADMIN
+#ORG_ADMIN = system_roles.ORG_ADMIN
+#ORG_GROUP_ADMIN = system_roles.ORG_GROUP_ADMIN
 
 if s3.debug:
     # Add the developer toolbar from modules/s3/s3utils.py
@@ -263,15 +265,15 @@ s3_formstyle = settings.get_ui_formstyle()
 s3_formstyle_read = settings.get_ui_formstyle_read()
 s3_formstyle_mobile = s3_formstyle
 submit_button = T("Save")
-_crud = s3.crud
-_crud.formstyle = s3_formstyle
-_crud.formstyle_read = s3_formstyle_read
-_crud.submit_button = submit_button
+s3_crud = s3.crud
+s3_crud.formstyle = s3_formstyle
+s3_crud.formstyle_read = s3_formstyle_read
+s3_crud.submit_button = submit_button
 # Optional class for Submit buttons
-#_crud.submit_style = "submit-button"
-_crud.confirm_delete = T("Do you really want to delete these records?")
-_crud.archive_not_delete = settings.get_security_archive_not_delete()
-_crud.navigate_away_confirm = settings.get_ui_navigate_away_confirm()
+#s3_crud.submit_style = "submit-button"
+s3_crud.confirm_delete = T("Do you really want to delete these records?")
+s3_crud.archive_not_delete = settings.get_security_archive_not_delete()
+s3_crud.navigate_away_confirm = settings.get_ui_navigate_away_confirm()
 
 # Content Type Headers, default is application/xml for XML formats
 # and text/x-json for JSON formats, other content types must be

@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: (c) 2010-2018 Sahana Software Foundation
+    @copyright: (c) 2010-2019 Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -27,7 +27,6 @@
     WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
     OTHER DEALINGS IN THE SOFTWARE.
-
 """
 
 __all__ = ("single_phone_number_pattern",
@@ -59,6 +58,7 @@ __all__ = ("single_phone_number_pattern",
            "IS_UTC_DATETIME",
            "IS_UTC_DATE",
            "IS_UTC_OFFSET",
+           "JSONERRORS",
            "QUANTITY_INV_ITEM",
            )
 
@@ -71,23 +71,27 @@ from gluon import current, IS_FLOAT_IN_RANGE, IS_INT_IN_RANGE, IS_IN_SET, \
 from gluon.storage import Storage
 from gluon.validators import Validator
 
-from s3datetime import S3DateTime
-from s3utils import s3_orderby_fields, s3_str, s3_unicode
+from s3compat import BytesIO, STRING_TYPES, basestring, reduce, unichr
+from .s3datetime import S3DateTime
+from .s3utils import s3_orderby_fields, s3_str, s3_unicode
 
 DEFAULT = lambda: None
 JSONERRORS = (NameError, TypeError, ValueError, AttributeError, KeyError)
 SEPARATORS = (",", ":")
 
+LAT_SCHEMA = re.compile(r"^([0-9]{,3})[d:°]{,1}\s*([0-9]{,3})[m:']{,1}\s*([0-9]{,3}(\.[0-9]+){,1})[s\"]{,1}\s*([N|S]{,1})$")
+LON_SCHEMA = re.compile(r"^([0-9]{,3})[d:°]{,1}\s*([0-9]{,3})[m:']{,1}\s*([0-9]{,3}(\.[0-9]+){,1})[s\"]{,1}\s*([E|W]{,1})$")
+
 def translate(text):
     if text is None:
         return None
-    elif isinstance(text, (str, unicode)):
+    elif isinstance(text, STRING_TYPES):
         if hasattr(current, "T"):
             return str(current.T(text))
-    return str(text)
+    return s3_str(text)
 
 def options_sorter(x, y):
-    return (s3_unicode(x[1]).upper() > s3_unicode(y[1]).upper() and 1) or -1
+    return 1 if s3_unicode(x[1]).upper() > s3_unicode(y[1]).upper() else -1
 
 # -----------------------------------------------------------------------------
 # Phone number requires
@@ -157,7 +161,7 @@ class IS_JSONS3(Validator):
                 value_ = json.dumps(ast.literal_eval(value),
                                     separators = SEPARATORS,
                                     )
-            except JSONERRORS + (SyntaxError,), e:
+            except JSONERRORS + (SyntaxError,) as e:
                 return error(value, e)
             if self.native_json:
                 return (value_, None)
@@ -171,7 +175,7 @@ class IS_JSONS3(Validator):
                     return (value, None) #  the serialized value is not passed
                 else:
                     return (json.loads(value), None)
-            except JSONERRORS, e:
+            except JSONERRORS as e:
                 return error(value, e)
 
     # -------------------------------------------------------------------------
@@ -201,62 +205,46 @@ class IS_LAT(Validator):
                  error_message = "Latitude/Northing should be between -90 & 90!"
                  ):
 
-        self.minimum = -90
-        self.maximum = 90
         self.error_message = error_message
+
         # Tell s3_mark_required that this validator doesn't accept NULL values
         self.mark_required = True
 
+        self.schema = LAT_SCHEMA
+        self.minimum = -90
+        self.maximum = 90
+
     # -------------------------------------------------------------------------
     def __call__(self, value):
+
+        if value is None:
+            return value, self.error_message
         try:
             value = float(value)
         except ValueError:
             # DMS format
-            pass
-        else:
-            if self.minimum <= value <= self.maximum:
-                return (value, None)
+            match = self.schema.match(value)
+            if not match:
+                return value, self.error_message
             else:
-                return (value, self.error_message)
-
-        pattern = re.compile(r"^[0-9]{,3}[\D\W][0-9]{,3}[\D\W][0-9]+$")
-        if not pattern.match(value):
-            return (value, self.error_message)
-        else:
-            val = []
-            val.append(value)
-            sep = []
-            count = 0
-            for i in val[0]:
                 try:
-                    int(i)
-                except ValueError:
-                    sep.append(count)
-                count += 1
-            sec = ""
-            posn = sep[1]
-            while posn != (count-1):
-                # join the numbers for seconds
-                sec = sec + val[0][posn+1]
-                posn += 1
-            posn2 = sep[0]
-            mins = ""
-            while posn2 != (sep[1]-1):
-                # join the numbers for minutes
-                mins = mins + val[0][posn2+1]
-                posn2 += 1
-            deg = ""
-            posn3 = 0
-            while posn3 != (sep[0]):
-                # join the numbers for degree
-                deg = deg + val[0][posn3]
-                posn3 += 1
-            e = int(sec) / 60 # formula to get back decimal degree
-            f = int(mins) + e # formula
-            g = int(f) / 60 # formula
-            value = int(deg) + g
-            return (value, None)
+                    d = float(match.group(1))
+                    m = float(match.group(2))
+                    s = float(match.group(3))
+                except (ValueError, TypeError):
+                    return value, self.error_message
+
+                h = match.group(5)
+                sign = -1 if h in ("S", "W") else 1
+
+                deg = sign * (d + m / 60 + s / 3600)
+        else:
+            deg = value
+
+        if self.minimum <= deg <= self.maximum:
+            return (deg, None)
+        else:
+            return (value, self.error_message)
 
 # =============================================================================
 class IS_LON(IS_LAT):
@@ -275,6 +263,7 @@ class IS_LON(IS_LAT):
 
         super(IS_LON, self).__init__(error_message=error_message)
 
+        self.schema = LON_SCHEMA
         self.minimum = -180
         self.maximum = 180
 
@@ -464,8 +453,7 @@ class IS_FLOAT_AMOUNT(IS_FLOAT_IN_RANGE):
 
         thousands_sep = current.deployment_settings.get_L10n_thousands_separator()
         if thousands_sep and isinstance(value, basestring):
-            value = s3_unicode(value).replace(thousands_sep, "") \
-                                     .encode("utf-8")
+            value = s3_str(s3_unicode(value).replace(thousands_sep, ""))
 
         return IS_FLOAT_IN_RANGE.__call__(self, value)
 
@@ -637,7 +625,8 @@ class IS_ONE_OF_EMPTY(Validator):
                 # Represent uses a custom lookup, so we only
                 # retrieve the keys here
                 fields = [kfield]
-                orderby = field
+                if orderby is None:
+                    orderby = field
             else:
                 # Represent uses a standard field lookup, so
                 # we can do that right here
@@ -713,6 +702,9 @@ class IS_ONE_OF_EMPTY(Validator):
 
     # -------------------------------------------------------------------------
     def build_set(self):
+        """
+            Look up selectable options from the database
+        """
 
         dbset = self.dbset
         db = dbset._db
@@ -722,53 +714,61 @@ class IS_ONE_OF_EMPTY(Validator):
             table = current.s3db.table(ktablename, db_only=True)
         else:
             table = db[ktablename]
+
         if table:
             if self.fields == "all":
                 fields = [table[f] for f in table.fields if f not in ("wkt", "the_geom")]
             else:
                 fieldnames = [f.split(".")[1] if "." in f else f for f in self.fields]
                 fields = [table[k] for k in fieldnames if k in table.fields]
+
             if db._dbname not in ("gql", "gae"):
+
                 orderby = self.orderby or reduce(lambda a, b: a|b, fields)
                 groupby = self.groupby
 
-                dd = dict(orderby=orderby, groupby=groupby)
-                query, left = self.query(table, fields=fields, dd=dd)
+                left = self.left
 
-                if left is not None:
-                    if self.left is not None:
-                        if not isinstance(left, list):
-                            left = [left]
-                        ljoins = [str(join) for join in self.left]
-                        for join in left:
+                dd = {"orderby": orderby, "groupby": groupby}
+                query, qleft = self.query(table, fields=fields, dd=dd)
+                if qleft is not None:
+                    if left is not None:
+                        if not isinstance(qleft, list):
+                            qleft = [qleft]
+                        ljoins = [str(join) for join in left]
+                        for join in qleft:
                             ljoin = str(join)
                             if ljoin not in ljoins:
-                                self.left.append(join)
+                                left.append(join)
                                 ljoins.append(ljoin)
                     else:
-                        self.left = left
-                if self.left is not None:
-                    dd.update(left=self.left)
+                        left = qleft
+                if left is not None:
+                    dd["left"] = left
 
                 # Make sure we have all ORDERBY fields in the query
-                # (otherwise postgresql will complain)
-                fieldnames = [str(f) for f in fields]
+                # - required with distinct=True (PostgreSQL)
+                fieldnames = set(str(f) for f in fields)
                 for f in s3_orderby_fields(table, dd.get("orderby")):
-                    if str(f) not in fieldnames:
+                    fieldname = str(f)
+                    if fieldname not in fieldnames:
                         fields.append(f)
-                        fieldnames.append(str(f))
+                        fieldnames.add(fieldname)
 
                 records = dbset(query).select(distinct=True, *fields, **dd)
+
             else:
                 # Note this does not support filtering.
                 orderby = self.orderby or \
-                          reduce(lambda a, b: a|b, (f for f in fields
-                                                    if f.type != "id"))
-                # Caching breaks Colorbox dropdown refreshes
-                #dd = dict(orderby=orderby, cache=(current.cache.ram, 60))
-                dd = dict(orderby=orderby)
-                records = dbset.select(db[self.ktable].ALL, **dd)
+                          reduce(lambda a, b: a|b, (f for f in fields if f.type != "id"))
+                records = dbset.select(table.ALL,
+                                       # Caching breaks Colorbox dropdown refreshes
+                                       #cache=(current.cache.ram, 60),
+                                       orderby = orderby,
+                                       )
+
             self.theset = [str(r[self.kfield]) for r in records]
+
             label = self.label
             try:
                 # Is callable
@@ -798,23 +798,9 @@ class IS_ONE_OF_EMPTY(Validator):
 
             if labels and self.sort:
 
-                items = zip(self.theset, self.labels)
-
-                # Alternative variant that handles generator objects,
-                # doesn't seem necessary, retained here just in case:
-                #orig_labels = self.labels
-                #orig_theset = self.theset
-                #items = []
-                #for i in xrange(len(orig_theset)):
-                    #label = orig_labels[i]
-                    ##if hasattr(label, "flatten"):
-                        ##try:
-                            ##label = label.flatten()
-                        ##except:
-                            ##pass
-                    #items.append((orig_theset[i], label))
-
-                items.sort(key=lambda item: s3_unicode(item[1]).lower())
+                items = sorted(zip(self.theset, self.labels),
+                               key = lambda item: s3_unicode(item[1]).lower(),
+                               )
                 self.theset, self.labels = zip(*items)
 
         else:
@@ -971,10 +957,15 @@ class IS_ONE_OF_EMPTY(Validator):
     # -------------------------------------------------------------------------
     def __call__(self, value):
 
+        # Translate error message if string
+        error_message = self.error_message
+        if isinstance(error_message, basestring):
+            error_message = current.T(error_message)
+
         try:
             dbset = self.dbset
             table = dbset._db[self.ktable]
-            deleted_q = ("deleted" in table) and (table["deleted"] == False) or False
+            deleted_q = (table["deleted"] == False) if ("deleted" in table) else False
             filter_opts_q = False
             filterby = self.filterby
             if filterby and filterby in table:
@@ -1004,21 +995,21 @@ class IS_ONE_OF_EMPTY(Validator):
                     if not [x for x in values if not x in self.theset]:
                         return (values, None)
                     else:
-                        return (value, self.error_message)
+                        return (value, error_message)
                 else:
                     field = table[self.kfield]
                     query = None
                     for v in values:
                         q = (field == v)
-                        query = query is not None and query | q or q
+                        query = (query | q) if query is not None else q
                     if filter_opts_q != False:
-                        query = query is not None and \
-                                (filter_opts_q & (query)) or filter_opts_q
+                        query = (filter_opts_q & (query)) \
+                                if query is not None else filter_opts_q
                     if deleted_q != False:
-                        query = query is not None and \
-                                (deleted_q & (query)) or deleted_q
+                        query = (deleted_q & (query)) \
+                                if query is not None else deleted_q
                     if dbset(query).count() < 1:
-                        return (value, self.error_message)
+                        return (value, error_message)
                     return (values, None)
             elif self.theset:
                 if str(value) in self.theset:
@@ -1031,13 +1022,13 @@ class IS_ONE_OF_EMPTY(Validator):
                 query = None
                 for v in values:
                     q = (table[self.kfield] == v)
-                    query = query is not None and query | q or q
+                    query = (query | q) if query is not None else q
                 if filter_opts_q != False:
-                    query = query is not None and \
-                            (filter_opts_q & (query)) or filter_opts_q
+                    query = (filter_opts_q & (query)) \
+                            if query is not None else filter_opts_q
                 if deleted_q != False:
-                    query = query is not None and \
-                            (deleted_q & (query)) or deleted_q
+                    query = (deleted_q & (query)) \
+                            if query is not None else deleted_q
                 if dbset(query).count():
                     if self._and:
                         return self._and(value)
@@ -1046,7 +1037,7 @@ class IS_ONE_OF_EMPTY(Validator):
         except:
             pass
 
-        return (value, self.error_message)
+        return (value, error_message)
 
 
 # =============================================================================
@@ -1062,7 +1053,7 @@ class IS_ONE_OF(IS_ONE_OF_EMPTY):
         if theset is None or labels is None:
             items = []
         else:
-            items = zip(theset, labels)
+            items = list(zip(theset, labels))
         if zero and self.zero is not None and not self.multiple:
             items.insert(0, ("", self.zero))
         return items
@@ -1110,7 +1101,7 @@ class IS_NOT_ONE_OF(IS_NOT_IN_DB):
 
         # Does the table use multiple columns as key?
         record_id = self.record_id
-        keys = record_id.keys() if isinstance(record_id, dict) else None
+        keys = list(record_id.keys()) if isinstance(record_id, dict) else None
 
         # Build duplicate query
         # => if the field has a unique-constraint, we must include
@@ -1247,16 +1238,17 @@ class IS_PROCESSED_IMAGE(Validator):
             return (value, None)
 
         r = current.request
-        post_vars = r.post_vars
 
         if r.env.request_method == "GET":
             return (value, None)
+
+        post_vars = r.post_vars
 
         # If there's a newly uploaded file, accept it. It'll be processed in
         # the update form.
         # NOTE: A FieldStorage with data evaluates as False (odd!)
         uploaded_image = post_vars.get(self.field_name)
-        if uploaded_image not in ("", None):
+        if uploaded_image not in (b"", None): # Py 3.x it's b"", which is equivalent to "" in Py 2.x
             return (uploaded_image, None)
 
         cropped_image = post_vars.get("imagecrop-data")
@@ -1270,10 +1262,6 @@ class IS_PROCESSED_IMAGE(Validator):
         if cropped_image:
             import base64
             import uuid
-            try:
-                from cStringIO import StringIO
-            except ImportError:
-                from StringIO import StringIO
 
             metadata, cropped_image = cropped_image.split(",")
             #filename, datatype, enctype = metadata.split(";")
@@ -1281,8 +1269,7 @@ class IS_PROCESSED_IMAGE(Validator):
 
             f = Storage()
             f.filename = uuid.uuid4().hex + filename
-
-            f.file = StringIO(base64.decodestring(cropped_image))
+            f.file = BytesIO(base64.b64decode(cropped_image))
 
             return (f, None)
 
@@ -1290,15 +1277,16 @@ class IS_PROCESSED_IMAGE(Validator):
         points = post_vars.get("imagecrop-points")
         if points and uploaded_image:
             import os
-            points = map(float, points.split(","))
+            points = [float(p) for p in points.split(",")]
 
             if not self.upload_path:
                 path = os.path.join(r.folder, "uploads", "images", uploaded_image)
             else:
                 path = os.path.join(self.upload_path, uploaded_image)
 
-            current.s3task.async("crop_image",
-                args=[path] + points + [self.image_bounds[0]])
+            
+            current.s3task.run_async("crop_image",
+                            args = [path] + points + [self.image_bounds[0]])
 
         return (None, None)
 
@@ -1355,7 +1343,6 @@ class IS_UTC_DATETIME(Validator):
                  format=None,
                  error_message=None,
                  offset_error=None,
-                 utc_offset=None,
                  calendar=None,
                  minimum=None,
                  maximum=None):
@@ -1366,8 +1353,6 @@ class IS_UTC_DATETIME(Validator):
                            directives refer to your strptime implementation
             @param error_message: error message for invalid date/times
             @param offset_error: error message for invalid UTC offset
-            @param utc_offset: offset to UTC in hours, defaults to the
-                               current session's UTC offset
             @param calendar: calendar to use for string evaluation, defaults
                              to current.calendar
             @param minimum: the minimum acceptable date/time
@@ -1381,13 +1366,11 @@ class IS_UTC_DATETIME(Validator):
 
         if isinstance(calendar, basestring):
             # Instantiate calendar by name
-            from s3datetime import S3Calendar
+            from .s3datetime import S3Calendar
             calendar = S3Calendar(calendar)
         elif calendar == None:
             calendar = current.calendar
         self.calendar = calendar
-
-        self.utc_offset = utc_offset
 
         self.minimum = minimum
         self.maximum = maximum
@@ -1413,26 +1396,6 @@ class IS_UTC_DATETIME(Validator):
         # Store error messages
         self.error_message = error_message % {"min": mindt, "max": maxdt}
         self.offset_error = offset_error
-
-    # -------------------------------------------------------------------------
-    def delta(self, utc_offset=None):
-        """
-            Compute the delta in seconds for the current UTC offset
-
-            @param utc_offset: the offset (override defaults)
-            @return: the offset in seconds
-        """
-
-        if utc_offset is None:
-            # Fall back to validator default
-            utc_offset = self.utc_offset
-
-        if utc_offset is None:
-            # Fall back to session default
-            utc_offset = current.session.s3.utc_offset
-
-        # Convert into offset seconds
-        return S3DateTime.get_offset_value(utc_offset)
 
     # -------------------------------------------------------------------------
     def __call__(self, value):
@@ -1477,16 +1440,14 @@ class IS_UTC_DATETIME(Validator):
             return value, self.error_message
 
         # Convert to UTC and make tz-naive
-        if dt.tzinfo:
-            offset = dt.tzinfo.utcoffset(dt)
-            dt = dt.replace(tzinfo=None)
-        else:
-            offset = self.delta(utc_offset=utc_offset)
-            # Offset must be in range -2359 to +2359
+        if not dt.tzinfo and utc_offset:
+            offset = S3DateTime.get_offset_value(utc_offset)
             if not -86340 < offset < 86340:
                 return (val, self.offset_error)
             offset = datetime.timedelta(seconds=offset)
-        dt_utc = dt - offset
+            dt_utc = (dt - offset).replace(tzinfo=None)
+        else:
+            dt_utc = S3DateTime.to_utc(dt)
 
         # Validate
         if self.minimum and dt_utc < self.minimum or \
@@ -1506,10 +1467,7 @@ class IS_UTC_DATETIME(Validator):
         if not value:
             return current.messages["NONE"]
 
-        offset = self.delta()
-        if offset:
-            value += datetime.timedelta(seconds=offset)
-        result = self.calendar.format_datetime(value,
+        result = self.calendar.format_datetime(S3DateTime.to_local(value),
                                                dtfmt=self.format,
                                                local=True,
                                                )
@@ -1535,7 +1493,6 @@ class IS_UTC_DATE(IS_UTC_DATETIME):
                  error_message=None,
                  offset_error=None,
                  calendar=None,
-                 utc_offset=None,
                  minimum=None,
                  maximum=None):
         """
@@ -1547,8 +1504,6 @@ class IS_UTC_DATE(IS_UTC_DATETIME):
             @param offset_error: error message for invalid UTC offset
             @param calendar: calendar to use for string evaluation, defaults
                              to current.calendar
-            @param utc_offset: offset to UTC in seconds, defaults to the
-                               current session's UTC offset
             @param minimum: the minimum acceptable date (datetime.date)
             @param maximum: the maximum acceptable date (datetime.date)
         """
@@ -1560,13 +1515,11 @@ class IS_UTC_DATE(IS_UTC_DATETIME):
 
         if isinstance(calendar, basestring):
             # Instantiate calendar by name
-            from s3datetime import S3Calendar
+            from .s3datetime import S3Calendar
             calendar = S3Calendar(calendar)
         elif calendar == None:
             calendar = current.calendar
         self.calendar = calendar
-
-        self.utc_offset = utc_offset
 
         self.minimum = minimum
         self.maximum = maximum
@@ -1615,31 +1568,22 @@ class IS_UTC_DATE(IS_UTC_DATETIME):
                 return(value, self.error_message)
         elif isinstance(value, datetime.datetime):
             dt = value
-            #utc_offset = None
             is_datetime = True
         elif isinstance(value, datetime.date):
             # Default to 0:00 hours in the current timezone
             dt = value
-            #utc_offset = None
         else:
             # Invalid type
             return (value, self.error_message)
 
         # Convert to UTC
-        if is_datetime and dt.tzinfo:
-            offset = dt.tzinfo.utcoffset(dt)
-            dt = dt.replace(tzinfo=None)
+        if is_datetime:
+            dt_utc = S3DateTime.to_utc(dt)
         else:
-            offset = self.delta()
-            # Offset must be in range -2359 to +2359
-            if not -86340 < offset < 86340:
-                return (value, self.offset_error)
-            offset = datetime.timedelta(seconds=offset)
-
-        if not is_datetime:
             # Convert to standard time 08:00 hours
             dt = datetime.datetime.combine(dt, datetime.time(8, 0, 0))
-        dt_utc = (dt - offset).date()
+            dt_utc = S3DateTime.to_utc(dt)
+        dt_utc = dt_utc.date()
 
         # Validate
         if self.minimum and dt_utc < self.minimum or \
@@ -1659,15 +1603,18 @@ class IS_UTC_DATE(IS_UTC_DATETIME):
         if not value:
             return current.messages["NONE"]
 
-        offset = self.delta()
-        if offset:
-            delta = datetime.timedelta(seconds=offset)
-            if not isinstance(value, datetime.datetime):
-                combine = datetime.datetime.combine
-                # Compute the break point
-                bp = (combine(value, datetime.time(8, 0, 0)) - delta).time()
-                value = combine(value, bp)
-            value += delta
+        #value = datetime.datetime.combine(value, datetime.time(8, 0, 0))
+        value = S3DateTime.to_local(value)
+
+        #offset = self.delta()
+        #if offset:
+            #delta = datetime.timedelta(seconds=offset)
+            #if not isinstance(value, datetime.datetime):
+                #combine = datetime.datetime.combine
+                ## Compute the break point
+                #bp = (combine(value, datetime.time(8, 0, 0)) - delta).time()
+                #value = combine(value, bp)
+            #value += delta
 
         result = self.calendar.format_date(value,
                                            dtfmt=self.format,
@@ -1860,15 +1807,15 @@ class IS_IN_SET_LAZY(Validator):
         is problematic if theset_fn returns a dict.
     """
 
-    def __init__(
-        self,
-        theset_fn,
-        represent=None,
-        error_message="value not allowed",
-        multiple=False,
-        zero="",
-        sort=False,
-        ):
+    def __init__(self,
+                 theset_fn,
+                 represent = None,
+                 error_message = "value not allowed",
+                 multiple = False,
+                 zero = "",
+                 sort = False,
+                 ):
+
         self.multiple = multiple
         if not callable(theset_fn):
             raise TypeError("Argument must be a callable.")
@@ -1882,13 +1829,14 @@ class IS_IN_SET_LAZY(Validator):
 
     # -------------------------------------------------------------------------
     def _make_theset(self):
+
         theset = self.theset_fn()
         if theset:
             if isinstance(theset, dict):
                 self.theset = [str(item) for item in theset]
-                self.labels = theset.values()
+                self.labels = list(theset.values())
             elif isinstance(theset, (tuple, list)):  # @ToDo: Can this be a Rows?
-                if isinstance(theset[0], (tuple,list)) and len(theset[0]) == 2:
+                if isinstance(theset[0], (tuple, list)) and len(theset[0])==2:
                     self.theset = [str(item) for item, label in theset]
                     self.labels = [str(label) for item, label in theset]
                 else:
@@ -1903,6 +1851,7 @@ class IS_IN_SET_LAZY(Validator):
 
     # -------------------------------------------------------------------------
     def options(self, zero=True):
+
         if not self.theset:
             self._make_theset()
         if not self.labels:
@@ -1917,11 +1866,12 @@ class IS_IN_SET_LAZY(Validator):
 
     # -------------------------------------------------------------------------
     def __call__(self, value):
+
         if not self.theset:
             self._make_theset()
         if self.multiple:
             ### if below was values = re.compile("[\w\-:]+").findall(str(value))
-            if isinstance(value, (str, unicode)):
+            if isinstance(value, STRING_TYPES):
                 values = [value]
             elif isinstance(value, (tuple, list)):
                 values = value
@@ -1936,7 +1886,7 @@ class IS_IN_SET_LAZY(Validator):
             return (value, self.error_message)
         if self.multiple:
             if isinstance(self.multiple, (tuple, list)) and \
-                    not self.multiple[0] <= len(values) < self.multiple[1]:
+               not self.multiple[0] <= len(values) < self.multiple[1]:
                 return (values, self.error_message)
             return (values, None)
         return (value, None)
@@ -2122,7 +2072,7 @@ class IS_DYNAMIC_FIELDNAME(Validator):
 
             name = str(value).lower().strip()
 
-            from s3fields import s3_all_meta_field_names
+            from .s3fields import s3_all_meta_field_names
 
             if name != "id" and \
                name not in s3_all_meta_field_names() and \
@@ -2144,6 +2094,9 @@ class IS_DYNAMIC_FIELDTYPE(Validator):
                        "string",
                        "text",
                        "upload",
+                       "json",
+                       "list:integer",
+                       "list:string",
                        )
 
     def __init__(self,
@@ -2874,7 +2827,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("so", "Somali"),
                 #("son", "Songhai languages"),
                 #("sot", "Sotho, Southern"),
-                ("st", "Sotho, Southern"),
+                ("st", "Sotho, Southern"), # Sesotho
                 #("spa", "Spanish; Castilian"),
                 ("es", "Spanish; Castilian"),
                 #("srd", "Sardinian"),

@@ -2,7 +2,7 @@
 
 """ Sahana Eden Disease Tracking Models
 
-    @copyright: 2014-2018 (c) Sahana Software Foundation
+    @copyright: 2014-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -41,6 +41,7 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
+from s3compat import basestring, reduce
 from s3layouts import S3PopupLink
 
 # Monitoring upgrades {new_level:previous_levels}
@@ -1428,10 +1429,12 @@ class DiseaseStatsModel(S3Model):
                                    )
 
         # Fire off a rebuild task
-        current.s3task.async("disease_stats_update_aggregates",
-                             vars = dict(records=records.json(), all=True),
-                             timeout = 21600 # 6 hours
-                             )
+        current.s3task.run_async("disease_stats_update_aggregates",
+                                 vars = {"records": records.json(),
+                                         "all": True,
+                                         },
+                                 timeout = 21600 # 6 hours
+                                 )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1560,7 +1563,7 @@ class DiseaseStatsModel(S3Model):
         # NB Currently we're assuming that all Paths have been built correctly
         gtable = db.gis_location
         ifield = gtable.id
-        location_ids = locations.keys()
+        location_ids = set(locations.keys())
         paths = db(ifield.belongs(location_ids)).select(gtable.path)
         paths = [p.path.split("/") for p in paths]
         # Convert list of lists to flattened list & remove duplicates
@@ -1601,7 +1604,7 @@ class DiseaseStatsModel(S3Model):
             elif row.level == "L4":
                 L4_append(row.id)
 
-        run_async = current.s3task.async
+        run_async = current.s3task.run_async
         from gluon.serializers import json as jsons
         dates = jsons(dates)
         # Build the lowest level first

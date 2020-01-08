@@ -2,7 +2,7 @@
 
 """ Sahana Eden Transport Model
 
-    @copyright: 2012-2018 (c) Sahana Software Foundation
+    @copyright: 2012-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -885,10 +885,10 @@ class transport_BorderCrossingRepresent(S3Represent):
                 crossing.countries = [country]
                 output[crossing_id] = crossing
 
-        return output.values()
+        return list(output.values())
 
 # =============================================================================
-def transport_rheader(r, tabs=[]):
+def transport_rheader(r, tabs=None):
     """ Transport module resource headers """
 
     if r.representation != "html":

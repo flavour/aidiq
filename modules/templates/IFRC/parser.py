@@ -5,7 +5,7 @@
 
     Template-specific Message Parsers are defined here.
 
-    @copyright: 2013-2018 (c) Sahana Software Foundation
+    @copyright: 2013-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -122,9 +122,9 @@ class S3Parser(object):
             return reply
 
         # Link Message to Mission
-        data = dict(message_id=message_id,
-                    mission_id=mission_id,
-                    )
+        data = {"message_id": message_id,
+                "mission_id": mission_id,
+                }
 
         # Can we identify the Member?
         hr_id = None

@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
 
-try:
-    # Python 2.7
-    from collections import OrderedDict
-except:
-    # Python 2.6
-    from gluon.contrib.simplejson.ordered_dict import OrderedDict
+from collections import OrderedDict
 
 from gluon import current, URL, TR, TD, DIV
 from gluon.storage import Storage
@@ -18,7 +13,7 @@ def config(settings):
     T = current.T
 
     # Pre-Populate
-    settings.base.prepopulate = ("AidIQ",)
+    settings.base.prepopulate += ("AidIQ",)
 
     # Theme
     settings.base.theme = "AidIQ"
@@ -27,7 +22,7 @@ def config(settings):
     settings.msg.parser = "AidIQ"
 
     # Monitoring Scripts
-    settings.monitor.template = "AidIQ"
+    #settings.monitor.template = "AidIQ"
 
     # Security Policy
     settings.security.policy = 6 # Entity Realm

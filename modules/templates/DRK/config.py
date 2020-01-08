@@ -78,7 +78,7 @@ def config(settings):
     # Uncomment to Hide the language toolbar
     #settings.L10n.display_toolbar = False
     # Default timezone for users
-    #settings.L10n.utc_offset = "+0100"
+    settings.L10n.timezone = "Europe/Berlin"
     # Number formats (defaults to ISO 31-0)
     # Decimal separator for numbers (defaults to ,)
     settings.L10n.decimal_separator = "."
@@ -650,7 +650,7 @@ def config(settings):
         """ Custom tasks for scheduled site checks """
 
         # Update transferability
-        from controllers import update_transferability
+        from .controllers import update_transferability
         result = update_transferability(site_id=site_id)
 
         # Log the result
@@ -900,8 +900,6 @@ def config(settings):
     settings.dvr.appointments_update_case_status = True
     # Uncomment this to automatically close appointments when registering certain case events
     settings.dvr.case_events_close_appointments = True
-    # Uncomment this to allow cases to belong to multiple case groups ("households")
-    #settings.dvr.multiple_case_groups = True
     # Configure a regular expression pattern for ID Codes (QR Codes)
     settings.dvr.id_code_pattern = "(?P<label>[^,]*),(?P<family>[^,]*),(?P<last_name>[^,]*),(?P<first_name>[^,]*),(?P<date_of_birth>[^,]*),.*"
     # Issue a "not checked-in" warning in case event registration
@@ -2353,7 +2351,7 @@ def config(settings):
 
         s3db = current.s3db
 
-        from food import DRKRegisterFoodEvent
+        from .food import DRKRegisterFoodEvent
         s3db.set_method("dvr", "case_event",
                         method = "register_food",
                         action = DRKRegisterFoodEvent,
@@ -3674,7 +3672,7 @@ class DRKSiteActivityReport(object):
                   }
         COMPLETED = 4
         attable = s3db.dvr_case_appointment_type
-        query = attable.name.belongs(atypes.keys())
+        query = attable.name.belongs(set(atypes.keys()))
         rows = db(query).select(attable.id,
                                 attable.name,
                                 )
@@ -3767,7 +3765,7 @@ class DRKSiteActivityReport(object):
                 roles[person_id] = represent(role)
 
         # Field method to determine the family role
-        def family_role(row, roles=roles):
+        def family_role(row):
             person_id = row["pr_person.id"]
             return roles.get(person_id, "")
 

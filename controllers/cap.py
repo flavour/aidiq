@@ -19,26 +19,23 @@ def index():
 # -----------------------------------------------------------------------------
 def alerting_authority():
     """
-        RESTful CRUD controller
+        Alerting Authorities: RESTful CRUD controller
     """
 
     return s3_rest_controller()
-    
+
 # -----------------------------------------------------------------------------
 def alert_history():
     """
-        RESTful CRUD controller
+        Alert History: RESTful CRUD controller
     """
 
-    output = s3_rest_controller("cap", "alert_history",
-                                rheader = s3db.cap_history_rheader,
-                                )
-    return output
+    return s3_rest_controller(rheader=s3db.cap_history_rheader)
 
 # -----------------------------------------------------------------------------
 def alert_ack():
     """
-        RESTful CRUD controller
+        Alert Acknowledgements: RESTful CRUD controller
     """
 
     return s3_rest_controller()
@@ -48,6 +45,8 @@ def info_prep(r):
     """
         Preprocessor for CAP Info segments
         - whether accessed via /eden/info or /eden/alert/x/info
+
+        TODO move this into info model
     """
 
     if s3.debug:
@@ -67,7 +66,7 @@ def info_prep(r):
                 template_id = db(table.id == r.id).select(table.template_info_id,
                                                           limitby=(0, 1)
                                                           ).first().template_info_id
-            except AttributeError, KeyError:
+            except (AttributeError, KeyError):
                 pass
         elif r.component_name == "info":
             # cap/x/info component tab
@@ -91,10 +90,11 @@ def info_prep(r):
 # -----------------------------------------------------------------------------
 def public():
     """
+        # TODO improve docstring
         Filtered version of the Alerts controller
     """
 
-    s3.filter = (FS("scope") == "Public")
+    s3.filter = (FS("scope") == "Public") # TODO do this in the prep of alert()
 
     return alert()
 
@@ -216,13 +216,6 @@ def alert():
                      (table.approved_on != None)
             resource.add_filter(filter)
 
-        #elif r.representation == "cap":
-        #    # This is either importing from or exporting to cap format. Set both
-        #    # postprocessing hooks so we don't have to enumerate methods.
-        #    s3db.configure("gis_location",
-        #                   xml_post_parse = s3db.cap_gis_location_xml_post_parse,
-        #                   xml_post_render = s3db.cap_gis_location_xml_post_render,
-        #                   )
         record = r.record
         if r.id:
 
@@ -251,7 +244,7 @@ def alert():
                 # Don't allow to delete
                 s3db.configure(tablename,
                                deletable = False,
-                               editable = False,                               
+                               editable = False,
                                insertable = False,
                                )
             if record.reference is not None:
@@ -287,6 +280,8 @@ def alert():
                     # Filter to internal alerts
                     r.resource.add_filter(table.external != True)
                     s3.crud_strings["cap_alert"].title_list = T("Approved Alerts")
+
+                    # TODO Action buttons should be postp, not prep
                     s3_action_buttons(r, deletable=False, editable=False,
                                       read_url=URL(args="[id]"))
                     profile_button = {"url": URL(args=["[id]", "profile"]),
@@ -309,6 +304,7 @@ def alert():
                                    list_fields = list_fields,
                                    )
                 elif r.get_vars["~.external"] == "True":
+                    # TODO explain this section
                     query = (table.id == itable.alert_id) & \
                             (table.external == True) & \
                             (table.is_template != True) & \
@@ -316,7 +312,6 @@ def alert():
                     rows = db(query).select(itable.sender_name,
                                             groupby=itable.sender_name)
                     sender_options = {}
-                    from s3 import s3_str
                     for row in rows:
                         sender_name = row.sender_name
                         sender_options[sender_name] = s3_str(T(sender_name))
@@ -354,7 +349,7 @@ def alert():
                                    deletable = False,
                                    editable = False,
                                    filter_widgets = filter_widgets,
-                                   insertable = False,                                  
+                                   insertable = False,
                                    )
 
                 if r.method == "review":
@@ -403,6 +398,7 @@ def alert():
                                        )
                 elif r.method == "profile":
                     # Provide a nice display of the Alert details
+                    # TODO move this into a separate function, probably in model
 
                     # Hide the side menu
                     current.menu.options = None
@@ -538,7 +534,7 @@ def alert():
 
                     widget = s3db.cap_AlertProfileWidget
                     component = widget.component
-    
+
                     @widget(None)
                     def alert_widget(r, **attr):
                         return (
@@ -622,10 +618,10 @@ def alert():
                                       params,
                                       ),
                         )
-    
+
                     @widget("Alert Qualifiers")
                     def qualifiers_widget(r, **attr):
-    
+
                         return (
                             component("Sender ID",
                                       record.sender,
@@ -659,7 +655,7 @@ def alert():
                                       represent = table.incidents.represent,
                                       ),
                         )
-    
+
                     resource_desc = info["cap_resource.resource_desc"]
                     dtable = s3db.doc_document
                     documents_ = []
@@ -756,7 +752,7 @@ def alert():
 
                 alert_id = request.args(0)
 
-                # Check for prepopulate
+                # Check for prepopulate # TODO DRY this with corresponding section in template/X/info
                 if alert_id:
                     irows = db(itable.alert_id == alert_id).select(itable.language)
                     # An alert can contain two info segments, in English and local language
@@ -772,7 +768,7 @@ def alert():
                                              URL(c="cap", f=fn, args=alert_id)
                         itable.event_type_id.default = row.event_type_id
                     else:
-                        s3db.configure("cap_info",                              
+                        s3db.configure("cap_info",
                                        insertable = False,
                                        )
                 if record.approved_by is not None:
@@ -842,7 +838,7 @@ def alert():
                                    insertable = False,
                                    )
 
-            # @ToDo: Move inside correct component context (None?)
+            # TODO: Move inside correct component context (None?)
             post_vars = request.post_vars
             if post_vars.get("edit_info", False):
                 tid = post_vars["template_id"]
@@ -880,27 +876,27 @@ def alert():
 
             parameter_table = s3db.cap_info_parameter
             if alert.template_id and not \
-               (set([irow.id for irow in irows]) == set([irow_.template_info_id for irow_ in irows_])):
+               ({irow.id for irow in irows} == {irow_.template_info_id for irow_ in irows_}):
 
                 parameter_query_ = (parameter_table.alert_id == alert.template_id) & \
                                    (parameter_table.deleted != True)
 
                 # Clone all cap_info entries from the alert template
                 # If already created dont copy again
-                unwanted_fields = set(("deleted_rb",
-                                       "owned_by_user",
-                                       "approved_by",
-                                       "mci",
-                                       "deleted",
-                                       "modified_on",
-                                       "realm_entity",
-                                       "uuid",
-                                       "created_on",
-                                       "deleted_fk",
-                                       # Don't copy this: make an
-                                       # Ajax call instead
-                                       "template_settings",
-                                       ))
+                unwanted_fields = {"deleted_rb",
+                                   "owned_by_user",
+                                   "approved_by",
+                                   "mci",
+                                   "deleted",
+                                   "modified_on",
+                                   "realm_entity",
+                                   "uuid",
+                                   "created_on",
+                                   "deleted_fk",
+                                   # Don't copy this: make an
+                                   # Ajax call instead
+                                   "template_settings",
+                                   }
                 fields = [itable[f] for f in itable.fields
                           if f not in unwanted_fields]
 
@@ -923,8 +919,8 @@ def alert():
                     row_clone["template_info_id"] = row.id
                     row_clone["is_template"] = False
                     row_clone["effective"] = request.utcnow
-                    row_clone["expires"] = s3db.cap_expiry_date()
-                    row_clone["sender_name"] = s3db.cap_sender_name()
+                    row_clone["expires"] = s3db.cap_expirydate()
+                    row_clone["sender_name"] = s3db.cap_sendername()
                     row_clone["web"] = settings.get_base_public_url() + \
                                         URL(c="cap", f=fn, args=lastid)
                     row_clone["audience"] = audience
@@ -993,6 +989,8 @@ def alert():
 
         elif r.representation == "plain":
             # Map Popup: style like the dataList
+            # TODO why is this in postp not prep?
+            #      - better to bypass CRUD if its output is overwritten anyway
             list_fields = ["info.headline",
                            "area.name",
                            "info.priority",
@@ -1028,13 +1026,15 @@ def alert():
 # -----------------------------------------------------------------------------
 def info():
     """
-        REST controller for CAP info segments
-        - shouldn't ever be called
+        CAP info - RESTful CRUD controller
+
+        - shouldn't ever be called TODO if it shouldn't be called, then why does it exist?
     """
 
     def prep(r):
         if r.representation == "xls":
             table = r.table
+            # TODO Explain this (using raw values?)
             table.alert_id.represent = None
             table.language.represent = None
             table.category.represent = None
@@ -1057,8 +1057,10 @@ def info():
                            list_fields = list_fields,
                            )
 
+        # TODO Explain info_prep, and why would it ever return anything falsy?
         result = info_prep(r)
         if result:
+            # TODO explain this
             if not r.component and r.representation == "html":
                 s3.crud.submit_style = "hide"
                 s3.crud.custom_submit = (("add_language",
@@ -1071,24 +1073,26 @@ def info():
 
     def postp(r, output):
         if r.representation == "html":
+            # TODO explain this
             if r.component_name == "area":
                 update_url = URL(f="area", args=["[id]"])
                 s3_action_buttons(r, update_url=update_url)
 
+            # TODO explain this
             if not r.component and "form" in output:
                 set_priority_js()
 
         return output
     s3.postp = postp
 
-    output = s3_rest_controller(rheader = s3db.cap_rheader)
-    return output
+    return s3_rest_controller(rheader=s3db.cap_rheader)
 
 # -----------------------------------------------------------------------------
 def info_parameter():
     """
-        RESTful CRUD controller
-            should only be accessed from mobile client
+        Info Parameters - RESTful CRUD controller
+
+        - should only be accessed from mobile client # TODO Should? Clients won't read comments!
     """
 
     def prep(r):
@@ -1105,7 +1109,7 @@ def info_parameter():
                            list_fields = list_fields,
                            )
         else:
-            return
+            return False
         return True
     s3.prep = prep
 
@@ -1115,33 +1119,27 @@ def info_parameter():
 def template():
     """ REST controller for CAP templates """
 
-    atable = s3db.cap_alert
-    s3.filter = (atable.is_template == True)
-
-    viewing = request.vars["viewing"]
-    tablename = "cap_alert"
-
-    if viewing:
-        table, _id = viewing.strip().split(".")
-        if table == tablename:
-            redirect(URL(c="cap", f="template", args=[_id]))
+    # TODO what's this? (no real point with it, never called)
+    #tablename = "cap_alert"
+    #viewing = request.vars["viewing"]
+    #if viewing:
+    #    table, _id = viewing.strip().split(".")
+    #    if table == tablename:
+    #        redirect(URL(c="cap", f="template", args=[_id]))
 
     def prep(r):
-        list_fields = ["template_title",
-                       "identifier",
-                       "event_type_id",
-                       "incidents",
-                       "info.category",
-                       ]
 
-        s3db.configure(tablename,
-                       list_fields = list_fields,
-                       list_orderby = "cap_alert.event_type_id asc",
-                       orderby = "cap_alert.event_type_id asc",
-                       )
+        # Alert templates only (mandatory filter)
+        r.resource.add_filter(FS("is_template") == True)
+
+        table = r.table
+        tablename = "cap_alert"
+
         if r.representation == "xls":
-            r.table.scope.represent = None
-            r.table.incidents.represent = None
+
+            table.scope.represent = None
+            table.incidents.represent = None
+
             list_fields = [(T("ID"), "id"),
                            "template_title",
                            "restriction",
@@ -1149,91 +1147,13 @@ def template():
                            "incidents",
                            ]
 
-            s3db.configure(tablename,
-                           list_fields = list_fields,
-                           )
-        for f in ("identifier", "msg_type", "sender", "source", "scope"):
-            field = atable[f]
-            field.writable = False
-            field.readable = False
-            field.requires = None
-        atable.template_title.requires = IS_NOT_EMPTY()
-        atable.status.readable = atable.status.writable = False
-        atable.addresses.readable = atable.addresses.writable = False
-        atable.external.default = False
-
-        if r.component_name == "info":
-            itable = r.component.table
-            for f in ("event",
-                      "urgency",
-                      "certainty",
-                      "priority",
-                      "severity",
-                      "effective",
-                      "onset",
-                      "expires",
-                      "web",
-                      ):
-                field = itable[f]
-                field.writable = False
-                field.readable = False
-                field.required = False
-
-            itable.category.required = False
-
-            alert_id = request.args(0)
-            # Check for prepopulate
-            if alert_id:
-                irows = db(itable.alert_id == alert_id).select(itable.language)
-                # An alert can contain two info segments, in English and local language
-                if len(irows) < 2:
-                    row = db(atable.id == alert_id).select(atable.scope,
-                                                           atable.event_type_id,
-                                                           limitby=(0, 1)).first()
-                    if row.scope == "Public":
-                        fn = "public"
-                    else:
-                        fn = "alert"
-                    itable.web.default = settings.get_base_public_url()+\
-                                         URL(c="cap", f=fn, args=alert_id)
-                    itable.event_type_id.default = row.event_type_id
-                else:
-                    s3db.configure("cap_info",                              
-                                   insertable = False,
-                                   )
-        elif r.component_name == "resource":
-            rtable = r.component.table
-
-            # Set is_template to true as only accessed by template
-            rtable.is_template.default = True
-
-        s3.crud_strings[tablename] = Storage(
-            label_create = T("Create Template"),
-            title_display = T("Template"),
-            title_list = T("Templates"),
-            title_update = T("Edit Template"), # If already-published, this should create a new "Update" alert instead of modifying the original
-            title_upload = T("Import Templates"),
-            label_list_button = T("List Templates"),
-            label_delete_button = T("Delete Template"),
-            msg_record_created = T("Template created"),
-            msg_record_modified = T("Template modified"),
-            msg_record_deleted = T("Template deleted"),
-            msg_list_empty = T("No templates to show"))
-
-        if r.representation == "html":
-            s3.scripts.append("/%s/static/scripts/json2.min.js" % appname)
-            if s3.debug:
-                s3.scripts.append("/%s/static/scripts/S3/s3.cap.js" % appname)
-            else:
-                s3.scripts.append("/%s/static/scripts/S3/s3.cap.min.js" % appname)
-            s3.stylesheets.append("S3/cap.css")
-
         elif r.representation == "json":
+            # TODO why this @ToDo?
             # @ToDo: fix JSON representation's ability to use component list_fields
             list_fields = ["id",
                            "template_title",
-                           "scope",
-                           "sender",
+                           #"scope",
+                           #"sender",
                            "info.category",
                            "info.description",
                            "info.event_type_id",
@@ -1242,46 +1162,149 @@ def template():
                            "info.sender_name",
                            ]
 
-            s3db.configure(tablename,
-                           list_fields = list_fields,
-                           )
+        else:
+            list_fields = ["template_title",
+                           #"identifier",
+                           "event_type_id",
+                           "incidents",
+                           "info.category",
+                           ]
+
+        s3db.configure(tablename,
+                       list_fields = list_fields,
+                       orderby = "cap_alert.event_type_id asc",
+                       )
+
+        # Hide irrelevant fields
+        for fn in ("identifier",
+                   "msg_type",
+                   "sender",
+                   "source",
+                   "scope",
+                   "status",
+                   "addresses",
+                   ):
+            field = table[fn]
+            field.writable = field.readable = False
+            field.requires = None
+
+        # Field configuration specifically for templates
+        table.template_title.requires = [IS_NOT_EMPTY(), IS_LENGTH(512)]
+        table.external.default = False
+
+        component = r.component
+        if component:
+            alias = r.component_name
+            ctable = component.table
+
+            if alias == "info":
+                # Hide irrelevant fields
+                for fn in ("event",
+                           "urgency",
+                           "certainty",
+                           "priority",
+                           "severity",
+                           "effective",
+                           "onset",
+                           "expires",
+                           "web",
+                           ):
+                    field = ctable[fn]
+                    field.writable = field.readable = False
+                    field.requires = None
+
+                # Set is_template to true
+                ctable.is_template.default = True
+
+                # An alert can contain two info segments, one in English and
+                # one in local language
+                alert_id = r.id
+                if alert_id:
+                    rows = db(ctable.alert_id == alert_id).select(ctable.language)
+                    if len(rows) < 2:
+                        # Inherit event type from alert, set default web address
+                        row = db(table.id == alert_id).select(table.scope,
+                                                              table.event_type_id,
+                                                              limitby = (0, 1),
+                                                              ).first()
+                        ctable.event_type_id.default = row.event_type_id
+                        f = "public" if row.scope == "Public" else "alert"
+                        ctable.web.default = settings.get_base_public_url() + \
+                                             URL(c="cap", f=f, args=alert_id)
+                    else:
+                        # All possible info segments already present
+                        s3db.configure("cap_info", insertable=False)
+
+            elif alias == "resource":
+
+                # Set is_template to true
+                ctable.is_template.default = True
+
+        # Alternative CRUD Strings for Alert Templates
+        s3.crud_strings[tablename] = Storage(
+            label_create = T("Create Template"),
+            title_display = T("Template"),
+            title_list = T("Templates"),
+            title_update = T("Edit Template"),
+            title_upload = T("Import Templates"),
+            label_list_button = T("List Templates"),
+            label_delete_button = T("Delete Template"),
+            msg_record_created = T("Template created"),
+            msg_record_modified = T("Template modified"),
+            msg_record_deleted = T("Template deleted"),
+            msg_list_empty = T("No templates to show"),
+            )
+
+        if r.representation == "html":
+            # Add global JSON object for old browsers (before ECMA-5) - obsolete?
+            #s3.scripts.append("/%s/static/scripts/json2.min.js" % appname)
+
+            # Inject CAP form logic and i18n used by it
+            if s3.debug:
+                s3.scripts.append("/%s/static/scripts/S3/s3.cap.js" % appname)
+            else:
+                s3.scripts.append("/%s/static/scripts/S3/s3.cap.min.js" % appname)
+            s3.js_global.append('''i18n.cap_locked="%s"''' % T("Locked"))
+
+            # Inject module-specific styles
+            s3.stylesheets.append("S3/cap.css")
 
         return True
     s3.prep = prep
 
-    def postp(r,output):
-        lastid = r.resource.lastid
-        if lastid:
-            itable = s3db.cap_info
-            row = db(itable.alert_id == lastid).select(itable.id,
-                                                       limitby=(0, 1)).first()
-            if row:
-                r.next = URL(c="cap", f="template", args=[lastid, "info"])
-            else:
-                r.next = URL(c="cap", f="template", args=[lastid, "info", "create"])
+    def postp(r, output):
 
-        if r.interactive and "form" in output:
+        if isinstance(output, dict):
+            form = output.get("form")
+            if form:
+                form.add_class("cap_template_form")
+
+        if r.interactive:
             if get_vars.get("_next"):
                 r.next = get_vars.get("_next")
+            else:
+                lastid = r.id or r.resource.lastid
+                if lastid:
+                    itable = s3db.cap_info
+                    info = db(itable.alert_id == lastid).select(itable.id,
+                                                                limitby = (0, 1),
+                                                                ).first()
+                    if info:
+                        r.next = URL(c="cap", f="template", args=[lastid, "info"])
+                    else:
+                        r.next = URL(c="cap", f="template", args=[lastid, "info", "create"])
 
-            s3.js_global.append('''i18n.cap_locked="%s"''' % T("Locked"))
-            tablename = r.tablename
-            if tablename == tablename:
-                output["form"].add_class("cap_template_form")
-            elif tablename == "cap_info":
-                output["form"].add_class("cap_info_template_form")
         return output
     s3.postp = postp
 
-    output = s3_rest_controller("cap", "alert",
-                                rheader = s3db.cap_rheader)
-    return output
+    return s3_rest_controller("cap", "alert", rheader=s3db.cap_rheader)
 
 # -----------------------------------------------------------------------------
 def area():
     """
-        REST controller for CAP area
-        Should only be accessed for defining area template
+        CAP Areas - RESTful CRUD controller
+
+        Should only be accessed for defining area template # TODO Should? => filter?
     """
 
     def prep(r):
@@ -1292,6 +1315,7 @@ def area():
         # Area create from this controller is template
         artable.is_template.default = True
 
+        # Context-specific CRUD strings (template areas)
         s3.crud_strings["cap_area"] = Storage(
             label_create = T("Create Predefined Area"),
             title_display = T("Predefined Area"),
@@ -1325,6 +1349,7 @@ def area():
                            "location.location_id",
                            ]
 
+            # TODO DRY this (alternative not override)
             s3db.configure("cap_area",
                            list_fields = list_fields,
                            )
@@ -1336,6 +1361,7 @@ def area():
                            "altitude",
                            "ceiling",
                            ]
+            # TODO DRY this (alternative not override)
             s3db.configure("cap_area",
                            list_fields = list_fields,
                            )
@@ -1343,19 +1369,18 @@ def area():
         return True
     s3.prep = prep
 
-    output = s3_rest_controller("cap", "area",
-                                rheader = s3db.cap_rheader)
-    return output
+    return s3_rest_controller("cap", "area", rheader=s3db.cap_rheader)
 
 # -----------------------------------------------------------------------------
 def warning_priority():
     """
-        RESTful CRUD controller
+        Warning Priorities: RESTful CRUD controller
     """
 
     def prep(r):
         if r.representation == "json":
-            # This is for the dropdown options for the priority
+            # For option lookups (priority selector)
+            # - currently unused, options are injected in postp as S3.cap_priorities
             list_fields = ["id",
                            "priority_rank",
                            "color_code",
@@ -1416,7 +1441,7 @@ def notify_approver():
                         url = s3_str(Shortener('Tinyurl', timeout=3).short(url))
                     except:
                         pass
-                        
+
                 message = """
 Hello Approver,
 %(full_name)s has created the alert message.
@@ -1446,10 +1471,17 @@ Remember to verify the content before approving by using Edit button.""" % \
 
 # -----------------------------------------------------------------------------
 def set_priority_js():
-    """ Output json for priority field """
+    """ Output json for priority field (TODO explain better) """
+
+    # called from alert and info controllers
+    # TODO move this into warning priority model
+    #      - can be called from client (=is a controller of its own)
+    #      - potentially harmful because it runs a (pointless) request cycle
+    #      - pointless because it returns nothing
 
     wptable = s3db.cap_warning_priority
 
+    # TODO Proper query? (exclude deleted records?)
     rows = db(wptable).select(wptable.name,
                               wptable.urgency,
                               wptable.severity,
@@ -1458,17 +1490,15 @@ def set_priority_js():
                               orderby = wptable.name,
                               )
 
+    priorities = [(s3_str(T(r.name)), r.urgency, r.severity, r.certainty, r.color_code)\
+                  for r in rows]
+
     from gluon.serializers import json as jsons
-    from s3 import s3_str
-    p_settings = [(s3_str(T(r.name)), r.urgency, r.severity, r.certainty, r.color_code)\
-                 for r in rows]
+    script = s3_str('''S3.cap_priorities=%s''' % jsons(priorities))
 
-    priority_conf = s3_str('''S3.cap_priorities=%s''' % jsons(p_settings))
     js_global = s3.js_global
-    if not priority_conf in js_global:
-        js_global.append(priority_conf)
-
-    return
+    if not script in js_global:
+        js_global.append(script)
 
 # -----------------------------------------------------------------------------
 def cap_AreaRowOptionsBuilder(alert_id, caller=None):
@@ -1496,7 +1526,6 @@ def cap_AreaRowOptionsBuilder(alert_id, caller=None):
     values = [row.id for row in rows]
     count = len(values)
     if count:
-        from s3 import s3_str
         if count == 1:
             query_ = (atable.id == values[0])
         else:

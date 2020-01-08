@@ -5,9 +5,15 @@ from collections import OrderedDict
 from gluon import current, URL
 from gluon.storage import Storage
 
+from s3 import S3ReportRepresent
+
 def config(settings):
     """
-        Settings for the SHARE Teamplate
+        Settings for the SHARE Template
+
+        Migration Issues:
+            req_need.name is now length=64
+            (SHARE can use req_need.description instead if the notnull=True removed)
     """
 
     T = current.T
@@ -108,6 +114,13 @@ def config(settings):
                             "widgets": [{"method": "datatable"}],
                             },
                            )
+
+    # -------------------------------------------------------------------------
+    # CMS Content Management
+    #
+    settings.cms.bookmarks = True
+    settings.cms.richtext = True
+    settings.cms.show_tags = True
 
     # -------------------------------------------------------------------------
     # Events
@@ -323,6 +336,134 @@ def config(settings):
     ])
 
     # -------------------------------------------------------------------------
+    def customise_cms_post_resource(r, tablename):
+
+        import json
+
+        from s3 import S3SQLCustomForm, S3SQLInlineComponent, \
+                       S3DateFilter, S3OptionsFilter, S3TextFilter, \
+                       s3_fieldmethod
+
+        s3db = current.s3db
+
+        # Virtual Field for Comments
+        # - otherwise need to do per-record DB calls inside cms_post_list_layout
+        #   as direct list_fields come in unsorted, so can't match up to records
+        ctable = s3db.cms_comment
+
+        def comment_as_json(row):
+            body = row["cms_comment.body"]
+            if not body:
+                return None
+            return json.dumps({"body": body,
+                               "created_by": row["cms_comment.created_by"],
+                               "created_on": row["cms_comment.created_on"].isoformat(),
+                               })
+
+        ctable.json_dump = s3_fieldmethod("json_dump",
+                                          comment_as_json,
+                                          # over-ride the default represent of s3_unicode to prevent HTML being rendered too early
+                                          #represent = lambda v: v,
+                                          )
+
+        s3db.configure("cms_comment",
+                       extra_fields = ["body",
+                                       "created_by",
+                                       "created_on",
+                                       ],
+                       # Doesn't seem to have any impact
+                       #orderby = "cms_comment.created_on asc",
+                       )
+
+
+        table = s3db.cms_post
+        table.priority.readable = table.priority.writable = True
+        #table.series_id.readable = table.series_id.writable = True
+        #table.status_id.readable = table.status_id.writable = True
+
+        crud_form = S3SQLCustomForm(#(T("Type"), "series_id"),
+                                    (T("Priority"), "priority"),
+                                    #(T("Status"), "status_id"),
+                                    (T("Title"), "title"),
+                                    (T("Text"), "body"),
+                                    #(T("Location"), "location_id"),
+                                    # Tags are added client-side
+                                    S3SQLInlineComponent("document",
+                                                         name = "file",
+                                                         label = T("Files"),
+                                                         fields = [("", "file"),
+                                                                   #"comments",
+                                                                   ],
+                                                         ),
+                                    )
+
+        date_filter = S3DateFilter("date",
+                                   # If we introduce an end_date on Posts:
+                                   #["date", "end_date"],
+                                   label = "",
+                                   #hide_time = True,
+                                   #slider = True,
+                                   clear_text = "X",
+                                   )
+        date_filter.input_labels = {"ge": "Start Time/Date", "le": "End Time/Date"}
+
+        filter_widgets = [S3TextFilter(["body",
+                                        ],
+                                       #formstyle = text_filter_formstyle,
+                                       label = T("Search"),
+                                       _placeholder = T("Enter search term…"),
+                                       ),
+                          #S3OptionsFilter("series_id",
+                          #                label = "",
+                          #                noneSelectedText = "Type", # T() added in widget
+                          #                no_opts = "",
+                          #                ),
+                          S3OptionsFilter("priority",
+                                          label = "",
+                                          noneSelectedText = "Priority", # T() added in widget
+                                          no_opts = "",
+                                          ),
+                          #S3OptionsFilter("status_id",
+                          #                label = "",
+                          #                noneSelectedText = "Status", # T() added in widget
+                          #                no_opts = "",
+                          #                ),
+                          S3OptionsFilter("created_by$organisation_id",
+                                          label = "",
+                                          noneSelectedText = "Source", # T() added in widget
+                                          no_opts = "",
+                                          ),
+                          S3OptionsFilter("tag_post.tag_id",
+                                          label = "",
+                                          noneSelectedText = "Tag", # T() added in widget
+                                          no_opts = "",
+                                          ),
+                          date_filter,
+                          ]
+
+        from templates.SHARE.controllers import cms_post_list_layout
+
+        s3db.configure("cms_post",
+                       create_next = URL(args = [1, "post", "datalist"]),
+                       crud_form = crud_form,
+                       filter_widgets = filter_widgets,
+                       list_fields = [#"series_id",
+                                      "priority",
+                                      #"status_id",
+                                      "date",
+                                      "title",
+                                      "body",
+                                      "created_by",
+                                      "tag.name",
+                                      "document.file",
+                                      "comment.json_dump",
+                                      ],
+                       list_layout = cms_post_list_layout,
+                       )
+
+    settings.customise_cms_post_resource = customise_cms_post_resource
+
+    # -------------------------------------------------------------------------
     def customise_event_sitrep_resource(r, tablename):
 
         from s3 import s3_comments_widget
@@ -350,6 +491,47 @@ def config(settings):
             msg_list_empty = T("No Situational Updates currently registered"))
 
     settings.customise_event_sitrep_resource = customise_event_sitrep_resource
+    # -----------------------------------------------------------------------------
+    def customise_event_sitrep_controller(**attr):
+
+        s3 = current.response.s3
+
+        # Custom postp
+        standard_postp = s3.postp
+        def postp(r, output):
+            # Call standard postp
+            if callable(standard_postp):
+                output = standard_postp(r, output)
+
+            if r.interactive:
+                # Mark this page to have differential CSS
+                s3.jquery_ready.append('''$('main').attr('id', 'sitrep')''')
+
+            return output
+        s3.postp = postp
+
+        # Extend the width of the Summary column
+        dt_col_widths = {0: 110,
+                         1: 95,
+                         2: 100,
+                         3: 100,
+                         4: 100,
+                         5: 100,
+                         6: 110,
+                         7: 80,
+                         8: 90,
+                         9: 300,
+                         10: 110,
+                         }
+        if "dtargs" in attr:
+            attr["dtargs"]["dt_col_widths"] = dt_col_widths
+        else:
+            attr["dtargs"] = {"dt_col_widths": dt_col_widths,
+                              }
+
+        return attr
+
+    settings.customise_event_sitrep_controller = customise_event_sitrep_controller
     # -----------------------------------------------------------------------------
     def customise_gis_location_controller(**attr):
 
@@ -417,7 +599,7 @@ def config(settings):
             _id = table.insert(channel_id=channel_id, function_name="parse_tweet", enabled=True)
             s3db.msg_parser_enable(_id)
 
-            run_async = current.s3task.async
+            run_async = current.s3task.run_async
             # Poll
             run_async("msg_poll", args=["msg_twitter_channel", channel_id])
 
@@ -467,7 +649,7 @@ def config(settings):
                                     S3SQLInlineLink("organisation_type",
                                                     field = "organisation_type_id",
                                                     # Default 10 options just triggers which adds unnecessary complexity to a commonly-used form & commonly an early one (create Org when registering)
-                                                    filter = False,
+                                                    search = False,
                                                     label = T("Type"),
                                                     multiple = False,
                                                     widget = "multiselect",
@@ -546,6 +728,60 @@ def config(settings):
         return attr
 
     settings.customise_org_sector_controller = customise_org_sector_controller
+
+    # -------------------------------------------------------------------------
+    def customise_pr_forum_controller(**attr):
+
+        s3db = current.s3db
+        s3 = current.response.s3
+
+        s3db.pr_forum
+        s3.crud_strings["pr_forum"].title_display = T("HCT Coordination Folders")
+        s3.dl_no_header = True
+
+        # Comments
+        appname = current.request.application
+        s3.scripts.append("/%s/static/themes/WACOP/js/update_comments.js" % appname)
+        script = '''S3.wacop_comments()
+S3.redraw_fns.push('wacop_comments')'''
+        s3.jquery_ready.append(script)
+
+        # Tags for Updates
+        if s3.debug:
+            s3.scripts.append("/%s/static/scripts/tag-it.js" % appname)
+        else:
+            s3.scripts.append("/%s/static/scripts/tag-it.min.js" % appname)
+        if current.auth.s3_has_permission("update", s3db.cms_tag_post):
+            # @ToDo: Move the ajaxUpdateOptions into callback of getS3?
+            readonly = '''afterTagAdded:function(event,ui){
+if(ui.duringInitialization){return}
+var post_id=$(this).attr('data-post_id')
+var url=S3.Ap.concat('/cms/post/',post_id,'/add_tag/',ui.tagLabel)
+$.getS3(url)
+S3.search.ajaxUpdateOptions('#datalist-filter-form')
+},afterTagRemoved:function(event,ui){
+var post_id=$(this).attr('data-post_id')
+var url=S3.Ap.concat('/cms/post/',post_id,'/remove_tag/',ui.tagLabel)
+$.getS3(url)
+S3.search.ajaxUpdateOptions('#datalist-filter-form')
+},'''
+        else:
+            readonly = '''readOnly:true'''
+        script = \
+'''S3.tagit=function(){$('.s3-tags').tagit({placeholderText:'%s',autocomplete:{source:'%s'},%s})}
+S3.tagit()
+S3.redraw_fns.push('tagit')''' % (T("Add tags here…"),
+                                  URL(c="cms", f="tag",
+                                      args="tag_list.json"),
+                                  readonly)
+        s3.jquery_ready.append(script)
+
+        attr["rheader"] = None
+        attr["hide_filter"] = False
+
+        return attr
+
+    settings.customise_pr_forum_controller = customise_pr_forum_controller
 
     # -------------------------------------------------------------------------
     def req_need_commit(r, **attr):
@@ -1013,24 +1249,10 @@ def config(settings):
 
         # Custom Filtered Components
         s3db.add_components(tablename,
-                            req_need_tag = (# Req Number
-                                            {"name": "req_number",
+                            req_need_tag = (# Address
+                                            {"name": "address",
                                              "joinby": "need_id",
-                                             "filterby": {"tag": "req_number",
-                                                          },
-                                             "multiple": False,
-                                             },
-                                            # Issue
-                                            {"name": "issue",
-                                             "joinby": "need_id",
-                                             "filterby": {"tag": "issue",
-                                                          },
-                                             "multiple": False,
-                                             },
-                                            # Verified
-                                            {"name": "verified",
-                                             "joinby": "need_id",
-                                             "filterby": {"tag": "verified",
+                                             "filterby": {"tag": "address",
                                                           },
                                              "multiple": False,
                                              },
@@ -1041,10 +1263,31 @@ def config(settings):
                                                           },
                                              "multiple": False,
                                              },
-                                            # Address
-                                            {"name": "address",
+                                            # Issue
+                                            {"name": "issue",
                                              "joinby": "need_id",
-                                             "filterby": {"tag": "address",
+                                             "filterby": {"tag": "issue",
+                                                          },
+                                             "multiple": False,
+                                             },
+                                            # Req Number
+                                            {"name": "req_number",
+                                             "joinby": "need_id",
+                                             "filterby": {"tag": "req_number",
+                                                          },
+                                             "multiple": False,
+                                             },
+                                            # Original Request From
+                                            {"name": "request_from",
+                                             "joinby": "need_id",
+                                             "filterby": {"tag": "request_from",
+                                                          },
+                                             "multiple": False,
+                                             },
+                                            # Verified
+                                            {"name": "verified",
+                                             "joinby": "need_id",
+                                             "filterby": {"tag": "verified",
                                                           },
                                              "multiple": False,
                                              },
@@ -1067,6 +1310,11 @@ def config(settings):
         f = issue.table.value
         f.widget = lambda f, v: \
             s3_comments_widget(f, v, _placeholder = "e.g. Lack of accessibility and contaminated wells due to heavy rainfall.")
+
+        request_from = components_get("request_from")
+        f = request_from.table.value
+        f.widget = lambda f, v: \
+            s3_comments_widget(f, v, _placeholder = "Please indicate the requesting organisation/ministry.")
 
         verified = components_get("verified")
         f = verified.table.value
@@ -1217,7 +1465,7 @@ def config(settings):
                                        ),
                        S3SQLInlineLink("organisation",
                                        field = "organisation_id",
-                                       filter = False,
+                                       search = False,
                                        label = T("Organization"),
                                        multiple = False,
                                        readonly = org_readonly,
@@ -1229,11 +1477,12 @@ def config(settings):
                        # Moved into Lines
                        #S3SQLInlineLink("sector",
                        #                field = "sector_id",
-                       #                filter = False,
+                       #                search = False,
                        #                label = T("Sector"),
                        #                multiple = False,
                        #                ),
                        "name",
+                       (T("Original Request From"), "request_from.value"),
                        (T("Issue/cause"), "issue.value"),
                        #demographic,
                        #need_item,
@@ -1250,7 +1499,7 @@ def config(settings):
                        "comments",
                        ]
 
-        from controllers import project_ActivityRepresent
+        from .controllers import project_ActivityRepresent
         natable = s3db.req_need_activity
         #f = natable.activity_id
         #f.represent = project_ActivityRepresent()
@@ -1388,7 +1637,7 @@ def config(settings):
             on the homepage
         """
 
-        from controllers import HomepageStatistics
+        from .controllers import HomepageStatistics
         HomepageStatistics.update_data()
 
     settings.tasks.homepage_stats_update = homepage_stats_update
@@ -1412,7 +1661,8 @@ def config(settings):
                 # No, this is not open for everybody
                 r.unauthorized()
             else:
-                current.s3task.async("settings_task", args=["homepage_stats_update"])
+                current.s3task.run_async("settings_task",
+                                         args = ["homepage_stats_update"])
                 current.session.confirmation = T("Statistics data update started")
 
                 from gluon import redirect
@@ -1426,6 +1676,8 @@ def config(settings):
         from gluon import IS_EMPTY_OR, IS_IN_SET, SPAN
 
         from s3 import S3Represent
+
+        s3db = current.s3db
 
         current.response.s3.crud_strings["req_need_line"]["title_map"] = T("Map of Needs")
 
@@ -1443,7 +1695,7 @@ def config(settings):
                                    ),
                            }
 
-        table = current.s3db.req_need_line
+        table = s3db.req_need_line
 
         f = table.status
         f.requires = IS_EMPTY_OR(IS_IN_SET(req_status_opts, zero = None))
@@ -1464,10 +1716,10 @@ def config(settings):
             f.label = T("GN")
 
         # Custom method to (manually) update homepage statistics
-        current.s3db.set_method("req", "need_line",
-                                method = "update_stats",
-                                action = req_need_line_update_stats,
-                                )
+        s3db.set_method("req", "need_line",
+                        method = "update_stats",
+                        action = req_need_line_update_stats,
+                        )
 
     settings.customise_req_need_line_resource = customise_req_need_line_resource
 
@@ -1512,6 +1764,13 @@ def config(settings):
                                             {"name": "req_number",
                                              "joinby": "need_id",
                                              "filterby": {"tag": "req_number",
+                                                          },
+                                             "multiple": False,
+                                             },
+                                            # Original Request From
+                                            {"name": "request_from",
+                                             "joinby": "need_id",
+                                             "filterby": {"tag": "request_from",
                                                           },
                                              "multiple": False,
                                              },
@@ -1591,8 +1850,10 @@ def config(settings):
                        list_fields = [(T("Status"), "status"),
                                       (T("Orgs responding"), "need_response_line.need_response_id$agency.organisation_id"),
                                       "need_id$date",
-                                      "need_id$organisation__link.organisation_id",
+                                      (T("Need entered by"), "need_id$organisation__link.organisation_id"),
+                                      (T("Original Request From"), "need_id$request_from.value"),
                                       # These levels/Labels are for SHARE/LK
+                                      #(T("Province"), "need_id$location_id$L1"),
                                       (T("District"), "need_id$location_id$L2"),
                                       #(T("DS"), "location_id$L3"),
                                       #(T("GN"), "location_id$L4"),
@@ -1600,6 +1861,7 @@ def config(settings):
                                       "parameter_id",
                                       "item_id",
                                       "quantity",
+                                      (T("Quantity Outstanding"),"quantity_uncommitted"),
                                       "timeframe",
                                       (T("Request Number"), "need_id$req_number.value"),
                                       ],
@@ -1880,7 +2142,7 @@ def config(settings):
                        ]
 
         if r.id and r.resource.tablename == tablename and r.record.need_id:
-            from controllers import req_NeedRepresent
+            from .controllers import req_NeedRepresent
             f = table.need_id
             f.represent = req_NeedRepresent()
             f.writable = False
@@ -1985,7 +2247,7 @@ def config(settings):
         s3db = current.s3db
         table = s3db.req_need_response_line
 
-        current.response.s3.crud_strings["req_need_response_line"]["title_map"] = T("Map of Activities")
+        #current.response.s3.crud_strings["req_need_response_line"] = Storage(title_map = T("Map of Activities"),)
 
         # Settings for Map Popups
         f = table.coarse_location_id
@@ -2002,6 +2264,7 @@ def config(settings):
                        popup_url = URL(c="req", f="need_response",
                                        vars = {"line": "[id]"}
                                        ),
+                       report_represent = NeedResponseLineReportRepresent,
                        )
 
     settings.customise_req_need_response_line_resource = customise_req_need_response_line_resource
@@ -2012,6 +2275,7 @@ def config(settings):
         from s3 import S3OptionsFilter #, S3DateFilter, S3LocationFilter, S3TextFilter
 
         s3db = current.s3db
+        table = s3db.req_need_response_line
 
         settings.base.pdf_orientation = "Landscape"
 
@@ -2067,81 +2331,129 @@ def config(settings):
                                                               ),
                             )
 
-        filter_widgets = [S3OptionsFilter("need_response_id$agency.organisation_id",
-                                          label = T("Organization"),
-                                          ),
-                          #S3OptionsFilter("need_response_id$event.event_type_id",
-                          #                #hidden = True,
-                          #                ),
-                          # @ToDo: Filter this list dynamically based on Event Type (if-used):
-                          S3OptionsFilter("need_response_id$event__link.event_id",
-                                          #hidden = True,
-                                          ),
-                          S3OptionsFilter("sector_id"),
-                          #S3LocationFilter("location_id",
-                          #                 label = T("Location"),
-                          #                 # These levels are for SHARE/LK
-                          #                 levels = ("L2", "L3", "L4"),
-                          #                 ),
-                          S3OptionsFilter("need_response_id$location_id",
-                                          label = T("District"),
-                                          ),
-                          S3OptionsFilter("need_response_id$donor.organisation_id",
-                                          label = T("Donor"),
-                                          ),
-                          S3OptionsFilter("need_response_id$partner.organisation_id",
-                                          label = T("Partner"),
-                                          ),
-                          S3OptionsFilter("parameter_id"),
-                          S3OptionsFilter("item_id"),
-                          #S3OptionsFilter("modality"),
-                          #S3DateFilter("date"),
-                          S3OptionsFilter("status_id",
-                                          cols = 4,
-                                          label = T("Status"),
-                                          #hidden = True,
-                                          ),
-                          ]
-
-        s3db.configure("req_need_response_line",
-                       filter_widgets = filter_widgets,
-                       # We create a custom Create Button to create a Need Response not a Need Response Line
-                       listadd = False,
-                       list_fields = [(T("Disaster"), "need_response_id$event__link.event_id"),
-                                      (T("Organization"), "need_response_id$agency.organisation_id"),
-                                      (T("Implementing Partner"), "need_response_id$partner.organisation_id"),
-                                      (T("Donor"), "need_response_id$donor.organisation_id"),
-                                      # These levels/labels are for SHARE/LK
-                                      (T("District"), "need_response_id$location_id$L1"),
-                                      "coarse_location_id",
-                                      "location_id",
-                                      (T("Sector"), "sector_id"),
-                                      (T("Item"), "item_id"),
-                                      (T("Items Planned"), "quantity"),
-                                      (T("Items Delivered"), "quantity_delivered"),
-                                      (T("Modality"), "modality"),
-                                      (T("Beneficiaries Planned"), "value"),
-                                      (T("Beneficiaries Reached"), "value_reached"),
-                                      (T("Activity Date (Planned"), "date"),
-                                      (T("Activity Status"), "status_id"),
-                                      ],
-                       )
-
         s3 = current.response.s3
 
-        s3.crud_strings["req_need_response_line"] = Storage(
-            #label_create = T("Add Activity"),
-            title_list = T("Activities"),
-            #title_display = T("Activity"),
-            #title_update = T("Edit Activity"),
-            #title_upload = T("Import Activities"),
-            #label_list_button = T("List Activities"),
-            #label_delete_button = T("Delete Activity"),
-            #msg_record_created = T("Activity added"),
-            #msg_record_modified = T("Activity updated"),
-            msg_record_deleted = T("Activity deleted"),
-            msg_list_empty = T("No Activities currently registered"),
-            )
+        # Custom prep
+        standard_prep = s3.prep
+        def prep(r):
+            # Call standard prep
+            if callable(standard_prep):
+                result = standard_postp(r)
+            else:
+                result = True
+
+            filter_widgets = [S3OptionsFilter("need_response_id$agency.organisation_id",
+                                              label = T("Organization"),
+                                              ),
+                              #S3OptionsFilter("need_response_id$event.event_type_id",
+                              #                #hidden = True,
+                              #                ),
+                              # @ToDo: Filter this list dynamically based on Event Type (if-used):
+                              S3OptionsFilter("need_response_id$event__link.event_id",
+                                              #hidden = True,
+                                              ),
+                              S3OptionsFilter("sector_id"),
+                              #S3LocationFilter("location_id",
+                              #                 label = T("Location"),
+                              #                 # These levels are for SHARE/LK
+                              #                 levels = ("L2", "L3", "L4"),
+                              #                 ),
+                              S3OptionsFilter("need_response_id$location_id",
+                                              label = T("District"),
+                                              ),
+                              S3OptionsFilter("need_response_id$donor.organisation_id",
+                                              label = T("Donor"),
+                                              ),
+                              S3OptionsFilter("need_response_id$partner.organisation_id",
+                                              label = T("Partner"),
+                                              ),
+                              S3OptionsFilter("parameter_id"),
+                              S3OptionsFilter("item_id"),
+                              #S3OptionsFilter("modality"),
+                              #S3DateFilter("date"),
+                              S3OptionsFilter("status_id",
+                                              cols = 4,
+                                              label = T("Status"),
+                                              #hidden = True,
+                                              ),
+                              ]
+
+            list_fields = [(T("Organization"), "need_response_id$agency.organisation_id"),
+                           (T("Implementing Partner"), "need_response_id$partner.organisation_id"),
+                           (T("Donor"), "need_response_id$donor.organisation_id"),
+                           # These levels/labels are for SHARE/LK
+                           #(T("Province"), "need_response_id$location_id$L1"),
+                           (T("District"), "need_response_id$location_id$L2"),
+                           "coarse_location_id",
+                           "location_id",
+                           (T("Sector"), "sector_id"),
+                           (T("Item"), "item_id"),
+                           (T("Items Planned"), "quantity"),
+                           #(T("Items Delivered"), "quantity_delivered"),
+                           (T("Modality"), "modality"),
+                           (T("Beneficiaries Planned"), "value"),
+                           (T("Beneficiaries Reached"), "value_reached"),
+                           (T("Activity Date (Planned"), "date"),
+                           (T("Activity Status"), "status_id"),
+                           ]
+
+            if r.interactive:
+                s3.crud_strings["req_need_response_line"] = Storage(
+                    #label_create = T("Add Activity"),
+                    title_list = T("Activities"),
+                    #title_display = T("Activity"),
+                    #title_update = T("Edit Activity"),
+                    #title_upload = T("Import Activities"),
+                    #label_list_button = T("List Activities"),
+                    #label_delete_button = T("Delete Activity"),
+                    #msg_record_created = T("Activity added"),
+                    #msg_record_modified = T("Activity updated"),
+                    msg_record_deleted = T("Activity deleted"),
+                    msg_list_empty = T("No Activities currently registered"),
+                    )
+
+            #if r.method == "report":
+            #    # In report drilldown, include the (Location) after quantity_delivered
+            #    # => Needs to be a VF as we can't read the record from within represents
+            #    #table.quantity_delivered.represent =
+            #
+            #    from s3 import S3Represent, s3_fieldmethod
+            #
+            #    # @ToDo: Option for gis_LocationRepresent which doesn't show level/parent, but supports translation
+            #    gis_represent = S3Represent(lookup = "gis_location")
+            #
+            #    def quantity_delivered_w_location(row):
+            #        quantity_delivered = row["req_need_response_line.quantity_delivered"]
+            #        location_id = row["req_need_response_line.location_id"]
+            #        if not location_id:
+            #            location_id = row["req_need_response_line.coarse_location_id"]
+            #        if not location_id:
+            #            location_id = row["req_need_response.location_id"]
+            #        location = gis_represent(location_id)
+            #        return "%s (%s)" % (quantity_delivered, location)
+            #
+            #    table.quantity_delivered_w_location = s3_fieldmethod("quantity_delivered_w_location",
+            #                                                         quantity_delivered_w_location,
+            #                                                         # over-ride the default represent of s3_unicode to prevent HTML being rendered too early
+            #                                                         #represent = lambda v: v,
+            #                                                         )
+            #    list_fields.insert(9, (T("Items Delivered"), "quantity_delivered_w_location"))
+            #else:
+            list_fields.insert(9, (T("Items Delivered"), "quantity_delivered"))
+
+            # Exclude the Disaster column from PDF exports
+            if r.representation != "pdf":
+                list_fields.insert(0, (T("Disaster"), "need_response_id$event__link.event_id"))
+
+            s3db.configure("req_need_response_line",
+                           filter_widgets = filter_widgets,
+                           # We create a custom Create Button to create a Need Response not a Need Response Line
+                           listadd = False,
+                           list_fields = list_fields,
+                           )
+
+            return result
+        s3.prep = prep
 
         # Custom postp
         standard_postp = s3.postp
@@ -2158,7 +2470,7 @@ def config(settings):
                 #S3CRUD.action_buttons(r)
                 # Custom Action Buttons
                 auth = current.auth
-                deletable = current.db(auth.s3_accessible_query("delete", "req_need_response_line")).select(s3db.req_need_response_line.id)
+                deletable = current.db(auth.s3_accessible_query("delete", "req_need_response_line")).select(table.id)
                 restrict_d = [str(row.id) for row in deletable]
                 s3.actions = [{"label": s3_str(T("Open")),
                                "_class": "action-btn",
@@ -2190,5 +2502,45 @@ def config(settings):
         return attr
 
     settings.customise_req_need_response_line_controller = customise_req_need_response_line_controller
+
+# =============================================================================
+class NeedResponseLineReportRepresent(S3ReportRepresent):
+    """
+        Custom representation of need response line records in
+        pivot table reports:
+            - show as location name
+    """
+
+    def __call__(self, record_ids):
+        """
+            Represent record_ids (custom)
+
+            @param record_ids: req_need_response_line record IDs
+
+            @returns: a JSON-serializable dict {recordID: representation}
+        """
+
+        # Represent the location IDs
+        resource = current.s3db.resource("req_need_response_line",
+                                         id = record_ids,
+                                         )
+
+        rows = resource.select(["id", "coarse_location_id", "location_id"],
+                               represent = True,
+                               raw_data = True,
+                               limit = None,
+                               ).rows
+
+        output = {}
+        for row in rows:
+            raw = row["_row"]
+            if raw["req_need_response_line.location_id"]:
+                repr_str = row["req_need_response_line.location_id"]
+            else:
+                # Fall back to coarse_location_id if no GN available
+                repr_str = row["req_need_response_line.coarse_location_id"]
+            output[raw["req_need_response_line.id"]] = repr_str
+
+        return output
 
 # END =========================================================================

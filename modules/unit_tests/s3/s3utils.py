@@ -9,7 +9,7 @@ import unittest
 
 from s3.s3utils import *
 from s3.s3data import S3DataTable
-from s3.s3datetime import S3Calendar
+from s3.s3datetime import S3Calendar, S3DefaultTZ
 
 from unit_tests import run_suite
 
@@ -29,9 +29,8 @@ class S3TypeConverterTests(unittest.TestCase):
         settings.L10n.time_format = "%H:%M:%S"
 
         # Set timezone to UTC
-        session = current.session
-        self.utc_offset = session.s3.utc_offset
-        session.s3.utc_offset = 0
+        self.tzinfo = current.response.s3.tzinfo
+        current.response.s3.tzinfo = S3DefaultTZ(0)
 
         # Set calendar to Gregorian
         self.calendar = current.calendar
@@ -47,7 +46,7 @@ class S3TypeConverterTests(unittest.TestCase):
         settings.L10n.time_format = self.time_format
 
         # Reset time zone
-        current.session.s3.utc_offset = self.utc_offset
+        current.response.s3.tzinfo = self.tzinfo
 
         # Restore current calendar
         current.calendar = self.calendar
@@ -58,7 +57,7 @@ class S3TypeConverterTests(unittest.TestCase):
 
         assertEqual = self.assertEqual
         settings = current.deployment_settings
-        session = current.session
+        response = current.response
 
         convert = S3TypeConverter._date
 
@@ -74,23 +73,23 @@ class S3TypeConverterTests(unittest.TestCase):
         assertEqual(result, datetime.date(2011, 10, 1))
 
         # Verify without offset
-        session.s3.utc_offset = 0
+        response.s3.tzinfo = S3DefaultTZ(0)
         result = convert("2011-10-01")
         assertEqual(result, datetime.date(2011, 10, 1))
 
         # Verify with offset
         # => Date without time part means 08:00 local time zone,
         #    so 2 hours East means the same day UTC, 06:00
-        session.s3.utc_offset = +2
+        response.s3.tzinfo = S3DefaultTZ(+2)
         result = convert("2011-10-01")
-        assertEqual(result, datetime.date(2011, 10, 01))
+        assertEqual(result, datetime.date(2011, 10, 1))
         result = convert("01.05.2015")
-        assertEqual(result, datetime.date(2015, 05, 01))
+        assertEqual(result, datetime.date(2015, 5, 1))
 
         # Cross into the next day
         # => Date without time part means 08:00 local time zone,
         #    so 11 hours East means previous day UTC, 21:00
-        session.s3.utc_offset = +11
+        response.s3.tzinfo = S3DefaultTZ(+11)
         result = convert("2011-10-01")
         assertEqual(result, datetime.date(2011, 9, 30))
 
@@ -116,7 +115,7 @@ class S3TypeConverterTests(unittest.TestCase):
 
         assertEqual = self.assertEqual
         settings = current.deployment_settings
-        session = current.session
+        response = current.response
 
         convert = S3TypeConverter._datetime
 
@@ -137,12 +136,12 @@ class S3TypeConverterTests(unittest.TestCase):
         settings.L10n.time_format = "%H:%M:S"
 
         # Verify without offset
-        session.s3.utc_offset = 0
+        response.s3.tzinfo = S3DefaultTZ(0)
         result = convert("2011-10-01 07:30:00")
         assertEqual(result, datetime.datetime(2011, 10, 1, 7, 30, 0))
 
         # Verify with offset
-        session.s3.utc_offset = +11
+        response.s3.tzinfo = S3DefaultTZ(+11)
         result = convert("2011-10-01T22:00:00")
         assertEqual(result, datetime.datetime(2011, 10, 1, 11, 0, 0))
         result = convert("2011-10-01T09:00:00")
@@ -195,11 +194,24 @@ class S3FKWrappersTests(unittest.TestCase):
         #self.assertEqual(multiple, None)
 
 # =============================================================================
+class S3MarkupStripperTests(unittest.TestCase):
+    """ Test for S3MarkupStripper """
+
+    def testConstructor(self):
+        """ Verify Python-2 compatibility of constructor """
+
+        # Base class of S3MarkupStripper is a Python-2 old-style class,
+        # so super() call in constructor could raise a TypeError unless
+        # multiple inheritance with object enforces a new-style class
+        stripper = S3MarkupStripper()
+
+# =============================================================================
 if __name__ == "__main__":
 
     run_suite(
         S3TypeConverterTests,
         S3FKWrappersTests,
-    )
+        S3MarkupStripperTests,
+        )
 
 # END ========================================================================

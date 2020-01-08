@@ -280,7 +280,7 @@ S3.popup_loaded = function(id) {
     var width = $('.ui-dialog').width();
 
     // Adjust iframe width, then un-hide popup contents
-    $('#' + id).width(width).contents().find('#popup').show();
+    $('#' + id).removeClass('loading').width(width).contents().find('#popup').show();
 };
 S3.popup_remove = function() {
     // Close jQueryUI Dialog Modal Popup
@@ -532,10 +532,10 @@ var S3EnableNavigateAwayConfirm = function() {
             // If there are errors, ensure the unsaved form is still protected
             S3SetNavigateAwayConfirm();
         }
-        var form = $('form:not(.filter-form)');
+        var form = $('form:not(.filter-form,.pt-form)');
 
-        $('input', form).keypress(S3SetNavigateAwayConfirm)
-                        .change(S3SetNavigateAwayConfirm);
+        $('input, textarea', form).keypress(S3SetNavigateAwayConfirm)
+                                  .change(S3SetNavigateAwayConfirm);
         $('select', form).change(S3SetNavigateAwayConfirm);
         form.submit(S3ClearNavigateAwayConfirm);
     });
@@ -643,8 +643,8 @@ var S3EnableNavigateAwayConfirm = function() {
             return;
         }
 
-        var readyState = jqXHR.readyState,
-            httpStatus = jqXHR.status,
+        var httpStatus = jqXHR.status,
+            readyState = jqXHR.readyState,
             navigateAway = !httpStatus && readyState === 0;
 
         if (textStatus == 'abort' || navigateAway) {
@@ -818,10 +818,11 @@ var S3EnableNavigateAwayConfirm = function() {
  * @param {string} message - the message to display
  * @param {string} type - the alert type:
  *                        'error', 'info', 'success', 'warning'
+ * @param {function} callback - optional callback to run when the message is closed
  *
  * @returns {jQuery} - the DOM node of the new alert
  */
-S3.showAlert = function(message, type) {
+S3.showAlert = function(message, type, callback) {
 
     if (!type) {
         type = 'success';
@@ -831,6 +832,9 @@ S3.showAlert = function(message, type) {
 
     alertSpace.append(alert).undelegate('.s3').delegate('.alert', 'click.s3', function() {
         $(this).fadeOut('slow').remove();
+        if (callback) {
+            callback();
+        }
         return false;
     });
     return alert;
@@ -891,28 +895,35 @@ S3.unmask = function(table, field) {
     }
 };
 // ============================================================================
-var s3_viewMap = function(feature_id, iframe_height, popup) {
+var s3_viewMap = function(location_id, iframe_height, popup, controller, func) {
     // Display a Feature on a BaseMap within an iframe
-    var url = S3.Ap.concat('/gis/display_feature/') + feature_id,
+    var url = S3.Ap.concat('/gis/display_feature/') + location_id,
         $map = $('#map'),
         $iframe_map = $('#iframe-map'),
-        curl = document.location.pathname.split("/"),
-        controller = curl[2],
-        func = curl[3];
+        curl = document.location.pathname.split("/");
 
-    url += '?controller=' + controller + '&function=' + func;
-    if (curl.length > 4) {
-        // Record id
-        if ($.isNumeric(curl[4])) {
-            url += '&rid=' + curl[4];
-        }
+    if (controller === undefined) {
+        // Default to Master Record's Controller
+        controller = curl[2];
+    }
+    if (func === undefined) {
+        // Default to Master Record's Function
+        func = curl[3];
+    }
+    url += '?c=' + controller + '&f=' + func;
+
+    if ((curl.length > 6) && ($.isNumeric(curl[6]))) {
+        // Component Record ID
+        url += '&r=' + curl[6];
+    } else if ((curl.length > 4) && ($.isNumeric(curl[4]))) {
+        // Master Record ID
+        url += '&r=' + curl[4];
     }
 
     if ($map.length == 0 || popup == 'True') {
         url += '&popup=1';
         S3.openPopup(url, true);
-    }
-    else {
+    } else {
         var toggleButton = function() {
             // Hide/Show the 'Close Map' button
             var closeMap = $('#close-iframe-map');
@@ -920,8 +931,7 @@ var s3_viewMap = function(feature_id, iframe_height, popup) {
                 closeMap.css({
                     'display': ''
                 });
-            }
-            else {
+            } else {
                 closeMap.css({
                     'display': 'none'
                 });
@@ -937,7 +947,7 @@ var s3_viewMap = function(feature_id, iframe_height, popup) {
 
         if ($iframe_map.length==0) {
             // 1st iframe to be loaded in 'map'
-            var iframe = $("<iframe id='iframe-map' data-feature='" + feature_id + "' style='border-style:none' width='100%' height='" + iframe_height + "' src='" + url + "' />"),
+            var iframe = $("<iframe id='iframe-map' data-feature='" + location_id + "' style='border-style:none' width='100%' height='" + iframe_height + "' src='" + url + "' />"),
                 closelink = $("<a class='button tiny' id='close-iframe-map'>" + i18n.close_map + "</a>");
 
             closelink.bind('click', closeMap);
@@ -945,17 +955,15 @@ var s3_viewMap = function(feature_id, iframe_height, popup) {
             $map.slideDown('medium');
             $map.append(iframe);
             $map.append($('<div style="margin-bottom:10px" />').append(closelink));
-        }
-        else {
+        } else {
             var fid = $iframe_map.attr('data-feature');
-            if (fid==feature_id) {
+            if (fid == location_id) {
                 // Same feature request. Display Map
                 $iframe_map.slideToggle('medium', toggleButton);
-            }
-            else {
+            } else {
                 $iframe_map.attr({
                     'src': url,
-                    'data-feature': feature_id
+                    'data-feature': location_id
                 });
                 $iframe_map.slideDown('medium', toggleButton);
             }
@@ -2254,9 +2262,21 @@ S3.reloadWithQueryStringVars = function(queryStringVars) {
         // De-duplication Event Handlers
         deduplication();
 
-        // UTC Offset
-        var now = new Date();
-        $('form').append("<input type='hidden' value=" + now.getTimezoneOffset() + " name='_utc_offset'/>");
+        // Timezone and UTC Offset
+        var anyform = $('form');
+        if (anyform.length) {
+            var now = new Date(),
+                tz;
+            anyform.append("<input type='hidden' value='" + now.getTimezoneOffset() + "' name='_utc_offset'/>");
+            try {
+                tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            } catch(e) {
+                // not supported
+            }
+            if (tz) {
+                anyform.append("<input type='hidden' value='" + tz + "' name='_timezone'/>");
+            }
+        }
 
         // Social Media 'share' buttons
         if ($('#socialmedia_share').length > 0) {
@@ -2305,6 +2325,72 @@ S3.reloadWithQueryStringVars = function(queryStringVars) {
                     $this.data('status', 'off').text($this.data('off'));
                 });
             }
+        });
+
+        /**
+         * Click-handler for s3-download-buttons:
+         *
+         * - any action item with a class 's3-download-button' and
+         *   a 'url' data property (data-url)
+         *
+         * - for download of server-generated attachments, e.g. XLS or PDF
+         *
+         * - downloads the target document in a hidden iframe, which, if
+         *   the file is sent with content-disposition "attachment", will
+         *   only open the file dialog and nothing else
+         *
+         * - if this fails, the response will be opened in a modal dialog
+         *   (JSON messages will be handled with a simple alert-box, though)
+         */
+        $('.s3-download-button').on('click', function(e) {
+
+            // Do nothing else
+            e.preventDefault();
+            e.stopPropagation();
+
+            var url = $(this).data('url');
+            if (!url) {
+                return;
+            }
+
+            // Re-use it if it already exists
+            var iframe = document.getElementById("s3-download");
+            if (iframe == null) {
+               iframe = document.createElement('iframe');
+               iframe.id = "s3-download";
+               iframe.style.visibility = 'hidden';
+               document.body.appendChild(iframe);
+            }
+
+            $('#s3-download').off('load').on('load', function() {
+                // This event is only fired when contents was loaded into the
+                // hidden iframe rather than downloaded as attachment, which
+                // should only happen if there was some kind of error
+                var message,
+                    self = $(this);
+                try {
+                    // Try to parse the JSON message
+                    message = JSON.parse(this.contentDocument.body.textContent).message;
+                } catch(e) {
+                    // No JSON message => show iframe contents as-is in a modal
+                    self.dialog({
+                        title: 'Download failed',
+                        width: 500,
+                        height: 300,
+                        close: function() {
+                            self.attr('src', '').remove();
+                        }
+                    }).css({
+                        visibility: 'visible',
+                        width: '100%'
+                    });
+                    return;
+                }
+                alert(message);
+            });
+
+            iframe.src = url;
+            return false;
         });
     });
 

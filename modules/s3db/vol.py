@@ -3,7 +3,7 @@
     Sahana Eden Volunteers Management
     (Extends modules/eden/hrm.py)
 
-    @copyright: 2012-2018 (c) Sahana Software Foundation
+    @copyright: 2012-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -1125,7 +1125,7 @@ def vol_service_record(r, **attr):
                            TH(T("Training")),
                            TH(T("Hours"))))
         _hours = {}
-        for key in sorted(hours.iterkeys()):
+        for key in sorted(hours.keys()):
             _hours[key] = hours[key]
         total = 0
         for hour in hours:
@@ -1327,6 +1327,10 @@ def vol_volunteer_controller():
         table = r.table
         table.type.default = 2
 
+        if settings.get_hrm_unavailability():
+            # Apply availability filter
+            s3db.pr_availability_filter(r)
+
         # Configure list_fields
         if r.representation == "xls":
             s3db.hrm_xls_list_fields(r, staff=False)
@@ -1380,8 +1384,8 @@ def vol_volunteer_controller():
 
             # Update filter widgets
             filter_widgets = \
-                s3db.hrm_human_resource_filters(resource_type="volunteer",
-                                                hrm_type_opts=s3db.hrm_type_opts)
+                s3db.hrm_human_resource_filters(resource_type = "volunteer",
+                                                hrm_type_opts = s3db.hrm_type_opts)
 
             # Reconfigure
             resource.configure(list_fields = list_fields,

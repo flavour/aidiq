@@ -19,9 +19,12 @@ def config(settings):
 
     T = current.T
 
-    settings.base.system_name = T("Sahana Alerting and Messaging Broker")
-    settings.base.system_name_short = T("SAMBRO")
-
+## Deprecated because such edits to the title should happen in the 000_config.py file
+## specific to the demo deployment and not here because if you change here it affect any
+## developments and commits to git etc - nuwan at sahanafoundation dot org
+    #settings.base.system_name = T("Sahana Alerting and Messaging Broker")
+    #settings.base.system_name_short = T("SAMBRO")
+##
     # Pre-Populate
     settings.base.prepopulate += ("SAMBRO",)
     settings.base.prepopulate_demo += ("SAMBRO/Demo",)
@@ -104,6 +107,8 @@ def config(settings):
         ("en-US", "English"),
         #("es", "Spanish"),
         #("fr", "French"),
+        ("fj", "Fijian"),
+        ("hi", "Hindi"),
         #("km", "Khmer"), # Cambodia
         #("mn", "Mongolian"),
         ("my", "Burmese"), # Myanmar
@@ -162,12 +167,12 @@ def config(settings):
             parser_id = table.insert(channel_id=channel_id, function_name=fn, enabled=True)
             s3db.msg_parser_enable(parser_id)
 
-            async = current.s3task.async
+            run_async = current.s3task.run_async
             # Poll
-            async("msg_poll", args=["msg_rss_channel", channel_id])
+            run_async("msg_poll", args=["msg_rss_channel", channel_id])
 
             # Parse
-            async("msg_parse", args=[channel_id, fn])
+            run_async("msg_parse", args=[channel_id, fn])
 
         s3db.configure(tablename,
                        create_onaccept = onaccept,
@@ -179,9 +184,8 @@ def config(settings):
     def customise_msg_rss_channel_controller(**attr):
 
         s3 = current.response.s3
-        table = current.s3db.msg_rss_channel
-        type = current.request.get_vars.get("type", None)
-        if type == "cap":
+        channel_type = current.request.get_vars.get("type", None)
+        if channel_type == "cap":
             # CAP RSS Channel
             s3.filter = (FS("type") == "cap")
             s3.crud_strings["msg_rss_channel"] = Storage(
@@ -208,7 +212,7 @@ def config(settings):
 
             if r.interactive and isinstance(output, dict):
                 # Modify Open Button
-                if type == "cap":
+                if channel_type == "cap":
                     # CAP RSS Channel
                     table = r.table
                     query = (table.deleted == False)
@@ -218,43 +222,51 @@ def config(settings):
                     restrict_e = [str(row.id) for row in rows if not row.enabled]
                     restrict_d = [str(row.id) for row in rows if row.enabled]
 
-                    s3.actions = [dict(label=s3_str(T("Open")),
-                                       _class="action-btn edit",
-                                       url=URL(args=["[id]", "update"],
-                                               vars={"type": "cap"}),
-                                       ),
-                                  dict(label=s3_str(T("Delete")),
-                                       _class="delete-btn",
-                                       url=URL(args=["[id]", "delete"],
-                                               vars={"type": "cap"}),
-                                       ),
-                                  dict(label=s3_str(T("Subscribe")),
-                                       _class="action-btn",
-                                       url=URL(args=["[id]", "enable"],
-                                               vars={"type": "cap"}),
-                                       restrict = restrict_e),
-                                  dict(label=s3_str(T("Unsubscribe")),
-                                       _class="action-btn",
-                                       url = URL(args = ["[id]", "disable"],
-                                                 vars={"type": "cap"}),
-                                       restrict = restrict_d),
-                                   ]
+                    s3.actions = [{"label": s3_str(T("Open")),
+                                   "_class": "action-btn edit",
+                                   "url": URL(args = ["[id]", "update"],
+                                              vars = {"type": "cap"},
+                                              ),
+                                   },
+                                  {"label": s3_str(T("Delete")),
+                                   "_class": "delete-btn",
+                                   "url": URL(args = ["[id]", "delete"],
+                                              vars = {"type": "cap"},
+                                              ),
+                                   },
+                                  {"label": s3_str(T("Subscribe")),
+                                   "_class": "action-btn",
+                                   "url": URL(args = ["[id]", "enable"],
+                                              vars = {"type": "cap"},
+                                              ),
+                                   "restrict": restrict_e,
+                                   },
+                                  {"label": s3_str(T("Unsubscribe")),
+                                   "_class": "action-btn",
+                                   "url": URL(args = ["[id]", "disable"],
+                                              vars = {"type": "cap"},
+                                              ),
+                                   "restrict": restrict_d
+                                   },
+                                  ]
 
                     if not current.s3task._is_alive():
                         # No Scheduler Running
-                        s3.actions += [dict(label=s3_str(T("Poll")),
-                                            _class="action-btn",
-                                            url = URL(args = ["[id]", "poll"],
-                                                      vars={"type": "cap"}),
-                                            restrict = restrict_d)
-                                       ]
+                        s3.actions.append({"label": s3_str(T("Poll")),
+                                           "_class": "action-btn",
+                                           "url": URL(args = ["[id]", "poll"],
+                                                      vars = {"type": "cap"},
+                                                      ),
+                                           "restrict": restrict_d,
+                                           })
 
                     if "form" in output and current.auth.s3_has_role("ADMIN"):
                         # Modify Add Button
                         add_btn = A(T("Add CAP Feed"),
-                                    _class="action-btn",
-                                    _href=URL(args=["create"],
-                                              vars={"type": "cap"})
+                                    _class = "action-btn",
+                                    _href = URL(args = ["create"],
+                                                vars = {"type": "cap"},
+                                                ),
                                     )
                         output["showadd_btn"] = add_btn
 
@@ -282,12 +294,12 @@ def config(settings):
             _id = table.insert(channel_id=channel_id, function_name="parse_tweet", enabled=True)
             s3db.msg_parser_enable(_id)
 
-            async = current.s3task.async
+            run_async = current.s3task.run_async
             # Poll
-            async("msg_poll", args=["msg_twitter_channel", channel_id])
+            run_async("msg_poll", args=["msg_twitter_channel", channel_id])
 
             # Parse
-            async("msg_parse", args=[channel_id, "parse_tweet"])
+            run_async("msg_parse", args=[channel_id, "parse_tweet"])
 
         s3db.configure(tablename,
                        create_onaccept = onaccept,
@@ -392,12 +404,12 @@ def config(settings):
         s3db = current.s3db
         def onapprove(record):
             # Normal onapprove
-            s3db.cap_alert_approve(record)
+            s3db.cap_alert_onapprove(record)
 
-            async_task = current.s3task.async
+            run_async = current.s3task.run_async
 
             # Sync FTP Repository
-            async_task("cap_ftp_sync")
+            run_async("cap_ftp_sync")
 
             # @ToDo: Check for LEFT join when required
             # this is ok for now since every Alert should have an Info & an Area
@@ -438,12 +450,12 @@ def config(settings):
                 if len(rows):
                     registration_ids = [s3_str(row.value) for row in rows]
                     title = get_email_subject(arow, system=False)
-                    async_task("msg_gcm", args=[title,
-                                                "%s/%s" % (s3_str(arow["cap_info.web"]), "profile"),
-                                                s3_str(get_formatted_value(arow["cap_info.headline"],
-                                                                           system=False)),
-                                                json.dumps(registration_ids),
-                                                ])
+                    run_async("msg_gcm", args=[title,
+                                               "%s/%s" % (s3_str(arow["cap_info.web"]), "profile"),
+                                               s3_str(get_formatted_value(arow["cap_info.headline"],
+                                                                          system=False)),
+                                               json.dumps(registration_ids),
+                                               ])
                 # Twitter Post
                 if settings.get_cap_post_to_twitter():
                     try:
@@ -479,7 +491,7 @@ def config(settings):
                             current.msg.send_tweet(text=s3_str(twitter_text),
                                                    alert_id=alert_id,
                                                    )
-                        except tweepy.error.TweepError, e:
+                        except tweepy.error.TweepError as e:
                             current.log.debug("Sending tweets failed: %s" % e)
 
                 # Facebook Post
@@ -490,7 +502,7 @@ def config(settings):
                         current.msg.post_to_facebook(text=content,
                                                      alert_id=alert_id,
                                                      )
-                    except Exception, e:
+                    except Exception as e:
                         current.log.debug("Posting Alert to Facebook failed: %s" % e)
 
             addresses = record["addresses"]
@@ -766,7 +778,6 @@ def config(settings):
         notify_on = meta_data["notify_on"]
         last_check_time = meta_data["last_check_time"]
         rows = data["rows"]
-        rfields = data["rfields"]
         output = {}
         upd = [] # upd as the created alerts might be approved after some time, check is also done
 
@@ -1025,9 +1036,9 @@ def config(settings):
 
         if current.request.get_vars["option"] == "manage_recipient" and \
            (has_role("ALERT_EDITOR") or has_role("ALERT_APPROVER")):
-                # Admin based subscription
-                query = (stable.deleted != True) & \
-                        (stable.owned_by_group != None)
+            # Admin based subscription
+            query = (stable.deleted != True) & \
+                    (stable.owned_by_group != None)
         else:
             # Self Subscription
             query = (stable.deleted != True) & \
@@ -1038,11 +1049,13 @@ def config(settings):
         rows = db(query).select(stable.filter_id,
                                 ftable.query,
                                 left=left)
+
+        filter_options = {}
+
         if len(rows) > 0:
             T = current.T
             etable = s3db.event_event_type
             ptable = s3db.cap_warning_priority
-            filter_options = {}
             from s3 import IS_ISO639_2_LANGUAGE_CODE
             languages_dict = dict(IS_ISO639_2_LANGUAGE_CODE.language_codes())
             for row in rows:
@@ -1086,7 +1099,7 @@ def config(settings):
                 else:
                     filter_options[row["pr_subscription.filter_id"]] = T("No filters")
 
-            return filter_options
+        return filter_options
 
     # -------------------------------------------------------------------------
     def get_html_email_content(row, ack_id=None, system=True):
@@ -1195,7 +1208,7 @@ def config(settings):
                          if description else "",
                          BR() if not isinstance(description, list) else "",
                          BR() if response_type else "",
-                         XML(T("%(label)s: %(response_type)s") % 
+                         XML(T("%(label)s: %(response_type)s") %
                          {"label": B(T("Expected Response")),
                           "response_type": s3_str(get_formatted_value(response_type,
                                                                       represent = itable.response_type.represent,
@@ -1505,7 +1518,7 @@ T("""%(status)s %(message_type)s for %(area_description)s with %(priority)s prio
 
     # -------------------------------------------------------------------------
     def _get_or_create_attachment(alert_id):
-        """ 
+        """
             Retrieve the CAP attachment for the alert_id if present
             else creates CAP file as attachment to be sent with the email
             returns the document_id for the CAP file

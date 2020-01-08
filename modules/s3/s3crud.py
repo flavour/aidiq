@@ -7,7 +7,7 @@
     @requires: U{B{I{gluon}} <http://web2py.com>}
     @requires: U{B{I{lxml}} <http://codespeak.net/lxml>}
 
-    @copyright: 2009-2018 (c) Sahana Software Foundation
+    @copyright: 2009-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -45,16 +45,18 @@ except ImportError:
 
 from gluon import current, redirect, HTTP, URL, \
                   A, DIV, FORM, INPUT, TABLE, TD, TR, XML
+from gluon.contenttype import contenttype
 from gluon.languages import lazyT
 from gluon.storage import Storage
 from gluon.tools import callback
 
-from s3datetime import S3DateTime
-from s3export import S3Exporter
-from s3forms import S3SQLDefaultForm
-from s3rest import S3Method
-from s3utils import s3_str, s3_unicode, s3_validate, s3_represent_value, s3_set_extension
-from s3widgets import S3EmbeddedComponentWidget, S3Selector, ICON
+from s3compat import basestring, long
+from .s3datetime import S3DateTime, s3_decode_iso_datetime
+from .s3export import S3Exporter
+from .s3forms import S3SQLDefaultForm
+from .s3rest import S3Method
+from .s3utils import s3_str, s3_unicode, s3_validate, s3_represent_value, s3_set_extension
+from .s3widgets import S3EmbeddedComponentWidget, S3Selector, ICON
 
 # Compact JSON encoding
 SEPARATORS = (",", ":")
@@ -296,7 +298,7 @@ class S3CRUD(S3Method):
                 except ValueError:
                     r.error(400, "Invalid parent record ID: %s" % link_to_parent)
                 else:
-                    from s3hierarchy import S3Hierarchy
+                    from .s3hierarchy import S3Hierarchy
                     h = S3Hierarchy(tablename)
                     if h.config:
                         try:
@@ -304,6 +306,11 @@ class S3CRUD(S3Method):
                         except KeyError:
                             import sys
                             r.error(404, sys.exc_info()[1])
+
+            # Organizer
+            organizer = get_vars.get("organizer")
+            if organizer:
+                self._set_organizer_dates(organizer)
 
             # Copy record
             from_table = None
@@ -377,20 +384,20 @@ class S3CRUD(S3Method):
                 self._default_cancel_button(r)
 
             # Get the form
-            output["form"] = self.sqlform(request=request,
-                                          resource=resource,
-                                          data=self.data,
-                                          record_id=original,
-                                          from_table=from_table,
-                                          from_record=from_record,
-                                          map_fields=map_fields,
-                                          onvalidation=onvalidation,
-                                          onaccept=onaccept,
-                                          link=link,
-                                          hierarchy=hierarchy,
-                                          message=message,
-                                          subheadings=subheadings,
-                                          format=representation,
+            output["form"] = self.sqlform(request = request,
+                                          resource = resource,
+                                          data = self.data,
+                                          record_id = original,
+                                          from_table = from_table,
+                                          from_record = from_record,
+                                          map_fields = map_fields,
+                                          onvalidation = onvalidation,
+                                          onaccept = onaccept,
+                                          link = link,
+                                          hierarchy = hierarchy,
+                                          message = message,
+                                          subheadings = subheadings,
+                                          format = representation,
                                           )
 
             # Navigate-away confirmation
@@ -422,12 +429,11 @@ class S3CRUD(S3Method):
                 if not create_next:
                     next_vars = self._remove_filters(r.get_vars)
                     if r.component:
-                        self.next = r.url(method="",
-                                          vars=next_vars)
+                        self.next = r.url(method = "", vars = next_vars)
                     else:
-                        self.next = r.url(id="[id]",
-                                          method="read",
-                                          vars=next_vars)
+                        self.next = r.url(id = "[id]",
+                                          method = "read",
+                                          vars = next_vars)
                 elif callable(create_next):
                     self.next = create_next(r)
                 else:
@@ -442,15 +448,15 @@ class S3CRUD(S3Method):
             subheadings = _config("subheadings")
             output["title"] = crud_string(tablename, "label_create")
             output["details_btn"] = ""
-            output["item"] = self.sqlform(request=request,
-                                          resource=resource,
-                                          data=self.data,
-                                          onvalidation=onvalidation,
-                                          onaccept=onaccept,
-                                          #link=link,
-                                          message=message,
-                                          subheadings=subheadings,
-                                          format=representation)
+            output["item"] = self.sqlform(request = request,
+                                          resource = resource,
+                                          data = self.data,
+                                          onvalidation = onvalidation,
+                                          onaccept = onaccept,
+                                          #link = link,
+                                          message = message,
+                                          subheadings = subheadings,
+                                          format = representation)
 
         elif representation == "csv":
             import cgi
@@ -474,7 +480,7 @@ class S3CRUD(S3Method):
                 session.confirmation = current.T("Data uploaded")
 
         elif representation == "pdf":
-            from s3pdf import S3PDF
+            from .s3pdf import S3PDF
             exporter = S3PDF()
             return exporter(r, **attr)
 
@@ -661,7 +667,7 @@ class S3CRUD(S3Method):
                                         subheadings = subheadings,
                                         format = representation,
                                         )
-                except HTTP, e:
+                except HTTP as e:
                     message = current.ERROR.BAD_RECORD \
                               if e.status == 404 else e.message
                     r.error(e.status, message)
@@ -706,7 +712,7 @@ class S3CRUD(S3Method):
                     pass
 
             # De-duplication
-            from s3merge import S3Merge
+            from .s3merge import S3Merge
             output["deduplicate"] = S3Merge.bookmark(r, tablename, record_id)
 
         elif representation == "plain":
@@ -732,11 +738,11 @@ class S3CRUD(S3Method):
                         value = None
                     if value is None or value == "" or value == []:
                         field.readable = False
-                item = self.sqlform(request=request,
-                                    resource=resource,
-                                    record_id=record_id,
-                                    readonly=True,
-                                    format=representation)
+                item = self.sqlform(request = request,
+                                    resource = resource,
+                                    record_id = record_id,
+                                    readonly = True,
+                                    format = representation)
 
                 # Link to Open record
                 popup_edit_url = _config("popup_edit_url", None)
@@ -744,8 +750,8 @@ class S3CRUD(S3Method):
                    current.auth.s3_has_permission("update", table, record_id):
                     # Open edit form in iframe
                     details_btn = A(T("Edit"),
-                                    _href=popup_edit_url,
-                                    _class="btn iframe",
+                                    _href = popup_edit_url,
+                                    _class = "btn iframe",
                                     )
                     output["details_btn"] = details_btn
                 else:
@@ -811,6 +817,21 @@ class S3CRUD(S3Method):
                 tooltip = None
 
             output = exporter(resource, tooltip=tooltip)
+
+        elif representation == "card":
+
+            if not resource.get_config("pdf_card_layout"):
+                # This format is not supported for this resource
+                r.error(415, current.ERROR.BAD_FORMAT)
+
+            pagesize = resource.get_config("pdf_card_pagesize")
+            output = S3Exporter().pdfcard(resource,
+                                          pagesize = pagesize,
+                                          )
+
+            disposition = "attachment; filename=\"%s_card.pdf\"" % resource.name
+            response.headers["Content-Type"] = contenttype(".pdf")
+            response.headers["Content-disposition"] = disposition
 
         else:
             r.error(415, current.ERROR.BAD_FORMAT)
@@ -932,7 +953,7 @@ class S3CRUD(S3Method):
                                     link=link,
                                     subheadings=subheadings,
                                     format=representation)
-            except HTTP, e:
+            except HTTP as e:
                 message = current.ERROR.BAD_RECORD \
                           if e.status == 404 else e.message
                 r.error(e.status, message)
@@ -970,31 +991,35 @@ class S3CRUD(S3Method):
                     pass
 
             # De-duplication
-            from s3merge import S3Merge
+            from .s3merge import S3Merge
             output["deduplicate"] = S3Merge.bookmark(r, tablename, record_id)
 
             # Redirection
-            if r.http == "POST" and "interim_save" in r.post_vars:
-                next_vars = self._remove_filters(r.get_vars)
-                self.next = r.url(target="[id]", method="update",
-                                  vars=next_vars)
+            if representation in ("popup", "iframe", "plain", "dl"):
+                self.next = None
             else:
-                update_next = _config("update_next")
-                if representation in ("popup", "iframe", "plain", "dl"):
-                    self.next = None
-                elif not update_next:
+                if r.http == "POST" and "interim_save" in r.post_vars:
+                    next_vars = self._remove_filters(r.get_vars)
+                    update_next = r.url(target = "[id]",
+                                        method = "update",
+                                        vars = next_vars,
+                                        )
+                else:
+                    update_next = _config("update_next")
+
+                if not update_next:
                     next_vars = self._remove_filters(r.get_vars)
                     if r.component:
                         self.next = r.url(method="", vars=next_vars)
                     else:
-                        self.next = r.url(id="[id]",
-                                          method="read",
-                                          vars=next_vars)
+                        self.next = r.url(id = "[id]",
+                                          method = "read",
+                                          vars = next_vars,
+                                          )
+                elif callable(update_next):
+                    self.next = update_next(r)
                 else:
-                    try:
-                        self.next = update_next(self)
-                    except TypeError:
-                        self.next = update_next
+                    self.next = update_next
 
         elif representation == "url":
             return self.import_url(r)
@@ -1076,7 +1101,7 @@ class S3CRUD(S3Method):
             if recursive and recursive.lower() in ("1", "true"):
                 # Try recursive deletion of the whole hierarchy branch
                 # => falls back to normal delete if no hierarchy configured
-                from s3hierarchy import S3Hierarchy
+                from .s3hierarchy import S3Hierarchy
                 h = S3Hierarchy(resource.tablename)
                 if h.config:
                     node_ids = None
@@ -1099,7 +1124,7 @@ class S3CRUD(S3Method):
 
             if numrows is None:
                 # Delete the records and return a JSON message
-                numrows = self.resource.delete(format=r.representation)
+                numrows = resource.delete(format=r.representation)
 
             if numrows > 1:
                 message = "%s %s" % (numrows, current.T("records deleted"))
@@ -1145,7 +1170,7 @@ class S3CRUD(S3Method):
                representation not in ("aadata", "dl"):
                 show_filter_form = True
                 # Apply filter defaults (before rendering the data!)
-                from s3filter import S3FilterForm
+                from .s3filter import S3FilterForm
                 default_filters = S3FilterForm.apply_filter_defaults(r, resource)
             else:
                 default_filters = None
@@ -1349,7 +1374,6 @@ class S3CRUD(S3Method):
             exporter = S3Exporter().pdf
             return exporter(resource,
                             request = r,
-                            list_fields = list_fields,
                             report_hide_comments = report_hide_comments,
                             report_filename = report_filename,
                             report_formname = report_formname,
@@ -1377,10 +1401,27 @@ class S3CRUD(S3Method):
 
         elif representation == "msg":
             if r.http == "POST":
-                from s3notify import S3Notifications
+                from .s3notify import S3Notifications
                 return S3Notifications.send(r, resource)
             else:
                 r.error(405, current.ERROR.BAD_METHOD)
+
+        elif representation == "card":
+            if not resource.get_config("pdf_card_layout"):
+                # This format is not supported for this resource
+                r.error(415, current.ERROR.BAD_FORMAT)
+
+            pagesize = resource.get_config("pdf_card_pagesize")
+            output = S3Exporter().pdfcard(resource,
+                                          pagesize = pagesize,
+                                          )
+
+            response = current.response
+            disposition = "attachment; filename=\"%s_cards.pdf\"" % resource.name
+            response.headers["Content-Type"] = contenttype(".pdf")
+            response.headers["Content-disposition"] = disposition
+
+            return output
 
         else:
             r.error(415, current.ERROR.BAD_FORMAT)
@@ -1644,7 +1685,7 @@ class S3CRUD(S3Method):
         record_id = get_vars.get("record", None)
         if record_id is not None:
             # Ajax-reload of a single record
-            from s3query import FS
+            from .s3query import FS
             resource.add_filter(FS("id") == record_id)
             start = 0
             limit = 1
@@ -1696,8 +1737,8 @@ class S3CRUD(S3Method):
             # plain.html view for pagination to work properly!
             ajax_url = attr.get("list_ajaxurl", None)
             if not ajax_url:
-                ajax_vars = dict((k,v) for k, v in r.get_vars.iteritems()
-                                       if k not in ("start", "limit"))
+                ajax_vars = {k: v for k, v in r.get_vars.items()
+                                  if k not in ("start", "limit")}
                 ajax_url = r.url(representation="dl", vars=ajax_vars)
 
             # Render the list (even if empty => Ajax-section is required
@@ -2181,6 +2222,8 @@ class S3CRUD(S3Method):
                             parser = int
                         try:
                             value = parser(value)
+                        except SyntaxError as e:
+                            error, skip_validation = (str(e) or "invalid value"), True
                         except ValueError:
                             value = 0
                     else:
@@ -2191,6 +2234,8 @@ class S3CRUD(S3Method):
                             parser = float
                         try:
                             value = parser(value)
+                        except SyntaxError as e:
+                            error, skip_validation = (str(e) or "invalid value"), True
                         except ValueError:
                             value = 0.0
                     else:
@@ -2234,6 +2279,9 @@ class S3CRUD(S3Method):
                     validated["value"] = field.formatter(value) \
                                          if not error else value
                     widget_represent = None
+                if not error:
+                    # Store parsed+validated value for onvalidation
+                    record[fname] = value
 
                 # Handle errors, update the validated item
                 if error:
@@ -2274,8 +2322,7 @@ class S3CRUD(S3Method):
                     else:
                         msg = "%s: %s" % (fn, msg)
                         if "_error" in fields:
-                            fields["_error"] = "\n".join([msg,
-                                                          fields["_error"]])
+                            fields["_error"] = "\n".join([msg, fields["_error"]])
                         else:
                             fields["_error"] = msg
 
@@ -2536,7 +2583,7 @@ class S3CRUD(S3Method):
 
         link = dict(attr)
         link["label"] = s3_str(label)
-        link["url"] = url
+        link["url"] = url if url else ""
         if icon and current.deployment_settings.get_ui_use_button_icons():
             link["icon"] = ICON.css_class(icon)
         if "_class" not in link:
@@ -2552,13 +2599,13 @@ class S3CRUD(S3Method):
     @classmethod
     def action_buttons(cls,
                        r,
-                       deletable=True,
-                       editable=True,
-                       copyable=False,
-                       read_url=None,
-                       delete_url=None,
-                       update_url=None,
-                       copy_url=None):
+                       deletable = True,
+                       editable = None,
+                       copyable = False,
+                       read_url = None,
+                       delete_url = None,
+                       update_url = None,
+                       copy_url = None):
         """
             Provide the usual action buttons in list views.
             Allow customizing the urls, since this overwrites anything
@@ -2598,10 +2645,12 @@ class S3CRUD(S3Method):
 
         get_vars = cls._linkto_vars(r)
 
+        settings = current.deployment_settings
+
         # If this request is in iframe-format, action URLs should be in
         # iframe-format as well
         if r.representation == "iframe":
-            if current.deployment_settings.get_ui_iframe_opens_full():
+            if settings.get_ui_iframe_opens_full():
                 iframe_safe = lambda url: url
                 # This is processed client-side in s3.ui.datatable.js
                 target = {"_target": "_blank"}
@@ -2612,14 +2661,19 @@ class S3CRUD(S3Method):
             iframe_safe = lambda url: url
             target = {}
 
+        if editable is None:
+            # Fall back to settings if caller didn't override
+            editable = False if settings.get_ui_open_read_first() else \
+                       "auto" if settings.get_ui_auto_open_update() else True
+
         # Open-action (Update or Read)
-        if editable and has_permission("update", table) and \
-           not ownership_required("update", table):
+        authorised = has_permission("update", table)
+        if editable and authorised and not ownership_required("update", table):
+            # User has permission to edit all records, and caller allows edit
             if not update_url:
-                # To use modals
-                #get_vars["refresh"] = "list"
                 update_url = iframe_safe(URL(args = args + ["update"], #.popup to use modals
-                                             vars = get_vars))
+                                             vars = get_vars,
+                                             ))
             s3crud.action_button(labels.UPDATE, update_url,
                                  # To use modals
                                  #_class="action-btn s3_modal"
@@ -2628,9 +2682,13 @@ class S3CRUD(S3Method):
                                  **target
                                  )
         else:
+            # User is not permitted to edit at least some of the records,
+            # or caller doesn't allow edit
             if not read_url:
-                read_url = iframe_safe(URL(args = args,
-                                           vars = get_vars))
+                method = ["read"] if not editable or not authorised else []
+                read_url = iframe_safe(URL(args = args + method, #.popup to use modals
+                                           vars = get_vars,
+                                           ))
             s3crud.action_button(labels.READ, read_url,
                                  # To use modals
                                  #_class="action-btn s3_modal"
@@ -2643,8 +2701,13 @@ class S3CRUD(S3Method):
         if deletable and has_permission("delete", table):
             icon = "delete"
             if not delete_url:
-                delete_url = iframe_safe(URL(args = args + ["delete"],
-                                             vars = get_vars))
+                if r.function[:6] == "table/":
+                    # Dynamic Table
+                    delete_url = iframe_safe(URL(args = [r.function[6:]] + args + ["delete"],
+                                                 vars = get_vars))
+                else:
+                    delete_url = iframe_safe(URL(args = args + ["delete"],
+                                                 vars = get_vars))
             if ownership_required("delete", table):
                 # Check which records can be deleted
                 query = auth.s3_accessible_query("delete", table)
@@ -2773,7 +2836,7 @@ class S3CRUD(S3Method):
 
         xml = current.xml
 
-        prefix, name, table, tablename = r.target()
+        table = r.target()[2]
 
         record = r.record
         resource = r.resource
@@ -3008,7 +3071,7 @@ class S3CRUD(S3Method):
 
         s3db = current.s3db
 
-        prefix, name, table, tablename = r.target()
+        prefix, name, _, tablename = r.target()
         permit = current.auth.s3_has_permission
 
         if authorised is None:
@@ -3043,6 +3106,7 @@ class S3CRUD(S3Method):
                     url = linkto % record_id
             else:
                 get_vars = self._linkto_vars(r)
+
                 if r.component:
                     if r.link and not r.actuate_link():
                         # We're rendering a link table here, but must
@@ -3059,34 +3123,25 @@ class S3CRUD(S3Method):
                             # record_id, so we replace that too just in case
                             # the action button cannot be displayed
                             record_id = r.link.component_id(r.id, record_id)
+
                     if c and f:
                         args = [record_id]
                     else:
                         c = r.controller
                         f = r.function
                         args = [r.id, r.component_name, record_id]
-                    if update:
-                        url = str(URL(r=r, c=c, f=f,
-                                      args = args + ["update"],
-                                      vars = get_vars
-                                      ))
-                    else:
-                        url = str(URL(r=r, c=c, f=f,
-                                      args = args + ["read"],
-                                      vars = get_vars
-                                      ))
                 else:
                     args = [record_id]
+
+                # Add explicit open-method if required
+                if update != "auto":
                     if update:
-                        url = str(URL(r=r, c=c, f=f,
-                                      args = args + ["update"],
-                                      vars = get_vars
-                                      ))
+                        args = args + ["update"]
                     else:
-                        url = str(URL(r=r, c=c, f=f,
-                                      args = args + ["read"],
-                                      vars = get_vars
-                                      ))
+                        args = args + ["read"]
+
+                url = str(URL(r=r, c=c, f=f, args=args, vars=get_vars))
+
             if iframe_safe:
                 url = iframe_safe(url)
             return url
@@ -3195,6 +3250,43 @@ class S3CRUD(S3Method):
             return current.xml.json_message(message=message, uuid=uid)
         else:
             r.error(404, current.ERROR.BAD_RECORD)
+
+    # -------------------------------------------------------------------------
+    def _set_organizer_dates(self, dates):
+        """
+            Set default dates for organizer resources
+
+            @param dates: a string with two ISO dates separated by --, like:
+                          "2010-11-29T23:00:00.000Z--2010-11-29T23:59:59.000Z"
+        """
+
+        resource = self.resource
+
+        if dates:
+            dates = dates.split("--")
+            if len(dates) != 2:
+                return
+
+            from .s3organizer import S3Organizer
+
+            try:
+                config = S3Organizer.parse_config(resource)
+            except AttributeError:
+                return
+
+            start = config["start"]
+            if start and start.field:
+                try:
+                    start.field.default = s3_decode_iso_datetime(dates[0])
+                except ValueError:
+                    pass
+
+            end = config["end"]
+            if end and end.field:
+                try:
+                    end.field.default = s3_decode_iso_datetime(dates[1])
+                except ValueError:
+                    pass
 
     # -------------------------------------------------------------------------
     @staticmethod

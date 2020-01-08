@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2009-2018 (c) Sahana Software Foundation
+    @copyright: 2009-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -27,7 +27,6 @@
     WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
     OTHER DEALINGS IN THE SOFTWARE.
-
 """
 
 __all__ = ("S3Config",)
@@ -37,23 +36,13 @@ from collections import OrderedDict
 from gluon import current, URL
 from gluon.storage import Storage
 
-from s3theme import *
+from s3compat import basestring, INTEGER_TYPES
+from s3theme import FORMSTYLES
 
 class S3Config(Storage):
     """
         Deployment Settings Helper Class
     """
-
-    # Used by modules/s3theme.py
-    FORMSTYLE = {"default": formstyle_foundation,
-                 "default_inline": formstyle_foundation_inline,
-                 "bootstrap": formstyle_bootstrap,
-                 "foundation": formstyle_foundation,
-                 "foundation_2col": formstyle_foundation_2col,
-                 "foundation_inline": formstyle_foundation_inline,
-                 "table": formstyle_table,
-                 "table_inline": formstyle_table_inline,
-                 }
 
     # Formats from static/scripts/ui/i18n converted to Python style
     date_formats = {"af": "%d/%m/%Y",
@@ -161,6 +150,9 @@ class S3Config(Storage):
              }
 
     def __init__(self):
+
+        super(S3Config, self).__init__()
+
         self.asset = Storage()
         self.auth = Storage()
         self.auth.email_domains = []
@@ -168,6 +160,7 @@ class S3Config(Storage):
         # Allow templates to append rather than replace
         self.base.prepopulate = ["default/base"]
         self.base.prepopulate_demo = ["default/users"]
+        self.br = Storage()
         self.cap = Storage()
         self.cms = Storage()
         self.cr = Storage()
@@ -178,7 +171,6 @@ class S3Config(Storage):
         self.dvr = Storage()
         self.edu = Storage()
         self.event = Storage()
-        self.evr = Storage()
         self.fin = Storage()
         # Allow templates to append rather than replace
         self.fin.currencies = {}
@@ -210,6 +202,8 @@ class S3Config(Storage):
         self.search = Storage()
         self.security = Storage()
         self.setup = Storage()
+        # Allow templates to append rather than replace
+        self.setup.wizard_questions = []
         self.supply = Storage()
         self.sync = Storage()
         self.tasks = Storage()
@@ -358,9 +352,7 @@ class S3Config(Storage):
 
         s3 = current.response.s3
 
-        #import os
-        path_to = lambda names: "/".join(names) #os.path.join(*names)
-
+        path_to = "/".join
         default = self.base.get("theme", "default")
 
         theme = default.split(".")
@@ -376,13 +368,19 @@ class S3Config(Storage):
         else:
             s3.theme_layouts = theme_path
 
-        # Path under modules/templates/ for css.cfg
-        # NB this is also the path under static/themes/ for eden.min.css
+        # Path under static/themes/ for eden.min.css
         styles = self.base.get("theme_styles")
         if styles:
             s3.theme_styles = path_to(styles.split("."))
         else:
             s3.theme_styles = theme_path
+
+        # Path under modules/templates/ for css.cfg
+        config = self.base.get("theme_config")
+        if config:
+            s3.theme_config = path_to(config.split("."))
+        else:
+            s3.theme_config = s3.theme_styles
 
         # Path under static/themes/ for base styles (e.g. foundation/*.css)
         base = self.base.get("theme_base")
@@ -404,11 +402,9 @@ class S3Config(Storage):
             individually adjusted with theme_layouts, theme_styles and
             theme_base settings if required.
         """
-
         theme = current.response.s3.theme
         if not theme:
             theme = self.set_theme()
-
         return theme
 
     def get_theme_layouts(self):
@@ -419,7 +415,6 @@ class S3Config(Storage):
 
             => defaults to theme
         """
-
         layouts = current.response.s3.theme_layouts
         if not layouts:
             self.set_theme()
@@ -429,17 +424,28 @@ class S3Config(Storage):
     def get_theme_styles(self):
         """
             The location of the theme styles:
-            - modules/templates/[theme_styles]/css.cfg
             - static/themes/[theme_styles]/eden.min.css
 
             => defaults to theme
         """
-
         styles = current.response.s3.theme_styles
         if not styles:
             self.set_theme()
             styles = current.response.s3.theme_styles
         return styles
+
+    def get_theme_config(self):
+        """
+            The location of the theme CSS config:
+            - modules/templates/[theme_config]/css.cfg
+
+            => defaults to theme_styles
+        """
+        config = current.response.s3.theme_config
+        if not config:
+            self.set_theme()
+            config = current.response.s3.theme_config
+        return config
 
     def get_theme_base(self):
         """
@@ -448,7 +454,6 @@ class S3Config(Storage):
 
             => defaults to theme_styles
         """
-
         base = current.response.s3.theme_base
         if not base:
             self.set_theme()
@@ -604,6 +609,62 @@ class S3Config(Storage):
         """ Use OpenID for Authentication """
         return self.auth.get("openid", False)
 
+    def get_auth_openid_connect(self):
+        """
+            Use an OpenID Connect authentication service
+                - must be configured with a dict like:
+                    {"auth_url": authURL,
+                     "token_url": tokenURL,
+                     "userinfo_url": userinfoURL,
+                     "id": clientID,
+                     "secret": clientSecret,
+                     }
+        """
+        required = ("auth_url", "token_url", "userinfo_url", "id", "secret")
+
+        setting = self.auth.get("openid_connect")
+        if setting and all(setting.get(k) for k in required):
+            return setting
+        else:
+            return None
+
+    def get_auth_masterkey(self):
+        """
+            Allow authentication with master key (= a single key instead of
+            username+password)
+        """
+        return self.auth.get("masterkey", False)
+
+    def get_auth_masterkey_app_key(self):
+        """
+            App key for clients using master key authentication
+            - a string (recommended length 32 chars, random pattern)
+            - specific for the deployment (i.e. not template)
+            - should be configured in 000_config.py (alongside hmac_key)
+        """
+        return self.auth.get("masterkey_app_key")
+
+    def get_auth_masterkey_token_ttl(self):
+        """
+            The time-to-live for master key auth tokens in seconds
+            - tokens must survive two request cycles incl. prep, so
+              TTL shouldn't be too short with slow network/server
+            - should be short enough to prevent unused tokens from
+              lingering
+        """
+        return self.auth.get("masterkey_token_ttl", 600)
+
+    def get_auth_masterkey_context(self):
+        """
+            Getter for master key context information
+            - a JSON-serializable dict with context data, or
+            - a function that takes a master key (Row) and returns such a dict
+
+            NB the getter should not expose the master key itself
+               in the context dict!
+        """
+        return self.auth.get("masterkey_context")
+
     def get_security_self_registration(self):
         """
             Whether Users can register themselves
@@ -637,12 +698,27 @@ class S3Config(Storage):
     def get_auth_registration_requires_approval(self):
         return self.auth.get("registration_requires_approval", False)
 
+    def get_auth_registration_welcome_email(self):
+        """
+            Send a welcome-email to newly registered users
+        """
+        return self.auth.get("registration_welcome_email", True)
+
     def get_auth_always_notify_approver(self):
         return self.auth.get("always_notify_approver", True)
 
     def get_auth_login_next(self):
-        """ Which page to go to after login """
+        """
+            Which page to go to after login
+            - can be a callable
+        """
         return self.auth.get("login_next", URL(c="default", f="index"))
+
+    def get_auth_login_next_always(self):
+        """
+            Whether the login_next overrides the _next variable
+        """
+        return self.auth.get("login_next_always", False)
 
     def get_auth_show_link(self):
         return self.auth.get("show_link", True)
@@ -650,18 +726,18 @@ class S3Config(Storage):
     def get_auth_registration_link_user_to(self):
         """
             Link User accounts to none or more of:
-            * Staff
-            * Volunteer
-            * Member
+            * staff
+            * volunteer
+            * member
         """
         return self.auth.get("registration_link_user_to")
 
     def get_auth_registration_link_user_to_default(self):
         """
             Link User accounts to none or more of:
-            * Staff
-            * Volunteer
-            * Member
+            * staff
+            * volunteer
+            * member
             Should be an iterable.
         """
         return self.auth.get("registration_link_user_to_default")
@@ -712,7 +788,7 @@ class S3Config(Storage):
         if organisation_id:
             try:
                 int(organisation_id)
-            except:
+            except (ValueError, TypeError):
                 # Must be a Name
                 table = current.s3db.org_organisation
                 row = current.db(table.name == organisation_id).select(table.id,
@@ -792,6 +868,10 @@ class S3Config(Storage):
             - uses <template>/views/tos.html
         """
         return self.auth.get("terms_of_service", False)
+
+    def get_auth_consent_tracking(self):
+        """ Expose options to track user consent """
+        return self.auth.get("consent_tracking", False)
 
     def get_auth_registration_volunteer(self):
         """ Redirect the newly-registered user to their volunteer details page """
@@ -881,10 +961,6 @@ class S3Config(Storage):
         return self.auth.get("ignore_levels_for_presence", ("L0",))
     def get_auth_create_unknown_locations(self):
         return self.auth.get("create_unknown_locations", False)
-
-    def get_auth_show_utc_offset(self):
-        return self.auth.get("show_utc_offset", True)
-
     def get_security_archive_not_delete(self):
         return self.security.get("archive_not_delete", True)
     def get_security_audit_read(self):
@@ -1044,6 +1120,7 @@ class S3Config(Storage):
                 - default onxxxx
             NB: Currently only onaccept is actually used
         """
+
         callbacks = self.base.get("import_callbacks", [])
         if tablename in callbacks:
             callbacks = callbacks[tablename]
@@ -1064,6 +1141,8 @@ class S3Config(Storage):
             default = get_config(tablename, callback)
             if default:
                 return default
+
+        return None
 
     # -------------------------------------------------------------------------
     # Logger settings
@@ -1174,9 +1253,9 @@ class S3Config(Storage):
         currencies = self.__lazy("fin", "currencies", {})
         if currencies == {}:
             currencies = {
-                "EUR" : "Euros",
-                "GBP" : "Great British Pounds",
-                "USD" : "United States Dollars",
+                "EUR": "Euros",
+                "GBP": "Great British Pounds",
+                "USD": "United States Dollars",
             }
         return currencies
 
@@ -1293,6 +1372,15 @@ class S3Config(Storage):
             Edit Location Groups
         """
         return self.gis.get("edit_GR", False)
+
+    def get_gis_geocode_service(self):
+        """
+            Which Geocoder Service should be used?
+            Supported options:
+                "nominatim" (default)
+                "google"
+        """
+        return self.gis.get("geocode_service", "nominatim")
 
     def get_gis_geocode_imported_addresses(self):
         """
@@ -1693,8 +1781,20 @@ class S3Config(Storage):
                            self.get_L10n_time_format()
                            )
 
-    def get_L10n_utc_offset(self):
-        return self.L10n.get("utc_offset", "+0000")
+    def get_L10n_timezone(self):
+        """
+            The default timezone for datetime representation in the UI,
+            fallback if the client timezone or UTC offset can not be
+            determined (e.g. user not logged in, or not browser-based)
+
+            * A list of available timezones can be retrieved with:
+
+              import os, tarfile, dateutil.zoneinfo
+              path = os.path.abspath(os.path.dirname(dateutil.zoneinfo.__file__))
+              zonesfile = tarfile.TarFile.open(os.path.join(path, 'dateutil-zoneinfo.tar.gz'))
+              zonenames = zonesfile.getnames()
+        """
+        return self.__lazy("L10n", "timezone")
 
     def get_L10n_firstDOW(self):
         """
@@ -1851,19 +1951,23 @@ class S3Config(Storage):
         """
             Optical Character Recognition (OCR)
         """
-        excluded_fields_dict = {
-            "hms_hospital" : [
-                "hrm_human_resource",
-                ],
 
-            "pr_group" : [
-                "pr_group_membership",
-                ],
-            }
-        excluded_fields =\
-                excluded_fields_dict.get(resourcename, [])
+        excluded_fields = self.pdf.get("excluded_fields")
+        if excluded_fields is None:
+            excluded_fields = {"hms_hospital": ["hrm_human_resource",
+                                                ],
+                               "pr_group": ["pr_group_membership",
+                                            ],
+                               }
 
-        return excluded_fields
+        return excluded_fields.get(resourcename, [])
+
+    def get_pdf_max_rows(self):
+        """
+            Maximum number of records in a single PDF table/list export
+                - None for unlimited
+        """
+        return self.base.get("pdf_max_rows", 1000)
 
     # -------------------------------------------------------------------------
     # XLS Export Settings
@@ -1884,14 +1988,12 @@ class S3Config(Storage):
     def _get_formstyle(cls, setting):
         """ Helper function to identify a formstyle """
 
-        formstyles = cls.FORMSTYLE
-
         if callable(setting):
             # A custom formstyle defined in the template
             formstyle = setting
-        if setting in formstyles:
+        if setting in FORMSTYLES:
             # One of the standard supported formstyles
-            formstyle = formstyles[setting]
+            formstyle = FORMSTYLES[setting]
         else:
             # A default web2py formstyle
             formstyle = setting
@@ -1931,12 +2033,10 @@ class S3Config(Storage):
 
         setting = self.ui.get("formstyle", "default")
 
-        formstyles = self.FORMSTYLE
-
         if isinstance(setting, basestring):
             # Try to find the corresponding _inline formstyle
             inline_formstyle_name = "%s_inline" % setting
-            formstyle = formstyles.get(inline_formstyle_name)
+            formstyle = FORMSTYLES.get(inline_formstyle_name)
         else:
             formstyle = None
 
@@ -1979,6 +2079,24 @@ class S3Config(Storage):
         """ Render double scroll bars (top+bottom) for non-responsive data tables """
 
         return self.ui.get("datatables_double_scroll", False)
+
+    def get_ui_auto_open_update(self):
+        """
+            Render "Open" action buttons in datatables without explicit
+            CRUD-method => this allows automatic per-record decision
+            whether to open as update- or read-form based on permissions,
+            e.g. if the user doesn't have permission to update for all
+            records in the datatable due to oACL or realm-restriction
+        """
+        return self.ui.get("auto_open_update", False)
+
+    def get_ui_open_read_first(self):
+        """
+            Render "Open" action buttons with explicit "read" method
+            irrespective permissions (i.e. always, even if the user
+            were permitted to edit records)
+        """
+        return self.ui.get("open_read_first", False)
 
     def get_ui_default_cancel_button(self):
         """
@@ -2050,7 +2168,10 @@ class S3Config(Storage):
     def get_ui_export_formats(self):
         """
             Which export formats should we display?
-            - specify a list of export formats to restrict
+            - specify a list of export formats to restrict/override
+            - each list item can be
+              * a string with the format extension
+              * a tuple (extension, css-class[, onhover-title])
         """
         return self.ui.get("export_formats",
                            ("cap", "have", "kml", "map", "pdf", "rss", "xls", "xml"))
@@ -2335,6 +2456,13 @@ class S3Config(Storage):
         self.ui.inline_component_layout = layout
         return layout
 
+    def get_ui_inline_cancel_edit(self):
+        """
+            Behavior of inline components when switching edit rows
+            without explicit submit/cancel: cancel|submit|ask|refuse
+        """
+        return self.ui.get("inline_cancel_edit", "ask")
+
     def get_ui_profile_header(self, r):
         """
             What Header should be shown in the Profile page
@@ -2380,6 +2508,28 @@ class S3Config(Storage):
                                args = ["S3menu_logo.png"],
                                )
                            )
+
+    def get_ui_organizer_business_hours(self):
+        """
+            Business hours to indicate in organizer,
+            - a dict {dow:[0,1,2,3,4,5,6], start: "HH:MM", end: "HH:MM"},
+            - or a list of such dicts
+            - dow 0 being Sunday
+            - False to disable
+        """
+        return self.__lazy("ui", "organizer_business_hours", False)
+
+    def get_ui_organizer_time_format(self):
+        """
+            The time format for organizer (overrides locale default)
+        """
+        return self.__lazy("ui", "organizer_time_format", None)
+
+    def get_ui_organizer_snap_duration(self):
+        """
+            Snap raster width in organizer (hh:mm:ss), default 00:15:00
+        """
+        return self.__lazy("ui", "organizer_snap_duration", None)
 
     # =========================================================================
     # Messaging
@@ -2592,6 +2742,12 @@ class S3Config(Storage):
         """
         return self.setup.get("monitor_template", "default")
 
+    def get_setup_wizard_questions(self):
+        """
+            Configuration options to see in the Setup Wizard
+        """
+        return self.setup.get("wizard_questions", [])
+
     # =========================================================================
     # Sync
     #
@@ -2645,6 +2801,300 @@ class S3Config(Storage):
         return self.asset.get("telephones", False)
 
     # -------------------------------------------------------------------------
+    # BR: Beneficiary Registry
+    #
+    def get_br_case_terminology(self):
+        """
+            Terminology to use when referring to cases: Beneficiary|Client|Case
+        """
+        return self.br.get("case_terminology", "Case")
+
+    def get_br_assistance_terminology(self):
+        """
+            Terminology to use when referring to measures of assistance: Counseling|Assistance
+        """
+        return self.br.get("assistance_terminology", "Assistance")
+
+    def get_br_needs_hierarchical(self):
+        """
+            Need categories are hierarchical
+        """
+        return self.br.get("needs_hierarchical", False)
+
+    def get_br_needs_org_specific(self):
+        """
+            Need categories are specific per root organisation
+        """
+        return self.br.get("needs_org_specific", True)
+
+    def get_br_id_card_layout(self):
+        """
+            Layout class for beneficiary ID cards
+        """
+        return self.br.get("id_card_layout")
+
+    def get_br_id_card_export_roles(self):
+        """
+            User roles permitted to export beneficiary ID cards
+        """
+        return self.br.get("id_card_export_roles")
+
+    def get_br_case_hide_default_org(self):
+        """
+            Hide the organisation field in cases if only one allowed
+        """
+        return self.br.get("case_hide_default_org", True)
+
+    def get_br_case_manager(self):
+        """
+            Assign cases to individual case managers (staff members)
+        """
+        return self.br.get("case_manager", True)
+
+    def get_br_case_address(self):
+        """
+            Document the current address of beneficiaries
+        """
+        return self.br.get("case_address", False)
+
+    def get_br_case_language_details(self):
+        """
+            Document languages that can be used when communicating with
+            a beneficiary
+        """
+        return self.br.get("case_language_details", True)
+
+    def get_br_household_size(self):
+        """
+            Track the number of persons per household (family)
+
+            - False = off
+            - True = manual
+            - "auto" = count family members automatically
+        """
+        return self.br.get("household_size", "auto")
+
+    def get_br_case_contacts_tab(self):
+        """
+            Case file use tab to track beneficiary contact information
+        """
+        return self.br.get("case_contacts_tab", True)
+
+    def get_br_case_id_tab(self):
+        """
+            Case file use tab to track identity documents
+        """
+        return self.br.get("case_id_tab", False)
+
+    def get_br_case_family_tab(self):
+        """
+            Case file use tab to track family members
+        """
+        return self.br.get("case_family_tab", True)
+
+    def get_br_service_contacts(self):
+        """
+            Enable case file tab to track service contacts
+        """
+        return self.br.get("service_contacts", False)
+
+    def get_br_case_notes_tab(self):
+        """
+            Use a simple notes journal in case files
+        """
+        return self.br.get("case_notes_tab", False)
+
+    def get_br_case_photos_tab(self):
+        """
+            Case file use tab to upload photos
+
+            NB image-component can also be reached by clicking on the
+               profile photo (or the placeholder, respectively)
+        """
+        return self.br.get("case_photos_tab", False)
+
+    def get_br_case_documents_tab(self):
+        """
+            Case file use tab to upload documents
+        """
+        return self.br.get("case_documents_tab", True)
+
+    def get_br_case_include_activity_docs(self):
+        """
+            Documents-tab of case files includes activity attachments
+        """
+        return self.get_br_case_activity_documents() and \
+               self.br.get("case_include_activity_docs", True)
+
+    def get_br_case_include_group_docs(self):
+        """
+            Documents-tab of case files includes case group attachments
+        """
+        return self.br.get("case_include_group_docs", True)
+
+    def get_br_case_activities(self):
+        """
+            Track case activities
+        """
+        return self.br.get("case_activities", True)
+
+    def get_br_case_activity_manager(self):
+        """
+            Assign case activities to individual staff members
+        """
+        return self.br.get("case_activity_manager", True)
+
+    def get_br_case_activity_urgent_option(self):
+        """
+            Expose features for urgent case activities ("emergencies")
+        """
+        return self.br.get("case_activity_urgent_option", False)
+
+    def get_br_case_activity_need(self):
+        """
+            Use need categories for case activities
+        """
+        return self.br.get("case_activity_need", True)
+
+    def get_br_case_activity_subject(self):
+        """
+            Have a subject line (title) for case activities
+        """
+        return self.br.get("case_activity_subject", False)
+
+    def get_br_case_activity_need_details(self):
+        """
+            Have a text field to document need details in case activities
+        """
+        return self.br.get("case_activity_need_details", False)
+
+    def get_br_case_activity_status(self):
+        """
+            Case activities have a status (and possibly an end date)
+        """
+        return self.br.get("case_activity_status", True)
+
+    def get_br_case_activity_end_date(self):
+        """
+            Show case activity end date in form
+            - True to show, "writable" to allow manual edit
+        """
+        return self.br.get("case_activity_end_date", False)
+
+    def get_br_case_activity_updates(self):
+        """
+            Use case activity update journal (inline-component)
+        """
+        return self.br.get("case_activity_updates", False)
+
+    def get_br_case_activity_outcome(self):
+        """
+            Show field to track outcomes of case activities (free-text)
+        """
+        return self.br.get("case_activity_outcome", True)
+
+    def get_br_case_activity_documents(self):
+        """
+            Case activities have attachments
+        """
+        return self.br.get("case_activity_documents", False)
+
+    def get_br_manage_assistance(self):
+        """
+            Track individual measures of assistance
+        """
+        return self.br.get("manage_assistance", True)
+
+    def get_br_assistance_inline(self):
+        """
+            Document assistance measures inline in activities
+        """
+        return self.br.get("assistance_inline", True)
+
+    def get_br_assistance_tab(self):
+        """
+            Document assistance measures on separate case file tab
+        """
+        setting = self.br.get("assistance_tab")
+        if setting is None:
+            # Show the tab if managing assistance without activities
+            setting = self.get_br_manage_assistance() and \
+                      not self.get_br_case_activities()
+        return setting
+
+    def get_br_assistance_manager(self):
+        """
+            Assign assistance measures to individual staff members
+        """
+        return self.br.get("assistance_manager", True)
+
+    def get_br_assistance_types(self):
+        """
+            Use assistance type categories
+        """
+        return self.br.get("assistance_types", True)
+
+    def get_br_assistance_themes(self):
+        """
+            Use assistance theme categories
+        """
+        return self.br.get("assistance_themes", False)
+
+    def get_br_assistance_themes_org_specific(self):
+        """
+            Assistance themes are specific per root organisation
+        """
+        return self.br.get("assistance_themes_org_specific", True)
+
+    def get_br_assistance_themes_sectors(self):
+        """
+            Assistance themes are organized by org sector
+        """
+        return self.br.get("assistance_themes_sectors", False)
+
+    def get_br_assistance_themes_needs(self):
+        """
+            Assistance themes are linked to needs
+        """
+        return self.br.get("assistance_themes_needs", False)
+
+    def get_br_assistance_measures_use_time(self):
+        """
+            Assistance measures use date+time (instead of just date)
+        """
+        return self.br.get("assistance_measures_use_time", False)
+
+    def get_br_assistance_measure_default_closed(self):
+        """
+            Set default status of assistance measures to closed
+            (useful if the primary use-case is post-action documentation)
+        """
+        return self.br.get("assistance_measure_default_closed", False)
+
+    def get_br_assistance_details_per_theme(self):
+        """
+            Document assistance measure details per theme
+            - requires assistance tab
+        """
+        return self.get_br_assistance_tab() and \
+               self.br.get("assistance_details_per_theme", False)
+
+    def get_br_assistance_activity_autolink(self):
+        """
+            Auto-link assistance details to case activities
+            - requires case_activity_need
+            - requires assistance_themes and assistance_themes_needs
+            - requires assistance_tab and assistance_details_per_theme
+        """
+        return self.br.get("assistance_activity_autolink", False)
+
+    def get_br_assistance_track_effort(self):
+        """
+            Track effort (=hours spent) for assistance measures
+        """
+        return self.br.get("assistance_track_effort", True)
+
+    # -------------------------------------------------------------------------
     # CAP: Common Alerting Protocol
     #
     def get_cap_identifier_oid(self):
@@ -2667,11 +3117,11 @@ class S3Config(Storage):
         # Else fallback to the default OID
         return self.cap.get("identifier_oid", "")
 
-    def get_cap_expire_offset(self):
+    def get_cap_info_effective_period(self):
         """
-            Offset period for expiration
+            The period (in days) after which alert info segments expire
         """
-        return self.cap.get("expire_offset", 2)
+        return self.cap.get("info_effective_period", 2)
 
     def get_cap_codes(self):
         """
@@ -2986,25 +3436,9 @@ class S3Config(Storage):
     # -------------------------------------------------------------------------
     # DC: Data Collection
     #
-    def get_dc_response_label(self):
-        """
-            Label for Responses
-            - 'Assessment;
-            - 'Response' (default if set to None)
-            - 'Survey'
-        """
-        return self.dc.get("response_label", "Assessment")
-
-    def get_dc_unique_question_names_per_template(self):
-        """
-            Deduplicate Questions by Name/Template
-             - needed for importing multiple translations
-        """
-        return self.dc.get("unique_question_names_per_template", False)
-
     def get_dc_mobile_data(self):
         """
-            Whether Mobile Clients should download Assessments
+            Whether Mobile Clients should download Assessments (Data not just Forms)
             - e.g. when these are created through Targetting
         """
         return self.dc.get("mobile_data", False)
@@ -3015,9 +3449,49 @@ class S3Config(Storage):
         """
         return self.dc.get("mobile_inserts", True)
 
+    def get_dc_response_label(self):
+        """
+            Label for Responses
+            - 'Assessment;
+            - 'Response' (default if set to None)
+            - 'Survey'
+        """
+        return self.dc.get("response_label", "Assessment")
+
+    def get_dc_response_mobile(self):
+        """
+            Whether Assessments are filled-out on the EdenMobile App
+        """
+        return self.dc.get("response_mobile", True)
+
+    def get_dc_response_web(self):
+        """
+            Whether Assessments are filled-out on the Web interface
+        """
+        return self.dc.get("response_web", True)
+
+    def get_dc_target_status(self):
+        """
+            Whether Assessment Targets have Statuses
+        """
+        return self.dc.get("target_status", False)
+
+    def get_dc_unique_question_names_per_template(self):
+        """
+            Deduplicate Questions by Name/Template
+             - needed for importing multiple translations
+        """
+        return self.dc.get("unique_question_names_per_template", False)
+
     # -------------------------------------------------------------------------
     # Deployments
     #
+    def get_deploy_alerts(self):
+        """
+            Whether the system is used to send Alerts
+        """
+        return self.__lazy("deploy", "alerts", default=True)
+
     def get_deploy_cc_groups(self):
         """
             List of Group names that are cc'd on Alerts
@@ -3036,6 +3510,14 @@ class S3Config(Storage):
             Whether Alert recipients should be selected manually
         """
         return self.deploy.get("manual_recipients", True)
+
+    def get_deploy_member_filters(self):
+        """
+            Custom set of filter_widgets for members (hrm_human_resource),
+            used in custom methods for member selection, e.g. deploy_apply
+            or deploy_alert_select_recipients
+        """
+        return self.__lazy("deploy", "member_filters", default=None)
 
     def get_deploy_post_to_twitter(self):
         """
@@ -3075,6 +3557,16 @@ class S3Config(Storage):
         """
         return self.doc.get("label", "Document")
 
+    def get_doc_mailmerge_fields(self):
+        """
+            Dictionary of mailmerge fields
+            - assumes starting from pr_person
+        """
+        return self.doc.get("mailmerge_fields", {"First Name": "first_name",
+                                                 "Last Name": "last_name",
+                                                 "Date of Birth": "date_of_birth",
+                                                 })
+
     # -------------------------------------------------------------------------
     # DVR Options
     #
@@ -3113,12 +3605,6 @@ class S3Config(Storage):
             Enable features to manage transferability of cases
         """
         return self.dvr.get("manage_transferability", False)
-
-    def get_dvr_multiple_case_groups(self):
-        """
-            Whether a case can belong to multiple case groups at the same time
-        """
-        return self.dvr.get("multiple_case_groups", False)
 
     def get_dvr_household_size(self):
         """
@@ -3234,12 +3720,23 @@ class S3Config(Storage):
         """
         return self.dvr.get("case_activity_needs_multiple", False)
 
+    def get_dvr_case_activity_follow_up(self):
+        """
+            Enable/disable fields to schedule case activities for follow-up
+        """
+        return self.__lazy("dvr", "case_activity_follow_up", default=True)
+
     def get_dvr_case_include_activity_docs(self):
         """
-            Documents-tab of beneficiaries includes case
-            activity attachments
+            Documents-tab of beneficiaries includes case activity attachments
         """
         return self.dvr.get("case_include_activity_docs", False)
+
+    def get_dvr_case_include_group_docs(self):
+        """
+            Documents-tab of beneficiaries includes case group attachments
+        """
+        return self.dvr.get("case_include_group_docs", False)
 
     def get_dvr_needs_use_service_type(self):
         """
@@ -3265,11 +3762,31 @@ class S3Config(Storage):
         """
         return self.dvr.get("manage_response_actions", False)
 
+    def get_dvr_response_planning(self):
+        """
+            Response actions can be planned
+            (as opposed to being documented in hindsight)
+        """
+        return self.__lazy("dvr", "response_planning", default=False)
+
+    def get_dvr_response_due_date(self):
+        """
+            Response planning uses separate due-date field
+        """
+        return self.get_dvr_response_planning() and \
+               self.__lazy("dvr", "response_due_date", default=False)
+
+    def get_dvr_response_use_time(self):
+        """
+            Use date+time for responses rather than just date
+        """
+        return self.__lazy("dvr", "response_use_time", default=False)
+
     def get_dvr_response_types(self):
         """
             Use response type categories
         """
-        return self.dvr.get("response_types", True)
+        return self.__lazy("dvr", "response_types", default=True)
 
     def get_dvr_response_types_hierarchical(self):
         """
@@ -3288,6 +3805,32 @@ class S3Config(Storage):
             Response themes are org-specific
         """
         return self.dvr.get("response_themes_org_specific", True)
+
+    def get_dvr_response_themes_sectors(self):
+        """
+            Response themes are organized per org sector
+        """
+        return self.__lazy("dvr", "response_themes_sectors", default=False)
+
+    def get_dvr_response_themes_needs(self):
+        """
+            Response themes are linked to needs
+        """
+        return self.__lazy("dvr", "response_themes_needs", default=False)
+
+    def get_dvr_response_themes_details(self):
+        """
+            Record response details per theme
+        """
+        return self.__lazy("dvr", "response_themes_details", default=False)
+
+    def get_dvr_response_activity_autolink(self):
+        """
+            Automatically link response actions to case activities
+            based on matching needs
+        """
+        return self.get_dvr_response_themes_needs() and \
+               self.__lazy("dvr", "response_activity_autolink", default=False)
 
     # -------------------------------------------------------------------------
     # Education
@@ -3356,6 +3899,15 @@ class S3Config(Storage):
         """
         return self.event.get("incident_types_hierarchical", False)
 
+    def get_event_task_notification(self):
+        """
+            Whether to send Notifications for Tasks linked to Events
+            - only used in SaFiRe template currently
+
+            Options: None, contact_method (e.g. "SMS", "EMAIL")
+        """
+        return self.event.get("task_notification", "EMAIL")
+
     def get_event_dc_response_tab(self):
         """
             Whether to show the DC response tab for events
@@ -3404,38 +3956,6 @@ class S3Config(Storage):
             define the label of the tab or True to use default label
         """
         return self.event.get("incident_teams_tab", False)
-
-    # -------------------------------------------------------------------------
-    # Evacuees
-    #
-    def get_evr_group_types(self):
-        """
-            Evacuees Group Types
-        """
-        T = current.T
-        return self.evr.get("group_types", {1: T("other"),
-                                            2: T("Family"),
-                                            3: T("Tourist group"),
-                                            4: T("Society"),
-                                            5: T("Company"),
-                                            6: T("Convent"),
-                                            7: T("Hotel"),
-                                            8 :T("Hospital"),
-                                            9 :T("Orphanage")
-                                            })
-
-    def get_evr_show_physical_description(self):
-        """
-            Show Evacuees physical description
-        """
-        return self.evr.get("physical_description", True)
-
-    def get_evr_link_to_organisation(self):
-        """
-            Link evacuees to Organisations.
-        """
-        return self.evr.get("link_to_organisation", False)
-
 
     # -------------------------------------------------------------------------
     # Fire
@@ -3614,6 +4134,12 @@ class S3Config(Storage):
             Whether (Training) Events should be of different Types
         """
         return self.__lazy("hrm", "event_types", default=False)
+
+    def get_hrm_id_cards(self):
+        """
+            Show buttons to download printable ID cards for staff/volunteers
+        """
+        return self.__lazy("hrm", "id_cards", default=False)
 
     def get_hrm_job_title_deploy(self):
         """
@@ -3826,6 +4352,14 @@ class S3Config(Storage):
         """
         return self.hrm.get("use_job_titles", True)
 
+    def get_hrm_use_national_id(self):
+        """
+            Whether Human Resources should show National IDs in list_fields
+            & text_search_fields
+            either True or False
+        """
+        return self.__lazy("hrm", "use_national_id", default=False)
+
     def get_hrm_use_skills(self):
         """
             Whether Human Resources should use Skills
@@ -3899,12 +4433,24 @@ class S3Config(Storage):
 
     def get_hrm_vol_availability_tab(self):
         """
+            @ToDo: Deprecate
             Whether to use Availability Tab for Volunteers
             Options:
                 None
                 True
         """
         return self.__lazy("hrm", "vol_availability_tab", default=None)
+
+    def get_hrm_unavailability(self):
+        """
+            Whether to use Unavailability for Staff/Volunteers
+            - shows tab/profile widget
+            - adds filter
+            Options:
+                None
+                True
+        """
+        return self.__lazy("hrm", "unavailability", default=None)
 
     def get_hrm_vol_experience(self):
         """
@@ -4112,8 +4658,8 @@ class S3Config(Storage):
     #
     def get_mobile_forms(self):
         """
-            Configure mobile forms - a list of items, or a callable returning
-            a list of items.
+            Configure mobile forms - a list of items, or a callable accepting
+            a auth_masterkey.id as parameter and returning a list of items.
 
             Item formats:
                 "tablename"
@@ -4131,13 +4677,19 @@ class S3Config(Storage):
             Example:
                 settings.mobile.forms = [("Request", "req_req")]
         """
-        return self.__lazy("mobile", "forms", [])
+        return self.mobile.get("forms", [])
 
     def get_mobile_dynamic_tables(self):
         """
             Expose mobile forms for dynamic tables
         """
         return self.mobile.get("dynamic_tables", True)
+
+    def get_mobile_masterkey_filter(self):
+        """
+            Filter mobile forms by master key
+        """
+        return self.mobile.get("masterkey_filter", False)
 
     # -------------------------------------------------------------------------
     # Organisations
@@ -4155,7 +4707,7 @@ class S3Config(Storage):
         """
         default_organisation = self.__lazy("org", "default_organisation", default=None)
         if default_organisation:
-            if not isinstance(default_organisation, (int, long)):
+            if not isinstance(default_organisation, INTEGER_TYPES):
                 # Check Session cache
                 default_organisation_id = current.session.s3.default_organisation_id
                 if default_organisation_id:
@@ -4184,7 +4736,7 @@ class S3Config(Storage):
         """
         default_site = self.org.get("default_site", None)
         if default_site:
-            if not isinstance(default_site, (int, long)):
+            if not isinstance(default_site, INTEGER_TYPES):
                 # Check Session cache
                 default_site_id = current.session.s3.default_site_id
                 if default_site_id:
@@ -4270,9 +4822,15 @@ class S3Config(Storage):
 
     def get_org_facilities_tab(self):
         """
-            Whether to show a Tab for Facilities
+            Whether to show a Tab for Facilities on Organisations
         """
         return self.org.get("facilities_tab", True)
+
+    def get_org_facility_shifts(self):
+        """
+            Whether to show a Tab for Shifts on Offices & Facilities
+        """
+        return self.org.get("facility_shifts", True)
 
     def get_org_groups(self):
         """
@@ -4280,6 +4838,9 @@ class S3Config(Storage):
             & what their name is:
             'Coalition'
             'Network'
+
+            NB If changing this after 1st_run then need to
+               create the OrgGroupAdmin role manually if-needed
         """
         return self.org.get("groups", False)
 
@@ -4289,6 +4850,18 @@ class S3Config(Storage):
             references (pr_group_id)
         """
         return self.org.get("group_team_represent", False)
+
+    def get_org_pdf_card_configs(self):
+        """
+            Show a tab in organisation rheader to manage PDF card configurations
+        """
+        return self.__lazy("org", "pdf_card_configs", default=False)
+
+    def get_org_documents_tab(self):
+        """
+            Whether to show a Tab for Documents
+        """
+        return self.org.get("documents_tab", False)
 
     def get_org_needs_tab(self):
         """
@@ -4301,6 +4874,12 @@ class S3Config(Storage):
             Whether to show a Tab for Offices
         """
         return self.org.get("offices_tab", True)
+
+    def get_org_projects_tab(self):
+        """
+            Whether to show a Tab for Projects
+        """
+        return self.org.get("projects_tab", True) # Will be hidden anyway if Projects module disabled
 
     def get_org_regions(self):
         """
@@ -4385,13 +4964,6 @@ class S3Config(Storage):
             Get custom tasks for scheduled site checks
         """
         return self.org.get("site_check")
-
-    def get_org_summary(self):
-        """
-            Whether to use Summary fields for Organisation/Office:
-                # National/International staff
-        """
-        return self.org.get("summary", False)
 
     def set_org_dependent_field(self,
                                 tablename=None,
@@ -4492,6 +5064,14 @@ class S3Config(Storage):
             Whether to hide the third gender ("Other")
         """
         return self.__lazy("pr", "hide_third_gender", default=True)
+
+    def get_pr_nationality_explicit_unclear(self):
+        """
+            Have an explicit "unclear" option for nationality, useful
+            when the field shall be mandatory yet allow for cases
+            where the nationality of a person is unclear
+        """
+        return self.pr.get("nationality_explicit_unclear", False)
 
     def get_pr_import_update_requires_email(self):
         """
@@ -4625,6 +5205,12 @@ class S3Config(Storage):
             label = defaults.get(group)
 
         return current.T(label) if label else label
+
+    def get_pr_multiple_case_groups(self):
+        """
+            Whether a person can belong to multiple case groups at the same time
+        """
+        return self.pr.get("multiple_case_groups", False)
 
     # -------------------------------------------------------------------------
     # Proc
@@ -4898,12 +5484,6 @@ class S3Config(Storage):
             The lead role of organisations within projects
         """
         return self.project.get("organisation_lead_role", 1)
-
-    def get_project_task_tag(self):
-        """
-            Use Tags in Tasks
-        """
-        return self.project.get("task_tag", False)
 
     def get_project_task_status_opts(self):
         """

@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2009-2018 (c) Sahana Software Foundation
+    @copyright: 2009-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -34,16 +34,18 @@ import sys
 from itertools import chain
 from uuid import uuid4
 
-from gluon import current, A, DIV, Field, IS_EMPTY_OR, IS_IN_SET, TAG, URL, XML
+from gluon import current, A, DIV, Field, IS_EMPTY_OR, IS_IN_SET, IS_TIME, TAG, URL, XML
+from gluon.sqlhtml import TimeWidget
 from gluon.storage import Storage
 from gluon.languages import lazyT
 
+from s3compat import PY2, basestring
 from s3dal import SQLCustomType
-from s3datetime import S3DateTime
-from s3navigation import S3ScriptItem
-from s3utils import s3_auth_user_represent, s3_auth_user_represent_name, s3_unicode, s3_str, S3MarkupStripper
-from s3validators import IS_ISO639_2_LANGUAGE_CODE, IS_ONE_OF, IS_UTC_DATE, IS_UTC_DATETIME
-from s3widgets import S3CalendarWidget, S3DateWidget
+from .s3datetime import S3DateTime
+from .s3navigation import S3ScriptItem
+from .s3utils import s3_auth_user_represent, s3_auth_user_represent_name, s3_unicode, s3_str, S3MarkupStripper
+from .s3validators import IS_ISO639_2_LANGUAGE_CODE, IS_ONE_OF, IS_UTC_DATE, IS_UTC_DATETIME
+from .s3widgets import S3CalendarWidget, S3DateWidget
 
 # =============================================================================
 class FieldS3(Field):
@@ -295,19 +297,23 @@ class S3Represent(object):
         self.slabels = None
         self.htemplate = None
 
-        # Attributes to simulate being a function for sqlhtml's represent()
+        # Attributes to simulate being a function for sqlhtml's count_expected_args()
         # Make sure we indicate only 1 position argument
-        self.func_code = Storage(co_argcount = 1)
-        self.func_defaults = None
-
-        if hasattr(self, "lookup_rows"):
-            self.custom_lookup = True
+        if PY2:
+            self.func_code = Storage(co_argcount = 1)
+            self.func_defaults = None
         else:
-            self.lookup_rows = self._lookup_rows
-            self.custom_lookup = False
+            self.__code__ = Storage(co_argcount = 1)
+            self.__defaults__ = None
+
+        # Detect lookup_rows override
+        if PY2:
+            self.custom_lookup = self.lookup_rows.__func__ is not S3Represent.lookup_rows.__func__
+        else:
+            self.custom_lookup = self.lookup_rows.__func__ is not S3Represent.lookup_rows
 
     # -------------------------------------------------------------------------
-    def _lookup_rows(self, key, values, fields=None):
+    def lookup_rows(self, key, values, fields=None):
         """
             Lookup all rows referenced by values.
             (in foreign key representations)
@@ -356,7 +362,7 @@ class S3Represent(object):
 
             # Represent None as self.none
             none = self.none
-            for k, v in row_dict.items():
+            for k, v in list(row_dict.items()):
                 if v is None:
                     row_dict[k] = none
 
@@ -556,8 +562,7 @@ class S3Represent(object):
             if show_link:
                 link = self.link
                 rows = self.rows
-                labels = dict((k, link(k, v, rows.get(k)))
-                               for k, v in labels.items())
+                labels = {k: link(k, v, rows.get(k)) for k, v in labels.items()}
             for k in values:
                 if k not in labels:
                     labels[k] = self.default
@@ -612,10 +617,8 @@ class S3Represent(object):
         if self.options is not None:
             if self.translate:
                 T = current.T
-                self.theset = dict((opt, T(label))
-                                   if isinstance(label, basestring) else (opt, label)
-                                   for opt, label in self.options.items()
-                                   )
+                self.theset = {opt: T(label) if isinstance(label, basestring) else label
+                               for opt, label in self.options.items()}
             else:
                 self.theset = self.options
         else:
@@ -692,7 +695,7 @@ class S3Represent(object):
 
         if table and self.hierarchy:
             # Does the lookup table have a hierarchy?
-            from s3hierarchy import S3Hierarchy
+            from .s3hierarchy import S3Hierarchy
             h = S3Hierarchy(table._tablename)
             if h.config:
                 def lookup_parent(node_id):
@@ -703,7 +706,7 @@ class S3Represent(object):
                         lookup[parent] = False
                         lookup_parent(parent)
                     return
-                for node_id in lookup.keys():
+                for node_id in list(lookup.keys()):
                     lookup_parent(node_id)
             else:
                 h = None
@@ -752,8 +755,8 @@ class S3Represent(object):
                               for f in self.fields if hasattr(table, f)]
             else:
                 fields = []
-            rows = self.lookup_rows(key, lookup.keys(), fields=fields)
-            rows = dict((row[key], row) for row in rows)
+            rows = self.lookup_rows(key, list(lookup.keys()), fields=fields)
+            rows = {row[key]: row for row in rows}
             self.rows.update(rows)
             if h:
                 for k, row in rows.items():
@@ -918,10 +921,10 @@ class S3RepresentLazy(object):
 # Use URNs according to http://tools.ietf.org/html/rfc4122
 s3uuid = SQLCustomType(type = "string",
                        native = "VARCHAR(128)",
-                       encoder = lambda x: "%s" % (uuid4().urn
-                                    if x == ""
-                                    else str(x.encode("utf-8"))),
-                       decoder = lambda x: x)
+                       encoder = lambda x: \
+                                 "%s" % (uuid4().urn if x == "" else s3_str(x)),
+                       decoder = lambda x: x,
+                       )
 
 # Representation of user roles (auth_group)
 auth_group_represent = S3Represent(lookup="auth_group", fields=["role"])
@@ -1334,7 +1337,7 @@ def s3_comments(name="comments", **attr):
         attr["represent"] = lambda comments: \
             XML(comments) if comments else current.messages["NONE"]
     if "widget" not in attr:
-        from s3widgets import s3_comments_widget
+        from .s3widgets import s3_comments_widget
         _placeholder = attr.pop("_placeholder", None)
         if _placeholder:
             attr["widget"] = lambda f, v: \
@@ -1365,7 +1368,7 @@ def s3_currency(name="currency", **attr):
         attr["default"] = settings.get_fin_currency_default()
     if "requires" not in attr:
         currency_opts = settings.get_fin_currencies()
-        attr["requires"] = IS_IN_SET(currency_opts.keys(),
+        attr["requires"] = IS_IN_SET(list(currency_opts.keys()),
                                      zero=None)
     if "writable" not in attr:
         attr["writable"] = settings.get_fin_currency_writable()
@@ -1376,38 +1379,55 @@ def s3_currency(name="currency", **attr):
 def s3_language(name="language", **attr):
     """
         Return a standard Language field
+
+        @param name: the Field name
+        @param attr: Field parameters, as well as keywords:
+            @keyword empty: allow the field to remain empty:
+                            None: accept empty, don't show empty-option (default)
+                            True: accept empty, show empty-option
+                            False: reject empty, don't show empty-option
+                            (keyword ignored if a "requires" is passed)
+            @keyword translate: translate the language names into
+                                current UI language (not recommended for
+                                selector to choose that UI language)
+
+            @keyword select: which languages to show in the selector:
+                             - a dict of {lang_code: lang_name}
+                             - None to expose all languages
+                             - False (or omit) to use L10n_languages setting (default)
     """
 
     if "label" not in attr:
         attr["label"] = current.T("Language")
     if "default" not in attr:
         attr["default"] = current.deployment_settings.get_L10n_default_language()
+
     empty = attr.pop("empty", None)
-    if empty:
-        zero = ""
-    else:
-        zero = None
-    list_from_settings = attr.pop("list_from_settings", True)
-    select = attr.pop("select", None) # None = Full list
+    zero = "" if empty else None
+
     translate = attr.pop("translate", True)
-    if select or not list_from_settings:
-        requires = IS_ISO639_2_LANGUAGE_CODE(select = select,
+
+    if "select" in attr:
+        # If select is present => pass as-is
+        requires = IS_ISO639_2_LANGUAGE_CODE(select = attr.pop("select"),
                                              sort = True,
                                              translate = translate,
                                              zero = zero,
                                              )
     else:
-        # Use deployment_settings to show a limited list
+        # Use L10n_languages deployment setting
         requires = IS_ISO639_2_LANGUAGE_CODE(sort = True,
                                              translate = translate,
                                              zero = zero,
                                              )
+
     if "requires" not in attr:
+        # Value required only if empty is explicitly False
         if empty is False:
             attr["requires"] = requires
         else:
-            # Default
             attr["requires"] = IS_EMPTY_OR(requires)
+
     if "represent" not in attr:
         attr["represent"] = requires.represent
 
@@ -1740,5 +1760,31 @@ def s3_datetime(name="date", **attr):
             attributes["requires"] = IS_EMPTY_OR(requires)
 
     return Field(name, "datetime", **attributes)
+
+# =============================================================================
+def s3_time(name="time_of_day", **attr):
+    """
+        Return a standard time field
+
+        @param name: the field name
+
+        @ToDo: Support minTime/maxTime options for fgtimepicker
+    """
+
+    attributes = dict(attr)
+
+    if "widget" not in attributes:
+        # adds .time class which launches fgtimepicker from s3.datepicker.js
+        attributes["widget"] = TimeWidget.widget
+
+    if "requires" not in attributes:
+        requires = IS_TIME()
+        empty = attributes.pop("empty", None)
+        if empty is False:
+            attributes["requires"] = requires
+        else:
+            attributes["requires"] = IS_EMPTY_OR(requires)
+
+    return Field(name, "time", **attributes)
 
 # END =========================================================================

@@ -2,7 +2,7 @@
 
 """ S3 Charting Toolkit
 
-    @copyright: 2011-2018 (c) Sahana Software Foundation
+    @copyright: 2011-2019 (c) Sahana Software Foundation
     @license: MIT
 
     @requires: U{B{I{NumPy}} <http://www.numpy.org>}
@@ -32,14 +32,11 @@
 
 __all__ = ["S3Chart"]
 
-try:
-    from cStringIO import StringIO    # Faster, where available
-except:
-    from StringIO import StringIO
-
 from gluon import current
 from gluon.storage import Storage
 from gluon.html import IMG
+
+from s3compat import StringIO
 
 # =============================================================================
 class S3Chart(object):

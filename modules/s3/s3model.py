@@ -2,7 +2,7 @@
 
 """ S3 Data Model Extensions
 
-    @copyright: 2009-2018 (c) Sahana Software Foundation
+    @copyright: 2009-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -39,10 +39,10 @@ from gluon.storage import Storage
 from gluon.tools import callback
 
 from s3dal import Table, Field, original_tablename
-from s3navigation import S3ScriptItem
-from s3resource import S3Resource
-from s3validators import IS_ONE_OF
-from s3widgets import s3_comments_widget, s3_richtext_widget
+from .s3navigation import S3ScriptItem
+from .s3resource import S3Resource
+from .s3validators import IS_ONE_OF, IS_JSONS3
+from .s3widgets import s3_comments_widget, s3_richtext_widget
 
 DYNAMIC_PREFIX = "s3dt"
 DEFAULT = lambda: None
@@ -328,7 +328,8 @@ class S3Model(object):
                             generic.append(n)
                     elif n.startswith("%s_" % prefix):
                         s3[n] = model
-                [module.__dict__[n](prefix) for n in generic]
+                for n in generic:
+                    module.__dict__[n](prefix)
         if name in s3:
             return s3[name]
         elif isinstance(default, Exception):
@@ -381,7 +382,7 @@ class S3Model(object):
                     cls.load(name)
 
         # Define importer tables
-        from s3import import S3Importer, S3ImportJob
+        from .s3import import S3Importer, S3ImportJob
         S3Importer.define_upload_table()
         S3ImportJob.define_job_table()
         S3ImportJob.define_item_table()
@@ -512,8 +513,9 @@ class S3Model(object):
             if not keys:
                 del config[tn]
             else:
-                [config[tn].pop(k, None) for k in keys]
-        return
+                table_config = config[tn]
+                for k in keys:
+                    table_config.pop(k, None)
 
     # -------------------------------------------------------------------------
     @classmethod
@@ -1494,7 +1496,7 @@ class S3Model(object):
         get_config = cls.get_config
 
         # Get all super-entities of this table
-        tablename = table._tablename
+        tablename = original_tablename(table)
         supertables = get_config(tablename, "super_entity")
         if not supertables:
             return False
@@ -1520,15 +1522,13 @@ class S3Model(object):
             key = cls.super_key(s)
             shared = get_config(tablename, "%s_fields" % tn)
             if not shared:
-                shared = dict((fn, fn)
-                              for fn in s.fields
-                              if fn != key and fn in table.fields)
+                shared = {fn: fn for fn in s.fields
+                                 if fn != key and fn in table.fields}
             else:
-                shared = dict((fn, shared[fn])
-                              for fn in shared
-                              if fn != key and \
-                                 fn in s.fields and \
-                                 shared[fn] in table.fields)
+                shared = {fn: shared[fn] for fn in shared
+                                         if fn != key and \
+                                            fn in s.fields and \
+                                            shared[fn] in table.fields}
             fields.extend(shared.values())
             fields.append(key)
             updates.append((tn, s, key, shared))
@@ -1615,7 +1615,7 @@ class S3Model(object):
 
         # Get all super-tables
         get_config = cls.get_config
-        supertables = get_config(table._tablename, "super_entity")
+        supertables = get_config(original_tablename(table), "super_entity")
 
         # None? Ok - done!
         if not supertables:
@@ -1657,7 +1657,7 @@ class S3Model(object):
 
             # Delete the super record
             sresource = define_resource(sname, id=value)
-            sresource.delete(cascade=True)
+            sresource.delete(cascade=True, log_errors=True)
 
             if sresource.error:
                 # Restore the super key
@@ -1667,6 +1667,37 @@ class S3Model(object):
                 return False
 
         return True
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def get_super_keys(cls, table):
+        """
+            Get the super-keys in an instance table
+
+            @param table: the instance table
+            @returns: list of field names
+        """
+
+        tablename = original_tablename(table)
+
+        supertables = cls.get_config(tablename, "super_entity")
+        if not supertables:
+            return []
+        if not isinstance(supertables, (list, tuple)):
+            supertables = [supertables]
+
+        keys = []
+        append = keys.append
+        for s in supertables:
+            if type(s) is not Table:
+                s = cls.table(s)
+            if s is None:
+                continue
+            key = s._id.name
+            if key in table.fields:
+                append(key)
+
+        return keys
 
     # -------------------------------------------------------------------------
     @classmethod
@@ -1763,7 +1794,7 @@ class S3DynamicModel(object):
                 fields.append(field)
 
         # Automatically add standard meta-fields
-        from s3fields import s3_meta_fields
+        from .s3fields import s3_meta_fields
         fields.extend(s3_meta_fields())
 
         # Define the table
@@ -1823,18 +1854,24 @@ class S3DynamicModel(object):
             settings = row.settings
             if settings:
 
-                config = {}
+                config = {"orderby": "%s.created_on" % tablename,
+                          }
 
                 # CRUD Form
                 crud_fields = settings.get("form")
                 if crud_fields:
-                    from s3forms import S3SQLCustomForm
+                    from .s3forms import S3SQLCustomForm
                     try:
                         crud_form = S3SQLCustomForm(**crud_fields)
                     except:
                         pass
                     else:
                         config["crud_form"] = crud_form
+
+                # Mobile Form
+                mobile_form = settings.get("mobile_form")
+                if type(mobile_form) is list:
+                    config["mobile_form"] = mobile_form
 
                 # JSON-serializable config options can be configured
                 # without pre-processing
@@ -1877,6 +1914,8 @@ class S3DynamicModel(object):
                 construct = cls._boolean_field
             elif fieldtype in ("integer", "double"):
                 construct = cls._numeric_field
+            elif fieldtype == "json":
+                construct = cls._json_field
             else:
                 construct = cls._generic_field
 
@@ -1930,8 +1969,10 @@ class S3DynamicModel(object):
         fieldname = row.name
         fieldtype = row.field_type
 
-        if row.require_unique:
-            from s3validators import IS_NOT_ONE_OF
+        multiple = fieldtype[:5] == "list:"
+
+        if row.require_unique and not multiple:
+            from .s3validators import IS_NOT_ONE_OF
             requires = IS_NOT_ONE_OF(current.db, "%s.%s" % (tablename,
                                                             fieldname,
                                                             ),
@@ -1982,15 +2023,16 @@ class S3DynamicModel(object):
         translate = settings.get("translate_options", True)
         T = current.T
 
-        from s3utils import s3_str
+        from .s3utils import s3_str
 
+        multiple = fieldtype[:5] == "list:"
         sort = False
         zero = ""
 
         if isinstance(fieldopts, dict):
             options = fieldopts
             if translate:
-                options = dict((k, T(v)) for k, v in options.items())
+                options = {k: T(v) for k, v in options.items()}
             options_dict = options
             # Sort options unless sort_options is False (=default True)
             sort = settings.get("sort_options", True)
@@ -2014,29 +2056,61 @@ class S3DynamicModel(object):
 
         # Apply default value (if it is a valid option)
         default = row.default_value
-        if default and s3_str(default) in (s3_str(k) for k in options_dict):
-            # No zero-option if we have a default value and
-            # the field must not be empty:
-            zero = None if row.require_not_empty else ""
-        else:
-            default = None
+        if default is not None:
+            if multiple:
+                if default and default[0] == "[":
+                    # Attempt to JSON-parse the default value
+                    import json
+                    from .s3validators import JSONERRORS
+                    try:
+                        default = json.loads(default)
+                    except JSONERRORS:
+                        pass
+                if not isinstance(default, list):
+                    default = [default]
+                zero = None
+            elif s3_str(default) in (s3_str(k) for k in options_dict):
+                # No zero-option if we have a default value and
+                # the field must not be empty:
+                zero = None if row.require_not_empty else ""
+            else:
+                default = None
 
         # Widget?
-        #widget = settings.get("widget")
-        #if widget == "radio":
+        widget = settings.get("widget")
         len_options = len(options)
-        if len_options < 4:
-            widget = lambda field, value: SQLFORM.widgets.radio.widget(field, value, cols=len_options)
+        if multiple:
+            if widget and widget == "groupedopts" or \
+               not widget and len_options < 8:
+                from .s3widgets import S3GroupedOptionsWidget
+                widget = S3GroupedOptionsWidget(cols=4)
+            else:
+                from .s3widgets import S3MultiSelectWidget
+                widget = S3MultiSelectWidget()
+        elif widget and widget == "radio" or \
+             not widget and len_options < 4:
+            widget = lambda field, value: \
+                         SQLFORM.widgets.radio.widget(field,
+                                                      value,
+                                                      cols = len_options,
+                                                      )
         else:
             widget = None
 
-        from s3fields import S3Represent
+        if multiple and row.require_not_empty and len_options:
+            # Require at least one option selected, otherwise
+            # IS_IN_SET will pass with no options selected:
+            multiple = (1, len_options + 1)
+
+        from .s3fields import S3Represent
         field = Field(fieldname, fieldtype,
                       default = default,
                       represent = S3Represent(options = options_dict,
+                                              multiple = multiple,
                                               translate = translate,
                                               ),
                       requires = IS_IN_SET(options,
+                                           multiple = multiple,
                                            sort = sort,
                                            zero = zero,
                                            ),
@@ -2071,7 +2145,7 @@ class S3DynamicModel(object):
             if default == "now":
                 attr["default"] = default
             else:
-                from s3datetime import s3_decode_iso_datetime
+                from .s3datetime import s3_decode_iso_datetime
                 try:
                     dt = s3_decode_iso_datetime(default)
                 except ValueError:
@@ -2080,7 +2154,7 @@ class S3DynamicModel(object):
                 else:
                     attr["default"] = dt.date()
 
-        from s3fields import s3_date
+        from .s3fields import s3_date
         field = s3_date(fieldname, **attr)
 
         return field
@@ -2112,7 +2186,7 @@ class S3DynamicModel(object):
             if default == "now":
                 attr["default"] = default
             else:
-                from s3datetime import s3_decode_iso_datetime
+                from .s3datetime import s3_decode_iso_datetime
                 try:
                     dt = s3_decode_iso_datetime(default)
                 except ValueError:
@@ -2121,7 +2195,7 @@ class S3DynamicModel(object):
                 else:
                     attr["default"] = dt
 
-        from s3fields import s3_datetime
+        from .s3fields import s3_datetime
         field = s3_datetime(fieldname, **attr)
 
         return field
@@ -2144,7 +2218,7 @@ class S3DynamicModel(object):
         ktablename = fieldtype.split(" ", 1)[1].split(".", 1)[0]
         ktable = current.s3db.table(ktablename)
         if ktable:
-            from s3fields import S3Represent
+            from .s3fields import S3Represent
             if "name" in ktable.fields:
                 represent = S3Represent(lookup = ktablename,
                                         translate = True,
@@ -2271,7 +2345,7 @@ class S3DynamicModel(object):
             # Default single checkbox widget
             widget = None
 
-        from s3utils import s3_yes_no_represent
+        from .s3utils import s3_yes_no_represent
         field = Field(fieldname, fieldtype,
                       default = default,
                       represent = s3_yes_no_represent,
@@ -2280,6 +2354,33 @@ class S3DynamicModel(object):
 
         if widget:
             field.widget = widget
+
+        return field
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _json_field(tablename, row):
+        """
+            Boolean field constructor
+
+            @param tablename: the table name
+            @param row: the s3_field Row
+
+            @return: the Field instance
+        """
+
+        fieldname = row.name
+        fieldtype = row.field_type
+
+        default = row.default_value
+        if default:
+            value, error = IS_JSONS3()(default)
+            default = None if error else value
+
+        field = Field(fieldname, fieldtype,
+                      default = default,
+                      requires = IS_JSONS3(),
+                      )
 
         return field
 

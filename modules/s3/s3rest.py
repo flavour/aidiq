@@ -2,7 +2,7 @@
 
 """ S3 RESTful API
 
-    @copyright: 2009-2018 (c) Sahana Software Foundation
+    @copyright: 2009-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -36,18 +36,14 @@ import json
 import os
 import re
 import sys
-import types
-try:
-    from cStringIO import StringIO    # Faster, where available
-except ImportError:
-    from StringIO import StringIO
 
 from gluon import current, redirect, HTTP, URL
 from gluon.storage import Storage
 
-from s3datetime import s3_parse_datetime
-from s3resource import S3Resource
-from s3utils import s3_get_extension, s3_remove_last_record_id, s3_store_last_record_id
+from s3compat import CLASS_TYPES, StringIO, basestring, urlopen
+from .s3datetime import s3_parse_datetime
+from .s3resource import S3Resource
+from .s3utils import s3_get_extension, s3_keep_messages, s3_remove_last_record_id, s3_store_last_record_id, s3_str
 
 REGEX_FILTER = re.compile(r".+\..+|.*\(.+\).*")
 HTTP_METHODS = ("GET", "PUT", "POST", "DELETE")
@@ -377,7 +373,7 @@ class S3Request(object):
             if handler is not None:
                 break
 
-        if isinstance(handler, (type, types.ClassType)):
+        if isinstance(handler, CLASS_TYPES):
             return handler()
         else:
             return handler
@@ -439,7 +435,7 @@ class S3Request(object):
 
         if handler is None:
             handler = resource.crud
-        if isinstance(handler, (type, types.ClassType)):
+        if isinstance(handler, CLASS_TYPES):
             handler = handler()
         return handler
 
@@ -566,13 +562,13 @@ class S3Request(object):
                     continue
                 # Catch any non-str values
                 if type(value) is list:
-                    value = [str(item)
+                    value = [s3_str(item)
                              if not isinstance(item, basestring) else item
                              for item in value
                              ]
-                elif not isinstance(value, basestring):
-                    value = str(value)
-                get_vars[k] = value
+                elif type(value) is not str:
+                    value = s3_str(value)
+                get_vars[s3_str(k)] = value
                 # Remove filter expression from POST vars
                 if k in post_vars:
                     del post_vars[k]
@@ -657,7 +653,7 @@ class S3Request(object):
                                              self.name,
                                              component_name=self.component_name,
                                              method=self.method)
-            if isinstance(action, (type, types.ClassType)):
+            if isinstance(action, CLASS_TYPES):
                 self.custom_action = action()
             else:
                 self.custom_action = action
@@ -711,11 +707,7 @@ class S3Request(object):
                     if form and form.errors:
                         return output
 
-            session = current.session
-            session.flash = response.flash
-            session.confirmation = response.confirmation
-            session.error = response.error
-            session.warning = response.warning
+            s3_keep_messages()
             redirect(self.next)
 
         return output
@@ -1032,10 +1024,9 @@ class S3Request(object):
                 except:
                     source = []
             elif fetchurls:
-                import urllib
                 try:
                     for u in fetchurls:
-                        source.append((u[0], urllib.urlopen(u[1])))
+                        source.append((u[0], urlopen(u[1])))
                 except:
                     source = []
             elif r.http != "GET":
@@ -2053,7 +2044,7 @@ class S3Method(object):
             @param get_vars: the URL vars as dict
         """
 
-        return Storage((k, v) for k, v in get_vars.iteritems()
+        return Storage((k, v) for k, v in get_vars.items()
                               if not REGEX_FILTER.match(k))
 
     # -------------------------------------------------------------------------
@@ -2089,15 +2080,17 @@ def s3_request(*args, **kwargs):
                                implements fallbacks
     """
 
+    catch_errors = kwargs.pop("catch_errors", True)
+
     error = None
     try:
         r = S3Request(*args, **kwargs)
     except (AttributeError, SyntaxError):
-        if kwargs.get("catch_errors") is False:
+        if catch_errors is False:
             raise
         error = 400
     except KeyError:
-        if kwargs.get("catch_errors") is False:
+        if catch_errors is False:
             raise
         error = 404
     if error:

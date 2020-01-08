@@ -16,12 +16,15 @@
          Branch.........................optional.....branch organisation name
          ...SubBranch,SubSubBranch...etc (indefinite depth, must specify all from root)
 
-         Link....................auth_user.link_user_to (=> human_resource.type)L Staff, Volunteer or Member
+         Link....................auth_user.link_user_to (=> human_resource.type): Staff, Volunteer or Member
          Facility Type...........s3db[tablename]
          Office..................org_site.name
          Organisation Group......org_group.name
+         MasterKey..............auth_masterkey.name
 
     *********************************************************************** -->
+    <xsl:import href="../orgh.xsl"/>
+
     <xsl:output method="xml"/>
 
     <xsl:include href="../../xml/commons.xsl"/>
@@ -51,6 +54,7 @@
                 <xsl:call-template name="OrganisationHierarchy">
                     <xsl:with-param name="level">Organisation</xsl:with-param>
                     <xsl:with-param name="rows" select="//table/row"/>
+                    <xsl:with-param name="OfficeColumn">Office</xsl:with-param>
                 </xsl:call-template>
             </xsl:for-each>
 
@@ -75,6 +79,7 @@
         <xsl:variable name="OfficeName" select="col[@field='Office']/text()"/>
         <xsl:variable name="FacilityType" select="col[@field='Facility Type']/text()"/>
         <xsl:variable name="Link" select="col[@field='Link']/text()"/>
+        <xsl:variable name="MasterKey" select="col[@field='MasterKey']/text()"/>
 
         <!-- Create the User -->
         <resource name="auth_user">
@@ -158,144 +163,16 @@
                 </reference>
             </xsl:if>
 
-        </resource>
-    </xsl:template>
-
-    <!-- ****************************************************************** -->
-    <!-- Template to import the Organisation hierarchy, to be called only once for the first row -->
-
-    <xsl:template name="OrganisationHierarchy">
-
-        <xsl:param name="level"/>
-        <xsl:param name="rows"/>
-        <xsl:param name="parentID"/>
-
-        <!-- Get the next level -->
-        <xsl:variable name="nextLevel">
-            <xsl:call-template name="NextLevel">
-                <xsl:with-param name="level" select="$level"/>
-            </xsl:call-template>
-        </xsl:variable>
-
-        <!-- Get the name -->
-        <xsl:variable name="name" select="col[@field=$level]/text()"/>
-
-        <!-- Generate the tuid -->
-        <xsl:variable name="tuid">
-            <xsl:choose>
-                <xsl:when test="$parentID and $parentID!=''">
-                    <xsl:value-of select="concat($parentID, '/', $name)"/>
-                </xsl:when>
-                <xsl:otherwise>
-                    <xsl:value-of select="concat('ORG:', $name)"/>
-                </xsl:otherwise>
-            </xsl:choose>
-        </xsl:variable>
-
-        <!-- Create this Organisation -->
-        <resource name="org_organisation">
-            <xsl:attribute name="tuid">
-                <xsl:value-of select="$tuid"/>
-            </xsl:attribute>
-            <data field="name"><xsl:value-of select="$name"/></data>
-            <xsl:if test="$parentID and $parentID!=''">
-                <resource name="org_organisation_branch" alias="parent">
-                    <reference field="organisation_id" resource="org_organisation">
-                        <xsl:attribute name="tuid">
-                            <xsl:value-of select="$parentID"/>
-                        </xsl:attribute>
-                    </reference>
+            <!-- Master Key
+                 - component configured in s3import import_user()
+            -->
+            <xsl:if test="$MasterKey!=''">
+                <resource name="auth_masterkey">
+                    <data field="name"><xsl:value-of select="$MasterKey"/></data>
                 </resource>
             </xsl:if>
+
         </resource>
-
-        <!-- Create all offices for this organisation -->
-        <xsl:for-each select="$rows[col[@field=$level]/text()=$name and
-                                    (not(col[@field=$nextLevel]/text()) or col[@field=$nextLevel]/text()='') and
-                                    col[@field='Office']/text()!='']">
-
-            <xsl:variable name="OfficeName" select="col[@field='Office']"/>
-            <xsl:if test="generate-id(.)=generate-id($rows[col[@field=$level]/text()=$name and
-                                                           (not(col[@field=$nextLevel]/text()) or col[@field=$nextLevel]/text()='') and
-                                                           col[@field='Office']/text()=$OfficeName][1])">
-                <xsl:call-template name="Office"/>
-            </xsl:if>
-        </xsl:for-each>
-
-        <!-- Process Branches -->
-        <xsl:for-each select="$rows[col[@field=$level]/text()=$name and col[@field=$nextLevel]/text()!=''][1]">
-            <xsl:call-template name="OrganisationHierarchy">
-                <xsl:with-param name="rows" select="$rows[col[@field=$level]/text()=$name and col[@field=$nextLevel]/text()!='']"/>
-                <xsl:with-param name="level" select="$nextLevel"/>
-                <xsl:with-param name="parentID" select="$tuid"/>
-            </xsl:call-template>
-        </xsl:for-each>
-
-        <!-- Process Siblings -->
-        <xsl:for-each select="$rows[col[@field=$level]/text()!=$name][1]">
-            <xsl:call-template name="OrganisationHierarchy">
-                <xsl:with-param name="rows" select="$rows[col[@field=$level]/text()!=$name]"/>
-                <xsl:with-param name="level" select="$level"/>
-                <xsl:with-param name="parentID" select="$parentID"/>
-            </xsl:call-template>
-        </xsl:for-each>
-
-    </xsl:template>
-
-    <!-- ****************************************************************** -->
-    <!-- Template to generate an organisation tuid for the current row -->
-
-    <xsl:template name="OrganisationID">
-
-        <xsl:param name="parentID"/>
-        <xsl:param name="parentLevel"/>
-        <xsl:param name="prefix">ORG:</xsl:param>
-        <xsl:param name="suffix"/>
-
-        <xsl:variable name="level">
-            <xsl:call-template name="NextLevel">
-                <xsl:with-param name="level" select="$parentLevel"/>
-            </xsl:call-template>
-        </xsl:variable>
-        <xsl:variable name="name" select="col[@field=$level]/text()"/>
-        <xsl:choose>
-            <xsl:when test="$name!=''">
-                <xsl:variable name="id">
-                    <xsl:choose>
-                        <xsl:when test="$parentID and $parentID!=''">
-                            <xsl:value-of select="concat($parentID, '/', $name)"/>
-                        </xsl:when>
-                        <xsl:otherwise>
-                            <xsl:value-of select="concat($prefix, $name)"/>
-                        </xsl:otherwise>
-                    </xsl:choose>
-                </xsl:variable>
-                <xsl:call-template name="OrganisationID">
-                    <xsl:with-param name="parentID" select="$id"/>
-                    <xsl:with-param name="parentLevel" select="$level"/>
-                    <xsl:with-param name="prefix" select="$prefix"/>
-                    <xsl:with-param name="suffix" select="$suffix"/>
-                </xsl:call-template>
-            </xsl:when>
-            <xsl:otherwise>
-                <xsl:value-of select="concat($parentID, $suffix)"/>
-            </xsl:otherwise>
-        </xsl:choose>
-    </xsl:template>
-
-    <!-- ****************************************************************** -->
-    <!-- Template to generate the name of the next level column -->
-
-    <xsl:template name="NextLevel">
-
-        <xsl:param name="level"/>
-        <xsl:choose>
-            <xsl:when test="not($level) or $level=''">Organisation</xsl:when>
-            <xsl:when test="$level='Organisation'">Branch</xsl:when>
-            <xsl:otherwise>
-                <xsl:value-of select="concat('Sub', $level)"/>
-            </xsl:otherwise>
-        </xsl:choose>
 
     </xsl:template>
 

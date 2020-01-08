@@ -47,7 +47,6 @@ def config(settings):
     settings.auth.registration_roles = {"organisation_id": ["USER"],
                                         }
 
-    settings.auth.show_utc_offset = False
     settings.auth.show_link = False
 
     # -------------------------------------------------------------------------
@@ -81,7 +80,7 @@ def config(settings):
     # Default Language
     settings.L10n.default_language = "en"
     # Default timezone for users
-    settings.L10n.utc_offset = "-0800"
+    settings.L10n.timezone = "US/Pacific"
     # Unsortable 'pretty' date format
     settings.L10n.date_format = "%b %d %Y"
     # Number formats (defaults to ISO 31-0)
@@ -542,7 +541,7 @@ def config(settings):
 
                 if method == "filter":
                     # Apply filter_vars
-                    for k, v in get_vars.iteritems():
+                    for k, v in get_vars.items():
                         # We only expect a maximum of 1 of these, no need to append
                         if k == "dashboard":
                             from templates.WACOP.controllers import dashboard_filter
@@ -2087,7 +2086,7 @@ def config(settings):
                                   tablename = tablename)
         elif method == "filter":
             # Apply filter_vars
-            for k, v in r.get_vars.iteritems():
+            for k, v in r.get_vars.items():
                 # We only expect a maximum of 1 of these, no need to append
                 from s3 import FS
                 current.response.s3.filter = (FS(k) == v)

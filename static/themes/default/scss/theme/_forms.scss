@@ -51,7 +51,8 @@ form {
                 line-height: inherit;
             }
         }
-        & > .s3-hierarchy-widget {
+        .s3-hierarchy-widget,
+        .calendar-widget-container {
             display: inline-block;
             vertical-align: middle;
         }
@@ -108,6 +109,7 @@ form {
             .add-row, .edit-row {
                 td {
                     border-top: 1px solid #dddddd;
+                    padding: 0 0.4rem 0.4rem 0.4rem;
                     &.subform-action {
                         vertical-align: bottom;
                     }
@@ -185,8 +187,7 @@ input[type="url"],
 textarea,
 select {
   height: 1.75rem;
-  padding: 0.25rem;
-  margin: 0;
+  padding: 0.25rem!important; // override widget.css
   display: inline-block;
   font-weight: normal;
 }
@@ -215,22 +216,28 @@ input.datetimepicker {
     max-width: 8rem;
 }
 select {
-    padding-right: 1rem !important;
+    padding: 0 1rem 0 0.25rem!important;
 }
 
 /* Form and Item containers */
 #last_update,
 #markDuplicate {
-    float: none;
-    clear: none;
+    float: right;
+    clear: right;
     text-align: right;
+}
+#markDuplicate {
+    margin-bottom: 1rem;
 }
 body.rtl {
     #last_update,
     #markDuplicate {
+        float: left;
+        clear: left;
         text-align: left;
     }
 }
+
 .form-container,
 .item-container {
     form {
@@ -264,7 +271,7 @@ body.rtl {
         .ui-multiselect {
             max-width: 100%;
         }
-        &:not(.filter-form):not(.auth_login):not(.auth_register) {
+        &:not(.filter-form):not(.auth_login):not(.auth_register):not(.rm-form) {
             input[type="text"]:not(.double):not(.datetimepicker):not(.date):not(.hours):not(.dms-input) {
                 width: 20rem !important;
             }

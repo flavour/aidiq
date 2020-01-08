@@ -8,7 +8,7 @@
     Messages get sent to the Outbox (& Log)
     From there, the Scheduler tasks collect them & send them
 
-    @copyright: 2009-2018 (c) Sahana Software Foundation
+    @copyright: 2009-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -31,7 +31,6 @@
     WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
     OTHER DEALINGS IN THE SOFTWARE.
-
 """
 
 __all__ = ("S3Msg",
@@ -44,36 +43,34 @@ import json
 import os
 import re
 import string
-import urllib
-import urllib2
-
-try:
-    from cStringIO import StringIO    # Faster, where available
-except:
-    from StringIO import StringIO
+import sys
 
 try:
     from lxml import etree
 except ImportError:
-    import sys
     sys.stderr.write("ERROR: lxml module needed for XML handling\n")
     raise
 
 from gluon import current, redirect
 from gluon.html import *
 
-#from s3codec import S3Codec
-from s3crud import S3CRUD
-from s3datetime import s3_decode_iso_datetime
-from s3forms import S3SQLDefaultForm
-from s3utils import s3_unicode
-from s3validators import IS_IN_SET, IS_ONE_OF
-from s3widgets import S3PentityAutocompleteWidget
+from s3compat import HTTPError, PY2, StringIO, urlencode, urllib2, urlopen
+#from .s3codec import S3Codec
+from .s3crud import S3CRUD
+from .s3datetime import s3_decode_iso_datetime
+from .s3forms import S3SQLDefaultForm
+from .s3utils import s3_str, s3_unicode
+from .s3validators import IS_IN_SET, IS_ONE_OF
+from .s3widgets import S3PentityAutocompleteWidget
 
-IDENTITYTRANS = ALLCHARS = string.maketrans("", "")
-NOTPHONECHARS = ALLCHARS.translate(IDENTITYTRANS, string.digits)
-NOTTWITTERCHARS = ALLCHARS.translate(IDENTITYTRANS,
-                                     "%s%s_" % (string.digits, string.letters))
+PHONECHARS = string.digits
+TWITTERCHARS = "%s%s_" % (string.digits, string.ascii_letters)
+if PY2:
+    # Inverted permitted character sets for use with str.translate
+    # => faster, but not working for unicode and hence not supported in Py3
+    IDENTITYTRANS = ALLCHARS = string.maketrans("", "")
+    NOTPHONECHARS = ALLCHARS.translate(IDENTITYTRANS, PHONECHARS)
+    NOTTWITTERCHARS = ALLCHARS.translate(IDENTITYTRANS, TWITTERCHARS)
 
 TWITTER_MAX_CHARS = 140
 TWITTER_HAS_NEXT_SUFFIX = u' \u2026'
@@ -173,7 +170,10 @@ class S3Msg(object):
         else:
             default_country_code = settings.get_L10n_default_country_code()
 
-        clean = phone.translate(IDENTITYTRANS, NOTPHONECHARS)
+        if PY2:
+            clean = phone.translate(IDENTITYTRANS, NOTPHONECHARS)
+        else:
+            clean = "".join(c for c in phone if c in PHONECHARS)
 
         # If number starts with a 0 then need to remove this & add the country code in
         if clean[0] == "0":
@@ -237,9 +237,8 @@ class S3Msg(object):
 
             return srecord.priority
         except:
-            import sys
             # Return max value i.e. assign lowest priority
-            return sys.maxint
+            return sys.maxsize
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -252,7 +251,7 @@ class S3Msg(object):
            @param function_name: Parser
         """
 
-        from s3parser import S3Parsing
+        from .s3parser import S3Parsing
 
         parser = S3Parsing.parser
         stable = current.s3db.msg_parsing_status
@@ -459,8 +458,8 @@ class S3Msg(object):
                 return False
 
         # Process OutBox async
-        current.s3task.async("msg_process_outbox",
-                             args = [contact_method])
+        current.s3task.run_async("msg_process_outbox",
+                                 args = [contact_method])
 
         # Perform post process after message sending
         postp = current.deployment_settings.get_msg_send_postprocess()
@@ -929,13 +928,13 @@ class S3Msg(object):
                    to,
                    subject,
                    message,
-                   attachments=None,
-                   cc=None,
-                   bcc=None,
-                   reply_to=None,
-                   sender=None,
-                   encoding="utf-8",
-                   #from_address=None,
+                   attachments = None,
+                   cc = None,
+                   bcc = None,
+                   reply_to = None,
+                   sender = None,
+                   encoding = "utf-8",
+                   #from_address = None,
                    ):
         """
             Function to send Email
@@ -970,19 +969,19 @@ class S3Msg(object):
             table.insert()
 
         result = current.mail.send(to,
-                                   subject=subject,
-                                   message=message,
-                                   attachments=attachments,
-                                   cc=cc,
-                                   bcc=bcc,
-                                   reply_to=reply_to,
-                                   sender=sender,
-                                   encoding=encoding,
+                                   subject = subject,
+                                   message = message,
+                                   attachments = attachments,
+                                   cc = cc,
+                                   bcc = bcc,
+                                   reply_to = reply_to,
+                                   sender = sender,
+                                   encoding = encoding,
                                    # e.g. Return-Receipt-To:<user@domain>
-                                   headers={},
+                                   headers = {},
                                    # Added to Web2Py 2014-03-04
                                    # - defaults to sender
-                                   #from_address=from_address,
+                                   #from_address = from_address,
                                    )
         if not result:
             current.session.error = current.mail.error
@@ -1180,14 +1179,14 @@ class S3Msg(object):
                 post_data["concat"] = 2
 
         request = urllib2.Request(url)
-        query = urllib.urlencode(post_data)
+        query = urlencode(post_data)
         if sms_api.username and sms_api.password:
             # e.g. Mobile Commons
             base64string = base64.encodestring("%s:%s" % (sms_api.username, sms_api.password)).replace("\n", "")
             request.add_header("Authorization", "Basic %s" % base64string)
         try:
-            result = urllib2.urlopen(request, query)
-        except urllib2.HTTPError, e:
+            result = urlopen(request, query)
+        except HTTPError as e:
             current.log.error("SMS message send failed: %s" % e)
             return False
         else:
@@ -1305,12 +1304,12 @@ class S3Msg(object):
                                           recipient = recipient,
                                           message = message,
                                           network = network)
-            params = urllib.urlencode([("action", action),
-                                       ("token", tropo_token_messaging),
-                                       ("outgoing", "1"),
-                                       ("row_id", row_id)
-                                       ])
-            xml = urllib2.urlopen("%s?%s" % (base_url, params)).read()
+            params = urlencode([("action", action),
+                                ("token", tropo_token_messaging),
+                                ("outgoing", "1"),
+                                ("row_id", row_id)
+                                ])
+            xml = urlopen("%s?%s" % (base_url, params)).read()
             # Parse Response (actual message is sent as a response to the POST which will happen in parallel)
             #root = etree.fromstring(xml)
             #elements = root.getchildren()
@@ -1354,7 +1353,10 @@ class S3Msg(object):
             letters, digits, and _
         """
 
-        return account.translate(IDENTITYTRANS, NOTTWITTERCHARS)
+        if PY2:
+            return account.translate(IDENTITYTRANS, NOTTWITTERCHARS)
+        else:
+            return "".join(c for c in account if c in TWITTERCHARS)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1368,7 +1370,6 @@ class S3Msg(object):
             All chunks, except for first, start with prefix.
         """
 
-        from s3 import s3_str
         res = []
         current_prefix = "" # first chunk has no prefix
         while text:
@@ -1571,7 +1572,6 @@ class S3Msg(object):
             app_access_token = facebook.get_app_access_token(c.app_id,
                                                              c.app_secret)
         except:
-            import sys
             message = sys.exc_info()[1]
             current.log.error("S3MSG: %s" % message)
             return
@@ -1671,7 +1671,8 @@ class S3Msg(object):
                                    table.use_ssl,
                                    table.port,
                                    table.delete_from_server,
-                                   limitby=(0, 1)).first()
+                                   limitby=(0, 1)
+                                   ).first()
         if not channel:
             return "No Such Email Channel: %s" % channel_id
 
@@ -1739,17 +1740,17 @@ class S3Msg(object):
                 attachments.append((filename, part.get_payload(decode=True)))
 
             # Store in DB
-            data = dict(channel_id=channel_id,
-                        from_address=sender,
-                        subject=subject[:78],
-                        body=body,
-                        raw=raw,
-                        inbound=True,
-                        )
+            data = {"channel_id": channel_id,
+                    "from_address": sender,
+                    "subject": subject[:78],
+                    "body": body,
+                    "raw": raw,
+                    "inbound": True,
+                    }
             if date_sent:
                 data["date"] = date_parse(date_sent)
             _id = minsert(**data)
-            record = dict(id=_id)
+            record = {"id": _id}
             update_super(mtable, record)
             message_id = record["message_id"]
             for a in attachments:
@@ -1762,32 +1763,34 @@ class S3Msg(object):
                 fp.seek(0)
                 newfilename = store(fp, filename)
                 fp.close()
-                document_id = dinsert(name=filename,
-                                      file=newfilename)
-                update_super(dtable, dict(id=document_id))
-                ainsert(message_id=message_id,
-                        document_id=document_id)
+                document_id = dinsert(name = filename,
+                                      file = newfilename)
+                update_super(dtable, {"id": document_id})
+                ainsert(message_id = message_id,
+                        document_id = document_id)
             if parser:
-                pinsert(message_id=message_id,
-                        channel_id=channel_id)
+                pinsert(message_id = message_id,
+                        channel_id = channel_id)
 
         dellist = []
         if protocol == "pop3":
-            import poplib
             # http://docs.python.org/library/poplib.html
+            import poplib
+            # https://stackoverflow.com/questions/30976106/python-poplib-error-proto-line-too-long
+            poplib._MAXLINE = 20480
             try:
                 if ssl:
                     p = poplib.POP3_SSL(host, port)
                 else:
                     p = poplib.POP3(host, port)
-            except socket.error, e:
+            except socket.error as e:
                 error = "Cannot connect: %s" % e
                 current.log.error(error)
                 # Store status in the DB
-                sinsert(channel_id=channel_id,
-                        status=error)
+                sinsert(channel_id = channel_id,
+                        status = error)
                 return error
-            except poplib.error_proto, e:
+            except poplib.error_proto as e:
                 # Something else went wrong - probably transient (have seen '-ERR EOF' here)
                 current.log.error("Email poll failed: %s" % e)
                 return
@@ -1800,12 +1803,12 @@ class S3Msg(object):
                 try:
                     p.user(username)
                     p.pass_(password)
-                except poplib.error_proto, e:
+                except poplib.error_proto as e:
                     error = "Login failed: %s" % e
                     current.log.error(error)
                     # Store status in the DB
-                    sinsert(channel_id=channel_id,
-                            status=error)
+                    sinsert(channel_id = channel_id,
+                            status = error)
                     return error
 
             mblist = p.list()[1]
@@ -1830,22 +1833,22 @@ class S3Msg(object):
                     M = imaplib.IMAP4_SSL(host, port)
                 else:
                     M = imaplib.IMAP4(host, port)
-            except socket.error, e:
+            except socket.error as e:
                 error = "Cannot connect: %s" % e
                 current.log.error(error)
                 # Store status in the DB
-                sinsert(channel_id=channel_id,
-                        status=error)
+                sinsert(channel_id = channel_id,
+                        status = error)
                 return error
 
             try:
                 M.login(username, password)
-            except M.error, e:
+            except M.error as e:
                 error = "Login failed: %s" % e
                 current.log.error(error)
                 # Store status in the DB
-                sinsert(channel_id=channel_id,
-                        status=error)
+                sinsert(channel_id = channel_id,
+                        status = error)
                 # Explicitly commit DB operations when running from Cron
                 db.commit()
                 return error
@@ -1917,8 +1920,8 @@ class S3Msg(object):
         db(query).update(timestmp = current.request.utcnow)
 
         try:
-            _response = urllib2.urlopen(url)
-        except urllib2.HTTPError, e:
+            _response = urlopen(url)
+        except HTTPError as e:
             return "Error: %s" % e.code
         else:
             sms_xml = _response.read()
@@ -1987,8 +1990,8 @@ class S3Msg(object):
         urllib2.install_opener(opener)
 
         try:
-            smspage = urllib2.urlopen(url)
-        except urllib2.HTTPError, e:
+            smspage = urlopen(url)
+        except HTTPError as e:
             error = "Error: %s" % e.code
             current.log.error(error)
             # Store status in the DB
@@ -2057,7 +2060,19 @@ class S3Msg(object):
             return "No Such RSS Channel: %s" % channel_id
 
         # http://pythonhosted.org/feedparser
-        import feedparser
+        if PY2:
+            # Use Stable v5.2.1
+            # - current known reason is to prevent SSL: CERTIFICATE_VERIFY_FAILED
+            import feedparser521 as feedparser
+        else:
+            # Python 3.x: Requires pip install sgmllib3k
+            if sys.version_info[1] >= 7:
+                # Use 6.0.0b1 which is required for Python 3.7
+                import feedparser
+            else:
+                # Python 3.6 requires 5.2.1 with 2to3 run on it to prevent SSL: CERTIFICATE_VERIFY_FAILED
+                import feedparser5213 as feedparser
+
         # Basic Authentication
         username = channel.username
         password = channel.password
@@ -2080,33 +2095,37 @@ class S3Msg(object):
             # http://pythonhosted.org/feedparser/http-etag.html
             # NB This won't help for a server like Drupal 7 set to not allow caching & hence generating a new ETag/Last Modified each request!
             d = feedparser.parse(channel.url,
-                                 etag=channel.etag,
-                                 request_headers=request_headers,
-                                 response_headers=response_headers,
+                                 etag = channel.etag,
+                                 request_headers = request_headers,
+                                 response_headers = response_headers,
                                  )
         elif channel.date:
             d = feedparser.parse(channel.url,
-                                 modified=channel.date.utctimetuple(),
-                                 request_headers=request_headers,
-                                 response_headers=response_headers,
+                                 modified = channel.date.utctimetuple(),
+                                 request_headers = request_headers,
+                                 response_headers = response_headers,
                                  )
         else:
             # We've not polled this feed before
             d = feedparser.parse(channel.url,
-                                 request_headers=request_headers,
-                                 response_headers=response_headers,
+                                 request_headers = request_headers,
+                                 response_headers = response_headers,
                                  )
         if d.bozo:
             # Something doesn't seem right
+            if PY2:
+                status = "ERROR: %s" % d.bozo_exception.message
+            else:
+                status = "ERROR: %s" % d.bozo_exception
             S3Msg.update_channel_status(channel_id,
-                                        status = "ERROR: %s" % d.bozo_exception.message,
+                                        status = status,
                                         period = (300, 3600),
                                         )
             return
 
         # Update ETag/Last-polled
         now = current.request.utcnow
-        data = dict(date=now)
+        data = {"date": now}
         etag = d.get("etag", None)
         if etag:
             data["etag"] = etag
@@ -2556,7 +2575,7 @@ class S3Msg(object):
         tpath = generateFiles()
         jarpath = os.path.join(curpath, "static", "KeyGraph", "keygraph.jar")
         resultpath = os.path.join(curpath, "static", "KeyGraph", "results", "%s.txt" % search_id)
-        return subprocess.call(["java", "-jar", jarpath, tpath , resultpath])
+        return subprocess.call(["java", "-jar", jarpath, tpath, resultpath])
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2588,7 +2607,7 @@ class S3Msg(object):
 
         turl = "http://api.tagdef.com/one.%s.json" % hashtag
         try:
-            hashstr = urllib2.urlopen(turl).read()
+            hashstr = urlopen(turl).read()
             hashdef = json.loads(hashstr)
         except:
             return hashtag
@@ -2645,7 +2664,7 @@ class S3Compose(S3CRUD):
 
         #_vars = r.get_vars
 
-        # Set defaults (used if coming via msg.compose())
+        # Set defaults for when not coming via msg.compose()
         self.contact_method = None
         self.recipient = None
         self.recipients = None
@@ -2761,10 +2780,12 @@ class S3Compose(S3CRUD):
         get_vars = request.get_vars
 
         mtable = s3db.msg_message
+        etable = s3db.msg_email
         otable = s3db.msg_outbox
 
         mtable.body.label = T("Message")
         mtable.body.default = self.message
+        etable.subject.default = self.subject
         mtable.inbound.default = False
         mtable.inbound.writable = False
 
@@ -2816,7 +2837,7 @@ class S3Compose(S3CRUD):
 
                 if field:
                     records = resource.select([field], limit=None)["rows"]
-                    recipients = [record.values()[0] for record in records]
+                    recipients = [list(record.values())[0] for record in records]
 
         pe_field = otable.pe_id
         pe_field.label = T("Recipient(s)")

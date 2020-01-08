@@ -2,7 +2,7 @@
 
 """ Sahana Eden Document Library
 
-    @copyright: 2011-2018 (c) Sahana Software Foundation
+    @copyright: 2011-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -28,7 +28,9 @@
 """
 
 __all__ = ("S3DocumentLibrary",
+           "S3DocumentTagModel",
            "S3CKEditorModel",
+           "S3DataCardModel",
            "doc_image_represent",
            "doc_document_list_layout",
            )
@@ -37,7 +39,9 @@ import os
 
 from gluon import *
 from gluon.storage import Storage
+
 from ..s3 import *
+from s3compat import BytesIO
 
 # =============================================================================
 class S3DocumentLibrary(S3Model):
@@ -65,6 +69,7 @@ class S3DocumentLibrary(S3Model):
         UNKNOWN_OPT = messages.UNKNOWN_OPT
 
         # Shortcuts
+        add_components = self.add_components
         configure = self.configure
         crud_strings = s3.crud_strings
         define_table = self.define_table
@@ -85,7 +90,9 @@ class S3DocumentLibrary(S3Model):
                                event_event = T("Event"),
                                event_incident = T("Incident"),
                                event_incident_report = T("Incident Report"),
+                               event_scenario = T("Scenario"),
                                event_sitrep = T("Situation Report"),
+                               fin_expense = T("Expense"),
                                fire_station = T("Fire Station"),
                                hms_hospital = T("Hospital"),
                                hrm_human_resource = T("Human Resource"),
@@ -121,10 +128,10 @@ class S3DocumentLibrary(S3Model):
 
         # Components
         doc_id = "doc_id"
-        self.add_components(tablename,
-                            doc_document = doc_id,
-                            doc_image = doc_id,
-                            )
+        add_components(tablename,
+                       doc_document = doc_id,
+                       doc_image = doc_id,
+                       )
 
         # ---------------------------------------------------------------------
         # Documents
@@ -162,6 +169,12 @@ class S3DocumentLibrary(S3Model):
                            requires = IS_EMPTY_OR(IS_URL()),
                            ),
                      Field("has_been_indexed", "boolean",
+                           default = False,
+                           readable = False,
+                           writable = False,
+                           ),
+                     # Mailmerge template?
+                     Field("is_template", "boolean",
                            default = False,
                            readable = False,
                            writable = False,
@@ -245,6 +258,10 @@ class S3DocumentLibrary(S3Model):
                                                            represent),
                                       )
 
+        add_components(tablename,
+                       doc_document_tag = document_id,
+                       )
+
         # ---------------------------------------------------------------------
         # Images
         #
@@ -271,7 +288,7 @@ class S3DocumentLibrary(S3Model):
                            represent = doc_image_represent,
                            requires = IS_EMPTY_OR(
                                         IS_IMAGE(extensions=(s3.IMAGE_EXTENSIONS)),
-                                        # Distingish from prepop
+                                        # Distinguish from prepop
                                         null = "",
                                       ),
                            # upload folder needs to be visible to the download() function as well as the upload
@@ -424,8 +441,7 @@ class S3DocumentLibrary(S3Model):
                 filename = metadata.split(";", 1)[0]
                 f = Storage()
                 f.filename = uuid.uuid4().hex + filename
-                import cStringIO
-                f.file = cStringIO.StringIO(base64.decodestring(encoded_file))
+                f.file = BytesIO(base64.b64decode(encoded_file))
                 doc = form_vars.file = f
                 if not form_vars.name:
                     form_vars.name = filename
@@ -499,9 +515,9 @@ class S3DocumentLibrary(S3Model):
                                "id": form_vars.id,
                                })
 
-        current.s3task.async("document_create_index",
-                             args = [document],
-                             )
+        current.s3task.run_async("document_create_index",
+                                 args = [document],
+                                 )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -519,9 +535,52 @@ class S3DocumentLibrary(S3Model):
                                "id": row.id,
                                })
 
-        current.s3task.async("document_delete_index",
-                             args = [document],
-                             )
+        current.s3task.run_async("document_delete_index",
+                                 args = [document],
+                                 )
+
+# =============================================================================
+class S3DocumentTagModel(S3Model):
+    """
+        Document Tags
+    """
+
+    names = ("doc_document_tag",)
+
+    def model(self):
+
+        T = current.T
+
+        # ---------------------------------------------------------------------
+        # Document Tags
+        # - Key-Value extensions
+        # - can be used to provide conversions to external systems
+        # - can be a Triple Store for Semantic Web support
+        # - can be used to add a document type
+        # - can be used to add custom fields
+        #
+        tablename = "doc_document_tag"
+        self.define_table(tablename,
+                          self.doc_document_id(),
+                          # key is a reserved word in MySQL
+                          Field("tag",
+                                label = T("Key"),
+                                ),
+                          Field("value",
+                                label = T("Value"),
+                                ),
+                          s3_comments(),
+                          *s3_meta_fields())
+
+        self.configure(tablename,
+                       deduplicate = S3Duplicate(primary = ("document_id",
+                                                            "tag",
+                                                            ),
+                                                 ),
+                       )
+
+        # Pass names back to global scope (s3.*)
+        return {}
 
 # =============================================================================
 def doc_image_represent(filename):
@@ -568,6 +627,9 @@ def doc_checksum(docstr):
 def doc_document_list_layout(list_id, item_id, resource, rfields, record):
     """
         Default dataList item renderer for Documents, e.g. on the HRM Profile
+
+        NB The CSS classes here refer to static/themes/bootstrap/cards.css & newsfeed.css
+        - so this CSS either needs moving to core or else this needs modifying for default CSS
 
         @param list_id: the HTML ID of the list
         @param item_id: the HTML ID of the item
@@ -739,30 +801,198 @@ class S3CKEditorModel(S3Model):
             Categories: word, excel, powerpoint, flash, pdf, image, video, audio, archive, other.
         """
 
+        ftype = "other"
+
         parts = os.path.splitext(filename)
-        if len(parts) < 2:
-            return "other"
-        else:
+        if len(parts) > 1:
             ext = parts[1][1:].lower()
             if ext in ("png", "jpg", "jpeg", "gif"):
-                return "image"
+                ftype = "image"
             elif ext in ("avi", "mp4", "m4v", "ogv", "wmv", "mpg", "mpeg"):
-                return "video"
+                ftype = "video"
             elif ext in ("mp3", "m4a", "wav", "ogg", "aiff"):
-                return "audio"
+                ftype = "audio"
             elif ext in ("zip", "7z", "tar", "gz", "tgz", "bz2", "rar"):
-                return "archive"
+                ftype = "archive"
             elif ext in ("doc", "docx", "dot", "dotx", "rtf"):
-                return "word"
+                ftype = "word"
             elif ext in ("xls", "xlsx", "xlt", "xltx", "csv"):
-                return "excel"
+                ftype = "excel"
             elif ext in ("ppt", "pptx"):
-                return "powerpoint"
+                ftype = "powerpoint"
             elif ext in ("flv", "swf"):
-                return "flash"
+                ftype = "flash"
             elif ext == "pdf":
-                return "pdf"
-            else:
-                return "other"
+                ftype = "pdf"
+
+        return ftype
+
+# =============================================================================
+class S3DataCardModel(S3Model):
+    """
+        Model to manage context-specific features of printable
+        data cards (S3PDFCard)
+    """
+
+    names = ("doc_card_config",
+             "doc_card_types",
+             "doc_update_card_type_requires",
+             )
+
+    def model(self):
+
+        T = current.T
+
+        #db = current.db
+        s3 = current.response.s3
+
+        #define_table = self.define_table
+        crud_strings = s3.crud_strings
+
+        # ---------------------------------------------------------------------
+        # Card Types
+        #
+        card_types = {"VOLID": T("Volunteer ID Card"),
+                      }
+
+        # ---------------------------------------------------------------------
+        # Card Configuration
+        #
+        uploadfolder = os.path.join(current.request.folder, "uploads", "signatures")
+
+        tablename = "doc_card_config"
+        self.define_table(tablename,
+                          # Context links (e.g. Organisation):
+                          self.org_organisation_id(),
+                          # Card Type:
+                          Field("card_type",
+                                label = T("Card Type"),
+                                requires = IS_IN_SET(card_types,
+                                                     sort = True,
+                                                     zero = None,
+                                                     ),
+                                represent = S3Represent(options = card_types),
+                                ),
+                          # Card Feature Configurations:
+                          Field("authority_statement", "text",
+                                label = T("Authority Statement"),
+                                represent = s3_text_represent,
+                                widget = s3_comments_widget,
+                                ),
+                          Field("org_statement", "text",
+                                label = T("Organization Statement"),
+                                represent = s3_text_represent,
+                                widget = s3_comments_widget,
+                                ),
+                          Field("signature", "upload",
+                                label = T("Signature"),
+                                autodelete = True,
+                                length = current.MAX_FILENAME_LENGTH,
+                                represent = doc_image_represent,
+                                requires = IS_EMPTY_OR(IS_IMAGE(extensions=(s3.IMAGE_EXTENSIONS)),
+                                                       # Distinguish from prepop
+                                                       null = "",
+                                                       ),
+                                uploadfolder = uploadfolder,
+                                ),
+                          Field("signature_text", "text",
+                                label = T("Signature Text"),
+                                represent = s3_text_represent,
+                                widget = s3_comments_widget,
+                                ),
+                          Field("validity_period", "integer",
+                                default = 12,
+                                label = T("Validity Period (Months)"),
+                                requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0)),
+                                represent = lambda v: (T("%(months)s months") % {"months": v}) if v else "-",
+                                ),
+                          s3_comments(),
+                          *s3_meta_fields())
+
+        # Table configuration
+        self.configure(tablename,
+                       deduplicate = S3Duplicate(primary=("organisation_id", "card_type"),
+                                                 ),
+                       )
+
+        # CRUD Strings
+        crud_strings[tablename] = Storage(
+            label_create = T("Create Card Configuration"),
+            title_display = T("Card Configuration Details"),
+            title_list = T("Card Configuration"),
+            title_update = T("Edit Card Configuration"),
+            label_list_button = T("List Card Configurations"),
+            label_delete_button = T("Delete Card Configuration"),
+            msg_record_created = T("Card Configuration created"),
+            msg_record_modified = T("Card Configuration updated"),
+            msg_record_deleted = T("Card Configuration deleted"),
+            msg_list_empty = T("No Card Configuration currently registered"),
+        )
+
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        #
+        return {"doc_card_types": card_types,
+                "doc_update_card_type_requires": self.update_card_type_requires,
+                }
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def defaults(cls):
+        """ Safe defaults for names in case the module is disabled """
+
+        #dummy = S3ReusableField("dummy_id", "integer",
+        #                        readable = False,
+        #                        writable = False,
+        #                        )
+
+        return {"doc_card_types": {},
+                "doc_update_card_type_requires": cls.update_card_type_requires,
+                }
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def update_card_type_requires(record_id, organisation_id):
+        """
+            Make sure each card type can be defined only once per org
+
+            @param record_id: the current doc_card_config record ID
+                              (when currently editing a record)
+            @param organisation_id: the organisation record ID
+        """
+
+        s3db = current.s3db
+
+        # Find out which card types are already configured for this org
+        table = s3db.doc_card_config
+        query = (table.organisation_id == organisation_id) & \
+                (table.deleted == False)
+        rows = current.db(query).select(table.id,
+                                        table.card_type,
+                                        )
+        this = None
+        defined = set()
+        for row in rows:
+            if str(row.id) == str(record_id):
+                this = row.card_type
+            defined.add(row.card_type)
+
+        # Determine which card types can still be configured
+        card_types = {k: v for (k, v) in s3db.doc_card_types.items()
+                           if k == this or k not in defined}
+
+        # Limit selection to these card types
+        table.card_type.requires = IS_IN_SET(card_types,
+                                             sort = True,
+                                             zero = None,
+                                             )
+        if not card_types:
+            # No further card types can be configured
+            s3db.configure("doc_card_config",
+                           insertable = False,
+                           )
+        elif this and list(card_types.keys()) == [this]:
+            # All other types are already configured => can't change this
+            table.card_type.writable = False
 
 # END =========================================================================

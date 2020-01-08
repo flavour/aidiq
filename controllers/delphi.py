@@ -48,10 +48,10 @@ def index():
         result.append((group, latest_problems, actions))
 
     response.title = module_name
-    return dict(groups_problems = result,
-                name = T("Active Problems"),
-                module_name = module_name,
-                )
+    return {"groups_problems": result,
+            "name": T("Active Problems"),
+            "module_name": module_name,
+            }
 
 # =============================================================================
 # Groups
@@ -97,11 +97,14 @@ def group_rheader(r, tabs = []):
 def group():
     """ Problem Group REST Controller """
 
-    if not s3_has_role("DelphiAdmin"):
+    if auth.s3_has_role("DelphiAdmin"):
+        ADMIN = True
+    else:
+        ADMIN = False
         s3db.configure("delphi_group",
-                       deletable=False,
+                       deletable = False,
                        # Remove ability to create new Groups
-                       #insertable=False
+                       #insertable = False
                        )
 
     def prep(r):
@@ -116,7 +119,7 @@ def group():
                 except:
                     pass
                 s3db.configure(tablename,
-                               deletable = s3_has_role("DelphiAdmin"),
+                               deletable = ADMIN,
                                list_fields = list_fields)
         return True
     s3.prep = prep
@@ -222,7 +225,7 @@ def problem():
     # Filter to just Active Problems
     s3.filter = (table.active == True)
 
-    if not s3_has_role("DelphiAdmin"):
+    if not auth.s3_has_role("DelphiAdmin"):
         s3db.configure(tablename,
                        deletable = False,
                        # Remove ability to create new Problems
@@ -349,12 +352,12 @@ i18n.delphi_vote="''', str(T("Save Vote")), '''"'''))
                           args=["S3", "s3.delphi.js"]))
 
     response.view = "delphi/vote.html"
-    return dict(rheader = rheader,
-                duser = duser,
-                votes = votes,
-                options = options,
-                rankings = rankings,
-                )
+    return {"rheader": rheader,
+            "duser": duser,
+            "votes": votes,
+            "options": options,
+            "rankings": rankings,
+            }
 
 # -----------------------------------------------------------------------------
 def save_vote():
@@ -382,7 +385,7 @@ def save_vote():
 
     # Decode the data
     try:
-        rankings = request.post_vars.keys()[0].split(",")
+        rankings = list(request.post_vars.keys())[0].split(",")
     except IndexError:
         status = current.xml.json_message(False, 400, "No Options Ranked")
         raise HTTP(400, body=status)

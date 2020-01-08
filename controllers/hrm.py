@@ -108,14 +108,13 @@ def staff():
             if r.id:
                 if r.method not in ("profile", "delete"):
                     # Redirect to person controller
-                    vars = {
-                        "human_resource.id": r.id,
-                        "group": "staff"
-                    }
-                    args = []
+                    vars = {"human_resource.id": r.id,
+                            "group": "staff"
+                            }
+                    args = [r.method]
                     if r.representation == "iframe":
                         vars["format"] = "iframe"
-                        args = [r.method]
+                        #args = [r.method]
                     redirect(URL(f="person", vars=vars, args=args))
             else:
                 if r.method == "import":
@@ -157,7 +156,8 @@ def staff():
     def postp(r, output):
         if r.interactive:
             if not r.component:
-                s3_action_buttons(r, deletable=settings.get_hrm_deletable())
+                s3_action_buttons(r,
+                                  deletable = settings.get_hrm_deletable())
                 if "msg" in settings.modules and \
                    settings.get_hrm_compose_button() and \
                    auth.permission.has_permission("update", c="hrm", f="compose"):
@@ -214,7 +214,7 @@ def profile():
         - includes components relevant to HRM
     """
 
-    request.args = [str(s3_logged_in_person())]
+    request.args = [str(auth.s3_logged_in_person())]
 
     # Custom Method for Contacts
     s3db.set_method("pr", resourcename,
@@ -373,7 +373,7 @@ def group_membership():
 def department():
     """ Departments Controller """
 
-    if not auth.s3_has_role(ADMIN):
+    if not auth.s3_has_role("ADMIN"):
         s3.filter = auth.filter_by_root_org(s3db.hrm_department)
 
     return s3_rest_controller()
@@ -394,12 +394,17 @@ def job_title():
             table.type.label = None
             table.comments.label = None
             table.comments.represent = lambda v: v or ""
+        elif r.get_vars.get("caller") in ("event_human_resource_job_title_id", "event_scenario_human_resource_job_title_id"):
+            # Default / Hide type
+            f = s3db.hrm_job_title.type
+            f.default = 4 # Deployment
+            f.readable = f.writable = False
         return True
     s3.prep = prep
 
     s3.filter = FS("type").belongs((1, 3))
 
-    if not auth.s3_has_role(ADMIN):
+    if not auth.s3_has_role("ADMIN"):
         s3.filter &= auth.filter_by_root_org(s3db.hrm_job_title)
 
     return s3_rest_controller()
@@ -440,7 +445,7 @@ def course():
         return True
     s3.prep = prep
 
-    if not auth.s3_has_role(ADMIN) and not s3.filter:
+    if not auth.s3_has_role("ADMIN") and not s3.filter:
         s3.filter = auth.filter_by_root_org(s3db.hrm_course)
 
     return s3_rest_controller(rheader = s3db.hrm_rheader,
@@ -457,7 +462,7 @@ def certificate():
     """ Certificates Controller """
 
     if settings.get_hrm_filter_certificates() and \
-       not auth.s3_has_role(ADMIN):
+       not auth.s3_has_role("ADMIN"):
         s3.filter = auth.filter_by_root_org(s3db.hrm_certificate)
 
     return s3_rest_controller(rheader = s3db.hrm_rheader,
@@ -481,7 +486,7 @@ def certification():
                    )
 
     if settings.get_hrm_filter_certificates() and \
-       not auth.s3_has_role(ADMIN):
+       not auth.s3_has_role("ADMIN"):
         s3.filter = auth.filter_by_root_org(s3db.hrm_certificate)
 
     return s3_rest_controller(rheader = s3db.hrm_rheader,
@@ -613,7 +618,9 @@ def experience():
 # -----------------------------------------------------------------------------
 def competency():
     """
-        RESTful CRUD controller used to allow searching for people by Skill
+        RESTful CRUD controller
+        - used to allow searching for people by Skill
+        - used for options.s3json lookups
     """
 
     s3.filter = FS("person_id$human_resource.type") == 1
@@ -762,6 +769,19 @@ def disciplinary_type():
 # -----------------------------------------------------------------------------
 def disciplinary_action():
     """ Disciplinary Action Controller """
+
+    return s3_rest_controller()
+
+# =============================================================================
+# Shifts
+# =============================================================================
+def shift():
+    """ Shifts Controller """
+
+    return s3_rest_controller()
+
+def shift_template():
+    """ Shift Templates Controller """
 
     return s3_rest_controller()
 

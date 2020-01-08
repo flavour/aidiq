@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 
+import dateutil
 import json
 
-from gluon import current, A, DIV, H3, HR, P, SPAN, URL, XML
-from s3 import s3_str, \
+from gluon import current, A, BR, DIV, H3, H4, HR, LI, P, SPAN, TAG, TEXTAREA, UL, URL, XML
+from s3 import ICON, \
+               s3_auth_user_represent, s3_str, \
                S3CustomController, \
                S3FilterForm, S3LocationFilter, S3OptionsFilter, S3TextFilter, \
                S3Represent
@@ -21,6 +23,8 @@ class index(S3CustomController):
         T = current.T
         db = current.db
         s3db = current.s3db
+        s3 = current.response.s3
+        session_s3 = current.session.s3
 
         output = {}
 
@@ -29,6 +33,7 @@ class index(S3CustomController):
         stable = s3db.event_sitrep
         query = (stable.deleted == False)
         fields = [etable.name,
+                  stable.id,
                   stable.date,
                   stable.name,
                   stable.summary,
@@ -36,7 +41,7 @@ class index(S3CustomController):
 
         left = [etable.on(etable.id == stable.event_id)]
 
-        language = current.session.s3.language
+        language = session_s3.language
         if language != current.deployment_settings.get_L10n_default_language():
             ntable = s3db.event_event_name
             left.append(ntable.on((ntable.event_id == etable.id) & \
@@ -69,7 +74,12 @@ class index(S3CustomController):
                     event_name = s["event_event.name"]
                 if not event_name:
                     event_name = s["event_sitrep.name"]
-                rappend(H3(event_name))
+                rappend(H3(A(event_name,
+                             _href = URL(c = "event",
+                                         f = "sitrep",
+                                         args = [s["event_sitrep.id"]],
+                                         ),
+                             )))
                 rappend(P(XML(s["event_sitrep.summary"])))
                 if count != len_sitreps:
                     rappend(HR())
@@ -107,7 +117,49 @@ class index(S3CustomController):
                                             ),
                                 )
 
-        self._view(THEME, "index.html")
+        # Resources section
+        if current.deployment_settings.has_module("cms"):
+            system_roles = current.auth.get_system_roles()
+            ADMIN = system_roles.ADMIN in session_s3.roles
+            table = s3db.cms_post
+            ltable = s3db.cms_post_module
+            module = "default"
+            resource = "index"
+            query = (ltable.module == module) & \
+                    ((ltable.resource == None) | \
+                     (ltable.resource == resource)) & \
+                    (ltable.post_id == table.id) & \
+                    (table.deleted != True)
+            item = current.db(query).select(table.body,
+                                            table.id,
+                                            limitby=(0, 1)).first()
+            if item:
+                if ADMIN:
+                    item = DIV(XML(item.body),
+                               BR(),
+                               A(T("Edit"),
+                                 _href=URL(c="cms", f="post",
+                                           args=[item.id, "update"]),
+                                 _class="action-btn"))
+                else:
+                    item = DIV(XML(item.body))
+            elif ADMIN:
+                if s3.crud.formstyle == "bootstrap":
+                    _class = "btn"
+                else:
+                    _class = "action-btn"
+                item = A(T("Edit"),
+                         _href=URL(c="cms", f="post", args="create",
+                                   vars={"module": module,
+                                         "resource": resource
+                                         }),
+                         _class="%s cms-edit" % _class)
+            else:
+                item = ""
+        else:
+            item = ""
+
+        output["item"] = item
 
         # Inject D3 scripts
         from s3 import S3Report
@@ -115,7 +167,6 @@ class index(S3CustomController):
 
         # Inject charts-script
         appname = current.request.application
-        s3 = current.response.s3
         scripts = s3.scripts
         if s3.debug:
             script = "/%s/static/scripts/S3/s3.ui.charts.js" % appname
@@ -146,7 +197,355 @@ class index(S3CustomController):
         else:
             output["last_stats_update"] = None
 
+        self._view(THEME, "index.html")
+
         return output
+
+# =============================================================================
+def cms_post_list_layout(list_id, item_id, resource, rfields, record):
+    """
+        dataList item renderer for Posts on the Bulletin Board.
+
+        @param list_id: the HTML ID of the list
+        @param item_id: the HTML ID of the item
+        @param resource: the S3Resource to render
+        @param rfields: the S3ResourceFields to render
+        @param record: the record as dict
+    """
+
+    record_id = record["cms_post.id"]
+    #item_class = "thumbnail"
+
+    T = current.T
+    db = current.db
+    s3db = current.s3db
+    settings = current.deployment_settings
+    permit = current.auth.s3_has_permission
+
+    raw = record._row
+    date = record["cms_post.date"]
+    title = record["cms_post.title"]
+    body = record["cms_post.body"]
+    #series_id = raw["cms_post.series_id"]
+
+    # Allow records to be truncated
+    # (not yet working for HTML)
+    body = DIV(body,
+               _class="s3-truncate",
+               )
+
+    #if series_id:
+    #    series = record["cms_post.series_id"]
+    #    translate = settings.get_L10n_translate_cms_series()
+    #    if translate:
+    #        series_title = T(series)
+    #    else:
+    #        series_title = series
+    #else:
+    #    series_title = series = ""
+
+    #status = record["cms_post.status_id"]
+
+    author_id = raw["cms_post.created_by"]
+    person = record["cms_post.created_by"]
+
+    # @ToDo: Bulk lookup
+    ltable = s3db.pr_person_user
+    ptable = db.pr_person
+    query = (ltable.user_id == author_id) & \
+            (ltable.pe_id == ptable.pe_id)
+    row = db(query).select(ptable.id,
+                           limitby=(0, 1)
+                           ).first()
+    if row:
+        person_id = row.id
+    else:
+        person_id = None
+
+    if person:
+        if person_id:
+            # @ToDo: deployment_setting for controller to use?
+            person_url = URL(c="hrm", f="person", args=[person_id])
+        else:
+            person_url = "#"
+        person = A(person,
+                   _href=person_url,
+                   )
+
+    table = db.cms_post
+
+    # Toolbar
+    if permit("update", table, record_id=record_id):
+        edit_btn = A(ICON("edit"),
+                     SPAN("edit",
+                          _class = "show-for-sr",
+                          ),
+                     _href=URL(c="cms", f="post",
+                               args=[record_id, "update.popup"],
+                               vars={"refresh": list_id,
+                                     "record": record_id}
+                               ),
+                     _class="s3_modal",
+                     #_title=T("Edit %(type)s") % dict(type=series_title),
+                     _title=T("Edit"),
+                     )
+    else:
+        edit_btn = ""
+    if permit("delete", table, record_id=record_id):
+        delete_btn = A(ICON("delete"),
+                       SPAN("delete",
+                           _class = "show-for-sr",
+                           ),
+                      _class="dl-item-delete",
+                      _title=T("Delete"),
+                      )
+    else:
+        delete_btn = ""
+
+    # Bookmarks
+    auth = current.auth
+    user = auth.user
+    if user: #and settings.get_cms_bookmarks():
+        # @ToDo: Bulk lookup (via list_fields?)
+        ltable = s3db.cms_post_user
+        query = (ltable.post_id == record_id) & \
+                (ltable.user_id == user.id)
+        exists = db(query).select(ltable.id,
+                                  limitby=(0, 1)
+                                  ).first()
+        if exists:
+            bookmark = A(ICON("bookmark"),
+                         SPAN("remove bookmark",
+                              _class = "show-for-sr",
+                              ),
+                         _class="bookmark",
+                         _title=T("Remove Bookmark"),
+                         )
+        else:
+            bookmark = A(ICON("bookmark-empty"),
+                         SPAN("bookmark",
+                              _class = "show-for-sr",
+                              ),
+                         _class="bookmark",
+                         _title=T("Add Bookmark"),
+                         )
+        bookmark["_data-c"] = "cms"
+        bookmark["_data-f"] = "post"
+        bookmark["_data-i"] = record_id
+    else:
+        bookmark = ""
+
+    # Dropdown of available documents
+    documents = raw["doc_document.file"]
+    if documents:
+        if not isinstance(documents, list):
+            documents = (documents,)
+        doc_list = UL(_class="dropdown-menu",
+                      _role="menu",
+                      )
+        retrieve = db.doc_document.file.retrieve
+        for doc in documents:
+            try:
+                doc_name = retrieve(doc)[0]
+            except (IOError, TypeError):
+                doc_name = current.messages["NONE"]
+            doc_url = URL(c="default", f="download",
+                          args=[doc])
+            doc_item = LI(A(ICON("file"),
+                            " ",
+                            doc_name,
+                            _href=doc_url,
+                            ),
+                          _role="menuitem",
+                          )
+            doc_list.append(doc_item)
+        docs = DIV(A(ICON("paper-clip"),
+                     SPAN(_class="caret"),
+                     _class="btn dropdown-toggle",
+                     _href="#",
+                     **{"_data-toggle": "dropdown"}
+                     ),
+                   doc_list,
+                   _class="btn-group attachments dropdown pull-right",
+                   )
+    else:
+        docs = ""
+
+    #divider = LI("|")
+    #divider["_aria-hidden"] = "true"
+
+    toolbar = UL(#LI(share_btn,
+                 #   _class="item",
+                 #   ),
+                 #LI(A(ICON("flag"), # @ToDo: Use flag-alt if not flagged & flag if already flagged (like for bookmarks)
+                 #     SPAN("flag this",
+                 #          _class = "show-for-sr",
+                 #          ),
+                 #     _href="#",
+                 #     _title=T("Flag"),
+                 #     ),
+                 #   _class="item",
+                 #   ),
+                 LI(bookmark,
+                    _class="item",
+                    ),
+                 #LI(A(I(_class="fa fa-users",
+                 #       ),
+                 #     SPAN("make public",
+                 #          _class = "show-for-sr",
+                 #          ),
+                 #     _href="#",
+                 #     _title=T("Make Public"),
+                 #     ),
+                 #   _class="item",
+                 #   ),
+                 LI(edit_btn,
+                    _class="item",
+                    ),
+                 LI(delete_btn,
+                    _class="item",
+                    ),
+                 _class="controls",
+                 )
+
+    # Tags
+    #if settings.get_cms_show_tags():
+    tag_list = UL(_class="left inline-list s3-tags",
+                  )
+    tag_list["_data-post_id"] = record_id
+    tags = raw["cms_tag.name"]
+    if tags:
+        if not isinstance(tags, list):
+            tags = [tags]
+        for tag in tags:
+            tag_list.append(LI(A(tag,
+                                 _href="#",
+                                 ),
+                               ))
+
+    # Comments
+    comment_list = UL(_class="card-post-comments")
+    cappend = comment_list.append
+
+    #if settings.get_cms_comments():
+    # Add existing comments (oldest 1st)
+    # - should sort by default by ID which is equivalent to oldest first,
+    #   however they seem to come in in a random order (even if orderby set on the component) so need to be sorted manually here
+    comments = raw["cms_comment.json_dump"]
+    ncomments = 0
+    if comments:
+        if not isinstance(comments, list):
+            comments = [comments]
+        comments = [json.loads(comment) for comment in comments]
+        comments.sort(key=lambda c: c["created_on"])
+        for comment in comments:
+            author = s3_auth_user_represent(comment["created_by"])
+            cdate = dateutil.parser.parse(comment["created_on"])
+            ctime = cdate.time().strftime("%H:%M")
+            cdate = cdate.date().strftime("%b %d, %Y")
+            comment = LI(TAG["ASIDE"](P(T("Updated %(date)s @ %(time)s by %(author)s") % \
+                                                dict(date = cdate,
+                                                     time = ctime,
+                                                     author = author,
+                                                     ),
+                                        _class="meta",
+                                        ),
+                                      DIV(comment["body"],
+                                          _class="desc",
+                                          ),
+                                      # @ToDo: Show this if more than x chars?
+                                      #TAG["FOOTER"](P(A(T("More Info"),
+                                      #                  _class="more",
+                                      #                  )
+                                      #                ),
+                                      #              _class="footer",
+                                      #              ),
+                                      _class="card-post-comment",
+                                      ))
+            cappend(comment)
+            ncomments += 1
+
+    if ncomments == 1:
+        num_comments = "1 Comment"
+    else:
+        num_comments = T("%(num)s Comments") % dict(num = ncomments)
+
+    if user:
+        add_comment = A(T("Add Comment"),
+                        _class="add-comment",
+                        )
+        add_comment["_data-l"] = list_id
+        add_comment["_data-i"] = record_id
+        add_comment = P(add_comment)
+        comment_input = LI(TAG["ASIDE"](TEXTAREA(_class="desc",
+                                                 _placeholder=T("comment here"),
+                                                 ),
+                                        TAG["FOOTER"](P(A("Submit Comment",
+                                                          _class="submit",
+                                                          ),
+                                                        ),
+                                                      ),
+                                        _class="card-post-comment",
+                                        ),
+                          _class="comment-form hide",
+                          )
+        cappend(comment_input)
+    else:
+        add_comment = ""
+
+    item = TAG["ASIDE"](TAG["HEADER"](UL(# post priority icon
+                                         LI(_class="item icon",
+                                            ),
+                                         # post type title
+                                         #LI(series_title,
+                                         #   _class="item primary",
+                                         #   ),
+                                         # post status
+                                         #LI(status,
+                                         #   _class="item secondary border status",
+                                         #   ),
+                                         # post visibility
+                                         # @ToDo: Read the visibility
+                                         #LI(T("Public"),
+                                         #   _class="item secondary border visibility",
+                                         #   ),
+                                         _class="status-bar-left"
+                                         ),
+                                      toolbar,
+                                      _class="status-bar",
+                                      ),
+                        DIV(DIV(SPAN("Updated ", # @ToDo: i18n
+                                     TAG["TIME"](date),
+                                     " by ",
+                                     person,
+                                     _class="meta-update",
+                                     ),
+                                SPAN(num_comments,
+                                     _class="meta-comments",
+                                     ),
+                                _class="meta",
+                                ),
+                            H4(title,
+                               _class="title",
+                               ),
+                            DIV(body,
+                                _class="desc",
+                                ),
+                            _class="body",
+                            ),
+                        docs,
+                        TAG["FOOTER"](DIV(tag_list,
+                                        _class="tags clearfix", # @ToDo: remove clearfix and style via CSS
+                                        ),
+                                      comment_list,
+                                      add_comment,
+                                      _class="footer",
+                                      ),
+                        _class="card-post",
+                        _id=item_id,
+                        )
+
+    return item
 
 # =============================================================================
 class dashboard(S3CustomController):
@@ -302,7 +701,6 @@ class project_ActivityRepresent(S3Represent):
                  multiple = False,
                  ):
 
-        self.lookup_rows = self.custom_lookup_rows
         self.org_represent = current.s3db.org_OrganisationRepresent() # show_link=False
 
         super(project_ActivityRepresent,
@@ -315,7 +713,7 @@ class project_ActivityRepresent(S3Represent):
                              )
 
     # -------------------------------------------------------------------------
-    def custom_lookup_rows(self, key, values, fields=None):
+    def lookup_rows(self, key, values, fields=None):
         """
             Custom lookup method for activity rows, does a
             left join with the tag. Parameters
@@ -377,8 +775,6 @@ class req_NeedRepresent(S3Represent):
                  multiple = False,
                  ):
 
-        self.lookup_rows = self.custom_lookup_rows
-
         super(req_NeedRepresent,
               self).__init__(lookup = "req_need",
                              fields = ["req_need.name",
@@ -389,7 +785,7 @@ class req_NeedRepresent(S3Represent):
                              )
 
     # -------------------------------------------------------------------------
-    def custom_lookup_rows(self, key, values, fields=None):
+    def lookup_rows(self, key, values, fields=None):
         """
             Custom lookup method for need rows, does a
             left join with the tag. Parameters
@@ -460,21 +856,30 @@ class HomepageStatistics(object):
     def needs_by_status(cls):
         """
             Count need lines per status
+            - for all open Events
         """
 
         db = current.db
+        s3db = current.s3db
+
+        table = s3db.req_need_line
+        etable = s3db.event_event
+        ltable = s3db.event_event_need
 
         # Extract the data
-        table = current.s3db.req_need_line
         status = table.status
         number = table.id.count()
-        query = (table.deleted == False)
+        query = (etable.closed == False) & \
+                (etable.id == ltable.event_id) & \
+                (ltable.need_id == table.need_id) & \
+                (table.deleted == False)
+
         rows = db(query).select(status, number, groupby = status)
 
         # Build data structure for chart renderer
         rows = dict((row[status], row[number]) for row in rows)
         data = []
-        for code, label, color in cls.REQ_STATUS:
+        for code, label, color in cls.REQ_STATUS[::-1]: # clockwise
             value = rows.get(code)
             data.append({"label": s3_str(label),
                          "value": value if value else 0,
@@ -489,28 +894,32 @@ class HomepageStatistics(object):
     def needs_by_district(cls):
         """
             Count need lines per district and status (top 5 districts)
+            - for all open Events
         """
 
         T = current.T
-
         db = current.db
         s3db = current.s3db
 
         table = s3db.req_need_line
         ntable = s3db.req_need
-
-        left = ntable.on(ntable.id == table.need_id)
+        etable = s3db.event_event
+        ltable = s3db.event_event_need
 
         status = table.status
         number = table.id.count()
         location = ntable.location_id
 
+        base_query = (etable.closed == False) & \
+                     (etable.id == ltable.event_id) & \
+                     (ltable.need_id == ntable.id) & \
+                     (ntable.id == table.need_id) & \
+                     (table.deleted == False)
+
         # Get the top-5 locations by number of need lines
-        query = (table.deleted == False) & \
-                (location != None)
+        query = base_query & (location != None)
         rows = db(query).select(location,
                                 number,
-                                left = left,
                                 groupby = location,
                                 orderby = ~(number),
                                 limitby = (0, 5),
@@ -524,12 +933,10 @@ class HomepageStatistics(object):
             location_labels = location_represent.bulk(locations)
 
             # Count need lines per status and location
-            query = (table.deleted == False) & \
-                    (location.belongs(locations))
+            query = base_query & (location.belongs(locations))
             rows = db(query).select(location,
                                     status,
                                     number,
-                                    left = left,
                                     groupby = (status, location),
                                     )
 
@@ -573,14 +980,21 @@ class HomepageStatistics(object):
     def people_affected(cls):
         """
             Count total number of affected people by demographic type
+            - for all open Events
         """
 
         db = current.db
         s3db = current.s3db
 
         table = s3db.req_need_line
+        etable = s3db.event_event
+        ltable = s3db.event_event_need
 
-        query = (table.deleted == False)
+        query = (etable.closed == False) & \
+                (etable.id == ltable.event_id) & \
+                (ltable.need_id == table.need_id) & \
+                (table.deleted == False)
+
         demographic = table.parameter_id
         represent = demographic.represent
         total = table.value.sum()

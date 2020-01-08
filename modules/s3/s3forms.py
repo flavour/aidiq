@@ -2,7 +2,7 @@
 
 """ S3 SQL Forms
 
-    @copyright: 2012-2018 (c) Sahana Software Foundation
+    @copyright: 2012-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -30,6 +30,8 @@
 __all__ = ("S3SQLCustomForm",
            "S3SQLDefaultForm",
            "S3SQLDummyField",
+           "S3SQLInlineInstruction",
+           "S3SQLSectionBreak",
            "S3SQLVirtualField",
            "S3SQLSubFormLayout",
            "S3SQLVerticalSubFormLayout",
@@ -47,10 +49,11 @@ from gluon.sqlhtml import StringWidget
 from gluon.tools import callback
 from gluon.validators import Validator
 
-from s3dal import original_tablename
-from s3query import FS
-from s3utils import s3_mark_required, s3_store_last_record_id, s3_str, s3_validate
-from s3widgets import S3Selector, S3UploadWidget
+from s3compat import basestring, unicodeT, xrange
+from s3dal import Field, original_tablename
+from .s3query import FS
+from .s3utils import s3_mark_required, s3_store_last_record_id, s3_str, s3_validate
+from .s3widgets import S3Selector, S3UploadWidget
 
 # Compact JSON encoding
 SEPARATORS = (",", ":")
@@ -265,7 +268,7 @@ class S3SQLForm(object):
                            )
 
         form_rows = iter(form[0])
-        tr = form_rows.next()
+        tr = next(form_rows)
         i = 0
         while tr:
             # @ToDo: We need a better way of working than this!
@@ -300,7 +303,7 @@ class S3SQLForm(object):
                 headings = subheadings.get(f)
                 if not headings:
                     try:
-                        tr = form_rows.next()
+                        tr = next(form_rows)
                     except StopIteration:
                         break
                     else:
@@ -318,9 +321,9 @@ class S3SQLForm(object):
                     tr.attributes.update(_class="%s after_subheading" % tr.attributes["_class"])
                     for _i in range(0, inserted):
                         # Iterate over the rows we just created
-                        tr = form_rows.next()
+                        tr = next(form_rows)
             try:
-                tr = form_rows.next()
+                tr = next(form_rows)
             except StopIteration:
                 break
             else:
@@ -701,7 +704,7 @@ class S3SQLDefaultForm(S3SQLForm):
                 if record_id is None or undelete:
                     # Create hierarchy link
                     if hierarchy:
-                        from s3hierarchy import S3Hierarchy
+                        from .s3hierarchy import S3Hierarchy
                         h = S3Hierarchy(tablename)
                         if h.config:
                             h.postprocess_create_node(hierarchy, form_vars)
@@ -870,7 +873,7 @@ class S3SQLCustomForm(S3SQLForm):
         if subtables:
             if not request:
                 # Create dummy S3Request
-                from s3rest import S3Request
+                from .s3rest import S3Request
                 r = S3Request(resource.prefix,
                               resource.name,
                               # Current request args/vars could be in a different
@@ -1472,7 +1475,7 @@ class S3SQLCustomForm(S3SQLForm):
             if record_id is None or undelete:
                 # Create hierarchy link
                 if hierarchy:
-                    from s3hierarchy import S3Hierarchy
+                    from .s3hierarchy import S3Hierarchy
                     h = S3Hierarchy(tablename)
                     if h.config:
                         h.postprocess_create_node(hierarchy, form_vars)
@@ -1683,7 +1686,7 @@ class S3SQLField(S3SQLFormElement):
         """
 
         # Import S3ResourceField only here, to avoid circular dependency
-        from s3query import S3ResourceField
+        from .s3query import S3ResourceField
 
         rfield = S3ResourceField(resource, self.selector)
 
@@ -1787,6 +1790,7 @@ class S3SQLDummyField(S3SQLFormElement):
         A Dummy Field
 
         A simple DIV which can then be acted upon with JavaScript
+        - used by dc_question Grids
     """
 
     # -------------------------------------------------------------------------
@@ -1828,6 +1832,131 @@ class S3SQLDummyField(S3SQLFormElement):
 
         return DIV(_class="s3-dummy-field",
                    )
+
+# =============================================================================
+class S3SQLSectionBreak(S3SQLFormElement):
+    """
+        A Section Break
+
+        A simple DIV which can then be acted upon with JavaScript &/or Styled
+        - used by dc_template.layout
+    """
+
+    # -------------------------------------------------------------------------
+    def __init__(self):
+        """
+            Constructor to define the form element, to be extended
+            in subclass.
+        """
+
+        super(S3SQLSectionBreak, self).__init__(None)
+
+    # -------------------------------------------------------------------------
+    def resolve(self, resource):
+        """
+            Method to resolve this form element against the calling resource.
+
+            @param resource: the resource
+            @return: a tuple
+                        (
+                            subtable alias (or None for main table),
+                            original field name,
+                            Field instance for the form renderer
+                        )
+        """
+
+        selector = ""
+
+        field = Field(selector,
+                      default = "",
+                      label = "",
+                      widget = self,
+                      )
+
+        return None, selector, field
+
+    # -------------------------------------------------------------------------
+    def __call__(self, field, value, **attributes):
+        """
+            Widget renderer for the input field. To be implemented in
+            subclass (if required) and to be set as widget=self for the
+            field returned by the resolve()-method of this form element.
+
+            @param field: the input field
+            @param value: the value to populate the widget
+            @param attributes: attributes for the widget
+            @return: the widget for this form element as HTML helper
+        """
+
+        return DIV(_class="s3-section-break",
+                   )
+
+# =============================================================================
+class S3SQLInlineInstruction(S3SQLFormElement):
+    """
+        Inline Instructions
+
+        A simple DIV which can then be acted upon with JavaScript &/or Styled
+        - used by dc_template.layout
+    """
+
+    # -------------------------------------------------------------------------
+    def __init__(self, do, say, **options):
+        """
+            Constructor to define the form element, to be extended
+            in subclass.
+
+            @param do: What to Do
+            @param say: What to Say
+        """
+
+        super(S3SQLInlineInstruction, self).__init__(None)
+
+        self.do = do
+        self.say = say
+
+    # -------------------------------------------------------------------------
+    def resolve(self, resource):
+        """
+            Method to resolve this form element against the calling resource.
+
+            @param resource: the resource
+            @return: a tuple
+                        (
+                            subtable alias (or None for main table),
+                            original field name,
+                            Field instance for the form renderer
+                        )
+        """
+
+        selector = ""
+
+        field = Field(selector,
+                      default = "",
+                      label = "",
+                      widget = self,
+                      )
+
+        return None, selector, field
+
+    # -------------------------------------------------------------------------
+    def __call__(self, field, value, **attributes):
+        """
+            Widget renderer for the input field. To be implemented in
+            subclass (if required) and to be set as widget=self for the
+            field returned by the resolve()-method of this form element.
+
+            @param field: the input field
+            @param value: the value to populate the widget
+            @param attributes: attributes for the widget
+            @return: the widget for this form element as HTML helper
+        """
+
+        element = DIV(_class="s3-inline-instructions",
+                      )
+        element["data-do"] = self.do
+        element["data-say"] = self.say
+        return element
 
 # =============================================================================
 class S3SQLSubForm(S3SQLFormElement):
@@ -2610,6 +2739,9 @@ class S3SQLInlineComponent(S3SQLSubForm):
             @param attributes: keyword attributes for this widget
         """
 
+        T = current.T
+        settings = current.deployment_settings
+
         options = self.options
         if options.readonly is True:
             # Render read-only
@@ -2771,7 +2903,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
                 # Hide add-row for explicit open-action
                 _class = "%s hide" % _class
                 if explicit_add is True:
-                    label = current.T("Add another")
+                    label = T("Add another")
                 else:
                     label = explicit_add
                 inline_open_add = A(label,
@@ -2856,6 +2988,15 @@ class S3SQLInlineComponent(S3SQLSubForm):
         # Reset the layout
         layout.set_columns(None)
 
+        # Script options
+        js_opts = {"implicitCancelEdit": settings.get_ui_inline_cancel_edit(),
+                   "confirmCancelEdit": s3_str(T("Discard changes?")),
+                   }
+        script = '''S3.inlineComponentsOpts=%s''' % json.dumps(js_opts)
+        js_global = current.response.s3.js_global
+        if script not in js_global:
+            js_global.append(script)
+
         return output
 
     # -------------------------------------------------------------------------
@@ -2892,7 +3033,10 @@ class S3SQLInlineComponent(S3SQLSubForm):
         # Reset the layout
         layout.set_columns(None)
 
-        return DIV(output, _class="inline-component readonly")
+        return DIV(output,
+                   _id = self._formname(separator="-"),
+                   _class = "inline-component readonly",
+                   )
 
     # -------------------------------------------------------------------------
     def accept(self, form, master_id=None, format=None):
@@ -2970,7 +3114,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
 
                 if not delete:
                     # Get the values
-                    for f, d in item.iteritems():
+                    for f, d in item.items():
                         if f[0] != "_" and d and isinstance(d, dict):
 
                             field = table[f]
@@ -3292,8 +3436,8 @@ class S3SQLInlineComponent(S3SQLSubForm):
                     data[idxname] = filename
                 else:
                     value = item[fname]["value"]
-                    if type(value) is unicode:
-                        value = value.encode("utf-8")
+                    if type(value) is unicodeT:
+                        value = s3_str(value)
                     widget = formfield.widget
                     if isinstance(widget, S3Selector):
                         # Use the widget parser to get at the selected ID
@@ -3553,25 +3697,24 @@ class S3SQLInlineLink(S3SQLInlineComponent):
 
         Constructor options:
 
+            ** Common options:
+
             readonly..........True|False......render read-only always
             multiple..........True|False......allow selection of multiple
                                               options (default True)
+            widget............string..........which widget to use, one of:
+                                              - multiselect (default)
+                                              - groupedopts (default when cols is specified)
+                                              - hierarchy   (requires hierarchical lookup-table)
+                                              - cascade     (requires hierarchical lookup-table)
             render_list.......True|False......in read-only mode, render HTML
                                               list rather than comma-separated
                                               strings (default False)
-            widget............string..........which widget to use, one of:
-                                                  - multiselect (default)
-                                                  - groupedopts
-                                                  - hierarchy
-            requires..........Validator.......validator to determine the
-                                              selectable options (defaults to
-                                              field validator), not supported
-                                              for hierarchy widget
+
+            ** Options for groupedopts widget:
+
             cols..............integer.........number of columns for grouped
                                               options (default: None)
-            help_field........string..........additional field in the look-up
-                                              table to render as tooltip for
-                                              grouped options
             orientation.......string..........orientation for grouped options
                                               order, one of:
                                                   - cols
@@ -3581,23 +3724,38 @@ class S3SQLInlineLink(S3SQLInlineComponent):
                                               grouping
             sort..............True|False......sort grouped options (always True
                                               when grouping, i.e. size!=None)
+            help_field........string..........additional field in the look-up
+                                              table to render as tooltip for
+                                              grouped options
             table.............True|False......render grouped options as HTML
                                               TABLE rather than nested DIVs
                                               (default True)
-            represent.........callback........representation method for hierarchy
-                                              nodes (defaults to field represent)
-            leafonly..........True|False......only leaf nodes can be selected
-            columns...........integer.........Foundation column-width for the
-                                              widget (for custom forms), hierarchy
-                                              and multi-select only
-            filter............resource query..filter query for hierarchy and
-                                              multi-select widget
+
+            ** Options for multi-select widget:
+
             header............True|False......multi-select to show a header with
-                                              search-option
+                                              bulk-select options and optional
+                                              search-field
+            search............True|False......show the search-field in the header
             selectedList......integer.........how many items to show on multi-select
                                               button before collapsing into number
             noneSelectedText..string..........placeholder text on multi-select button
+            columns...........integer.........Foundation column-width for the
+                                              widget (for custom forms)
+            create............dict............Options to create a new record {"c": "controller",
+                                                                              "f": "function",
+                                                                              "label": "label",
+                                                                              "parent": "parent", (optional: which function to lookup options from)
+                                                                              "child": "child", (optional: which field to lookup options for)
+                                                                              }
 
+            ** Options-filtering:
+               - multiselect and groupedopts only
+               - for hierarchy and cascade widgets, use the "filter" option
+
+            requires..........Validator.......validator to determine the
+                                              selectable options (defaults to
+                                              field validator)
             filterby..........field selector..filter look-up options by this field
                                               (can be a field in the look-up table
                                               itself or in another table linked to it)
@@ -3605,6 +3763,23 @@ class S3SQLInlineLink(S3SQLInlineComponent):
             match.............field selector..lookup the filter value from this
                                               field (can be a field in the master
                                               table, or in linked table)
+
+            ** Options for hierarchy and cascade widgets:
+
+            levels............list............ordered list of labels for hierarchy
+                                              levels (top-down order), to override
+                                              the lookup-table's "hierarchy_levels"
+                                              setting, cascade-widget only
+            represent.........callback........representation method for hierarchy
+                                              nodes (defaults to field represent)
+            leafonly..........True|False......only leaf nodes can be selected
+            cascade...........True|False......automatically select the entire branch
+                                              when a parent node is newly selected;
+                                              with multiple=False, this will
+                                              auto-select single child options
+                                              (default True when leafonly=True)
+            filter............resource query..filter expression to filter the
+                                              selectable options
     """
 
     prefix = "link"
@@ -3625,7 +3800,7 @@ class S3SQLInlineLink(S3SQLInlineComponent):
         component, link = self.get_link()
 
         # Customise resources
-        from s3rest import S3Request
+        from .s3rest import S3Request
         r = S3Request(resource.prefix,
                       resource.name,
                       # Current request args/vars could be in a different
@@ -3688,12 +3863,13 @@ class S3SQLInlineLink(S3SQLInlineComponent):
         kfield = link.table[component.rkey]
         dummy_field = Storage(name = field.name,
                               type = kfield.type,
+                              label = options.label or kfield.label,
                               represent = kfield.represent,
                               )
 
         # Widget type
         widget = options.get("widget")
-        if widget != "hierarchy":
+        if widget not in ("hierarchy", "cascade"):
             requires = options.get("requires")
             if requires is None:
                 # Get the selectable entries for the widget and construct
@@ -3702,7 +3878,7 @@ class S3SQLInlineLink(S3SQLInlineComponent):
                 opts = self.get_options()
                 if zero is None:
                     # Remove the empty option
-                    opts = dict((k, v) for k, v in opts.items() if k != "")
+                    opts = {k: v for k, v in opts.items() if k != ""}
                 requires = IS_IN_SET(opts,
                                      multiple=multiple,
                                      zero=zero,
@@ -3712,13 +3888,11 @@ class S3SQLInlineLink(S3SQLInlineComponent):
             dummy_field.requires = requires
 
         # Helper to extract widget options
-        widget_opts = lambda keys: dict((k, v)
-                                        for k, v in options.items()
-                                        if k in keys)
+        widget_opts = lambda keys: {k: v for k, v in options.items() if k in keys}
 
         # Instantiate the widget
         if widget == "groupedopts" or not widget and "cols" in options:
-            from s3widgets import S3GroupedOptionsWidget
+            from .s3widgets import S3GroupedOptionsWidget
             w_opts = widget_opts(("cols",
                                   "help_field",
                                   "multiple",
@@ -3729,24 +3903,36 @@ class S3SQLInlineLink(S3SQLInlineComponent):
                                   ))
             w = S3GroupedOptionsWidget(**w_opts)
         elif widget == "hierarchy":
-            from s3widgets import S3HierarchyWidget
-            w_opts = widget_opts(("represent",
-                                  "multiple",
-                                  "leafonly",
-                                  "columns",
+            from .s3widgets import S3HierarchyWidget
+            w_opts = widget_opts(("multiple",
                                   "filter",
+                                  "leafonly",
+                                  "cascade",
+                                  "represent",
                                   ))
             w_opts["lookup"] = component.tablename
             w = S3HierarchyWidget(**w_opts)
+        elif widget == "cascade":
+            from .s3widgets import S3CascadeSelectWidget
+            w_opts = widget_opts(("levels",
+                                  "multiple",
+                                  "filter",
+                                  "leafonly",
+                                  "cascade",
+                                  "represent",
+                                  ))
+            w_opts["lookup"] = component.tablename
+            w = S3CascadeSelectWidget(**w_opts)
         else:
             # Default to multiselect
-            from s3widgets import S3MultiSelectWidget
-            w_opts = widget_opts(("filter",
+            from .s3widgets import S3MultiSelectWidget
+            w_opts = widget_opts(("multiple",
+                                  "search",
                                   "header",
                                   "selectedList",
                                   "noneSelectedText",
-                                  "multiple",
                                   "columns",
+                                  "create",
                                   ))
             w = S3MultiSelectWidget(**w_opts)
 
@@ -3892,7 +4078,7 @@ class S3SQLInlineLink(S3SQLInlineComponent):
                 if fname in component.fields:
                     lookup_field = fname
                     break
-            from s3fields import S3Represent
+            from .s3fields import S3Represent
             represent = S3Represent(lookup = component.tablename,
                                     fields = [lookup_field],
                                     )
@@ -3906,8 +4092,18 @@ class S3SQLInlineLink(S3SQLInlineComponent):
             result = represent.bulk([value])
 
         # Sort them
-        labels = result.values()
-        labels.sort()
+        def labels_sorted(labels):
+
+            try:
+                s = sorted(labels)
+            except TypeError:
+                if any(isinstance(l, DIV) for l in labels):
+                    # Don't sort labels if they contain markup
+                    s = labels
+                else:
+                    s = sorted(s3_str(l) if l is not None else "-" for l in labels)
+            return s
+        labels = labels_sorted(result.values())
 
         if self.options.get("render_list"):
             if value is None or value == [None]:

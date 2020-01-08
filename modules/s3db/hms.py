@@ -2,7 +2,7 @@
 
 """ Sahana Eden Hospital Management System Model
 
-    @copyright: 2009-2018 (c) Sahana Software Foundation
+    @copyright: 2009-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -1102,7 +1102,7 @@ class CholeraTreatmentCapabilityModel(S3Model):
                      Field("problem_types", "list:integer",
                            label = T("Current problems, categories"),
                            represent = lambda optlist: \
-                                       optlist and ", ".join(map(str,optlist)) or T("N/A"),
+                                       optlist and ", ".join(str(o) for o in optlist) or T("N/A"),
                            requires = IS_EMPTY_OR(
                                         IS_IN_SET(hms_problem_types,
                                                   zero=None,

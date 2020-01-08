@@ -2,7 +2,7 @@
 
 """ S3 Synchronization: Peer Repository Adapter
 
-    @copyright: 2011-2018 (c) Sahana Software Foundation
+    @copyright: 2011-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -31,12 +31,6 @@ import datetime
 import glob
 import os
 import sys
-
-try:
-    from lxml import etree
-except ImportError:
-    sys.stderr.write("ERROR: lxml module needed for XML handling\n")
-    raise
 
 from gluon import *
 

@@ -50,7 +50,7 @@ def index():
         zoom = 7
 
     if vars.get("coords", None) is not None:
-        lon, lat = map(float, vars["coords"].split(","))
+        lon, lat = [float(c) for c in vars["coords"].split(",")]
     else:
         lon = 84.1
         lat = 28.5
@@ -83,7 +83,7 @@ def climate_overlay_data():
     errors = []
     for kwarg_name, converter in dict(
         query_expression = str,
-    ).iteritems():
+    ).items():
         try:
             value = kwargs.pop(kwarg_name)
         except KeyError:
@@ -93,10 +93,10 @@ def climate_overlay_data():
                 arguments[kwarg_name] = converter(value)
             except TypeError:
                 errors.append("%s is wrong type" % kwarg_name)
-            except AssertionError, assertion_error:
+            except AssertionError as assertion_error:
                 errors.append("%s: %s" % (kwarg_name, assertion_error))
     if kwargs:
-        errors.append("Unexpected arguments: %s" % kwargs.keys())
+        errors.append("Unexpected arguments: %s" % list(kwargs.keys()))
 
     if errors:
         raise HTTP(400, "<br />".join(errors))
@@ -104,7 +104,7 @@ def climate_overlay_data():
         try:
             data_path = _map_plugin().get_overlay_data(**arguments)
         # only DSL exception types should be raised here
-        except DSL.DSLSyntaxError, syntax_error:
+        except DSL.DSLSyntaxError as syntax_error:
             raise HTTP(400, json.dumps({
                 "error": "SyntaxError",
                 "lineno": syntax_error.lineno,
@@ -115,7 +115,7 @@ def climate_overlay_data():
             DSL.MeaninglessUnitsException,
             DSL.DimensionError,
             DSL.DSLTypeError
-        ), exception:
+        ) as exception:
             raise HTTP(400, json.dumps({
                 "error": exception.__class__.__name__,
                 "analysis": str(exception)
@@ -134,7 +134,7 @@ def climate_csv_location_data():
     errors = []
     for kwarg_name, converter in dict(
         query_expression = str,
-    ).iteritems():
+    ).items():
         try:
             value = kwargs.pop(kwarg_name)
         except KeyError:
@@ -144,10 +144,10 @@ def climate_csv_location_data():
                 arguments[kwarg_name] = converter(value)
             except TypeError:
                 errors.append("%s is wrong type" % kwarg_name)
-            except AssertionError, assertion_error:
+            except AssertionError as assertion_error:
                 errors.append("%s: %s" % (kwarg_name, assertion_error))
     if kwargs:
-        errors.append("Unexpected arguments: %s" % kwargs.keys())
+        errors.append("Unexpected arguments: %s" % list(kwargs.keys()))
 
     if errors:
         raise HTTP(400, "<br />".join(errors))
@@ -164,7 +164,7 @@ def climate_chart():
     import gluon.contenttype
     data_image_file_path = _climate_chart(gluon.contenttype.contenttype(".png"))
     return response.stream(
-        open(data_image_file_path,"rb"),
+        open(data_image_file_path, "rb"),
         chunk_size=4096
     )
 
@@ -177,16 +177,16 @@ def _climate_chart(content_type):
     specs = json.loads(kwargs.pop("spec"))
     def list_of(converter):
         def convert_list(choices):
-            return map(converter, choices)
+            return list(map(converter, choices))
         return convert_list
     checked_specs = []
-    for label, spec in specs.iteritems():
+    for label, spec in specs.items():
         arguments = {}
         errors = []
         for name, converter in dict(
             query_expression = str,
             place_ids = list_of(int)
-        ).iteritems():
+        ).items():
             try:
                 value = spec.pop(name)
             except KeyError:
@@ -196,10 +196,10 @@ def _climate_chart(content_type):
                     arguments[name] = converter(value)
                 except TypeError:
                     errors.append("%s is wrong type" % name)
-                except AssertionError, assertion_error:
+                except AssertionError as assertion_error:
                     errors.append("%s: %s" % (name, assertion_error))
         if spec:
-            errors.append("Unexpected arguments: %s" % spec.keys())
+            errors.append("Unexpected arguments: %s" % list(spec.keys()))
         checked_specs.append((label, arguments))
 
     if errors:
@@ -222,7 +222,7 @@ def climate_chart_download():
         os.path.basename(data_image_file_path)
     )
     return response.stream(
-        open(data_image_file_path,"rb"),
+        open(data_image_file_path, "rb"),
         chunk_size=4096
     )
 
@@ -305,13 +305,16 @@ def purchase():
                      vars = {"_next":URL(c="climate",
                                          f="purchase")}))
 
-    if not s3_has_role(ADMIN):
+    if auth.s3_has_role("ADMIN"):
+        ADMIN = True
+    else:
+        ADMIN = False
         table.paid.writable = False
         table.price.writable = False
         s3.filter = (table.created_by == auth.user.id)
 
     def prep(r):
-        if not s3_has_role(ADMIN) and r.record and r.record.paid:
+        if not ADMIN and r.record and r.record.paid:
             for f in table.fields:
                 table[f].writable = False
 
@@ -319,13 +322,13 @@ def purchase():
             s3.rfooter = DIV(
                 T("Please make your payment in person at the DHM office, or by bank Transfer to:"),
                 TABLE(
-                    TR("Bank Name","Nepal Rastra Bank"),
-                    TR("Branch Address","Kathmandu Banking Office"),
-                    TR("Branch City","Kathmandu"),
-                    TR("A/c Holder","Dept. of Hydrology and Meteorology"),
-                    TR("Office Code No","27-61-04"),
-                    TR("Office A/c No","KA 1-1-199"),
-                    TR("Revenue Heading No","1-1-07-70")
+                    TR("Bank Name", "Nepal Rastra Bank"),
+                    TR("Branch Address", "Kathmandu Banking Office"),
+                    TR("Branch City", "Kathmandu"),
+                    TR("A/c Holder", "Dept. of Hydrology and Meteorology"),
+                    TR("Office Code No", "27-61-04"),
+                    TR("Office A/c No", "KA 1-1-199"),
+                    TR("Revenue Heading No", "1-1-07-70")
                 )
             )
         return True
@@ -363,7 +366,7 @@ def prices():
                     )
                 )
     else:
-        if s3_has_role(ADMIN):
+        if auth.s3_has_role("ADMIN"):
             return s3_rest_controller()
 
 
@@ -463,7 +466,7 @@ def get_years():
         datetime.now() + timedelta(days = 7)
     ).strftime("%a, %d %b %Y %H:%M:%S GMT") # not GMT, but can't find a way
     return response.stream(
-        open(_map_plugin().get_available_years(request.vars["dataset_name"]),"rb"),
+        open(_map_plugin().get_available_years(request.vars["dataset_name"]), "rb"),
         chunk_size=4096
     )
 

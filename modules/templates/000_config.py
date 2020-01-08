@@ -68,8 +68,8 @@ settings.base.debug = False
 # Uncomment this to prevent automated test runs from remote
 # settings.base.allow_testing = False
 
-# Configure the log level ("DEBUG", "INFO", "WARNING", "ERROR" or "CRITICAL"), None = turn off logging
-#settings.log.level = "WARNING"
+# Configure the log level ("DEBUG", "INFO", "WARNING", "ERROR" or "CRITICAL"), None = turn off logging (default)
+#settings.log.level = "ERROR" # DEBUG set automatically when base.debug is True
 # Uncomment to prevent writing log messages to the console (sys.stderr)
 #settings.log.console = False
 # Configure a log file (file name)
@@ -86,6 +86,9 @@ settings.base.debug = False
 # This setting should be changed _before_ registering the 1st user
 # - should happen automatically if installing using supported scripts
 settings.auth.hmac_key = "akeytochange"
+
+# If using Masterkey Authentication, then set this to a deployment-specific 32 char string:
+#settings.auth.masterkey_app_key = "randomstringrandomstringrandomstring"
 
 # Minimum Password Length
 #settings.auth.password_min_length = 8
@@ -213,10 +216,8 @@ settings.auth.hmac_key = "akeytochange"
 # See http://alerting.worldweather.org/ for oid
 # Country root oid. The oid for the organisation includes this base
 #settings.cap.identifier_oid = "2.49.0.0.608.0"
-# Change this for the offset period in days that the alert will be effective for
-# Expire Date = Effective Date + expire_offset
-# Default is 2 days
-#settings.cap.expire_offset = 2
+# Set the period (in days) after which alert info segments expire (default=2)
+#settings.cap.info_effective_period = 2
 
 # =============================================================================
 # Import the settings from the Template

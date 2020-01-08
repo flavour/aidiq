@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 """
     Default Controllers
@@ -114,7 +115,7 @@ def index():
                 if hasattr(custom, page):
                     controller = getattr(custom, page)()
                 elif page != "login":
-                    raise(HTTP(404, "Function not found: %s()" % page))
+                    raise HTTP(404, "Function not found: %s()" % page)
                 else:
                     controller = custom.index()
                 output = controller()
@@ -209,6 +210,7 @@ def index():
     roles = session.s3.roles
     table = s3db.org_organisation
     has_permission = auth.s3_has_permission
+    AUTHENTICATED = auth.get_system_roles().AUTHENTICATED
     if AUTHENTICATED in roles and has_permission("read", table):
 
         org_items = organisation()
@@ -290,7 +292,7 @@ return false}})''' % (T("Please Select a Facility")))
     register_div = None
     if AUTHENTICATED not in roles:
         # This user isn't yet logged-in
-        if request.cookies.has_key("registered"):
+        if "registered" in request.cookies:
             # This browser has logged-in before
             registered = True
 
@@ -394,7 +396,6 @@ google.setOnLoadCallback(LoadDynamicFeedControl)'''))
               "registered": registered,
               "r": None, # Required for dataTable to work
               "datatable_ajax_source": datatable_ajax_source,
-
               }
 
     if get_vars.tour:
@@ -464,6 +465,7 @@ def organisation():
     else:
         from gluon.http import HTTP
         raise HTTP(415, ERROR.BAD_FORMAT)
+
     return items
 
 # -----------------------------------------------------------------------------
@@ -501,10 +503,11 @@ def message():
                  % {"system_name": settings.get_system_name(),
                     "email": request.vars.email}
     image = "email_icon.png"
-    return dict(title = title,
-                message = message,
-                image_src = "/%s/static/img/%s" % (appname, image)
-                )
+
+    return {"title": title,
+            "message": message,
+            "image_src": "/%s/static/img/%s" % (appname, image),
+            }
 
 # -----------------------------------------------------------------------------
 def rapid():
@@ -518,7 +521,7 @@ def rapid():
     session.s3.rapid_data_entry = val
 
     response.view = "xml.html"
-    return dict(item=str(session.s3.rapid_data_entry))
+    return {"item": str(session.s3.rapid_data_entry)}
 
 # -----------------------------------------------------------------------------
 def user():
@@ -544,6 +547,11 @@ def user():
     auth_settings.profile_onaccept = auth.s3_user_profile_onaccept
     auth_settings.register_onvalidation = register_validation
 
+    # Check for template-specific customisations
+    customise = settings.customise_auth_user_controller
+    if customise:
+        customise(arg=arg)
+
     self_registration = settings.get_security_self_registration()
     login_form = register_form = None
 
@@ -559,10 +567,7 @@ def user():
         auth_settings.actions_disabled = ("retrieve_password",
                                           )
 
-    # Check for template-specific customisations
-    customise = settings.customise_auth_user_controller
-    if customise:
-        customise(arg=arg)
+    header = response.s3_user_header or ""
 
     if arg == "login":
         title = response.title = T("Login")
@@ -573,11 +578,16 @@ def user():
         login_form = form
 
     elif arg == "register":
-        title = response.title = T("Register")
         # @ToDo: move this code to /modules/s3/s3aaa.py:def register()?
         if not self_registration:
             session.error = T("Registration not permitted")
             redirect(URL(f="index"))
+        if response.title:
+            # Customised
+            title = response.title
+        else:
+            # Default
+            title = response.title = T("Register")
         form = register_form = auth.register()
 
     elif arg == "change_password":
@@ -651,6 +661,7 @@ def user():
                     break
 
     return {"title": title,
+            "header": header,
             "form": form,
             "login_form": login_form,
             "register_form": register_form,
@@ -668,7 +679,7 @@ def person():
     """
 
     # Set to current user
-    user_person_id = str(s3_logged_in_person())
+    user_person_id = str(auth.s3_logged_in_person())
 
     # When request.args = [], set it as user_person_id.
     # When it is not an ajax request and the first argument is not user_person_id, set it.
@@ -1016,6 +1027,20 @@ def humanitarian_id():
     return {"form": form}
 
 # -----------------------------------------------------------------------------
+def openid_connect():
+    """ Login using OpenID Connect """
+
+    channel = settings.get_auth_openid_connect()
+    if not channel:
+        redirect(URL(f="user", args=request.args, vars=get_vars))
+
+    from s3oauth import OpenIDConnectAccount
+    auth.settings.login_form = OpenIDConnectAccount(channel)
+    form = auth()
+
+    return {"form": form}
+
+# -----------------------------------------------------------------------------
 # About Sahana
 def apath(path=""):
     """ Application path """
@@ -1024,7 +1049,7 @@ def apath(path=""):
     opath = up(request.folder)
     # @ToDo: This path manipulation is very OS specific.
     while path[:3] == "../": opath, path=up(opath), path[3:]
-    return os.path.join(opath,path).replace("\\", "/")
+    return os.path.join(opath, path).replace("\\", "/")
 
 def about():
     """
@@ -1036,7 +1061,7 @@ def about():
 
     # Allow editing of page content from browser using CMS module
     if settings.has_module("cms"):
-        ADMIN = auth.get_system_roles().ADMIN in session.s3.roles
+        ADMIN = auth.s3_has_role("ADMIN")
         table = s3db.cms_post
         ltable = s3db.cms_post_module
         module = "default"
@@ -1264,7 +1289,7 @@ def help():
 
     # Allow editing of page content from browser using CMS module
     if settings.has_module("cms"):
-        ADMIN = auth.get_system_roles().ADMIN in session.s3.roles
+        ADMIN = auth.s3_has_role("ADMIN")
         table = s3db.cms_post
         ltable = s3db.cms_post_module
         module = "default"
@@ -1318,7 +1343,7 @@ def help():
 
     response.title = T("Help")
 
-    return dict(item=item)
+    return {"item": item}
 
 # -----------------------------------------------------------------------------
 def privacy():
@@ -1327,7 +1352,7 @@ def privacy():
     _custom_view("privacy")
 
     response.title = T("Privacy")
-    return dict()
+    return {}
 
 # -----------------------------------------------------------------------------
 def tos():
@@ -1336,7 +1361,7 @@ def tos():
     _custom_view("tos")
 
     response.title = T("Terms of Service")
-    return dict()
+    return {}
 
 # -----------------------------------------------------------------------------
 def video():
@@ -1345,7 +1370,18 @@ def video():
     _custom_view("video")
 
     response.title = T("Video Tutorials")
-    return dict()
+    return {}
+
+# -----------------------------------------------------------------------------
+def view():
+    """ Custom View """
+
+    view = request.args(0)
+
+    _custom_view(view)
+
+    response.title = view
+    return {}
 
 # -----------------------------------------------------------------------------
 def contact():
@@ -1370,7 +1406,7 @@ def contact():
                 # Only Admins should be able to update ticket status
                 status = table.status
                 actions = table.actions
-                if not auth.s3_has_role(ADMIN):
+                if not auth.s3_has_role("ADMIN"):
                     status.writable = False
                     actions.writable = False
                 if r.method != "update":
@@ -1419,14 +1455,14 @@ def contact():
                     raise HTTP("404", "Unable to open Custom View: %s" % view)
 
                 response.title = T("Contact us")
-                return dict()
+                return {}
 
     if settings.has_module("cms"):
         # Use CMS
         return s3db.cms_index("default", "contact", page_name=T("Contact Us"))
 
     # Just use default HTML View
-    return dict()
+    return {}
 
 # -----------------------------------------------------------------------------
 def load_all_models():
@@ -1476,6 +1512,19 @@ def table():
         raise HTTP(400, "No resource specified")
 
 # -----------------------------------------------------------------------------
+def masterkey():
+    """ Master Key Verification and Context Query """
+
+    # Challenge the client to login with master key
+    if not auth.s3_logged_in():
+        auth.permission.fail()
+
+    # If successfully logged-in, provide context information for
+    # the master key (e.g. project UUID + title, master key UUID)
+    from s3.s3masterkey import S3MasterKey
+    return S3MasterKey.context()
+
+# -----------------------------------------------------------------------------
 def get_settings():
     """
        Function to lookup the value of a deployment_setting
@@ -1489,7 +1538,7 @@ def get_settings():
         auth.permission.fail()
 
     elif not settings.get_base_allow_testing():
-        raise(HTTP("405", "Testing not allowed"))
+        raise HTTP("405", "Testing not allowed")
 
     else:
         arg = request.args(0)
@@ -1512,7 +1561,7 @@ def get_settings():
 
             return response.json(return_settings)
 
-        raise(HTTP("400", "Invalid/Missing argument"))
+        raise HTTP("400", "Invalid/Missing argument")
 
 # -----------------------------------------------------------------------------
 def _custom_view(filename):

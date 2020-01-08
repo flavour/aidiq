@@ -7,30 +7,31 @@
         * Monitoring of a Deployment
         * Upgrading a Deployment (tbc)
 
-@copyright: 2015-2018 (c) Sahana Software Foundation
-@license: MIT
+    @copyright: 2015-2019 (c) Sahana Software Foundation
+    @license: MIT
 
-Permission is hereby granted, free of charge, to any person
-obtaining a copy of this software and associated documentation
-files (the "Software"), to deal in the Software without
-restriction, including without limitation the rights to use,
-copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the
-Software is furnished to do so, subject to the following
-conditions:
+    Permission is hereby granted, free of charge, to any person
+    obtaining a copy of this software and associated documentation
+    files (the "Software"), to deal in the Software without
+    restriction, including without limitation the rights to use,
+    copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following
+    conditions:
 
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
+    The above copyright notice and this permission notice shall be
+    included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+    OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+    NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+    OTHER DEALINGS IN THE SOFTWARE.
 """
+
 __all__ = ("S3SetupModel",
            "S3SetupMonitorModel",
            #"Storage2",
@@ -49,8 +50,10 @@ import random
 import string
 import time
 
-from ..s3 import *
 from gluon import *
+
+from ..s3 import *
+from s3compat import basestring
 
 TIME_FORMAT = "%b %d %Y %H:%M:%S"
 MSG_FORMAT = "%(now)s - %(category)s - %(data)s\n\n"
@@ -244,6 +247,10 @@ class S3SetupModel(S3Model):
                        setup_setting = "deployment_id",
                        )
 
+        set_method("setup", "deployment",
+                   method = "wizard",
+                   action = self.setup_server_wizard)
+
         represent = setup_DeploymentRepresent()
 
         deployment_id = S3ReusableField("deployment_id", "reference %s" % tablename,
@@ -388,13 +395,15 @@ class S3SetupModel(S3Model):
         # ---------------------------------------------------------------------
         # Instances
         #
+        type_represent = S3Represent(options = INSTANCE_TYPES)
+
         tablename = "setup_instance"
         define_table(tablename,
                      deployment_id(),
                      Field("type", "integer",
                            default = 1,
                            label = T("Type"),
-                           represent = S3Represent(options = INSTANCE_TYPES),
+                           represent = type_represent,
                            requires = IS_IN_SET(INSTANCE_TYPES),
                            ),
                      Field("url",
@@ -457,6 +466,13 @@ class S3SetupModel(S3Model):
                               ) if opt else current.messages["NONE"],
                            writable = False,
                            ),
+                     # Has the Configuration Wizard been run?
+                     Field("configured", "boolean",
+                           default = False,
+                           #represent = s3_yes_no_represent,
+                           readable = False,
+                           writable = False,
+                           ),
                      *s3_meta_fields()
                      )
 
@@ -510,7 +526,15 @@ class S3SetupModel(S3Model):
                    action = self.setup_instance_clean,
                    )
 
-        represent = S3Represent(lookup=tablename, fields=["type"])
+        set_method("setup", "deployment",
+                   component_name = "instance",
+                   method = "wizard",
+                   action = self.setup_instance_wizard,
+                   )
+
+        represent = S3Represent(lookup = tablename,
+                                fields = ["type"],
+                                labels = lambda row: type_represent(row.type))
 
         instance_id = S3ReusableField("instance_id", "reference %s" % tablename,
                                       label = T("Instance"),
@@ -630,21 +654,18 @@ class S3SetupModel(S3Model):
         join = p.join
         isdir = p.isdir
         listdir = os.listdir
-        templates = [basename(t) for t in listdir(path) \
-                        if basename(t) not in ("historic",
-                                               "locations",
-                                               "mobile",
-                                               "skeleton",
-                                               "skeletontheme",
-                                               "__init__.py",
-                                               "__init__.pyc",
-                                               "000_config.py",
-                                               )
-                     ]
+
+        # All subdirectories in the path that contain a config.py are
+        # templates - except skeleton/skeletontheme
+        dirs = next(os.walk(path))[1]
+        templates = [d for d in dirs
+                         if d[:8] != "skeleton" and
+                         os.path.isfile(os.path.join(path, d, "config.py"))
+                         ]
+
         subtemplates = []
         sappend = subtemplates.append
-        for i in range(0, len(templates)):
-            template = templates[i]
+        for template in templates:
             tpath = join(path, template)
             for d in listdir(tpath):
                 if isdir(join(tpath, d)):
@@ -656,6 +677,106 @@ class S3SetupModel(S3Model):
         templates += subtemplates
         templates.sort()
         return templates
+
+    # -------------------------------------------------------------------------
+    def setup_server_wizard(self, r, **attr):
+        """
+            Custom S3Method to select an Instance to Configure
+        """
+
+        db = current.db
+        deployment_id = r.id
+        itable = db.setup_instance
+
+        instances = db(itable.deployment_id == deployment_id).select(itable.id,
+                                                                     itable.type,
+                                                                     )
+
+        if len(instances) == 1:
+            # Redirect to the Instance Wizard
+            redirect(URL(c="setup", f="deployment",
+                         args = [deployment_id, "instance", instances.first().id, "wizard"],
+                         ))
+
+        # Provide a Dropdown of Instances for the user to select
+        dropdown = SELECT(OPTION(_value=""),
+                          _id = "instances",
+                          )
+        for instance in instances:
+            dropdown.append(OPTION(INSTANCE_TYPES[instance.type],
+                                   _value="%s" % instance.id))
+
+        script = '''
+var dropdown = $('#instances');
+dropdown.change(function() {
+ var url = S3.Ap.concat('/setup/deployment/%s/instance/' + this.value + '/wizard');
+ $(location).prop('href', url);
+})''' % deployment_id
+        response = current.response
+        response.s3.jquery_ready.append(script)
+        response.view = "simple.html"
+        output = {"item": DIV(P(current.T("Select the instance you wish to configure")),
+                              dropdown),
+                  }
+        return output
+
+    # -------------------------------------------------------------------------
+    def setup_instance_wizard(self, r, **attr):
+        """
+            Custom S3Method to Configure an Instance
+
+            @ToDo: Option to Propagate settings from Prod to Demo &/or Test
+                   - on by default
+        """
+
+        from gluon import IS_IN_SET, SQLFORM
+        from gluon.sqlhtml import RadioWidget
+        from s3 import s3_mark_required
+        from s3dal import Field
+
+        T = current.T
+        response = current.response
+        settings = current.deployment_settings
+
+        questions = settings.get_setup_wizard_questions()
+
+        fields = []
+        fappend = fields.append
+        for q in questions:
+            setting = q["setting"]
+            fname = setting.replace(".", "_")
+            fappend(Field(fname,
+                          label = T(q["question"]),
+                          requires = IS_IN_SET(q["options"]),
+                          widget = RadioWidget.widget,
+                          #widget = lambda f, v: RadioWidget.widget(f, v, style="divs"),
+                          _id = "setting",
+                          ))
+
+        labels, required = s3_mark_required(fields)
+        response.s3.has_required = required
+        response.form_label_separator = ""
+
+        form = SQLFORM.factory(#formstyle = settings.get_ui_formstyle(),
+                               submit_button = T("Submit"),
+                               labels = labels,
+                               separator = "",
+                               table_name = "options", # Dummy table name
+                               _id = "options",
+                               *fields
+                               )
+
+        if form.accepts(r.post_vars, current.session):
+            # Processs Form
+            result = self.setup_settings_apply(r.id, form.vars)
+            if result:
+                response.confirmation = T("Settings Applied")
+
+        current.response.view = "simple.html"
+        output = {"item": form,
+                  "title": T("Configuration Wizard"),
+                  }
+        return output
 
     # -------------------------------------------------------------------------
     def setup_instance_deploy(self, r, **attr):
@@ -765,7 +886,7 @@ class S3SetupModel(S3Model):
             for server in servers:
                 if server.role == 2:
                     db_ip = server.host_ip
-                    private_key = server.private.key    
+                    private_key = server.private.key
                     remote_user = server.remote_user
                 else:
                     webserver_ip = server.host_ip
@@ -824,7 +945,7 @@ class S3SetupModel(S3Model):
         task_id = current.s3task.schedule_task(name,
                                                vars = task_vars,
                                                function_name = "setup_run_playbook",
-                                               repeats = 1,
+                                               repeats = None,
                                                timeout = 6000,
                                                #sync_output = 300
                                                )
@@ -924,28 +1045,25 @@ class S3SetupModel(S3Model):
                                                      ).first()
         new_value = setting.new_value
 
-        dtable = s3db.setup_deployment
         itable = s3db.setup_instance
-        query = (itable.id == setting.instance_id) & \
-                (dtable.id == itable.deployment_id)
-        deployment = db(query).select(dtable.remote_user,
-                                      dtable.private_key,
-                                      itable.type,
-                                      limitby = (0, 1)
-                                      ).first()
-        remote_user = deployment["setup_deployment.remote_user"]
-        private_key = deployment["setup_deployment.private_key"]
-        instance_type = deployment["setup_instance.type"]
+        instance = db(itable.id == setting.instance_id).select(itable.type,
+                                                               limitby = (0, 1)
+                                                               ).first()
+        instance_type = INSTANCE_TYPES[instance.type]
 
-        # Lookup Server IP
+        # Lookup Server Details
         # @ToDo: Support multiple Eden servers used as Load-balancers
         svtable = s3db.setup_server
         query = (svtable.deployment_id == deployment_id) & \
                 (svtable.role.belongs((1, 4)))
         server = db(query).select(svtable.host_ip,
+                                  svtable.remote_user,
+                                  svtable.private_key,
                                   limitby = (0, 1)
                                   ).first()
         host = server.host_ip
+        remote_user = server.remote_user
+        private_key = server.private_key
 
         # Build Playbook data structure:
         the_setting = setting.setting
@@ -960,6 +1078,8 @@ class S3SetupModel(S3Model):
         playbook = [{"hosts": host,
                      "connection": "local", # @ToDo: Don't assume this
                      "remote_user": remote_user,
+                     "become_method": "sudo",
+                     "become_user": "root",
                      "tasks": [{"name": "Edit 000_config.py",
                                 "lineinfile": {"dest": "/home/%s/applications/%s/models/000_config.py" % (instance_type, appname),
                                                "regexp": "^settings.%s =" % the_setting,
@@ -972,7 +1092,9 @@ class S3SetupModel(S3Model):
                                 #"command": "sudo -H -u web2py python web2py.py -S %(appname)s -M -R applications/%(appname)s/static/scripts/tools/compile.py" % {"appname": appname},
                                 #"args": {"chdir": "/home/%s" % instance_type,
                                 #         },
-                                "command": "/usr/local/bin/compile",
+                                # We don't want to restart the UWSGI process running the Task until after the Task has completed
+                                "command": 'echo "/usr/local/bin/compile %s" | at now + 1 minutes' % instance_type,
+                                "become": "yes",
                                 },
                                ]
                      },
@@ -991,7 +1113,7 @@ class S3SetupModel(S3Model):
         current.s3task.schedule_task(name,
                                      vars = task_vars,
                                      function_name = "setup_run_playbook",
-                                     repeats = 1,
+                                     repeats = None,
                                      timeout = 6000,
                                      #sync_output = 300
                                      )
@@ -1007,6 +1129,110 @@ class S3SetupModel(S3Model):
         redirect(URL(c="setup", f="deployment",
                      args = [deployment_id, "setting"]),
                      )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def setup_settings_apply(instance_id, settings):
+        """
+            Method to Apply Settings to an instance
+            via models/000_config.py
+        """
+
+        db = current.db
+        s3db = current.s3db
+        appname = current.request.application
+
+        itable = s3db.setup_instance
+        instance = db(itable.id == instance_id).select(itable.id,
+                                                       itable.deployment_id,
+                                                       itable.type,
+                                                       limitby = (0, 1)
+                                                       ).first()
+        deployment_id = instance.deployment_id
+        instance_type = INSTANCE_TYPES[instance.type]
+
+        # Lookup Server Details
+        # @ToDo: Support multiple Eden servers used as Load-balancers
+        svtable = s3db.setup_server
+        query = (svtable.deployment_id == deployment_id) & \
+                (svtable.role.belongs((1, 4)))
+        server = db(query).select(svtable.host_ip,
+                                  svtable.remote_user,
+                                  svtable.private_key,
+                                  limitby = (0, 1)
+                                  ).first()
+        host = server.host_ip
+        remote_user = server.remote_user
+        private_key = server.private_key
+
+        # Build Playbook data structure:
+        tasks = []
+        tappend = tasks.append
+        for setting in settings:
+            the_setting = setting.replace("_", ".", 1)
+            new_value = settings[setting]
+            if new_value == "True" or new_value == "False":
+                new_line = "settings.%s = %s" % (the_setting, new_value)
+            else:
+                # @ToDo: Handle lists/dicts (load into JSONS3?)
+                new_line = 'settings.%s = "%s"' % (the_setting, new_value)
+            tappend({"name": "Edit 000_config.py",
+                     "lineinfile": {"dest": "/home/%s/applications/%s/models/000_config.py" % (instance_type, appname),
+                                    "regexp": "^settings.%s =" % the_setting,
+                                    "line": new_line,
+                                    "state": "present",
+                                    },
+                     })
+
+        # @ToDo: Handle case where need to restart multiple webservers
+        tappend({"name": "Compile & Restart WebServer",
+                 #"command": "sudo -H -u web2py python web2py.py -S %(appname)s -M -R applications/%(appname)s/static/scripts/tools/compile.py" % {"appname": appname},
+                 #"args": {"chdir": "/home/%s" % instance_type,
+                 #         },
+                 # We don't want to restart the UWSGI process running the Task until after the Task has completed
+                 "command": 'echo "/usr/local/bin/compile %s" | at now + 1 minutes' % instance_type,
+                 "become": "yes",
+                 })
+
+        playbook = [{"hosts": host,
+                     "connection": "local", # @ToDo: Don't assume this
+                     "remote_user": remote_user,
+                     "become_method": "sudo",
+                     "become_user": "root",
+                     "tasks": tasks,
+                     },
+                    ]
+
+        # Write Playbook
+        name = "apply_%d" % int(time.time())
+        task_vars = setup_write_playbook("%s.yml" % name,
+                                         playbook,
+                                         [host],
+                                         tags = None,
+                                         private_key = private_key,
+                                         )
+
+        # Run the Playbook
+        current.s3task.schedule_task(name,
+                                     vars = task_vars,
+                                     function_name = "setup_run_playbook",
+                                     repeats = None,
+                                     timeout = 6000,
+                                     #sync_output = 300
+                                     )
+
+        # Update the DB to show that the settings have been applied
+        # @ToDo: Do this as a callback from the async task
+        instance.update_record(configured = True)
+        stable = s3db.setup_setting
+        q = (stable.instance_id == instance_id)
+        for setting in settings:
+            the_setting = setting.replace("_", ".", 1)
+            new_value = settings[setting]
+            db(q & (stable.setting == the_setting)).update(current_value = new_value,
+                                                           new_value = None)
+
+        return True
 
 # =============================================================================
 class S3SetupMonitorModel(S3Model):
@@ -1366,7 +1592,7 @@ class S3SetupMonitorModel(S3Model):
 
             CLI API for shell scripts & to be called by S3Method
         """
-    
+
         db = current.db
         table = current.s3db.setup_monitor_task
 
@@ -1482,7 +1708,7 @@ class S3SetupMonitorModel(S3Model):
         """
 
         task_id = r.id
-        current.s3task.async("setup_monitor_task_run", args=[task_id])
+        current.s3task.run_async("setup_monitor_task_run", args=[task_id])
         current.session.confirmation = \
             current.T("The check request has been submitted, so results should appear shortly - refresh to see them")
 
@@ -1622,8 +1848,9 @@ def setup_monitor_server_check(r, **attr):
             (table.enabled == True) & \
             (table.deleted == False)
     tasks = current.db(query).select(table.id)
+    run_async = current.s3task.run_async
     for task in tasks:
-        current.s3task.async("setup_monitor_run_task", args=[task.id])
+        run_async("setup_monitor_run_task", args=[task.id])
     current.session.confirmation = \
         current.T("The check requests have been submitted, so results should appear shortly - refresh to see them")
 
@@ -1811,6 +2038,8 @@ def setup_run_playbook(playbook, hosts, tags=None, private_key=None):
 
     inventory = InventoryManager(loader=loader, sources=sources)
     variable_manager = VariableManager(loader=loader, inventory=inventory)
+
+    # Broken with Ansible 2.8
     # https://github.com/ansible/ansible/issues/21562
     tmp_path = os.path.join("/", "tmp")
     variable_manager.extra_vars = {"ansible_local_tmp": tmp_path,
@@ -1822,6 +2051,7 @@ def setup_run_playbook(playbook, hosts, tags=None, private_key=None):
                             inventory = inventory,
                             variable_manager = variable_manager,
                             loader = loader,
+                            # Not supported in Ansible 2.8
                             options = options,
                             passwords = {},
                             )
@@ -1996,7 +2226,7 @@ def setup_instance_method(instance_id, method="start"):
     current.s3task.schedule_task(name,
                                  vars = task_vars,
                                  function_name = "setup_run_playbook",
-                                 repeats = 1,
+                                 repeats = None,
                                  timeout = 6000,
                                  #sync_output = 300
                                  )
@@ -2091,7 +2321,15 @@ def setup_rheader(r, tabs=None):
 
             rheader_tabs = s3_rheader_tabs(r, tabs)
 
-            rheader = DIV(rheader_tabs)
+            button = A(T("Configuration Wizard"),
+                       _class="action-btn",
+                       _href=URL(c="setup", f="deployment",
+                                 args=[r.id, "wizard"],
+                                 ),
+                       )
+
+            rheader = DIV(button,
+                          rheader_tabs)
 
         if r_name == "server":
             tabs = [(T("Server Details"), None),

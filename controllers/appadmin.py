@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
 
+#
+# S3 Auth
+#
+if not auth.s3_has_role("ADMIN"):
+    auth.permission.fail()
+
 # ##########################################################
 # ## make sure administrator is on localhost
 # ###########################################################
@@ -44,12 +50,6 @@ global_env['datetime'] = datetime
 #        (request.application != 'admin' and not gluon.fileutils.check_credentials(request)):
 #    redirect(URL('admin', 'default', 'index',
 #                 vars=dict(send=URL(args=request.args, vars=request.vars))))
-
-#
-# S3 Auth
-#
-if not s3_has_role(ADMIN):
-    auth.permission.fail()
 
 # Load all models
 s3db.load_all_models()
@@ -248,7 +248,7 @@ def select():
             else:
                 rows = db(query, ignore_common_filters=True).select(
                     limitby=(start, stop))
-        except Exception, e:
+        except Exception as e:
             import traceback
             tb = traceback.format_exc()
             (rows, nrows) = ([], 0)
@@ -267,7 +267,7 @@ def select():
             import_csv(db[request.vars.table],
                        request.vars.csvfile.file)
             response.flash = T('data uploaded')
-        except Exception, e:
+        except Exception as e:
             response.flash = DIV(T('unable to parse csv file'), PRE(str(e)))
     # end handle upload csv
 
@@ -543,7 +543,7 @@ def bg_graph_model():
             meta_graphmodel = dict(group='Undefined', color='#ECECEC')
 
         group = meta_graphmodel['group'].replace(' ', '')
-        if not subgraphs.has_key(group):
+        if group not in subgraphs:
             subgraphs[group] = dict(meta=meta_graphmodel, tables=[])
             subgraphs[group]['tables'].append(tablename)
         else:
@@ -552,7 +552,7 @@ def bg_graph_model():
         graph.add_node(tablename, name=tablename, shape='plaintext',
                        label=table_template(tablename))
 
-    for n, key in enumerate(subgraphs.iterkeys()):
+    for n, key in enumerate(subgraphs.keys()):
         graph.subgraph(nbunch=subgraphs[key]['tables'],
                     name='cluster%d' % n,
                     style='filled',

@@ -2,7 +2,7 @@
 
 """ S3 Synchronization: Peer Repository Adapter
 
-    @copyright: 2012-2018 (c) Sahana Software Foundation
+    @copyright: 2012-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -27,12 +27,10 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-import sys
-import urllib, urllib2
-
 from gluon import *
 from gluon.storage import Storage
 
+from s3compat import HTTPError, urlencode, urllib2, urlopen, urlparse
 from ..s3sync import S3SyncBaseAdapter
 
 # =============================================================================
@@ -172,7 +170,6 @@ class S3SyncAdapter(S3SyncBaseAdapter):
 
                 # Host name of the peer,
                 # used by the import stylesheet
-                import urlparse
                 hostname = urlparse.urlsplit(repository.url).hostname
 
                 # Import the data
@@ -196,7 +193,7 @@ class S3SyncAdapter(S3SyncBaseAdapter):
                                                onconflict=onconflict_callback,
                                                site=hostname)
                     count = resource.import_count
-                except IOError, e:
+                except IOError as e:
                     result = log.FATAL
                     message = "%s" % e
                     output = xml.json_message(False, 400, message)
@@ -309,13 +306,19 @@ class S3SyncAdapter(S3SyncBaseAdapter):
             args["key"] = repository.site_key
 
         # Create the request
-        url = repository.url + "?" + urllib.urlencode(args)
+        url = repository.url + "?" + urlencode(args)
         req = urllib2.Request(url=url)
         handlers = []
 
         # Proxy handling
         proxy = repository.proxy or config.proxy or None
         if proxy:
+            # Figure out the protocol from the URL
+            url_split = url.split("://", 1)
+            if len(url_split) == 2:
+                protocol = url_split[0]
+            else:
+                protocol = "http"
             current.log.debug("using proxy=%s", proxy)
             proxy_handler = urllib2.ProxyHandler({protocol: proxy})
             handlers.append(proxy_handler)
@@ -331,10 +334,10 @@ class S3SyncAdapter(S3SyncBaseAdapter):
 
         try:
             if method == "POST":
-                f = urllib2.urlopen(req, data="")
+                f = urlopen(req, data="")
             else:
-                f = urllib2.urlopen(req)
-        except urllib2.HTTPError, e:
+                f = urlopen(req)
+        except HTTPError as e:
             message = "HTTP %s: %s" % (e.code, e.reason)
         else:
             # Parse the response

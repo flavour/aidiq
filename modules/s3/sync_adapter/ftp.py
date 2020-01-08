@@ -2,7 +2,7 @@
 
 """ S3 Synchronization: Peer Repository Adapter for FTP
 
-    @copyright: 2015-2018 (c) Sahana Software Foundation
+    @copyright: 2015-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -31,16 +31,11 @@ import sys
 
 from gluon import *
 
+from s3compat import StringIO
 from ..s3sync import S3SyncBaseAdapter
-
 from ..s3query import S3URLQuery, FS
 from ..s3rest import S3Request
 from ..s3export import S3Exporter
-
-try:
-    from cStringIO import StringIO    # Faster, where available
-except:
-    from StringIO import StringIO
 
 # =============================================================================
 class S3SyncAdapter(S3SyncBaseAdapter):

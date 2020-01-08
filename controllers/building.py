@@ -574,7 +574,7 @@ def nzseel1():
     table = db[tablename]
 
     # Pre-populate Inspector ID
-    table.person_id.default = s3_logged_in_person()
+    table.person_id.default = auth.s3_logged_in_person()
 
     # Subheadings in forms:
     s3db.configure(tablename,
@@ -649,7 +649,7 @@ def nzseel2():
     table = db[tablename]
 
     # Pre-populate Inspector ID
-    table.person_id.default = s3_logged_in_person()
+    table.person_id.default = auth.s3_logged_in_person()
 
     # Subheadings in forms:
     s3db.configure(tablename,
@@ -865,7 +865,7 @@ def adminLevel():
         path   = row.gis_location.path #report[1]
         damage = row.building_nzseel1.estimated_damage #report[2]
 
-        if temp.has_key(parent):
+        if parent in temp:
             temp[parent][7] += 1
         else:
             temp[parent] = [0, 0, 0, 0, 0, 0, 0, 1]

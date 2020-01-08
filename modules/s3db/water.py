@@ -2,7 +2,7 @@
 
 """ Sahana Eden Water Model
 
-    @copyright: 2011-2018 (c) Sahana Software Foundation
+    @copyright: 2011-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -133,8 +133,6 @@ class S3WaterModel(S3Model):
             msg_record_modified = T("Zone updated"),
             msg_record_deleted = T("Zone deleted"),
             msg_list_empty = T("No Zones currently registered"))
-
-        zone_represent = S3Represent(lookup=tablename)
 
         # -----------------------------------------------------------------------------
         # Rivers

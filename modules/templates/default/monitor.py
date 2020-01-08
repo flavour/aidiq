@@ -5,7 +5,7 @@
 
     Template-specific Monitoring Tasks are defined here.
 
-    @copyright: 2014-2018 (c) Sahana Software Foundation
+    @copyright: 2014-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -67,7 +67,7 @@ class S3Monitor(object):
 
         try:
             output = subprocess.check_output("ping -{} 1 {}".format("n" if platform.system().lower == "windows" else "c", host_ip), shell=True)
-        except Exception, e:
+        except Exception as e:
             # Critical: Ping failed
             return 3
         else:

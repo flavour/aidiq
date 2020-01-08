@@ -2,7 +2,7 @@
 
 """ Sahana Eden GIS Model
 
-    @copyright: 2009-2018 (c) Sahana Software Foundation
+    @copyright: 2009-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -57,6 +57,7 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
+from s3compat import BytesIO, basestring
 from s3layouts import S3PopupLink
 
 # Compact JSON encoding
@@ -125,7 +126,7 @@ class S3LocationModel(S3Model):
         else:
             meta_spatial_fields = (s3_meta_fields())
 
-        gis_location_represent = gis_LocationRepresent(show_link=True)
+        gis_location_represent = gis_LocationRepresent(show_link = True)
 
         tablename = "gis_location"
         self.define_table(tablename,
@@ -452,24 +453,24 @@ class S3LocationModel(S3Model):
         """
 
         auth = current.auth
-        form_vars = form.vars
-        location_id = form_vars.id
+        form_vars_get = form.vars.get
+        location_id = form_vars_get("id")
 
-        if form_vars.path and current.response.s3.bulk:
+        if form_vars_get("path") and current.response.s3.bulk:
             # Don't import path from foreign sources as IDs won't match
             db = current.db
-            db(db.gis_location.id == location_id).update(path=None)
+            db(db.gis_location.id == location_id).update(path = None)
 
         if not auth.override and \
            not auth.rollback:
             # Update the Path (async if-possible)
             # (skip during prepop)
             feature = json.dumps({"id": location_id,
-                                  "level": form_vars.get("level", False),
+                                  "level": form_vars_get("level", False),
                                   })
-            current.s3task.async("gis_update_location_tree",
-                                 args = [feature],
-                                 )
+            current.s3task.run_async("gis_update_location_tree",
+                                     args = [feature],
+                                     )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -514,7 +515,7 @@ class S3LocationModel(S3Model):
                         Lx_ids = [parent]
                 else:
                     Lx_ids = None
-                results = gis.geocode(addr_street, postcode, Lx_ids, geocoder)
+                results = gis.geocode(addr_street, postcode, Lx_ids)
                 if isinstance(results, basestring):
                     # Error
                     if settings.get_gis_ignore_geocode_errors():
@@ -622,19 +623,19 @@ class S3LocationModel(S3Model):
                                         gis.get_parent_bounds(parent=parent)
                         if (lat > lat_max) or (lat < lat_min):
                             lat_error = T("Latitude %(lat)s is invalid, should be between %(lat_min)s & %(lat_max)s") % \
-                                dict(lat=lat, lat_min=lat_min, lat_max=lat_max)
+                                {"lat": lat, "lat_min": lat_min, "lat_max": lat_max}
                             form.errors["lat"] = lat_error
                         if (lon > lon_max) or (lon < lon_min):
                             lon_error = T("Longitude %(lon)s is invalid, should be between %(lon_min)s & %(lon_max)s") % \
-                                dict(lon=lon, lon_min=lon_min, lon_max=lon_max)
+                                {"lon": lon, "lon_min": lon_min, "lon_max": lon_max}
                             form.errors["lon"] = lon_error
                         if form.errors:
                             if name:
                                 error = T("Sorry location %(location)s appears to be outside the area of parent %(parent)s.") % \
-                                    dict(location=name, parent=parent_name)
+                                    {"location": name, "parent": parent_name}
                             else:
                                 error = T("Sorry location appears to be outside the area of parent %(parent)s.") % \
-                                    dict(parent=parent_name)
+                                    {"parent": parent_name}
                             response.error = error
                             current.log.error(error)
                             return
@@ -664,26 +665,26 @@ class S3LocationModel(S3Model):
                         if (lat > lat_max) or (lat < lat_min):
                             if name:
                                 error = T("Sorry location %(location)s appears to be outside the area supported by this deployment.") % \
-                                    dict(location=name)
+                                    {"location": name}
                             else:
                                 error = T("Sorry location appears to be outside the area supported by this deployment.")
                             response.error = error
                             current.log.error(error)
                             lat_error =  T("Latitude %(lat)s is invalid, should be between %(lat_min)s & %(lat_max)s") % \
-                                dict(lat=lat, lat_min=lat_min, lat_max=lat_max)
+                                {"lat": lat, "lat_min": lat_min, "lat_max": lat_max}
                             form.errors["lat"] = lat_error
                             current.log.error(lat_error)
                             return
                         elif (lon > lon_max) or (lon < lon_min):
                             if name:
                                 error = T("Sorry location %(location)s appears to be outside the area supported by this deployment.") % \
-                                    dict(location=name)
+                                    {"location": name}
                             else:
                                 error = T("Sorry location appears to be outside the area supported by this deployment.")
                             response.error = error
                             current.log.error(error)
                             lon_error = T("Longitude %(lon)s is invalid, should be between %(lon_min)s & %(lon_max)s") % \
-                                dict(lon=lon, lon_min=lon_min, lon_max=lon_max)
+                                {"lon": lon, "lon_min": lon_min, "lon_max": lon_max}
                             form.errors["lon"] = lon_error
                             current.log.error(lon_error)
                             return
@@ -1066,8 +1067,8 @@ class S3LocationModel(S3Model):
         if (not limit or limit > MAX_SEARCH_RESULTS) and \
            resource.count() > MAX_SEARCH_RESULTS:
             output = json.dumps([
-                dict(label=str(current.T("There are more than %(max)s results, please input more characters.") % \
-                    dict(max=MAX_SEARCH_RESULTS)))
+                {"label": s3_str(current.T("There are more than %(max)s results, please input more characters.") % \
+                    {"max": MAX_SEARCH_RESULTS})}
                 ], separators=SEPARATORS)
 
         elif loc_select:
@@ -1738,7 +1739,7 @@ class S3GISConfigModel(S3Model):
         # =====================================================================
         # GIS Projections
         tablename = "gis_projection"
-        proj4js = T("%(proj4js)s definition") % dict(proj4js="Proj4js")
+        proj4js = T("%(proj4js)s definition") % {"proj4js": "Proj4js"}
         define_table(tablename,
                      Field("name", length=64, notnull=True, unique=True,
                            label = T("Name"),
@@ -1764,9 +1765,9 @@ class S3GISConfigModel(S3Model):
                            label = proj4js,
                            comment = DIV(_class="stickytip",
                                          _title="%s|%s" % (proj4js,
-                                                           T("String used to configure Proj4js. Can be found from %(url)s") % dict(url=A("http://spatialreference.org",
-                                                                                                                                            _href="http://spatialreference.org",
-                                                                                                                                            _target="_blank")))),
+                                                           T("String used to configure Proj4js. Can be found from %(url)s") % {"url": A("http://spatialreference.org",
+                                                                                                                                        _href="http://spatialreference.org",
+                                                                                                                                        _target="_blank")})),
                            ),
                      Field("units", notnull=True,
                            label = T("Units"),
@@ -2075,7 +2076,8 @@ class S3GISConfigModel(S3Model):
         field.label = T("Person or OU")
         field.readable = field.writable = True
         field.represent = current.s3db.pr_PersonEntityRepresent(show_label=False)
-        field.widget = S3AutocompleteWidget("pr", "pentity")
+        field.widget = S3PentityAutocompleteWidget(
+            types=("pr_person", "pr_group", "org_organisation"))
         label = T("Default?")
         table.pe_default.label = label
         table.pe_default.comment = DIV(
@@ -2353,8 +2355,7 @@ class S3GISConfigModel(S3Model):
             filename = metadata.split(";")[0]
             f = Storage()
             f.filename = uuid.uuid4().hex + filename
-            import cStringIO
-            f.file = cStringIO.StringIO(base64.decodestring(encoded_file))
+            f.file = BytesIO(base64.b64decode(encoded_file))
             form_vars.image = image = f
 
         elif isinstance(image, str):
@@ -2808,7 +2809,7 @@ class S3LayerEntityModel(S3Model):
             return
 
         fill = rgb2hex(int(parts[0]), int(parts[1]), int(parts[2]))
-        style = dict(fill = fill)
+        style = {"fill": fill}
         if len(parts) == 4:
             opacity = float(parts[3])
             style["fillOpacity"] = opacity
@@ -4825,7 +4826,7 @@ class S3PoIModel(S3Model):
                                  attr_fields = ["name", "poi_type_id"],
                                  name = "PoIs",
                                  )
-            record = dict(id=f_id)
+            record = {"id": f_id}
             s3db.update_super(ltable, record)
             layer_id = record["layer_id"]
 
@@ -4857,10 +4858,10 @@ class S3PoIModel(S3Model):
 
         elif len(styles) == 0:
             # Create It
-            data = dict(layer_id = layer_id,
-                        popup_format = "{name} ({poi_type_id})",
-                        style = style,
-                        )
+            data = {"layer_id": layer_id,
+                    "popup_format": "{name} ({poi_type_id})",
+                    "style": style,
+                    }
             if none_excluded:
                 data["config_id"] = config_id
             stable.insert(**data)
@@ -5122,6 +5123,8 @@ class gis_LocationRepresent(S3Represent):
                  address_only = False,
                  sep = None,
                  show_name = False, # Show name in location for level==None when sep is used
+                 controller = None, # Override default controller for s3_viewMap() lookup of Popup
+                 func = None,       # Override default function for s3_viewMap() lookup of Popup
                  ):
 
         settings = current.deployment_settings
@@ -5141,16 +5144,17 @@ class gis_LocationRepresent(S3Represent):
         if sep:
             self.multi_country = len(settings.get_gis_countries()) != 1
         self.show_name = show_name
+        self.controller = controller
+        self.func = func
 
         super(gis_LocationRepresent,
-              self).__init__(lookup="gis_location",
-                             show_link=show_link,
-                             translate=translate,
-                             multiple=multiple)
+              self).__init__(lookup = "gis_location",
+                             show_link = show_link,
+                             translate = translate,
+                             multiple = multiple)
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def link(k, v, row=None):
+    def link(self, k, v, row=None):
         """
             Represent a (key, value) as hypertext link.
 
@@ -5158,16 +5162,27 @@ class gis_LocationRepresent(S3Represent):
             @param v: the representation of the key
             @param row: the row with this key (unused here)
         """
+
         if k is None:
             return "-"
+
         settings = current.deployment_settings
         iheight = settings.get_gis_map_selector_height()
         popup = settings.get_gis_popup_location_link()
+        if self.controller:
+            opts = ",'%s'" % self.controller
+            func = self.func
+            if func:
+                opts = "%s,'%s'" % (opts, self.func)
+        else:
+            opts = ''
         return A(v,
                  _style="cursor:pointer;cursor:hand",
-                 _onclick="s3_viewMap(%i,%i,'%s');return false" % (k,
-                                                                   iheight,
-                                                                   popup),
+                 _onclick="s3_viewMap(%i,%i,'%s'%s);return false" % (k,
+                                                                     iheight,
+                                                                     popup,
+                                                                     opts
+                                                                     ),
                  )
 
     # -------------------------------------------------------------------------

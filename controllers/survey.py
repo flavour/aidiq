@@ -16,10 +16,7 @@ resourcename = request.function
 if not settings.has_module(module):
     raise HTTP(404, body="Module disabled: %s" % module)
 
-try:
-    from cStringIO import StringIO    # Faster, where available
-except:
-    from StringIO import StringIO
+from s3compat import StringIO
 
 from gluon.contenttype import contenttype
 import gluon.contrib.pyrtf as pyrtf
@@ -259,7 +256,7 @@ def series():
             return output["item"]
         if not r.component and method != "summary":
             # Replace the Action buttons
-            s3.actions = [{"label": s3base.s3_str(messages.UPDATE),
+            s3.actions = [{"label": s3_str(messages.UPDATE),
                            "_class": "action-btn edit",
                            "url": URL(c="survey",
                                       f="series",

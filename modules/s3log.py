@@ -2,7 +2,7 @@
 
 """ S3 Logging Facility
 
-    @copyright: (c) 2015-2018 Sahana Software Foundation
+    @copyright: (c) 2015-2019 Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -301,10 +301,7 @@ class S3LogRecorder(object):
             return
         strbuf = self.strbuf
         if strbuf is None:
-            try:
-                from cStringIO import StringIO
-            except:
-                from StringIO import StringIO
+            from s3compat import StringIO
             strbuf = StringIO()
         handler = logging.StreamHandler(strbuf)
 

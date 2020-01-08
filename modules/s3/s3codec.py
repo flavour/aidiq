@@ -2,7 +2,7 @@
 
 """ S3 Encoder/Decoder Base Class
 
-    @copyright: 2011-2018 (c) Sahana Software Foundation
+    @copyright: 2011-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -35,7 +35,7 @@ from xml.sax.saxutils import escape, unescape
 
 from gluon import current
 
-from s3utils import s3_str
+from .s3utils import s3_str
 
 # =============================================================================
 class S3Codec(object):
@@ -170,12 +170,11 @@ class S3Codec(object):
         """
 
         if statuscode is None:
-            statuscode = success and 200 or 404
+            statuscode = 200 if success else 404
 
-        status = success and "success" or "failed"
-        code = str(statuscode)
-
-        output = {"status": status, "statuscode": str(code)}
+        output = {"status": "success" if success else "failed",
+                  "statuscode": str(statuscode),
+                  }
 
         tree = kwargs.get("tree", None)
         if message:

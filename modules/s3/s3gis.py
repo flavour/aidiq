@@ -5,7 +5,7 @@
     @requires: U{B{I{gluon}} <http://web2py.com>}
     @requires: U{B{I{shapely}} <http://trac.gispython.org/lab/wiki/Shapely>}
 
-    @copyright: (c) 2010-2018 Sahana Software Foundation
+    @copyright: (c) 2010-2019 Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -27,9 +27,12 @@
     WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
     OTHER DEALINGS IN THE SOFTWARE.
+
+    @status: partially fixed for Py3, needs more work
 """
 
 __all__ = ("GIS",
+           "MAP2",
            "S3Map",
            "S3ExportPOI",
            "S3ImportPOI",
@@ -41,14 +44,8 @@ import os
 import re
 import sys
 #import logging
-import urllib           # Needed for urlencoding
-import urllib2          # Needed for quoting & error handling on fetch
 
 from collections import OrderedDict
-try:
-    from cStringIO import StringIO    # Faster, where available
-except:
-    from StringIO import StringIO
 
 try:
     from lxml import etree # Needed to follow NetworkLinks
@@ -68,12 +65,13 @@ from gluon.languages import lazyT, regex_translate
 from gluon.settings import global_settings
 from gluon.storage import Storage
 
+from s3compat import Cookie, HTTPError, StringIO, URLError, basestring, urllib_quote
 from s3dal import Rows
-from s3datetime import s3_format_datetime, s3_parse_datetime
-from s3fields import s3_all_meta_field_names
-from s3rest import S3Method
-from s3track import S3Trackable
-from s3utils import s3_include_ext, s3_include_underscore, s3_str
+from .s3datetime import s3_format_datetime, s3_parse_datetime
+from .s3fields import s3_all_meta_field_names
+from .s3rest import S3Method
+from .s3track import S3Trackable
+from .s3utils import s3_include_ext, s3_include_underscore, s3_str
 
 # Map WKT types to db types
 GEOM_TYPES = {"point": 1,
@@ -252,7 +250,7 @@ class GIS(object):
 
         self.relevant_hierarchy_levels = None
 
-        self.google_geocode_retry = True
+        #self.google_geocode_retry = True
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -269,7 +267,7 @@ class GIS(object):
             Save the file to the /uploads folder
 
             Designed to be called asynchronously using:
-                current.s3task.async("download_kml", [record_id, filename])
+                current.s3task.run_async("download_kml", [record_id, filename])
 
             @param record_id: id of the record in db.gis_layer_kml
             @param filename: name to save the file as
@@ -365,27 +363,26 @@ class GIS(object):
             local = True
         if local:
             # Keep Session for local URLs
-            import Cookie
             cookie = Cookie.SimpleCookie()
             cookie[session_id_name] = session_id
             # For sync connections
             current.session._unlock(response)
             try:
                 file = fetch(url, cookie=cookie)
-            except urllib2.URLError:
-                warning = "URLError"
-                return warning
-            except urllib2.HTTPError:
+            except HTTPError:
                 warning = "HTTPError"
+                return warning
+            except URLError:
+                warning = "URLError"
                 return warning
         else:
             try:
                 file = fetch(url)
-            except urllib2.URLError:
-                warning = "URLError"
-                return warning
-            except urllib2.HTTPError:
+            except HTTPError:
                 warning = "HTTPError"
+                return warning
+            except URLError:
+                warning = "URLError"
                 return warning
 
         filenames = []
@@ -484,7 +481,7 @@ class GIS(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def geocode(address, postcode=None, Lx_ids=None, geocoder="google"):
+    def geocode(address, postcode=None, Lx_ids=None, geocoder=None):
         """
             Geocode an Address
             - used by S3LocationSelector
@@ -496,34 +493,45 @@ class GIS(object):
             @param geocoder: which geocoder service to use
         """
 
-        from geopy import geocoders
+        try:
+            from geopy import geocoders
+        except ImportError:
+            current.log.error("S3GIS unresolved dependency: geopy required for Geocoder support")
+            return "S3GIS unresolved dependency: geopy required for Geocoder support"
 
-        if geocoder == "google" or geocoder is True:
-            g = geocoders.GoogleV3()
-            if current.gis.google_geocode_retry:
-                # Retry when reaching maximum requests per second
-                import time
-                from geopy.geocoders.googlev3 import GTooManyQueriesError
-                def geocode_(names, g=g, **kwargs):
-                    attempts = 0
-                    while attempts < 3:
-                        try:
-                            result = g.geocode(names, **kwargs)
-                        except GTooManyQueriesError:
-                            if attempts == 2:
-                                # Daily limit reached
-                                current.gis.google_geocode_retry = False
-                                raise
-                            time.sleep(1)
-                        else:
-                            break
-                        attempts += 1
-                    return result
-            else:
-                geocode_ = lambda names, g=g, **kwargs: g.geocode(names, **kwargs)
-        elif geocoder == "yahoo":
-            apikey = current.deployment_settings.get_gis_api_yahoo()
-            g = geocoders.Yahoo(apikey)
+        settings = current.deployment_settings
+        if geocoder is None:
+            geocoder = settings.get_gis_geocode_service()
+
+        if geocoder == "nominatim":
+            g = geocoders.Nominatim(user_agent = "Sahana Eden")
+            geocode_ = lambda names, g=g, **kwargs: g.geocode(names, **kwargs)
+        elif geocoder == "google":
+            api_key = settings.get_gis_api_google()
+            if not api_key:
+                current.log.error("Geocoder: No API Key")
+                return "No API Key"
+            g = geocoders.GoogleV3(api_key = api_key)
+            #if current.gis.google_geocode_retry:
+            #    # Retry when reaching maximum requests per second
+            #    import time
+            #    from geopy.geocoders.googlev3 import GTooManyQueriesError
+            #    def geocode_(names, g=g, **kwargs):
+            #        attempts = 0
+            #        while attempts < 3:
+            #            try:
+            #                result = g.geocode(names, **kwargs)
+            #            except GTooManyQueriesError:
+            #                if attempts == 2:
+            #                    # Daily limit reached
+            #                    current.gis.google_geocode_retry = False
+            #                    raise
+            #                time.sleep(1)
+            #            else:
+            #                break
+            #            attempts += 1
+            #        return result
+            #else:
             geocode_ = lambda names, g=g, **kwargs: g.geocode(names, **kwargs)
         else:
             # @ToDo
@@ -582,7 +590,16 @@ class GIS(object):
 
         try:
             results = geocode_(location, exactly_one=False)
-            if len(results) == 1:
+        except:
+            error = sys.exc_info()[1]
+            output = str(error)
+        else:
+            if results is None:
+                output = "No results found"
+            elif len(results) > 1:
+                output = "Multiple results found"
+                # @ToDo: Iterate through the results to see if just 1 is within the right bounds
+            else:
                 place, (lat, lon) = results[0]
                 if Lx:
                     output = None
@@ -671,18 +688,14 @@ class GIS(object):
                             # We'll just have to trust it!
                             ok = True
                         if ok:
-                            output = dict(lat=lat, lon=lon)
+                            output = {"lat": lat,
+                                      "lon": lon,
+                                      }
                 else:
                     # We'll just have to trust it!
-                    output = dict(lat=lat, lon=lon)
-            elif len(results):
-                output = "Multiple results found"
-                # @ToDo: Iterate through the results to see if just 1 is within the right bounds
-            else:
-                output = "No results found"
-        except:
-            error = sys.exc_info()[1]
-            output = str(error)
+                    output = {"lat": lat,
+                              "lon": lon,
+                              }
 
         return output
 
@@ -776,7 +789,6 @@ class GIS(object):
     # -------------------------------------------------------------------------
     def get_bounds(self,
                    features = None,
-                   parent = None,
                    bbox_min_size = None,
                    bbox_inset = None):
         """
@@ -884,8 +896,11 @@ class GIS(object):
             else:
                 lon_max = 180
 
-        return dict(lon_min=lon_min, lat_min=lat_min,
-                    lon_max=lon_max, lat_max=lat_max)
+        return {"lon_min": lon_min,
+                "lat_min": lat_min,
+                "lon_max": lon_max,
+                "lat_max": lat_max,
+                }
 
     # -------------------------------------------------------------------------
     def get_parent_bounds(self, parent=None):
@@ -942,10 +957,11 @@ class GIS(object):
                 path = parent.path
             else:
                 # This will return None during prepopulate.
-                path = GIS.update_location_tree(dict(id=parent.id,
-                                                     level=parent.level))
+                path = GIS.update_location_tree({"id": parent.id,
+                                                 "level": parent.level,
+                                                 })
             if path:
-                path_list = map(int, path.split("/"))
+                path_list = [int(item) for item in path.split("/")]
                 rows = db(table.id.belongs(path_list)).select(table.level,
                                                               table.name,
                                                               table.lat,
@@ -1073,7 +1089,7 @@ class GIS(object):
                 path = GIS.update_location_tree(feature)
 
             if path:
-                path_list = map(int, path.split("/"))
+                path_list = [int(item) for item in path.split("/")]
                 if len(path_list) == 1:
                     # No parents - path contains only this feature.
                     return None
@@ -1166,7 +1182,7 @@ class GIS(object):
                 # know the levels of the parents from their position in path.
                 # Note ids returned from db are ints, not strings, so be
                 # consistent with that.
-                path_ids = map(int, path.split("/"))
+                path_ids = [int(item) for item in path.split("/")]
                 # This skips the last path element, which is the supplied
                 # location.
                 for (i, _id) in enumerate(path_ids[:-1]):
@@ -1192,7 +1208,7 @@ class GIS(object):
                 # (both for address onvalidation & new LocationSelector)
                 hierarchy_level_keys = self.hierarchy_level_keys
                 for key in hierarchy_level_keys:
-                    if not results.has_key(key):
+                    if key not in results:
                         results[key] = None
 
         return results
@@ -1656,7 +1672,7 @@ class GIS(object):
         if level:
             try:
                 return all_levels[level]
-            except Exception, e:
+            except Exception:
                 return level
         else:
             return all_levels
@@ -1677,7 +1693,7 @@ class GIS(object):
             self.relevant_hierarchy_levels = levels
 
         if not as_dict:
-            return levels.keys()
+            return list(levels.keys())
         else:
             return levels
 
@@ -2050,10 +2066,11 @@ class GIS(object):
         maxLat = degrees(maxLat)
         maxLon = degrees(maxLon)
 
-        return dict(lat_min = minLat,
-                    lat_max = maxLat,
-                    lon_min = minLon,
-                    lon_max = maxLon)
+        return {"lat_min": minLat,
+                "lat_max": maxLat,
+                "lon_min": minLon,
+                "lon_max": maxLon,
+                }
 
     # -------------------------------------------------------------------------
     def get_features_in_radius(self, lat, lon, radius, tablename=None, category=None):
@@ -2231,7 +2248,9 @@ class GIS(object):
         # Zero is an allowed value, hence explicit test for None.
         if "lon" in feature and "lat" in feature and \
            (feature.lat is not None) and (feature.lon is not None):
-            return dict(lon=feature.lon, lat=feature.lat)
+            return {"lon": feature.lon,
+                    "lat": feature.lat,
+                    }
 
         else:
             # Step through ancestors to first with lon, lat.
@@ -2241,7 +2260,9 @@ class GIS(object):
                     lon = row.get("lon", None)
                     lat = row.get("lat", None)
                     if (lon is not None) and (lat is not None):
-                        return dict(lon=lon, lat=lat)
+                        return {"lon": lon,
+                                "lat": lat,
+                                }
 
         # Invalid feature_id
         return None
@@ -2761,13 +2782,13 @@ class GIS(object):
         #           )
 
         # Used by S3XML's gis_encode()
-        return dict(geojsons = geojsons,
-                    latlons = _latlons,
-                    #wkts = wkts,
-                    attributes = attributes,
-                    markers = markers,
-                    styles = styles,
-                    )
+        return {"geojsons": geojsons,
+                "latlons": _latlons,
+                #"wkts": wkts,
+                "attributes": attributes,
+                "markers": markers,
+                "styles": styles,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2825,11 +2846,11 @@ class GIS(object):
             if layer:
                 _marker = layer["gis_marker"]
                 if _marker.image:
-                    marker = dict(image=_marker.image,
-                                  height=_marker.height,
-                                  width=_marker.width,
-                                  gps_marker=layer["gis_style"].gps_marker
-                                  )
+                    marker = {"image": _marker.image,
+                              "height": _marker.height,
+                              "width": _marker.width,
+                              "gps_marker": layer["gis_style"].gps_marker,
+                              }
 
         if not marker:
             # Default
@@ -2886,7 +2907,7 @@ class GIS(object):
         if not os.path.exists(cachepath):
             try:
                 os.mkdir(cachepath)
-            except OSError, os_error:
+            except OSError as os_error:
                 error = "GIS: JPEG files cannot be saved: %s %s" % \
                                   (cachepath, os_error)
                 current.log.error(error)
@@ -2944,14 +2965,14 @@ class GIS(object):
             test = '''return S3.gis.maps['%s'].s3.loaded''' % map_id
             try:
                 result = driver.execute_script(test)
-            except WebDriverException, e:
+            except WebDriverException:
                 result = False
             return result
 
         try:
             # Wait for up to 100s (large screenshots take a long time for layers to load)
             WebDriverWait(driver, 100).until(map_loaded)
-        except TimeoutException, e:
+        except TimeoutException as e:
             driver.quit()
             current.log.error("Timeout: %s" % e)
             return None
@@ -2983,13 +3004,13 @@ page.clipRect = {top: 10,
                  height: %(height)s
                  };
 page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
-                    dict(width = width,
-                         height = height,
-                         filename = filename,
-                         )
+                    {"width": width,
+                     "height": height,
+                     "filename": filename,
+                     }
         try:
             result = driver.execute_phantomjs(script)
-        except WebDriverException, e:
+        except WebDriverException as e:
             driver.quit()
             current.log.error("WebDriver crashed: %s" % e)
             return None
@@ -3079,8 +3100,9 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         _geojsons[tablename] = geojsons
 
         # return 'locations'
-        return dict(attributes = _attributes,
-                    geojsons = _geojsons)
+        return {"attributes": _attributes,
+                "geojsons": _geojsons,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -3135,7 +3157,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         _geojsons[tablename] = geojsons
 
         # Return 'locations'
-        return dict(geojsons = _geojsons)
+        return {"geojsons": _geojsons,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -3342,16 +3365,16 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     # Compact Encoding
                     geojson = dumps(shape, separators=SEPARATORS)
                 if geojson:
-                    f = dict(type = "Feature",
-                             properties = {"id": id},
-                             geometry = json.loads(geojson)
-                             )
+                    f = {"type": "Feature",
+                         "properties": {"id": id},
+                         "geometry": json.loads(geojson),
+                         }
                     append(f)
 
             if features:
-                data = dict(type = "FeatureCollection",
-                            features = features
-                            )
+                data = {"type": "FeatureCollection",
+                        "features": features,
+                        }
                 # Output to file
                 filename = os.path.join(folder, "countries.geojson")
                 File = open(filename, "w")
@@ -3411,16 +3434,16 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                         # Compact Encoding
                         geojson = dumps(shape, separators=SEPARATORS)
                     if geojson:
-                        f = dict(type = "Feature",
-                                 properties = {"id": id},
-                                 geometry = json.loads(geojson)
-                                 )
+                        f = {"type": "Feature",
+                             "properties": {"id": id},
+                             "geometry": json.loads(geojson)
+                             }
                         append(f)
 
                 if features:
-                    data = dict(type = "FeatureCollection",
-                                features = features
-                                )
+                    data = {"type": "FeatureCollection",
+                            "features": features
+                            }
                     # Output to file
                     filename = os.path.join(folder, "1_%s.geojson" % _id)
                     File = open(filename, "w")
@@ -3472,16 +3495,16 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                             # Compact Encoding
                             geojson = dumps(shape, separators=SEPARATORS)
                         if geojson:
-                            f = dict(type = "Feature",
-                                     properties = {"id": id},
-                                     geometry = json.loads(geojson)
-                                     )
+                            f = {"type": "Feature",
+                                 "properties": {"id": id},
+                                 "geometry": json.loads(geojson),
+                                 }
                             append(f)
 
                     if features:
-                        data = dict(type = "FeatureCollection",
-                                    features = features
-                                    )
+                        data = {"type": "FeatureCollection",
+                                "features": features,
+                                }
                         # Output to file
                         filename = os.path.join(folder, "2_%s.geojson" % l1.id)
                         File = open(filename, "w")
@@ -3536,16 +3559,16 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                 # Compact Encoding
                                 geojson = dumps(shape, separators=SEPARATORS)
                             if geojson:
-                                f = dict(type = "Feature",
-                                         properties = {"id": id},
-                                         geometry = json.loads(geojson)
-                                         )
+                                f = {"type": "Feature",
+                                     "properties": {"id": id},
+                                     "geometry": json.loads(geojson),
+                                     }
                                 append(f)
 
                         if features:
-                            data = dict(type = "FeatureCollection",
-                                        features = features
-                                        )
+                            data = {"type": "FeatureCollection",
+                                    "features": features,
+                                    }
                             # Output to file
                             filename = os.path.join(folder, "3_%s.geojson" % l2.id)
                             File = open(filename, "w")
@@ -3603,16 +3626,16 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                     # Compact Encoding
                                     geojson = dumps(shape, separators=SEPARATORS)
                                 if geojson:
-                                    f = dict(type = "Feature",
-                                             properties = {"id": id},
-                                             geometry = json.loads(geojson)
-                                             )
+                                    f = {"type": "Feature",
+                                         "properties": {"id": id},
+                                         "geometry": json.loads(geojson),
+                                         }
                                     append(f)
 
                             if features:
-                                data = dict(type = "FeatureCollection",
-                                            features = features
-                                            )
+                                data = {"type": "FeatureCollection",
+                                        "features": features,
+                                        }
                                 # Output to file
                                 filename = os.path.join(folder, "4_%s.geojson" % l3.id)
                                 File = open(filename, "w")
@@ -3732,7 +3755,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             current.log.debug("Downloading %s" % url)
             try:
                 file = fetch(url)
-            except urllib2.URLError, exception:
+            except URLError as exception:
                 current.log.error(exception)
                 return
             fp = StringIO(file)
@@ -3809,8 +3832,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                         #ttable.insert(location_id = location_id,
                         #              tag = "area",
                         #              value = area)
-                    except db._adapter.driver.OperationalError, e:
-                        current.log.error(sys.exc_info[1])
+                    except db._adapter.driver.OperationalError:
+                        current.log.error(sys.exc_info()[1])
 
             else:
                 current.log.debug("No geometry\n")
@@ -3889,10 +3912,12 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         ENCODING = "cp1251"
 
         # from http://docs.python.org/library/csv.html#csv-examples
+        # TODO rewrite for Py3
         def latin_csv_reader(unicode_csv_data, dialect=csv.excel, **kwargs):
             for row in csv.reader(unicode_csv_data):
                 yield [unicode(cell, ENCODING) for cell in row]
 
+        # TODO rewrite for Py3
         def latin_dict_reader(data, dialect=csv.excel, **kwargs):
             reader = latin_csv_reader(data, dialect=dialect, **kwargs)
             headers = reader.next()
@@ -3936,7 +3961,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             current.log.debug("Downloading %s" % url)
             try:
                 file = fetch(url)
-            except urllib2.URLError, exception:
+            except URLError as exception:
                 current.log.error(exception)
                 # Revert back to the working directory as before.
                 os.chdir(cwd)
@@ -3977,7 +4002,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         # Copy all Fields
         #papszFieldTypesToString = []
         inputFieldCount = inputFDefn.GetFieldCount()
-        panMap = [-1 for i in range(inputFieldCount)]
+        panMap = [-1] * inputFieldCount
         outputFDefn = outputLayer.GetLayerDefn()
         nDstFieldCount = 0
         if outputFDefn is not None:
@@ -3989,7 +4014,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             oFieldDefn.SetWidth(inputFieldDefn.GetWidth())
             oFieldDefn.SetPrecision(inputFieldDefn.GetPrecision())
             # The field may have been already created at layer creation
-            iDstField = -1;
+            iDstField = -1
             if outputFDefn is not None:
                 iDstField = outputFDefn.GetFieldIndex(oFieldDefn.GetNameRef())
             if iDstField >= 0:
@@ -4270,7 +4295,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             current.log.debug("Downloading %s" % url)
             try:
                 file = fetch(url)
-            except urllib2.URLError, exception:
+            except URLError as exception:
                 current.log.error(exception)
                 return
             fp = StringIO(file)
@@ -4338,7 +4363,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                          wkt=wkt)
                                          #code2=code2,
                                          #area=area
-                    except db._adapter.driver.OperationalError, exception:
+                    except db._adapter.driver.OperationalError as exception:
                         current.log.error(exception)
 
             else:
@@ -4409,13 +4434,13 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             from gluon.tools import fetch
             try:
                 f = fetch(url)
-            except (urllib2.URLError,):
-                e = sys.exc_info()[1]
-                current.log.error("URL Error", e)
-                return
-            except (urllib2.HTTPError,):
+            except HTTPError:
                 e = sys.exc_info()[1]
                 current.log.error("HTTP Error", e)
+                return
+            except URLError:
+                e = sys.exc_info()[1]
+                current.log.error("URL Error", e)
                 return
 
             # Unzip File
@@ -4588,7 +4613,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
         if not wkt:
             if not lon is not None and lat is not None:
-                raise RuntimeError, "Need wkt or lon+lat to parse a location"
+                raise RuntimeError("Need wkt or lon+lat to parse a location")
             wkt = "POINT(%f %f)" % (lon, lat)
             geom_type = GEOM_TYPES["point"]
             bbox = (lon, lat, lon, lat)
@@ -4650,7 +4675,6 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             table = db.gis_location
         except:
             table = current.s3db.gis_location
-        spatial = current.deployment_settings.get_gis_spatialdb()
         update_location_tree = GIS.update_location_tree
         wkt_centroid = GIS.wkt_centroid
 
@@ -4764,10 +4788,12 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             # Nothing we can do
             raise ValueError
 
+        feature_get = feature.get
+
         # L0
-        level = feature.get("level", False)
-        name = feature.get("name", False)
-        path = feature.get("path", False)
+        level = feature_get("level", False)
+        name = feature_get("name", False)
+        path = feature_get("path", False)
         # If we're processing all locations, and this is a hierarchy location,
         # and has already been processed (as evidenced by having a path) do not
         # process it again. Locations with a gap in their ancestor levels will
@@ -4777,10 +4803,10 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         if all_locations and path and level:
             # This hierarchy location is already finalized.
             return path
-        lat = feature.get("lat", False)
-        lon = feature.get("lon", False)
-        wkt = feature.get("wkt", False)
-        L0 = feature.get("L0", False)
+        lat = feature_get("lat", False)
+        lon = feature_get("lon", False)
+        wkt = feature_get("wkt", False)
+        L0 = feature_get("L0", False)
         if level == "L0":
             if name is False or path is False or lat is False or lon is False or \
                wkt is False or L0 is False:
@@ -4807,18 +4833,18 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     lat = None
                 if lon is False:
                     lon = None
-                fix_vars = dict(inherited = False,
-                                path = path,
-                                lat = lat,
-                                lon = lon,
-                                wkt = wkt or None,
-                                L0 = name,
-                                L1 = None,
-                                L2 = None,
-                                L3 = None,
-                                L4 = None,
-                                L5 = None,
-                                )
+                fix_vars = {"inherited": False,
+                            "path": path,
+                            "lat": lat,
+                            "lon": lon,
+                            "wkt": wkt or None,
+                            "L0": name,
+                            "L1": None,
+                            "L2": None,
+                            "L3": None,
+                            "L4": None,
+                            "L5": None,
+                            }
                 feature.update(**fix_vars)
                 fixup(feature)
 
@@ -4832,9 +4858,9 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         fixup_required = False
 
         # L1
-        inherited = feature.get("inherited", None)
-        parent = feature.get("parent", False)
-        L1 = feature.get("L1", False)
+        inherited = feature_get("inherited", None)
+        parent = feature_get("parent", False)
+        L1 = feature_get("L1", False)
         if level == "L1":
             if inherited is None or name is False or parent is False or path is False or \
                lat is False or lon is False or wkt is False or \
@@ -4890,18 +4916,18 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     lat = None
                 if lon is False:
                     lon = None
-                fix_vars = dict(inherited = inherited,
-                                path = _path,
-                                lat = lat,
-                                lon = lon,
-                                wkt = wkt or None,
-                                L0 = L0_name,
-                                L1 = name,
-                                L2 = None,
-                                L3 = None,
-                                L4 = None,
-                                L5 = None,
-                                )
+                fix_vars = {"inherited": inherited,
+                            "path": _path,
+                            "lat": lat,
+                            "lon": lon,
+                            "wkt": wkt or None,
+                            "L0": L0_name,
+                            "L1": name,
+                            "L2": None,
+                            "L3": None,
+                            "L4": None,
+                            "L5": None,
+                            }
                 feature.update(**fix_vars)
                 fixup(feature)
 
@@ -4913,7 +4939,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
 
         # L2
-        L2 = feature.get("L2", False)
+        L2 = feature_get("L2", False)
         if level == "L2":
             if inherited is None or name is False or parent is False or path is False or \
                lat is False or lon is False or wkt is False or \
@@ -4994,18 +5020,18 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     lat = None
                 if lon is False:
                     lon = None
-                fix_vars = dict(inherited = inherited,
-                                path = _path,
-                                lat = lat,
-                                lon = lon,
-                                wkt = wkt or None,
-                                L0 = L0_name,
-                                L1 = L1_name,
-                                L2 = name,
-                                L3 = None,
-                                L4 = None,
-                                L5 = None,
-                                )
+                fix_vars = {"inherited": inherited,
+                            "path": _path,
+                            "lat": lat,
+                            "lon": lon,
+                            "wkt": wkt or None,
+                            "L0": L0_name,
+                            "L1": L1_name,
+                            "L2": name,
+                            "L3": None,
+                            "L4": None,
+                            "L5": None,
+                            }
                 feature.update(**fix_vars)
                 fixup(feature)
 
@@ -5017,7 +5043,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
 
         # L3
-        L3 = feature.get("L3", False)
+        L3 = feature_get("L3", False)
         if level == "L3":
             if inherited is None or name is False or parent is False or path is False or \
                lat is False or lon is False or wkt is False or \
@@ -5134,18 +5160,18 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     lat = None
                 if lon is False:
                     lon = None
-                fix_vars = dict(inherited = inherited,
-                                path = _path,
-                                lat = lat,
-                                lon = lon,
-                                wkt = wkt or None,
-                                L0 = L0_name,
-                                L1 = L1_name,
-                                L2 = L2_name,
-                                L3 = name,
-                                L4 = None,
-                                L5 = None,
-                                )
+                fix_vars = {"inherited": inherited,
+                            "path": _path,
+                            "lat": lat,
+                            "lon": lon,
+                            "wkt": wkt or None,
+                            "L0": L0_name,
+                            "L1": L1_name,
+                            "L2": L2_name,
+                            "L3": name,
+                            "L4": None,
+                            "L5": None,
+                            }
                 feature.update(**fix_vars)
                 fixup(feature)
 
@@ -5157,7 +5183,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
 
         # L4
-        L4 = feature.get("L4", False)
+        L4 = feature_get("L4", False)
         if level == "L4":
             if inherited is None or name is False or parent is False or path is False or \
                lat is False or lon is False or wkt is False or \
@@ -5305,18 +5331,18 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     lat = None
                 if lon is False:
                     lon = None
-                fix_vars = dict(inherited = inherited,
-                                path = _path,
-                                lat = lat,
-                                lon = lon,
-                                wkt = wkt or None,
-                                L0 = L0_name,
-                                L1 = L1_name,
-                                L2 = L2_name,
-                                L3 = L3_name,
-                                L4 = name,
-                                L5 = None,
-                                )
+                fix_vars = {"inherited": inherited,
+                            "path": _path,
+                            "lat": lat,
+                            "lon": lon,
+                            "wkt": wkt or None,
+                            "L0": L0_name,
+                            "L1": L1_name,
+                            "L2": L2_name,
+                            "L3": L3_name,
+                            "L4": name,
+                            "L5": None,
+                            }
                 feature.update(**fix_vars)
                 fixup(feature)
 
@@ -5328,7 +5354,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
 
         # L5
-        L5 = feature.get("L5", False)
+        L5 = feature_get("L5", False)
         if level == "L5":
             if inherited is None or name is False or parent is False or path is False or \
                lat is False or lon is False or wkt is False or \
@@ -5511,18 +5537,18 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     lat = None
                 if lon is False:
                     lon = None
-                fix_vars = dict(inherited = inherited,
-                                path = _path,
-                                lat = lat,
-                                lon = lon,
-                                wkt = wkt or None,
-                                L0 = L0_name,
-                                L1 = L1_name,
-                                L2 = L2_name,
-                                L3 = L3_name,
-                                L4 = L4_name,
-                                L5 = name,
-                                )
+                fix_vars = {"inherited": inherited,
+                            "path": _path,
+                            "lat": lat,
+                            "lon": lon,
+                            "wkt": wkt or None,
+                            "L0": L0_name,
+                            "L1": L1_name,
+                            "L2": L2_name,
+                            "L3": L3_name,
+                            "L4": L4_name,
+                            "L5": name,
+                            }
                 feature.update(**fix_vars)
                 fixup(feature)
 
@@ -5741,18 +5767,18 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 lat = None
             if lon is False:
                 lon = None
-            fix_vars = dict(inherited = inherited,
-                            path = _path,
-                            lat = lat,
-                            lon = lon,
-                            wkt = wkt or None,
-                            L0 = L0_name,
-                            L1 = L1_name,
-                            L2 = L2_name,
-                            L3 = L3_name,
-                            L4 = L4_name,
-                            L5 = L5_name,
-                            )
+            fix_vars = {"inherited": inherited,
+                        "path": _path,
+                        "lat": lat,
+                        "lon": lon,
+                        "wkt": wkt or None,
+                        "L0": L0_name,
+                        "L1": L1_name,
+                        "L2": L2_name,
+                        "L3": L3_name,
+                        "L4": L4_name,
+                        "L5": L5_name,
+                        }
             feature.update(**fix_vars)
             fixup(feature)
 
@@ -5830,14 +5856,17 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     try:
                         shape = wkt_loads(wkt)
                     except:
+                        # Perhaps this is really a LINESTRING (e.g. OSM import of an unclosed Way, some CAP areas)
+                        linestring = "LINESTRING%s" % wkt[8:-1]
                         try:
-                            # Perhaps this is really a LINESTRING (e.g. OSM import of an unclosed Way)
-                            linestring = "LINESTRING%s" % wkt[8:-1]
                             shape = wkt_loads(linestring)
-                            form_vars.wkt = linestring
                         except:
                             form.errors["wkt"] = current.messages.invalid_wkt
                             return
+                        else:
+                            warning = s3_str(current.T("Source WKT has been converted from POLYGON to LINESTRING"))
+                            current.log.warning(warning)
+                            form_vars.wkt = linestring
                     else:
                         if shape.wkt != form_vars.wkt: # If this is too heavy a check for some deployments, add a deployment_setting to disable the check & just do it silently
                             # Use Shapely to clean up the defective WKT (e.g. trailing chars)
@@ -6042,11 +6071,11 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     current.log.error("Error reading WKT", location.wkt)
                     continue
                 bounds = shape.bounds
-                table[location.id] = dict(lon_min = bounds[0],
-                                          lat_min = bounds[1],
-                                          lon_max = bounds[2],
-                                          lat_max = bounds[3],
-                                          )
+                table[location.id] = {"lon_min": bounds[0],
+                                      "lat_min": bounds[1],
+                                      "lon_max": bounds[2],
+                                      "lat_max": bounds[3],
+                                      }
 
         # Anything left, we assume is a Point, so set the bounds to be the same
         db(no_bounds).update(lon_min=table.lon,
@@ -6361,29 +6390,22 @@ class MAP(DIV):
         # We haven't yet run _setup()
         self.setup = False
         self.callback = None
+        self.error_message = None
+        self.components = []
 
         # Options for server-side processing
         self.opts = opts
-        self.id = map_id = opts.get("id", "default_map")
+        opts_get = opts.get
+        self.id = map_id = opts_get("id", "default_map")
 
         # Options for client-side processing
         self.options = {}
 
-        # Components
-        # Map (Embedded not Window)
-        components = [DIV(DIV(_class="map_loader"),
-                              _id="%s_panel" % map_id)
-                      ]
-
-        self.components = components
-        for c in components:
-            self._setnode(c)
-
         # Adapt CSS to size of Map
         _class = "map_wrapper"
-        if opts.get("window"):
+        if opts_get("window"):
             _class = "%s fullscreen" % _class
-        if opts.get("print_mode"):
+        if opts_get("print_mode"):
             _class = "%s print" % _class
         self.attributes = {"_class": _class,
                            "_id": map_id,
@@ -6391,7 +6413,7 @@ class MAP(DIV):
         self.parent = None
 
         # Show Color Picker?
-        if opts.get("color_picker"):
+        if opts_get("color_picker"):
             # Can't be done in _setup() as usually run from xml() and hence we've already passed this part of the layout.html
             s3 = current.response.s3
             if s3.debug:
@@ -6410,18 +6432,32 @@ class MAP(DIV):
               into scripts (callback or otherwise)
         """
 
+        # Fresh _setup() call, reset error message
+        self.error_message = None
+
+        auth = current.auth
+
         # Read configuration
         config = GIS.get_config()
         if not config:
             # No prepop - Bail
-            current.session.error = current.T("Map cannot display without prepop data!")
-            redirect(URL(c="default", f="index"))
-
-        opts = self.opts
+            if auth.s3_has_permission("create", "gis_hierarchy"):
+                error_message = DIV(_class="mapError")
+                # Deliberately not T() to save unneccessary load on translators
+                error_message.append("Map cannot display without GIS config!")
+                error_message.append(XML(" (You can can create one "))
+                error_message.append(A("here", _href=URL(c="gis", f="config")))
+                error_message.append(")")
+                self.error_message = error_message
+            else:
+                self.error_message = DIV(
+                    "Map cannot display without GIS config!",  # Deliberately not T() to save unneccessary load on translators
+                    _class="mapError"
+                    )
+            return None
 
         T = current.T
         db = current.db
-        auth = current.auth
         s3db = current.s3db
         request = current.request
         response = current.response
@@ -6432,9 +6468,11 @@ class MAP(DIV):
         settings = current.deployment_settings
         MAP_ADMIN = auth.s3_has_role(current.session.s3.system_roles.MAP_ADMIN)
 
+        opts_get = self.opts.get
+
         # Support bookmarks (such as from the control)
         # - these over-ride the arguments
-        get_vars = request.get_vars
+        get_vars_get = request.get_vars.get
 
         # JS Globals
         js_globals = {}
@@ -6455,33 +6493,39 @@ class MAP(DIV):
                 }
 
         ##########
+        # Loader
+        ##########
+
+        self.append(DIV(DIV(_class="map_loader"), _id="%s_panel" % self.id))
+
+        ##########
         # Viewport
         ##########
 
-        height = opts.get("height", None)
+        height = opts_get("height", None)
         if height:
             map_height = height
         else:
             map_height = settings.get_gis_map_height()
         options["map_height"] = map_height
-        width = opts.get("width", None)
+        width = opts_get("width", None)
         if width:
             map_width = width
         else:
             map_width = settings.get_gis_map_width()
         options["map_width"] = map_width
 
-        zoom = get_vars.get("zoom", None)
+        zoom = get_vars_get("zoom", None)
         if zoom is not None:
             zoom = int(zoom)
         else:
-            zoom = opts.get("zoom", None)
+            zoom = opts_get("zoom", None)
         if not zoom:
             zoom = config.zoom
         options["zoom"] = zoom or 1
 
         # Bounding Box or Center/Zoom
-        bbox = opts.get("bbox", None)
+        bbox = opts_get("bbox", None)
         if (bbox
             and (-90 <= bbox["lat_max"] <= 90)
             and (-90 <= bbox["lat_min"] <= 90)
@@ -6497,18 +6541,18 @@ class MAP(DIV):
             # No bounds or we've been passed bounds which aren't sane
             bbox = None
             # Use Lat/Lon/Zoom to center instead
-            lat = get_vars.get("lat", None)
+            lat = get_vars_get("lat", None)
             if lat is not None:
                 lat = float(lat)
             else:
-                lat = opts.get("lat", None)
+                lat = opts_get("lat", None)
             if lat is None or lat == "":
                 lat = config.lat
-            lon = get_vars.get("lon", None)
+            lon = get_vars_get("lon", None)
             if lon is not None:
                 lon = float(lon)
             else:
-                lon = opts.get("lon", None)
+                lon = opts_get("lon", None)
             if lon is None or lon == "":
                 lon = config.lon
 
@@ -6535,7 +6579,7 @@ class MAP(DIV):
         # Projection
         ############
 
-        projection = opts.get("projection", None)
+        projection = opts_get("projection", None)
         if not projection:
             projection = config.epsg
         options["projection"] = projection
@@ -6555,7 +6599,7 @@ class MAP(DIV):
                         # Create it
                         try:
                             f = open(projpath, "w")
-                        except IOError, e:
+                        except IOError as e:
                             response.error =  \
                         T("Map not available: Cannot write projection file - %s") % e
                         else:
@@ -6564,8 +6608,9 @@ class MAP(DIV):
                     else:
                         response.warning =  \
     T("Map not available: Projection %(projection)s not supported - please add definition to %(path)s") % \
-        dict(projection = "'%s'" % projection,
-             path= "/static/scripts/gis/proj4js/lib/defs")
+        {"projection": "'%s'" % projection,
+         "path": "/static/scripts/gis/proj4js/lib/defs",
+         }
                 else:
                     response.error =  \
                         T("Map not available: No Projection configured")
@@ -6578,10 +6623,10 @@ class MAP(DIV):
         ########
 
         if config.marker_image:
-            options["marker_default"] = dict(i = config.marker_image,
-                                             h = config.marker_height,
-                                             w = config.marker_width,
-                                             )
+            options["marker_default"] = {"i": config.marker_image,
+                                         "h": config.marker_height,
+                                         "w": config.marker_width,
+                                         }
         # @ToDo: show_map() opts with fallback to settings
         # Keep these in sync with scaleImage() in s3.gis.js
         marker_max_height = settings.get_gis_marker_max_height()
@@ -6615,20 +6660,20 @@ class MAP(DIV):
         # Layout
         ########
 
-        if not opts.get("closable", False):
+        if not opts_get("closable", False):
             options["windowNotClosable"] = True
-        if opts.get("window", False):
+        if opts_get("window", False):
             options["window"] = True
-            if opts.get("window_hide", False):
+            if opts_get("window_hide", False):
                 options["windowHide"] = True
 
-        if opts.get("maximizable", False):
+        if opts_get("maximizable", False):
             options["maximizable"] = True
         else:
             options["maximizable"] = False
 
         # Collapsed
-        if opts.get("collapsed", False):
+        if opts_get("collapsed", False):
             options["west_collapsed"] = True
 
         # LayerTree
@@ -6646,7 +6691,7 @@ class MAP(DIV):
         #######
 
         # Toolbar
-        if opts.get("toolbar", False):
+        if opts_get("toolbar", False):
             options["toolbar"] = True
 
             i18n["gis_length_message"] = T("The length is")
@@ -6659,7 +6704,7 @@ class MAP(DIV):
                 i18n["gis_geoLocate"] = T("Zoom to Current Location")
 
             # Search
-            if opts.get("search", False):
+            if opts_get("search", False):
                 geonames_username = settings.get_gis_geonames_username()
                 if geonames_username:
                     # Presence of username turns feature on in s3.gis.js
@@ -6670,7 +6715,7 @@ class MAP(DIV):
 
             # Show NAV controls?
             # e.g. removed within S3LocationSelector[Widget]
-            nav = opts.get("nav", None)
+            nav = opts_get("nav", None)
             if nav is None:
                 nav = settings.get_gis_nav_controls()
             if nav:
@@ -6683,13 +6728,13 @@ class MAP(DIV):
                 options["nav"] = False
 
             # Show Area control?
-            if opts.get("area", False):
+            if opts_get("area", False):
                 options["area"] = True
                 i18n["gis_area_message"] = T("The area is")
                 i18n["gis_area_tooltip"] = T("Measure Area: Click the points around the polygon & end with a double-click")
 
             # Show Color Picker?
-            color_picker = opts.get("color_picker", False)
+            color_picker = opts_get("color_picker", False)
             if color_picker:
                 options["color_picker"] = True
                 if color_picker is not True:
@@ -6703,7 +6748,7 @@ class MAP(DIV):
                 i18n["gis_noColorSelectedText"] = T("No Color Selected")
 
             # Show Print control?
-            print_control = opts.get("print_control") is not False and settings.get_gis_print()
+            print_control = opts_get("print_control") is not False and settings.get_gis_print()
             if print_control:
                 # @ToDo: Use internal Printing or External Service
                 # http://eden.sahanafoundation.org/wiki/BluePrint/GIS/Printing
@@ -6720,7 +6765,7 @@ class MAP(DIV):
 
             # Show Save control?
             # e.g. removed within S3LocationSelector[Widget]
-            if opts.get("save") is True and auth.s3_logged_in():
+            if opts_get("save") is True and auth.s3_logged_in():
                 options["save"] = True
                 i18n["gis_save"] = T("Save: Default Lat, Lon & Zoom for the Viewport")
                 if MAP_ADMIN or (config.pe_id == auth.user.pe_id):
@@ -6736,18 +6781,18 @@ class MAP(DIV):
                 i18n["gis_osm_zoom_closer"] = T("Zoom in closer to Edit OpenStreetMap layer")
 
             # MGRS PDF Browser
-            mgrs = opts.get("mgrs", None)
+            mgrs = opts_get("mgrs", None)
             if mgrs:
                 options["mgrs_name"] = mgrs["name"]
                 options["mgrs_url"] = mgrs["url"]
         else:
             # No toolbar
-            if opts.get("save") is True:
-                opts["save"] = "float"
+            if opts_get("save") is True:
+                self.opts["save"] = "float"
 
         # Show Save control?
         # e.g. removed within S3LocationSelector[Widget]
-        if opts.get("save") == "float" and auth.s3_logged_in():
+        if opts_get("save") == "float" and auth.s3_logged_in():
             permit = auth.s3_has_permission
             if permit("create", ctable):
                 options["save"] = "float"
@@ -6773,7 +6818,7 @@ class MAP(DIV):
                     options["config_name"] = _config.name
 
         # Legend panel
-        legend = opts.get("legend", False)
+        legend = opts_get("legend", False)
         if legend:
             i18n["gis_legend"] = T("Legend")
             if legend == "float":
@@ -6791,37 +6836,37 @@ class MAP(DIV):
                 options["legend"] = True
 
         # Draw Feature Controls
-        if opts.get("add_feature", False):
+        if opts_get("add_feature", False):
             i18n["gis_draw_feature"] = T("Add Point")
-            if opts.get("add_feature_active", False):
+            if opts_get("add_feature_active", False):
                 options["draw_feature"] = "active"
             else:
                 options["draw_feature"] = "inactive"
 
-        if opts.get("add_line", False):
+        if opts_get("add_line", False):
             i18n["gis_draw_line"] = T("Add Line")
-            if opts.get("add_line_active", False):
+            if opts_get("add_line_active", False):
                 options["draw_line"] = "active"
             else:
                 options["draw_line"] = "inactive"
 
-        if opts.get("add_polygon", False):
+        if opts_get("add_polygon", False):
             i18n["gis_draw_polygon"] = T("Add Polygon")
             i18n["gis_draw_polygon_clear"] = T("Clear Polygon")
-            if opts.get("add_polygon_active", False):
+            if opts_get("add_polygon_active", False):
                 options["draw_polygon"] = "active"
             else:
                 options["draw_polygon"] = "inactive"
 
-        if opts.get("add_circle", False):
+        if opts_get("add_circle", False):
             i18n["gis_draw_circle"] = T("Add Circle")
-            if opts.get("add_circle_active", False):
+            if opts_get("add_circle_active", False):
                 options["draw_circle"] = "active"
             else:
                 options["draw_circle"] = "inactive"
 
         # Clear Layers
-        clear_layers = opts.get("clear_layers") is not False and settings.get_gis_clear_layers()
+        clear_layers = opts_get("clear_layers") is not False and settings.get_gis_clear_layers()
         if clear_layers:
             options["clear_layers"] = clear_layers
             i18n["gis_clearlayers"] = T("Clear all Layers")
@@ -6838,15 +6883,15 @@ class MAP(DIV):
             i18n["gis_uploadlayer"] = T("Upload Shapefile")
 
         # WMS Browser
-        wms_browser = opts.get("wms_browser", None)
+        wms_browser = opts_get("wms_browser", None)
         if wms_browser:
             options["wms_browser_name"] = wms_browser["name"]
             # urlencode the URL
-            options["wms_browser_url"] = urllib.quote(wms_browser["url"])
+            options["wms_browser_url"] = urllib_quote(wms_browser["url"])
 
         # Mouse Position
         # 'normal', 'mgrs' or 'off'
-        mouse_position = opts.get("mouse_position", None)
+        mouse_position = opts_get("mouse_position", None)
         if mouse_position is None:
             mouse_position = settings.get_gis_mouse_position()
         if mouse_position == "mgrs":
@@ -6857,34 +6902,34 @@ class MAP(DIV):
             options["mouse_position"] = True
 
         # Overview Map
-        overview = opts.get("overview", None)
+        overview = opts_get("overview", None)
         if overview is None:
             overview = settings.get_gis_overview()
         if not overview:
             options["overview"] = False
 
         # Permalink
-        permalink = opts.get("permalink", None)
+        permalink = opts_get("permalink", None)
         if permalink is None:
             permalink = settings.get_gis_permalink()
         if not permalink:
             options["permalink"] = False
 
         # ScaleLine
-        scaleline = opts.get("scaleline", None)
+        scaleline = opts_get("scaleline", None)
         if scaleline is None:
             scaleline = settings.get_gis_scaleline()
         if not scaleline:
             options["scaleline"] = False
 
         # Zoom control
-        zoomcontrol = opts.get("zoomcontrol", None)
+        zoomcontrol = opts_get("zoomcontrol", None)
         if zoomcontrol is None:
             zoomcontrol = settings.get_gis_zoomcontrol()
         if not zoomcontrol:
             options["zoomcontrol"] = False
 
-        zoomWheelEnabled = opts.get("zoomWheelEnabled", True)
+        zoomWheelEnabled = opts_get("zoomWheelEnabled", True)
         if not zoomWheelEnabled:
             options["no_zoom_wheel"] = True
 
@@ -6898,17 +6943,17 @@ class MAP(DIV):
             options["duplicate_features"] = True
 
         # Features
-        features = opts.get("features", None)
+        features = opts_get("features", None)
         if features:
             options["features"] = addFeatures(features)
 
         # Feature Queries
-        feature_queries = opts.get("feature_queries", None)
+        feature_queries = opts_get("feature_queries", None)
         if feature_queries:
             options["feature_queries"] = addFeatureQueries(feature_queries)
 
         # Feature Resources
-        feature_resources = opts.get("feature_resources", None)
+        feature_resources = opts_get("feature_resources", None)
         if feature_resources:
             options["feature_resources"] = addFeatureResources(feature_resources)
 
@@ -6926,7 +6971,7 @@ class MAP(DIV):
                   ltable.dir,
                   ]
 
-        if opts.get("catalogue_layers", False):
+        if opts_get("catalogue_layers", False):
             # Add all enabled Layers from the Catalogue
             stable = db.gis_style
             mtable = db.gis_marker
@@ -7038,11 +7083,11 @@ class MAP(DIV):
         for LayerType in layer_types:
             try:
                 # Instantiate the Class
-                layer = LayerType(layers)
+                layer = LayerType(layers, openlayers=2)
                 layer.as_dict(options)
                 for script in layer.scripts:
                     scripts_append(script)
-            except Exception, exception:
+            except Exception as exception:
                 error = "%s not shown: %s" % (LayerType.__name__, exception)
                 current.log.error(error)
                 if s3.debug:
@@ -7061,7 +7106,7 @@ class MAP(DIV):
 
         # Callback can be set before _setup()
         if not self.callback:
-            self.callback = opts.get("callback", "DEFAULT")
+            self.callback = opts_get("callback", "DEFAULT")
         # These can be read/modified after _setup() & before xml()
         self.options = options
 
@@ -7075,7 +7120,7 @@ class MAP(DIV):
         # This, and any code it generates, is done last
         # However, map plugin should not assume this.
         self.plugin_callbacks = []
-        plugins = opts.get("plugins", None)
+        plugins = opts_get("plugins", None)
         if plugins:
             for plugin in plugins:
                 plugin.extend_gis_map(self)
@@ -7095,7 +7140,12 @@ class MAP(DIV):
         """
 
         if not self.setup:
-            self._setup()
+            result = self._setup()
+            if result is None:
+                if self.error_message:
+                    self.append(self.error_message)
+                    return super(MAP, self).xml()
+                return ""
 
         # Add ExtJS
         # @ToDo: Do this conditionally on whether Ext UI is used
@@ -7155,7 +7205,7 @@ class MAP(DIV):
         projection = options["projection"]
         try:
             options = dumps(options, separators=SEPARATORS)
-        except Exception, exception:
+        except Exception as exception:
             current.log.error("Map %s failed to initialise" % map_id, exception)
         plugin_callbacks = '''\n'''.join(self.plugin_callbacks)
         if callback:
@@ -7183,17 +7233,427 @@ class MAP(DIV):
                 callback = '''null'''
         loader = \
 '''s3_gis_loadjs(%(debug)s,%(projection)s,%(callback)s,%(scripts)s)''' \
-            % dict(debug = "true" if debug else "false",
-                   projection = projection,
-                   callback = callback,
-                   scripts = self.scripts
-                   )
+            % {"debug": "true" if debug else "false",
+               "projection": projection,
+               "callback": callback,
+               "scripts": self.scripts,
+               }
         jquery_ready = s3.jquery_ready
         if loader not in jquery_ready:
             jquery_ready.append(loader)
 
         # Return the HTML
         return super(MAP, self).xml()
+
+# =============================================================================
+class MAP2(DIV):
+    """
+        HTML Helper to render a Map
+        - allows the Map to be generated only when being rendered
+
+        This is the Work-in-Progress update of MAP() to OpenLayers 6
+    """
+
+    def __init__(self, **opts):
+        """
+            :param **opts: options to pass to the Map for server-side processing
+        """
+
+        self.opts = opts
+
+        # Pass options to DIV()
+        opts_get = opts.get
+        map_id = opts_get("id", "default_map")
+        height = opts_get("height", current.deployment_settings.get_gis_map_height())
+        self.attributes = {"_id": map_id,
+                           "_style": "height:%ipx;width:100%%" % height,
+                           }
+        # @ToDo: Add HTML Controls (Toolbar, LayerTree, etc)
+        self.components = [DIV(_class="s3-gis-tooltip"),
+                           ]
+
+        # Load CSS now as too late in xml()
+        stylesheets = current.response.s3.stylesheets
+        stylesheet = "gis/ol6.css"
+        if stylesheet not in stylesheets:
+            stylesheets.append(stylesheet)
+        # @ToDo: Move this to Theme
+        stylesheet = "gis/ol6_popup.css"
+        if stylesheet not in stylesheets:
+            stylesheets.append(stylesheet)
+
+    # -------------------------------------------------------------------------
+    def _options(self):
+        """
+            Configuration for the Map
+        """
+
+        # Read Map Config
+        config = GIS.get_config()
+        if not config:
+            # No prepop => Bail
+            return None
+
+        options = {}
+
+        # i18n
+        if current.session.s3.language != "en":
+            T = current.T
+            options["i18n"] = {"loading": s3_str(T("Loading")),
+                               "requires_login": s3_str(T("Requires Login")),
+                               }
+
+        # Read options for this Map
+        get_vars_get = current.request.get_vars.get
+        opts_get = self.opts.get
+        settings = current.deployment_settings
+
+        ##########
+        # Viewport
+        ##########
+
+        #options["height"] = opts_get("height", settings.get_gis_map_height())
+        #options["width"] = opts_get("width", settings.get_gis_map_width())
+
+        zoom = get_vars_get("zoom", None)
+        if zoom is not None:
+            zoom = int(zoom)
+        else:
+            zoom = opts_get("zoom", None)
+        if not zoom:
+            zoom = config.zoom
+        options["zoom"] = zoom or 0
+
+        # Bounding Box or Center/Zoom
+        bbox = opts_get("bbox", None)
+        if (bbox
+            and (-90 <= bbox["lat_max"] <= 90)
+            and (-90 <= bbox["lat_min"] <= 90)
+            and (-180 <= bbox["lon_max"] <= 180)
+            and (-180 <= bbox["lon_min"] <= 180)
+            ):
+            # We have sane Bounds provided, so we should use them
+            pass
+        elif zoom is None:
+            # Build Bounds from Config
+            bbox = config
+        else:
+            # No bounds or we've been passed bounds which aren't sane
+            bbox = None
+            # Use Lat/Lon/Zoom to center instead
+            lat = get_vars_get("lat", None)
+            if lat is not None:
+                lat = float(lat)
+            else:
+                lat = opts_get("lat", None)
+            if lat is None or lat == "":
+                lat = config.lat
+            lon = get_vars_get("lon", None)
+            if lon is not None:
+                lon = float(lon)
+            else:
+                lon = opts_get("lon", None)
+            if lon is None or lon == "":
+                lon = config.lon
+
+        if bbox:
+            # Calculate from Bounds
+            options["bbox"] = [bbox["lon_min"], # left
+                               bbox["lat_min"], # bottom
+                               bbox["lon_max"], # right
+                               bbox["lat_max"], # top
+                               ]
+        else:
+            options["lat"] = lat
+            options["lon"] = lon
+
+        #options["numZoomLevels"] = config.zoom_levels
+
+        #options["restrictedExtent"] = (config.lon_min,
+        #                               config.lat_min,
+        #                               config.lon_max,
+        #                               config.lat_max,
+        #                               )
+
+
+        ############
+        # Projection
+        ############
+
+        #projection = opts_get("projection", config.epsg)
+        #if projection == 90013:
+        #    # New EPSG for Spherical Mercator
+        #    projection = 3857
+        #options["projection"] = projection
+
+        #if projection not in (3857, 4326):
+        #    # Test for Valid Projection file in Proj4JS library
+        #    projpath = os.path.join(
+        #        request.folder, "static", "scripts", "gis", "proj4js", \
+        #        "lib", "defs", "EPSG%s.js" % projection
+        #    )
+        #    try:
+        #        f = open(projpath, "r")
+        #        f.close()
+        #    except:
+        #        if projection:
+        #            proj4js = config.proj4js
+        #            if proj4js:
+        #                # Create it
+        #                try:
+        #                    f = open(projpath, "w")
+        #                except IOError as e:
+        #                    response.error =  \
+        #                T("Map not available: Cannot write projection file - %s") % e
+        #                else:
+        #                    f.write('''Proj4js.defs["EPSG:4326"]="%s"''' % proj4js)
+        #                    f.close()
+        #            else:
+        #                response.warning =  \
+        #T("Map not available: Projection %(projection)s not supported - please add definition to %(path)s") % \
+        #{"projection": "'%s'" % projection,
+        # "path": "/static/scripts/gis/proj4js/lib/defs",
+        # }
+        #        else:
+        #            response.error =  \
+        #                T("Map not available: No Projection configured")
+        #        return None
+        #    options["maxExtent"] = config.maxExtent
+        #    options["units"] = config.units
+
+        ##################
+        # Marker (Default)
+        ##################
+
+        if config.marker_image:
+            options["marker"] = config.marker_image
+
+        ########
+        # Layers
+        ########
+
+        # Duplicate Features to go across the dateline?
+        # @ToDo: Action this again (e.g. for DRRPP)
+        #if settings.get_gis_duplicate_features():
+        #    options["duplicate_features"] = True
+
+        # Features
+        features = opts_get("features", None)
+        if features:
+            options["features"] = addFeatures(features)
+
+        # Feature Queries
+        feature_queries = opts_get("feature_queries", None)
+        if feature_queries:
+            options["feature_queries"] = addFeatureQueries(feature_queries)
+
+        # Feature Resources
+        feature_resources = opts_get("feature_resources", None)
+        if feature_resources:
+            options["feature_resources"] = addFeatureResources(feature_resources)
+
+        # Layers
+        db = current.db
+        ctable = db.gis_config
+        ltable = db.gis_layer_config
+        etable = db.gis_layer_entity
+        query = (ltable.deleted == False)
+        join = [etable.on(etable.layer_id == ltable.layer_id)]
+        fields = [etable.instance_type,
+                  ltable.layer_id,
+                  ltable.enabled,
+                  ltable.visible,
+                  ltable.base,
+                  ltable.dir,
+                  ]
+
+        if opts_get("catalogue_layers", False):
+            # Add all enabled Layers from the Catalogue
+            stable = db.gis_style
+            mtable = db.gis_marker
+            query &= (ltable.config_id.belongs(config.ids))
+            join.append(ctable.on(ctable.id == ltable.config_id))
+            fields.extend((stable.style,
+                           stable.cluster_distance,
+                           stable.cluster_threshold,
+                           stable.opacity,
+                           stable.popup_format,
+                           mtable.image,
+                           mtable.height,
+                           mtable.width,
+                           ctable.pe_type))
+            left = [stable.on((stable.layer_id == etable.layer_id) & \
+                              (stable.record_id == None) & \
+                              ((stable.config_id == ctable.id) | \
+                               (stable.config_id == None))),
+                    mtable.on(mtable.id == stable.marker_id),
+                    ]
+            limitby = None
+            # @ToDo: Need to fix this?: make the style lookup a different call
+            if settings.get_database_type() == "postgres":
+                # None is last
+                orderby = [ctable.pe_type, stable.config_id]
+            else:
+                # None is 1st
+                orderby = [ctable.pe_type, ~stable.config_id]
+            if settings.get_gis_layer_metadata():
+                cptable = current.s3db.cms_post_layer
+                left.append(cptable.on(cptable.layer_id == etable.layer_id))
+                fields.append(cptable.post_id)
+        else:
+            # Add just the default Base Layer
+            query &= (ltable.base == True) & \
+                     (ltable.config_id == config.id)
+            # Base layer doesn't need a style
+            left = None
+            limitby = (0, 1)
+            orderby = None
+
+        layer_types = []
+        lappend = layer_types.append
+        layers = db(query).select(join=join,
+                                  left=left,
+                                  limitby=limitby,
+                                  orderby=orderby,
+                                  *fields)
+        if not layers:
+            # Use Site Default base layer
+            # (Base layer doesn't need a style)
+            query = (etable.id == ltable.layer_id) & \
+                    (ltable.config_id == ctable.id) & \
+                    (ctable.uuid == "SITE_DEFAULT") & \
+                    (ltable.base == True) & \
+                    (ltable.enabled == True)
+            layers = db(query).select(*fields,
+                                      limitby=(0, 1))
+            if not layers:
+                # Just show EmptyLayer
+                layer_types = [LayerEmpty]
+
+        for layer in layers:
+            layer_type = layer["gis_layer_entity.instance_type"]
+            if layer_type == "gis_layer_openstreetmap":
+                lappend(LayerOSM)
+            elif layer_type == "gis_layer_google":
+                # NB v3 doesn't work when initially hidden
+                lappend(LayerGoogle)
+            elif layer_type == "gis_layer_arcrest":
+                lappend(LayerArcREST)
+            elif layer_type == "gis_layer_bing":
+                lappend(LayerBing)
+            elif layer_type == "gis_layer_tms":
+                lappend(LayerTMS)
+            elif layer_type == "gis_layer_wms":
+                lappend(LayerWMS)
+            elif layer_type == "gis_layer_xyz":
+                lappend(LayerXYZ)
+            elif layer_type == "gis_layer_empty":
+                lappend(LayerEmpty)
+            elif layer_type == "gis_layer_js":
+                lappend(LayerJS)
+            elif layer_type == "gis_layer_theme":
+                lappend(LayerTheme)
+            elif layer_type == "gis_layer_geojson":
+                lappend(LayerGeoJSON)
+            elif layer_type == "gis_layer_gpx":
+                lappend(LayerGPX)
+            elif layer_type == "gis_layer_coordinate":
+                lappend(LayerCoordinate)
+            elif layer_type == "gis_layer_georss":
+                lappend(LayerGeoRSS)
+            elif layer_type == "gis_layer_kml":
+                lappend(LayerKML)
+            elif layer_type == "gis_layer_openweathermap":
+                lappend(LayerOpenWeatherMap)
+            elif layer_type == "gis_layer_shapefile":
+                lappend(LayerShapefile)
+            elif layer_type == "gis_layer_wfs":
+                lappend(LayerWFS)
+            elif layer_type == "gis_layer_feature":
+                lappend(LayerFeature)
+
+        # Make unique
+        layer_types = set(layer_types)
+        scripts = []
+        scripts_append = scripts.append
+        for LayerType in layer_types:
+            try:
+                # Instantiate the Class
+                layer = LayerType(layers)
+                layer.as_dict(options)
+                for script in layer.scripts:
+                    scripts_append(script)
+            except Exception as exception:
+                error = "%s not shown: %s" % (LayerType.__name__, exception)
+                current.log.error(error)
+                response = current.response
+                if response.s3.debug:
+                    raise HTTP(500, error)
+                else:
+                    response.warning += error
+
+        return options
+
+    # -------------------------------------------------------------------------
+    def xml(self):
+        """
+            Render the Map
+            - this is primarily done by inserting JavaScript
+        """
+
+        # Read Map Config
+        options = self._options()
+
+        if options is None:
+            # No Map Config: Just show error in the DIV
+            auth = current.auth
+
+            if auth.s3_has_permission("create", "gis_hierarchy"):
+                error_message = DIV(_class="mapError")
+                # Deliberately not T() to save unneccessary load on translators
+                error_message.append("Map cannot display without GIS config!")
+                error_message.append(XML(" (You can can create one "))
+                error_message.append(A("here", _href=URL(c="gis", f="config")))
+                error_message.append(")")
+            else:
+                error_message = DIV(
+                    "Map cannot display without GIS config!",  # Deliberately not T() to save unneccessary load on translators
+                    _class="mapError"
+                    )
+
+            self.components = [error_message]
+            return super(MAP2, self).xml()
+
+        map_id = self.opts.get("id", "default_map")
+        options = json.dumps(options, separators=SEPARATORS)
+
+        # Insert the JavaScript
+        appname = current.request.application
+        s3 = current.response.s3
+
+        # Underscore for Popup Templates
+        s3_include_underscore()
+
+        # OpenLayers
+        script = "/%s/static/scripts/gis/ol.js" % appname
+        if script not in s3.scripts:
+            s3.scripts.append(script)
+
+        # S3 GIS
+        if s3.debug:
+            script = "/%s/static/scripts/S3/s3.ui.gis.js" % appname
+        else:
+            script = "/%s/static/scripts/S3/s3.ui.gis.min.js" % appname
+        if script not in s3.scripts_modules:
+            s3.scripts_modules.append(script)
+
+        script = '''$('#%(map_id)s').showMap(%(options)s)''' % {"map_id": map_id,
+                                                                "options": options,
+                                                                }
+        s3.jquery_ready.append(script)
+
+        # Return the HTML
+        return super(MAP2, self).xml()
 
 # =============================================================================
 def addFeatures(features):
@@ -7210,8 +7670,9 @@ def addFeatures(features):
     for feature in features:
         geojson = simplify(feature, output="geojson")
         if geojson:
-            f = dict(type = "Feature",
-                     geometry = json.loads(geojson))
+            f = {"type": "Feature",
+                 "geometry": json.loads(geojson),
+                 }
             append(f)
     return _f
 
@@ -7249,8 +7710,8 @@ def addFeatureQueries(feature_queries):
     append = layers_feature_query.append
     for layer in feature_queries:
         name = str(layer["name"])
-        _layer = dict(name=name)
-        name_safe = re.sub("\W", "_", name)
+        _layer = {"name": name}
+        name_safe = re.sub(r"\W", "_", name)
 
         # Lat/Lon via Join or direct?
         try:
@@ -7370,13 +7831,13 @@ def addFeatureResources(feature_resources):
     append = layers_feature_resource.append
     for layer in feature_resources:
         name = s3_str(layer["name"])
-        _layer = dict(name=name)
+        _layer = {"name": name}
         _id = layer.get("id")
         if _id:
             _id = str(_id)
         else:
             _id = name
-        _id = re.sub("\W", "_", _id)
+        _id = re.sub(r"\W", "_", _id)
         _layer["id"] = _id
 
         # Are we loading a Catalogue Layer or a simple URL?
@@ -7592,7 +8053,9 @@ class Layer(object):
         Abstract base class for Layers from Catalogue
     """
 
-    def __init__(self, all_layers):
+    def __init__(self, all_layers, openlayers=6):
+
+        self.openlayers = openlayers
 
         sublayers = []
         append = sublayers.append
@@ -7703,7 +8166,7 @@ class Layer(object):
                 # SubLayers handled differently
                 append(record)
             else:
-                append(SubLayer(record))
+                append(SubLayer(record, openlayers))
 
         # Alphasort layers
         # - client will only sort within their type: s3.gis.layers.js
@@ -7757,7 +8220,7 @@ class Layer(object):
 
     # -------------------------------------------------------------------------
     class SubLayer(object):
-        def __init__(self, record):
+        def __init__(self, record, openlayers):
             # Ensure all attributes available (even if Null)
             self.__dict__.update(record)
             del record
@@ -7765,6 +8228,8 @@ class Layer(object):
                 self.safe_name = re.sub('[\\"]', "", s3_str(current.T(self.name)))
             else:
                 self.safe_name = re.sub('[\\"]', "", self.name)
+
+            self.openlayers = openlayers
 
             if hasattr(self, "projection_id"):
                 self.projection = Projection(self.projection_id)
@@ -7807,7 +8272,7 @@ class Layer(object):
         def add_attributes_if_not_default(output, **values_and_defaults):
             # could also write values in debug mode, to check if defaults ignored.
             # could also check values are not being overwritten.
-            for key, (value, defaults) in values_and_defaults.iteritems():
+            for key, (value, defaults) in values_and_defaults.items():
                 if value not in defaults:
                     output[key] = value
 
@@ -7905,9 +8370,10 @@ class LayerCoordinate(Layer):
         if sublayers:
             sublayer = sublayers[0]
             name_safe = re.sub("'", "", sublayer.name)
-            ldict = dict(name = name_safe,
-                         visibility = sublayer.visible,
-                         id = sublayer.layer_id)
+            ldict = {"name": name_safe,
+                     "visibility": sublayer.visible,
+                     "id": sublayer.layer_id,
+                     }
             if options:
                 # Used by Map._setup()
                 options[self.dictname] = ldict
@@ -7933,8 +8399,9 @@ class LayerEmpty(Layer):
             sublayer = sublayers[0]
             name = s3_str(current.T(sublayer.name))
             name_safe = re.sub("'", "", name)
-            ldict = dict(name = name_safe,
-                         id = sublayer.layer_id)
+            ldict = {"name": name_safe,
+                     "id": sublayer.layer_id,
+                     }
             if sublayer._base:
                 ldict["base"] = True
             if options:
@@ -7956,7 +8423,7 @@ class LayerFeature(Layer):
 
     # -------------------------------------------------------------------------
     class SubLayer(Layer.SubLayer):
-        def __init__(self, record):
+        def __init__(self, record, openlayers):
             controller = record.controller
             self.skip = False
             if controller is not None:
@@ -7972,7 +8439,7 @@ class LayerFeature(Layer):
                 error = "Feature Layer Record '%s' has no controller" % \
                     record.name
                 raise Exception(error)
-            super(LayerFeature.SubLayer, self).__init__(record)
+            super(LayerFeature.SubLayer, self).__init__(record, openlayers)
 
         def as_dict(self):
             if self.skip:
@@ -8111,8 +8578,8 @@ class LayerGeoRSS(Layer):
     dictname = "layers_georss"
     style = True
 
-    def __init__(self, all_layers):
-        super(LayerGeoRSS, self).__init__(all_layers)
+    def __init__(self, all_layers, openlayers=6):
+        super(LayerGeoRSS, self).__init__(all_layers, openlayers)
         LayerGeoRSS.SubLayer.cachetable = current.s3db.gis_cache
 
     # -------------------------------------------------------------------------
@@ -8150,7 +8617,6 @@ class LayerGeoRSS(Layer):
                                                              url,
                                                              fields)
                 # Keep Session for local URLs
-                import Cookie
                 cookie = Cookie.SimpleCookie()
                 cookie[response.session_id_name] = response.session_id
                 current.session._unlock(response)
@@ -8162,7 +8628,7 @@ class LayerGeoRSS(Layer):
                         query = (cachetable.source == url) & \
                                 (cachetable.modified_on < cutoff)
                         db(query).delete()
-                except Exception, exception:
+                except Exception as exception:
                     current.log.error("GeoRSS %s download error" % url, exception)
                     # Feed down
                     if existing_cached_copy:
@@ -8370,10 +8836,10 @@ class LayerKML(Layer):
     style = True
 
     # -------------------------------------------------------------------------
-    def __init__(self, all_layers, init=True):
+    def __init__(self, all_layers, openlayers=6, init=True):
         "Set up the KML cache, should be done once per request"
 
-        super(LayerKML, self).__init__(all_layers)
+        super(LayerKML, self).__init__(all_layers, openlayers)
 
         # Can we cache downloaded KML feeds?
         # Needed for unzipping & filtering as well
@@ -8389,7 +8855,7 @@ class LayerKML(Layer):
         else:
             try:
                 os.mkdir(cachepath)
-            except OSError, os_error:
+            except OSError as os_error:
                 current.log.error("GIS: KML layers cannot be cached: %s %s" % \
                                   (cachepath, os_error))
                 cacheable = False
@@ -8412,7 +8878,7 @@ class LayerKML(Layer):
 
             name = self.name
             if cacheable:
-                _name = urllib2.quote(name)
+                _name = urllib_quote(name)
                 _name = _name.replace("%", "_")
                 filename = "%s.file.%s.kml" % (cachetable._tablename,
                                                _name)
@@ -8435,8 +8901,12 @@ class LayerKML(Layer):
                     response = current.response
                     session_id_name = response.session_id_name
                     session_id = response.session_id
-                    current.s3task.async("gis_download_kml",
-                                         args=[self.id, filename, session_id_name, session_id])
+                    current.s3task.run_async("gis_download_kml",
+                                             args = [self.id,
+                                                     filename,
+                                                     session_id_name,
+                                                     session_id,
+                                                     ])
                     if cached:
                         db(query).update(modified_on=request.utcnow)
                     else:
@@ -8450,10 +8920,10 @@ class LayerKML(Layer):
                 url = self.url
 
             # Mandatory attributes
-            output = dict(id = self.layer_id,
-                          name = self.safe_name,
-                          url = url,
-                          )
+            output = {"id": self.layer_id,
+                      "name": self.safe_name,
+                      "url": url,
+                      }
 
             # Attributes which are defaulted client-side if not set
             self.add_attributes_if_not_default(
@@ -8489,27 +8959,53 @@ class LayerOSM(Layer):
     class SubLayer(Layer.SubLayer):
         def as_dict(self):
 
-            if Projection().epsg != 900913:
+            if Projection().epsg not in (3857, 900913):
                 # Cannot display OpenStreetMap layers unless we're using the Spherical Mercator Projection
                 return {}
 
-            # Mandatory attributes
-            output = {"id": self.layer_id,
-                      "name": self.safe_name,
-                      "url1": self.url1,
-                      }
+            if self.openlayers == 6:
+                # Mandatory attributes
+                output = {#"id": self.layer_id,
+                          #"name": self.safe_name,
+                          #"url": self.url1,
+                          }
 
-            # Attributes which are defaulted client-side if not set
-            self.add_attributes_if_not_default(
-                output,
-                base = (self.base, (True,)),
-                _base = (self._base, (False,)),
-                url2 = (self.url2, ("",)),
-                url3 = (self.url3, ("",)),
-                zoomLevels = (self.zoom_levels, (9,)),
-                attribution = (self.attribution, (None,)),
-            )
+                # Attributes which are defaulted client-side if not set
+                url = self.url1
+                if not url.endswith("png"):
+                    # Convert legacy URL format
+                    url = "%s{z}/{x}/{y}.png" % url
+                    if self.url2:
+                        url = url.replace("/a.", "/{a-c}.")
+
+                self.add_attributes_if_not_default(
+                    output,
+                    base = (self.base, (True,)),
+                    _base = (self._base, (False,)),
+                    url = (url, ("https://{a-c}.tile.openstreetmap.org/{z}/{x}/{y}.png",)),
+                    maxZoom = (self.zoom_levels, (19,)),
+                    attribution = (self.attribution and self.attribution.replace("\"", "'"), (None,)),
+                )
+            else:
+                # OpenLayers 2.13
+                output = {"id": self.layer_id,
+                          "name": self.safe_name,
+                          "url1": self.url1,
+                          }
+
+                # Attributes which are defaulted client-side if not set
+                self.add_attributes_if_not_default(
+                    output,
+                    base = (self.base, (True,)),
+                    _base = (self._base, (False,)),
+                    url2 = (self.url2, ("",)),
+                    url3 = (self.url3, ("",)),
+                    zoomLevels = (self.zoom_levels, (19,)),
+                    attribution = (self.attribution, (None,)),
+                )
+
             self.setup_folder_and_visibility(output)
+
             return output
 
 # -----------------------------------------------------------------------------
@@ -8678,12 +9174,12 @@ class LayerWFS(Layer):
     class SubLayer(Layer.SubLayer):
         def as_dict(self):
             # Mandatory attributes
-            output = dict(id = self.layer_id,
-                          name = self.safe_name,
-                          url = self.url,
-                          title = self.title,
-                          featureType = self.featureType,
-                          )
+            output = {"id": self.layer_id,
+                      "name": self.safe_name,
+                      "url": self.url,
+                      "title": self.title,
+                      "featureType": self.featureType,
+                      }
 
             # Attributes which are defaulted client-side if not set
             self.add_attributes_if_not_default(
@@ -8721,8 +9217,8 @@ class LayerWMS(Layer):
     style = False
 
     # -------------------------------------------------------------------------
-    def __init__(self, all_layers):
-        super(LayerWMS, self).__init__(all_layers)
+    def __init__(self, all_layers, openlayers=6):
+        super(LayerWMS, self).__init__(all_layers, openlayers)
         if self.sublayers:
             if current.response.s3.debug:
                 self.scripts.append("gis/gxp/plugins/WMSGetFeatureInfo.js")
@@ -8735,11 +9231,11 @@ class LayerWMS(Layer):
             if self.queryable:
                 current.response.s3.gis.get_feature_info = True
             # Mandatory attributes
-            output = dict(id = self.layer_id,
-                          name = self.safe_name,
-                          url = self.url,
-                          layers = self.layers
-                          )
+            output = {"id": self.layer_id,
+                      "name": self.safe_name,
+                      "url": self.url,
+                      "layers": self.layers,
+                      }
 
             # Attributes which are defaulted client-side if not set
             legend_url = self.legend_url
@@ -8748,22 +9244,22 @@ class LayerWMS(Layer):
                     (current.deployment_settings.get_base_public_url(),
                      current.request.application,
                      legend_url)
-            attr = dict(transparent = (self.transparent, (True,)),
-                        version = (self.version, ("1.1.1",)),
-                        format = (self.img_format, ("image/png",)),
-                        map = (self.map, (None, "")),
-                        username = (self.username, (None, "")),
-                        password = (self.password, (None, "")),
-                        buffer = (self.buffer, (0,)),
-                        base = (self.base, (False,)),
-                        _base = (self._base, (False,)),
-                        style = (self.style, (None, "")),
-                        bgcolor = (self.bgcolor, (None, "")),
-                        tiled = (self.tiled, (False,)),
-                        legendURL = (legend_url, (None, "")),
-                        queryable = (self.queryable, (False,)),
-                        desc = (self.description, (None, "")),
-                        )
+            attr = {"transparent": (self.transparent, (True,)),
+                    "version": (self.version, ("1.1.1",)),
+                    "format": (self.img_format, ("image/png",)),
+                    "map": (self.map, (None, "")),
+                    "username": (self.username, (None, "")),
+                    "password": (self.password, (None, "")),
+                    "buffer": (self.buffer, (0,)),
+                    "base": (self.base, (False,)),
+                    "_base": (self._base, (False,)),
+                    "style": (self.style, (None, "")),
+                    "bgcolor": (self.bgcolor, (None, "")),
+                    "tiled": (self.tiled, (False,)),
+                    "legendURL": (legend_url, (None, "")),
+                    "queryable": (self.queryable, (False,)),
+                    "desc": (self.description, (None, "")),
+                    }
 
             if current.deployment_settings.get_gis_layer_metadata():
                 # Use CMS to add info about sources
@@ -8934,10 +9430,10 @@ class Marker(object):
         """
 
         if self.image:
-            marker = dict(i = self.image,
-                          h = self.height,
-                          w = self.width,
-                          )
+            marker = {"i": self.image,
+                      "h": self.height,
+                      "w": self.width,
+                      }
         else:
             marker = None
         return marker
@@ -9038,7 +9534,7 @@ class Style(object):
 
         if style:
             if style.marker_id:
-                style.marker = Marker(marker_id=style.marker_id)
+                style.marker = Marker(marker_id = style.marker_id)
             if aggregate is True:
                 # Use gis/location controller in all reports
                 style.url_format = "%s/{id}.plain" % URL(c="gis", f="location")
@@ -9154,7 +9650,7 @@ class S3Map(S3Method):
                         break
 
                 request = self.request
-                from s3filter import S3FilterForm
+                from .s3filter import S3FilterForm
                 # Apply filter defaults (before rendering the data!)
                 S3FilterForm.apply_filter_defaults(r, resource)
                 filter_formstyle = get_config("filter_formstyle", None)
@@ -9296,7 +9792,7 @@ class S3ExportPOI(S3Method):
             @param attr: controller options for this request
         """
 
-        output = dict()
+        output = {}
 
         if r.http == "GET":
             output = self.export(r, **attr)
@@ -9481,7 +9977,7 @@ class S3ExportPOI(S3Method):
             @param resource: the resource
         """
 
-        from s3query import FS
+        from .s3query import FS
         query = (FS("location_id$path").contains("/%s/" % lx)) | \
                 (FS("location_id$path").like("%s/%%" % lx))
         resource.add_filter(query)
@@ -9515,7 +10011,7 @@ class S3ImportPOI(S3Method):
 
             resources_list = settings.get_gis_poi_export_resources()
             uploadpath = os.path.join(request.folder,"uploads/")
-            from s3utils import s3_yes_no_represent
+            from .s3utils import s3_yes_no_represent
 
             fields = [Field("text1", # Dummy Field to add text inside the Form
                             label = "",
@@ -9552,15 +10048,15 @@ class S3ImportPOI(S3Method):
                       ]
 
             if not r.id:
-                from s3validators import IS_LOCATION
-                from s3widgets import S3LocationAutocompleteWidget
+                from .s3validators import IS_LOCATION
+                from .s3widgets import S3LocationAutocompleteWidget
                 # dummy field
                 field = s3db.org_office.location_id
                 field.requires = IS_EMPTY_OR(IS_LOCATION())
                 field.widget = S3LocationAutocompleteWidget()
                 fields.insert(3, field)
 
-            from s3utils import s3_mark_required
+            from .s3utils import s3_mark_required
             labels, required = s3_mark_required(fields, ["file", "location_id"])
             s3.has_required = True
 
@@ -9573,8 +10069,9 @@ class S3ImportPOI(S3Method):
                                    )
 
             response.view = "create.html"
-            output = dict(title=title,
-                          form=form)
+            output = {"title": title,
+                      "form": form,
+                      }
 
             if form.accepts(request.vars, current.session):
                 form_vars = form.vars
@@ -9624,7 +10121,7 @@ class S3ImportPOI(S3Method):
                     try:
                         #result = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
                         subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
-                    except subprocess.CalledProcessError, e:
+                    except subprocess.CalledProcessError as e:
                         current.session.error = T("OSM file generation failed: %s") % e.output
                         redirect(URL(args=r.id))
                     except AttributeError:

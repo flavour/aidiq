@@ -46,7 +46,7 @@ try:
              )
 except:
     db_location = db_string.split("@", 1)[1]
-    raise(HTTP(503, "Cannot connect to %s Database: %s" % (db_type, db_location)))
+    raise HTTP(503, "Cannot connect to %s Database: %s" % (db_type, db_location))
 
 current.db = db
 db.set_folder("upload")
@@ -83,11 +83,7 @@ ERROR = Messages(T)
 current.ERROR = ERROR
 
 # Import the S3 Framework
-if update_check_needed:
-    # Reload the Field definitions
-    reload(s3base.s3fields)
-else:
-    import s3 as s3base
+import s3 as s3base
 
 # Set up logger (before any module attempts to use it!)
 import s3log
@@ -113,9 +109,11 @@ auth.define_tables(migrate=migrate, fake_migrate=fake_migrate)
 current.audit = audit = s3base.S3Audit(migrate=migrate, fake_migrate=fake_migrate)
 
 # Shortcuts for models/controllers/views
-s3_has_role = auth.s3_has_role
-s3_has_permission = auth.s3_has_permission
-s3_logged_in_person = auth.s3_logged_in_person
+# - removed to reduce per-request overheads & harmonise the environment in
+#   models/controllers with that of Template controllers.py & customise() functions
+#s3_has_role = auth.s3_has_role
+#s3_has_permission = auth.s3_has_permission
+#s3_logged_in_person = auth.s3_logged_in_person
 
 # Calendar
 current.calendar = s3base.S3Calendar()
@@ -123,8 +121,10 @@ current.calendar = s3base.S3Calendar()
 # CRUD
 s3.crud = Storage()
 
-# S3 Custom Validators and Widgets, imported here into the global
-# namespace in order to access them without the s3base namespace prefix
+# Frequently used S3 utilities, validators and widgets, imported here
+# into the global namespace in order to access them without the s3base
+# namespace prefix
+s3_str = s3base.s3_str
 s3_action_buttons = s3base.S3CRUD.action_buttons
 s3_fullname = s3base.s3_fullname
 s3_redirect_default = s3base.s3_redirect_default
@@ -168,7 +168,7 @@ def s3_clear_session():
 
     if "s3" in session:
         s3 = session.s3
-        opts = ["hrm", "report_options", "utc_offset", "deduplicate"]
+        opts = ["hrm", "report_options", "deduplicate"]
         for o in opts:
             if o in s3:
                 del s3[o]

@@ -2,7 +2,7 @@
 
 """ Sahana Eden Police Model
 
-    @copyright: 2016 (c) Sahana Software Foundation
+    @copyright: 2016-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -34,7 +34,7 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
-from s3layouts import S3PopupLink
+#from s3layouts import S3PopupLink
 
 # =============================================================================
 class S3PoliceModel(S3Model):
@@ -46,7 +46,7 @@ class S3PoliceModel(S3Model):
 
         T = current.T
         db = current.db
-        auth = current.auth
+        #auth = current.auth
 
         messages = current.messages
         NONE = messages["NONE"]
@@ -189,7 +189,7 @@ class S3PoliceModel(S3Model):
                            ),
                      Field("website",
                            label = T("Website"),
-                           represent = lambda url: s3_url_represent(url),
+                           represent = s3_url_represent,
                            requires = IS_EMPTY_OR(IS_URL()),
                            ),
                      Field("obsolete", "boolean",

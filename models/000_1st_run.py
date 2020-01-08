@@ -49,7 +49,7 @@ if update_check_needed:
     #    at once - it will die on the first fatal error encountered.
     try:
         import s3 as s3base
-    except Exception, e:
+    except Exception as e:
         errors.append(e.message)
 
     import sys
@@ -96,6 +96,9 @@ current.cache = cache
 # https://en.wikipedia.org/wiki/Comparison_of_file_systems#Limits
 # NB This takes effect during the file renaming algorithm - the length of uploaded filenames is unaffected
 current.MAX_FILENAME_LENGTH = 255 # Defined early for use by S3Config.
+
+# Common compat imports (for controllers)
+from s3compat import basestring, long, reduce, xrange
 
 # Import S3Config
 import s3cfg

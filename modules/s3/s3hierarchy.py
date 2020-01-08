@@ -2,7 +2,7 @@
 
 """ S3 Hierarchy Toolkit
 
-    @copyright: 2013-2018 (c) Sahana Software Foundation
+    @copyright: 2013-2019 (c) Sahana Software Foundation
     @license: MIT
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
@@ -33,14 +33,18 @@ __all__ = ("S3Hierarchy", "S3HierarchyCRUD")
 
 import json
 
-from gluon import *
+from gluon import DIV, FORM, LI, UL, current
 from gluon.storage import Storage
 from gluon.tools import callback
-from s3utils import s3_unicode
-from s3rest import S3Method
-from s3widgets import SEPARATORS
+
+from s3compat import long, unicodeT, xrange
+from .s3utils import s3_str
+from .s3rest import S3Method
+from .s3widgets import SEPARATORS
 
 DEFAULT = lambda: None
+
+LABEL = "l"
 
 # =============================================================================
 class S3HierarchyCRUD(S3Method):
@@ -364,9 +368,9 @@ class S3HierarchyCRUD(S3Method):
                 row = current.db(query).select(h.pkey, limitby=(0, 1)).first()
                 if not row:
                     r.error(404, current.ERROR.BAD_RECORD)
-                roots = set([row[h.pkey]])
+                roots = {row[h.pkey]}
             else:
-                roots = set([self.record_id])
+                roots = {self.record_id}
         else:
             roots = h.roots
 
@@ -374,7 +378,7 @@ class S3HierarchyCRUD(S3Method):
         all_nodes = h.findall(roots, inclusive=True)
 
         # ...and extract their data from a clone of the resource
-        from s3query import FS
+        from .s3query import FS
         query = FS(h.pkey.name).belongs(all_nodes)
         clone = current.s3db.resource(resource, filter=query)
         data = clone.select(selectors, represent=True, raw_data=True)
@@ -414,11 +418,12 @@ class S3HierarchyCRUD(S3Method):
             output.extend(rows)
 
         # Encode in XLS format
-        from s3codec import S3Codec
+        from .s3codec import S3Codec
         codec = S3Codec.get_codec("xls")
         result = codec.encode(output,
                               title = resource.name,
-                              list_fields=hcolumns+columns)
+                              list_fields = hcolumns+columns,
+                              )
 
         # Reponse headers and file name are set in codec
         return result
@@ -680,7 +685,7 @@ class S3Hierarchy(object):
             return
 
         # Serialize the theset
-        nodes_dict = dict()
+        nodes_dict = {}
         for node_id, node in theset.items():
             nodes_dict[node_id] = {"p": node["p"],
                                    "c": node["c"],
@@ -1010,7 +1015,7 @@ class S3Hierarchy(object):
                     total += result
 
             # Delete node
-            from s3query import FS
+            from .s3query import FS
             query = (FS(self.pkey.name) == node_id)
             resource = current.s3db.resource(tablename, filter=query)
             success = resource.delete(cascade=True)
@@ -1399,7 +1404,6 @@ class S3Hierarchy(object):
         """
 
         theset = self.theset
-        LABEL = "l"
 
         if node_ids is None:
             node_ids = self.nodes.keys()
@@ -1418,11 +1422,11 @@ class S3Hierarchy(object):
             tablename = self.tablename
             table = current.s3db.table(tablename) if tablename else None
             if table and "name" in table.fields:
-                from s3fields import S3Represent
+                from .s3fields import S3Represent
                 self.represent = renderer = S3Represent(lookup = tablename,
                                                         key = self.pkey.name)
             else:
-                renderer = s3_unicode
+                renderer = s3_str
         if hasattr(renderer, "bulk"):
             labels = renderer.bulk(list(pending), list_type = False)
             for node_id, label in labels.items():
@@ -1433,7 +1437,7 @@ class S3Hierarchy(object):
                 try:
                     label = renderer(node_id)
                 except:
-                    label = s3_unicode(node_id)
+                    label = s3_str(node_id)
                 theset[node_id][LABEL] = label
         return
 
@@ -1446,8 +1450,6 @@ class S3Hierarchy(object):
             @param represent: the node ID representation method
         """
 
-        LABEL = "l"
-
         theset = self.theset
         node = theset.get(node_id)
         if node:
@@ -1457,13 +1459,115 @@ class S3Hierarchy(object):
                 self._represent(node_ids=[node_id], renderer=represent)
             if LABEL in node:
                 label = node[LABEL]
-            if type(label) is unicode:
-                try:
-                    label = label.encode("utf-8")
-                except UnicodeEncodeError:
-                    pass
+            if type(label) is unicodeT:
+                label = s3_str(label)
             return label
         return None
+
+    # -------------------------------------------------------------------------
+    def repr_expand(self, node_ids, levels=None, represent=None):
+        """
+            Helper function to represent a set of nodes as lists
+            of their respective ancestors starting by the root node
+
+            @param node_ids: the node_ids (iterable)
+            @param levels: the number of levels to include (counting from root)
+            @param represent: a representation function for each ancestor
+
+            @returns: a dict {node_id: ["Label", "Label", ...]}
+                      => each label list is padded with "-" to reach the
+                         requested number of levels (TODO make this configurable)
+        """
+
+        paths = {}
+        all_parents = set()
+        for node_id in node_ids:
+            paths[node_id] = path = self.path(node_id)
+            all_parents |= set(path)
+
+        self._represent(all_parents, renderer=represent)
+
+        theset = self.theset
+        result = {}
+        for node_id, path in paths.items():
+            p = (path + [None] * levels)[:levels]
+            l = [theset[parent][LABEL] if parent else "-" for parent in p]
+            result[node_id] = l
+
+        return result
+
+    # -------------------------------------------------------------------------
+    def _json(self, node_id, represent=None, depth=0, max_depth=None):
+        """
+            Represent a node as JSON-serializable array
+
+            @param node_id: the node ID
+            @param represent: the representation method
+            @param depth: the current recursion depth
+            @param max_depth: the maximum recursion depth
+
+            @returns: the node as [label, category, subnodes],
+                      with subnodes as:
+                        - False: if there are no subnodes
+                        - True: if there are subnodes beyond max_depth
+                        - otherwise: {node_id: [label, category, subnodes], ...}
+        """
+
+        node = self.nodes.get(node_id)
+        if not node:
+            return None
+
+        label = self.label(node_id, represent=represent)
+        if label is None:
+            label = node_id
+
+        category = node["c"]
+        subnode_ids = node["s"]
+        if subnode_ids:
+            if max_depth and depth == max_depth:
+                subnodes = True
+            else:
+                subnodes = {}
+                for subnode_id in subnode_ids:
+                    item = self._json(subnode_id,
+                                      represent = represent,
+                                      depth = depth + 1,
+                                      max_depth = max_depth,
+                                      )
+                    if item:
+                        subnodes[subnode_id] = item
+        else:
+            subnodes = False
+
+        return [s3_str(label), category, subnodes]
+
+    # -------------------------------------------------------------------------
+    def json(self, root=None, represent=None, max_depth=None):
+        """
+            Represent the hierarchy as JSON-serializable dict
+
+            @param root: the root node ID (or array of root node IDs)
+            @param represent: the representation method
+            @param max_depth: maximum recursion depth
+
+            @returns: the hierarchy as dict:
+                         {node_id: [label, category, subnodes], ...}
+        """
+
+        self._represent(renderer=represent)
+
+        roots = [root] if root else self.roots
+
+        output = {}
+        for node_id in roots:
+            item = self._json(node_id,
+                              represent = represent,
+                              max_depth = max_depth,
+                              )
+            if item:
+                output[node_id] = item
+
+        return output
 
     # -------------------------------------------------------------------------
     def html(self,
@@ -1528,7 +1632,7 @@ class S3Hierarchy(object):
 
         label = self.label(node_id, represent=represent)
         if label is None:
-            label = s3_unicode(node_id)
+            label = s3_str(node_id)
 
         subnodes = node["s"]
         item = LI(label,

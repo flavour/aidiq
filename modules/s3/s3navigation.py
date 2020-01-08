@@ -2,7 +2,7 @@
 
 """ S3 Navigation Module
 
-    @copyright: 2011-2018 (c) Sahana Software Foundation
+    @copyright: 2011-2019 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -43,7 +43,9 @@ __all__ = ("S3NavigationItem",
 
 from gluon import *
 from gluon.storage import Storage
-from s3utils import s3_unicode
+
+from s3compat import basestring, xrange
+from .s3utils import s3_str
 
 # =============================================================================
 class S3NavigationItem(object):
@@ -224,7 +226,7 @@ class S3NavigationItem(object):
         # Layout attributes and options
         attr = Storage()
         opts = Storage()
-        for k, v in attributes.iteritems():
+        for k, v in attributes.items():
             if k[0] == "_":
                 attr[k] = v
             else:
@@ -745,8 +747,8 @@ class S3NavigationItem(object):
         #   7 = args match and vars match
         if level == 2:
             extra = 1
-            for k, v in link_vars.iteritems():
-                if k not in rvars or k in rvars and rvars[k] != s3_unicode(v):
+            for k, v in link_vars.items():
+                if k not in rvars or k in rvars and rvars[k] != s3_str(v):
                     extra = 0
                     break
                 else:
@@ -1207,11 +1209,16 @@ class S3NavigationItem(object):
         return len(self.components)
 
     # -------------------------------------------------------------------------
-    def __nonzero__(self):
+    def __bool__(self):
         """
             To be used instead of __len__ to determine the boolean value
             if this item, should always return True for instances
         """
+
+        return self is not None
+
+    def __nonzero__(self):
+        """ Python-2.7 backwards-compatibility """
 
         return self is not None
 
@@ -1467,10 +1474,9 @@ class S3ComponentTabs(object):
 
             # Complete the tab URL with args, deal with "viewing"
             if component:
-                if record_id:
-                    args = [record_id, component]
-                else:
-                    args = [component]
+                args = [record_id, component] if record_id else [component]
+                if tab.method:
+                    args.append(tab.method)
                 if "viewing" in _vars:
                     del _vars["viewing"]
                 _href = URL(function, args=args, vars=_vars)
@@ -1585,14 +1591,13 @@ class S3ComponentTab(object):
         # @todo: use component hook label/plural as fallback for title
         #        (see S3Model.add_components)
         title, component = tab[:2]
+
+        self.title = title
+
         if component and component.find("/") > 0:
             function, component = component.split("/", 1)
         else:
             function = None
-
-        self.title = title
-
-        self.native = False
 
         if function:
             self.function = function
@@ -1604,11 +1609,16 @@ class S3ComponentTab(object):
         else:
             self.component = None
 
+        self.native = False
+        self.method = None
+
         if len(tab) > 2:
             tab_vars = self.vars = Storage(tab[2])
             if "native" in tab_vars:
                 self.native = True if tab_vars["native"] else False
                 del tab_vars["native"]
+            if len(tab) > 3:
+                self.method = tab[3]
         else:
             self.vars = None
 
@@ -1697,7 +1707,7 @@ class S3ComponentTab(object):
         if self.vars is None:
             return True
         get_vars = r.get_vars
-        for k, v in self.vars.iteritems():
+        for k, v in self.vars.items():
             if v is None:
                 continue
             if k not in get_vars or \
@@ -1742,16 +1752,17 @@ class S3ScriptItem(S3NavigationItem):
         return ""
 
 # =============================================================================
-class S3ResourceHeader:
+class S3ResourceHeader(object):
     """ Simple Generic Resource Header for tabbed component views """
 
-    def __init__(self, fields=None, tabs=None):
+    def __init__(self, fields=None, tabs=None, title=None):
         """
             Constructor
 
-            @param fields: the fields to display as list of lists of
+            @param fields: the fields to display, list of lists of
                            fieldnames, Field instances or callables
             @param tabs: the tabs
+            @param title: the title fieldname, Field or callable
 
             Fields are specified in order rows->cols, i.e. if written
             like:
@@ -1794,6 +1805,7 @@ class S3ResourceHeader:
 
         self.fields = fields
         self.tabs = tabs
+        self.title = title
 
     # -------------------------------------------------------------------------
     def __call__(self, r, tabs=None, table=None, record=None, as_div=True):
@@ -1835,56 +1847,105 @@ class S3ResourceHeader:
             for row in fields:
                 tr = TR()
                 for col in row:
-                    field = None
-                    label = ""
-                    value = ""
-                    if isinstance(col, (tuple, list)) and len(col) == 2:
-                        label, f = col
-                    else:
-                        f = col
-                    if callable(f):
-                        try:
-                            value = f(record)
-                        except:
-                            pass
-                    else:
-                        if isinstance(f, str):
-                            fn = f
-                            if "." in fn:
-                                fn = f.split(".", 1)[1]
-                            if fn not in record or fn not in table:
-                                continue
-                            field = table[fn]
-                            value = record[fn]
-                            # Field.Method?
-                            if callable(value):
-                                value = value()
-                        elif isinstance(f, Field) and f.name in record:
-                            field = f
-                            value = record[f.name]
-                    if field is not None:
-                        if not label:
-                            label = field.label
-                        if hasattr(field, "represent") and \
-                           field.represent is not None:
-                            value = field.represent(value)
+                    if col is None:
+                        continue
+                    label, value, colspan = self.render_field(table, record, col)
+                    if value is False:
+                        continue
                     if label is not None:
-                        tr.append(TH("%s: " % label))
-                    v = value
-                    if not isinstance(v, basestring) and \
-                       not isinstance(value, DIV):
-                        try:
-                            v = unicode(v)
-                        except:
-                            pass
-                    tr.append(TD(v))
+                        tr.append(TH(("%s: " % label) if label else ""))
+                    tr.append(TD(value, _colspan=colspan) if colspan else TD(value))
                 trs.append(tr)
-            if as_div:
-                rheader = DIV(TABLE(trs), rheader_tabs)
-            else:
-                rheader = (TABLE(trs), rheader_tabs)
-            return rheader
 
-        return None
+            title = self.title
+            if title:
+                title = self.render_field(table, record, title)[1]
+
+            if title:
+                content = DIV(H6(title, _class="rheader-title"),
+                              TABLE(trs),
+                              _class="rheader-content",
+                              )
+            else:
+                content = TABLE(trs, _class="rheader-content")
+
+            rheader = (content, rheader_tabs)
+            if as_div:
+                rheader = DIV(*rheader)
+
+        else:
+            rheader = None
+
+        return rheader
+
+    # -------------------------------------------------------------------------
+    def render_field(self, table, record, col):
+        """
+            Render an rheader field
+
+            @param table: the table
+            @param record: the record
+            @param col: the column spec (field name or tuple (label, fieldname))
+
+            @returns: tuple (label, value)
+        """
+
+        field = None
+        label = True
+        value = ""
+        colspan = None
+
+        # Parse column spec:
+        # fieldname|(label, fieldname)|(label,fieldname,colspan)
+        # label can be either a T(), str, HTML, or:
+        #       True        => automatic (use field label, default)
+        #       None        => no label column
+        #       "" or False => empty label
+        if isinstance(col, (tuple, list)):
+            if len(col) == 2:
+                label, f = col
+            elif len(col) > 2:
+                label, f, colspan = col
+            else:
+                f = col[0]
+        else:
+            f = col
+
+        # Get value
+        # - value can be a fieldname, a Field instance or a callable to
+        #   extract the value from the record
+        if callable(f):
+            try:
+                value = f(record)
+            except:
+                pass
+        else:
+            if isinstance(f, str):
+                fn = f
+                if "." in fn:
+                    fn = f.split(".", 1)[1]
+                if fn not in record or fn not in table:
+                    return None, False, None
+                field = table[fn]
+                value = record[fn]
+                # Field.Method?
+                if callable(value):
+                    value = value()
+            elif isinstance(f, Field) and f.name in record:
+                field = f
+                value = record[f.name]
+        if hasattr(field, "represent") and field.represent is not None:
+            value = field.represent(value)
+
+        # Render label
+        if label is True:
+            label = field.label if field is not None else False
+
+        # Render value
+        if not isinstance(value, basestring) and \
+           not isinstance(value, DIV):
+            value = s3_str(value)
+
+        return label, value, colspan
 
 # END =========================================================================
