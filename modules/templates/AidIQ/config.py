@@ -279,13 +279,13 @@ def config(settings):
                 restricted = True,
                 module_type = 1
             )),
-        ("monitor", Storage(
-                name_nice = T("Monitor"),
-                #description = "Monitoring of Servers & Applications",
+        ("setup", Storage(
+                name_nice = T("Deploy"),
+                #description = "Deployment & Monitoring of Servers & Applications",
                 restricted = True,
                 module_type = 3
             )),
-        #("survey", Storage(
+        #("dc", Storage(
         #        name_nice = T("Surveys"),
         #        #description = "Create, enter, and manage surveys.",
         #        restricted = True,

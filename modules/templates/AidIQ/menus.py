@@ -74,20 +74,4 @@ class S3MainMenu(default.S3MainMenu):
 
         return menu_admin
 
-# =============================================================================
-class S3OptionsMenu(default.S3OptionsMenu):
-    """ Custom Controller Menus """
-
-    # -------------------------------------------------------------------------
-    def modified(self):
-        """ Modified example """
-
-        return M(c="modified")(
-                    M("Resource", f="resource")(
-                        M("Create", m="create"),
-                        #M("Report", m="report"),
-                        #M("Import", m="import"),
-                    ),
-                )
-
 # END =========================================================================
