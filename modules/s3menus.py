@@ -54,11 +54,11 @@ class S3MainMenu(object):
 
             # Service menus, align-right
             # Note: always define right-hand items in reverse order!
-            cls.menu_help(right=True),
-            cls.menu_lang(right=True),
-            cls.menu_gis(right=True),
-            cls.menu_auth(right=True),
-            cls.menu_admin(right=True),
+            cls.menu_help(right = True),
+            cls.menu_lang(right = True),
+            cls.menu_gis(right = True),
+            cls.menu_auth(right = True),
+            cls.menu_admin(right = True),
         )
 
         return main_menu
@@ -456,11 +456,8 @@ class S3OptionsMenu(object):
         #     re-use of this menu by other controllers
         return M()(
                     M("Setup", c="setup", f="deployment")(
-                        #M("Create", m="create"),
-                        #M("Servers", f="server")(
-                        #),
-                        #M("Instances", f="instance")(
-                        #),
+                        M("AWS Clouds", f="aws_cloud")(),
+                        M("Deployments", f="deployment")(),
                     ),
                     M("Settings", c="admin", f="setting")(
                         settings_messaging,

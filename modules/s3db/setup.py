@@ -7,7 +7,7 @@
         * Monitoring of a Deployment
         * Upgrading a Deployment (tbc)
 
-    @copyright: 2015-2019 (c) Sahana Software Foundation
+    @copyright: 2015-2020 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -32,7 +32,11 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ("S3SetupModel",
+__all__ = ("S3DNSModel",
+           "S3GandiDNSModel",
+           "S3CloudModel",
+           "S3AWSCloudModel",
+           "S3SetupModel",
            "S3SetupMonitorModel",
            #"Storage2",
            #"setup_DeploymentRepresent",
@@ -60,6 +64,7 @@ MSG_FORMAT = "%(now)s - %(category)s - %(data)s\n\n"
 
 WEB_SERVERS = {#1: "apache",
                2: "cherokee",
+               3: "nginx",
                }
 
 DB_SERVERS = {#1: "mysql",
@@ -72,6 +77,212 @@ INSTANCE_TYPES = {1: "prod",
                   3: "test",
                   4: "demo",
                   }
+
+# =============================================================================
+class S3DNSModel(S3Model):
+    """
+        Domain Name System (DNS) Providers
+        - super-entity
+    """
+
+    names = ("setup_dns",
+             "setup_dns_id",
+             )
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+
+        #----------------------------------------------------------------------
+        # Super entity
+        #
+        dns_types = Storage(setup_gandi_dns = T("Gandi LiveDNS"),
+                            )
+
+        tablename = "setup_dns"
+        self.super_entity(tablename, "dns_id",
+                          dns_types,
+                          Field("name",
+                                #label = T("Name"),
+                                ),
+                          Field("description",
+                                #label = T("Description"),
+                                ),
+                          Field("enabled", "boolean",
+                                default = True,
+                                #label = T("Enabled?")
+                                #represent = s3_yes_no_represent,
+                                ),
+                          #on_define = lambda table: \
+                          #  [table.instance_type.set_attributes(readable = True),
+                          #   ],
+                          )
+
+        # Reusable Field
+        represent = S3Represent(lookup = tablename)
+        dns_id = S3ReusableField("dns_id", "reference %s" % tablename,
+                                 label = T("DNS Provider"),
+                                 ondelete = "SET NULL",
+                                 represent = represent,
+                                 requires = IS_EMPTY_OR(
+                                    IS_ONE_OF(db, "setup_dns.id",
+                                              represent,
+                                              sort = True
+                                              ),
+                                    ),
+                                 )
+
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        return {"setup_dns_id": dns_id,
+                }
+
+# =============================================================================
+class S3GandiDNSModel(S3DNSModel):
+    """
+        Gandi LiveDNS
+        - DNS Provider Instance
+
+        https://doc.livedns.gandi.net/
+    """
+
+    names = ("setup_gandi_dns",)
+
+    def model(self):
+
+        #T = current.T
+
+        # ---------------------------------------------------------------------
+        tablename = "setup_gandi_dns"
+        self.define_table(tablename,
+                          self.super_link("dns_id", "setup_dns"),
+                          Field("name"),
+                          Field("description"),
+                          Field("enabled", "boolean",
+                                default = True,
+                                #label = T("Enabled?"),
+                                represent = s3_yes_no_represent,
+                                ),
+                          Field("api_key", "password",
+                                readable = False,
+                                requires = IS_NOT_EMPTY(),
+                                widget = S3PasswordWidget(),
+                                ),
+                          *s3_meta_fields())
+
+        self.configure(tablename,
+                       super_entity = "setup_dns",
+                       )
+
+        # ---------------------------------------------------------------------
+        return {}
+
+# =============================================================================
+class S3CloudModel(S3Model):
+    """
+        Clouds
+        - super-entity
+    """
+
+    names = ("setup_cloud",
+             "setup_cloud_id",
+             )
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+
+        #----------------------------------------------------------------------
+        # Super entity
+        #
+        cloud_types = Storage(setup_aws_cloud = T("Amazon Web Services"),
+                              )
+
+        tablename = "setup_cloud"
+        self.super_entity(tablename, "cloud_id",
+                          cloud_types,
+                          Field("name",
+                                #label = T("Name"),
+                                ),
+                          Field("description",
+                                #label = T("Description"),
+                                ),
+                          Field("enabled", "boolean",
+                                default = True,
+                                #label = T("Enabled?")
+                                #represent = s3_yes_no_represent,
+                                ),
+                          #on_define = lambda table: \
+                          #  [table.instance_type.set_attributes(readable = True),
+                          #   ],
+                          )
+
+        # Reusable Field
+        represent = S3Represent(lookup = tablename)
+        cloud_id = S3ReusableField("cloud_id", "reference %s" % tablename,
+                                   label = T("Cloud"),
+                                   ondelete = "SET NULL",
+                                   represent = represent,
+                                   requires = IS_EMPTY_OR(
+                                    IS_ONE_OF(db, "setup_cloud.cloud_id",
+                                              represent,
+                                              sort = True
+                                              ),
+                                    ),
+                                   )
+
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        return {"setup_cloud_id": cloud_id,
+                }
+
+# =============================================================================
+class S3AWSCloudModel(S3CloudModel):
+    """
+        Amazon Web Services
+        - Cloud Instance
+
+        https://docs.ansible.com/ansible/latest/scenario_guides/guide_aws.html
+        https://docs.ansible.com/ansible/latest/modules/ec2_module.html
+    """
+
+    names = ("setup_aws_cloud",)
+
+    def model(self):
+
+        #T = current.T
+
+        # ---------------------------------------------------------------------
+        tablename = "setup_aws_cloud"
+        self.define_table(tablename,
+                          self.super_link("cloud_id", "setup_cloud"),
+                          Field("name"),
+                          Field("description"),
+                          Field("enabled", "boolean",
+                                default = True,
+                                #label = T("Enabled?"),
+                                represent = s3_yes_no_represent,
+                                ),
+                          Field("secret_key", "password",
+                                readable = False,
+                                requires = IS_NOT_EMPTY(),
+                                widget = S3PasswordWidget(),
+                                ),
+                          Field("access_key", "password",
+                                readable = False,
+                                requires = IS_NOT_EMPTY(),
+                                widget = S3PasswordWidget(),
+                                ),
+                          *s3_meta_fields())
+
+        self.configure(tablename,
+                       super_entity = "setup_cloud",
+                       )
+
+        # ---------------------------------------------------------------------
+        return {}
 
 # =============================================================================
 class S3SetupModel(S3Model):
@@ -104,6 +315,7 @@ class S3SetupModel(S3Model):
         #
         tablename = "setup_deployment"
         define_table(tablename,
+                     self.setup_cloud_id(),
                      # @ToDo: Allow use of Custom repo
                      # @ToDo: Add ability to get a specific hash/tag
                      Field("repo_url",
@@ -139,13 +351,13 @@ class S3SetupModel(S3Model):
                                                      ),
                            ),
                      Field("webserver_type", "integer",
-                           default = 2,
+                           default = 3,
                            label = T("Web Server"),
                            represent = S3Represent(options = WEB_SERVERS),
                            requires = IS_IN_SET(WEB_SERVERS),
                            comment = DIV(_class="tooltip",
                                          _title="%s|%s" % (T("Web Server"),
-                                                           T("Currently only Cherokee is supported by this tool, although Apache should be possible with a little work.")
+                                                           T("Currently only Nginx and Cherokee is supported by this tool, although Apache should be possible with a little work.")
                                                            )
                                          ),
                            ),
@@ -165,31 +377,6 @@ class S3SetupModel(S3Model):
                            readable = False,
                            writable = False,
                            ),
-                     #Field("secret_key",
-                     #      label = T("AWS Secret Key"),
-                     #      comment = DIV(_class="tooltip",
-                     #                    _title="%s|%s" % (T("AWS Secret Key"),
-                     #                                      T("If you wish to add additional servers on AWS then you need this")
-                     #                                      )
-                     #                    ),
-                     #      ),
-                     #Field("access_key",
-                     #      label = T("AWS Access Key"),
-                     #      comment = DIV(_class="tooltip",
-                     #                    _title="%s|%s" % (T("AWS Access Key"),
-                     #                                      T("If you wish to add additional servers on AWS then you need this")
-                     #                                      )
-                     #                    ),
-                     #      ),
-                     #Field("refresh_lock", "integer",
-                     #      default = 0,
-                     #      readable = False,
-                     #      writable = False,
-                     #      ),
-                     #Field("last_refreshed", "datetime",
-                     #      readable = False,
-                     #      writable = False,
-                     #      ),
                      *s3_meta_fields()
                      )
 
@@ -419,6 +606,7 @@ class S3SetupModel(S3Model):
                                                            )
                                          ),
                            ),
+                     # @ToDo: Allow upload of SSL as well as auto-generated Let's Encrypt
                      #Field("ssl_cert", "upload",
                      #      label = T("SSL Certificate"),
                      #      length = current.MAX_FILENAME_LENGTH,
@@ -587,6 +775,8 @@ class S3SetupModel(S3Model):
                    action = self.setup_setting_apply,
                    )
 
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
         return {"setup_deployment_id": deployment_id,
                 "setup_server_id": server_id,
                 }
@@ -857,7 +1047,7 @@ dropdown.change(function() {
                          "connection": "local", # @ToDo: Don't assume this
                          "remote_user": server.remote_user,
                          "become_method": "sudo",
-                         "become_user": "root",
+                         #"become_user": "root",
                          "vars": {"appname": appname,
                                   "all_sites": ",".join(all_sites),
                                   "db_ip": host_ip,
@@ -894,7 +1084,7 @@ dropdown.change(function() {
             playbook = [{"hosts": db_ip,
                          "remote_user": remote_user,
                          "become_method": "sudo",
-                         "become_user": "root",
+                         #"become_user": "root",
                          "vars": {"db_type": db_type,
                                   "password": db_password,
                                   "type": instance_type
@@ -905,7 +1095,7 @@ dropdown.change(function() {
                         {"hosts": webserver_ip,
                          #"remote_user": remote_user,
                          "become_method": "sudo",
-                         "become_user": "root",
+                         #"become_user": "root",
                          "vars": {"appname": appname,
                                   "all_sites": ",".join(all_sites),
                                   "db_ip": db_ip,
@@ -1079,7 +1269,7 @@ dropdown.change(function() {
                      "connection": "local", # @ToDo: Don't assume this
                      "remote_user": remote_user,
                      "become_method": "sudo",
-                     "become_user": "root",
+                     #"become_user": "root",
                      "tasks": [{"name": "Edit 000_config.py",
                                 "lineinfile": {"dest": "/home/%s/applications/%s/models/000_config.py" % (instance_type, appname),
                                                "regexp": "^settings.%s =" % the_setting,
@@ -1198,7 +1388,7 @@ dropdown.change(function() {
                      "connection": "local", # @ToDo: Don't assume this
                      "remote_user": remote_user,
                      "become_method": "sudo",
-                     "become_user": "root",
+                     #"become_user": "root",
                      "tasks": tasks,
                      },
                     ]
@@ -1986,11 +2176,103 @@ def setup_run_playbook(playbook, hosts, tags=None, private_key=None):
     """
         Run an Ansible Playbook & return the result
         - designed to be run as a Scheduled Task
-            - 'deploy' a deployment
-            - 'apply' a setting
-            - 'start' an instance
-            - 'stop' an instance
-            @ToDo: Clean an instance, Upgrade an Instance
+
+        http://docs.ansible.com/ansible/latest/dev_guide/developing_api.html
+        https://serversforhackers.com/c/running-ansible-2-programmatically
+    """
+
+    # No try/except here as we want ImportErrors to raise
+    import shutil
+    import yaml
+    from ansible.module_utils.common.collections import ImmutableDict
+    from ansible.parsing.dataloader import DataLoader
+    from ansible.vars.manager import VariableManager
+    from ansible.inventory.manager import InventoryManager
+    from ansible.playbook.play import Play
+    from ansible.executor.task_queue_manager import TaskQueueManager
+    from ansible.plugins.callback import CallbackBase
+    from ansible import context
+    import ansible.constants as C
+
+    class ResultCallback(CallbackBase):
+        def v2_runner_on_ok(self, result, **kwargs):
+            host = result._host
+            current.log.debug(json.dumps({host.name: result._result}, indent=4))
+
+    # Copy the current working directory to revert back to later
+    cwd = os.getcwd()
+
+    # Change working directory
+    roles_path = os.path.join(current.request.folder, "private", "eden_deploy")
+    os.chdir(roles_path)
+
+    # Since the API is constructed for CLI it expects certain options to always be set in the context object
+    context.CLIARGS = ImmutableDict(connection = "local",
+                                    module_path = [roles_path],
+                                    forks = 10,
+                                    become = None,
+                                    become_method = None,
+                                    become_user = None,
+                                    check = False,
+                                    diff = False)
+
+    # Initialize needed objects
+    loader = DataLoader() # Takes care of finding and reading yaml, json and ini files
+
+    # Instantiate Logging for handling results as they come in
+    results_callback = ResultCallback()
+
+    # Create Inventory and pass to Var manager
+    if len(hosts) == 1:
+        # Ensure that we have a comma to tell Ansible that this is a list of hosts not a file to read from
+        sources = "%s," % hosts[0]
+    else:
+        sources = ",".join(hosts)
+
+    inventory = InventoryManager(loader = loader,
+                                 sources = sources)
+    variable_manager = VariableManager(loader = loader,
+                                       inventory = inventory)
+
+    # Load Playbook
+    with open(playbook, "r") as yaml_file:
+        play_source = yaml.load(yaml_file)[0]
+
+    # Create play object, playbook objects use .load instead of init or new methods,
+    # this will also automatically create the task objects from the info provided in play_source
+    play = Play().load(play_source,
+                       variable_manager = variable_manager,
+                       loader = loader)
+
+    # Run it - instantiate task queue manager, which takes care of forking and setting up all objects to iterate over host list and tasks
+    tqm = None
+    try:
+        tqm = TaskQueueManager(inventory = inventory,
+                               variable_manager = variable_manager,
+                               loader = loader,
+                               passwords = None,
+                               # Use our custom callback instead of the ``default`` callback plugin, which prints to stdout
+                               stdout_callback = results_callback,
+                               )
+        result = tqm.run(play) # most interesting data for a play is actually sent to the callback's methods
+    finally:
+        # we always need to cleanup child procs and the structures we use to communicate with them
+        if tqm is not None:
+            tqm.cleanup()
+
+        # Remove ansible tmpdir
+        shutil.rmtree(C.DEFAULT_LOCAL_TMP, True)
+
+    # Change working directory back
+    os.chdir(cwd)
+
+    return result
+
+# =============================================================================
+def setup_run_playbook_old(playbook, hosts, tags=None, private_key=None):
+    """
+        Run an Ansible Playbook & return the result
+        - designed to be run as a Scheduled Task
 
         http://docs.ansible.com/ansible/latest/dev_guide/developing_api.html
         https://serversforhackers.com/c/running-ansible-2-programmatically
@@ -2203,7 +2485,7 @@ def setup_instance_method(instance_id, method="start"):
                  "connection": "local", # @ToDo: Don't assume this
                  "remote_user": server.remote_user,
                  "become_method": "sudo",
-                 "become_user": "root",
+                 #"become_user": "root",
                  "vars": {"db_type": DB_SERVERS[deployment.db_type],
                           "web_server": WEB_SERVERS[deployment.webserver_type],
                           "type": INSTANCE_TYPES[instance.type],
