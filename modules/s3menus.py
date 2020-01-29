@@ -180,10 +180,10 @@ class S3MainMenu(object):
                 menu_help.append(SEP())
             for row in tours:
                 menu_help.append(MM(row.name,
-                                    c=row.controller,
-                                    f=row.function,
-                                    vars={"tour":row.id},
-                                    restrict=row.role
+                                    c = row.controller,
+                                    f = row.function,
+                                    vars = {"tour": row.id},
+                                    restrict = row.role
                                     )
                                  )
 
@@ -457,7 +457,10 @@ class S3OptionsMenu(object):
         return M()(
                     M("Setup", c="setup", f="deployment")(
                         M("AWS Clouds", f="aws_cloud")(),
-                        M("Deployments", f="deployment")(),
+                        M("GANDI DNS", f="gandi_dns")(),
+                        M("Deployments", f="deployment")(
+                            M("Create", m="create"),
+                        ),
                     ),
                     M("Settings", c="admin", f="setting")(
                         settings_messaging,
@@ -1028,6 +1031,27 @@ class S3OptionsMenu(object):
                         #M("Import", m="import", p="create"),
                     ),
                 )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def fin():
+        """ FINANCES """
+
+        return M(c="fin")(
+                    # TODO activate via deployment setting:
+                    M("Payment Services", f="payment_service")(
+                        M("Create", m="create"),
+                        ),
+                    # TODO activate via deployment setting:
+                    M("Products", f="product")(
+                        M("Create", m="create"),
+                        ),
+                    # TODO activate via deployment setting:
+                    M("Subscriptions", link=False)(
+                        M("Plans", f="subscription_plan"),
+                        M("Subscriptions", f="subscription"),
+                        ),
+                    )
 
     # -------------------------------------------------------------------------
     @staticmethod
