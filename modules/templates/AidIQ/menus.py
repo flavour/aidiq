@@ -154,12 +154,10 @@ class S3OptionsMenu(default.S3OptionsMenu):
         """ Setup """
 
         return M()(
-                    M("Setup", c="setup", f="deployment")(
+                    M("Deployments", c="setup", f="deployment")(
                         M("AWS Clouds", f="aws_cloud")(),
                         M("GANDI DNS", f="gandi_dns")(),
-                        M("Deployments", f="deployment")(
-                            M("Create", m="create"),
-                        ),
+                        M("Create", m="create")(),
                     ),
                     M("Monitoring", c="setup", f="server")(
                         M("Checks", f="monitor_check"),
