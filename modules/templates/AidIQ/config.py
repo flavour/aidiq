@@ -248,17 +248,29 @@ def config(settings):
                 module_type = None
             )),
         # All modules below here should be possible to disable safely
+        ("project", Storage(
+                name_nice = T("Projects"),
+                #description = "Tracking of Projects, Activities and Tasks",
+                restricted = True,
+                module_type = 1
+            )),
         ("hrm", Storage(
                 name_nice = T("Staff"),
                 #description = "Human Resources Management",
                 restricted = True,
                 module_type = 2,
             )),
+        ("setup", Storage(
+                name_nice = T("Monitoring"),
+                #description = "Deployment & Monitoring of Servers & Applications",
+                restricted = True,
+                module_type = 3
+            )),
         ("cms", Storage(
-              name_nice = T("Content Management"),
+              name_nice = T("CMS"),
               #description = "Content Management System",
               restricted = True,
-              module_type = None,
+              module_type = 4,
           )),
         ("doc", Storage(
                 name_nice = T("Documents"),
@@ -272,18 +284,6 @@ def config(settings):
                 restricted = True,
                 # The user-visible functionality of this module isn't normally required. Rather it's main purpose is to be accessed from other modules.
                 module_type = None,
-            )),
-        ("project", Storage(
-                name_nice = T("Projects"),
-                #description = "Tracking of Projects, Activities and Tasks",
-                restricted = True,
-                module_type = 1
-            )),
-        ("setup", Storage(
-                name_nice = T("Deploy"),
-                #description = "Deployment & Monitoring of Servers & Applications",
-                restricted = True,
-                module_type = 3
             )),
         #("dc", Storage(
         #        name_nice = T("Surveys"),

@@ -74,4 +74,99 @@ class S3MainMenu(default.S3MainMenu):
 
         return menu_admin
 
+# =============================================================================
+class S3OptionsMenu(default.S3OptionsMenu):
+    """ Custom Controller Menus """
+
+    # -------------------------------------------------------------------------
+    def admin(self):
+        """ ADMIN menu """
+
+        settings_messaging = self.settings_messaging()
+
+        settings = current.deployment_settings
+        consent_tracking = lambda i: settings.get_auth_consent_tracking()
+        is_data_repository = lambda i: settings.get_sync_data_repository()
+        translate = settings.has_module("translate")
+
+        # NB: Do not specify a controller for the main menu to allow
+        #     re-use of this menu by other controllers
+        return M()(
+                    #M("Setup", c="setup", f="deployment")(
+                    #    M("AWS Clouds", f="aws_cloud")(),
+                    #    M("GANDI DNS", f="gandi_dns")(),
+                    #    M("Deployments", f="deployment")(
+                    #        M("Create", m="create"),
+                    #    ),
+                    #),
+                    M("Settings", c="admin", f="setting")(
+                        settings_messaging,
+                    ),
+                    M("User Management", c="admin", f="user")(
+                        M("Create User", m="create"),
+                        M("List All Users"),
+                        M("Import Users", m="import"),
+                        M("List All Roles", f="role"),
+                        M("List All Organization Approvers & Whitelists", f="organisation"),
+                        #M("Roles", f="group"),
+                        #M("Membership", f="membership"),
+                    ),
+                    #M("Consent Tracking", c="admin", link=False, check=consent_tracking)(
+                    #    M("Processing Types", f="processing_type"),
+                    #    M("Consent Options", f="consent_option"),
+                    #    ),
+                    #M("CMS", c="cms", f="post")(
+                    #),
+                    M("Database", c="appadmin", f="index")(
+                        M("Raw Database access", c="appadmin", f="index")
+                    ),
+                    M("Error Tickets", c="admin", f="errors"),
+                    #M("Monitoring", c="setup", f="server")(
+                    #    M("Checks", f="monitor_check"),
+                    #    M("Servers", f="server"),
+                    #    M("Tasks", f="monitor_task"),
+                    #    M("Logs", f="monitor_run"),
+                    #),
+                    #M("Synchronization", c="sync", f="index")(
+                    #    M("Settings", f="config", args=[1], m="update"),
+                    #    M("Repositories", f="repository"),
+                    #    M("Public Data Sets", f="dataset", check=is_data_repository),
+                    #    M("Log", f="log"),
+                    #),
+                    #M("Edit Application", a="admin", c="default", f="design",
+                      #args=[request.application]),
+                    #M("Translation", c="admin", f="translate", check=translate)(
+                    #   M("Select Modules for translation", c="admin", f="translate",
+                    #     m="create", vars=dict(opt="1")),
+                    #   M("Upload translated files", c="admin", f="translate",
+                    #     m="create", vars=dict(opt="2")),
+                    #   M("View Translation Percentage", c="admin", f="translate",
+                    #     m="create", vars=dict(opt="3")),
+                    #   M("Add strings manually", c="admin", f="translate",
+                    #     m="create", vars=dict(opt="4"))
+                    #),
+                    #M("View Test Result Reports", c="admin", f="result"),
+                    #M("Portable App", c="admin", f="portable")
+                )
+
+    # -------------------------------------------------------------------------
+    def setup(self):
+        """ Setup """
+
+        return M()(
+                    M("Setup", c="setup", f="deployment")(
+                        M("AWS Clouds", f="aws_cloud")(),
+                        M("GANDI DNS", f="gandi_dns")(),
+                        M("Deployments", f="deployment")(
+                            M("Create", m="create"),
+                        ),
+                    ),
+                    M("Monitoring", c="setup", f="server")(
+                        M("Checks", f="monitor_check"),
+                        M("Servers", f="server"),
+                        M("Tasks", f="monitor_task"),
+                        M("Logs", f="monitor_run"),
+                    ),
+                )
+
 # END =========================================================================
