@@ -7,9 +7,8 @@ from gluon.storage import Storage
 
 def config(settings):
     """
-        Template settings for a default system
-
-        @ToDo: Rename this as 'Demo'
+        Template settings for the Default template
+        - default settings suitable for a small organisation managing it's own resources
     """
 
     T = current.T
@@ -49,9 +48,10 @@ def config(settings):
     #settings.auth.registration_welcome_email = False
 
     # Allow a new user to be linked to a record (and a new record will be created if it doesn't already exist)
-    #settings.auth.registration_link_user_to = {"staff":T("Staff"),
-    #                                           "volunteer":T("Volunteer"),
-    #                                           "member":T("Member")}
+    #settings.auth.registration_link_user_to = {"staff": T("Staff"),
+    #                                           "volunteer": T("Volunteer"),
+    #                                           "member": T("Member"),
+    #                                           }
 
     # Always notify the approver of a new (verified) user, even if the user is automatically approved
     #settings.auth.always_notify_approver = False
@@ -1359,13 +1359,12 @@ def config(settings):
         #    restricted = True,
         #    module_type = 10
         #)),
-        # @ToDo: Disable this in default once we don't have the Unit Tests failing when this happens
-        ("hms", Storage(
-            name_nice = T("Hospitals"),
-            #description = "Helps to monitor status of hospitals",
-            restricted = True,
-            module_type = 10
-        )),
+        #("hms", Storage(
+        #    name_nice = T("Hospitals"),
+        #    #description = "Helps to monitor status of hospitals",
+        #    restricted = True,
+        #    module_type = 10
+        #)),
         #("disease", Storage(
         #    name_nice = T("Disease Tracking"),
         #    #description = "Helps to track cases and trace contacts in disease outbreaks",
