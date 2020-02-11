@@ -20,19 +20,14 @@
 {{# Place favicon.ico and apple-touch-icon.png in the root of your domain and delete these references }}
 <link rel="shortcut icon" href="/{{=appname}}/static/favicon.ico" type="image/x-icon" />
 {{# <link rel="apple-touch-icon" href="/=appname/static/favicon.png" /> }}
-{{# All JavaScript at the bottom, except for Modernizr which enables HTML5 elements & feature detects }}{{# This kills the map in IE8: VML.js }}
-{{#<script src="/=appname/static/scripts/modernizr.min.js"></script>}}
 {{for sheet in s3.external_stylesheets:}}
- <link href="{{=sheet}}" rel="stylesheet" type="text/css" media="screen" charset="utf-8" />
-{{pass}}
-{{include "foundation.css.html"}}
+ <link href="{{=sheet}}" rel="stylesheet" type="text/css" media="screen" charset="utf-8" />{{pass}}{{#include "foundation.css.html"}}
+<link href="/{{=appname}}/static/themes/foundation/normalize.css" rel="stylesheet" />
+<script src="/{{=appname}}/static/scripts/modernizr.min.js" type="text/javascript"></script>
 {{for sheet in s3.stylesheets:}}
- <link href="/{{=appname}}/static/styles/{{=sheet}}" rel="stylesheet" type="text/css" media="screen" charset="utf-8" />
-{{pass}}
-{{if s3.debug:}}{{=s3base.s3_include_debug_css()}}{{else:}}
- {{# Built by /static/scripts/tools/build.sahana.py }}
- <link href="/{{=appname}}/static/themes/{{=theme}}/eden.min.css" rel="stylesheet" type="text/css" />
-{{pass}}
+ <link href="/{{=appname}}/static/styles/{{=sheet}}" rel="stylesheet" type="text/css" media="screen" charset="utf-8" />{{pass}}
+{{if s3.debug:}}{{=s3base.s3_include_debug_css()}}{{else:}}{{# Built by /static/scripts/tools/build.sahana.py }}
+ <link href="/{{=appname}}/static/themes/{{=theme}}/eden.min.css" rel="stylesheet" type="text/css" />{{pass}}
 {{include "scripts_top.html"}}
 </head>
 {{try:}}
@@ -62,8 +57,7 @@
   </div>
   <div class='medium-9 large-10 columns' id='content'>
   {{else:}}
-  <div class='medium-12 columns'>
-  {{pass}}
+  <div class='medium-12 columns'>{{pass}}
    <div class='row'>
     <div class='medium-8 medium-centered columns' id='alert-space'>
      {{if response.error:}}<div class='alert alert-error'>{{=response.error}}</div>{{pass}}
@@ -72,8 +66,7 @@
      {{if response.confirmation:}}<div class='alert alert-success'>{{=response.confirmation}}</div>{{pass}}
      {{if response.flash:}}<div class='alert alert-success'>{{=response.flash}}</div>{{pass}}
     </div>
-   </div>
-   {{#include "breadcrumbs.html"}}
+   </div>{{#include "breadcrumbs.html"}}
    {{include}}
   </div>
  </div>
@@ -83,11 +76,9 @@
    {{if s3.debug:}}
    <div class="row">
     <div class='medium-12 columns'>{{=s3.toolbar()}}</div>
-   </div>
-   {{pass}}
+   </div>{{pass}}
   </div>
- </div>
-{{pass}}
+ </div>{{pass}}
 {{include "scripts.html"}}
 {{include "foundation.js.html"}}
 </body>
