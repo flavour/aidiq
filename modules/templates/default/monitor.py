@@ -42,13 +42,6 @@ import sys
 from gluon import current
 
 try:
-    import arrow
-except ImportError:
-    ARROW = None
-else:
-    ARROW = True
-
-try:
     import requests
 except ImportError:
     REQUESTS = None
@@ -473,22 +466,17 @@ class S3Monitor(object):
             Test whether the scheduler is running
         """
 
-        if ARROW is None:
-            return {"result": "Critical: Arrow library not installed",
-                    "status": 3,
-                    }
-
         db = current.db
         s3db = current.s3db
 
         # Read the Task Options
         ttable = s3db.setup_monitor_task
-        task = db(ttable.id == task_id).select(#ttable.options,
+        task = db(ttable.id == task_id).select(ttable.options,
                                                ttable.server_id,
                                                limitby = (0, 1)
                                                ).first()
-        #options = task.options or {}
-        #options_get = options.get
+        options = task.options or {}
+        options_get = options.get
 
         stable = s3db.setup_server
         server = db(stable.id == task.server_id).select(stable.host_ip,
@@ -497,7 +485,7 @@ class S3Monitor(object):
                                                         limitby = (0, 1)
                                                         ).first()
 
-        earliest = arrow.utcnow().shift(minutes = -15)
+        earliest = current.request.utcnow - datetime.timedelta(seconds = 900) # 15 minutes
 
         if server.host_ip == "127.0.0.1":
             # This doesn't make much sense as a check, since this won't run if the scheduler has died!
@@ -507,7 +495,7 @@ class S3Monitor(object):
                                                           limitby = (0, 1)
                                                           ).first()
             
-            if not worker:
+            if worker is None:
                 return {"result": "Warning: Scheduler not ACTIVE",
                         "status": 3,
                         }
@@ -526,8 +514,12 @@ class S3Monitor(object):
             # We failed to login
             return ssh
 
-        command = "cd" % earliest
-        stdin, stdout, stderr = ssh.exec_command('python -c "%s"' % command)
+        appname = options_get("appname", "eden")
+        instance = options_get("instance", "prod")
+
+        command = "cd /home/%s;python web2py.py --no-banner -S %s -M -R applications/%s/static/scripts/tools/check_scheduler.py -A '%s'" % \
+            (instance, appname, appname, earliest)
+        stdin, stdout, stderr = ssh.exec_command(command)
         outlines = stdout.readlines()
         ssh.close()
 
