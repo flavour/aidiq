@@ -95,6 +95,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     #M("Setup", c="setup", f="deployment")(
                     #    M("AWS Clouds", f="aws_cloud")(),
                     #    M("GANDI DNS", f="gandi_dns")(),
+                    #    M("SMTP SmartHosts", f="smtp")(),
                     #    M("Deployments", f="deployment")(
                     #        M("Create", m="create"),
                     #    ),
@@ -157,6 +158,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     M("Deployments", c="setup", f="deployment")(
                         M("AWS Clouds", f="aws_cloud")(),
                         M("GANDI DNS", f="gandi_dns")(),
+                        M("SMTP SmartHosts", f="smtp")(),
                         M("Create", m="create")(),
                     ),
                     M("Monitoring", c="setup", f="server")(
