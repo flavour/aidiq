@@ -1106,7 +1106,6 @@ class S3SetupDeploymentModel(S3Model):
 
             connection = "smart"
             # Add instance to host group (to associate private_key)
-            host_ip = "launched"
             private_key = os.path.join(current.request.folder, "uploads", private_key)
             playbook.append({"hosts": "localhost",
                              "connection": "local",
@@ -1118,6 +1117,7 @@ class S3SetupDeploymentModel(S3Model):
                                         },
                                        ],
                              })
+            host_ip = "launched"
 
         if smtp_id is None:
             # Reset to default configuration
@@ -1860,17 +1860,16 @@ dropdown.change(function() {
 
         # Write Playbook
         name = "deployment_%d" % int(time.time())
-        if instance_type == "prod":
-            tags = []
-        else:
-            tags = [instance_type]
         task_vars = setup_write_playbook("%s.yml" % name,
                                          playbook,
-                                         tags,
                                          )
 
         # Run Playbook
         task_vars["instance_id"] = instance_id # To Upload Logs to Instance record
+        if instance_type != "prod":
+            # only_tags
+            task_vars["tags"] = [instance_type]
+
         task_id = current.s3task.schedule_task(name,
                                                vars = task_vars,
                                                function_name = "setup_run_playbook",
@@ -2105,7 +2104,6 @@ dropdown.change(function() {
 
             connection = "smart"
             # Add instance to host group (to associate private_key)
-            host_ip = "launched"
             private_key = os.path.join(current.request.folder, "uploads", private_key)
             playbook.append({"hosts": "localhost",
                              "connection": "local",
@@ -2117,6 +2115,7 @@ dropdown.change(function() {
                                         },
                                        ],
                              })
+            host_ip = "launched"
 
         appname = "eden" # @ToDo: Allow this to be configurable
 
@@ -3070,7 +3069,6 @@ def setup_monitor_check_email_reply(run_id):
 # =============================================================================
 def setup_write_playbook(playbook_name,
                          playbook_data,
-                         tags = None,
                          ):
     """
         Write an Ansible Playbook file
@@ -3110,10 +3108,6 @@ def setup_write_playbook(playbook_name,
 
     task_vars = {"playbook": playbook_path,
                  }
-    if tags:
-        # only_tags
-        task_vars["tags"] = tags
-
     return task_vars
 
 # =============================================================================
@@ -3496,7 +3490,6 @@ def setup_instance_method(instance_id, method="start"):
 
         connection = "smart"
         # Add instance to host group (to associate private_key)
-        host_ip = "launched"
         private_key = os.path.join(folder, "uploads", private_key)
         playbook.append({"hosts": "localhost",
                          "connection": "local",
@@ -3508,6 +3501,7 @@ def setup_instance_method(instance_id, method="start"):
                                     },
                                    ],
                          })
+        host_ip = "launched"
 
     # Get Deployment details
     dtable = s3db.setup_deployment
@@ -3539,7 +3533,7 @@ def setup_instance_method(instance_id, method="start"):
                                      )
 
     # Run the Playbook
-    task_vars["instance_id"] = instance_id
+    task_vars["instance_id"] = instance_id # To Upload Logs to Instance record
     current.s3task.schedule_task(name,
                                  vars = task_vars,
                                  function_name = "setup_run_playbook",
@@ -3592,7 +3586,6 @@ def setup_setting_apply(setting_id):
 
         connection = "smart"
         # Add instance to host group (to associate private_key)
-        host_ip = "launched"
         private_key = os.path.join(current.request.folder, "uploads", private_key)
         playbook.append({"hosts": "localhost",
                          "connection": "local",
@@ -3604,6 +3597,7 @@ def setup_setting_apply(setting_id):
                                     },
                                    ],
                          })
+        host_ip = "launched"
 
     appname = "eden" # @ToDo: Allow this to be configurable
 
@@ -3726,7 +3720,6 @@ def setup_settings_apply(instance_id, settings):
 
         connection = "smart"
         # Add instance to host group (to associate private_key)
-        host_ip = "launched"
         private_key = os.path.join(current.request.folder, "uploads", private_key)
         playbook.append({"hosts": "localhost",
                          "connection": "local",
@@ -3738,6 +3731,7 @@ def setup_settings_apply(instance_id, settings):
                                     },
                                    ],
                          })
+        host_ip = "launched"
 
     appname = "eden" # @ToDo: Allow this to be configurable
 
