@@ -544,11 +544,6 @@ class FinSubscriptionModel(S3Model):
                      Field("description",
                            label = T("Description"),
                            ),
-                     # TODO onvalidation to make sure the interval is max 1 year in total
-                     Field("interval_count", "integer",
-                           label = T("Interval"),
-                           requires = IS_INT_IN_RANGE(1, 365),
-                           ),
                      Field("interval_unit",
                            label = T("Interval Unit"),
                            default = "MONTH",
@@ -556,14 +551,22 @@ class FinSubscriptionModel(S3Model):
                                                 zero = None,
                                                 ),
                            ),
-                     # TODO consider alternative "fixed", default False
-                     Field("indefinite", "boolean",
-                           label = T("Indefinite"),
-                           default = True,
+                     Field("interval_count", "integer",
+                           label = T("Interval"),
+                           requires = IS_INT_IN_RANGE(1, 365),
                            ),
-                     # TODO show only if indefinite is un-checked
-                     # TODO onvalidation to check whether total cycles set for indefinite=False
+                     Field("fixed", "boolean",
+                           label = T("Fixed-term"),
+                           default = False,
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (T("Fixed-term"),
+                                                           T("Subscription plan has a fixed total number of cycles"),
+                                                           ),
+                                         ),
+                           ),
+                     # TODO show only if fixed is checked
                      Field("total_cycles", "integer",
+                           label = T("Total Cycles"),
                            requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, 999)),
                            ),
                      # TODO represent
@@ -589,6 +592,12 @@ class FinSubscriptionModel(S3Model):
                             fin_subscription_plan_service = "plan_id",
                             fin_subscription = "plan_id",
                             )
+
+        # Table Configuration
+        self.configure(tablename,
+                       onvalidation = self.subscription_plan_onvalidation,
+                       )
+
         # CRUD Strings
         crud_strings[tablename] = Storage(
             label_create = T("Create Subscription Plan"),
@@ -713,6 +722,41 @@ class FinSubscriptionModel(S3Model):
         """ Safe defaults for names in case the module is disabled """
 
         return {}
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def subscription_plan_onvalidation(form):
+        """
+            Form validation for subscription plans
+            - interval can be at most 1 year
+            - fixed-term plan must specify number of cycles
+        """
+
+        T = current.T
+
+        form_vars = form.vars
+
+        # Verify interval length <= 1 year
+        try:
+            unit = form_vars.interval_unit
+            count = form_vars.interval_count
+        except AttributeError:
+            pass
+        else:
+            MAX_INTERVAL = {"DAY": 365, "WEEK": 52, "MONTH": 12, "YEAR": 1}
+            limit = MAX_INTERVAL.get(unit)
+            if limit and count > limit:
+                form.errors.interval_count = T("Interval can be at most 1 year")
+
+        # Verify total cycles specified for fixed-term plan
+        try:
+            fixed = form_vars.fixed
+            cycles = form_vars.cycles
+        except AttributeError:
+            pass
+        else:
+            if fixed and not cycles:
+                form.errors.total_cycles = T("Fixed-term plan must specify number of cycles")
 
     # -------------------------------------------------------------------------
     @staticmethod
