@@ -96,6 +96,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     #    M("AWS Clouds", f="aws_cloud")(),
                     #    M("OpenStack Clouds", f="openstack_cloud")(),
                     #    M("GANDI DNS", f="gandi_dns")(),
+                    #    M("GoDaddy DNS", f="godaddy_dns")(),
                     #    M("Google Email", f="google_email")(),
                     #    M("SMTP SmartHosts", f="smtp")(),
                     #    M("Deployments", f="deployment")(
@@ -161,6 +162,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         M("AWS Clouds", f="aws_cloud")(),
                         M("OpenStack Clouds", f="openstack_cloud")(),
                         M("GANDI DNS", f="gandi_dns")(),
+                        M("GoDaddy DNS", f="godaddy_dns")(),
                         M("Google Email", f="google_email")(),
                         M("SMTP SmartHosts", f="smtp")(),
                         M("Create", m="create")(),
