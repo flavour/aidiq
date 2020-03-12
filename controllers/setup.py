@@ -17,6 +17,9 @@ if not auth.s3_has_role("ADMIN"):
 def index():
     """ Show the index """
 
+    # Redirect to the list of monitoring tasks
+    redirect(URL(c="setup", f="monitor_task"))
+
     dtable = s3db.setup_deployment
     exists = db(dtable.deleted == False).select(dtable.id,
                                                 limitby = (0, 1),
