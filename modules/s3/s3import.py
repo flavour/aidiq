@@ -64,6 +64,8 @@ from .s3utils import s3_auth_user_represent_name, s3_get_foreign_key, \
                      s3_has_foreign_key, s3_mark_required, s3_str, s3_unicode
 from .s3validators import IS_JSONS3
 
+KNOWN_SPREADSHEET_EXTENSIONS = (".csv", ".xls", ".xlsx", ".xlsm")
+
 # =============================================================================
 class S3Importer(S3Method):
     """
@@ -699,12 +701,22 @@ class S3Importer(S3Method):
         if template is True:
             args.extend([self.controller, "%s.csv" % self.function])
         elif isinstance(template, basestring):
-            args.extend([self.controller, "%s.csv" % template])
+            # Standard location in static/formats/s3csv/<controller>/*
+            if os.path.splitext(template)[1] not in KNOWN_SPREADSHEET_EXTENSIONS:
+                # Assume CSV if no known spreadsheet extension found
+                template = "%s.csv" % template
+            args.extend([self.controller, template])
         elif isinstance(template, (tuple, list)):
+            # Custom location relative to static/formats/s3csv
             args.extend(template[:-1])
-            args.append("%s.csv" % template[-1])
+            template = template[-1]
+            if os.path.splitext(template)[1] not in KNOWN_SPREADSHEET_EXTENSIONS:
+                # Assume CSV if no known spreadsheet extension found
+                template = "%s.csv" % template
+            args.append(template)
         else:
             template = None
+
         if template is not None:
             url = URL(r=request, c="static", f="formats", args=args)
             try:

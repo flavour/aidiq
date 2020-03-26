@@ -7,8 +7,8 @@ from collections import OrderedDict
 
 from gluon import *
 from gluon.storage import Storage
-from s3 import ICON, IS_ONE_OF, S3CustomController, S3Method, S3MultiSelectWidget, \
-               S3Profile, S3SQLCustomForm, \
+from s3 import FS, ICON, IS_ONE_OF, S3CustomController, S3Method, \
+               S3MultiSelectWidget, S3Profile, S3SQLCustomForm, \
                s3_avatar_represent, \
                s3_mark_required, s3_phone_requires, s3_str, s3_truncate
 
@@ -350,6 +350,7 @@ class personAdditional(S3Method):
                     #"icon": ,
                     "tablename": tablename,
                     "sqlform": form,
+                    "filter": FS("id") == r.id,
                     }
 
             profile_widgets= [form,
@@ -924,6 +925,10 @@ class register(S3CustomController):
                                 widget = S3MultiSelectWidget(header="",
                                                              selectedList=3),
                                 ),
+                          Field("parish",
+                                label = T("Parish(es)"),
+                                comment = T("Put specific parish)es) here if you want to limit your availability."),
+                                ),
                           Field("faith_requirements", "integer",
                                 label = T("Do you have any faith requirements that you would like help with if you are coming to Support Cumbria?"),
                                 requires = IS_IN_SET({0: T("No"),
@@ -960,6 +965,7 @@ class register(S3CustomController):
                                "mobile",
                                "first_name2",
                                "last_name2",
+                               "skill_id",
                                "where_operate",
                                ]
 
@@ -1149,6 +1155,10 @@ class register(S3CustomController):
                           "password2": str(form_vars.password2),
                           "mobile2": form_vars.mobile2,
                           "home2": form_vars.home2,
+                          "where_operate": form_vars.where_operate or [],
+                          "vols": form_vars.vols,
+                          "transport": form_vars.transport,
+                          "parish": form_vars.parish,
                           "skill_id": form_vars.skill_id or [],
                           "skills_details": form_vars.skills_details,
                           "faith_requirements": form_vars.faith_requirements,
@@ -1333,18 +1343,20 @@ class verify_email(S3CustomController):
         # Lookup the Approvers
         gtable = db.auth_group
         mtable = db.auth_membership
-        if agency:
-            # Agencies are approved by ADMIN(s)
-            query = (gtable.uuid == "ADMIN") & \
-                    (gtable.id == mtable.group_id) & \
-                    (mtable.user_id == utable.id)
-            approvers = db(query).select(utable.email)
-        else:
-            # Existing, so approved by ORG_ADMIN(s)
+        approvers = None
+        if not agency:
+            # Existing, so normally approved by ORG_ADMIN(s)
             query = (gtable.uuid == "ORG_ADMIN") & \
                     (gtable.id == mtable.group_id) & \
                     (mtable.user_id == utable.id) & \
                     (utable.organisation_id == organisation_id)
+            approvers = db(query).select(utable.email)
+        if not approvers:
+            # Agencies are approved by ADMIN(s)
+            #Others approved by ADMIn if no ORG_ADMIN(s) exist
+            query = (gtable.uuid == "ADMIN") & \
+                    (gtable.id == mtable.group_id) & \
+                    (mtable.user_id == utable.id)
             approvers = db(query).select(utable.email)
 
         # Mail the Approver(s)
@@ -1368,15 +1380,13 @@ class verify_email(S3CustomController):
                      })
 
         mailer = auth_settings.mailer
+        result = None
         if mailer.settings.server:
             for approver in approvers:
                 result = mailer.send(to = approver.email,
                                      subject = subject,
                                      message = message,
                                      )
-        else:
-            # Email system not configured (yet)
-            result = None
         if not result:
             # Don't prevent registration just because email not configured
             #db.rollback()
@@ -1818,82 +1828,100 @@ def auth_user_register_onaccept(user_id):
                             )
 
         # 2nd Leader
-        # Create User
-        user2 = Storage(first_name = custom["first_name2"],
-                        last_name = custom["last_name2"],
-                        email = custom["email2"],
-                        password = custom["password2"],
-                        )
-        user_id = db.auth_user.insert(**user2)
-        user2.id = user_id
-        # Approve User (Creates Person & Email)
-        auth.s3_approve_user(user2)
+        email = custom["email2"]
+        utable = db.auth_user
+        exists = db(utable.email == email).select(utable.id,
+                                                  limitby = (0, 1)
+                                                  )
+        if exists:
+            current.log.error = "Unable to add 2nd Leader to database: Email already exists"
+        else:
+            # Create User
+            user2 = Storage(first_name = custom["first_name2"],
+                            last_name = custom["last_name2"],
+                            email = email,
+                            password = custom["password2"],
+                            )
+            user_id = utable.insert(**user2)
+            user2.id = user_id
+            # Approve User (Creates Person & Email)
+            auth.s3_approve_user(user2)
 
-        pe_id = auth.s3_user_pe_id(user_id)
+            pe_id = auth.s3_user_pe_id(user_id)
 
-        # Add Address
-        record = {"addr_street": custom["addr_street2"],
-                  "addr_postcode": custom["addr_postcode2"],
-                  }
-        location_id = gtable.insert(**record)
-        record["id"] = location_id
-        if callable(location_onaccept):
-            gform = Storage(vars = record)
-            location_onaccept(gform)
+            # Add Address
+            record = {"addr_street": custom["addr_street2"],
+                      "addr_postcode": custom["addr_postcode2"],
+                      }
+            location_id = gtable.insert(**record)
+            record["id"] = location_id
+            if callable(location_onaccept):
+                gform = Storage(vars = record)
+                location_onaccept(gform)
 
-        record = {"pe_id": pe_id,
-                  "location_id": location_id,
-                  "realm_entity": realm_entity,
-                  }
-        address_id = atable.insert(**record)
-        record["id"] = address_id
-        if callable(address_onaccept):
-            aform = Storage(vars = record)
-            address_onaccept(aform)
-
-        # Add Contacts
-        ctable = s3db.pr_contact
-        # Currently no need to onaccept as none defined
-        record = {"pe_id": pe_id,
-                  "contact_method": "SMS",
-                  "value": custom["mobile2"],
-                  "realm_entity": realm_entity,
-                  }
-        ctable.insert(**record)
-        home_phone = custom["home2"]
-        if home_phone:
             record = {"pe_id": pe_id,
-                      "contact_method": "HOME_PHONE",
-                      "value": home_phone,
+                      "location_id": location_id,
+                      "realm_entity": realm_entity,
+                      }
+            address_id = atable.insert(**record)
+            record["id"] = address_id
+            if callable(address_onaccept):
+                aform = Storage(vars = record)
+                address_onaccept(aform)
+
+            # Add Contacts
+            ctable = s3db.pr_contact
+            # Currently no need to onaccept as none defined
+            record = {"pe_id": pe_id,
+                      "contact_method": "SMS",
+                      "value": custom["mobile2"],
                       "realm_entity": realm_entity,
                       }
             ctable.insert(**record)
+            home_phone = custom["home2"]
+            if home_phone:
+                record = {"pe_id": pe_id,
+                          "contact_method": "HOME_PHONE",
+                          "value": home_phone,
+                          "realm_entity": realm_entity,
+                          }
+                ctable.insert(**record)
 
-        # Add Leader to Group
-        person = db(ptable.pe_id == pe_id).select(ptable.id,
-                                                  limitby = (0, 1),
-                                                  ).first()
-        record = {"group_id": group_id,
-                  "person_id": person.id,
-                  "group_head": True,
-                  }
-        membership_id = mtable.insert(**record)
-        record["id"] = membership_id
-        if callable(membership_onaccept):
-            mform = Storage(vars = record)
-            membership_onaccept(mform)
+            # Add Leader to Group
+            person = db(ptable.pe_id == pe_id).select(ptable.id,
+                                                      limitby = (0, 1),
+                                                      ).first()
+            record = {"group_id": group_id,
+                      "person_id": person.id,
+                      "group_head": True,
+                      }
+            membership_id = mtable.insert(**record)
+            record["id"] = membership_id
+            if callable(membership_onaccept):
+                mform = Storage(vars = record)
+                membership_onaccept(mform)
 
-        # Assign correct Role
-        auth.add_membership(user_id = user_id,
-                            role = "Volunteer Group Leader",
-                            entity = realm_entity,
-                            )
+            # Assign correct Role
+            auth.add_membership(user_id = user_id,
+                                role = "Volunteer Group Leader",
+                                entity = realm_entity,
+                                )
+
+        # Locations
+        ltable = s3db.pr_group_location
+        for location_id in custom["where_operate"]:
+            ltable.insert(group_id = group_id,
+                          location_id = location_id,
+                          realm_entity = realm_entity,
+                          )
+            # Currently no need to onaccept as none defined
 
         # Create Group Skills
         ctable = s3db.pr_group_competency
         for skill_id in custom["skill_id"]:
             record = {"group_id": group_id,
                       "skill_id": skill_id,
+                      "realm_entity": realm_entity,
                       }
             ctable.insert(**record)
 
@@ -1901,6 +1929,27 @@ def auth_user_register_onaccept(user_id):
         record = {"group_id": group_id,
                   "tag": "skills_details",
                   "value": custom["skills_details"],
+                  }
+        ttable.insert(**record)
+
+        # Parish(es)
+        record = {"group_id": group_id,
+                  "tag": "parish",
+                  "value": custom["parish"],
+                  }
+        ttable.insert(**record)
+
+        # Volunteers
+        record = {"group_id": group_id,
+                  "tag": "volunteers",
+                  "value": custom["vols"],
+                  }
+        ttable.insert(**record)
+
+        # Transport
+        record = {"group_id": group_id,
+                  "tag": "transport",
+                  "value": custom["transport"],
                   }
         ttable.insert(**record)
 
