@@ -103,10 +103,17 @@ def config(settings):
     # -------------------------------------------------------------------------
     def customise_project_project_controller(**attr):
 
+        stable = current.s3db.project_status
+        statuses = current.db(stable.name.belongs(("Current",
+                                                   "Proposed"))).select(stable.id,
+                                                                        limitby = (0, 2)
+                                                                        )
+        statuses = [s.id for s in statuses]
+
         # Default Filter
         from s3 import s3_set_default_filter
-        s3_set_default_filter("~.status_id$name",
-                              ("Current", "Proposed"),
+        s3_set_default_filter("~.status_id",
+                              statuses,
                               tablename = "project_project")
 
         return attr
