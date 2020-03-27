@@ -101,6 +101,20 @@ def config(settings):
     settings.customise_project_project_resource = customise_project_project_resource
 
     # -------------------------------------------------------------------------
+    def customise_project_project_controller(**attr):
+
+        # Default Filter
+        from s3 import s3_set_default_filter
+        s3_set_default_filter("~.status_id$name",
+                              ("Current", "Proposed"),
+                              tablename = "project_project")
+
+        return attr
+
+
+    settings.customise_project_project_controller = customise_project_project_controller
+
+    # -------------------------------------------------------------------------
     def customise_project_task_resource(r, tablename):
 
         from gluon import DIV
@@ -142,7 +156,7 @@ def config(settings):
                                 ))
             if not mine:
                 list_fields.append("status")
-            r.resource.configure(list_fields=list_fields)
+            r.resource.configure(list_fields = list_fields)
 
             return result
         s3.prep = custom_prep

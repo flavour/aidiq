@@ -16,7 +16,9 @@ mode_task = settings.get_project_mode_task()
 def index():
     """ Module's Custom Home Page """
 
-    return settings.customise_home(module, alt_function="index_alt")
+    #return settings.customise_home(module, alt_function="index_alt")
+    # Bypass home page & go directly to projects list
+    s3_redirect_default(URL(f="project"))
 
 # -----------------------------------------------------------------------------
 def index_alt():
