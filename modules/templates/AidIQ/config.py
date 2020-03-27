@@ -112,7 +112,7 @@ def config(settings):
 
         # Default Filter
         from s3 import s3_set_default_filter
-        s3_set_default_filter("~.status_id",
+        s3_set_default_filter("~.status_id__belongs",
                               statuses,
                               tablename = "project_project")
 
