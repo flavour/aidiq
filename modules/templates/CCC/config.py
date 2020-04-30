@@ -39,7 +39,7 @@ def config(settings):
     settings.auth.registration_link_user_to_default = ["staff"]
     settings.auth.realm_entity_types = ("org_organisation",
                                         #"org_office",
-                                        "pr_forum", # Reserves
+                                        "pr_forum", # Realms
                                         "pr_group", # Volunteer Groups
                                         "pr_person", # Donors
                                         )
@@ -65,7 +65,7 @@ def config(settings):
     # 7: Apply Controller, Function, Table ACLs and Entity Realm + Hierarchy
     # 8: Apply Controller, Function, Table ACLs, Entity Realm + Hierarchy and Delegations
 
-    settings.security.policy = 7 # Organisation-ACLs
+    settings.security.policy = 7 # Entity Realm + Hierarchy
 
     # Consent Tracking
     settings.auth.consent_tracking = True
@@ -92,9 +92,12 @@ def config(settings):
     settings.auth.login_next_always = True
 
     # Record Approval
-    settings.auth.record_approval = True
-    settings.auth.record_approval_required_for = ("org_organisation",
-                                                  )
+    #settings.auth.record_approval = True
+    #settings.auth.record_approval_required_for = (# Handled separately
+    #                                              #"hrm_human_resource",
+    #                                              # Handled separately
+    #                                              #"org_organisation",
+    #                                              )
 
     # -------------------------------------------------------------------------
     # Comment/uncomment modules here to disable/enable them
@@ -243,6 +246,8 @@ def config(settings):
 
     settings.gis.legend = "float"
 
+    settings.hrm.compose_button = False # Confusing as Messaging in CCC normally means project_task
+    settings.hrm.delegation_workflow = "Application"
     settings.hrm.event_course_mandatory = False
 
     settings.msg.require_international_phone_numbers = False
@@ -263,45 +268,154 @@ def config(settings):
     # Now using req_need, so unused:
     #settings.req.req_type = ("People",)
 
-    # Now done in project_task_create_onaccept:
     # -------------------------------------------------------------------------
-    #def ccc_realm_entity(table, row):
-    #    """
-    #        Assign a Realm Entity to records
-    #    """
+    def ccc_realm_entity(table, row):
+        """
+            Assign a Realm Entity to records
+        """
 
-    #    if table._tablename in (#"hrm_training_event", # Default is fine
-    #                            "project_task",
-    #                            #"req_need",           # Default is fine
-    #                            ):
-    #        db = current.db
-    #        otable = current.s3db.org_organisation
-    #        organisation_id = current.request.get_vars.get("organisation_id")
-    #        if organisation_id:
-    #            # Use this Org
-    #            query = (otable.id == organisation_id)
-    #        else:
-    #            # Use the Org of the Creator
-    #            new_row = db(table.id == row.id).select(table.created_by,
-    #                                                    limitby = (0, 1),
-    #                                                    ).first()
-    #            user_id = new_row.created_by
+        if table._tablename in (#"hrm_training_event", # Default is fine
+                                #"project_task",       # Now done in project_task_create_onaccept
+                                "pr_person",
+                                #"req_need",           # Default is fine
+                                ):
 
-    #            utable = db.auth_user
-    #            query = (utable.id == user_id) & \
-    #                    (utable.organisation_id == otable.id)
-    #        org = db(query).select(otable.pe_id,
-    #                               limitby = (0, 1),
-    #                               ).first()
-    #        try:
-    #            return org.pe_id
-    #        except AttributeError:
-    #            pass
+            db = current.db
+            s3db = current.s3db
+            person_id = row.id
 
-    #    # Use default rules
-    #    return 0
+            # What kind of Person is this?
+            if current.request.controller == "br":
+                FORUM = "Cases"
+            else:
+                # See if they are a RESERVE or DONOR
+                # - check their User Account
+                ltable = s3db.pr_person_user
+                user = db(ltable.pe_id == row.pe_id).select(ltable.user_id,
+                                                            limitby = (0, 1)
+                                                            ).first()
+                try:
+                    user_id = user.user_id
+                except AttributeError:
+                    # Prepopped Case?
+                    ctable = s3db.br_case
+                    query = (ctable.person_id == person_id) & \
+                            (ctable.deleted == False)
+                    case = db(query).select(ctable.id,
+                                            limitby = (0, 1)
+                                            ).first()
 
-    #settings.auth.realm_entity = ccc_realm_entity
+                    if case:
+                        FORUM = "Cases"
+                    else:
+                        # Use default rules
+                        current.log.error("Cannot set Realm Entity for Person %s: No User Account found" % person_id)
+                        return 0
+                else:
+                    gtable = db.auth_group
+                    mtable = db.auth_membership
+                    query = (mtable.user_id == user_id) & \
+                            (mtable.group_id == gtable.id) & \
+                            (gtable.uuid.belongs(("DONOR", "RESERVE")))
+                    role = db(query).select(gtable.uuid,
+                                            limitby = (0, 1)
+                                            ).first()
+                    if role:
+                        role = role.uuid
+                        if role == "DONOR":
+                            FORUM = "Donors"
+                        elif role == "RESERVE":
+                            FORUM = "Reserves"
+
+                    if role == "RESERVE" or not role:
+                        # HR record => Use their Organisation or Organisation's Reserves
+                        hrtable = s3db.hrm_human_resource
+                        query = (hrtable.person_id == person_id) & \
+                                (hrtable.deleted == False)
+                        hr = db(query).select(hrtable.organisation_id,
+                                              limitby = (0, 1)
+                                              ).first()
+
+                        if hr:
+                            if role:
+                                # Use Org's Forum
+                                ftable = s3db.pr_forum
+                                forum = db(ftable.organisation_id == hr.organisation_id).select(ftable.pe_id,
+                                                                                                limitby = (0, 1)
+                                                                                                ).first()
+                                try:
+                                    return forum.pe_id
+                                except AttributeError:
+                                    # Use default rules
+                                    current.log.error("Cannot find Org Forum '%s' when trying to set Realm Entity for Person %s" % \
+                                        (hr.organisation_id, person_id))
+                                    return 0
+                            else:
+                                # Use Org
+                                otable = s3db.org_organisation
+                                org = db(otable.id == hr.organisation_id).select(otable.pe_id,
+                                                                                 limitby = (0, 1)
+                                                                                 ).first()
+                                try:
+                                    return org.pe_id
+                                except AttributeError:
+                                    # Use default rules
+                                    current.log.error("Cannot set Realm Entity for Person %s: Org not found" % person_id)
+                                    return 0
+                        elif role == "RESERVE":
+                            # Check if Inactive
+                            ttable = s3db.pr_person_tag
+                            query = (ttable.person_id == person_id) & \
+                                    (ttable.tag == "reserve")
+                            reserve = db(query).select(ttable.value,
+                                                       limitby = (0, 1)
+                                                       ).first()
+                            if reserve and reserve.value == "0":
+                                # Use the Inactives Forum
+                                FORUM = "Inactives"
+                            else:
+                                # Continue to use the main Reserves Forum
+                                FORUM = "Reserves"
+                        else:
+                            # Group Membership record => Use their Group
+                            mtable = s3db.pr_group_membership
+                            query = (mtable.person_id == person_id) & \
+                                    (mtable.deleted == False)
+                            member = db(query).select(mtable.group_id,
+                                                      limitby = (0, 1)
+                                                      ).first()
+
+                            if member:
+                                gtable = s3db.pr_group
+                                group = db(gtable.id == member.group_id).select(gtable.pe_id,
+                                                                                limitby = (0, 1)
+                                                                                ).first()
+                                try:
+                                    return group.pe_id
+                                except AttributeError:
+                                    # Use default rules
+                                    current.log.error("Cannot set Realm Entity for Person %s: Group not found" % person_id)
+                                    return 0
+                            else:
+                                # Use default rules
+                                current.log.error("Cannot set Realm Entity for Person %s: No match found" % person_id)
+                                return 0
+
+            ftable = s3db.pr_forum
+            forum = db(ftable.name == FORUM).select(ftable.pe_id,
+                                                    limitby = (0, 1)
+                                                    ).first()
+            try:
+                return forum.pe_id
+            except AttributeError:
+                current.log.error("Cannot find Forum '%s' when trying to set Realm Entity for Person %s" % \
+                    (FORUM, person_id))
+                pass
+
+        # Use default rules
+        return 0
+
+    settings.auth.realm_entity = ccc_realm_entity
 
     # -------------------------------------------------------------------------
     def ccc_rheader(r):
@@ -459,7 +573,7 @@ $('.copy-link').click(function(e){
                     #(T("Members"), "group_membership"),
                     (T("Members"), "person"),
                     #(T("Locations"), "group_location"),
-                    #(T("Skills"), "competency"),
+                    #(T("Volunteer Offers"), "competency"),
                     ]
             rheader_tabs = s3_rheader_tabs(r, tabs)
 
@@ -473,7 +587,8 @@ $('.copy-link').click(function(e){
 
         elif tablename == "pr_person":
             T = current.T
-            if r.controller == "br":
+            controller = r.controller
+            if controller == "br":
                 tabs = [(T("Basic Details"), None),
                         (T("Report History"), "br_note"),
                         ]
@@ -484,8 +599,9 @@ $('.copy-link').click(function(e){
                         # Included in Contacts tab:
                         #(T("Emergency Contacts"), "contact_emergency"),
                         ]
+                auth = current.auth
+                has_role = auth.s3_has_role
                 get_vars_get = r.get_vars.get
-                has_role = current.auth.s3_has_role
                 if get_vars_get("donors") or \
                    has_role("DONOR", include_admin=False):
                     # Better on main form using S3SQLInlineLink
@@ -497,11 +613,25 @@ $('.copy-link').click(function(e){
                     #tabs.append((T("Group"), "group"))
                     pass
                 else:
-                    tabs.append((T("Additional Information"), "additional"))
+                    htable = current.s3db.hrm_human_resource
+                    query = (htable.person_id == record.id) & \
+                            (htable.deleted == False)
+                    hr = current.db(query).select(htable.organisation_id,
+                                                  limitby = (0, 1)
+                                                  ).first()
+                    if controller == "default" or has_role("RESERVE_ADMIN"):
+                        tabs.append((T("Additional Information"), "additional"))
+                    elif has_role("RESERVE_READER"):
+                        # Check if they are affiliated to this User's org
+                        if hr and hr.organisation_id == auth.user.organisation_id:
+                            tabs.append((T("Additional Information"), "additional"))
                     # Better on main form using S3SQLInlineLink
-                    #tabs.append((T("Skills"), "competency"))
-                    if has_role("ORG_ADMIN"):
-                        tabs.insert(1, (T("Affiliation"), "human_resource"))
+                    #tabs.append((T("Volunteer Offers"), "competency"))
+                    if controller == "default" or has_role("RESERVE_ADMIN"):
+                        if hr:
+                            tabs.insert(1, (T("Affiliation"), "human_resource"))
+                        else:
+                            tabs.insert(1, (T("Affiliation"), "affiliation"))
 
             rheader_tabs = s3_rheader_tabs(r, tabs)
 
@@ -531,7 +661,7 @@ $('.copy-link').click(function(e){
                  has_role("AGENCY"))):
                 tabs = [(T("Basic Details"), None),
                         #(T("Items"), "need_item"),
-                        #(T("Skills"), "need_skill"),
+                        #(T("Volunteer Offers"), "need_skill"),
                         (T("Participants"), "need_person"),
                         (T("Invite"), "assign"),
                         ]
@@ -881,8 +1011,226 @@ $('.copy-link').click(function(e){
 
     settings.customise_hrm_competency_resource = customise_hrm_competency_resource
 
+    # -----------------------------------------------------------------------------
+    def affiliation_postprocess(form):
+        """
+            If a RESERVE Volunteer is affiliated to an Organisation, update their user/roles accordingly
+        """
+
+        auth = current.auth
+        db = current.db
+        s3db = current.s3db
+        record = form.record
+        human_resource_id = form.vars.get("id")
+
+        # Lookup Organisation
+        hrtable = s3db.hrm_human_resource
+        hr = db(hrtable.id == human_resource_id).select(hrtable.person_id,
+                                                        hrtable.organisation_id,
+                                                        limitby = (0, 1)
+                                                        ).first()
+        person_id = hr.person_id
+
+        # Find User Account
+        ptable = s3db.pr_person
+        putable = s3db.pr_person_user
+        query = (ptable.id == person_id) & \
+                (ptable.pe_id == putable.pe_id)
+        link = db(query).select(putable.user_id,
+                                limitby = (0, 1)
+                                ).first()
+        user_id = link.user_id
+        organisation_id = hr.organisation_id
+
+        # Withdraw Old Role
+        auth.s3_withdraw_role(user_id, "RESERVE", for_pe=[])
+
+        realm_updated = None
+
+        ttable = s3db.hrm_human_resource_tag
+        query = (ttable.human_resource_id == human_resource_id) & \
+                (ttable.tag == "reserve")
+        reserve = db(query).select(ttable.value,
+                                   limitby = (0, 1)
+                                   ).first()
+        reserve = reserve.value
+        if record is None or \
+           reserve != record.sub_reserve_value:
+            # Update Realm Entity
+            if reserve == "0":
+                otable = s3db.org_organisation
+                org = db(otable.id == organisation_id).select(otable.pe_id,
+                                                              limitby = (0, 1)
+                                                              ).first()
+                realm_entity = org.pe_id
+                auth.set_realm_entity("pr_person", person_id, entity=realm_entity, force_update=True)
+                realm_updated = True
+
+            elif reserve == "1":
+                ftable = s3db.pr_forum
+                forum = db(ftable.organisation_id == organisation_id).select(ftable.pe_id,
+                                                                             limitby = (0, 1)
+                                                                             ).first()
+                realm_entity = forum.pe_id
+
+                # Assign New Role
+                #auth.s3_assign_role(user_id, "RESERVE", for_pe=realm_entity)
+
+                # Update Realm Entity
+                auth.set_realm_entity("pr_person", person_id, entity=realm_entity, force_update=True)
+
+        if record is None or \
+           organisation_id != record.organisation_id:
+            # Update User Account
+            utable = db.auth_user
+            db(utable.id == user_id).update(organisation_id = organisation_id)
+
+            if reserve == "0" and realm_updated is None:
+                # Update Realm Entity
+                otable = s3db.org_organisation
+                org = db(otable.id == organisation_id).select(otable.pe_id,
+                                                              limitby = (0, 1)
+                                                              ).first()
+                realm_entity = org.pe_id
+                auth.set_realm_entity("pr_person", person_id, entity=realm_entity, force_update=True)
+
+            if record is None:
+                # Assign New Role
+                auth.s3_assign_role(user_id, "VOLUNTEER")
+
+    # -------------------------------------------------------------------------
+    def hrm_human_resource_ondelete(row):
+        """
+            If a Volunteer is unaffiliated from an Organisation:
+            * update their user/roles accordingly
+            * send a message:
+                - to the OrgAdmins if Volunteer deletes themselves
+                - to the Volunteer of OrgAdmin deletes them
+        """
+
+        auth = current.auth
+        db = current.db
+        s3db = current.s3db
+
+        human_resource_id = row.id
+        organisation_id = row.organisation_id
+        person_id = row.person_id
+
+        # Find User Account
+        ptable = s3db.pr_person
+        putable = s3db.pr_person_user
+        query = (ptable.id == person_id) & \
+                (ptable.pe_id == putable.pe_id)
+        link = db(query).select(putable.user_id,
+                                limitby = (0, 1)
+                                ).first()
+        user_id = link.user_id
+
+        # Update User Account
+        utable = db.auth_user
+        db(utable.id == user_id).update(organisation_id = None)
+
+        # Update Roles
+        auth.s3_withdraw_role(user_id, "VOLUNTEER", for_pe=[])
+
+        # Check if they have a Tag which shows whether they should be a Reserve or an Inactive
+        httable = s3db.hrm_human_resource_tag
+        query = (httable.human_resource_id == human_resource_id) & \
+                (httable.tag == "reserve")
+        reserve = db(query).select(httable.value,
+                                   limitby = (0, 1)
+                                   ).first()
+        ttable = s3db.pr_person_tag
+        query = (ttable.person_id == person_id) & \
+                (ttable.tag == "reserve")
+        if reserve and reserve.value == "0":
+            visible = "not visible"
+            FORUM = "Inactives"
+            ttable.update_or_insert(query,
+                                    value = "0")
+        else:
+            visible = "visible"
+            FORUM = "Reserves"
+            ttable.update_or_insert(query,
+                                    value = "1")
+
+        ftable = s3db.pr_forum
+        forum = db(ftable.name == FORUM).select(ftable.pe_id,
+                                                limitby = (0, 1)
+                                                ).first()
+        realm_entity = forum.pe_id
+
+        #if FORUM == "Reserves":
+        auth.s3_assign_role(user_id, "RESERVE", for_pe=realm_entity)
+
+        # Update Realm Entity
+        auth.set_realm_entity("pr_person", person_id, entity=realm_entity, force_update=True)
+
+        # Send Message
+        otable = s3db.org_organisation
+        org = db(otable.id == organisation_id).select(otable.name,
+                                                      limitby = (0, 1)
+                                                      ).first()
+        if auth.s3_has_role("ORG_ADMIN"):
+            # OrgAdmin deleted them, so message Volunteer
+            settings = current.deployment_settings
+            org_name = org.name
+            email = db(utable.id == user_id).select(utable.email,
+                                                    limitby = (0, 1)
+                                                    ).first().email
+            subject = "%s: You have been unaffiliated from %s" % \
+                (settings.get_system_name_short(),
+                 org.name,
+                 )
+            url = "%s/%s/default/person/%s/affiliation" % \
+                (settings.get_base_public_url(),
+                 current.request.application,
+                 person_id,
+                 )
+            message = "You are receiving this email as %s has disaffiliated you from their organisation.\nIf you wish further clarification you will need to contact the organisation direct.\nYour profile is currently set to make you %s on the Reserve Volunteers list. If you are not visible on the Reserve Volunteers list you will no longer receive opportunities through Support Cumbria.\nYou may wish to review your availability on the 'Affiliation' tab in your profile and save your preference:\n%s" % \
+                            (org_name,
+                             visible,
+                             url
+                             )
+            current.msg.send_email(to = email,
+                                   subject = subject,
+                                   message = message,
+                                   )
+        else:
+            # Volunteer deleted themselves, so message OrgAdmin
+            gtable = db.auth_group
+            mtable = db.auth_membership
+            query = (gtable.uuid == "ORG_ADMIN") & \
+                    (gtable.id == mtable.group_id) & \
+                    (mtable.user_id == utable.id) & \
+                    (utable.organisation_id == organisation_id)
+            org_admins = db(query).select(utable.email)
+
+            from s3 import s3_fullname
+            person = db(ptable.id == person_id).select(ptable.first_name,
+                                                       ptable.middle_name,
+                                                       ptable.last_name,
+                                                       limitby = (0, 1)
+                                                       ).first()
+            fullname = s3_fullname(person)
+            subject = "%s: %s has left %s" % \
+                (current.deployment_settings.get_system_name_short(),
+                 fullname,
+                 org.name,
+                 )
+            message = "You are receiving this email as %s has disaffiliated themselves from your organisation. If you wish further clarification you will need to contact the reserve volunteer direct" % \
+                            fullname
+            send_email = current.msg.send_email
+            for admin in org_admins:
+                send_email(to = admin.email,
+                           subject = subject,
+                           message = message,
+                           )
+
     # -------------------------------------------------------------------------
     def customise_hrm_human_resource_resource(r, tablename):
+
+        from gluon import IS_IN_SET, SQLFORM, URL
 
         from s3 import S3OptionsFilter, S3SQLCustomForm, S3TextFilter
         #from s3layouts import S3PopupLink
@@ -890,14 +1238,31 @@ $('.copy-link').click(function(e){
         s3db = current.s3db
 
         # Filtered components
-        s3db.add_components("hrm_human_resource",
-                            hrm_human_resource_tag = ({"name": "job_title",
+        s3db.add_components(tablename,
+                            hrm_human_resource_tag = (#{"name": "job_title",
+                                                      # "joinby": "human_resource_id",
+                                                      # "filterby": {"tag": "job_title"},
+                                                      # "multiple": False,
+                                                      # },
+                                                      {"name": "reserve",
                                                        "joinby": "human_resource_id",
-                                                       "filterby": {"tag": "job_title"},
+                                                       "filterby": {"tag": "reserve"},
                                                        "multiple": False,
                                                        },
                                                       ),
                             )
+
+        # Individual settings for specific tag components
+        components_get = s3db.resource(tablename).components.get
+
+        reserve = components_get("reserve")
+        f = reserve.table.value
+        f.requires = IS_IN_SET({"0": T("No"),
+                                "1": T("Yes"),
+                                })
+        f.widget = lambda f, v: \
+                        SQLFORM.widgets.radio.widget(f, v,
+                                                     style="divs")
 
         table = s3db.hrm_human_resource
         # We use job_title tag instead for freetext rather than dropdown
@@ -912,7 +1277,7 @@ $('.copy-link').click(function(e){
 
         if r.controller == "default":
             # Personal Profile
-            list_fields = ["job_title.value",
+            list_fields = [#"job_title.value",
                            ]
             current.response.s3.crud_strings[tablename] = Storage(
                 label_create = T("New Affiliation"),
@@ -926,11 +1291,11 @@ $('.copy-link').click(function(e){
                 msg_record_modified = T("Affiliation updated"),
                 msg_record_deleted = T("Affiliation deleted"),
                 msg_list_empty = T("No Affiliations currently registered")
-            )
+                )
         else:
             list_fields = ["person_id",
-                           (T("Role"), "job_title.value"),
-                           (T("Skills"), "person_id$competency.skill_id"),
+                           #(T("Role"), "job_title.value"),
+                           (T("Volunteer Offers"), "person_id$competency.skill_id"),
                            (T("Email"), "email.value"),
                            (T("Mobile Phone"), "phone.value"),
                            ]
@@ -946,12 +1311,12 @@ $('.copy-link').click(function(e){
                 msg_record_modified = T("Volunteer updated"),
                 msg_record_deleted = T("Volunteer deleted"),
                 msg_list_empty = T("No Volunteers currently registered")
-            )
+                )
 
         filter_fields = ["person_id$first_name",
                          "person_id$middle_name",
                          "person_id$last_name",
-                         "job_title.value",
+                         #"job_title.value",
                          "comments",
                          "person_id$competency.skill_id$name",
                          ]
@@ -960,7 +1325,7 @@ $('.copy-link').click(function(e){
         districts = current.db((gtable.level == "L3") & (gtable.L2 == "Cumbria")).select(gtable.id,
                                                                                          gtable.name,
                                                                                          cache = s3db.cache)
-        districts = {d.id:d.name for d in districts}
+        districts = {d.id: d.name for d in districts}
 
         filter_widgets = [S3TextFilter(filter_fields,
                                        #formstyle = text_filter_formstyle,
@@ -981,15 +1346,25 @@ $('.copy-link').click(function(e){
             list_fields.insert(0, "organisation_id")
         else:
             f = table.organisation_id
-            f.readable = f.writable = False
+            f.writable = False
             f.comment = None # No Create
+
+        s3db.add_custom_callback(tablename,
+                                 "ondelete",
+                                 hrm_human_resource_ondelete,
+                                 )
 
         s3db.configure("hrm_human_resource",
                        crud_form = S3SQLCustomForm("organisation_id",
-                                                   (T("Role"), "job_title.value"),
+                                                   #(T("Role"), "job_title.value"),
+                                                   (T("Visible on the Reserves list?"), "reserve.value"),
                                                    "person_id",
                                                    "comments",
+                                                   postprocess = affiliation_postprocess,
                                                    ),
+                       delete_next = URL(args = []),
+                       # Needs to be done via registration at the moment due to the need for a User account & it's roles to differentiate
+                       insertable = False,
                        list_fields = list_fields,
                        filter_widgets = filter_widgets,
                        )
@@ -1764,7 +2139,7 @@ $('.copy-link').click(function(e){
                                "human_resource.organisation_id",
                                "group_membership.group_id",
                                (T("Role"), "human_resource.job_title.value"),
-                               (T("Skills"), "competency.skill_id"),
+                               (T("Volunteer Offers"), "competency.skill_id"),
                                ]
 
                 set_method("hrm", "training_event",
@@ -1878,48 +2253,45 @@ $('.copy-link').click(function(e){
     # -------------------------------------------------------------------------
     def customise_org_organisation_resource(r, tablename):
 
-        from gluon import IS_EMAIL, IS_EMPTY_OR, IS_IN_SET, IS_URL
+        from gluon import IS_EMAIL, IS_EMPTY_OR, IS_IN_SET, IS_URL, SQLFORM
 
-        from s3 import S3OptionsFilter, S3Represent, S3SQLCustomForm, \
-                       S3SQLInlineComponent, S3SQLInlineLink, S3TextFilter#, \
-                       #S3LocationSelector, S3HierarchyWidget
+        from s3 import S3LocationFilter, S3OptionsFilter, S3Represent, \
+                       S3SQLCustomForm, S3SQLInlineComponent, S3SQLInlineLink, \
+                       S3TextFilter#, \
+                       #S3HierarchyWidget
 
         s3db = current.s3db
 
         # Filtered components
         s3db.add_components("org_organisation",
-                            pr_contact = ({"name": "email",
-                                           "joinby": "pe_id",
-                                           "multiple": False,
-                                           "filterby": {"contact_method": "EMAIL",
-                                                        },
-                                           },
-                                          {"name": "facebook",
-                                           "joinby": "pe_id",
-                                           "multiple": False,
-                                           "filterby": {"contact_method": "FACEBOOK",
-                                                        },
-                                           },
-                                          {"name": "twitter",
-                                           "joinby": "pe_id",
-                                           "multiple": False,
-                                           "filterby": {"contact_method": "TWITTER",
-                                                        },
-                                           },
-                                          {"name": "sm_other",
+                            org_organisation_tag = ({"name": "apply",
+                                                     "joinby": "organisation_id",
+                                                     "multiple": False,
+                                                     "filterby": {"tag": "apply",
+                                                                  },
+                                                     },
+                                                    {"name": "sm_other_type",
+                                                     "joinby": "organisation_id",
+                                                     "multiple": False,
+                                                     "filterby": {"tag": "sm_other_type",
+                                                                  },
+                                                     },
+                                                    {"name": "visible",
+                                                     "joinby": "organisation_id",
+                                                     "multiple": False,
+                                                     "filterby": {"tag": "visible",
+                                                                  },
+                                                     },
+                                                    ),
+                            )
+        s3db.add_components("pr_pentity",
+                            pr_contact = ({"name": "sm_other",
                                            "joinby": "pe_id",
                                            "multiple": False,
                                            "filterby": {"contact_method": "OTHER",
                                                         },
                                            },
                                           ),
-                            org_organisation_tag = ({"name": "sm_other_type",
-                                                     "joinby": "organisation_id",
-                                                     "multiple": False,
-                                                     "filterby": {"tag": "sm_other_type",
-                                                                  },
-                                                     },
-                                                    ),
                             )
 
         # Individual settings for specific tag components
@@ -1929,17 +2301,23 @@ $('.copy-link').click(function(e){
         f = email.table.value
         f.requires = IS_EMPTY_OR(IS_EMAIL())
 
-        facebook = components_get("facebook")
-        f = facebook.table.value
-        f.requires = IS_EMPTY_OR(IS_URL())
+        apply = components_get("apply")
+        f = apply.table.value
+        f.requires = IS_IN_SET({"0": T("No"),
+                                "1": T("Yes"),
+                                })
+        f.widget = lambda f, v: \
+                        SQLFORM.widgets.radio.widget(f, v,
+                                                     style="divs")
 
-        #twitter = components_get("twitter")
-        #f = twitter.table.value
-        #f.requires = IS_EMPTY_OR(None)
-
-        #sm_other = components_get("sm_other")
-        #f = sm_other.table.value
-        #f.requires = IS_EMPTY_OR(None)
+        visible = components_get("visible")
+        f = visible.table.value
+        f.requires = IS_IN_SET({"0": T("No"),
+                                "1": T("Yes"),
+                                })
+        f.widget = lambda f, v: \
+                        SQLFORM.widgets.radio.widget(f, v,
+                                                     style="divs")
 
         #gtable = s3db.gis_location
         #districts = current.db((gtable.level == "L3") & (gtable.L2 == "Cumbria")).select(gtable.id,
@@ -1967,7 +2345,13 @@ $('.copy-link').click(function(e){
         #                             filter = (gtable.L2 == "Cumbria")
         #                             )
 
-        s3db.configure("org_organisation",
+        from templates.CCC.controllers import org_organisation_create_onaccept
+        s3db.add_custom_callback(tablename,
+                                 "create_onaccept",
+                                 org_organisation_create_onaccept,
+                                 )
+
+        s3db.configure(tablename,
                        crud_form = S3SQLCustomForm((T("Name of Organization"), "name"),
                                                    S3SQLInlineLink("organisation_type",
                                                                    field = "organisation_type_id",
@@ -1985,6 +2369,10 @@ $('.copy-link').click(function(e){
                                                    #     #multiple = False,
                                                    #     ),
                                                    "phone",
+                                                   #(T("Email"), "email.value"),
+                                                   #(T("Facebook"), "facebook.value"),
+                                                   #(T("Twitter"), "twitter.value"),
+                                                   #(T("SM Other"), "sm_other.value"),
                                                    S3SQLInlineComponent(
                                                         "email",
                                                         name = "email",
@@ -2026,13 +2414,17 @@ $('.copy-link').click(function(e){
                                                         #            },
                                                         ),
                                                    (T("Please Specify"), "sm_other_type.value"),
+                                                   (T("Visible to Volunteers?"), "visible.value"),
+                                                   (T("Volunteers able to Apply?"), "apply.value"),
                                                    "website",
                                                    "comments",
                                                    ),
                        list_fields = ["name",
                                       (T("Type"), "organisation_organisation_type.organisation_type_id"),
-                                      (T("District Served"), "organisation_location.location_id$L3"),
+                                      (T("District"), "organisation_location.location_id$L3"),
+                                      (T("Parish"), "organisation_location.location_id$L4"),
                                       "phone",
+                                      (T("Email"), "email.value"),
                                       ],
                        filter_widgets = [S3TextFilter(["name",
                                                        "comments",
@@ -2044,9 +2436,10 @@ $('.copy-link').click(function(e){
                                          S3OptionsFilter("organisation_organisation_type.organisation_type_id",
                                                          label = T("Type"),
                                                          ),
-                                         S3OptionsFilter("organisation_location.location_id$L3",
-                                                         label = T("District Served"),
-                                                         ),
+                                         S3LocationFilter("organisation_location.location_id",
+                                                          label = T("Location Served"),
+                                                          levels = ("L3", "L4"),
+                                                          ),
                                         ],
                        )
 
@@ -2055,11 +2448,27 @@ $('.copy-link').click(function(e){
     # -----------------------------------------------------------------------------
     def customise_org_organisation_controller(**attr):
 
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
         s3 = current.response.s3
 
-        #current.s3db.set_method("org", "organisation",
-        #                        method = "message",
-        #                        action = org_organisation_message)
+        if auth.s3_has_roles(("AGENCY", "ORG_ADMIN")):
+            ADMIN = True
+            from templates.CCC.controllers import organisationApplication
+            s3db.set_method("org", "organisation",
+                            method = "application",
+                            action = organisationApplication)
+        else:
+            ADMIN = None
+            if auth.s3_has_role("RESERVE"):
+                APPLY = True
+                from templates.CCC.controllers import organisationApply
+                s3db.set_method("org", "organisation",
+                                method = "apply",
+                                action = organisationApply)
+            else:
+                APPLY = False
 
         # Custom prep
         standard_prep = s3.prep
@@ -2070,10 +2479,16 @@ $('.copy-link').click(function(e){
             else:
                 result = True
 
+            if ADMIN is None:
+                # Filtered
+                from s3 import FS
+                rfilter = (FS("visible.value") == "1") | \
+                          (FS("~.id") == auth.user.organisation_id)
+                r.resource.add_filter(rfilter)
+
             if r.id:
                 if r.component_name == "location":
                     from s3 import S3LocationSelector
-                    s3db = current.s3db
                     s3db.org_organisation_location.location_id.widget = S3LocationSelector(levels = ("L3", "L4"),
                                                                                            required_levels = ("L3",),
                                                                                            show_postcode = False,
@@ -2087,7 +2502,7 @@ $('.copy-link').click(function(e){
                                                   ],
                                    )
 
-            elif r.http == "POST":
+            elif r.method != "import" and r.http == "POST":
                 post_vars = r.post_vars
                 if "selected" in post_vars:
                     # Bulk Action 'Message' has been selected
@@ -2106,9 +2521,9 @@ $('.copy-link').click(function(e){
                             filters = None
                         from s3 import FS
                         query = ~(FS("id").belongs(selected))
-                        resource = current.s3db.resource("org_organisation",
-                                                         filter = query,
-                                                         vars = filters)
+                        resource = s3db.resource("org_organisation",
+                                                 filter = query,
+                                                 vars = filters)
                         rows = resource.select(["id"], as_rows=True)
                         selected = [str(row.id) for row in rows]
 
@@ -2131,28 +2546,55 @@ $('.copy-link').click(function(e){
                 output = standard_postp(r, output)
 
             if r.interactive and not r.component:
+                if ADMIN is True:
+                    from gluon import URL
+                    from s3 import s3_str, S3CRUD
 
-                from gluon import URL
-                from s3 import s3_str, S3CRUD
+                    # Normal Action Buttons
+                    S3CRUD.action_buttons(r)
 
-                # Normal Action Buttons
-                S3CRUD.action_buttons(r)
+                    # Custom Action Buttons
+                    s3.actions += [{"label": s3_str(T("Message")),
+                                    "url": URL(c = "project",
+                                               f = "task",
+                                               args = "create",
+                                               vars = {"organisation_id": "[id]"}
+                                               ),
+                                    "_class": "action-btn",
+                                    },
+                                   ]
 
-                # Custom Action Buttons
-                s3.actions += [{"label": s3_str(T("Message")),
-                                "url": URL(c = "project",
-                                           f = "task",
-                                           args = "create",
-                                           vars = {"organisation_id": "[id]"}
-                                           ),
-                                "_class": "action-btn",
-                                },
-                               ]
+                elif APPLY is True:
+                    from gluon import URL
+                    from s3 import s3_str, S3CRUD
+
+                    # Normal Action Buttons
+                    S3CRUD.action_buttons(r)
+
+                    # Custom Action Buttons
+                    otable = s3db.org_organisation
+                    ttable = s3db.org_organisation_tag
+                    query = (ttable.tag == "apply") & \
+                            (ttable.value == "1") & \
+                            (ttable.organisation_id == otable.id)
+                    applyable = db(query).select(otable.id)
+                    restrict_a = [str(row.id) for row in applyable]
+
+                    s3.actions += [{"label": s3_str(T("Apply")),
+                                    "restrict": restrict_a,
+                                    "url": URL(c = "org",
+                                               f = "organisation",
+                                               args = ["[id]", "apply"],
+                                               ),
+                                    "_class": "action-btn",
+                                    },
+                                   ]
 
             return output
         s3.postp = postp
 
         if len(current.request.args) == 1:
+            # Add Bulk Messaging option to Summary page
             attr["dtargs"] = {"dt_bulk_actions": [(T("Message"), "message")],
                           }
         attr["rheader"] = ccc_rheader
@@ -2221,6 +2663,41 @@ $('.copy-link').click(function(e){
                 sinsert(person_id = person_id,
                         skill_id = skill_id,
                         )
+
+    # -------------------------------------------------------------------------
+    def pr_group_create_onaccept(form):
+        """
+            Affiliate Group to Groups Forum to allow Management by AGENCY & ORGADMINs
+        """
+
+        current.log.debug("pr_group_create_onaccept")
+
+        db = current.db
+        s3db = current.s3db
+
+        group_id = form.vars.get("id")
+
+        ftable = s3db.pr_forum
+        forum = db(ftable.name == "Groups").select(ftable.pe_id,
+                                                   limitby = (0, 1)
+                                                   ).first()
+        try:
+            master = forum.pe_id
+        except AttributeError:
+            current.log.error("Unable to link Group to Groups Forum: Forum not Found")
+            return
+
+        gtable = s3db.pr_group
+        group = db(gtable.id == group_id).select(gtable.pe_id,
+                                                 limitby = (0, 1)
+                                                 ).first()
+        try:
+            affiliate = group.pe_id
+        except AttributeError:
+            current.log.error("Unable to link Group to Groups Forum: Group not Found")
+            return
+
+        s3db.pr_add_affiliation(master, affiliate, role="Realm Hierarchy")
 
     # -------------------------------------------------------------------------
     def customise_pr_group_resource(r, tablename):
@@ -2320,8 +2797,8 @@ $('.copy-link').click(function(e){
                        #(T("Leaders"), "group_membership.person_id"),
                        (T("Locations"), "group_location.location_id"),
                        (T("Parish(es)"), "parish.value"),
-                       (T("Skills"), "group_competency.skill_id"),
-                       (T("Skills Details"), "skill_details.value"),
+                       (T("Volunteer Offers"), "group_competency.skill_id"),
+                       (T("Offers Details"), "skill_details.value"),
                        "comments",
                        ]
         if current.auth.permission.format == "xls":
@@ -2329,6 +2806,7 @@ $('.copy-link').click(function(e){
             list_fields.insert(-2, (T("Phone"), "group_membership.person_id$phone.value"))
 
         s3db.configure("pr_group",
+                       create_onaccept = pr_group_create_onaccept,
                        crud_form = S3SQLCustomForm("name",
                                                    (T("Approximate Number of Volunteers"), "volunteers.value"),
                                                    (T("Mode of Transport"), "transport.value"),
@@ -2349,6 +2827,7 @@ $('.copy-link').click(function(e){
                                                    "comments",
                                                    postprocess = pr_group_postprocess,
                                                    ),
+                       #insertable = False, # Needs to be done via registration at the moment due to the need for a User account & it's roles to differentiate
                        list_fields = list_fields,
                        filter_widgets = [S3TextFilter(["name",
                                                        "group_membership.person_id$first_name",
@@ -2368,7 +2847,7 @@ $('.copy-link').click(function(e){
                                                          label = T("Locations Served"),
                                                          ),
                                          S3OptionsFilter("group_competency.skill_id",
-                                                         label = T("Skill"),
+                                                         label = T("Volunteer Offer"),
                                                          ),
                                          ],
                        )
@@ -2513,8 +2992,9 @@ $('.copy-link').click(function(e){
             # Customisation happens in Prep (to override controller prep)
             return
 
-        from gluon import IS_EMPTY_OR, IS_IN_SET
-        from s3 import S3SQLCustomForm, S3SQLInlineComponent, S3SQLInlineLink
+        from gluon import IS_EMPTY_OR, IS_IN_SET, SQLFORM
+        from s3 import S3SQLCustomForm, S3SQLInlineComponent, S3SQLInlineLink, \
+                       S3TagCheckboxWidget, s3_comments_widget
 
         s3db = current.s3db
 
@@ -2550,6 +3030,21 @@ $('.copy-link').click(function(e){
                                               "filterby": {"tag": "availability"},
                                               "multiple": False,
                                               },
+                                             {"name": "travel",
+                                              "joinby": "person_id",
+                                              "filterby": {"tag": "travel"},
+                                              "multiple": False,
+                                              },
+                                             {"name": "experiencefree",
+                                              "joinby": "person_id",
+                                              "filterby": {"tag": "experience"},
+                                              "multiple": False,
+                                              },
+                                             {"name": "resources",
+                                              "joinby": "person_id",
+                                              "filterby": {"tag": "resources"},
+                                              "multiple": False,
+                                              },
                                              ),
                             )
 
@@ -2568,133 +3063,38 @@ $('.copy-link').click(function(e){
         f = delivery.table.value
         f.requires = IS_EMPTY_OR(IS_IN_SET(("Y", "N")))
         f.represent = lambda v: T("yes") if v == "Y" else T("no")
-        from s3 import S3TagCheckboxWidget
         f.widget = S3TagCheckboxWidget(on="Y", off="N")
         f.default = "N"
         f.comment = T("Please indicate if you can deliver the item/s at no cost?")
 
-        get_vars_get = r.get_vars.get
-        has_role = current.auth.s3_has_role
-        if get_vars_get("donors") or \
-           has_role("DONOR", include_admin=False):
-            # Donor
-            stable = s3db.supply_person_item_status
-            status = current.db(stable.name == "Available").select(stable.id,
-                                                                   limitby = (0, 1)
-                                                                   ).first()
-            if status:
-                s3db.supply_person_item.status_id.default = status.id
-            crud_fields = ["first_name",
-                           "middle_name",
-                           "last_name",
-                           "date_of_birth",
-                           (T("Gender"), "gender"),
-                           (T("Name of Organization"), "organisation.value"),
-                           #(T("Type of Organization"), "organisation_type.value"),
-                           #S3SQLInlineLink("item",
-                           #                field = "item_id",
-                           #                label = T("Goods / Services"),
-                           #                ),
-                           #(T("Details"), "items_details.value"),
-                           S3SQLInlineComponent("person_item",
-                                                label = "",
-                                                fields = [(T("Goods / Services"), "item_id"),
-                                                          (T("Details"), "comments"),
-                                                          (T("Status"), "status_id"),
-                                                          (T("Requested By"), "organisation_id"),
-                                                          ],
-                                                ),
-                           (T("Are you able to Deliver?"), "delivery.value"),
-                           S3SQLInlineLink("location",
-                                           field = "location_id",
-                                           label = T("Where would you be willing to deliver?"),
-                                           ),
-                           (T("Please indicate if the offer is only available for a period of time (please state) or an open ended offer. Household items, such as furniture, are normally not required for some months but very gratefully received at the right time"), "availability.value"),
-                           "comments",
-                           ]
+        travel = components_get("travel")
+        f = travel.table.value
+        f.requires = IS_EMPTY_OR(IS_IN_SET({"0": T("No"),
+                                            "1": T("Yes"),
+                                            }))
+        def travel_represent(value):
+            if value == "1":
+                return T("yes")
+            elif value == "0":
+                return T("no")
+            else:
+                return current.messages["NONE"]
+        f.represent = travel_represent
+        f.widget = lambda f, v: \
+                    SQLFORM.widgets.radio.widget(f, v,
+                                                 style="divs")
 
-        elif get_vars_get("groups") or \
-             r.function == "group" or \
-             has_role("GROUP_ADMIN", include_admin=False):
-            # Group Admin
-            # Skills are recorded at the Group level
-            crud_fields = ["first_name",
-                           "middle_name",
-                           "last_name",
-                           "date_of_birth",
-                           (T("Gender"), "gender"),
-                           "comments",
-                           ]
-        else:
-            # Individual Volunteer: Reserve or Organisation
-            crud_fields = ["first_name",
-                           "middle_name",
-                           "last_name",
-                           "date_of_birth",
-                           (T("Gender"), "gender"),
-                           S3SQLInlineLink("skill",
-                                           field = "skill_id",
-                                           label = T("Volunteer Offer"),
-                                           ),
-                           (T("Skills Details"), "skills_details.value"),
-                           S3SQLInlineLink("location",
-                                           field = "location_id",
-                                           label = T("Where would you be willing to operate?"),
-                                           ),
-                           "comments",
-                           ]
+        experiencefree = components_get("experiencefree")
+        f = experiencefree.table.value
+        f.widget = lambda f, v: \
+            s3_comments_widget(f, v, _placeholder = "e.g. Co-ordination, Event Management, PCV qualified.")
 
-        s3db.configure("pr_person",
-                       crud_form = S3SQLCustomForm(*crud_fields),
-                       )
+        resources = components_get("resources")
+        f = resources.table.value
+        f.widget = lambda f, v: \
+            s3_comments_widget(f, v, _placeholder = "e.g. MiniBus.")
 
     settings.customise_pr_person_resource = customise_pr_person_resource
-
-    # -----------------------------------------------------------------------------
-    def affiliation_create_onaccept(form):
-        """
-            If a RESERVE Volunteer is affiliated to an Organisation, update their user/roles accordingly
-        """
-
-        auth = current.auth
-        db = current.db
-        s3db = current.s3db
-        human_resource_id = form.vars.get("id")
-
-        hrtable = s3db.hrm_human_resource
-        hr = db(hrtable.id == human_resource_id).select(hrtable.person_id,
-                                                        hrtable.organisation_id,
-                                                        limitby = (0, 1)
-                                                        ).first()
-
-        ptable = s3db.pr_person
-        putable = s3db.pr_person_user
-        query = (ptable.id == hr.person_id) & \
-                (ptable.pe_id == putable.pe_id)
-        link = db(query).select(putable.user_id,
-                                limitby = (0, 1)
-                                ).first()
-        user_id = link.user_id
-
-        utable = db.auth_user
-        user = db(utable.id == user_id).select(utable.id,
-                                               utable.organisation_id,
-                                               limitby = (0, 1)
-                                               ).first()
-        if not user.organisation_id:
-            user.update_record(organisation_id = hr.organisation_id)
-
-        gtable = db.auth_group
-        mtable = db.auth_membership
-        query = (mtable.user_id == user_id) & \
-                (mtable.group_id == gtable.id)
-        roles = db(query).select(gtable.uuid)
-        roles = [r.uuid for r in roles]
-
-        if "RESERVE" in roles:
-            auth.s3_withdraw_role(user_id, "RESERVE", for_pe=[])
-
-        auth.s3_assign_role(user_id, "VOLUNTEER")
 
     # -----------------------------------------------------------------------------
     def pr_person_redirect(r, **attr):
@@ -2750,7 +3150,10 @@ $('.copy-link').click(function(e){
     # -----------------------------------------------------------------------------
     def customise_pr_person_controller(**attr):
 
+        db = current.db
         s3db = current.s3db
+        request = current.request
+        controller = request.controller
 
         # Custom Component
         s3db.add_components("pr_person",
@@ -2775,7 +3178,13 @@ $('.copy-link').click(function(e){
                    method = "redirect",
                    action = pr_person_redirect)
 
-        br = current.request.controller == "br"
+        BR = controller == "br"
+
+        if not BR:
+            from templates.CCC.controllers import personAffiliation
+            set_method("pr", "person",
+                       method = "affiliation",
+                       action = personAffiliation)
 
         s3 = current.response.s3
 
@@ -2788,7 +3197,7 @@ $('.copy-link').click(function(e){
             else:
                 result = True
 
-            if br:
+            if BR:
                 # Relax Validation for Imports
                 from gluon import IS_EMPTY_OR
                 ctable = s3db.br_case
@@ -2913,59 +3322,312 @@ $('.copy-link').click(function(e){
                                               "address.location_id$L4",
                                               ],
                                )
-            else:
-                if r.component_name == "human_resource":
 
-                    s3.crud_strings["hrm_human_resource"] = Storage(
-                        label_create = T("New Affiliation"),
-                        #title_display = T("Affiliation Details"),
-                        #title_list = T("Affiliations"),
-                        title_update = T("Edit Affiliation"),
-                        #title_upload = T("Import Affiliations"),
-                        #label_list_button = T("List Affiliations"),
-                        label_delete_button = T("Delete Affiliation"),
-                        msg_record_created = T("Affiliation added"),
-                        msg_record_modified = T("Affiliation updated"),
-                        msg_record_deleted = T("Affiliation deleted"),
-                        #msg_list_empty = T("No Affiliations currently registered")
+            else:
+                # Not BR
+                HRM = PROFILE = RESERVES = INACTIVES = DONOR = MEMBERS = False
+                auth = current.auth
+                has_role = auth.s3_has_role
+                rfilter = None
+                if controller == "hrm":
+                    HRM = True
+                elif controller == "default":
+                    PROFILE = True
+                else:
+                    get_vars_get = r.get_vars.get
+                    if get_vars_get("inactive"):
+
+                        # Reserve Volunteers
+                        INACTIVES = True
+
+                        # Only include Inactives
+                        ftable = s3db.pr_forum
+                        forum = db(ftable.name == "Inactives").select(ftable.pe_id,
+                                                                      limitby = (0, 1)
+                                                                      ).first()
+                        realm_entity = forum.pe_id
+                        from s3 import FS
+                        rfilter = FS("~.realm_entity") == realm_entity
+
+                        # Filtered Component to allow an exclusive filter
+                        stable = s3db.hrm_skill
+                        query = (stable.name.like("NHS%")) & \
+                                (stable.deleted == False)
+                        rows = db(query).select(stable.id)
+                        nhs_skill_ids = [row.id for row in rows]
+                        s3db.add_components("pr_person",
+                                            hrm_competency = {"name": "nhs_offer",
+                                                              "joinby": "person_id",
+                                                              "filterby": {"skill_id": nhs_skill_ids},
+                                                              },
+                                            )
+
+                    elif get_vars_get("donors") or \
+                         has_role("DONOR", include_admin=False):
+
+                        DONOR = True
+                        # Only include Donors
+                        mtable = db.auth_membership
+                        gtable = db.auth_group
+                        query = (gtable.uuid == "DONOR") & \
+                                (gtable.id == mtable.group_id)
+                        donors = db(query).select(mtable.user_id)
+                        donors = [d.user_id for d in donors]
+                        from s3 import FS
+                        rfilter = FS("user.id").belongs(donors)
+
+                    elif get_vars_get("groups") or \
+                         (has_role("GROUP_ADMIN", include_admin=False) and not \
+                          has_role("ORG_ADMIN")):
+                        MEMBERS = True
+                        # Only include Members
+                        mtable = s3db.pr_group_membership
+                        query = (mtable.deleted == False)
+                        members = current.db(query).select(mtable.person_id,
+                                                           distinct = True)
+                        members = [m.person_id for m in members]
+                        from s3 import FS
+                        rfilter = FS("id").belongs(members)
+
+                    else:
+                        # Reserve Volunteers
+                        RESERVES = True
+
+                        if get_vars_get("reserves"):
+                            # Only include Reserves
+                            ftable = s3db.pr_forum
+                            forum = db(ftable.name == "Reserves").select(ftable.pe_id,
+                                                                         limitby = (0, 1)
+                                                                         ).first()
+                            reserves = forum.pe_id
+                            realms = s3db.pr_get_descendants({reserves}, entity_types={"pr_forum"})
+                            realms.append(reserves)
+                            from s3 import FS
+                            rfilter = FS("~.realm_entity").belongs(realms)
+
+                        if has_role("RESERVE_ADMIN"):
+                            # Filtered Component to allow an exclusive filter
+                            stable = s3db.hrm_skill
+                            query = (stable.name.like("NHS%")) & \
+                                    (stable.deleted == False)
+                            rows = db(query).select(stable.id)
+                            nhs_skill_ids = [row.id for row in rows]
+                            
+                            s3db.add_components("pr_person",
+                                                hrm_competency = {"name": "nhs_offer",
+                                                                  "joinby": "person_id",
+                                                                  "filterby": {"skill_id": nhs_skill_ids},
+                                                                  },
+                                                )
+
+                if r.id:
+                    if not r.component:
+                        if HRM or PROFILE or RESERVES:
+                            # What is seen varies
+                            if PROFILE:
+                                # Personal Profile: OK
+                                FULL = True
+                            elif has_role("RESERVE_ADMIN"):
+                                FULL = True
+                            else:
+                                # Check if they are affiliated to this User's org
+                                htable = current.s3db.hrm_human_resource
+                                query = (htable.person_id == r.record.id) & \
+                                        (htable.deleted == False)
+                                hr = current.db(query).select(htable.organisation_id,
+                                                              limitby = (0, 1)
+                                                              ).first()
+                                if hr and hr.organisation_id == auth.user.organisation_id:
+                                    # VOLUNTEER for this Org
+                                    FULL = True
+                                else:
+                                    # RESERVE_READER
+                                    FULL = None
+
+                            if FULL is True:
+                                from s3 import S3SQLCustomForm, S3SQLInlineComponent, S3SQLInlineLink
+                                crud_form = S3SQLCustomForm("first_name",
+                                                            "middle_name",
+                                                            "last_name",
+                                                            "date_of_birth",
+                                                            (T("Gender"), "gender"),
+                                                            S3SQLInlineLink("skill",
+                                                                            field = "skill_id",
+                                                                            label = T("Volunteer Offer"),
+                                                                            ),
+                                                            (T("Offer Details"), "skills_details.value"),
+                                                            S3SQLInlineLink("certificate",
+                                                                            field = "certificate_id",
+                                                                            label = T("Qualifications"),
+                                                                            ),
+                                                            (T("Skills and Experience"), "experiencefree.value"),
+                                                            (T("Offers of Resources"), "resources.value"),
+                                                            S3SQLInlineLink("location",
+                                                                            field = "location_id",
+                                                                            label = T("Where would you be willing to operate?"),
+                                                                            ),
+                                                            (T("Willing to Travel?"), "travel.value"),
+                                                            S3SQLInlineLink("slot",
+                                                                            field = "slot_id",
+                                                                            label = T("Times"),
+                                                                            ),
+                                                            "comments",
+                                                            )
+                                r.resource.configure(crud_form = crud_form,
+                                                     subheadings = {"link_defaultslot": T("Availability"),
+                                                                    },
+                                                     )
+                            else:
+                                from s3 import S3SQLCustomForm, S3SQLInlineLink
+                                crud_form = S3SQLCustomForm("first_name",
+                                                            "middle_name",
+                                                            "last_name",
+                                                            S3SQLInlineLink("skill",
+                                                                            field = "skill_id",
+                                                                            label = T("Volunteer Offer"),
+                                                                            ),
+                                                            (T("Offer Details"), "skills_details.value"),
+                                                            )
+                                r.resource.configure(crud_form = crud_form)
+
+                        elif DONOR:
+                            stable = s3db.supply_person_item_status
+                            status = current.db(stable.name == "Available").select(stable.id,
+                                                                                   limitby = (0, 1)
+                                                                                   ).first()
+                            if status:
+                                s3db.supply_person_item.status_id.default = status.id
+
+                            from s3 import S3SQLCustomForm, S3SQLInlineComponent, S3SQLInlineLink
+                            crud_form = S3SQLCustomForm("first_name",
+                                                        "middle_name",
+                                                        "last_name",
+                                                        "date_of_birth",
+                                                        (T("Gender"), "gender"),
+                                                        (T("Name of Organization"), "organisation.value"),
+                                                        #(T("Type of Organization"), "organisation_type.value"),
+                                                        #S3SQLInlineLink("item",
+                                                        #                field = "item_id",
+                                                        #                label = T("Goods / Services"),
+                                                        #                ),
+                                                        #(T("Details"), "items_details.value"),
+                                                        S3SQLInlineComponent("person_item",
+                                                                             label = "",
+                                                                             fields = [(T("Goods / Services"), "item_id"),
+                                                                                       (T("Details"), "comments"),
+                                                                                       (T("Status"), "status_id"),
+                                                                                       (T("Requested By"), "organisation_id"),
+                                                                                       ],
+                                                                             ),
+                                                        (T("Are you able to Deliver?"), "delivery.value"),
+                                                        S3SQLInlineLink("location",
+                                                                        field = "location_id",
+                                                                        label = T("Where would you be willing to deliver?"),
+                                                                        ),
+                                                        (T("Please indicate if the offer is only available for a period of time (please state) or an open ended offer. Household items, such as furniture, are normally not required for some months but very gratefully received at the right time"), "availability.value"),
+                                                        "comments",
+                                                        )
+                            r.resource.configure(crud_form = crud_form)
+
+                        elif MEMBERS:
+                            # Skills are recorded at the Group level
+                            from s3 import S3SQLCustomForm
+                            crud_form = S3SQLCustomForm("first_name",
+                                                        "middle_name",
+                                                        "last_name",
+                                                        "date_of_birth",
+                                                        (T("Gender"), "gender"),
+                                                        "comments",
+                                                        )
+                            r.resource.configure(crud_form = crud_form)
+
+                    elif r.component_name == "human_resource":
+                        s3.crud_strings["hrm_human_resource"] = Storage(
+                            label_create = T("New Affiliation"),
+                            #title_display = T("Affiliation Details"),
+                            #title_list = T("Affiliations"),
+                            title_update = T("Edit Affiliation"),
+                            #title_upload = T("Import Affiliations"),
+                            #label_list_button = T("List Affiliations"),
+                            label_delete_button = T("Delete Affiliation"),
+                            msg_record_created = T("Affiliation added"),
+                            msg_record_modified = T("Affiliation updated"),
+                            msg_record_deleted = T("Affiliation deleted"),
+                            #msg_list_empty = T("No Affiliations currently registered")
+                            )
+
+                        # Only needed if multiple=True
+                        #list_fields = ["organisation_id",
+                        #               (T("Role"), "job_title.value"),
+                        #               "comments",
+                        #               ]
+                        #r.component.configure(list_fields = list_fields)
+
+                    elif r.component_name == "group_membership":
+                        r.resource.components._components["group_membership"].configure(listadd = False,
+                                                                                        list_fields = [(T("Name"), "group_id$name"),
+                                                                                                       "group_id$comments",
+                                                                                                       ],
+                                                                                        )
+
+                elif r.method != "import" and r.http == "POST":
+                    post_vars = r.post_vars
+                    if "selected" in post_vars:
+                        # Bulk Action 'Message' has been selected
+                        selected = post_vars.selected
+                        if selected:
+                            selected = selected.split(",")
+                        else:
+                            selected = []
+
+                        # Handle exclusion filter
+                        if post_vars.mode == "Exclusive":
+                            if "filterURL" in post_vars:
+                                from s3 import S3URLQuery
+                                filters = S3URLQuery.parse_url(post_vars.filterURL)
+                            else:
+                                filters = None
+                            from s3 import FS
+                            query = ~(FS("id").belongs(selected))
+                            resource = current.s3db.resource("pr_person",
+                                                             filter = query,
+                                                             vars = filters)
+                            # Add Manual URL Filters
+                            if rfilter:
+                                resource.add_filter(rfilter)
+                            rows = resource.select(["id"], as_rows=True)
+                            selected = [str(row.id) for row in rows]
+
+                        # GET URL lengths are limited, so pass 'selected' via session
+                        current.session.s3.ccc_message_person_ids = selected
+                        from gluon import redirect, URL
+                        redirect(URL(c="project", f="task",
+                                     args = "create",
+                                     vars = {"person_ids": 1},
+                                     ))
+                    
+                if HRM or PROFILE:
+                    # Organisation Volunteers
+                    # (only used for hrm/person profile)
+                    s3.crud_strings[r.tablename] = Storage(
+                        #label_create = T("New Volunteer"),
+                        title_display = T("Volunteer Details"),
+                        title_list = T("Volunteers"),
+                        title_update = T("Edit Volunteer"),
+                        #title_upload = T("Import Volunteers"),
+                        label_list_button = T("List Volunteers"),
+                        label_delete_button = T("Delete Volunteer"),
+                        #msg_record_created = T("Volunteer added"),
+                        msg_record_modified = T("Volunteer updated"),
+                        msg_record_deleted = T("Volunteer deleted"),
+                        msg_list_empty = T("No Volunteers currently registered")
                         )
 
-                    s3db.add_custom_callback("hrm_human_resource",
-                                             "onaccept",
-                                             affiliation_create_onaccept,
-                                             method = "create",
-                                             )
-
-                    # Only needed if multiple=True
-                    #list_fields = ["organisation_id",
-                    #               (T("Role"), "job_title.value"),
-                    #               "comments",
-                    #               ]
-                    #r.component.configure(list_fields = list_fields)
-
-                elif r.component_name == "group_membership":
-                    r.resource.components._components["group_membership"].configure(listadd = False,
-                                                                                    list_fields = [(T("Name"), "group_id$name"),
-                                                                                                   "group_id$comments",
-                                                                                                   ],
-                                                                                    )
-
-                get_vars_get = r.get_vars.get
-                has_role = current.auth.s3_has_role
-                if get_vars_get("reserves") or \
-                   has_role("RESERVE", include_admin=False):
-                    # Reserve Volunteers
-                    from s3 import FS, S3OptionsFilter, S3TextFilter
+                elif RESERVES or INACTIVES:
+                    # Reserve Volunteers or Inactive Volunteers
+                    # Filter to Reserves or Inactive
                     resource = r.resource
-                    # Only include Reserves
-                    db = current.db
-                    mtable = db.auth_membership
-                    gtable = db.auth_group
-                    query = (gtable.uuid == "RESERVE") & \
-                            (gtable.id == mtable.group_id)
-                    reserves = db(query).select(mtable.user_id)
-                    reserves = [m.user_id for m in reserves]
-                    resource.add_filter(FS("user.id").belongs(reserves))
+                    resource.add_filter(rfilter)
 
                     gtable = s3db.gis_location
                     districts = current.db((gtable.level == "L3") & (gtable.L2 == "Cumbria")).select(gtable.id,
@@ -2976,63 +3638,146 @@ $('.copy-link').click(function(e){
                     list_fields = ["first_name",
                                    "middle_name",
                                    "last_name",
-                                   (T("Skills"), "competency.skill_id"),
+                                   (T("Volunteer Offers"), "competency.skill_id"),
                                    (T("Email"), "email.value"),
                                    (T("Mobile Phone"), "phone.value"),
                                    ]
                     if current.auth.permission.format == "xls":
-                        from s3 import S3DateTime
-                        s3db.pr_person.created_on.represent = lambda dt: \
-                                  S3DateTime.datetime_represent(dt, utc=True)
-                        list_fields.append((T("Registration Date"), "created_on"))
+                        # Address
+                        list_fields += [(T("Address"), "address.location_id$addr_street"),
+                                        (T("Parish"), "address.location_id$L4"),
+                                        (T("District"), "address.location_id$L3"),
+                                        (T("Postcode"), "address.location_id$addr_postcode"),
+                                        ]
+                        if has_role("RESERVE_ADMIN"):
+                            # Travel
+                            list_fields.append((T("Willing to Travel"), "travel.value"))
+                            # Qualifications
+                            list_fields.append((T("Qualifications"), "certification.certificate_id"))
+                            # Skills & Experience
+                            list_fields.append((T("Skills and Experience"), "experiencefree.value"))
+                            # Offers of Resources
+                            list_fields.append((T("Offers of Resources"), "resources.value"))
+                            # DBS
+                            s3db.add_components("pr_person",
+                                                pr_person_tag = (#{"name": "convictions",
+                                                                 # "joinby": "person_id",
+                                                                 # "filterby": {"tag": "convictions"},
+                                                                 # "multiple": False,
+                                                                 # },
+                                                                 {"name": "dbs",
+                                                                  "joinby": "person_id",
+                                                                  "filterby": {"tag": "dbs"},
+                                                                  "multiple": False,
+                                                                  },
+                                                                 {"name": "workplace",
+                                                                  "joinby": "person_id",
+                                                                  "filterby": {"tag": "workplace"},
+                                                                  "multiple": False,
+                                                                  },
+                                                                 {"name": "workplace_details",
+                                                                  "joinby": "person_id",
+                                                                  "filterby": {"tag": "workplace_details"},
+                                                                  "multiple": False,
+                                                                  },
+                                                                 ),
+                                                )
+                            from s3 import S3Represent
+                            yes_no_options = {"0": T("No"),
+                                              "1": T("Yes"),
+                                              }
+                            components_get = s3db.resource("pr_person").components.get
+                            workplace = components_get("workplace")
+                            f = workplace.table.value
+                            f.represent = S3Represent(options = yes_no_options)
+                            list_fields+= [(T("Workplace Volunteering Scheme"), "workplace.value"),
+                                           (T("Employer"), "workplace_details.value"),
+                                           ]
+                            dbs = components_get("dbs")
+                            f = dbs.table.value
+                            f.represent = S3Represent(options = yes_no_options)
+                            list_fields.append((T("DBS"), "dbs.value"))
+                            # Convictions
+                            #convictions = components_get("convictions")
+                            #f = convictions.table.value
+                            #f.represent = S3Represent(options = yes_no_options)
+                            #list_fields.append((T("Convictions"), "convictions.value"))
+                            # Registration Date
+                            from s3 import S3DateTime
+                            s3db.pr_person.created_on.represent = lambda dt: \
+                                      S3DateTime.datetime_represent(dt, utc=True)
+                            list_fields.append((T("Registration Date"), "created_on"))
+
+                    from s3 import S3EmptyFilter, S3OptionsFilter, S3TextFilter
+                    filter_widgets = [S3TextFilter(["first_name",
+                                                    "middle_name",
+                                                    "last_name",
+                                                    "comments",
+                                                    "competency.skill_id$name",
+                                                    "experiencefree.value",
+                                                    "resources.value",
+                                                    ],
+                                                   #formstyle = text_filter_formstyle,
+                                                   label = "",
+                                                   _placeholder = T("Search"),
+                                                   ),
+                                      S3OptionsFilter("person_location.location_id",
+                                                      label = T("Locations Served"),
+                                                      options = districts,
+                                                      ),
+                                      S3OptionsFilter("competency.skill_id",
+                                                      label = T("Volunteer Offer"),
+                                                      ),
+                                      ]
+                    if has_role("RESERVE_ADMIN"):
+                        filter_widgets += [S3OptionsFilter("certification.certificate_id",
+                                                      label = T("Qualification"),
+                                                      ),
+                                           S3EmptyFilter("nhs_offer.id",
+                                                         label = T("No NHS Offer"),
+                                                         ),
+                                           ]
 
                     resource.configure(list_fields = list_fields,
-                                       filter_widgets = [S3TextFilter(["first_name",
-                                                                       "middle_name",
-                                                                       "last_name",
-                                                                       "comments",
-                                                                       "competency.skill_id$name",
-                                                                       ],
-                                                                      #formstyle = text_filter_formstyle,
-                                                                      label = "",
-                                                                      _placeholder = T("Search"),
-                                                                      ),
-                                                         S3OptionsFilter("person_location.location_id",
-                                                                         label = T("Locations Served"),
-                                                                         options = districts,
-                                                                         ),
-                                                         S3OptionsFilter("competency.skill_id",
-                                                                         ),
-                                                         ],
+                                       filter_widgets = filter_widgets,
                                        )
-                    s3.crud_strings[r.tablename] = Storage(
-                        label_create = T("New Reserve Volunteer"),
-                        title_display = T("Reserve Volunteer Details"),
-                        title_list = T("Reserve Volunteers"),
-                        title_update = T("Edit Reserve Volunteer"),
-                        #title_upload = T("Import Reserve Volunteers"),
-                        label_list_button = T("List Reserve Volunteers"),
-                        label_delete_button = T("Delete Reserve Volunteer"),
-                        msg_record_created = T("Reserve Volunteer added"),
-                        msg_record_modified = T("Reserve Volunteer updated"),
-                        msg_record_deleted = T("Reserve Volunteer deleted"),
-                        msg_list_empty = T("No Reserve Volunteers currently registered")
-                        )
-                elif get_vars_get("donors") or \
-                     has_role("DONOR", include_admin=False):
-                    # Donors
-                    from s3 import FS, S3OptionsFilter, S3TextFilter
-                    resource = r.resource
-                    # Only include Donors
-                    db = current.db
-                    mtable = db.auth_membership
-                    gtable = db.auth_group
-                    query = (gtable.uuid == "DONOR") & \
-                            (gtable.id == mtable.group_id)
-                    donors = db(query).select(mtable.user_id)
-                    donors = [d.user_id for d in donors]
-                    resource.add_filter(FS("user.id").belongs(donors))
 
+                    if RESERVES:
+                        s3.crud_strings[r.tablename] = Storage(
+                            #label_create = T("New Reserve Volunteer"),
+                            title_display = T("Reserve Volunteer Details"),
+                            title_list = T("Reserve Volunteers"),
+                            title_update = T("Edit Reserve Volunteer"),
+                            #title_upload = T("Import Reserve Volunteers"),
+                            label_list_button = T("List Reserve Volunteers"),
+                            label_delete_button = T("Delete Reserve Volunteer"),
+                            #msg_record_created = T("Reserve Volunteer added"),
+                            msg_record_modified = T("Reserve Volunteer updated"),
+                            msg_record_deleted = T("Reserve Volunteer deleted"),
+                            msg_list_empty = T("No Reserve Volunteers currently registered")
+                            )
+                    else:
+                        s3.crud_strings[r.tablename] = Storage(
+                            #label_create = T("New Inactive Volunteer"),
+                            title_display = T("Inactive Volunteer Details"),
+                            title_list = T("Inactive Volunteers"),
+                            title_update = T("Edit Inactive Volunteer"),
+                            #title_upload = T("Import Inactive Volunteers"),
+                            label_list_button = T("List Inactive Volunteers"),
+                            label_delete_button = T("Delete Inactive Volunteer"),
+                            #msg_record_created = T("Inactive Volunteer added"),
+                            msg_record_modified = T("Inactive Volunteer updated"),
+                            msg_record_deleted = T("Inactive Volunteer deleted"),
+                            msg_list_empty = T("No Inactive Volunteers currently registered")
+                            )
+
+                elif DONOR:
+                    # Donors
+                    # Filter to Donors
+                    resource = r.resource
+                    resource.add_filter(rfilter)
+
+                    from s3 import S3OptionsFilter, S3TextFilter
                     resource.configure(list_fields = [# @ToDo: Add Organisation freetext
                                                       "first_name",
                                                       "middle_name",
@@ -3056,22 +3801,26 @@ $('.copy-link').click(function(e){
                                                                          ),
                                                          ],
                                        )
+
                     s3.crud_strings[r.tablename] = Storage(
-                        label_create = T("New Donor"),
+                        #label_create = T("New Donor"),
                         title_display = T("Donor Details"),
                         title_list = T("Donors"),
                         title_update = T("Edit Donor"),
                         #title_upload = T("Import Donors"),
                         label_list_button = T("List Donors"),
                         label_delete_button = T("Delete Donor"),
-                        msg_record_created = T("Donor added"),
+                        #msg_record_created = T("Donor added"),
                         msg_record_modified = T("Donor updated"),
                         msg_record_deleted = T("Donor deleted"),
                         msg_list_empty = T("No Donors currently registered")
                         )
-                elif get_vars_get("groups") or \
-                     has_role("GROUP_ADMIN", include_admin=False):
+
+                elif MEMBERS:
                     # Group Members
+                    # Filter to Members
+                    r.resource.add_filter(rfilter)
+
                     s3.crud_strings[r.tablename] = Storage(
                         label_create = T("New Member"),
                         title_display = T("Member Details"),
@@ -3085,22 +3834,6 @@ $('.copy-link').click(function(e){
                         msg_record_deleted = T("Member deleted"),
                         msg_list_empty = T("No Members currently registered")
                         )
-                else:
-                    # Organisation Volunteers
-                    # (only used for hrm/person profile)
-                    s3.crud_strings[r.tablename] = Storage(
-                        label_create = T("New Volunteer"),
-                        title_display = T("Volunteer Details"),
-                        title_list = T("Volunteers"),
-                        title_update = T("Edit Volunteer"),
-                        #title_upload = T("Import Volunteers"),
-                        label_list_button = T("List Volunteers"),
-                        label_delete_button = T("Delete Volunteer"),
-                        msg_record_created = T("Volunteer added"),
-                        msg_record_modified = T("Volunteer updated"),
-                        msg_record_deleted = T("Volunteer deleted"),
-                        msg_list_empty = T("No Volunteers currently registered")
-                        )
 
             return result
         s3.prep = prep
@@ -3113,16 +3846,20 @@ $('.copy-link').click(function(e){
                 output = standard_postp(r, output)
 
             if not r.component:
-                if r.controller != "br":
+                if not BR:
                     # Include get_vars on Action Buttons to configure crud_form/crud_strings appropriately
                     from gluon import URL
                     from s3 import S3CRUD
 
-                    read_url = URL(c="pr", f="person", args=["[id]", "read"],
-                                   vars = r.get_vars)
+                    read_url = URL(c="pr", f="person",
+                                   args = ["[id]", "read"],
+                                   vars = r.get_vars,
+                                   )
 
-                    update_url = URL(c="pr", f="person", args=["[id]", "update"],
-                                     vars = r.get_vars)
+                    update_url = URL(c="pr", f="person",
+                                     args = ["[id]", "update"],
+                                     vars = r.get_vars,
+                                     )
 
                     S3CRUD.action_buttons(r,
                                           read_url = read_url,
@@ -3133,12 +3870,38 @@ $('.copy-link').click(function(e){
         s3.postp = postp
 
         # Hide the search box on component tabs, as confusing & not useful
-        attr["dtargs"] = {"dt_searching": False,
-                          }
+        dtargs = {"dt_searching": False,
+                  }
 
-        if br:
+        request_args = request.args
+        len_request_args = len(request_args)
+        if len_request_args is 0 and request.get_vars.get("inactive") is None:
+            # Add Bulk Messaging to List View
+            dtargs["dt_bulk_actions"] = [(T("Message"), "message")]
+
+        attr["dtargs"] = dtargs
+
+        if BR:
             # Link to customised download Template
             attr["csv_template"] = ("../../themes/CCC/xls", "Affected_People.xlsm")
+        elif len_request_args > 0 and request.get_vars.get("groups"):
+            person_id = request_args[0]
+            mtable = s3db.pr_group_membership
+            group = db(mtable.person_id == person_id).select(mtable.group_id,
+                                                             limitby = (0, 1)
+                                                             ).first()
+            if group:
+                from gluon import A, URL
+                attr["custom_crud_buttons"] = {"list_btn": A(T("List Members"),
+                                                             _href = URL(c="pr", f="group",
+                                                                         args = [group.group_id,
+                                                                                 "person",
+                                                                                 ],
+                                                                         ),
+                                                             _id = "list-btn",
+                                                             _class = "action-btn",
+                                                             )
+                                               }
 
         attr["rheader"] = ccc_rheader
 
@@ -3167,7 +3930,7 @@ $('.copy-link').click(function(e){
     settings.customise_pr_person_location_resource = customise_pr_person_location_resource
 
     # -------------------------------------------------------------------------
-    def project_task_create_onaccept(form):
+    def project_task_postprocess(form):
         """
             When a Task is created:
                 * Duplicate Message if sending to multiple Organisations
@@ -3175,20 +3938,108 @@ $('.copy-link').click(function(e){
                 * Notify OrgAdmins
         """
 
-        from gluon import URL
-        from s3 import s3_fullname
+        if form.record:
+            # Update
+            return
 
         form_vars_get = form.vars.get
         task_id = form_vars_get("id")
 
-        # Lookup the Author details
         db = current.db
         s3db = current.s3db
-        otable = s3db.org_organisation
+
+        # Lookup the Task
         ttable = s3db.project_task
+        query = (ttable.id == task_id)
+        task = db(query).select(ttable.doc_id,
+                                ttable.created_by,
+                                limitby = (0, 1)
+                                ).first()
+
+        # Look for attachments
+        dtable = s3db.doc_document
+        file_field = dtable.file
+        uploadfolder = file_field.uploadfolder
+        query = (dtable.doc_id == task.doc_id)
+        documents = db(query).select(file_field)
+        attachments = []
+        if len(documents):
+            import os
+            from gluon.tools import Mail
+            for d in documents:
+                filename = d.file
+                origname = file_field.retrieve(filename)[0]
+                attachments.append(Mail.Attachment(os.path.join(uploadfolder, filename), filename=origname))
+
+        # Check what kind of message this is
+        get_vars_get = current.request.get_vars.get
+
+        person_ids = get_vars_get("person_ids")
+        if person_ids is not None:
+            # Sending to a list of People from the Bulk Action
+
+            # Retrieve list from the session
+            session = current.session
+            person_ids = session.s3.get("ccc_message_person_ids")
+            if person_ids is None:
+                session.warning = current.T("No people selected to send notifications to!")
+            else:
+                # Clear from session
+                del session.s3["ccc_message_person_ids"]
+
+                # Construct Email message
+                subject = form_vars_get("name")
+                message = form_vars_get("description")
+                if message is None:
+                    message = ""
+                else:
+                    # Convert relative paths to absolute
+                    from lxml import etree, html
+                    parser = etree.HTMLParser()
+                    message = message.strip()
+                    tree = html.fragment_fromstring(message, create_parent=True)
+                    tree.make_links_absolute(settings.get_base_public_url())
+                    message = etree.tostring(tree, pretty_print=False, encoding="utf-8").decode("utf-8")
+                    # Need to add the HTML tags around the HTML so that Mail recognises it as HTML
+                    message = "<html>%s</html>" % message
+
+                # Lookup Emails
+                ptable = s3db.pr_person
+                ctable = s3db.pr_contact
+                query = (ptable.id.belongs(person_ids)) & \
+                        (ptable.pe_id == ctable.pe_id) & \
+                        (ctable.contact_method == "EMAIL") & \
+                        (ctable.deleted == False)
+                emails = db(query).select(ctable.value,
+                                          distinct = True)
+
+                # Send Email to each Person
+                send_email = current.msg.send_email
+                for email in emails:
+                    send_email(to = email.value,
+                               subject = subject,
+                               message = message,
+                               attachments = attachments,
+                               )
+                # Set the Realm Entity
+                # No Realm Entity as should be visible to all ORG_ADMINs & all Agency Group
+                #organisation_id = user.organisation_id
+                #if organisation_id:
+                #    otable = s3db.org_organisation
+                #    org = db(otable.id == organisation_id).select(otable.pe_id,
+                #                                                  limitby = (0, 1)
+                #                                                  ).first()
+                #    db(ttable.id == task_id).update(realm_entity = org.pe_id)
+
+            return
+
+        from gluon import URL
+
+        from s3 import s3_fullname
+
+        # Lookup the Author details
         utable = db.auth_user
-        query = (ttable.id == task_id) & \
-                (ttable.created_by == utable.id)
+        query = (utable.id == task.created_by)
         user = db(query).select(utable.first_name,
                                 utable.last_name,
                                 utable.organisation_id,
@@ -3206,6 +4057,7 @@ $('.copy-link').click(function(e){
         url = "%s%s" % (settings.get_base_public_url(),
                         URL(c="project", f="task"),
                         )
+
         message = "%s has sent you a Message on %s\n\nSubject: %s\nMessage: %s\n\nYou can view the message here: %s" % \
                     (fullname,
                      system_name,
@@ -3214,7 +4066,6 @@ $('.copy-link').click(function(e){
                      url,
                      )
 
-        get_vars_get = current.request.get_vars.get
         organisation_ids = get_vars_get("o")
         if organisation_ids is not None:
             # Sending to a list of Organisations from the Bulk Action
@@ -3257,6 +4108,7 @@ $('.copy-link').click(function(e){
                 orgs[organisation_id]["task_id"] = task_id
 
             # Set Realm Entities
+            otable = s3db.org_organisation
             # Send email to each OrgAdmin
             send_email = current.msg.send_email
             for organisation_id in orgs:
@@ -3278,95 +4130,104 @@ $('.copy-link').click(function(e){
                     send_email(to = email,
                                subject = subject,
                                message = this_message,
+                               attachments = attachments,
                                )
+            return
 
-        else:
-            person_item_id = current.request.get_vars.get("person_item_id")
-            if person_item_id:
-                # Sending to a Donor
+        person_item_id = get_vars_get("person_item_id")
+        if person_item_id is not None:
+            # Sending to a Donor
 
-                # Lookup the person_id
-                stable = s3db.supply_person_item
-                person_item = db(stable.id == person_item_id).select(stable.person_id,
-                                                                     limitby = (0, 1)
-                                                                     ).first()
-                try:
-                    person_id = person_item.person_id
-                except AttributeError:
-                    return
+            # Lookup the person_id
+            stable = s3db.supply_person_item
+            person_item = db(stable.id == person_item_id).select(stable.person_id,
+                                                                 limitby = (0, 1)
+                                                                 ).first()
+            try:
+                person_id = person_item.person_id
+            except AttributeError:
+                return
 
-                # Lookup the pe_id
-                ptable = s3db.pr_person
-                person = db(ptable.id == person_id).select(ptable.pe_id,
-                                                           limitby = (0, 1)
-                                                           ).first()
-                try:
-                    pe_id = person.pe_id
-                except AttributeError:
-                    return
+            # Lookup the pe_id
+            ptable = s3db.pr_person
+            person = db(ptable.id == person_id).select(ptable.pe_id,
+                                                       limitby = (0, 1)
+                                                       ).first()
+            try:
+                pe_id = person.pe_id
+            except AttributeError:
+                return
 
-                # Set the Realm Entity
-                db(ttable.id == task_id).update(realm_entity = pe_id)
+            # Set the Realm Entity
+            db(ttable.id == task_id).update(realm_entity = pe_id)
 
-                # Append the task_id to the URL
-                message = "%s/%s" % (message, task_id)
+            # Append the task_id to the URL
+            message = "%s/%s" % (message, task_id)
 
-                # Lookup the Donor's Email
-                ctable = s3db.pr_contact
-                query = (ctable.pe_id == pe_id) & \
-                        (ctable.contact_method == "EMAIL") & \
-                        (ctable.deleted == False)
-                donor = db(query).select(ctable.value,
-                                         limitby = (0, 1)
-                                         ).first()
-                try:
-                    email = donor.value
-                except AttributeError:
-                    return
+            # Lookup the Donor's Email
+            ctable = s3db.pr_contact
+            query = (ctable.pe_id == pe_id) & \
+                    (ctable.contact_method == "EMAIL") & \
+                    (ctable.deleted == False)
+            donor = db(query).select(ctable.value,
+                                     limitby = (0, 1)
+                                     ).first()
+            try:
+                email = donor.value
+            except AttributeError:
+                return
 
-                # Send message
-                current.msg.send_email(to = email,
-                                       subject = subject,
-                                       message = message,
-                                       )
-                
-            else:
-                # Use the Organisation we request or fallback to the User's Organisation
-                organisation_id = get_vars_get("organisation_id", user.organisation_id)
+            # Send message
+            current.msg.send_email(to = email,
+                                   subject = subject,
+                                   message = message,
+                                   attachments = attachments,
+                                   )
 
-                # Set the Realm Entity
-                org = db(otable.id == organisation_id).select(otable.pe_id,
-                                                              limitby = (0, 1)
-                                                              ).first()
-                try:
-                    db(ttable.id == task_id).update(realm_entity = org.pe_id)
-                except AttributeError:
-                    pass
+            return
+            
+        # Use the Organisation we request or fallback to the User's Organisation
+        organisation_id = get_vars_get("organisation_id", user.organisation_id)
 
-                # Append the task_id to the URL
-                message = "%s/%s" % (message, task_id)
+        # Set the Realm Entity
+        otable = s3db.org_organisation
+        org = db(otable.id == organisation_id).select(otable.pe_id,
+                                                      limitby = (0, 1)
+                                                      ).first()
+        try:
+            db(ttable.id == task_id).update(realm_entity = org.pe_id)
+        except AttributeError:
+            pass
 
-                # Lookup the ORG_ADMINs
-                gtable = db.auth_group
-                mtable = db.auth_membership
-                query = (gtable.uuid == "ORG_ADMIN") & \
-                        (gtable.id == mtable.group_id) & \
-                        (mtable.user_id == utable.id) & \
-                        (utable.organisation_id == organisation_id)
-                org_admins = db(query).select(utable.email)
+        # Append the task_id to the URL
+        message = "%s/%s" % (message, task_id)
 
-                # Send message to each
-                send_email = current.msg.send_email
-                for admin in org_admins:
-                    send_email(to = admin.email,
-                               subject = subject,
-                               message = message,
-                               )
+        # Lookup the ORG_ADMINs
+        gtable = db.auth_group
+        mtable = db.auth_membership
+        query = (gtable.uuid == "ORG_ADMIN") & \
+                (gtable.id == mtable.group_id) & \
+                (mtable.user_id == utable.id) & \
+                (utable.organisation_id == organisation_id)
+        org_admins = db(query).select(utable.email)
+        
+        # Send message to each
+        send_email = current.msg.send_email
+        for admin in org_admins:
+            send_email(to = admin.email,
+                       subject = subject,
+                       message = message,
+                       attachments = attachments,
+                       )
 
     # -------------------------------------------------------------------------
     def customise_project_task_resource(r, tablename):
 
-        from s3 import S3OptionsFilter, S3SQLCustomForm, S3TextFilter
+        from gluon import XML
+
+        from s3 import S3OptionsFilter, S3TextFilter, \
+                       S3SQLCustomForm, S3SQLInlineComponent, \
+                       s3_richtext_widget
 
         current.response.s3.crud_strings[tablename] = Storage(
             label_create = T("New Message"),
@@ -3386,12 +4247,17 @@ $('.copy-link').click(function(e){
 
         table = s3db.project_task
         table.name.label = T("Subject")
-        table.description.label = T("Message")
+        f = table.description
+        f.label = T("Message")
+        f.represent = XML
+        f.widget = s3_richtext_widget
+        f.comment = None
         if r.method == "create":
             table.comments.readable = table.comments.writable = False
         else:
             has_role = current.auth.s3_has_role
             if has_role("ORG_ADMIN") or \
+               has_role("AGENCY") or \
                has_role("DONOR"):
                 table.created_by.readable = True
                 table.created_by.label = T("From")
@@ -3402,14 +4268,17 @@ $('.copy-link').click(function(e){
                 table.realm_entity.readable = True
                 table.realm_entity.label = T("To")
                 table.realm_entity.represent = s3db.pr_PersonEntityRepresent(show_label = False,
-                                                                             show_type = False)
+                                                                             show_type = False,
+                                                                             none = "Reserve(s)",
+                                                                             )
                 table.name.writable = False
                 table.description.writable = False
                 table.description.comment = None
 
         s3db.configure("project_task",
                        # Can simply replace the default one
-                       create_onaccept = project_task_create_onaccept,
+                       #create_onaccept = project_task_create_onaccept,
+                       create_onaccept = None,
                        crud_form = S3SQLCustomForm("created_by",
                                                    "created_on",
                                                    "realm_entity",
@@ -3419,6 +4288,13 @@ $('.copy-link').click(function(e){
                                                    #"status",
                                                    #"pe_id",
                                                    "comments",
+                                                   S3SQLInlineComponent(
+                                                        "document",
+                                                        name = "document",
+                                                        label = T("Attachments"),
+                                                        fields = [("", "file")],
+                                                        ),
+                                                   postprocess = project_task_postprocess,
                                                    ),
                        listadd = False,
                        list_fields = [#"priority",
@@ -3458,6 +4334,7 @@ $('.copy-link').click(function(e){
         auth = current.auth
         has_role = auth.s3_has_role
         if has_role("ORG_ADMIN") or \
+           has_role("AGENCY") or \
            has_role("DONOR"):
             READER = True
         else:
@@ -3762,7 +4639,7 @@ $('.copy-link').click(function(e){
             from s3 import s3_parse_datetime
             date = s3_parse_datetime(date, "%Y-%m-%d %H:%M:%S")
 
-        message = "You have been invited to an Opportunity:\n\nTitle: %s\nOrganisation: %s\nStart Date: %s\nDistrict: %s\nStreet Address: %s\nPostcode: %s\nDescription: %s\nContact: %s\nSkill: %s\nAge Restrictions: %s\nPractical Information: %s\nParking Options: %s\nWhat to Bring: %s\n\nYou can respond to the invite here: %s" % \
+        message = "You have been invited to an Opportunity:\n\nTitle: %s\nOrganisation: %s\nStart Date: %s\nDistrict: %s\nStreet Address: %s\nPostcode: %s\nDescription: %s\nContact: %s\nVolunteer Offer: %s\nAge Restrictions: %s\nPractical Information: %s\nParking Options: %s\nWhat to Bring: %s\n\nYou can respond to the invite here: %s" % \
                     (event_name,
                      organisation,
                      ntable.date.represent(date),
@@ -4144,7 +5021,7 @@ $('.copy-link').click(function(e){
                                "human_resource.organisation_id",
                                "group_membership.group_id",
                                (T("Role"), "human_resource.job_title.value"),
-                               (T("Skills"), "competency.skill_id"),
+                               (T("Volunteer Offers"), "competency.skill_id"),
                                ]
 
                 set_method("req", "need",

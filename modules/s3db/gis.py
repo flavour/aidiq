@@ -290,9 +290,9 @@ class S3LocationModel(S3Model):
                                                          gis_location_represent,
                                                          # @ToDo: If level is known, filter on higher than that?
                                                          # If strict, filter on next higher level?
-                                                         filterby="level",
-                                                         filter_opts=hierarchy_level_keys,
-                                                         orderby="gis_location.name"))),
+                                                         filterby = "level",
+                                                         filter_opts = hierarchy_level_keys,
+                                                         orderby = "gis_location.name"))),
                  ]
             )
 
@@ -329,7 +329,7 @@ class S3LocationModel(S3Model):
                                                  represent,
                                                  filterby = "level",
                                                  filter_opts = ["L0"],
-                                                 sort=True))
+                                                 sort = True))
         country_id = S3ReusableField("location_id", "reference %s" % tablename,
                                      label = messages.COUNTRY,
                                      ondelete = "RESTRICT",
@@ -988,7 +988,8 @@ class S3LocationModel(S3Model):
             if settings.get_L10n_translate_gis_location():
                 search_l10n = True
                 language = current.session.s3.language
-                if language != current.deployment_settings.get_L10n_default_language():
+                #if language != current.deployment_settings.get_L10n_default_language():
+                if language != "en": # Can have a default language for system & yet still want to translate from base English
                     translate = True
                     fields.append("path")
 
@@ -1613,6 +1614,9 @@ class S3GISConfigModel(S3Model):
         - Site config
         - Personal config
         - OU config (Organisation &/or Team)
+
+        @ToDo: Make this be able to import/export OWS Context:
+               http://www.owscontext.org
     """
 
     names = ("gis_config",
@@ -2345,7 +2349,7 @@ class S3GISConfigModel(S3Model):
 
         form_vars = form.vars
         image = form_vars.image
-        if image is None:
+        if not image:
             encoded_file = form_vars.get("imagecrop-data", None)
             if not encoded_file:
                 # No Image => CSV import of resources which just need a ref
@@ -3922,6 +3926,16 @@ class S3MapModel(S3Model):
                                                               T("Tells GeoServer to do MetaTiling which reduces the number of duplicate labels."),
                                                               T("Note that when using geowebcache, this can be set in the GWC config."))),
                            ),
+                     # https://stackoverflow.com/questions/2883122/openlayers-layers-tiled-vs-single-tile
+                     Field("single_tile", "boolean",
+                           default = False,
+                           label = T("Single Tile"),
+                           represent = s3_yes_no_represent,
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (T("Single Tile"),
+                                                           T("Render 1 big tile instead of lots of smaller tiles."),
+                                                           )),
+                           ),
                      Field("buffer", "integer",
                            default = 0,
                            label = T("Buffer"),
@@ -5134,7 +5148,8 @@ class gis_LocationRepresent(S3Represent):
         # Translation uses gis_location_name & not T()
         translate = settings.get_L10n_translate_gis_location()
         language = current.session.s3.language
-        if language == settings.get_L10n_default_language():
+        #if language == settings.get_L10n_default_language():
+        if language == "en": # Can have a default language for system & yet still want to translate from base English
             translate = False
         # Iframe height(Link)
         self.iheight = settings.get_gis_map_selector_height()

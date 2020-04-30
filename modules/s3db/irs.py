@@ -776,20 +776,21 @@ class S3IRSModel(S3Model):
             T = current.T
             db = current.db
             s3db = current.s3db
-            request = current.request
+            appname = r.application
             response = current.response
             s3 = response.s3
 
             itable = s3db.doc_image
 
             # Add core Simile Code
-            s3.scripts.append("/%s/static/scripts/simile/timeline/timeline-api.js" % request.application)
+            #s3.scripts.append("/%s/static/scripts/simile/timeline/timeline-api.js" % appname)
 
-            # Add our control script
-            if s3.debug:
-                s3.scripts.append("/%s/static/scripts/S3/s3.timeline.js" % request.application)
-            else:
-                s3.scripts.append("/%s/static/scripts/S3/s3.timeline.min.js" % request.application)
+            # Add our controlled script
+            #if s3.debug:
+            #    s3.scripts.append("/%s/static/scripts/S3/s3.timeline.js" % appname)
+            #else:
+            #    s3.scripts.append("/%s/static/scripts/S3/s3.timeline.min.js" % appname)
+            s3_include_simile()
 
             # Add our data
             # @ToDo: Make this the initial data & then collect extra via REST with a stylesheet
@@ -801,13 +802,13 @@ class S3IRSModel(S3Model):
                 # Multiple records
                 # @ToDo: Load all records & sort to closest in time
                 # http://stackoverflow.com/questions/7327689/how-to-generate-a-sequence-of-future-datetimes-in-python-and-determine-nearest-d
-                r.resource.load(limit=2000)
+                r.resource.load(limit = 2000)
                 rows = r.resource._rows
 
             data = {"dateTimeFormat": "iso8601",
                     }
 
-            now = request.utcnow
+            now = r.utcnow
             tl_start = tl_end = now
             events = []
             for row in rows:
@@ -859,7 +860,9 @@ S3.timeline.now="''', now.isoformat(), '''"
             s3.js_global.append(code)
 
             # Create the DIV
-            item = DIV(_id="s3timeline", _class="s3-timeline")
+            item = DIV(_id = "s3timeline",
+                       _class = "s3-timeline",
+                       )
 
             output = {"item": item}
 

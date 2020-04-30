@@ -93,7 +93,7 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
-from s3compat import StringIO, xrange
+from s3compat import BytesIO, xrange
 from s3layouts import S3PopupLink
 
 # Compact JSON encoding
@@ -320,19 +320,19 @@ class S3ProjectModel(S3Model):
             msg_list_empty = T("No Projects currently registered"))
 
         # Filter widgets
-        filter_widgets = project_project_filters(org_label=org_label)
+        filter_widgets = project_project_filters(org_label = org_label)
 
         # Resource Configuration
         if settings.get_project_theme_percentages():
             create_next = URL(c="project", f="project",
-                              args=["[id]", "theme"])
+                              args = ["[id]", "theme"])
         elif mode_task:
             if settings.get_project_milestones():
                 create_next = URL(c="project", f="project",
-                                  args=["[id]", "milestone"])
+                                  args = ["[id]", "milestone"])
             else:
                 create_next = URL(c="project", f="project",
-                                  args=["[id]", "task"])
+                                  args = ["[id]", "task"])
         else:
             # Default
             create_next = None
@@ -1053,24 +1053,25 @@ class S3ProjectModel(S3Model):
 
             calendar = r.record.calendar
 
-            # Add core Simile Code
-            s3.scripts.append("/%s/static/scripts/simile/timeline/timeline-api.js" % appname)
-
             # Pass vars to our JS code
             s3.js_global.append('''S3.timeline.calendar="%s"''' % calendar)
 
-            # Add our control script
-            if s3.debug:
-                s3.scripts.append("/%s/static/scripts/S3/s3.timeline.js" % appname)
-            else:
-                s3.scripts.append("/%s/static/scripts/S3/s3.timeline.min.js" % appname)
+            # Add core Simile Code
+            #s3.scripts.append("/%s/static/scripts/simile/timeline/timeline-api.js" % appname)
+
+            # Add our controlled script
+            #if s3.debug:
+            #    s3.scripts.append("/%s/static/scripts/S3/s3.timeline.js" % appname)
+            #else:
+            #    s3.scripts.append("/%s/static/scripts/S3/s3.timeline.min.js" % appname)
+            s3_include_simile()
 
             # Create the DIV
-            item = DIV(_id="s3timeline",
-                       _class="s3-timeline",
+            item = DIV(_id = "s3timeline",
+                       _class = "s3-timeline",
                        )
 
-            output = dict(item=item)
+            output = {"item": item}
 
             output["title"] = current.T("Project Calendar")
 
@@ -4910,6 +4911,9 @@ class S3ProjectPlanningModel(S3Model):
 
         configure(tablename,
                   create_onaccept = self.project_indicator_create_onaccept,
+                  #deduplicate = S3Duplicate(primary = ("name",),
+                  #                          secondary = ("project_id",),
+                  #                          ),
                   deduplicate = self.project_indicator_deduplicate,
                   list_fields = list_fields,
                   onaccept = self.project_indicator_onaccept,
@@ -6373,7 +6377,7 @@ class S3ProjectPlanningModel(S3Model):
 
         # Update Statuses
         row = db(table.id == record_id).select(table.project_id,
-                                               limitby=(0, 1)
+                                               limitby = (0, 1)
                                                ).first()
         try:
             project_id = row.project_id
@@ -6385,7 +6389,10 @@ class S3ProjectPlanningModel(S3Model):
     # -------------------------------------------------------------------------
     @staticmethod
     def project_indicator_deduplicate(item):
-        """ Import item de-duplication """
+        """
+            Import item de-duplication
+            - not using S3Duplicate() so that can reuse Template Indicators acorss Projects
+        """
 
         data = item.data
         name = data.get("name")
@@ -6398,7 +6405,8 @@ class S3ProjectPlanningModel(S3Model):
                           (table.project_id == None))
 
             duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
+                                                 limitby = (0, 1)
+                                                 ).first()
             if duplicate:
                 item.id = duplicate.id
                 item.method = item.METHOD.UPDATE
@@ -7100,7 +7108,9 @@ def project_status_represent(value):
     if representation in ("pdf", "xls"):
         return represent
 
-    if value >= 80:
+    if value is None:
+        colour = "ff0000" # Red
+    elif value >= 80:
         colour = "00ff00" # Green
     elif value  >= 60:
         colour = "ffff00" # Yellow
@@ -8450,8 +8460,8 @@ class project_SummaryReport(S3Method):
                                          btable.value, # Beneficiaries Reached
                                          )
         if beneficiaries:
-            ben_represent = S3Represent(lookup="stats_parameter",
-                                        translate=True,
+            ben_represent = S3Represent(lookup = "stats_parameter",
+                                        translate = True,
                                         )
             benef_types = ben_represent.bulk(list({row.parameter_id for row in beneficiaries}))
             # Sum per Type
@@ -8499,7 +8509,7 @@ class project_SummaryReport(S3Method):
         nappend = narrative_rows.append
 
         nappend(TR(TD(T("Locations"),
-                      _colspan=2,
+                      _colspan = 2,
                       ),
                    ))
         for l in locations:
@@ -8508,7 +8518,7 @@ class project_SummaryReport(S3Method):
                        ))
 
         nappend(TR(TD(T("Donors"),
-                      _colspan=2,
+                      _colspan = 2,
                       ),
                    ))
         for d in donors:
@@ -8534,7 +8544,7 @@ class project_SummaryReport(S3Method):
                            )
 
         nappend(TR(TD(T("Beneficiaries Reached"),
-                      _colspan=2,
+                      _colspan = 2,
                       ),
                    ))
         for b in beneficiaries:
@@ -8543,7 +8553,7 @@ class project_SummaryReport(S3Method):
                        ))
 
         nappend(TR(TD(T("Partner Organizations"),
-                      _colspan=2,
+                      _colspan = 2,
                       ),
                    ))
         for p in partners:
@@ -8555,7 +8565,7 @@ class project_SummaryReport(S3Method):
 
         if status_from_activities:
             status_table = TABLE(TR(TD(T("Current Status of Project"),
-                                       _rowspan=2,
+                                       _rowspan = 2,
                                        ),
                                     TD(T("Actual")),
                                     TD(T("Planned")),
@@ -8567,7 +8577,7 @@ class project_SummaryReport(S3Method):
                                  )
         else:
             status_table = TABLE(TR(TD(T("Current Status of Project"),
-                                       _rowspan=2,
+                                       _rowspan = 2,
                                        ),
                                     TD(T("Current")),
                                     TD(T("Overall")),
@@ -8585,7 +8595,7 @@ class project_SummaryReport(S3Method):
                         ),
                      TD(project_status_represent(goal["actual_progress"] if status_from_activities else goal["current_status"])),
                      TD(project_status_represent(goal["planned_progress"] if status_from_activities else goal["overall_status"])),
-                     _class="project_goal",
+                     _class = "project_goal",
                      )
             sappend(row)
             outcomes = goal["outcomes"]
@@ -8595,7 +8605,7 @@ class project_SummaryReport(S3Method):
                             ),
                          TD(project_status_represent(outcome["actual_progress"] if status_from_activities else outcome["current_status"])),
                          TD(project_status_represent(outcome["planned_progress"] if status_from_activities else outcome["overall_status"])),
-                         _class="project_outcome",
+                         _class = "project_outcome",
                          )
                 sappend(row)
                 outputs = outcome["outputs"]
@@ -8605,7 +8615,7 @@ class project_SummaryReport(S3Method):
                                 ),
                              TD(project_status_represent(output["actual_progress"] if status_from_activities else output["current_status"])),
                              TD(project_status_represent(output["planned_progress"] if status_from_activities else output["overall_status"])),
-                             _class="project_output",
+                             _class = "project_output",
                              )
                     sappend(row)
                     indicators = output["indicators"]
@@ -8615,7 +8625,7 @@ class project_SummaryReport(S3Method):
                                     ),
                                  TD(project_status_represent(indicator["actual_progress"] if status_from_activities else indicator["current_status"])),
                                  TD(project_status_represent(indicator["planned_progress"] if status_from_activities else indicator["overall_status"])),
-                                 _class="project_indicator",
+                                 _class = "project_indicator",
                                  )
                         sappend(row)
                         if status_from_activities:
@@ -8626,7 +8636,7 @@ class project_SummaryReport(S3Method):
                                             ),
                                          TD(project_status_represent(activity["actual_progress"])),
                                          TD(project_status_represent(activity["planned_progress"])),
-                                         _class="project_activity",
+                                         _class = "project_activity",
                                          )
                                 sappend(row)
 
@@ -9357,7 +9367,7 @@ class project_IndicatorSummaryReport(S3Method):
         current_row.write(colspan + 1, status_represent(status), status_style(status))
 
         # Export to File
-        output = StringIO()
+        output = BytesIO()
         try:
             book.save(output)
         except:
@@ -12207,7 +12217,7 @@ class S3ProjectTaskForumModel(S3Model):
 
         #current.response.s3.crud_strings[tablename] = Storage(
         #    label_create = T("Share Task"), #
-        #    title_display = T(" Shared Task Details"),
+        #    title_display = T("Shared Task Details"),
         #    title_list = T("Shared Tasks"),
         #    title_update = T("Edit Shared Task"),
         #    label_list_button = T("List Shared Tasks"),
@@ -13024,7 +13034,8 @@ def project_rheader(r):
         #    rheader_fields.append(["budget.total_budget"])
         rheader = S3ResourceHeader(rheader_fields, tabs)(r)
 
-        if indicators:
+        if indicators and settings.get_project_goals():
+            # and settings.get_project_outcomes() and settings.get_project_ouputs() is True
             rfooter = DIV(A(ICON("print"),
                             " ",
                             T("Project Summary Report"),

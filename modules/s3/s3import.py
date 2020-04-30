@@ -3081,6 +3081,7 @@ class S3ImportJob():
             xml = current.xml
             UUID = xml.UID
             TUID = xml.ATTRIBUTE.tuid
+            NAME = xml.ATTRIBUTE.name
 
             elements = root.xpath(".//%s" % xml.TAG.resource)
             self._uidmap = uidmap = {UUID: {},
@@ -3089,12 +3090,13 @@ class S3ImportJob():
             uuidmap = uidmap[UUID]
             tuidmap = uidmap[TUID]
             for element in elements:
+                name = element.get(NAME)
                 r_uuid = element.get(UUID)
                 if r_uuid and r_uuid not in uuidmap:
-                    uuidmap[r_uuid] = element
+                    uuidmap[(name, r_uuid)] = element
                 r_tuid = element.get(TUID)
                 if r_tuid and r_tuid not in tuidmap:
-                    tuidmap[r_tuid] = element
+                    tuidmap[(name, r_tuid)] = element
 
         return uidmap
 
@@ -3491,7 +3493,7 @@ class S3ImportJob():
                         entry = directory.get((tablename, attr, uid))
 
                     if not entry:
-                        e = uidmap[attr].get(uid) if uidmap else None
+                        e = uidmap[attr].get((tablename, uid)) if uidmap else None
                         if e is not None:
                             # Element in the source => append to relements
                             relements.append(e)
@@ -3993,10 +3995,12 @@ class S3Duplicate(object):
     """ Standard deduplicator method """
 
     def __init__(self,
-                 primary=None,
-                 secondary=None,
-                 ignore_case=True,
-                 ignore_deleted=False):
+                 primary = None,
+                 secondary = None,
+                 ignore_case = True,
+                 ignore_deleted = False,
+                 noupdate = False,
+                 ):
         """
             Constructor
 
@@ -4008,6 +4012,7 @@ class S3Duplicate(object):
                               present in the import item
             @param ignore_case: ignore case for string/text fields
             @param ignore_deleted: do not match deleted records
+            @param noupdate: match, but do not update
 
             @ToDo: Fuzzy option to do a LIKE search
         """
@@ -4023,6 +4028,7 @@ class S3Duplicate(object):
 
         self.ignore_case = ignore_case
         self.ignore_deleted = ignore_deleted
+        self.noupdate = noupdate
 
     # -------------------------------------------------------------------------
     def __call__(self, item):
@@ -4074,13 +4080,16 @@ class S3Duplicate(object):
 
         # Find a match
         duplicate = current.db(query).select(table._id,
-                                             limitby = (0, 1)).first()
+                                             limitby = (0, 1)
+                                             ).first()
 
         if duplicate:
             # Match found: Update import item
             item.id = duplicate[table._id]
             if not data.deleted:
                 item.method = item.METHOD.UPDATE
+            if self.noupdate:
+                item.skip = True
 
         # For uses outside of imports:
         return duplicate
@@ -4103,7 +4112,7 @@ class S3Duplicate(object):
            hasattr(value, "lower") and ftype in ("string", "text"):
             # NB Must convert to unicode before lower() in order to correctly
             #    convert certain unicode-characters (e.g. İ=>i, or Ẽ=>ẽ)
-            # => PostgreSQL LOWER() on Windows may not convert correctly,
+            # => PostgreSQL LOWER() on Windows may not convert correctly, (same for SQLite)
             #    which seems to be a locale issue:
             #    http://stackoverflow.com/questions/18507589/the-lower-function-on-international-characters-in-postgresql
             # => works fine on Debian servers if the locale is a .UTF-8 before
@@ -4429,16 +4438,25 @@ class S3BulkImporter(object):
     @staticmethod
     def _lookup_pe(entity):
         """
-            Convert an Organisation Name to a pe_id
+            Convert an Entity to a pe_id
             - helper for import_role
+            - assumes org_organisation.name unless specified
+            - entity needs to exist already
         """
 
-        table = current.s3db.org_organisation
-        org = current.db(table.name == entity).select(table.pe_id,
-                                                      limitby = (0, 1)
-                                                      ).first()
+        if "=" in entity:
+            pe_type, value =  entity.split("=")
+        else:
+            pe_type = "org_organisation.name"
+            value = entity
+        pe_tablename, pe_field =  pe_type.split(".")
+
+        table = current.s3db.table(pe_tablename)
+        record = current.db(table[pe_field] == value).select(table.pe_id,
+                                                             limitby = (0, 1)
+                                                             ).first()
         try:
-            pe_id = org.pe_id
+            pe_id = record.pe_id
         except AttributeError:
             current.log.warning("import_role cannot find pe_id for %s" % entity)
             pe_id = None
@@ -4521,6 +4539,7 @@ class S3BulkImporter(object):
                         # Pass through as-is
                         pass
                     else:
+                        # NB Entity here is *not* hierarchical!
                         try:
                             entity = int(entity)
                         except ValueError:
@@ -4624,7 +4643,8 @@ class S3BulkImporter(object):
                      filename,
                      tablename,
                      idfield,
-                     imagefield):
+                     imagefield
+                     ):
         """
             Import images, such as a logo or person image
 
@@ -4737,7 +4757,8 @@ class S3BulkImporter(object):
 
         if url == "unifont":
             #url = "http://unifoundry.com/pub/unifont-7.0.06/font-builds/unifont-7.0.06.ttf"
-            url = "http://unifoundry.com/pub/unifont-10.0.07/font-builds/unifont-10.0.07.ttf"
+            #url = "http://unifoundry.com/pub/unifont-10.0.07/font-builds/unifont-10.0.07.ttf"
+            url = "http://unifoundry.com/pub/unifont/unifont-13.0.01/font-builds/unifont-13.0.01.ttf"
             # Rename to make version upgrades be transparent
             filename = "unifont.ttf"
             extension = "ttf"
@@ -4904,7 +4925,11 @@ class S3BulkImporter(object):
         restricted(code, environment, layer=filename)
 
     # -------------------------------------------------------------------------
-    def import_task(self, task_name, args_json=None, vars_json=None):
+    def import_task(self,
+                    task_name,
+                    args_json = None,
+                    vars_json = None
+                    ):
         """
             Import a Scheduled Task
         """
@@ -4963,7 +4988,7 @@ class S3BulkImporter(object):
                    prefix,
                    resourcename,
                    dataformat,
-                   source_type=None,
+                   source_type = None,
                    ):
         """
             Import XML data using an XSLT: static/formats/<dataformat>/import.xsl

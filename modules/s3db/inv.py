@@ -1257,11 +1257,11 @@ class S3InventoryTrackingModel(S3Model):
         # Custom methods
         # Generate Consignment Note
         set_method("inv", "send",
-                   method="form",
-                   action=self.inv_send_form)
+                   method = "form",
+                   action = self.inv_send_form)
 
         set_method("inv", "send",
-                   method= "timeline",
+                   method = "timeline",
                    action = self.inv_timeline)
 
         # Redirect to the Items tabs after creation
@@ -1269,8 +1269,11 @@ class S3InventoryTrackingModel(S3Model):
             c = "req"
         else:
             c = "inv"
-        send_item_url = URL(c=c, f="send", args=["[id]",
-                                                 "track_item"])
+        send_item_url = URL(c=c, f="send",
+                            args = ["[id]",
+                                    "track_item",
+                                    ],
+                            )
 
         list_fields = ["id",
                        "send_ref",
@@ -1581,6 +1584,7 @@ class S3InventoryTrackingModel(S3Model):
                                                  label = T("Create Warehouse"),
                                                  title = T("Warehouse"),
                                                  tooltip = T("Type the name of an existing site OR Click 'Create Warehouse' to add a new warehouse."),
+                                                 vars = {"child": "site_id"},
                                                  ),
                            ),
                      item_id(label = T("Kit"),
@@ -1945,15 +1949,24 @@ $.filterOptionsS3({
     def inv_track_item_total_value(row):
         """ Total value of a track item """
 
+        # Default
+        total = current.messages["NONE"]
+
         if hasattr(row, "inv_track_item"):
             row = row.inv_track_item
         try:
-            v = row.quantity * row.pack_value
+            if row.quantity and row.pack_value:
+                total = row.quantity * row.pack_value
+            else:
+                # Item lacks quantity, or value per pack, or both
+                # => default
+                pass
         except AttributeError:
-            # Not available
-            return current.messages["NONE"]
+            # Columns needed to compute total not available
+            # => default
+            pass
 
-        return v
+        return total
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2610,7 +2623,8 @@ $.filterOptionsS3({
         table.date.readable = True
 
         record = db(table.id == r.id).select(table.send_ref,
-                                             limitby=(0, 1)).first()
+                                             limitby = (0, 1)
+                                             ).first()
         send_ref = record.send_ref
         # hide the inv_item field
         tracktable.send_inv_item_id.readable = False
@@ -3470,18 +3484,20 @@ $.filterOptionsS3({
                                              r.name == "send"):
 
             T = current.T
-            request = current.request
+            appname = r.application
             response = current.response
             s3 = response.s3
 
             # Add core Simile Code
-            s3.scripts.append("/%s/static/scripts/simile/timeline/timeline-api.js" % request.application)
+            #s3.scripts.append("/%s/static/scripts/simile/timeline/timeline-api.js" % appname)
 
             # Add our controlled script
-            if s3.debug:
-                s3.scripts.append("/%s/static/scripts/S3/s3.timeline.js" % request.application)
-            else:
-                s3.scripts.append("/%s/static/scripts/S3/s3.timeline.min.js" % request.application)
+            #if s3.debug:
+            #    s3.scripts.append("/%s/static/scripts/S3/s3.timeline.js" % appname)
+            #else:
+            #    s3.scripts.append("/%s/static/scripts/S3/s3.timeline.min.js" % appname)
+            s3_include_simile()
+
             # Add our data
             # @ToDo: Make this the initial data & then collect extra via REST with a stylesheet
             # add in JS using S3.timeline.eventSource.addMany(events) where events is a []
@@ -3505,7 +3521,7 @@ $.filterOptionsS3({
             data = {"dateTimeFormat": "iso8601",
                     }
 
-            now = request.utcnow
+            now = r.utcnow
             tl_start = tl_end = now
             events = []
             if r.name == "send":
@@ -3552,9 +3568,11 @@ S3.timeline.now="''', now.isoformat(), '''"
             s3.js_global.append(code)
 
             # Create the DIV
-            item = DIV(_id="s3timeline", _class="s3-timeline")
+            item = DIV(_id = "s3timeline",
+                       _class = "s3-timeline",
+                       )
 
-            output = dict(item = item)
+            output = {"item": item}
 
             # Maintain RHeader for consistency
             if "rheader" in attr:
@@ -3562,7 +3580,7 @@ S3.timeline.now="''', now.isoformat(), '''"
                 if rheader:
                     output["rheader"] = rheader
 
-            output["title"] = T("Incident Timeline")
+            output["title"] = T("Shipments Timeline")
             response.view = "timeline.html"
             return output
 
@@ -3823,7 +3841,7 @@ def inv_rfooter(r, record):
             ts_btn = A(T("Track Shipment"),
                        _href = URL(c = "inv",
                                    f = "track_movement",
-                                   vars = {"viewing": "inv_item.%s" % component_id},
+                                   vars = {"viewing": "inv_inv_item.%s" % component_id},
                                    ),
                        _class = "action-btn"
                        )
@@ -3927,7 +3945,8 @@ def inv_send_rheader(r):
                 address = s3db.gis_LocationRepresent(address_only=True)(site.location_id)
             else:
                 address = current.messages["NONE"]
-            rData = TABLE(TR(TD(T(current.deployment_settings.get_inv_send_form_name().upper()),
+            shipment_details = TABLE(
+                          TR(TD(T(current.deployment_settings.get_inv_send_form_name().upper()),
                                 _colspan=2, _class="pdf_title"),
                              TD(logo, _colspan=2),
                              ),
@@ -4090,12 +4109,11 @@ def inv_send_rheader(r):
             #       msg = T("One item is attached to this shipment")
             #    elif cnt > 1:
             #        msg = T("%s items are attached to this shipment") % cnt
-            #    rData.append(TR(TH(action, _colspan=2),
-            #                    TD(msg)))
-                rData.append(TR(TH(action, _colspan=2)))
+            #    shipment_details.append(TR(TH(action, _colspan=2), TD(msg)))
+                shipment_details.append(TR(TH(action, _colspan=2)))
 
             s3.rfooter = rfooter
-            rheader = DIV(rData,
+            rheader = DIV(shipment_details,
                           rheader_tabs,
                           #rSubdata
                           )
@@ -4185,7 +4203,8 @@ def inv_recv_rheader(r):
             except AttributeError:
                 org_id = None
             logo = s3db.org_organisation_logo(org_id)
-            rData = TABLE(TR(TD(T(current.deployment_settings.get_inv_recv_form_name()),
+            shipment_details = TABLE(
+                          TR(TD(T(current.deployment_settings.get_inv_recv_form_name()),
                                 _colspan=2, _class="pdf_title"),
                              TD(logo, _colspan=2),
                              ),
@@ -4270,13 +4289,10 @@ def inv_recv_rheader(r):
                 msg = T("This shipment contains one line item")
             elif cnt > 1:
                 msg = T("This shipment contains %s items") % cnt
-            rData.append(TR(TH(action,
-                               _colspan=2),
-                            TD(msg)
-                            ))
+            shipment_details.append(TR(TH(action, _colspan=2), TD(msg)))
 
             current.response.s3.rfooter = rfooter
-            rheader = DIV(rData,
+            rheader = DIV(shipment_details,
                           rheader_tabs,
                           )
             return rheader
@@ -4741,11 +4757,9 @@ def inv_item_total_weight(row):
         query = (itable.id == inv_item.id) & \
                 (itable.item_id == stable.id)
         supply_item = current.db(query).select(stable.weight,
-                                                limitby=(0, 1)).first()
-        if not supply_item:
-            return
-        else:
-            weight = supply_item.weight
+                                               limitby = (0, 1),
+                                               ).first()
+        weight = supply_item.weight if supply_item else None
 
     if weight is None:
         return current.messages["NONE"]
@@ -4779,11 +4793,9 @@ def inv_item_total_volume(row):
         query = (itable.id == inv_item.id) & \
                 (itable.item_id == stable.id)
         supply_item = current.db(query).select(stable.volume,
-                                               limitby=(0, 1)).first()
-        if not supply_item:
-            return
-        else:
-            volume = supply_item.volume
+                                               limitby = (0, 1),
+                                               ).first()
+        volume = supply_item.volume if supply_item else None
 
     if volume is None:
         return current.messages["NONE"]
