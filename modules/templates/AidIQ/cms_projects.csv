@@ -1,10 +1,15 @@
 Series,Name,Title,Body,Module
-,projects,Projects | AidIQ.com,"<div class='row'>
-<h4 class='small-12-columns' style='background-color:#f7f8f9;padding:0.1rem 0.3rem;'>Projects</h4>
+,projects,Projects | AidIQ.com,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <div class='slogan'>Our Projects</div>
+  <p class='sub-header'>Some examples of the solutions we have implemented for our clients.</p>
+ </div>
 </div>
-<div class='row'>
- <div class='small-12 columns panel' style='background:transparent;padding:1.0rem;'>
-  <img src='/eden/static/themes/AidIQ/img/rms.png' style='float:right;margin-left:1.0rem;margin-bottom:1.0rem;'></img>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""rms.png""])}}' style='float:right;margin-left:1.0rem;margin-bottom:1.0rem;'></img>
   <h2>Resource Management System</h2>
   <h5>International Federation of Red Cross and Red Crescent Societies (IFRC)</h5>
   <p>
@@ -19,7 +24,7 @@ Series,Name,Title,Body,Module
    other Geographic Information Systems (GIS), such as Population Density, Rainfall
    and Topography to allow for a more informed planning of the response.
   </p>
-  <img src='/eden/static/themes/AidIQ/img/RedCross2.jpg' style='float:left;margin-right:1.0rem;margin-bottom:1.0rem;'></img>
+  <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""RedCross2.jpg""])}}' style='float:left;margin-right:1.0rem;margin-bottom:1.0rem;'></img>
   <p>
    The solution allowed agencies to share a common server, yet retain full control
    over their data and who can have access to it (i.e. a multi-tenancy system). The
@@ -34,8 +39,8 @@ Series,Name,Title,Body,Module
  </div>
 </div>
 
-<div class='row'>
- <div class='small-12 columns panel' style='background:transparent;padding:1.0rem;'>
+<div class='row content-light'>
+ <div class='small-12 columns'>
   <h2>Inter-Agency Information Sharing - HELIOS</h2>
   <p>
    AidIQ were commissioned by the <a href='http://helios-foundation.org' target='_blank'>HELIOS foundation</a>
@@ -50,9 +55,10 @@ Series,Name,Title,Body,Module
   </p>
  </div>
 </div>
-<div class='row'>
- <div class='small-12 columns panel' style='background:transparent;'>
-  <img src='/eden/static/themes/AidIQ/img/drrpp.png' style='float:left;margin-right:1.0rem;margin-bottom:1.0rem;'></img>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""drrpp.png""])}}' style='float:left;margin-right:1.0rem;margin-bottom:1.0rem;'></img>
   <h2>DRR Project Portal</h2>
   <h5>Asian Disaster Preparedness Center (ADPC)</h5>
   <p>
@@ -78,8 +84,9 @@ Series,Name,Title,Body,Module
   <p>This Sahana Eden-powered portal was deployed at the Asian Disaster Preparedness Center.</p>
  </div>
 </div>
-<div class='row'>
- <div class='small-12-columns panel' style='background:transparent;'>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
   <h2>Information Management Workshop - BPKEL</h2>
   <p>
    AidIQ facilitated a series of workshops for BPKEL (Badan Pengelola Kawasan

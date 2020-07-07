@@ -1,17 +1,20 @@
 Series,Name,Title,Body,Module
-,home,AidIQ.com | Providing Intelligent Business Solutions to the Humanitarian and Development Community,"<div class='row'>
-<div class='medium-7 columns'>
- <h4 style='background-color:#f7f8f9;padding:0.1rem 0.2rem'>Business Solutions for the Humanitarian Community</h4>
- <p style='padding:0.2rem'>
-  AidIQ provides solutions to organisations in the humanitarian, development, disaster and emergency management sectors.
- </p>
- <p style='padding:0.2rem'>
-  We have extensive experience working for NGOs in both the field and headquarters and bring together a unique combination of experience in humanitarian response, disaster management, human resources and software development.
- </p>
+,home,AidIQ.com | Intelligent Business Solutions for the Humanitarian Community,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <div class='slogan'>Intelligent Business Solutions<br>for the Humanitarian Community</div>
+  <p class='sub-header'>AidIQ provides information management solutions to organisations in the humanitarian, development, disaster and emergency management sectors.</p>
+ </div>
 </div>
-<div class='medium-5 columns'>
- <img style='width:100%;float:right;' src='/eden/static/themes/AidIQ/img/drmp.jpg'>
-</div>
+<div class='row content-light'>
+ <div class='medium-7 columns'>
+  <p style='padding:0.2rem'>
+   We have extensive experience working for NGOs in both the field and headquarters and bring together a unique combination of experience in humanitarian response, disaster management, human resources and software development.
+  </p>
+ </div>
+ <div class='medium-5 columns'>
+  <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""drmp.jpg""])}}'>
+ </div>
 </div>
 <div class='row' style='margin-top:10px'>
  <div class='medium-7 small-12 columns'>

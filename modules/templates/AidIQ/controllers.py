@@ -39,16 +39,24 @@ class index(S3CustomController):
         title = None
         if row:
             title = row.title
+            if row.body:
+                from s3compat import StringIO
+                try:
+                    body = current.response.render(StringIO(row.body), {})
+                except:
+                    raise
+                    import sys
+                    print(sys.exc_info()[1])
+                    body = row.body
+            item = DIV(XML(body), _class="cms-item")
             if current.auth.s3_has_role(current.session.s3.system_roles.ADMIN):
-                item = DIV(XML(row.body),
-                           BR(),
-                           A(current.T("Edit"),
+                item.append(BR())
+                item.append(A(current.T("Edit"),
                              _href=URL(c="cms", f="post",
                                        args=[row.id, "update"],
                                        vars=vars),
-                             _class="action-btn"))
-            else:
-                item = XML(row.body)
+                             _class="action-btn",
+                             ))
 
         elif current.auth.s3_has_role(current.session.s3.system_roles.ADMIN):
             item = A(current.T("Edit"),
@@ -75,40 +83,32 @@ class contact(S3CustomController):
         request = current.request
         response = current.response
 
-        if request.env.request_method == "POST":
-            # Processs Form
-            vars = request.post_vars
-            result = current.msg.send_email(
-                        to=current.deployment_settings.get_mail_approver(),
-                        subject=vars.subject,
-                        message=vars.message,
-                        reply_to=vars.address,
-                )
-            if result:
-                response.confirmation = "Thankyou for your message - we'll be in touch shortly"
-
-        from gluon import Field, SQLFORM
+        from gluon import Field, SQLFORM, IS_NOT_EMPTY, IS_EMAIL, IS_IN_SET, IS_EMPTY_OR
         from s3 import s3_mark_required, S3StringWidget
 
         T = current.T
         formstyle = current.deployment_settings.get_ui_formstyle()
 
-        fields = [Field("name",
-                        label = T("Your name"),
-                        required = True,
-                        ),
-                  Field("address",
+        fields = [Field("address",
                         label = T("Your e-mail address"),
-                        required = True,
-                        #widget = S3StringWidget(placeholder="name@example.com"),
+                        requires = IS_EMAIL(),
+                        widget = lambda *args, **kwargs: \
+                                 S3StringWidget(placeholder="name@example.com")(_type="email", *args, **kwargs),
                         ),
                   Field("subject",
                         label = T("Subject"),
-                        required = True,
+                        requires = IS_EMPTY_OR(IS_IN_SET(("Solution Development",
+                                                          "Workshop / Training",
+                                                          "SAHANA Deployment / Support",
+                                                          "Other / General Inquiry",
+                                                          ),
+                                                         zero = "What can we do for you?",
+                                                         sort = False,
+                                                         )),
                         ),
                   Field("message", "text",
                         label = T("Message"),
-                        required = True,
+                        requires = IS_NOT_EMPTY(),
                         ),
                   ]
 
@@ -117,14 +117,31 @@ class contact(S3CustomController):
         form = SQLFORM.factory(formstyle = formstyle,
                                labels = labels,
                                submit_button = T("Send Message"),
-                               *fields)
-        form["_id"] = "mailform"
-        form = DIV(
-                H4("Contact Us", _style="background-color:#f7f8f9;padding:0.1rem 0.3rem"),
-                P("You can leave a message using the contact form below."),
-                form,
-                _class="form-container",
-                )
+                               _id = "mailform",
+                               *fields,
+                               )
+
+        if form.accepts(request.post_vars,
+                        current.session,
+                        formname = "default/index/contact",
+                        #onvalidation = onvalidation,
+                        keepvalues = False,
+                        hideerror = False,
+                        ):
+
+            form_vars = form.vars
+            subject = "Request on AidIQ website"
+            if form_vars.subject:
+                subject = "%s: %s" % (subject, form_vars.subject)
+
+            result = current.msg.send_email(
+                        to = current.deployment_settings.get_mail_approver(),
+                        subject = form_vars.subject,
+                        message = form_vars.message,
+                        reply_to = form_vars.address,
+                        )
+            if result:
+                response.confirmation = "Thank you for your message - we'll be in touch shortly"
 
         appname = request.application
         s3 = response.s3
@@ -140,15 +157,13 @@ class contact(S3CustomController):
                 sappend("/%s/static/scripts/jquery.validate.js" % appname)
             else:
                 sappend("/%s/static/scripts/jquery.validate.min.js" % appname)
-        if s3.debug:
-            sappend("/%s/static/themes/AidIQ/js/contact.js" % appname)
-        else:
-            sappend("/%s/static/themes/AidIQ/js/contact.min.js" % appname)
+        sappend("/%s/static/themes/AidIQ/js/contact.js" % appname)
 
-        response.title = "Contact | AidIQ.com"
+        response.title = "Contact Us | AidIQ.com"
 
         self._view(THEME, "contact.html")
-        return {"form": form,
+
+        return {"form": DIV(form, _class="form-container"),
                 }
 
 # END =========================================================================
