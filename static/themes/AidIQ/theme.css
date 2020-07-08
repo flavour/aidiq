@@ -2221,36 +2221,48 @@ body.rtl .event-type-header {
 .row.home-top .logo {
   background-image: url(img/logo_large_light.png);
   background-size: contain;
-  background-position: 0;
+  background-position: center;
   background-repeat: no-repeat;
   min-height: 84px;
-  margin: 2rem;
+  margin: 10%;
 }
 /* line 276, ../scss/theme/_misc.scss */
+.row.home-top .menu-toggle {
+  color: #ebebeb;
+  text-align: center;
+}
+/* line 279, ../scss/theme/_misc.scss */
+.row.home-top .menu-toggle .right-off-canvas-toggle {
+  color: #ebebeb;
+  font-size: 2.2rem;
+  display: inline-block;
+  padding-top: 1.4rem;
+}
+/* line 286, ../scss/theme/_misc.scss */
 .row.home-top .menu {
   text-align: center;
 }
-/* line 278, ../scss/theme/_misc.scss */
+/* line 288, ../scss/theme/_misc.scss */
 .row.home-top .menu .sub-nav {
   margin-top: 1.8rem;
   display: inline-block;
 }
-/* line 281, ../scss/theme/_misc.scss */
+/* line 291, ../scss/theme/_misc.scss */
 .row.home-top .menu .sub-nav dd {
   font-size: 0.9rem;
 }
 
-/* line 287, ../scss/theme/_misc.scss */
+/* line 297, ../scss/theme/_misc.scss */
 .row.content-dark,
 .row.content-light {
   padding: 1.4rem;
 }
-/* line 290, ../scss/theme/_misc.scss */
+/* line 300, ../scss/theme/_misc.scss */
 .row.content-dark .form-container,
 .row.content-light .form-container {
   text-align: center;
 }
-/* line 292, ../scss/theme/_misc.scss */
+/* line 302, ../scss/theme/_misc.scss */
 .row.content-dark .form-container form,
 .row.content-light .form-container form {
   max-width: 100%;
@@ -2258,7 +2270,7 @@ body.rtl .event-type-header {
   border: none;
   text-align: left;
 }
-/* line 297, ../scss/theme/_misc.scss */
+/* line 307, ../scss/theme/_misc.scss */
 .row.content-dark .form-container form input[type="text"],
 .row.content-dark .form-container form input[type="email"],
 .row.content-light .form-container form input[type="text"],
@@ -2268,14 +2280,14 @@ body.rtl .event-type-header {
   width: 20rem !important;
   max-width: 100%;
 }
-/* line 304, ../scss/theme/_misc.scss */
+/* line 314, ../scss/theme/_misc.scss */
 .row.content-dark .form-container form select,
 .row.content-light .form-container form select {
   width: 20rem !important;
   height: auto;
   padding: 0.7rem 0.3rem !important;
 }
-/* line 309, ../scss/theme/_misc.scss */
+/* line 319, ../scss/theme/_misc.scss */
 .row.content-dark .form-container form textarea,
 .row.content-light .form-container form textarea {
   padding: 0.7rem !important;
@@ -2283,47 +2295,77 @@ body.rtl .event-type-header {
   height: 10rem;
   max-width: 100%;
 }
-/* line 317, ../scss/theme/_misc.scss */
+/* line 327, ../scss/theme/_misc.scss */
 .row.content-dark .team-portrait,
 .row.content-light .team-portrait {
   float: left;
   height: 250px;
   margin-right: 20px;
 }
-/* line 322, ../scss/theme/_misc.scss */
+/* line 332, ../scss/theme/_misc.scss */
+.row.content-dark .icon-bar,
+.row.content-light .icon-bar {
+  padding-top: 1.4rem;
+  max-width: 32rem;
+  background: transparent;
+}
+/* line 337, ../scss/theme/_misc.scss */
 .row.content-dark h2,
 .row.content-light h2 {
   margin-top: 0;
   line-height: 1.0;
 }
 
-/* line 327, ../scss/theme/_misc.scss */
+/* line 342, ../scss/theme/_misc.scss */
 .row.content-dark {
   background-color: #032743;
   color: #ebebeb;
 }
-/* line 330, ../scss/theme/_misc.scss */
+/* line 345, ../scss/theme/_misc.scss */
 .row.content-dark.header {
   padding: 0 0 2.8rem;
   text-align: center;
 }
-/* line 334, ../scss/theme/_misc.scss */
+/* line 349, ../scss/theme/_misc.scss */
 .row.content-dark .slogan {
   display: block;
-  font-size: 2.8rem;
+  font-size: 1.4rem;
   padding: 1.4rem 0;
   font-weight: bold;
 }
-/* line 340, ../scss/theme/_misc.scss */
+@media only screen and (min-width: 40.0625em) {
+  /* line 349, ../scss/theme/_misc.scss */
+  .row.content-dark .slogan {
+    font-size: 2.8rem;
+  }
+}
+/* line 358, ../scss/theme/_misc.scss */
 .row.content-dark p.sub-header {
   display: inline-block;
-  font-size: 1.2rem;
+  font-size: 1rem;
   max-width: 66%;
 }
+@media only screen and (min-width: 40.0625em) {
+  /* line 358, ../scss/theme/_misc.scss */
+  .row.content-dark p.sub-header {
+    font-size: 1.2rem;
+  }
+}
 
-/* line 346, ../scss/theme/_misc.scss */
+/* line 367, ../scss/theme/_misc.scss */
 .row.home-footer {
   color: #ebebeb;
   background-color: #032743;
   min-height: 33%;
+}
+
+/* line 373, ../scss/theme/_misc.scss */
+.contact-link {
+  background-color: #b22643;
+}
+
+/* line 376, ../scss/theme/_misc.scss */
+label.right-off-canvas-toggle {
+  font-size: 1.25rem !important;
+  font-weight: normal;
 }

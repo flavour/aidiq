@@ -4,6 +4,11 @@ Series,Name,Title,Body,Module
  <div class='small-12 columns'>
   <div class='slogan'>Intelligent Business Solutions<br>for the Humanitarian Community</div>
   <p class='sub-header'>AidIQ provides information management solutions to organisations in the humanitarian, development, disaster and emergency management sectors.</p>
+  <div class='buttons'>
+    <a class='info button' href='{{=URL(c=""default"", f=""index"", vars={""page"": ""solutions""})}}'>Our solutions</a>
+    <a class='info button' href='{{=URL(c=""default"", f=""index"", vars={""page"": ""methods""})}}'>How we work</a>
+    <a class='primay button' href='{{=URL(c=""default"", f=""index"", args=[""contact""])}}'>Contact us</a>
+  </div>
  </div>
 </div>
 <div class='row content-light'>

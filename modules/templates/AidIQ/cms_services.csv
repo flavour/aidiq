@@ -3,20 +3,30 @@ Series,Name,Title,Body,Module
 <div class='row content-dark header'>
  <div class='small-12 columns'>
   <div class='slogan'>Our Services</div>
-  <p class='sub-header'>We provide a full range of services to clients to ensure that solutions are implemented effectively and sustainably.</p>
+  <div>
+   <p class='sub-header'>We provide a full range of services to clients to ensure that solutions are implemented effectively and sustainably.</p>
+  </div>
+  <div class='icon-bar four-up'>
+   <a class='item' href='#starter'>
+    <i class='fa fa-play'></i>
+    <label>Starter Package</label>
+   </a>
+   <a class='item' href='#custom'>
+    <i class='fa fa-puzzle-piece'></i>
+    <label>Custom Solution</label>
+   </a>
+   <a class='item' href='#sla'>
+    <i class='fa fa-wrench'></i>
+    <label>Service & Support</label>
+   </a>
+   <a class='item' href='#training'>
+    <i class='fa fa-user'></i>
+    <label>Training</label>
+   </a>
+  </div>
  </div>
 </div>
 <div class='row content-light'>
- <div class='small-12 columns'>
-  <div data-magellan-expedition='fixed'>
-   <dl class='sub-nav'>
-    <dd data-magellan-arrival='starter'><a href='#starter'><i class='fa fa-play'></i>Starter Package</a></dd>
-    <dd data-magellan-arrival='custom' class=''><a href='#custom'><i class='fa fa-puzzle-piece'></i>Custom Solution Development</a></dd>
-    <dd data-magellan-arrival='sla' class=''><a href='#sla'><i class='fa fa-wrench'></i>Service &amp; Support</a></dd>
-    <dd data-magellan-arrival='training'><a href='#training'><i class='fa fa-user'></i>Technical Training</a></dd>
-   </dl>
-  </div>
- </div>
  <div class='row'>
   <div class='panel' style='background:transparent;'>
    <h2><i style='padding-right:10px;' class='fa fa-play'></i>Starter Package</h2>
