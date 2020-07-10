@@ -5,48 +5,99 @@ Series,Name,Title,Body,Module
   <div class='slogan'>Intelligent Business Solutions<br>for the Humanitarian Community</div>
   <p class='sub-header'>AidIQ provides information management solutions to organisations in the humanitarian, development, disaster and emergency management sectors.</p>
   <div class='buttons'>
-    <a class='info button' href='{{=URL(c=""default"", f=""index"", vars={""page"": ""solutions""})}}'>Our solutions</a>
+    <a class='info button' href='{{=URL(c=""default"", f=""index"", vars={""page"": ""solutions""})}}'>What we do</a>
     <a class='info button' href='{{=URL(c=""default"", f=""index"", vars={""page"": ""methods""})}}'>How we work</a>
     <a class='primay button' href='{{=URL(c=""default"", f=""index"", args=[""contact""])}}'>Contact us</a>
   </div>
  </div>
 </div>
+
 <div class='row content-light'>
- <div class='medium-7 columns'>
-  <p style='padding:0.2rem'>
-   We have extensive experience working for NGOs in both the field and headquarters and bring together a unique combination of experience in humanitarian response, disaster management, human resources and software development.
-  </p>
- </div>
- <div class='medium-5 columns'>
-  <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""drmp.jpg""])}}'>
+ <div class='small-12 columns'>
+  <h3 class='text-center' style='color:black;'>Our Areas of Expertise:</h3>
+  <ul class='small-block-grid-2 medium-block-grid-3 large-block-grid-4 icon-grid'>
+   <li>
+    <label>
+     <i class='fa fa-bolt'></i>
+     <h6>Incident Management</h6>
+     <span class='sub'>Early Warning, Alerting, Control and Command, Situation Reporting and Mapping</span>
+    </label>
+   </li>
+   <li>
+    <label>
+     <i class='fa fa-map-marker'></i>
+     <h6>Who, What, Where, When</h6>
+     <span class='sub'>Information Sharing, Coordination and Collaboration</span>
+    </label>
+   </li>
+   <li>
+    <label>
+     <i class='fa fa-home'></i>
+     <h6>Shelter Management</h6>
+     <span class='sub'>Planning, Operations, Maintenance and Security</span>
+    </label>
+   </li>
+   <li>
+    <label>
+     <i class='fa fa-truck'></i>
+     <h6>Logistics</h6>
+     <span class='sub'>Relief Goods Procurement, Inventory, Logistics and Distribution</span>
+    </label>
+   </li>
+   <li>
+    <label>
+     <i class='fa fa-hand-stop-o'></i>
+     <h6>Donations and Volunteers</h6>
+     <span class='sub'>Donation Management, Transparency, Volunteer and Task Management</span>
+    </label>
+   </li>
+   <li>
+    <label>
+     <i class='fa fa-id-card-o'></i>
+     <h6>Beneficiaries and Case Management</h6>
+     <span class='sub'>Registries, Processing Workflows, Needs Assessment, Support Brokering and Direct Assistance</span>
+    </label>
+   </li>
+   <li>
+    <label>
+     <i class='fa fa-shield'></i>
+     <h6>Disaster Risk Reduction</h6>
+     <span class='sub'>Community Resilience, Sustainable Development, Project Management</span>
+    </label>
+   </li>
+   <li>
+    <label>
+     <i class='fa fa-cogs'></i>
+     <h6>Resource Management</h6>
+     <span class='sub'>Human Talent, Assets and Supply Chains</span>
+    </label>
+   </li>
+  </ul>
  </div>
 </div>
-<div class='row' style='margin-top:10px'>
- <div class='medium-7 small-12 columns'>
-  <div class='panel' style='background:transparent;'>
-   <p>
-    We provide a full range of services to clients to ensure that solutions are implemented effectively and sustainably:
-   </p>
-   <ul style='list-style-type:none;line-height:2.0;'>
-    <li><i class='fa fa-check'></i>Business Analysis</li>
-    <li><i class='fa fa-check'></i>Process Design</li>
-    <li><i class='fa fa-check'></i>Software Development</li>
-    <li><i class='fa fa-check'></i>Training Design</li>
-    <li><i class='fa fa-check'></i>Capacity Building</li>
-    <li><i class='fa fa-check'></i>Human Resources</li>
-   </ul>
+
+<div class='row content-dark'>
+ <div class='small-12 columns' style='padding:1.4rem 0;font-size:1.4rem;text-align:center;'>
+  <div class='text-center'>We support Free and Open Source</div>
+  <div class='text-center' style='font-size:2.1rem'>
+   <img style='width:80px;margin:0.2rem;' src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""sunflower.png""])}}'></img>
+   <span style='font-weight:bold;'>SAHANA</span>
+   <span style='font-size:1.4rem;white-space:pre;display:block'>Humanitarian and Disaster Management Software</span>
+   <div style='font-size:1.2rem;margin-top:1.4rem'>AidIQ specializes in developing solutions using the SAHANA Eden platform.</div>
   </div>
+  <a class='info button' style='margin:2.8rem 0;'>Learn more about SAHANA</a>
  </div>
- <div class='medium-5 small-12 columns'>
-  <div class='panel'>
-   <p>
-    We believe in using participatory methodologies in all of our work to ensure we deliver sustainable solutions which empower people.
+</div>
+
+<div class='row content-light'>
+ <div class='small-12 columns text-center'>
+   <h3 style='color:black;'>We don't just deliver - We empower.</h3>
+   <p style='font-size:1.2rem;'>
+    We believe in using participatory methodologies in all of our work
+    to ensure we create sustainable solutions which empower people.
    </p>
-  </div>
-  <div class='panel'>
-   <div>AidIQ is an active supporter of the free and open source</div>
-   <div><img style='width:30px;margin:0.2rem' src='/eden/static/themes/AidIQ/img/sunflower.png'><a href='http://eden.sahanafoundation.org' target='blank'><span style='font-weight:bold;'>SAHANA</span> Disaster Management Software</a></div>
-   <div>and specializes in developing solutions using Sahana Eden.</div>
+   <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""drmp.jpg""])}}' style='width:250px;display:block;margin:auto;padding:0.7rem;'></img>
+   <a class='info button' style='margin:1.4rem 0;'>Find out more about how we work</a>
   </div>
  </div>
 </div>",default

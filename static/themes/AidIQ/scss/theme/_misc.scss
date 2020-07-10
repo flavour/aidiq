@@ -369,7 +369,23 @@ body.rtl {
     background-color: #032743;
     min-height: 33%;
 }
-
+.icon-grid label {
+    font-size: 1rem;
+    text-align: center;
+    padding: 1rem;
+    color: $oil;
+    h6 {
+        color: inherit;
+    }
+    i {
+        display: block;
+        font-size: 2rem;
+    }
+    .sub {
+        display: block;
+        font-size: 0.8rem;
+    }
+}
 .contact-link {
     background-color: scale-color($primary-color, $lightness: +15%);
 }

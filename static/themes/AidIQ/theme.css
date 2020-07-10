@@ -2359,12 +2359,34 @@ body.rtl .event-type-header {
   min-height: 33%;
 }
 
-/* line 373, ../scss/theme/_misc.scss */
+/* line 372, ../scss/theme/_misc.scss */
+.icon-grid label {
+  font-size: 1rem;
+  text-align: center;
+  padding: 1rem;
+  color: #333333;
+}
+/* line 377, ../scss/theme/_misc.scss */
+.icon-grid label h6 {
+  color: inherit;
+}
+/* line 380, ../scss/theme/_misc.scss */
+.icon-grid label i {
+  display: block;
+  font-size: 2rem;
+}
+/* line 384, ../scss/theme/_misc.scss */
+.icon-grid label .sub {
+  display: block;
+  font-size: 0.8rem;
+}
+
+/* line 389, ../scss/theme/_misc.scss */
 .contact-link {
   background-color: #b22643;
 }
 
-/* line 376, ../scss/theme/_misc.scss */
+/* line 392, ../scss/theme/_misc.scss */
 label.right-off-canvas-toggle {
   font-size: 1.25rem !important;
   font-weight: normal;

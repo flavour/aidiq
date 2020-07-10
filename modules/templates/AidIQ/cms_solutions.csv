@@ -3,62 +3,51 @@ Series,Name,Title,Body,Module
 <div class='row content-dark header'>
  <div class='small-12 columns'>
   <div class='slogan'>Our Solutions</div>
-  <p class='sub-header'>We bring together a unique combination of experience in humanitarian response, disaster management, health care and software development.</p>
  </div>
 </div>
-<div class='row content-light'>
+<div class='row content-light' data-equalizer>
  <div class='small-12 columns'>
-  <h2>Resource Management</h2>
+  <h3>Incident Management</h3>
  </div>
 </div>
-<div class='row content-light'>
+<div class='row content-light' data-equalizer>
  <div class='small-12 columns'>
-  <h2>Human Talent</h2>
+  <h3>4W - Information Sharing, Coordination and Collaboration</h3>
  </div>
 </div>
-<div class='row content-light'>
+<div class='row content-light' data-equalizer>
  <div class='small-12 columns'>
-  <h2>Incident Management</h2>
+  <h3>Evacuations and Shelter Management</h3>
  </div>
 </div>
-<div class='row content-light'>
+<div class='row content-light' data-equalizer>
  <div class='small-12 columns'>
-  <h2>4W Information Sharing</h2>
+  <h3>Relief Goods Logistics, Inventory and Distribution</h3>
  </div>
 </div>
-<div class='row content-light'>
+<div class='row content-light' data-equalizer>
  <div class='small-12 columns'>
-  <h2>Disaster Risk Reduction</h2>
+  <h3>Donations and Volunteers</h3>
  </div>
 </div>
-<div class='row content-light'>
+<div class='row content-light' data-equalizer>
  <div class='small-12 columns'>
-  <h2>Supply Chain and Inventory Management</h2>
+  <h3>Beneficiary Registration and Case Management</h3>
  </div>
 </div>
-<div class='row content-light'>
+<div class='row content-light' data-equalizer>
  <div class='small-12 columns'>
-  <h2>Request Management and Logistics</h2>
+  <h3>Disaster Risk Reduction, Community Resilience and Sustainable Development</h3>
  </div>
 </div>
-<div class='row content-light'>
+<div class='row content-light' data-equalizer>
  <div class='small-12 columns'>
-  <h2>Volunteer and Task Management</h2>
+  <h3>Resource Planning and Management, Capacity Building</h3>
  </div>
 </div>
-<div class='row content-light'>
+<div class='row content-light' data-equalizer>
  <div class='small-12 columns'>
-  <h2>Beneficiary Registration and Case Management</h2>
- </div>
-</div>
-<div class='row content-light'>
- <div class='small-12 columns'>
-  <h2>GIS and Mapping</h2>
- </div>
-</div>
-<div class='row content-light'>
- <div class='small-12 columns'>
-  <h2>Open Data Standards and Systems Integration</h2>
+  <h3>Preparedness and Early Warning</h3>
  </div>
 </div>
 ",
