@@ -684,7 +684,7 @@ div.tabs {
   padding: 0;
   line-height: 1.3rem;
   text-align: left;
-  border-bottom: 1px solid #871D33;
+  border-bottom: 1px solid #075897;
 }
 /* line 95, ../scss/theme/_rheader.scss */
 div.tabs span {
@@ -712,7 +712,7 @@ div.tabs span.tab_here {
   margin: 0.2rem 0.35rem 0 0;
   padding: 0.11rem 0.4rem 0.11rem;
   background: #ffffff;
-  border-color: #871D33;
+  border-color: #075897;
   border-style: solid;
   border-width: 0.125rem 2px 0.0625rem 3px;
   border-bottom-style: solid;
@@ -735,15 +735,15 @@ div.tabs span.tab_last, div.tabs span.tab_other {
   font-size: 0.9rem;
   margin: 0.35rem 0.2rem 0 0;
   padding: 0.1rem 0.3rem 0;
-  background-color: #871D33;
-  border-color: #871D33;
+  background-color: #075897;
+  border-color: #075897;
   border-width: 0.0625rem 1px 0.0625rem 2px;
   border-style: solid;
 }
 /* line 160, ../scss/theme/_rheader.scss */
 div.tabs span.tab_last:hover, div.tabs span.tab_other:hover {
-  background-color: #6c1729;
-  border-color: #6c1729;
+  background-color: #064679;
+  border-color: #064679;
 }
 /* line 164, ../scss/theme/_rheader.scss */
 div.tabs span.tab_last a, div.tabs span.tab_other a {
@@ -785,13 +785,13 @@ div.tabs span.tab_last a:hover, div.tabs span.tab_other a:hover {
 /* line 58, ../../default/scss/theme/_buttons.scss */
 .action-btn,
 .selected-action {
-  background-color: #871D33;
+  background-color: #075897;
   color: white !important;
 }
 /* line 62, ../../default/scss/theme/_buttons.scss */
 .action-btn:hover,
 .selected-action:hover {
-  background-color: #6c1729;
+  background-color: #064679;
   color: white !important;
 }
 
@@ -818,7 +818,7 @@ div.tabs span.tab_last a:hover, div.tabs span.tab_other a:hover {
 /* line 83, ../../default/scss/theme/_buttons.scss */
 .cancel-form-btn:hover {
   color: white;
-  background-color: #871D33;
+  background-color: #075897;
 }
 
 /* Full screen map button */
@@ -901,16 +901,16 @@ body.rtl .action-lnk:first-child {
 }
 
 /* Top bar */
-/* line 23, ../../default/scss/theme/_menus.scss */
+/* line 23, ../scss/theme/_menus.scss */
 .top-bar {
   z-index: 1000;
   /* Menu logo */
 }
-/* line 24, ../../default/scss/theme/_menus.scss */
+/* line 24, ../scss/theme/_menus.scss */
 .top-bar.expanded {
   width: 100%;
 }
-/* line 29, ../../default/scss/theme/_menus.scss */
+/* line 29, ../scss/theme/_menus.scss */
 .top-bar .logo {
   color: white;
   display: inline-block;
@@ -920,22 +920,30 @@ body.rtl .action-lnk:first-child {
   padding: 0.625rem 0.5rem 0 0.7rem;
   text-transform: uppercase;
 }
-/* line 38, ../../default/scss/theme/_menus.scss */
+/* line 38, ../scss/theme/_menus.scss */
+.top-bar .S3menulogo {
+  display: inline-block;
+  background: url("img/logo_small_light.png") center no-repeat;
+  min-width: 128px;
+  min-height: 40px;
+  margin-right: 1rem;
+}
+/* line 45, ../scss/theme/_menus.scss */
 .top-bar .menu-toggle input {
   margin-right: 5px;
 }
-/* line 41, ../../default/scss/theme/_menus.scss */
+/* line 48, ../scss/theme/_menus.scss */
 .top-bar li.name {
   padding-top: 0.2rem;
 }
-/* line 44, ../../default/scss/theme/_menus.scss */
+/* line 51, ../scss/theme/_menus.scss */
 .top-bar .home-link {
   font-size: 1.375rem;
   color: white;
   padding: 0.5rem;
 }
 
-/* line 50, ../../default/scss/theme/_menus.scss */
+/* line 57, ../scss/theme/_menus.scss */
 .top-bar-section li.menu-home a {
   font-weight: bold !important;
   font-size: 1.4em !important;
@@ -943,7 +951,7 @@ body.rtl .action-lnk:first-child {
 }
 
 /* Side Menu */
-/* line 57, ../../default/scss/theme/_menus.scss */
+/* line 64, ../scss/theme/_menus.scss */
 .sidebar {
   background: none repeat scroll 0 0 #f7f7f7;
   margin-top: 10px;
@@ -951,72 +959,72 @@ body.rtl .action-lnk:first-child {
   padding-bottom: 0.25rem;
 }
 
-/* line 64, ../../default/scss/theme/_menus.scss */
+/* line 71, ../scss/theme/_menus.scss */
 .side-nav li {
   list-style-type: none;
   list-style-position: inside;
   line-height: 1.2;
   padding: 0;
 }
-/* line 70, ../../default/scss/theme/_menus.scss */
+/* line 77, ../scss/theme/_menus.scss */
 .side-nav li.heading {
   margin-top: 0.125rem;
 }
-/* line 73, ../../default/scss/theme/_menus.scss */
+/* line 80, ../scss/theme/_menus.scss */
 .side-nav li.heading:not(:first-child) {
   border-top: 1px solid #eaeaea;
 }
-/* line 78, ../../default/scss/theme/_menus.scss */
+/* line 85, ../scss/theme/_menus.scss */
 .side-nav li.active > a:first-child:not(.button) {
   font-weight: bold;
   background-color: #e0e1e2;
 }
-/* line 81, ../../default/scss/theme/_menus.scss */
+/* line 88, ../scss/theme/_menus.scss */
 .side-nav li.active > a:first-child:not(.button):hover {
-  color: #a3233e;
+  color: #096cb9;
   background-color: rgba(0, 0, 0, 0.025);
 }
 
 /* Page Header */
-/* line 92, ../../default/scss/theme/_menus.scss */
+/* line 99, ../scss/theme/_menus.scss */
 .main-title .org-logo {
   vertical-align: top;
   display: inline-block;
   padding: 0.4rem 0.8rem 0.3rem 0;
 }
-/* line 97, ../../default/scss/theme/_menus.scss */
+/* line 104, ../scss/theme/_menus.scss */
 .main-title .system-title {
   display: inline-block;
 }
-/* line 99, ../../default/scss/theme/_menus.scss */
+/* line 106, ../scss/theme/_menus.scss */
 .main-title .system-title .system-name {
   color: #333333;
 }
-/* line 102, ../../default/scss/theme/_menus.scss */
+/* line 109, ../scss/theme/_menus.scss */
 .main-title .system-title .org-name {
   color: #999999;
   line-height: 1rem;
 }
-/* line 106, ../../default/scss/theme/_menus.scss */
+/* line 113, ../scss/theme/_menus.scss */
 .main-title .system-title h5:first-child, .main-title .system-title h6:first-child {
   margin: 0.3rem 0 0.125rem;
 }
-/* line 110, ../../default/scss/theme/_menus.scss */
+/* line 117, ../scss/theme/_menus.scss */
 .main-title .personal-menu-area {
   text-align: right;
 }
-/* line 113, ../../default/scss/theme/_menus.scss */
+/* line 120, ../scss/theme/_menus.scss */
 .main-title .personal-menu {
   float: right;
   clear: right;
   padding-top: 0;
   margin-bottom: 0.125rem;
 }
-/* line 118, ../../default/scss/theme/_menus.scss */
+/* line 125, ../scss/theme/_menus.scss */
 .main-title .personal-menu li a {
   padding: 0 0.375rem;
 }
-/* line 122, ../../default/scss/theme/_menus.scss */
+/* line 129, ../scss/theme/_menus.scss */
 .main-title .language-selector {
   float: right;
   display: block;
@@ -1024,12 +1032,12 @@ body.rtl .action-lnk:first-child {
   margin-bottom: 0.125rem;
 }
 
-/* line 131, ../../default/scss/theme/_menus.scss */
+/* line 138, ../scss/theme/_menus.scss */
 body.rtl .main-title .personal-menu {
   float: left;
   clear: left;
 }
-/* line 135, ../../default/scss/theme/_menus.scss */
+/* line 142, ../scss/theme/_menus.scss */
 body.rtl .main-title .language-selector {
   float: left;
 }
@@ -1116,7 +1124,7 @@ table.dataTable .group .group-expand {
 /* line 101, ../../default/scss/theme/_tables.scss */
 table.dataTable.dtr-inline.collapsed tbody td:first-child::before, table.dataTable.dtr-inline.collapsed tbody th:first-child::before {
   top: 6px;
-  background-color: #871D33;
+  background-color: #075897;
 }
 /* line 106, ../../default/scss/theme/_tables.scss */
 table.dataTable.dtr-inline.collapsed tbody tr.parent td:first-child::before, table.dataTable.dtr-inline.collapsed tbody tr.parent th:first-child::before {
@@ -1645,7 +1653,7 @@ form.anonymize-form,
 .rm-form .rm-assign .action-lnk,
 .rm-form .rm-rules .action-lnk {
   display: inline-block;
-  color: #871D33;
+  color: #075897;
   font-style: normal;
 }
 /* line 302, ../../default/scss/theme/_widgets.scss */
@@ -2383,7 +2391,7 @@ body.rtl .event-type-header {
 
 /* line 389, ../scss/theme/_misc.scss */
 .contact-link {
-  background-color: #b22643;
+  background-color: #7a1a2e;
 }
 
 /* line 392, ../scss/theme/_misc.scss */

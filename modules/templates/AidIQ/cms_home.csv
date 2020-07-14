@@ -7,7 +7,7 @@ Series,Name,Title,Body,Module
   <div class='buttons'>
     <a class='info button' href='{{=URL(c=""default"", f=""index"", vars={""page"": ""solutions""})}}'>What we do</a>
     <a class='info button' href='{{=URL(c=""default"", f=""index"", vars={""page"": ""methods""})}}'>How we work</a>
-    <a class='primay button' href='{{=URL(c=""default"", f=""index"", args=[""contact""])}}'>Contact us</a>
+    <a class='secondary button' href='{{=URL(c=""default"", f=""index"", args=[""contact""])}}'>Contact us</a>
   </div>
  </div>
 </div>
@@ -19,29 +19,29 @@ Series,Name,Title,Body,Module
    <li>
     <label>
      <i class='fa fa-bolt'></i>
-     <h6>Incident Management</h6>
-     <span class='sub'>Early Warning, Alerting, Control and Command, Situation Reporting and Mapping</span>
+     <h6>Disaster Response</h6>
+     <span class='sub'>Early Warning, Incident Tracking, Control and Command, Alerting, Situation Reporting and Mapping</span>
     </label>
    </li>
    <li>
     <label>
      <i class='fa fa-map-marker'></i>
      <h6>Who, What, Where, When</h6>
-     <span class='sub'>Information Sharing, Coordination and Collaboration</span>
+     <span class='sub'>4W Information Sharing, Coordination and Collaboration</span>
     </label>
    </li>
    <li>
     <label>
      <i class='fa fa-home'></i>
-     <h6>Shelter Management</h6>
+     <h6>Shelter & Site Management</h6>
      <span class='sub'>Planning, Operations, Maintenance and Security</span>
     </label>
    </li>
    <li>
     <label>
      <i class='fa fa-truck'></i>
-     <h6>Logistics</h6>
-     <span class='sub'>Relief Goods Procurement, Inventory, Logistics and Distribution</span>
+     <h6>Relief Goods</h6>
+     <span class='sub'>Procurement, Inventory, Logistics and Distribution</span>
     </label>
    </li>
    <li>
@@ -54,8 +54,8 @@ Series,Name,Title,Body,Module
    <li>
     <label>
      <i class='fa fa-id-card-o'></i>
-     <h6>Beneficiaries and Case Management</h6>
-     <span class='sub'>Registries, Processing Workflows, Needs Assessment, Support Brokering and Direct Assistance</span>
+     <h6>Case Management</h6>
+     <span class='sub'>Beneficiary Registries, Processing Workflows, Needs Assessment and Eligibility Screening, Support Brokering and Direct Assistance</span>
     </label>
    </li>
    <li>
@@ -69,7 +69,7 @@ Series,Name,Title,Body,Module
     <label>
      <i class='fa fa-cogs'></i>
      <h6>Resource Management</h6>
-     <span class='sub'>Human Talent, Assets and Supply Chains</span>
+     <span class='sub'>Organisational Development, Human Talent, Facilities, Assets and Supply Chains</span>
     </label>
    </li>
   </ul>
@@ -88,16 +88,57 @@ Series,Name,Title,Body,Module
   <a class='info button' style='margin:2.8rem 0;'>Learn more about SAHANA</a>
  </div>
 </div>
+<div class='row content-light'>
+ <div class='small-12 columns' style='padding:1.4rem 0;font-size:1.4rem;text-align:center;'>
+  <h3>What we do</h3>
+  <div class='row' data-equalizer>
+   <div class='large-3 columns'>
+    <div class='panel' data-equalizer-watch>
+     <h5>Business Analysis & Process Design</h5>
+     <p>
+      We work with you to identify your information management
+      needs and resources, and to develop and implement
+      effective processes to achieve your goals.
+    </div>
+   </div>
+   <div class='large-3 columns'>
+    <div class='panel' data-equalizer-watch>
+     <h5>Software Development</h5>
+     <p>
+      We develop software solutions to implement the
+      desired business processes.
+    </div>
+   </div>
+   <div class='large-3 columns'>
+    <div class='panel' data-equalizer-watch>
+     <h5>Deployment and Maintenance</h5>
+     <p>
+      We deploy the software solutions, including monitoring,
+      system administration, upgrades/migrations and other
+      maintenance tasks to keep you going.
+    </div>
+   </div>
+   <div class='large-3 columns'>
+    <div class='panel' data-equalizer-watch>
+     <h5>Support and Training</h5>
+     <p>
+      We provide key user support and training, as well as
+      trainings for your in-house IT personnel.
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
 
 <div class='row content-light'>
  <div class='small-12 columns text-center'>
-   <h3 style='color:black;'>We don't just deliver - We empower.</h3>
-   <p style='font-size:1.2rem;'>
-    We believe in using participatory methodologies in all of our work
-    to ensure we create sustainable solutions which empower people.
-   </p>
-   <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""drmp.jpg""])}}' style='width:250px;display:block;margin:auto;padding:0.7rem;'></img>
-   <a class='info button' style='margin:1.4rem 0;'>Find out more about how we work</a>
-  </div>
+  <h3 style='color:black;'>We don't just deliver - We empower.</h3>
+  <p style='font-size:1.2rem;'>
+   We believe in using participatory methodologies in all of our work
+   to ensure we create sustainable solutions which empower people.
+  </p>
+  <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""drmp.jpg""])}}' style='width:250px;display:block;margin:auto;padding:0.7rem;'></img>
+  <a class='info button' style='margin:1.4rem 0;'>Find out more about how we work</a>
  </div>
-</div>",default
+</div>
+",default

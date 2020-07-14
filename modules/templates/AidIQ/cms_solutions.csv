@@ -2,52 +2,39 @@ Series,Name,Title,Body,Module
 ,solutions,Solutions | AidIQ.com,"
 <div class='row content-dark header'>
  <div class='small-12 columns'>
-  <div class='slogan'>Our Solutions</div>
+  <div class='slogan'>What we do</div>
  </div>
 </div>
-<div class='row content-light' data-equalizer>
- <div class='small-12 columns'>
-  <h3>Incident Management</h3>
+<div class='row content-light'>
+ <div class='small-12 medium-10 large-8 medium-centered columns'>
+  <h3 style='color:black'>Our Mission</h3>
+  <p>
+      AidIQ was founded in 2009 to build effective and sustainable
+      information management solutions for organizations in the
+      humanitarian, development, disaster and emergency management
+      sectors.
+  </p>
+  <p>
+      We develop business processes and apply technology to support
+      and transform the work of people who assist communities in
+      times of crisis and facilitate change towards a livable, peaceful
+      and sustainable life for everyone.
+  </p>
  </div>
 </div>
-<div class='row content-light' data-equalizer>
- <div class='small-12 columns'>
-  <h3>4W - Information Sharing, Coordination and Collaboration</h3>
- </div>
-</div>
-<div class='row content-light' data-equalizer>
- <div class='small-12 columns'>
-  <h3>Evacuations and Shelter Management</h3>
- </div>
-</div>
-<div class='row content-light' data-equalizer>
- <div class='small-12 columns'>
-  <h3>Relief Goods Logistics, Inventory and Distribution</h3>
- </div>
-</div>
-<div class='row content-light' data-equalizer>
- <div class='small-12 columns'>
-  <h3>Donations and Volunteers</h3>
- </div>
-</div>
-<div class='row content-light' data-equalizer>
- <div class='small-12 columns'>
-  <h3>Beneficiary Registration and Case Management</h3>
- </div>
-</div>
-<div class='row content-light' data-equalizer>
- <div class='small-12 columns'>
-  <h3>Disaster Risk Reduction, Community Resilience and Sustainable Development</h3>
- </div>
-</div>
-<div class='row content-light' data-equalizer>
- <div class='small-12 columns'>
-  <h3>Resource Planning and Management, Capacity Building</h3>
- </div>
-</div>
-<div class='row content-light' data-equalizer>
- <div class='small-12 columns'>
-  <h3>Preparedness and Early Warning</h3>
+<div class='row content-dark'>
+ <div class='small-12 medium-10 large-8 medium-centered columns'>
+  <p>
+      AidIQ's mission is to build effective and sustainable information
+      management solutions for organizations in the humanitarian,
+      development, disaster and emergency management sectors.
+  </p>
+  <p>
+      We develop business processes and apply technology to support
+      and transform the work of people who assist communities in
+      times of crisis and facilitate change towards a livable, peaceful
+      and sustainable life for everyone.
+  </p>
  </div>
 </div>
 ",
