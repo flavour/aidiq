@@ -175,4 +175,21 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     ),
                 )
 
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def cms():
+        """ CMS / Content Management System """
+
+        return M(c="cms")(
+                    M("Series", f="series")(
+                        M("Create", m="create"),
+                        M("View as Pages", f="blog"),
+                    ),
+                    M("Posts", f="post")(
+                        M("Create", m="create"),
+                        M("Import", m="import"),
+                        M("View as Pages", f="page"),
+                    ),
+                )
+
 # END =========================================================================

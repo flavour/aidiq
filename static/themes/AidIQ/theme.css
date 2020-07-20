@@ -205,9 +205,8 @@ body.rtl .username i.icon, body.rtl .username i.fa {
 /* Footer */
 /* line 171, ../scss/theme/_page.scss */
 #footer {
-  background: transparent;
+  background: #032743;
   padding-top: 20px;
-  margin-bottom: 1rem;
 }
 
 /* line 179, ../scss/theme/_page.scss */
@@ -217,7 +216,7 @@ body.rtl .username i.icon, body.rtl .username i.fa {
 }
 /* line 182, ../scss/theme/_page.scss */
 #poweredby a {
-  color: #999;
+  color: #F2F2F2;
   text-decoration: none;
   font-size: 0.8rem;
   margin-left: 0.2rem;
@@ -230,14 +229,14 @@ body.rtl #poweredby {
 
 /* line 196, ../scss/theme/_page.scss */
 .sub-nav.about-menu {
-  color: #999;
+  color: #F2F2F2;
   text-align: left;
   margin-left: 0;
   margin-right: 0;
 }
 /* line 198, ../scss/theme/_page.scss */
 .sub-nav.about-menu a {
-  color: #999;
+  color: #F2F2F2;
 }
 
 /* line 206, ../scss/theme/_page.scss */
@@ -2403,4 +2402,15 @@ label.right-off-canvas-toggle {
 /* line 396, ../scss/theme/_misc.scss */
 ul.off-canvas-list li a {
   font-size: 1.2rem;
+}
+
+/* line 400, ../scss/theme/_misc.scss */
+main {
+  min-height: 90%;
+  padding-bottom: 1rem;
+}
+
+/* line 404, ../scss/theme/_misc.scss */
+footer {
+  min-height: 10%;
 }

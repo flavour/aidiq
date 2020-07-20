@@ -46,8 +46,10 @@
      <label>Internal Pages</label>
     </li>
     {{if auth.s3_logged_in():}}
-    <li><a href='/{{=appname}}/project/task?mine=1'>My Open Tasks</a></li>
-    <li><a href='/{{=appname}}/cms/post'>CMS</a></li>
+    <li><a href='/{{=appname}}/project/project'>Projects</a></li>
+    <li><a href='/{{=appname}}/project/task?mine=1'>Tasks</a></li>
+    <li><a href='/{{=appname}}/cms/post'>Contents</a></li>
+    <li><a href='/{{=appname}}/admin/index'>Admin</a></li>
     {{else:}}
     <li><a href='/{{=appname}}/default/user/login'>Login</a></li>
     {{pass}}
