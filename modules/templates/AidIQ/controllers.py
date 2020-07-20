@@ -44,9 +44,6 @@ class index(S3CustomController):
                 try:
                     body = current.response.render(StringIO(row.body), {})
                 except:
-                    raise
-                    import sys
-                    print(sys.exc_info()[1])
                     body = row.body
             item = DIV(XML(body), _class="cms-item")
             if current.auth.s3_has_role(current.session.s3.system_roles.ADMIN):

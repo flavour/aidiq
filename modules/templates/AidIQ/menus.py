@@ -23,12 +23,6 @@ class S3MainMenu(default.S3MainMenu):
         main_menu = MM()(
 
             # Modules-menu, align-left
-
-            #homepage(icon="/%s/static/themes/AidIQ/img/logo_small.png" % current.request.application),
-            #homepage("project"),
-            #homepage("hrm"),
-            #homepage("setup"),
-            #homepage("cms"),
             cls.menu_modules(),
 
             # Service menus, align-right

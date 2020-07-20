@@ -42,4 +42,16 @@ Series,Name,Title,Body,Module
  <div class='small-12 columns'>
   <h3>Training and Capacity Building</h3>
  </div>
-</div>",
+</div>
+<div class='row content-light'>
+ <div class='small-12 columns text-center'>
+  <h3 style='color:black;'>We don't just deliver - We empower.</h3>
+  <p style='font-size:1.2rem;'>
+   We believe in using participatory methodologies in all of our work
+   to ensure we create sustainable solutions which empower people.
+  </p>
+  <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""drmp.jpg""])}}' style='width:250px;display:block;margin:auto;padding:0.7rem;'></img>
+  <a class='info button' style='margin:1.4rem 0;'>Find out more about how we work</a>
+ </div>
+</div>
+",

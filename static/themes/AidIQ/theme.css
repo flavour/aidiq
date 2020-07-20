@@ -2396,6 +2396,11 @@ body.rtl .event-type-header {
 
 /* line 392, ../scss/theme/_misc.scss */
 label.right-off-canvas-toggle {
-  font-size: 1.25rem !important;
-  font-weight: normal;
+  font-size: 1.75rem !important;
+  padding: 0.5rem 0.8rem !important;
+}
+
+/* line 396, ../scss/theme/_misc.scss */
+ul.off-canvas-list li a {
+  font-size: 1.2rem;
 }

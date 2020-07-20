@@ -390,8 +390,11 @@ body.rtl {
     background-color: scale-color($secondary-color, $lightness: -10%);
 }
 label.right-off-canvas-toggle {
-    font-size: 1.25rem!important;
-    font-weight: normal;
+    font-size: 1.75rem!important;
+    padding: 0.5rem 0.8rem!important
+}
+ul.off-canvas-list li a {
+    font-size: 1.2rem;
 }
 
 // END ========================================================================

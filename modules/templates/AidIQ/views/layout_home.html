@@ -40,7 +40,18 @@
     <li><a href='/{{=appname}}/default/index?page=team'>Team</a></li>
     <li><a href='/{{=appname}}/default/index/contact' class='contact-link'>Contact Us</a></li>
     <!--<li><label>Users</label></li>-->
-   <ul>
+   </ul>
+   <ul class="off-canvas-list" style="margin-top:4.8rem;">
+    <li>
+     <label>Internal Pages</label>
+    </li>
+    {{if auth.s3_logged_in():}}
+    <li><a href='/{{=appname}}/project/task?mine=1'>My Open Tasks</a></li>
+    <li><a href='/{{=appname}}/cms/post'>CMS</a></li>
+    {{else:}}
+    <li><a href='/{{=appname}}/default/user/login'>Login</a></li>
+    {{pass}}
+   </ul>
   </aside>
 
   <!-- Header -->
@@ -76,7 +87,7 @@
   <!-- Footer -->
   <div class='row home-footer'>
    <div class='small-12 columns' id='footer'>
-    {{include "../modules/templates/AidIQ/views/footer.html"}}
+    {{include "../modules/templates/AidIQ/views/footer_home.html"}}
     {{if s3.debug:}}{{=s3.toolbar()}}{{pass}}
    </div>
   </div>
