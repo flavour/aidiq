@@ -137,6 +137,17 @@ body.rtl .username i.icon, body.rtl .username i.fa {
 
 /* Page Sections */
 /* line 109, ../scss/theme/_page.scss */
+main {
+  min-height: 90%;
+  padding-bottom: 1rem;
+}
+
+/* line 113, ../scss/theme/_page.scss */
+footer {
+  min-height: 10%;
+}
+
+/* line 117, ../scss/theme/_page.scss */
 .item-container form,
 .form-container form,
 #datalist-filter-form,
@@ -147,42 +158,42 @@ body.rtl .username i.icon, body.rtl .username i.fa {
   border: 1px solid #E0E0E0;
 }
 
-/* line 118, ../scss/theme/_page.scss */
+/* line 126, ../scss/theme/_page.scss */
 .widget-container #list-btn-add {
   margin-bottom: 0;
   position: relative;
   top: 1.0rem;
 }
 
-/* line 123, ../scss/theme/_page.scss */
+/* line 131, ../scss/theme/_page.scss */
 #component {
   float: none;
 }
 
-/* line 126, ../scss/theme/_page.scss */
+/* line 134, ../scss/theme/_page.scss */
 .map_home {
   margin: 0;
   margin-top: 0.5rem;
 }
 
 /* Global Main Content Styles */
-/* line 134, ../scss/theme/_page.scss */
+/* line 142, ../scss/theme/_page.scss */
 #content a.help:link {
   color: #fff;
   text-decoration: none;
   margin-right: 10px;
 }
-/* line 139, ../scss/theme/_page.scss */
+/* line 147, ../scss/theme/_page.scss */
 #content a.help:hover {
   background-color: #336699;
   text-decoration: underline;
 }
-/* line 143, ../scss/theme/_page.scss */
+/* line 151, ../scss/theme/_page.scss */
 #content a.help:visited {
   font-weight: normal;
   color: #666;
 }
-/* line 148, ../scss/theme/_page.scss */
+/* line 156, ../scss/theme/_page.scss */
 #content h1,
 #content h2 {
   font-size: 1.3em;
@@ -190,31 +201,31 @@ body.rtl .username i.icon, body.rtl .username i.fa {
   background-color: #F7F8F9;
   padding: 0.35rem;
 }
-/* line 157, ../scss/theme/_page.scss */
+/* line 165, ../scss/theme/_page.scss */
 #content h2 {
   margin-top: 10px;
   font-size: 1.0rem;
   padding-left: 0.7rem;
 }
-/* line 164, ../scss/theme/_page.scss */
+/* line 172, ../scss/theme/_page.scss */
 #content h3 {
   font-size: 1.1em;
   padding-bottom: 5px;
 }
 
 /* Footer */
-/* line 171, ../scss/theme/_page.scss */
+/* line 179, ../scss/theme/_page.scss */
 #footer {
   background: #032743;
   padding-top: 20px;
 }
 
-/* line 179, ../scss/theme/_page.scss */
+/* line 187, ../scss/theme/_page.scss */
 #poweredby {
   margin-right: 0.5rem;
   text-align: right;
 }
-/* line 182, ../scss/theme/_page.scss */
+/* line 190, ../scss/theme/_page.scss */
 #poweredby a {
   color: #F2F2F2;
   text-decoration: none;
@@ -222,24 +233,24 @@ body.rtl .username i.icon, body.rtl .username i.fa {
   margin-left: 0.2rem;
 }
 
-/* line 190, ../scss/theme/_page.scss */
+/* line 198, ../scss/theme/_page.scss */
 body.rtl #poweredby {
   text-align: left;
 }
 
-/* line 196, ../scss/theme/_page.scss */
+/* line 204, ../scss/theme/_page.scss */
 .sub-nav.about-menu {
   color: #F2F2F2;
   text-align: left;
   margin-left: 0;
   margin-right: 0;
 }
-/* line 198, ../scss/theme/_page.scss */
+/* line 206, ../scss/theme/_page.scss */
 .sub-nav.about-menu a {
   color: #F2F2F2;
 }
 
-/* line 206, ../scss/theme/_page.scss */
+/* line 214, ../scss/theme/_page.scss */
 body.rtl .about-menu {
   text-align: right;
 }
@@ -1903,6 +1914,161 @@ body.rtl .rm-form .rm-assign .rm-duplicate td:last-child {
   border-left: 1px solid red;
 }
 
+/* line 7, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark,
+.cms-item .row.content-light {
+  padding: 1.4rem;
+}
+/* line 11, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark h2,
+.cms-item .row.content-light h2 {
+  margin-top: 0;
+  line-height: 1.0;
+}
+/* line 15, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark h3,
+.cms-item .row.content-light h3 {
+  color: #333333;
+}
+/* line 18, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .centered-content,
+.cms-item .row.content-light .centered-content {
+  padding: 1.4rem 0;
+  font-size: 1.4rem;
+  text-align: center;
+}
+/* line 23, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .icon-grid label,
+.cms-item .row.content-light .icon-grid label {
+  font-size: 1rem;
+  text-align: center;
+  padding: 1rem;
+  color: #333333;
+}
+/* line 28, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .icon-grid label h6,
+.cms-item .row.content-light .icon-grid label h6 {
+  color: inherit;
+}
+/* line 31, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .icon-grid label i,
+.cms-item .row.content-light .icon-grid label i {
+  display: block;
+  font-size: 2rem;
+}
+/* line 35, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .icon-grid label .sub,
+.cms-item .row.content-light .icon-grid label .sub {
+  display: block;
+  font-size: 0.8rem;
+}
+/* line 40, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .buttons,
+.cms-item .row.content-light .buttons {
+  margin-top: 1.4rem;
+}
+/* line 43, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .panel h5,
+.cms-item .row.content-light .panel h5 {
+  font-weight: bold;
+  margin-bottom: 1rem;
+}
+/* line 48, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .icon-bar,
+.cms-item .row.content-light .icon-bar {
+  padding-top: 1.4rem;
+  max-width: 32rem;
+  background: transparent;
+}
+/* line 54, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .team-portrait,
+.cms-item .row.content-light .team-portrait {
+  float: left;
+  height: 250px;
+  margin-right: 20px;
+}
+/* line 60, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .form-container,
+.cms-item .row.content-light .form-container {
+  text-align: center;
+}
+/* line 62, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .form-container form,
+.cms-item .row.content-light .form-container form {
+  max-width: 100%;
+  display: inline-block;
+  border: none;
+  text-align: left;
+}
+/* line 67, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .form-container form input[type="text"],
+.cms-item .row.content-dark .form-container form input[type="email"],
+.cms-item .row.content-light .form-container form input[type="text"],
+.cms-item .row.content-light .form-container form input[type="email"] {
+  height: auto;
+  padding: 0.7rem !important;
+  width: 20rem !important;
+  max-width: 100%;
+}
+/* line 74, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .form-container form select,
+.cms-item .row.content-light .form-container form select {
+  width: 20rem !important;
+  height: auto;
+  padding: 0.7rem 0.3rem !important;
+}
+/* line 79, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .form-container form textarea,
+.cms-item .row.content-light .form-container form textarea {
+  padding: 0.7rem !important;
+  width: 40rem;
+  height: 10rem;
+  max-width: 100%;
+}
+/* line 90, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark {
+  background-color: #032743;
+  color: #ebebeb;
+}
+/* line 93, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark h3 {
+  color: #F2F2F2;
+}
+/* line 96, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .icon-grid label {
+  color: #F2F2F2;
+}
+/* line 99, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark.header {
+  padding: 0 0 2.8rem;
+  text-align: center;
+}
+/* line 103, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .slogan {
+  display: block;
+  font-size: 1.4rem;
+  padding: 1.4rem 0;
+  font-weight: bold;
+}
+@media only screen and (min-width: 40.0625em) {
+  /* line 103, ../scss/theme/_cmsitems.scss */
+  .cms-item .row.content-dark .slogan {
+    font-size: 2.8rem;
+  }
+}
+/* line 112, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark p.sub-header {
+  display: inline-block;
+  font-size: 1rem;
+  max-width: 66%;
+}
+@media only screen and (min-width: 40.0625em) {
+  /* line 112, ../scss/theme/_cmsitems.scss */
+  .cms-item .row.content-dark p.sub-header {
+    font-size: 1.2rem;
+  }
+}
+
 /* Case Rheader Flags */
 /* line 12, ../scss/theme/_misc.scss */
 .overdue {
@@ -2213,19 +2379,18 @@ body.rtl .event-type-header {
   text-transform: uppercase;
 }
 
-/* AidIQ-specific */
-/* line 262, ../scss/theme/_misc.scss */
-.row.home-alert {
+/* CMS Pages */
+/* line 263, ../scss/theme/_misc.scss */
+.cms-page .row.home-alert {
   background-color: #032743;
 }
-
-/* line 265, ../scss/theme/_misc.scss */
-.row.home-top {
+/* line 266, ../scss/theme/_misc.scss */
+.cms-page .row.home-top {
   color: #eeeeff;
   background-color: #032743;
 }
-/* line 268, ../scss/theme/_misc.scss */
-.row.home-top .logo {
+/* line 269, ../scss/theme/_misc.scss */
+.cms-page .row.home-top .logo {
   background-image: url(img/logo_large_light.png);
   background-size: contain;
   background-position: center;
@@ -2233,184 +2398,47 @@ body.rtl .event-type-header {
   min-height: 84px;
   margin: 10%;
 }
-/* line 276, ../scss/theme/_misc.scss */
-.row.home-top .menu-toggle {
+/* line 277, ../scss/theme/_misc.scss */
+.cms-page .row.home-top .menu-toggle {
   color: #ebebeb;
   text-align: center;
 }
-/* line 279, ../scss/theme/_misc.scss */
-.row.home-top .menu-toggle .right-off-canvas-toggle {
+/* line 280, ../scss/theme/_misc.scss */
+.cms-page .row.home-top .menu-toggle .right-off-canvas-toggle {
   color: #ebebeb;
   font-size: 2.2rem;
   display: inline-block;
   padding-top: 1.4rem;
 }
-/* line 286, ../scss/theme/_misc.scss */
-.row.home-top .menu {
+/* line 287, ../scss/theme/_misc.scss */
+.cms-page .row.home-top .menu {
   text-align: center;
 }
-/* line 288, ../scss/theme/_misc.scss */
-.row.home-top .menu .sub-nav {
+/* line 289, ../scss/theme/_misc.scss */
+.cms-page .row.home-top .menu .sub-nav {
   margin-top: 1.8rem;
   display: inline-block;
 }
-/* line 291, ../scss/theme/_misc.scss */
-.row.home-top .menu .sub-nav dd {
+/* line 292, ../scss/theme/_misc.scss */
+.cms-page .row.home-top .menu .sub-nav dd {
   font-size: 0.9rem;
 }
-
-/* line 297, ../scss/theme/_misc.scss */
-.row.content-dark,
-.row.content-light {
-  padding: 1.4rem;
-}
-/* line 300, ../scss/theme/_misc.scss */
-.row.content-dark .form-container,
-.row.content-light .form-container {
-  text-align: center;
-}
-/* line 302, ../scss/theme/_misc.scss */
-.row.content-dark .form-container form,
-.row.content-light .form-container form {
-  max-width: 100%;
-  display: inline-block;
-  border: none;
-  text-align: left;
-}
-/* line 307, ../scss/theme/_misc.scss */
-.row.content-dark .form-container form input[type="text"],
-.row.content-dark .form-container form input[type="email"],
-.row.content-light .form-container form input[type="text"],
-.row.content-light .form-container form input[type="email"] {
-  height: auto;
-  padding: 0.7rem !important;
-  width: 20rem !important;
-  max-width: 100%;
-}
-/* line 314, ../scss/theme/_misc.scss */
-.row.content-dark .form-container form select,
-.row.content-light .form-container form select {
-  width: 20rem !important;
-  height: auto;
-  padding: 0.7rem 0.3rem !important;
-}
-/* line 319, ../scss/theme/_misc.scss */
-.row.content-dark .form-container form textarea,
-.row.content-light .form-container form textarea {
-  padding: 0.7rem !important;
-  width: 40rem;
-  height: 10rem;
-  max-width: 100%;
-}
-/* line 327, ../scss/theme/_misc.scss */
-.row.content-dark .team-portrait,
-.row.content-light .team-portrait {
-  float: left;
-  height: 250px;
-  margin-right: 20px;
-}
-/* line 332, ../scss/theme/_misc.scss */
-.row.content-dark .icon-bar,
-.row.content-light .icon-bar {
-  padding-top: 1.4rem;
-  max-width: 32rem;
-  background: transparent;
-}
-/* line 337, ../scss/theme/_misc.scss */
-.row.content-dark h2,
-.row.content-light h2 {
-  margin-top: 0;
-  line-height: 1.0;
-}
-
-/* line 342, ../scss/theme/_misc.scss */
-.row.content-dark {
-  background-color: #032743;
-  color: #ebebeb;
-}
-/* line 345, ../scss/theme/_misc.scss */
-.row.content-dark.header {
-  padding: 0 0 2.8rem;
-  text-align: center;
-}
-/* line 349, ../scss/theme/_misc.scss */
-.row.content-dark .slogan {
-  display: block;
-  font-size: 1.4rem;
-  padding: 1.4rem 0;
-  font-weight: bold;
-}
-@media only screen and (min-width: 40.0625em) {
-  /* line 349, ../scss/theme/_misc.scss */
-  .row.content-dark .slogan {
-    font-size: 2.8rem;
-  }
-}
-/* line 358, ../scss/theme/_misc.scss */
-.row.content-dark p.sub-header {
-  display: inline-block;
-  font-size: 1rem;
-  max-width: 66%;
-}
-@media only screen and (min-width: 40.0625em) {
-  /* line 358, ../scss/theme/_misc.scss */
-  .row.content-dark p.sub-header {
-    font-size: 1.2rem;
-  }
-}
-
-/* line 367, ../scss/theme/_misc.scss */
-.row.home-footer {
+/* line 298, ../scss/theme/_misc.scss */
+.cms-page .row.home-footer {
   color: #ebebeb;
   background-color: #032743;
   min-height: 33%;
 }
-
-/* line 372, ../scss/theme/_misc.scss */
-.icon-grid label {
-  font-size: 1rem;
-  text-align: center;
-  padding: 1rem;
-  color: #333333;
-}
-/* line 377, ../scss/theme/_misc.scss */
-.icon-grid label h6 {
-  color: inherit;
-}
-/* line 380, ../scss/theme/_misc.scss */
-.icon-grid label i {
-  display: block;
-  font-size: 2rem;
-}
-/* line 384, ../scss/theme/_misc.scss */
-.icon-grid label .sub {
-  display: block;
-  font-size: 0.8rem;
-}
-
-/* line 389, ../scss/theme/_misc.scss */
-.contact-link {
-  background-color: #7a1a2e;
-}
-
-/* line 392, ../scss/theme/_misc.scss */
-label.right-off-canvas-toggle {
+/* line 304, ../scss/theme/_misc.scss */
+.cms-page .right-off-canvas-menu label.right-off-canvas-toggle {
   font-size: 1.75rem !important;
   padding: 0.5rem 0.8rem !important;
 }
-
-/* line 396, ../scss/theme/_misc.scss */
-ul.off-canvas-list li a {
+/* line 308, ../scss/theme/_misc.scss */
+.cms-page .right-off-canvas-menu ul.off-canvas-list li a {
   font-size: 1.2rem;
 }
-
-/* line 400, ../scss/theme/_misc.scss */
-main {
-  min-height: 90%;
-  padding-bottom: 1rem;
-}
-
-/* line 404, ../scss/theme/_misc.scss */
-footer {
-  min-height: 10%;
+/* line 311, ../scss/theme/_misc.scss */
+.cms-page .right-off-canvas-menu .contact-link {
+  background-color: #7a1a2e;
 }

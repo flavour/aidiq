@@ -106,6 +106,14 @@ body.rtl {
 }
 
 /* Page Sections */
+main {
+    min-height: 90%;
+    padding-bottom: 1rem;
+}
+footer {
+    min-height: 10%;
+}
+
 .item-container form,
 .form-container form,
 #datalist-filter-form,

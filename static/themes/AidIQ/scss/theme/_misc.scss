@@ -258,151 +258,60 @@ body.rtl {
     text-transform: uppercase;
 }
 
-/* AidIQ-specific */
-.row.home-alert {
-    background-color: $nightsky;
-}
-.row.home-top {
-    color: #eeeeff;
-    background-color: $nightsky;
-    .logo {
-        background-image: url(img/logo_large_light.png);
-        background-size: contain;
-        background-position: center;
-        background-repeat: no-repeat;
-        min-height: 84px;
-        margin: 10%;
+/* CMS Pages */
+.cms-page {
+    .row.home-alert {
+        background-color: $nightsky;
     }
-    .menu-toggle {
-        color: #ebebeb;
-        text-align: center;
-        .right-off-canvas-toggle {
+    .row.home-top {
+        color: #eeeeff;
+        background-color: $nightsky;
+        .logo {
+            background-image: url(img/logo_large_light.png);
+            background-size: contain;
+            background-position: center;
+            background-repeat: no-repeat;
+            min-height: 84px;
+            margin: 10%;
+        }
+        .menu-toggle {
             color: #ebebeb;
-            font-size: 2.2rem;
-            display: inline-block;
-            padding-top: 1.4rem;
+            text-align: center;
+            .right-off-canvas-toggle {
+                color: #ebebeb;
+                font-size: 2.2rem;
+                display: inline-block;
+                padding-top: 1.4rem;
+            }
         }
-    }
-    .menu {
-        text-align: center;
-        .sub-nav {
-            margin-top: 1.8rem;
-            display: inline-block;
-            dd {
-                font-size: 0.9rem;
+        .menu {
+            text-align: center;
+            .sub-nav {
+                margin-top: 1.8rem;
+                display: inline-block;
+                dd {
+                    font-size: 0.9rem;
+                }
             }
         }
     }
-}
-.row.content-dark,
-.row.content-light {
-    padding: 1.4rem;
-    .form-container {
-        text-align: center;
-        form {
-            max-width: 100%;
-            display: inline-block;
-            border: none;
-            text-align: left;
-            input[type="text"],
-            input[type="email"] {
-                height: auto;
-                padding: 0.7rem!important;
-                width: 20rem!important;
-                max-width: 100%;
-            }
-            select {
-                width: 20rem !important;
-                height: auto;
-                padding: 0.7rem 0.3rem !important;
-            }
-            textarea {
-                padding: 0.7rem!important;
-                width: 40rem;
-                height: 10rem;
-                max-width: 100%;
-            }
+    .row.home-footer {
+        color: #ebebeb;
+        background-color: $nightsky;
+        min-height: 33%;
+    }
+    .right-off-canvas-menu {
+        label.right-off-canvas-toggle {
+            font-size: 1.75rem!important;
+            padding: 0.5rem 0.8rem!important
         }
-    }
-    .team-portrait {
-        float: left;
-        height: 250px;
-        margin-right: 20px;
-    }
-    .icon-bar {
-        padding-top: 1.4rem;
-        max-width: 32rem;
-        background: transparent;
-    }
-    h2 {
-        margin-top: 0;
-        line-height: 1.0;
-    }
-}
-.row.content-dark {
-    background-color: $nightsky;
-    color: #ebebeb;
-    &.header {
-        padding: 0 0 2.8rem;
-        text-align: center;
-    }
-    .slogan {
-        display: block;
-        font-size: 1.4rem;
-        @media #{$medium-up} {
-            font-size: 2.8rem;
-        }
-        padding: 1.4rem 0;
-        font-weight: bold;
-    }
-    p.sub-header {
-        display: inline-block;
-        font-size: 1rem;
-        @media #{$medium-up} {
+        ul.off-canvas-list li a {
             font-size: 1.2rem;
         }
-        max-width: 66%;
+        .contact-link {
+            background-color: scale-color($secondary-color, $lightness: -10%);
+        }
     }
-}
-.row.home-footer {
-    color: #ebebeb;
-    background-color: $nightsky;
-    min-height: 33%;
-}
-.icon-grid label {
-    font-size: 1rem;
-    text-align: center;
-    padding: 1rem;
-    color: $oil;
-    h6 {
-        color: inherit;
-    }
-    i {
-        display: block;
-        font-size: 2rem;
-    }
-    .sub {
-        display: block;
-        font-size: 0.8rem;
-    }
-}
-.contact-link {
-    background-color: scale-color($secondary-color, $lightness: -10%);
-}
-label.right-off-canvas-toggle {
-    font-size: 1.75rem!important;
-    padding: 0.5rem 0.8rem!important
-}
-ul.off-canvas-list li a {
-    font-size: 1.2rem;
-}
-
-main {
-    min-height: 90%;
-    padding-bottom: 1rem;
-}
-footer {
-    min-height: 10%;
 }
 
 // END ========================================================================
