@@ -1052,6 +1052,11 @@ body.rtl .main-title .language-selector {
   float: left;
 }
 
+/* line 147, ../scss/theme/_menus.scss */
+.off-canvas-list.separate {
+  margin-top: 4.8rem;
+}
+
 /* Datatables */
 /* line 27, ../../default/scss/theme/_tables.scss */
 #table-container {

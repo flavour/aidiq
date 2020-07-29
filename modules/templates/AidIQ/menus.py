@@ -29,7 +29,15 @@ class S3MainMenu(default.S3MainMenu):
             # Note: always define right-hand items in reverse order!
             cls.menu_auth(right=True),
             cls.menu_admin(right=True),
-        )
+            )
+
+        # Render the off-canvas menu if on default/index
+        request = current.request
+        if request.controller == "default" and request.function == "index":
+            current.menu.off_canvas = cls.menu_side()
+        else:
+            current.menu.off_canvas = ""
+
         return main_menu
 
     # -------------------------------------------------------------------------
@@ -48,16 +56,20 @@ class S3MainMenu(default.S3MainMenu):
                 login_next = request.get_vars["_next"]
 
             menu_auth = MM("Login", c="default", f="user", m="login",
-                           _id="auth_menu_login",
-                           vars=dict(_next=login_next), **attr)
+                           _id = "auth_menu_login",
+                           vars = {"_next": login_next}, **attr)
         else:
             # Logged-in
-            menu_auth = [
-                        MM("Logout", c="default", f="user", args="logout",
-                           _id="auth_menu_logout", **attr),
-                        MM(auth.user.email, c="default", f="user", args="profile",
-                           translate=False, _id="auth_menu_email", **attr),
-                        ]
+            menu_auth = [MM("Logout", c="default", f="user",
+                            args = ["logout"],
+                            _id = "auth_menu_logout",
+                            **attr),
+                         MM(auth.user.email, c="default", f="user",
+                            args = ["profile"],
+                            translate = False,
+                            _id = "auth_menu_email",
+                            **attr),
+                         ]
 
         return menu_auth
 
@@ -69,10 +81,38 @@ class S3MainMenu(default.S3MainMenu):
         ADMIN = current.session.s3.system_roles.ADMIN
         name_nice = current.deployment_settings.modules["admin"].name_nice
 
-        menu_admin = MM(name_nice, c="admin",
-                        restrict=[ADMIN], **attr)
+        menu_admin = MM(name_nice, c="admin", restrict=[ADMIN], **attr)
 
         return menu_admin
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def menu_side(cls, **attr):
+        """
+            Off-canvas side menu on public pages (website)
+        """
+
+        public = SM(c="default", f="index", link=False)(
+                    SM("Home"),
+                    SM("Services", vars={"page": "services"}),
+                    SM("Projects", vars={"page": "projects"}),
+                    SM("Team", vars={"page": "team"}),
+                    SM("Contact Us", args=["contact"], _class="contact-link"),
+                    )
+
+        internal = SM("Internal Pages", _class="separate")
+        if current.auth.is_logged_in():
+            internal(SM("Projects", c="project", f="project"),
+                     SM("Tasks", c="project", f="task", vars={"mine": "1"}),
+                     SM("Contents", c="cms", f="post"),
+                     SM("Admin", c="admin", f="index"),
+                     SM("Logout", c="default", f="user", args=["logout"]),
+                     )
+        else:
+            internal(SM("Login", c="default", f="user", args=["login"]),
+                     )
+
+        return SM()(public, internal)
 
 # =============================================================================
 class S3OptionsMenu(default.S3OptionsMenu):
