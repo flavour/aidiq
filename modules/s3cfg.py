@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2009-2019 (c) Sahana Software Foundation
+    @copyright: 2009-2020 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -631,6 +631,22 @@ class S3Config(Storage):
         else:
             return None
 
+    def get_auth_add_role(self):
+        """
+            Custom Function to add a Role
+            - called by S3RoleManager UI
+            - useful for automatically adding subsidiary roles
+        """
+        return self.auth.get("add_role", None)
+
+    def get_auth_remove_role(self):
+        """
+            Custom Function to remove a Role
+            - called by S3RoleManager UI
+            - useful for automatically removing subsidiary roles
+        """
+        return self.auth.get("remove_role", None)
+
     def get_auth_masterkey(self):
         """
             Allow authentication with master key (= a single key instead of
@@ -967,6 +983,9 @@ class S3Config(Storage):
             ("editor", T("Editor")),
             ("super", T("Super Editor"))
         ]))
+
+    def get_auth_approve_user_message(self):
+        return self.auth.get("auth_approve_user_message", None)
 
     def get_auth_set_presence_on_login(self):
         return self.auth.get("set_presence_on_login", False)
@@ -4447,6 +4466,14 @@ class S3Config(Storage):
             Whether Human Resources should show Job Titles
         """
         return self.hrm.get("use_job_titles", True)
+
+    def get_hrm_use_medical(self):
+        """
+            Whether Human Resources should use Medical Information tab
+            and what the name of the Tab should be.
+            Set to None to disable
+        """
+        return self.hrm.get("use_medical", None)
 
     def get_hrm_use_national_id(self):
         """

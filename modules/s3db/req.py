@@ -2,7 +2,7 @@
 
 """ Sahana Eden Request Model
 
-    @copyright: 2009-2019 (c) Sahana Software Foundation
+    @copyright: 2009-2020 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -699,6 +699,10 @@ class RequestModel(S3Model):
 
         # Components
         add_components(tablename,
+                       # Tags
+                       req_req_tag = {"alias": "tag",
+                                      "joinby": "req_id",
+                                      },
                        # Requested Items
                        req_req_item = {"joinby": "req_id",
                                        "multiple": multiple_req_items,

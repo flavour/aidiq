@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: (c) 2010-2019 Sahana Software Foundation
+    @copyright: (c) 2010-2020 Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -65,6 +65,7 @@ __all__ = ("single_phone_number_pattern",
 import datetime
 import json
 import re
+from uuid import uuid4
 
 from gluon import current, IS_FLOAT_IN_RANGE, IS_INT_IN_RANGE, IS_IN_SET, \
                   IS_MATCH, IS_NOT_IN_DB
@@ -145,7 +146,7 @@ class IS_JSONS3(Validator):
         self.error_message = error_message
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
         """
             Validator, validates a string and converts it into db format
         """
@@ -215,7 +216,7 @@ class IS_LAT(Validator):
         self.maximum = 90
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
 
         if value is None:
             return value, self.error_message
@@ -286,7 +287,7 @@ class IS_LAT_LON(Validator):
         self.mark_required = True
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
 
         if current.response.s3.bulk:
             # Pointless in imports
@@ -365,7 +366,7 @@ class IS_INT_AMOUNT(IS_INT_IN_RANGE):
                                  )
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
 
         thousands_sep = current.deployment_settings.get_L10n_thousands_separator()
         if thousands_sep:
@@ -449,7 +450,7 @@ class IS_FLOAT_AMOUNT(IS_FLOAT_IN_RANGE):
                                    )
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
 
         thousands_sep = current.deployment_settings.get_L10n_thousands_separator()
         if thousands_sep and isinstance(value, basestring):
@@ -955,7 +956,7 @@ class IS_ONE_OF_EMPTY(Validator):
     #def options(self):
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
 
         # Translate error message if string
         error_message = self.error_message
@@ -1079,7 +1080,7 @@ class IS_NOT_ONE_OF(IS_NOT_IN_DB):
             - INPUT(_type="text", _name="name", requires=IS_NOT_ONE_OF(db, db.table))
     """
 
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
 
         value = str(value)
         if not value.strip():
@@ -1100,7 +1101,8 @@ class IS_NOT_ONE_OF(IS_NOT_IN_DB):
         archived = "deleted" in table
 
         # Does the table use multiple columns as key?
-        record_id = self.record_id
+        if record_id is None:
+            record_id = self.record_id
         keys = list(record_id.keys()) if isinstance(record_id, dict) else None
 
         # Build duplicate query
@@ -1170,7 +1172,7 @@ class IS_LOCATION(Validator):
         self.mark_required = True
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
 
         level = self.level
         if level == "L0":
@@ -1231,7 +1233,7 @@ class IS_PROCESSED_IMAGE(Validator):
         self.image_bounds = image_bounds
         self.upload_path = upload_path
 
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
 
         if current.response.s3.bulk:
             # Pointless in imports
@@ -1261,14 +1263,13 @@ class IS_PROCESSED_IMAGE(Validator):
         # process if, that worked.
         if cropped_image:
             import base64
-            import uuid
 
             metadata, cropped_image = cropped_image.split(",")
             #filename, datatype, enctype = metadata.split(";")
             filename = metadata.split(";", 1)[0]
 
             f = Storage()
-            f.filename = uuid.uuid4().hex + filename
+            f.filename = uuid4().hex + filename
             f.file = BytesIO(base64.b64decode(cropped_image))
 
             return (f, None)
@@ -1308,7 +1309,7 @@ class IS_UTC_OFFSET(Validator):
         self.error_message = error_message
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
 
         if value and isinstance(value, str):
 
@@ -1398,7 +1399,7 @@ class IS_UTC_DATETIME(Validator):
         self.offset_error = offset_error
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
         """
             Validate a value, and convert it into a timezone-naive
             datetime.datetime object as necessary
@@ -1547,7 +1548,7 @@ class IS_UTC_DATE(IS_UTC_DATETIME):
         self.offset_error = offset_error
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
         """
             Validate a value, and convert it into a datetime.date object
             as necessary
@@ -1632,7 +1633,7 @@ class IS_ACL(IS_IN_SET):
         @attention: Incomplete! Does not validate yet, but just convert.
     """
 
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
         """
             Validation
 
@@ -1671,7 +1672,7 @@ class IS_COMBO_BOX(Validator):
         self.error_message = error_message
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
 
         if not value:
             # Do the normal validation
@@ -1722,7 +1723,7 @@ class QUANTITY_INV_ITEM(Validator):
         current.db = db
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
 
         db = current.db
         args = current.request.args
@@ -1865,7 +1866,7 @@ class IS_IN_SET_LAZY(Validator):
         return items
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
 
         if not self.theset:
             self._make_theset()
@@ -1892,39 +1893,13 @@ class IS_IN_SET_LAZY(Validator):
         return (value, None)
 
 # =============================================================================
-class IS_TIME_INTERVAL_WIDGET(Validator):
-    """
-        Simple validator for the S3TimeIntervalWidget, returns
-        the selected time interval in seconds
-    """
-
-    def __init__(self, field):
-        self.field = field
-
-    # -------------------------------------------------------------------------
-    def __call__(self, value):
-
-        try:
-            val = int(value)
-        except ValueError:
-            return (0, None)
-        request = current.request
-        _vars = request.post_vars
-        try:
-            mul = int(_vars[("%s_multiplier" % self.field).replace(".", "_")])
-        except ValueError:
-            return (0, None)
-        seconds = val * mul
-        return (seconds, None)
-
-# =============================================================================
 class IS_PERSON_GENDER(IS_IN_SET):
     """
         Special validator for pr_person.gender and derivates,
         accepts the "O" option even if it's not in the set.
     """
 
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
 
         if value == 4:
             # 4 = other, always accepted even if hidden
@@ -1955,7 +1930,7 @@ class IS_PHONE_NUMBER(Validator):
         self.international = international
         self.error_message = error_message
 
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
         """
             Validation of a value
 
@@ -2017,7 +1992,7 @@ class IS_PHONE_NUMBER_MULTI(Validator):
 
         self.error_message = error_message
 
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
         """
             Validation of a value
 
@@ -2059,7 +2034,7 @@ class IS_DYNAMIC_FIELDNAME(Validator):
         self.error_message = error_message
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
         """
             Validation of a value
 
@@ -2110,7 +2085,7 @@ class IS_DYNAMIC_FIELDTYPE(Validator):
         self.error_message = error_message
 
     # -------------------------------------------------------------------------
-    def __call__(self, value):
+    def __call__(self, value, record_id=None):
         """
             Validation of a value
 

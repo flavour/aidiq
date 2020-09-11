@@ -2,7 +2,7 @@
 
 """ Sahana Eden Human Resources Management
 
-    @copyright: 2011-2019 (c) Sahana Software Foundation
+    @copyright: 2011-2020 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -63,6 +63,7 @@ __all__ = ("HRModel",
            "hrm_training_event_controller",
            "hrm_xls_list_fields",
            "hrm_CV",
+           #"hrm_Medical",
            "hrm_Record",
            "hrm_configure_pr_group_membership",
            "hrm_human_resource_onaccept",
@@ -1744,7 +1745,10 @@ class HRInsuranceModel(S3Model):
         #
         tablename = "hrm_insurance"
         self.define_table(tablename,
+                          # The original use (IFRC) used human_resource_id instead of the usual person_id in order to put it into the HR form
                           self.hrm_human_resource_id(),
+                          # RMSAmericas uses person_id in order to have on a common Medical Information tab with Physical Description fields
+                          #self.pr_person_id(),
                           Field("type",
                                 label = T("Type"),
                                 represent = insurance_type_represent,
@@ -1765,6 +1769,12 @@ class HRInsuranceModel(S3Model):
                                 label = T("Provider"),
                                 requires = IS_LENGTH(255),
                                 ),
+                          Field("phone",
+                                label = T("Emergency Number"),
+                                requires = IS_EMPTY_OR(
+                                            s3_phone_requires,
+                                            ),
+                                ),
                           #Field("beneficiary",
                           #      label = T("Beneficiary"),
                           #      ),
@@ -1772,7 +1782,10 @@ class HRInsuranceModel(S3Model):
                           *s3_meta_fields())
 
         self.configure(tablename,
+                       #context = {"person": "human_resource_id$person_id",
+                       #           },
                        deduplicate = S3Duplicate(primary = ("human_resource_id",
+                                                            #"person_id",
                                                             "type",
                                                             ),
                                                  ),
@@ -1837,6 +1850,7 @@ class HRContractModel(S3Model):
 class HRJobModel(S3Model):
     """
         Unused
+        @ToDo: If bringing back into use then Availability better as Person component not HR
     """
 
     names = ("hrm_position",
@@ -5343,6 +5357,7 @@ class HRDelegationModel(S3Model):
 
     names = ("hrm_delegation",
              "hrm_delegation_status_opts",
+             "hrm_delegation_message",
              )
 
     def model(self):
@@ -5388,6 +5403,7 @@ class HRDelegationModel(S3Model):
             # Final statuses
             delegation_status += (("CANC", T("Cancelled")),
                                   ("IMPL", T("Implemented")),
+                                  ("NVLD", T("Invalid")),
                                   )
 
         # ---------------------------------------------------------------------
@@ -5441,6 +5457,12 @@ class HRDelegationModel(S3Model):
                      s3_comments(),
                      *s3_meta_fields())
 
+        # Components
+        self.add_components(tablename,
+                            hrm_delegation_message = "delegation_id",
+                            hrm_delegation_note = "delegation_id",
+                            )
+
         # CRUD Strings
         crud_strings[tablename] = Storage(
             label_create = T("Create Delegation"),
@@ -5453,6 +5475,115 @@ class HRDelegationModel(S3Model):
             msg_record_modified = T("Delegation updated"),
             msg_record_deleted = T("Delegation deleted"),
             msg_list_empty = T("No Delegations currently registered"),
+            )
+
+        # ---------------------------------------------------------------------
+        # Messages exchanged in connection with a delegation
+        #
+        message_status = {"SENT": T("Sent"),
+                          "FAILED": T("Failed"),
+                          }
+
+        tablename = "hrm_delegation_message"
+        define_table(tablename,
+                     Field("delegation_id", "reference hrm_delegation",
+                           ondelete = "CASCADE",
+                           readable = False,
+                           writable = False,
+                           ),
+                     s3_date(default="now"),
+                     Field("recipient",
+                           label = T("Recipient"),
+                           ),
+                     Field("subject",
+                           label = T("Subject"),
+                           ),
+                     Field("message", "text",
+                           label = T("Message"),
+                           represent = s3_text_represent,
+                           ),
+                     Field("status",
+                           default = "SENT",
+                           label = T("Status"),
+                           requires = IS_IN_SET(message_status,
+                                                zero = None,
+                                                ),
+                           represent = S3Represent(options=message_status),
+                           writable = False,
+                           ),
+                     s3_comments(),
+                     *s3_meta_fields())
+
+        # List fields
+        list_fields = ["date",
+                       "recipient",
+                       "subject",
+                       "message",
+                       "status",
+                       ]
+
+        # Table configuration
+        self.configure(tablename,
+                       list_fields = list_fields,
+                       insertable = False,
+                       deletable = False,
+                       editable = False,
+                       )
+
+        # CRUD Strings
+        crud_strings[tablename] = Storage(
+            label_create = T("Create Message"),
+            title_display = T("Message Details"),
+            title_list = T("Messages"),
+            title_update = T("Edit Message"),
+            label_list_button = T("List Messages"),
+            label_delete_button = T("Delete Message"),
+            msg_record_created = T("Message created"),
+            msg_record_modified = T("Message updated"),
+            msg_record_deleted = T("Message deleted"),
+            msg_list_empty = T("No Messages currently registered"),
+            )
+
+        # ---------------------------------------------------------------------
+        # Simple notes journal for delegations
+        #
+        tablename = "hrm_delegation_note"
+        define_table(tablename,
+                     Field("delegation_id", "reference hrm_delegation",
+                           ondelete = "CASCADE",
+                           readable = False,
+                           writable = False,
+                           ),
+                     s3_date(default="now"),
+                     Field("note", "text",
+                           label = T("Note"),
+                           represent = s3_text_represent,
+                           ),
+                     *s3_meta_fields())
+
+        # List fields
+        list_fields = ["date",
+                       (T("Author"), "modified_by"),
+                       "note",
+                       ]
+
+        # Table configuration
+        self.configure(tablename,
+                       list_fields = list_fields,
+                       )
+
+        # CRUD Strings
+        crud_strings[tablename] = Storage(
+            label_create = T("Create Note"),
+            title_display = T("Note Details"),
+            title_list = T("Notes"),
+            title_update = T("Edit Note"),
+            label_list_button = T("List Notes"),
+            label_delete_button = T("Delete Note"),
+            msg_record_created = T("Note added"),
+            msg_record_modified = T("Note updated"),
+            msg_record_deleted = T("Note deleted"),
+            msg_list_empty = T("No Notes currently registered"),
             )
 
         # ---------------------------------------------------------------------
@@ -7182,6 +7313,10 @@ def hrm_rheader(r, tabs=None, profile=False):
         else:
             unavailability_tab = None
 
+        medical_tab = settings.get_hrm_use_medical() or None
+        if medical_tab:
+            medical_tab = (T(medical_tab), "medical")
+
         description_tab = settings.get_hrm_use_description() or None
         if description_tab:
             description_tab = (T(description_tab), "physical_description")
@@ -7256,6 +7391,7 @@ def hrm_rheader(r, tabs=None, profile=False):
                     (T("User Account"), "user"),
                     hr_tab,
                     id_tab,
+                    medical_tab,
                     description_tab,
                     address_tab,
                     ]
@@ -7335,6 +7471,7 @@ def hrm_rheader(r, tabs=None, profile=False):
                     hr_tab,
                     duplicates_tab,
                     id_tab,
+                    medical_tab,
                     description_tab,
                     address_tab,
                     ]
@@ -8027,7 +8164,7 @@ def hrm_human_resource_controller(extra_filter = None):
                                                        ptable.middle_name,
                                                        ptable.last_name,
                                                        ptable.pe_id,
-                                                       limitby=(0, 1)
+                                                       limitby = (0, 1)
                                                        ).first()
             name = s3_fullname(person)
             pe_id = person.pe_id
@@ -8453,6 +8590,11 @@ def hrm_person_controller(**attr):
     set_method("pr", "person",
                method = "cv",
                action = hrm_CV)
+
+    # Custom Method for Medical
+    set_method("pr", "person",
+               method = "medical",
+               action = hrm_Medical)
 
     # Custom Method for HR Record
     set_method("pr", "person",
@@ -9432,6 +9574,103 @@ class hrm_CV(S3Method):
             r.error(405, current.ERROR.BAD_METHOD)
 
 # =============================================================================
+class hrm_Medical(S3Method):
+    """
+        HR Medical Tab, custom profile page with multiple elements:
+            * Physical Description
+            * Insurance
+        NB It is expected to create S3SQLCustomForm for these in
+            customise_hrm_insurance_resource
+            customise_pr_physical_description_resource
+    """
+
+    # -------------------------------------------------------------------------
+    def apply_method(self, r, **attr):
+        """
+            Entry point for REST API
+
+            @param r: the S3Request
+            @param attr: controller arguments
+        """
+
+        if r.name != "person" or not r.id or r.component:
+            r.error(405, current.ERROR.BAD_METHOD)
+        representation = r.representation
+        if representation not in ("html", "aadata"):
+            r.error(405, current.ERROR.BAD_METHOD)
+
+        T = current.T
+        s3db = current.s3db
+        response = current.response
+        s3 = response.s3
+        crud_strings = s3.crud_strings
+        tablename = r.tablename
+
+        # Redefine as non-multiple
+        s3db.add_components("hrm_human_resource",
+                            hrm_insurance = {"joinby": "human_resource_id",
+                                             "multiple": False,
+                                             },
+                            )
+
+        r.customise_resource("hrm_insurance")
+        r.customise_resource("pr_physical_description")
+
+        profile_widgets = [
+            {"label": "",
+             "type": "form",
+             #"tablename": "pr_physical_description",
+             #"context": "person",
+             #"filter": FS("pe_id") == r.record.pe_id,
+             "tablename": "pr_person",
+             "context": ("id", "id"),
+             "sqlform": S3SQLCustomForm("physical_description.blood_type",
+                                        "physical_description.medical_conditions",
+                                        "physical_description.medication",
+                                        "physical_description.diseases",
+                                        "physical_description.allergic",
+                                        "physical_description.allergies",
+                                        ),
+             },
+            {"label": T("Medical Coverage"),
+             "type": "form",
+             "tablename": "hrm_human_resource",
+             "context": "person",
+             "sqlform": S3SQLCustomForm("insurance.insurance_number",
+                                        "insurance.phone",
+                                        "insurance.insurer",
+                                        ),
+             },
+            ]
+
+        if representation == "html":
+            # Maintain normal rheader for consistency
+            title = crud_strings["pr_person"].title_display
+            profile_header = TAG[""](H2(title),
+                                     DIV(hrm_rheader(r),
+                                         _id = "rheader",
+                                         ))
+            s3.jquery_ready.append('''S3.showHidden('%s',%s,'%s')''' % \
+                ("allergic", json.dumps(["allergies"], separators=SEPARATORS), "pr_person_sub_physical_description"))
+
+        else:
+            profile_header = None
+
+        s3db.configure(tablename,
+                       profile_cols = 1,
+                       profile_header = profile_header,
+                       profile_widgets = profile_widgets,
+                       )
+
+        profile = S3Profile()
+        profile.tablename = tablename
+        profile.request = r
+        output = profile.profile(r, **attr)
+        if representation == "html":
+            output["title"] = response.title = title
+        return output
+
+# =============================================================================
 class hrm_Record(S3Method):
     """
         HR Record, custom profile page with multiple DataTables:
@@ -9542,14 +9781,14 @@ class hrm_Record(S3Method):
         if VOL:
             vol_experience = settings.get_hrm_vol_experience()
             if vol_experience in ("programme", "both"):
-                tablename = "hrm_programme_hours"
+                ctablename = "hrm_programme_hours"
                 # Exclude records which are just to link to Programme
                 filter_ = (FS("hours") != None)
                 list_fields = ["id",
                                "date",
                                ]
                 phtable = s3db.hrm_programme_hours
-                r.customise_resource(tablename)
+                r.customise_resource(ctablename)
                 if phtable.programme_id.readable:
                     list_fields.append("programme_id")
                     # Exclude Training Hours
@@ -9562,12 +9801,12 @@ class hrm_Record(S3Method):
                 if phtable.job_title_id.readable:
                     list_fields.append("job_title_id")
                 list_fields.append("hours")
-                crud_strings_ = crud_strings[tablename]
+                crud_strings_ = crud_strings[ctablename]
                 hours_widget = {"label": crud_strings_["title_list"],
                                 "label_create": crud_strings_["label_create"],
                                 "type": "datatable",
                                 "actions": dt_row_actions("hours"),
-                                "tablename": tablename,
+                                "tablename": ctablename,
                                 "context": "person",
                                 "filter": filter_,
                                 "list_fields": list_fields,
@@ -9742,7 +9981,8 @@ class hrm_Record(S3Method):
             title = crud_strings["pr_person"].title_display
             profile_header = TAG[""](H2(title),
                                      DIV(hrm_rheader(r),
-                                     _id="rheader"))
+                                         _id = "rheader",
+                                         ))
         else:
             profile_header = None
 

@@ -205,15 +205,15 @@ class S3Request(object):
             approved, unapproved = True, False
 
         self.resource = S3Resource(tablename,
-                                   id=self.id,
-                                   filter=_filter,
-                                   vars=get_vars,
-                                   components=components,
-                                   approved=approved,
-                                   unapproved=unapproved,
-                                   include_deleted=include_deleted,
-                                   context=True,
-                                   filter_component=component_name,
+                                   id = self.id,
+                                   filter = _filter,
+                                   vars = get_vars,
+                                   components = components,
+                                   approved = approved,
+                                   unapproved = unapproved,
+                                   include_deleted = include_deleted,
+                                   context = True,
+                                   filter_component = component_name,
                                    )
 
         self.tablename = self.resource.tablename
@@ -756,7 +756,10 @@ class S3Request(object):
                     self.id = resource.get_id()
                     self.uid = resource.get_uid()
                 else:
-                    self.error(404, current.ERROR.BAD_RECORD)
+                    # Record not found => go to list
+                    self.error(404, current.ERROR.BAD_RECORD,
+                               next = self.url(id="", method=""),
+                               )
                 method = "read"
             else:
                 method = "list"
@@ -1066,9 +1069,9 @@ class S3Request(object):
 
         # Transformation mode?
         if "xsltmode" in get_vars:
-            args = dict(xsltmode=get_vars["xsltmode"])
+            args = {"xsltmode": get_vars["xsltmode"]}
         else:
-            args = dict()
+            args = {}
         # These 3 options are called by gis.show_map() & read by the
         # GeoRSS Import stylesheet to populate the gis_cache table
         # Source URL: For GeoRSS/KML Feed caching
@@ -1801,7 +1804,7 @@ class S3Method(object):
             @return: output object to send to the view
         """
 
-        output = dict()
+        output = {}
         return output
 
     # -------------------------------------------------------------------------

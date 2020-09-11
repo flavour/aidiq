@@ -2,7 +2,7 @@
 
 """ Sahana Eden Person Registry Model
 
-    @copyright: 2009-2019 (c) Sahana Software Foundation
+    @copyright: 2009-2020 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -1123,6 +1123,10 @@ class PRPersonModel(S3Model):
                                               },
                        # Disciplinary Record
                        hrm_disciplinary_action = "person_id",
+                       # Insurance
+                       #hrm_insurance = {"joinby": "person_id",
+                       #                 "multiple": False,
+                       #                 },
                        # Salary Information
                        hrm_salary = "person_id",
                        # Delegations
@@ -3620,6 +3624,7 @@ class PRAddressModel(S3Model):
     """ Addresses for Person Entities: Persons and Organisations """
 
     names = ("pr_address",
+             "pr_address_anonymise",
              "pr_address_type_opts"
              )
 
@@ -3678,6 +3683,7 @@ class PRAddressModel(S3Model):
             title_list = T("Addresses"),
             title_update = T("Edit Address"),
             label_list_button = T("List Addresses"),
+            label_delete_button = T("Delete Address"),
             msg_record_created = T("Address added"),
             msg_record_modified = T("Address updated"),
             msg_record_deleted = T("Address deleted"),
@@ -3718,7 +3724,58 @@ class PRAddressModel(S3Model):
         # Pass names back to global scope (s3.*)
         #
         return {"pr_address_type_opts": pr_address_type_opts,
+                "pr_address_anonymise": self.pr_address_anonymise,
                 }
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def pr_address_anonymise(record_id, field, value):
+        """
+            Helper to anonymize a pr_address location; removes street and
+            postcode details, but retains Lx ancestry for statistics
+
+            @param record_id: the pr_address record ID
+            @param field: the location_id Field
+            @param value: the location_id
+
+            @return: the location_id
+
+            Use like this in anonymise rules:
+            ("pr_address", {"key": "pe_id",
+                            "match": "pe_id",
+                            "fields": {"location_id": s3db.pr_address_anonymise,
+                                       "comments": "remove",
+                                       },
+                            }),
+        """
+
+        db = current.db
+        s3db = current.s3db
+
+        # Get the location
+        if value:
+            ltable = s3db.gis_location
+            row = db(ltable.id == value).select(ltable.id,
+                                                ltable.level,
+                                                limitby = (0, 1),
+                                                ).first()
+            if not row.level:
+                # Specific location => remove address details
+                data = {"addr_street": None,
+                        "addr_postcode": None,
+                        "gis_feature_type": 0,
+                        "lat": None,
+                        "lon": None,
+                        "wkt": None,
+                        }
+                # Doesn't work - PyDAL doesn't detect the None value:
+                #if "the_geom" in ltable.fields:
+                #    data["the_geom"] = None
+                row.update_record(**data)
+                if "the_geom" in ltable.fields:
+                    db.executesql("UPDATE gis_location SET the_geom=NULL WHERE id=%s" % row.id)
+
+        return value
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -4924,6 +4981,14 @@ class PRAvailabilityModel(S3Model):
                      Field("hours_per_week", "integer",
                            label = T("Hours per Week"),
                            requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, 85)),
+                           represent = lambda v: str(v) if v is not None \
+                                                 else current.messages["NONE"],
+                           readable = False,
+                           writable = False,
+                           ),
+                     Field("schedule", "text",
+                           label = T("Availability Schedule"),
+                           widget = s3_comments_widget,
                            readable = False,
                            writable = False,
                            ),
@@ -5057,6 +5122,7 @@ class PRDescriptionModel(S3Model):
 
         UNKNOWN_OPT = current.messages.UNKNOWN_OPT
 
+        #configure = self.configure
         crud_strings = current.response.s3.crud_strings
         define_table = self.define_table
         super_link = self.super_link
@@ -5392,6 +5458,14 @@ class PRDescriptionModel(S3Model):
                            label = T("Medical Conditions"),
                            ),
 
+                     Field("medication", "text",
+                           label = T("Medication"),
+                           ),
+
+                     Field("diseases", "text",
+                           label = T("Diseases"),
+                           ),
+
                      Field("allergic", "boolean",
                            label = T("Allergic"),
                            represent = s3_yes_no_represent,
@@ -5407,6 +5481,12 @@ class PRDescriptionModel(S3Model):
 
                      s3_comments(),
                      *s3_meta_fields())
+
+            #self.configure(tablename,
+            #               context = {"person": "pe_id",
+            #                          },
+            #               )
+                       
 
         # ---------------------------------------------------------------------
         # Return model-global names to response.s3
@@ -7525,7 +7605,8 @@ def pr_image_library_represent(image_name, format=None, size=None):
         query = query & (table.width == size[0]) & \
                         (table.height == size[1])
     image = current.db(query).select(table.new_name,
-                                     limitby=(0, 1)).first()
+                                     limitby = (0, 1)
+                                     ).first()
     if image:
         return image.new_name
     else:
@@ -7543,7 +7624,11 @@ def pr_url_represent(url):
     image = pr_image_library_represent(image, size=size)
     url_small = URL(c="default", f="download", args=image)
 
-    return DIV(A(IMG(_src=url_small, _height=60), _href=url))
+    return DIV(A(IMG(_src = url_small,
+                     _height = 60,
+                     ),
+                 _href = url,
+                 ))
 
 # =============================================================================
 def pr_person_comment(title=None, comment=None, caller=None, child=None):
@@ -7595,9 +7680,12 @@ def pr_rheader(r, tabs=None):
                 rheader = DIV(
                     A(s3_avatar_represent(record_id,
                                           "pr_person",
-                                          _class="rheader-avatar"),
-                      _href=URL(f="person", args=[record_id, "image"],
-                                vars = r.get_vars),
+                                          _class = "rheader-avatar",
+                                          ),
+                      _href = URL(f="person",
+                                  args = [record_id, "image"],
+                                  vars = r.get_vars,
+                                  ),
                       ),
                     TABLE(
                         TR(TH("%s: " % T("Name")),
@@ -7854,7 +7942,9 @@ class pr_AssignMethod(S3Method):
                     query = ~(FS("id").belongs(selected))
                     presource = s3db.resource("pr_person",
                                               alias = self.component,
-                                              filter=query, vars=filters)
+                                              filter = query,
+                                              vars = filters
+                                              )
                     rows = presource.select(["id"], as_rows=True)
                     selected = [str(row.id) for row in rows]
 
@@ -8212,13 +8302,13 @@ class pr_Contacts(S3Method):
                        )
         contacts = self.contacts(r,
                                  pe_id,
-                                 allow_create=allow_create,
-                                 method=r.method,
+                                 allow_create = allow_create,
+                                 method = r.method,
                                  )
         if contacts:
             contents.append(contacts)
         emergency = self.emergency(pe_id,
-                                   allow_create=allow_create,
+                                   allow_create = allow_create,
                                    )
         if emergency:
             contents.append(emergency)
@@ -8228,10 +8318,12 @@ class pr_Contacts(S3Method):
         s3 = response.s3
         if s3.debug:
             s3.scripts.append(URL(c="static", f="scripts",
-                                  args=["S3", "s3.ui.contacts.js"]))
+                                  args = ["S3", "s3.ui.contacts.js"],
+                                  ))
         else:
             s3.scripts.append(URL(c="static", f="scripts",
-                                  args=["S3", "s3.ui.contacts.min.js"]))
+                                  args = ["S3", "s3.ui.contacts.min.js"],
+                                  ))
 
         # Widget options
         T = current.T
@@ -8244,7 +8336,8 @@ class pr_Contacts(S3Method):
         widget_opts = {"controller": r.controller,
                        "personID": record.id,
                        "access": access,
-                       "cancelButtonText": str(T("Cancel")),
+                       "cancelButtonText": s3_str(T("Cancel")),
+                       "placeholderText": s3_str(T("Click to edit")),
                        }
 
         # Apply widget
@@ -8257,7 +8350,9 @@ class pr_Contacts(S3Method):
 
         title = self.crud_string(r.tablename, "title_display")
 
-        return {"contents": contents, "title": title}
+        return {"contents": contents,
+                "title": title,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -8268,17 +8363,23 @@ class pr_Contacts(S3Method):
         has_permission = current.auth.s3_has_permission
 
         if has_permission("update", table, record_id=record_id):
-            edit_btn = A(T("Edit"), _class="edit-btn action-btn fright")
+            edit_btn = A(T("Edit"),
+                         _class = "edit-btn action-btn fright",
+                         )
         else:
             edit_btn = SPAN()
         if has_permission("delete", table, record_id=record_id):
-            delete_btn = A(T("Delete"), _class="delete-btn-ajax fright")
+            delete_btn = A(T("Delete"),
+                           _class = "delete-btn-ajax fright",
+                           )
         else:
             delete_btn = SPAN()
         return DIV(delete_btn,
                    edit_btn,
-                   DIV(_class="inline-throbber", _style="display:none"),
-                   _class="pr-contact-actions medium-3 columns",
+                   DIV(_class = "inline-throbber",
+                       _style = "display:none",
+                       ),
+                   _class = "pr-contact-actions medium-3 columns",
                    )
 
     # -------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 """ Framework for filtered REST requests
 
-    @copyright: 2013-2019 (c) Sahana Software Foundation
+    @copyright: 2013-2020 (c) Sahana Software Foundation
     @license: MIT
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
@@ -1814,7 +1814,7 @@ class S3LocationFilter(S3FilterWidget):
 
             # Add to result rows
             if lx:
-                rows = rows & lx if rows else lx
+                rows = (rows | lx) if rows else lx
 
             # Pick subset for parent lookup
             if lx and location_ids:
@@ -2613,6 +2613,13 @@ class S3OptionsFilter(S3FilterWidget):
                         #        to the resource => not redundant!
                         query &= (key_field == field) & \
                                  current.auth.s3_accessible_query("read", ktable)
+
+                        # Exclude deleted keys
+                        # => there should be no references to deleted keys, so
+                        #    they are already excluded by (key_field == field),
+                        #    hence this is redundant:
+                        #if "deleted" in ktable.fields:
+                        #    query &= (ktable.deleted == False)
 
                         # If the filter field is in a joined table itself,
                         # then we also need the join for that table (this
@@ -3870,7 +3877,7 @@ class S3Filter(S3Method):
         else:
             pe_id = None
         if not pe_id:
-            r.unauthorized()
+            r.unauthorised()
 
         # Build query
         query = (table.deleted != True) & \

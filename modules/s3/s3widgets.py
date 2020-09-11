@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: 2009-2019 (c) Sahana Software Foundation
+    @copyright: 2009-2020 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -89,6 +89,7 @@ import datetime
 import json
 import os
 import re
+from uuid import uuid4
 
 try:
     from dateutil.relativedelta import relativedelta
@@ -1052,11 +1053,12 @@ class S3AddPersonWidget(FormWidget):
         current.response.s3.js_global.append("\n".join(strings))
 
     # -------------------------------------------------------------------------
-    def validate(self, value):
+    def validate(self, value, record_id=None):
         """
             Validate main input value
 
             @param value: the main input value (JSON)
+            @param record_id: the record ID (unused, for API compatibility)
 
             @return: tuple (id, error), where "id" is the record ID of the
                      selected or newly created record
@@ -1389,7 +1391,7 @@ class S3AgeWidget(FormWidget):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def date_as_age(value, row=None):
+    def date_as_age(value, record_id=None):
         """
             Convert a date value into age in years, can be used as
             representation method
@@ -3792,8 +3794,7 @@ i18n.upload_image='%s' ''' % (T("Please select a valid image!"),
         append(display_div)
         # Prevent multiple widgets on the same page from interfering with each
         # other.
-        import uuid
-        uid = "cropwidget-%s" % uuid.uuid4().hex
+        uid = "cropwidget-%s" % uuid4().hex
         for element in elements:
             element.attributes["_data-uid"] = uid
 
@@ -4366,7 +4367,7 @@ class S3Selector(FormWidget):
         return values, None
 
     # -------------------------------------------------------------------------
-    def postprocess(self, value):
+    def postprocess(self, value, record_id=None):
         """
             Post-process to create or update records. Called during POST
             before validation of the outer form.
@@ -4374,6 +4375,7 @@ class S3Selector(FormWidget):
             To be implemented in subclass.
 
             @param value: the value from the form (as JSON)
+            @param record_id: the record ID (unused, for API compatibility)
             @return: tuple (record_id, error)
         """
 
@@ -6967,11 +6969,12 @@ class S3CascadeSelectWidget(FormWidget):
             jquery_ready.append(script)
 
     # -------------------------------------------------------------------------
-    def parse(self, value):
+    def parse(self, value, record_id=None):
         """
             Value parser for the hidden input field of the widget
 
             @param value: the value received from the client, JSON string
+            @param record_id: the record ID (unused, for API compatibility)
 
             @return: a list (if multiple=True) or the value
         """
@@ -7223,11 +7226,12 @@ class S3HierarchyWidget(FormWidget):
         return widget
 
     # -------------------------------------------------------------------------
-    def parse(self, value):
+    def parse(self, value, record_id=None):
         """
             Value parser for the hidden input field of the widget
 
             @param value: the value received from the client, JSON string
+            @param record_id: the record ID (unused, for API compatibility)
 
             @return: a list (if multiple=True) or the value
         """
@@ -7887,10 +7891,15 @@ class S3TimeIntervalWidget(FormWidget):
                    ("seconds", 1))
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def widget(field, value, **attributes):
+    @classmethod
+    def widget(cls, field, value, **attributes):
+        """
+            Widget builder
 
-        multipliers = S3TimeIntervalWidget.multipliers
+            @param field: the Field
+            @param value: the current value
+            @param attributes: DOM attributes for the widget
+        """
 
         if value is None:
             value = 0
@@ -7900,53 +7909,104 @@ class S3TimeIntervalWidget(FormWidget):
             except ValueError:
                 value = 0
 
-        if value == 0:
-            multiplier = 1
-        else:
-            for m in multipliers:
-                multiplier = m[1]
-                if int(value) % multiplier == 0:
-                    break
+        # Value input
+        multiplier = cls.get_multiplier(value)
+        inp = IntegerWidget.widget(field, value // multiplier[1],
+                                   requires = cls.validate(field),
+                                   )
 
+        # Multiplier selector
+        multipliers = S3TimeIntervalWidget.multipliers
         options = []
-        for i in xrange(1, len(multipliers) + 1):
+        for i in range(1, len(multipliers) + 1):
             title, opt = multipliers[-i]
-            if opt == multiplier:
+            if opt == multiplier[1]:
                 option = OPTION(title, _value=opt, _selected="selected")
             else:
                 option = OPTION(title, _value=opt)
             options.append(option)
 
-        val = value / multiplier
-        inp = DIV(INPUT(value = val,
-                        requires = field.requires,
-                        _id = ("%s" % field).replace(".", "_"),
-                        _name = field.name),
-                  SELECT(options,
-                         _name=("%s_multiplier" % field).replace(".", "_")))
-        return inp
+        # Widget
+        return DIV(inp,
+                   SELECT(options,
+                          _name = ("%s_multiplier" % field).replace(".", "_"),
+                          ),
+                   )
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def represent(value):
+    def validate(field):
+        """
+            Return an internal validator (converter) for the numeric input
 
-        multipliers = S3TimeIntervalWidget.multipliers
+            @param field: the Field
+
+            @returns: a validator function
+        """
+
+        def requires(value, record_id=None):
+
+            if value is None or value == "":
+                return value, None
+
+            try:
+                val = int(value)
+            except ValueError:
+                return (value, T("Enter an integer"))
+
+            post_vars = current.request.post_vars
+            try:
+                mul = int(post_vars[("%s_multiplier" % field).replace(".", "_")])
+            except ValueError:
+                return (value, T("Invalid time unit"))
+
+            return val * mul, None
+
+        return requires
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def represent(cls, value):
+        """
+            Represent the field value in a convenient unit of time
+
+            @param value: the field value (seconds)
+
+            @returns: string representation of the field value
+        """
 
         try:
             val = int(value)
-        except ValueError:
+        except (ValueError, TypeError):
             val = 0
 
-        if val == 0:
-            multiplier = multipliers[-1]
-        else:
+        multiplier = cls.get_multiplier(val)
+
+        return "%s %s" % (val // multiplier[1],
+                          current.T(multiplier[0]),
+                          )
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def get_multiplier(cls, value):
+        """
+            Get a convenient multiplier (=unit of time) for a value in seconds
+
+            @param value: the value in seconds
+
+            @returns: a tuple (multiplier, multiplier-name)
+        """
+
+        multipliers = cls.multipliers
+
+        multiplier = multipliers[-1] # Seconds
+        if value >= 60:
             for m in multipliers:
-                if val % m[1] == 0:
+                if value % m[1] == 0:
                     multiplier = m
                     break
 
-        val = val / multiplier[1]
-        return "%s %s" % (val, current.T(multiplier[0]))
+        return multiplier
 
 # =============================================================================
 class S3UploadWidget(UploadWidget):

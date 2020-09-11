@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 from gluon import current
-from s3 import *
-from s3layouts import *
+from s3 import IS_ISO639_2_LANGUAGE_CODE
+from s3layouts import MM, M
 try:
     from .layouts import *
 except ImportError:
@@ -38,9 +38,18 @@ class S3MainMenu(default.S3MainMenu):
 
         return [MM("Volunteers", c=("vol", "hrm"), f="person")(
                     MM("List", c="vol", f="person"),
-                    MM("Deployments", c="hrm", f="delegation"),
+                    MM("Requests", c="hrm", f="delegation",
+                       vars = {"workflow": "p"},
+                       restrict = "COORDINATOR",
+                       ),
+                    MM("Deployments", c="hrm", f="delegation",
+                       ),
                     ),
                 MM("Organizations", c="org", f="organisation"),
+                MM("Volunteer Registration", c="default", f="index",
+                   args=["register"],
+                   check = lambda i: not current.auth.s3_logged_in(),
+                   ),
                 ]
 
     # -------------------------------------------------------------------------
@@ -53,7 +62,7 @@ class S3MainMenu(default.S3MainMenu):
 
     # -------------------------------------------------------------------------
     @classmethod
-    def menu_lang(cls):
+    def menu_lang(cls, **attr):
         """ Language Selector """
 
         languages = current.deployment_settings.get_L10n_languages()
@@ -139,6 +148,8 @@ class S3MainMenu(default.S3MainMenu):
         menu_about = MA(c="default")(
             MA("Help", f="help"),
             MA("Contact", f="contact"),
+            MA("Privacy", f="index", args=["privacy"]),
+            MA("Legal Notice", f="index", args=["legal"]),
             MA("Version", f="about", restrict = (ADMIN, "COORDINATOR")),
         )
         return menu_about
@@ -146,6 +157,38 @@ class S3MainMenu(default.S3MainMenu):
 # =============================================================================
 class S3OptionsMenu(default.S3OptionsMenu):
     """ Custom Controller Menus """
+
+    # -------------------------------------------------------------------------
+    def admin(self):
+        """ ADMIN menu """
+
+        if not current.auth.s3_has_role("ADMIN"):
+            # OrgAdmin: No Side-menu
+            return None
+
+        settings = current.deployment_settings
+        consent_tracking = lambda i: settings.get_auth_consent_tracking()
+
+        # NB: Do not specify a controller for the main menu to allow
+        #     re-use of this menu by other controllers
+        return M()(
+                    M("User Management", c="admin", f="user")(
+                        M("Create User", m="create"),
+                        M("List All Users"),
+                        M("Import Users", m="import"),
+                        M("List All Roles", f="role"),
+                    ),
+                    M("Consent Tracking", c="admin", link=False, check=consent_tracking)(
+                        M("Processing Types", f="processing_type"),
+                        M("Consent Options", f="consent_option"),
+                        ),
+                    M("CMS", c="cms", f="post"),
+                    M("Database", c="appadmin", f="index")(
+                        M("Raw Database access", c="appadmin", f="index")
+                    ),
+                    M("Scheduler", c="admin", f="task"),
+                    M("Error Tickets", c="admin", f="errors"),
+                )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -191,7 +234,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
         pending_label = current.T("Pending Requests")
         if current.auth.s3_has_role("COORDINATOR"):
             from s3 import FS
-            query = (FS("date") >= current.request.utcnow) & \
+            query = (FS("end_date") >= current.request.utcnow) & \
                     (FS("status") == "REQ")
             resource = current.s3db.resource("hrm_delegation",
                                              filter = query,
@@ -204,7 +247,11 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     M("Volunteers", c="vol", f="person")(
                         M("Create", m="create", t="pr_person"),
                         M("Currently Deployed",
-                          vars={"deployed_now": 1},
+                          vars = {"deployed_now": 1},
+                          ),
+                        M("Archive",
+                          vars = {"active": "0"},
+                          restrict = "COORDINATOR",
                           ),
                         ),
                     M("Deployments", c="hrm", f="delegation")(
@@ -212,15 +259,24 @@ class S3OptionsMenu(default.S3OptionsMenu):
                           vars = {"workflow": "p"},
                           translate = False,
                           ),
-                        M("Processed Requests", vars={"workflow": "d"},
+                        M("Processed Requests",
+                          vars = {"workflow": "d"},
                           ),
-                        M("Finalized", vars = {"workflow": "o"}),
+                        M("Archive",
+                          vars = {"workflow": "o"},
+                          ),
                         M("Organizer", m="organize", restrict="HRMANAGER"),
+                        ),
+                    M("Statistics", link=False)(
+                        M("Deployments", c="hrm", f="delegation", m="report"),
+                        M("Volunteers", c="vol", f="person", m="report",
+                          restrict = "COORDINATOR",
+                          ),
                         ),
                     M("Administration", link=False, restrict="ADMIN")(
                         M("Occupation Types", c="pr", f="occupation_type"),
-                        M("Skill Types", c="hrm", f="skill"),
-                        M("Competency Levels", c="hrm", f="competency_rating"),
+                        M("Skills / Resources", c="hrm", f="skill"),
+                        #M("Competency Levels", c="hrm", f="competency_rating"),
                         )
                     )
 

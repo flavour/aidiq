@@ -47,7 +47,7 @@ from uuid import uuid4
 
 #from gluon import *
 from gluon import current, redirect, CRYPT, DAL, HTTP, SQLFORM, URL, \
-                  A, DIV, INPUT, LABEL, OPTGROUP, OPTION, SELECT, SPAN, XML, \
+                  A, BUTTON, DIV, INPUT, LABEL, OPTGROUP, OPTION, SELECT, SPAN, XML, \
                   IS_EMAIL, IS_EMPTY_OR, IS_EXPR, IS_IN_DB, IS_IN_SET, \
                   IS_LOWER, IS_NOT_EMPTY, IS_NOT_IN_DB
 
@@ -100,6 +100,7 @@ class AuthS3(Auth):
             - s3_link_to_human_resource
             - s3_link_to_member
             - s3_approver
+            - s3_password
 
         - S3 custom authentication methods:
             - s3_impersonate
@@ -162,11 +163,6 @@ class AuthS3(Auth):
         messages.lock_keys = False
 
         # @ToDo Move these to deployment_settings
-        messages.approve_user = \
-"""Your action is required to approve a New User for %(system_name)s:
-%(first_name)s %(last_name)s
-%(email)s
-Please go to %(url)s to approve this user."""
         messages.email_approver_failed = "Failed to send mail to Approver - see if you can notify them manually!"
         messages.email_sent = "Verification Email sent - please check your email to validate. If you do not receive this email please check your junk email or spam filters"
         messages.email_verification_failed = "Unable to send verification email - either your email is invalid or our email server is down"
@@ -463,25 +459,48 @@ Thank you"""
             settings.table_event = db[settings.table_event_name]
 
     # -------------------------------------------------------------------------
+    def ignore_min_password_length(self):
+        """
+            Disable min_length validation for password, e.g. during login
+        """
+
+        settings = self.settings
+
+        utable = settings.table_user
+
+        requires = utable[settings.password_field].requires
+        if requires:
+            if isinstance(requires, (list, tuple)):
+                requires = requires[-1]
+            try:
+                requires.min_length = 0
+            except:
+                pass
+
+    # -------------------------------------------------------------------------
     def login_bare(self, username, password):
         """
             Logs user in
                 - extended to understand session.s3.roles
         """
 
+        self.ignore_min_password_length()
+
         settings = self.settings
+
         utable = settings.table_user
         userfield = settings.login_userfield
         passfield = settings.password_field
+
         query = (utable[userfield] == username)
         user = current.db(query).select(limitby=(0, 1)).first()
         password = utable[passfield].validate(password)[0]
         if user:
             if not user.registration_key and user[passfield] == password:
                 user = Storage(utable._filter_fields(user, id=True))
-                current.session.auth = Storage(user=user,
-                                               last_visit=current.request.now,
-                                               expiration=settings.expiration)
+                current.session.auth = Storage(user = user,
+                                               last_visit = current.request.now,
+                                               expiration = settings.expiration)
                 self.user = user
                 self.s3_set_roles()
                 return user
@@ -528,14 +547,16 @@ Thank you"""
         deployment_settings = current.deployment_settings
 
         utable = settings.table_user
+
+        # Username (email) is required for login, convert to lowercase
         userfield = settings.login_userfield
         old_requires = utable[userfield].requires
         utable[userfield].requires = [IS_NOT_EMPTY(), IS_LOWER()]
+
+        # Disable min_length for password during login
         passfield = settings.password_field
-        try:
-            utable[passfield].requires[-1].min_length = 0
-        except:
-            pass
+        self.ignore_min_password_length()
+
         if onvalidation is DEFAULT:
             onvalidation = settings.login_onvalidation
         if onaccept is DEFAULT:
@@ -624,9 +645,9 @@ Thank you"""
             if deployment_settings.get_auth_set_presence_on_login():
                 s3_addrow(form,
                           "",
-                          INPUT(_id="auth_user_clientlocation",
-                                _name="auth_user_clientlocation",
-                                _style="display:none",
+                          INPUT(_id = "auth_user_clientlocation",
+                                _name = "auth_user_clientlocation",
+                                _style = "display:none",
                                 ),
                           "",
                           formstyle,
@@ -844,15 +865,23 @@ Thank you"""
         form = SQLFORM.factory(
             Field("old_password", "password",
                   label = messages.old_password,
-                  requires = utable[passfield].requires),
+                  # No minimum length for old password
+                  #requires = utable[passfield].requires,
+                  requires = CRYPT(key = settings.hmac_key,
+                                   digest_alg = "sha512",
+                                   ),
+                  ),
             Field("new_password", "password",
                   label = messages.new_password,
-                  requires = utable[passfield].requires),
+                  requires = utable[passfield].requires,
+                  ),
             Field("new_password2", "password",
                   label = messages.verify_password,
-                  requires = [IS_EXPR(
-                    "value==%s" % repr(request.vars.new_password),
-                              messages.mismatched_password)]),
+                  requires = [IS_EXPR("value==%s" % repr(request.vars.new_password),
+                                      messages.mismatched_password,
+                                      ),
+                              ],
+                  ),
             submit_button = messages.password_change_button,
             hidden = {"_next": next},
             formstyle = current.deployment_settings.get_ui_formstyle(),
@@ -946,13 +975,13 @@ Thank you"""
                   ),
             Field("new_password2", "password",
                   label = messages.verify_password,
-                  requires = [IS_EXPR("value==%s" % repr(request.vars.new_password),
-                              messages.mismatched_password)
-                              ],
+                  requires = IS_EXPR("value==%s" % repr(request.vars.new_password),
+                                     messages.mismatched_password,
+                                     ),
                   ),
-            submit_button = messages.password_reset_button,
+            submit_button = messages.password_change_button,
             hidden = {"_next": next},
-            formstyle = settings.formstyle,
+            formstyle = current.deployment_settings.get_ui_formstyle(),
             separator = settings.label_separator
             )
         if form.accepts(request, session,
@@ -972,10 +1001,10 @@ Thank you"""
 
     # -------------------------------------------------------------------------
     def request_reset_password(self,
-                               next=DEFAULT,
-                               onvalidation=DEFAULT,
-                               onaccept=DEFAULT,
-                               log=DEFAULT,
+                               next = DEFAULT,
+                               onvalidation = DEFAULT,
+                               onaccept = DEFAULT,
+                               log = DEFAULT,
                                ):
         """
             Returns a form to reset the user password, overrides web2py's
@@ -1072,8 +1101,8 @@ Thank you"""
         req_vars = request.vars
 
         session.auth = Storage(
-            user=user,
-            last_visit=request.now,
+            user = user,
+            last_visit = request.now,
             expiration = req_vars.get("remember", False) and \
                 settings.long_expiration or settings.expiration,
             remember = "remember" in req_vars,
@@ -1234,12 +1263,16 @@ Thank you"""
 
         # Insert a Password-confirmation field
         for i, row in enumerate(form[0].components):
-            item = row.element("input", _name=passfield)
+            item = row.element("input",
+                               _name = passfield,
+                               )
             if item:
                 field_id = "%s_password_two" % utablename
                 s3_addrow(form,
                           LABEL(DIV("%s:" % messages.verify_password,
-                                    SPAN("*", _class="req"),
+                                    SPAN("*",
+                                         _class = "req",
+                                         ),
                                     _for = "password_two",
                                     _id = field_id + SQLFORM.ID_LABEL_SUFFIX,
                                     ),
@@ -1472,10 +1505,10 @@ Thank you"""
                              (current.response.s3.base_url, reset_password_key)
 
         message = self.messages.reset_password % {"url": reset_password_url}
-        if mailer.send(to=user.email,
-                       subject=self.messages.reset_password_subject,
-                       message=message):
-            user.update_record(reset_password_key=reset_password_key)
+        if mailer.send(to = user.email,
+                       subject = self.messages.reset_password_subject,
+                       message = message):
+            user.update_record(reset_password_key = reset_password_key)
             return True
 
         return False
@@ -2437,6 +2470,49 @@ $.filterOptionsS3({
             temptable.update_or_insert(**record)
 
     # -------------------------------------------------------------------------
+    @staticmethod
+    def s3_approve_user_message(user, languages):
+        """
+            Default construction of Messages to (Org_)Admins to approve a new user
+        """
+
+        approve_user_message = \
+"""Your action is required to approve a New User for %(system_name)s:
+%(first_name)s %(last_name)s
+%(email)s
+Please go to %(url)s to approve this user."""
+
+        T = current.T
+        subjects = {}
+        messages = {}
+        first_name = user.first_name
+        last_name = user.last_name
+        email = user.email
+        user_id = user.id
+        base_url = current.response.s3.base_url
+        system_name = current.deployment_settings.get_system_name()
+        for language in languages:
+            T.force(language)
+            subjects[language] = \
+                s3_str(T("%(system_name)s - New User Registration Approval Pending") % \
+                        {"system_name": system_name})
+            messages[language] = s3_str(approve_user_message % \
+                        {"system_name": system_name,
+                         "first_name": first_name,
+                         "last_name": last_name,
+                         "email": email,
+                         "url": "%(base_url)s/admin/user/%(id)s" % \
+                                {"base_url": base_url,
+                                 "id": user_id,
+                                 },
+                         })
+
+        # Restore language for UI
+        T.force(current.session.s3.language)
+
+        return subjects, messages
+
+    # -------------------------------------------------------------------------
     def s3_verify_user(self, user):
         """"
             Designed to be called when a user is verified through:
@@ -2458,14 +2534,12 @@ $.filterOptionsS3({
         auth_messages = self.messages
         utable = self.settings.table_user
 
-        user_id = user.id
-
         # Lookup the Approver
         approver, organisation_id = self.s3_approver(user)
 
         if deployment_settings.get_auth_registration_requires_approval() and approver:
             approved = False
-            db(utable.id == user_id).update(registration_key = "pending")
+            db(utable.id == user.id).update(registration_key = "pending")
 
             if user.registration_key:
                 # User has just been verified
@@ -2480,7 +2554,7 @@ $.filterOptionsS3({
             if organisation_id and not user.get("organisation_id", None):
                 # Use the whitelist
                 user["organisation_id"] = organisation_id
-                db(utable.id == user_id).update(organisation_id = organisation_id)
+                db(utable.id == user.id).update(organisation_id = organisation_id)
                 link_user_to = deployment_settings.get_auth_registration_link_user_to_default()
                 if link_user_to and not user.get("link_user_to", None):
                     user["link_user_to"] = link_user_to
@@ -2498,7 +2572,7 @@ $.filterOptionsS3({
         if "@" in approver:
             # Look up language of the user
             record = db(utable.email == approver).select(utable.language,
-                                                         limitby=(0, 1)
+                                                         limitby = (0, 1)
                                                          ).first()
             if record:
                 language = record.language
@@ -2518,31 +2592,25 @@ $.filterOptionsS3({
                     languages.append(language)
                 aappend(each_approver)
 
-        T = current.T
-        subjects = {}
-        messages = {}
-        first_name = user.first_name
-        last_name = user.last_name
-        email = user.email
-        base_url = current.response.s3.base_url
-        system_name = deployment_settings.get_system_name()
-        for language in languages:
-            T.force(language)
-            if message == "approve_user":
-                subjects[language] = \
-                    s3_str(T("%(system_name)s - New User Registration Approval Pending") % \
-                            {"system_name": system_name})
-                messages[language] = s3_str(auth_messages.approve_user % \
-                            {"system_name": system_name,
-                             "first_name": first_name,
-                             "last_name": last_name,
-                             "email": email,
-                             "url": "%(base_url)s/admin/user/%(id)s" % \
-                                    {"base_url": base_url,
-                                     "id": user_id,
-                                     },
-                             })
-            elif message == "new_user":
+        if message == "approve_user":
+            # Customised Message construction?
+            approve_user_message = deployment_settings.get_auth_approve_user_message()
+            if callable(approve_user_message):
+                subjects, messages = approve_user_message(user, languages)
+            else:
+                # Default Message construction
+                subjects, messages = self.s3_approve_user_message(user, languages)
+        elif message == "new_user":
+            # @ToDo: Allow custom Message construction
+            T = current.T
+            subjects = {}
+            messages = {}
+            first_name = user.first_name
+            last_name = user.last_name
+            email = user.email
+            system_name = deployment_settings.get_system_name()
+            for language in languages:
+                T.force(language)
                 subjects[language] = \
                     s3_str(T("%(system_name)s - New User Registered") % \
                             {"system_name": system_name})
@@ -2553,19 +2621,22 @@ $.filterOptionsS3({
                                                      "email": email
                                                      })
 
-        # Restore language for UI
-        T.force(session.s3.language)
+            # Restore language for UI
+            T.force(session.s3.language)
 
         mailer = self.settings.mailer
         if mailer.settings.server:
+            send_email = mailer.send
             for approver in approvers:
                 language = approver["language"]
-                result = mailer.send(to = approver["email"],
-                                     subject = subjects[language],
-                                     message = messages[language])
+                result = send_email(to = approver["email"],
+                                    subject = subjects[language],
+                                    message = messages[language]
+                                    )
         else:
             # Email system not configured (yet)
             result = None
+
         if not result:
             # Don't prevent registration just because email not configured
             #db.rollback()
@@ -3520,6 +3591,59 @@ $.filterOptionsS3({
                                         )
         if not results:
             current.response.error = messages.unable_send_email
+
+    # -------------------------------------------------------------------------
+    def s3_password(self, length=32):
+        """
+            Generate a random password
+        """
+
+        if length == 32:
+            password = uuid4().hex
+        else:
+            import random
+            import string
+            password = "".join(random.SystemRandom().choice(string.ascii_letters + string.digits) for _ in range(length))
+
+        crypted = CRYPT(key = self.settings.hmac_key,
+                        #min_length = current.deploymentsettings.get_auth_password_min_length(),
+                        digest_alg = "sha512",
+                        )(password)[0]
+
+        return password, crypted
+
+    # -------------------------------------------------------------------------
+    def s3_anonymise_password(self, record_id, field, value):
+        """
+            Anonymise the password
+
+            Arguments just for API:
+            @param record_id: the auth_user record ID
+            @param field: the password Field
+            @param value: the password hash
+
+            @return: the new random password hash
+        """
+
+        return self.s3_password()[1]
+
+    # -------------------------------------------------------------------------
+    def s3_anonymise_roles(self, record_id, field, value):
+        """
+            Remove all roles
+
+            Arguments just for API:
+            @param record_id: the auth_user record ID
+            @param field: the id Field
+            @param value: the id
+
+            @return: the record_id
+        """
+
+        roles = self.s3_get_roles(record_id)
+        if roles:
+            self.s3_withdraw_role(record_id, roles)
+        return record_id
 
     # -------------------------------------------------------------------------
     # S3-specific authentication methods
@@ -4740,7 +4864,7 @@ $.filterOptionsS3({
                 pass
             else:
                 row = current.db(query).select(ptable.id,
-                                               limitby=(0, 1),
+                                               limitby = (0, 1),
                                                ).first()
 
         return row.id if row else None
@@ -7281,6 +7405,7 @@ class S3Permission(object):
                 result[key] = acl
 
         #for pe in result:
+        #    import sys
         #    sys.stderr.write("ACL for PE %s: %04X %04X\n" %
         #                        (pe, result[pe][0], result[pe][1]))
 

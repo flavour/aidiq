@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: (c) 2010-2019 Sahana Software Foundation
+    @copyright: (c) 2010-2020 Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -445,11 +445,7 @@ def s3_mark_required(fields,
         else:
             labels[fname] = "%s:" % flabel
 
-    # Callers expect an iterable
-    #if labels:
     return (labels, _required)
-    #else:
-    #    return None
 
 # =============================================================================
 def s3_addrow(form, label, widget, comment, formstyle, row_id, position=-1):
