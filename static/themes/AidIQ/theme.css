@@ -2049,25 +2049,34 @@ body.rtl .rm-form .rm-assign .rm-duplicate td:last-child {
   height: 10rem;
   max-width: 100%;
 }
-/* line 90, ../scss/theme/_cmsitems.scss */
+/* line 88, ../scss/theme/_cmsitems.scss */
+.cms-item .row.content-dark .price-comment,
+.cms-item .row.content-light .price-comment {
+  display: block;
+  font-size: 0.9rem;
+  font-style: italic;
+  padding: 0.3rem;
+  color: #ccc;
+}
+/* line 98, ../scss/theme/_cmsitems.scss */
 .cms-item .row.content-dark {
   background-color: #032743;
   color: #ebebeb;
 }
-/* line 93, ../scss/theme/_cmsitems.scss */
+/* line 101, ../scss/theme/_cmsitems.scss */
 .cms-item .row.content-dark h3 {
   color: #F2F2F2;
 }
-/* line 96, ../scss/theme/_cmsitems.scss */
+/* line 104, ../scss/theme/_cmsitems.scss */
 .cms-item .row.content-dark .icon-grid label {
   color: #F2F2F2;
 }
-/* line 99, ../scss/theme/_cmsitems.scss */
+/* line 107, ../scss/theme/_cmsitems.scss */
 .cms-item .row.content-dark.header {
   padding: 0 0 2.8rem;
   text-align: center;
 }
-/* line 103, ../scss/theme/_cmsitems.scss */
+/* line 111, ../scss/theme/_cmsitems.scss */
 .cms-item .row.content-dark .slogan {
   display: block;
   font-size: 1.4rem;
@@ -2075,19 +2084,19 @@ body.rtl .rm-form .rm-assign .rm-duplicate td:last-child {
   font-weight: bold;
 }
 @media only screen and (min-width: 40.0625em) {
-  /* line 103, ../scss/theme/_cmsitems.scss */
+  /* line 111, ../scss/theme/_cmsitems.scss */
   .cms-item .row.content-dark .slogan {
     font-size: 2.8rem;
   }
 }
-/* line 112, ../scss/theme/_cmsitems.scss */
+/* line 120, ../scss/theme/_cmsitems.scss */
 .cms-item .row.content-dark p.sub-header {
   display: inline-block;
   font-size: 1rem;
   max-width: 66%;
 }
 @media only screen and (min-width: 40.0625em) {
-  /* line 112, ../scss/theme/_cmsitems.scss */
+  /* line 120, ../scss/theme/_cmsitems.scss */
   .cms-item .row.content-dark p.sub-header {
     font-size: 1.2rem;
   }
