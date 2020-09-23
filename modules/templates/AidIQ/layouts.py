@@ -199,9 +199,9 @@ class S3OptionsMenuLayout(S3NavigationItem):
             return None
 
 # =============================================================================
-class OffCanvasMenuLayout(S3NavigationItem):
+class WebsiteMenuLayout(S3NavigationItem):
     """
-        Off-canvas side menu on public pages (website)
+        Menus on public pages (website)
     """
 
     @staticmethod
@@ -220,22 +220,11 @@ class OffCanvasMenuLayout(S3NavigationItem):
             if item.parent is None:
                 # The menu iteself
                 items = item.render_components()
-                return TAG["aside"](items, _class="right-off-canvas-menu")
-
-            elif item.components:
-                # A sub-menu
-                items = item.render_components()
-                submenu = UL(items, _class="off-canvas-list")
+                menu = UL(items, _class="sub-nav")
                 classes = item.attr.get("_class")
                 if classes:
-                    submenu.add_class(classes)
-                if item.label:
-                    submenu.insert(0, LI(LABEL(item.label)))
-                elif item.is_first():
-                    submenu.insert(0, LI(LABEL(ICON("fa fa-close"),
-                                               _class="right-off-canvas-toggle text-right",
-                                               )))
-                return submenu
+                    menu.add_class(classes)
+                return menu
 
             else:
                 # A menu item
@@ -251,6 +240,6 @@ class OffCanvasMenuLayout(S3NavigationItem):
         else:
             return None
 
-SM = OffCanvasMenuLayout
+WM = WebsiteMenuLayout
 
 # END =========================================================================

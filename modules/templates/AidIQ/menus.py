@@ -34,9 +34,11 @@ class S3MainMenu(default.S3MainMenu):
         # Render the off-canvas menu if on default/index
         request = current.request
         if request.controller == "default" and request.function == "index":
-            current.menu.off_canvas = cls.menu_side()
+            current.menu.top_menu = cls.menu_top()
+            current.menu.bottom_menu = cls.menu_bottom()
         else:
-            current.menu.off_canvas = ""
+            current.menu.top_menu = ""
+            current.menu.bottom_menu = ""
 
         return main_menu
 
@@ -87,32 +89,40 @@ class S3MainMenu(default.S3MainMenu):
 
     # -------------------------------------------------------------------------
     @classmethod
-    def menu_side(cls, **attr):
+    def menu_top(cls, **attr):
         """
-            Off-canvas side menu on public pages (website)
+            Top menu on public pages (website)
         """
 
-        public = SM(c="default", f="index", link=False)(
-                    SM("Home"),
-                    SM("Services", vars={"page": "services"}),
-                    SM("Projects", vars={"page": "projects"}),
-                    SM("Team", vars={"page": "team"}),
-                    SM("Contact Us", args=["contact"], _class="contact-link"),
-                    )
+        return WM(c="default", f="index", link=False, _class="top-menu")(
+                  #WM("Home"),
+                  WM("Services", vars={"page": "services"}),
+                  WM("Projects", vars={"page": "projects"}),
+                  WM("Team", vars={"page": "team"}),
+                  WM("Contact Us", args=["contact"], _class="contact-link"),
+                  )
 
-        internal = SM("Internal Pages", _class="separate")
-        if current.auth.is_logged_in():
-            internal(SM("Projects", c="project", f="project"),
-                     SM("Tasks", c="project", f="task", vars={"mine": "1"}),
-                     SM("Contents", c="cms", f="post"),
-                     SM("Admin", c="admin", f="index"),
-                     SM("Logout", c="default", f="user", args=["logout"]),
-                     )
+    # -------------------------------------------------------------------------
+    @classmethod
+    def menu_bottom(cls, **attr):
+        """
+            Bottom menu on public pages (website)
+        """
+
+        menu = WM(c="default", f="index", link=False, _class="bottom-menu")(
+                  WM("AidIQ", _class="home-link"),
+                  WM("Services", vars={"page": "services"}),
+                  WM("Projects", vars={"page": "projects"}),
+                  WM("Team", vars={"page": "team"}),
+                  WM("Contact Us", args=["contact"], _class="contact-link"),
+                  )
+
+        if current.auth.s3_logged_in():
+            menu(WM("Tasks", c="project", f="task", vars={"mine": "1"}))
         else:
-            internal(SM("Login", c="default", f="user", args=["login"]),
-                     )
+            menu(WM("Internal Pages", c="default", f="user", args=["login"]))
 
-        return SM()(public, internal)
+        return menu
 
 # =============================================================================
 class S3OptionsMenu(default.S3OptionsMenu):

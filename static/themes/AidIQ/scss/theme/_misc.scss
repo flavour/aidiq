@@ -266,33 +266,19 @@ body.rtl {
     .row.home-top {
         color: #eeeeff;
         background-color: $nightsky;
+        .top-menu {
+            text-align: right;
+            float: right;
+            margin-right: 1rem;
+            margin-top: 1rem;
+        }
         .logo {
             background-image: url(img/logo_large_light.png);
             background-size: contain;
             background-position: center;
             background-repeat: no-repeat;
             min-height: 84px;
-            margin: 10%;
-        }
-        .menu-toggle {
-            color: #ebebeb;
-            text-align: center;
-            .right-off-canvas-toggle {
-                color: #ebebeb;
-                font-size: 2.2rem;
-                display: inline-block;
-                padding-top: 1.4rem;
-            }
-        }
-        .menu {
-            text-align: center;
-            .sub-nav {
-                margin-top: 1.8rem;
-                display: inline-block;
-                dd {
-                    font-size: 0.9rem;
-                }
-            }
+            margin: 1.5rem 10%;
         }
     }
     .row.home-footer {
