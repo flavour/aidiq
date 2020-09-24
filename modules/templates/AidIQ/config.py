@@ -47,6 +47,8 @@ def config(settings):
     #settings.ui.formstyle = "table"
     #settings.ui.filter_formstyle = "table_inline"
 
+    # Should users be allowed to register themselves?
+    settings.security.self_registration = False
     # Uncomment this to request the Organisation when a user registers
     settings.auth.registration_requests_organisation = True
     # Uncomment this to have the Organisation selection during registration be mandatory

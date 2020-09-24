@@ -1,0 +1,129 @@
+// ============================================================================
+// Styles for public pages (CMS)
+// ============================================================================
+
+.cms-item {
+
+    .row.content-dark,
+    .row.content-light {
+        padding: 1.4rem;
+
+        h2 {
+            margin-top: 0;
+            line-height: 1.0;
+        }
+        h3 {
+            color: $oil;
+        }
+        .centered-content {
+            padding: 1.4rem 0;
+            font-size: 1.4rem;
+            text-align: center;
+        }
+        .icon-grid label {
+            font-size: 1rem;
+            text-align: center;
+            padding: 1rem;
+            color: $oil;
+            h6 {
+                color: inherit;
+            }
+            i {
+                display: block;
+                font-size: 2rem;
+            }
+            .sub {
+                display: block;
+                font-size: 0.8rem;
+            }
+        }
+        .buttons {
+            margin-top: 1.4rem;
+        }
+        .panel h5 {
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+
+        .icon-bar {
+            padding-top: 1.4rem;
+            max-width: 32rem;
+            background: transparent;
+        }
+
+        .team-portrait {
+            float: left;
+            height: 250px;
+            margin-right: 20px;
+        }
+
+        .form-container {
+            text-align: center;
+            form {
+                max-width: 100%;
+                display: inline-block;
+                border: none;
+                text-align: left;
+                input[type="text"],
+                input[type="email"] {
+                    height: auto;
+                    padding: 0.7rem!important;
+                    width: 20rem!important;
+                    max-width: 100%;
+                }
+                select {
+                    width: 20rem !important;
+                    height: auto;
+                    padding: 0.7rem 0.3rem !important;
+                }
+                textarea {
+                    padding: 0.7rem!important;
+                    width: 40rem;
+                    height: 10rem;
+                    max-width: 100%;
+                }
+            }
+        }
+
+        .price-comment {
+            display: block;
+            font-size: 0.9rem;
+            font-style: italic;
+            padding: 0.3rem;
+            color: #ccc;
+        }
+
+    }
+
+    .row.content-dark {
+        background-color: $nightsky;
+        color: #ebebeb;
+        h3 {
+            color: $almostwhite;
+        }
+        .icon-grid label {
+            color: $almostwhite;
+        }
+        &.header {
+            padding: 0 0 2.8rem;
+            text-align: center;
+        }
+        .slogan {
+            display: block;
+            font-size: 1.4rem;
+            @media #{$medium-up} {
+                font-size: 2.8rem;
+            }
+            padding: 1.4rem 0;
+            font-weight: bold;
+        }
+        p.sub-header {
+            display: inline-block;
+            font-size: 1rem;
+            @media #{$medium-up} {
+                font-size: 1.2rem;
+            }
+            max-width: 66%;
+        }
+    }
+}

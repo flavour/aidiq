@@ -29,7 +29,17 @@ class S3MainMenu(default.S3MainMenu):
             # Note: always define right-hand items in reverse order!
             cls.menu_auth(right=True),
             cls.menu_admin(right=True),
-        )
+            )
+
+        # Render the off-canvas menu if on default/index
+        request = current.request
+        if request.controller == "default" and request.function == "index":
+            current.menu.top_menu = cls.menu_top()
+            current.menu.bottom_menu = cls.menu_bottom()
+        else:
+            current.menu.top_menu = ""
+            current.menu.bottom_menu = ""
+
         return main_menu
 
     # -------------------------------------------------------------------------
@@ -48,16 +58,20 @@ class S3MainMenu(default.S3MainMenu):
                 login_next = request.get_vars["_next"]
 
             menu_auth = MM("Login", c="default", f="user", m="login",
-                           _id="auth_menu_login",
-                           vars=dict(_next=login_next), **attr)
+                           _id = "auth_menu_login",
+                           vars = {"_next": login_next}, **attr)
         else:
             # Logged-in
-            menu_auth = [
-                        MM("Logout", c="default", f="user", args="logout",
-                           _id="auth_menu_logout", **attr),
-                        MM(auth.user.email, c="default", f="user", args="profile",
-                           translate=False, _id="auth_menu_email", **attr),
-                        ]
+            menu_auth = [MM("Logout", c="default", f="user",
+                            args = ["logout"],
+                            _id = "auth_menu_logout",
+                            **attr),
+                         MM(auth.user.email, c="default", f="user",
+                            args = ["profile"],
+                            translate = False,
+                            _id = "auth_menu_email",
+                            **attr),
+                         ]
 
         return menu_auth
 
@@ -69,10 +83,46 @@ class S3MainMenu(default.S3MainMenu):
         ADMIN = current.session.s3.system_roles.ADMIN
         name_nice = current.deployment_settings.modules["admin"].name_nice
 
-        menu_admin = MM(name_nice, c="admin",
-                        restrict=[ADMIN], **attr)
+        menu_admin = MM(name_nice, c="admin", restrict=[ADMIN], **attr)
 
         return menu_admin
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def menu_top(cls, **attr):
+        """
+            Top menu on public pages (website)
+        """
+
+        return WM(c="default", f="index", link=False, _class="top-menu")(
+                  #WM("Home"),
+                  WM("Services", vars={"page": "services"}),
+                  WM("Projects", vars={"page": "projects"}),
+                  WM("Team", vars={"page": "team"}),
+                  WM("Contact Us", args=["contact"], _class="contact-link"),
+                  )
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def menu_bottom(cls, **attr):
+        """
+            Bottom menu on public pages (website)
+        """
+
+        menu = WM(c="default", f="index", link=False, _class="bottom-menu")(
+                  WM("AidIQ", _class="home-link"),
+                  WM("Services", vars={"page": "services"}),
+                  WM("Projects", vars={"page": "projects"}),
+                  WM("Team", vars={"page": "team"}),
+                  WM("Contact Us", args=["contact"], _class="contact-link"),
+                  )
+
+        if current.auth.s3_logged_in():
+            menu(WM("Tasks", c="project", f="task", vars={"mine": "1"}))
+        else:
+            menu(WM("Internal Pages", c="default", f="user", args=["login"]))
+
+        return menu
 
 # =============================================================================
 class S3OptionsMenu(default.S3OptionsMenu):
@@ -172,6 +222,23 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         M("Servers", f="server"),
                         M("Tasks", f="monitor_task"),
                         M("Logs", f="monitor_run"),
+                    ),
+                )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def cms():
+        """ CMS / Content Management System """
+
+        return M(c="cms")(
+                    M("Series", f="series")(
+                        M("Create", m="create"),
+                        M("View as Pages", f="blog"),
+                    ),
+                    M("Posts", f="post")(
+                        M("Create", m="create"),
+                        M("Import", m="import"),
+                        M("View as Pages", f="page"),
                     ),
                 )
 

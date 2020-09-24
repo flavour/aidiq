@@ -34,7 +34,7 @@ class S3MainMenuLayout(S3NavigationItem):
             item.visible = True
 
         if item.enabled and item.visible:
-            
+
             items = item.render_components()
             if item.parent is not None:
 
@@ -130,7 +130,7 @@ class S3MenuSeparatorLayout(S3NavigationItem):
 
     @staticmethod
     def layout(item):
-        
+
         if item.parent is not None:
             return LI(_class="divider hide-for-small")
         else:
@@ -157,7 +157,7 @@ class S3OptionsMenuLayout(S3NavigationItem):
         if enabled and visible:
             if item.parent is not None:
                 if item.enabled and item.authorized:
-                    
+
                     if item.components:
                         # Submenu
                         _class = ""
@@ -171,7 +171,7 @@ class S3OptionsMenuLayout(S3NavigationItem):
                                       _class="heading %s" % _class,
                                       ),
                                    ]
-                                   
+
                         items = item.render_components()
                         if items:
                             section.append(UL(items))
@@ -187,7 +187,7 @@ class S3OptionsMenuLayout(S3NavigationItem):
                         return LI(A(item.label,
                                     _href=item.url(),
                                     _id=item.attr._id,
-                                    ), 
+                                    ),
                                   _class=_class,
                                   )
             else:
@@ -197,5 +197,49 @@ class S3OptionsMenuLayout(S3NavigationItem):
 
         else:
             return None
+
+# =============================================================================
+class WebsiteMenuLayout(S3NavigationItem):
+    """
+        Menus on public pages (website)
+    """
+
+    @staticmethod
+    def layout(item):
+
+        # Manage flags: hide any disabled/unauthorized items
+        if not item.authorized:
+            enabled = False
+            visible = False
+        elif item.enabled is None or item.enabled:
+            enabled = True
+            visible = True
+
+        if enabled and visible:
+
+            if item.parent is None:
+                # The menu iteself
+                items = item.render_components()
+                menu = UL(items, _class="sub-nav")
+                classes = item.attr.get("_class")
+                if classes:
+                    menu.add_class(classes)
+                return menu
+
+            else:
+                # A menu item
+                link = A(item.label,
+                         _href = item.url(),
+                         _id = item.attr._id,
+                         )
+                classes = item.attr.get("_class")
+                if classes:
+                    link.add_class(classes)
+                return LI(link)
+
+        else:
+            return None
+
+WM = WebsiteMenuLayout
 
 # END =========================================================================

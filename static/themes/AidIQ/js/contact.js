@@ -1,16 +1,7 @@
-/**
- * Used by contact() in private/templates/AidIQ/controllers.py
- */
 $(document).ready(function() {
     $('#mailform').validate({
         errorClass: 'error-text',
         rules: {
-            name: {
-                required: true
-            },
-            subject: {
-                required: true
-            },
             message: {
                 required: true
             },
@@ -23,10 +14,7 @@ $(document).ready(function() {
             }
         },
         messages: {
-            // @ToDo: i18n if-required
-            name: "Enter your name",
-            subject: "Enter a subject",
-            message: "Enter a message",
+            message: "Please enter a message",
             address: {
                 required: "Please enter a valid email address",
                 email: "Please enter a valid email address"
