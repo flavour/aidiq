@@ -2,6 +2,43 @@
 // Styles for public pages (CMS)
 // ============================================================================
 
+.cms-page {
+    .row.home-top {
+        color: #eeeeff;
+        background-color: $nightsky;
+        .logo {
+            background-image: url(img/logo_large_light.png);
+            background-size: contain;
+            background-position: center;
+            background-repeat: no-repeat;
+            min-height: 84px;
+            margin: 1.5rem 10%;
+        }
+        .top-menu {
+            text-align: right;
+            float: right;
+            margin: 1rem 1rem 2rem 0;
+            li {
+                font-size: 0.85rem;
+                @media #{$medium-up} {
+                    font-size: 1rem;
+                }
+            }
+        }
+    }
+    .row.home-alert {
+        background-color: $nightsky;
+    }
+    .row.home-footer {
+        color: #ebebeb;
+        background-color: $nightsky;
+        min-height: 33%;
+        .bottom-menu {
+            margin-bottom: 1.5rem;
+        }
+    }
+}
+
 .cms-item {
 
     .row.content-dark,
@@ -54,7 +91,7 @@
         .team-portrait {
             float: left;
             height: 250px;
-            margin-right: 20px;
+            margin: 0rem 1.5rem 1rem 0;
         }
 
         .form-container {

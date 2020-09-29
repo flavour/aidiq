@@ -258,46 +258,4 @@ body.rtl {
     text-transform: uppercase;
 }
 
-/* CMS Pages */
-.cms-page {
-    .row.home-alert {
-        background-color: $nightsky;
-    }
-    .row.home-top {
-        color: #eeeeff;
-        background-color: $nightsky;
-        .top-menu {
-            text-align: right;
-            float: right;
-            margin-right: 1rem;
-            margin-top: 1rem;
-        }
-        .logo {
-            background-image: url(img/logo_large_light.png);
-            background-size: contain;
-            background-position: center;
-            background-repeat: no-repeat;
-            min-height: 84px;
-            margin: 1.5rem 10%;
-        }
-    }
-    .row.home-footer {
-        color: #ebebeb;
-        background-color: $nightsky;
-        min-height: 33%;
-    }
-    .right-off-canvas-menu {
-        label.right-off-canvas-toggle {
-            font-size: 1.75rem!important;
-            padding: 0.5rem 0.8rem!important
-        }
-        ul.off-canvas-list li a {
-            font-size: 1.2rem;
-        }
-        .contact-link {
-            background-color: scale-color($secondary-color, $lightness: -10%);
-        }
-    }
-}
-
 // END ========================================================================

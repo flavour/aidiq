@@ -118,9 +118,7 @@ class S3MainMenu(default.S3MainMenu):
                   )
 
         if current.auth.s3_logged_in():
-            menu(WM("Tasks", c="project", f="task", vars={"mine": "1"}))
-        else:
-            menu(WM("Internal Pages", c="default", f="user", args=["login"]))
+            menu(WM("CMS", c="cms", f="post"))
 
         return menu
 

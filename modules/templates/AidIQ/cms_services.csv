@@ -2,100 +2,68 @@ Series,Name,Title,Body,Module
 ,services,Services | AidIQ.com,"
 <div class='row content-dark header'>
  <div class='small-12 columns'>
-  <div class='slogan'>Our Services</div>
-  <div>
-   <p class='sub-header'>We provide a full range of services to clients to ensure that solutions are implemented effectively and sustainably.</p>
+  <div class='slogan' style='padding-bottom:0;'>Our Services</div>
+ </div>
+</div>
+
+<div class='row content-light' data-equalizer>
+ <div class='medium-6 small-12 columns'>
+  <div class='panel' data-equalizer-watch>
+   <ul class='pricing-table'>
+    <li class='title'>
+     <h3 style='color:white;'><i style='padding-right:10px;' class='fa fa-play'></i>Starter Package</h3>
+    </li>
+    <li class='price'><span class='price-comment'>Starts at</span>USD 4000</li>
+    <li class='description'>A complete, managed Sahana Eden Deployment</li>
+    <li class='bullet-item'>Cloud-hosted Sahana Eden instance incl. DNS for 1 year</li>
+    <li class='bullet-item'>Initial Setup: localization, module configuration, master data</li>
+    <li class='bullet-item'>User roles and permissions</li>
+    <li class='bullet-item'>Basic customization: branding and theme, homepage, menus</li>
+    <li class='cta-button'>
+     <a class='button' href='{{=URL(c="default", f="index", args=["contact"])}}'>Contact us to get started</a>
+    </li>
+   </ul>
   </div>
-  <div class='icon-bar four-up'>
-   <a class='item' href='#starter'>
-    <i class='fa fa-play'></i>
-    <label>Starter Package</label>
-   </a>
-   <a class='item' href='#custom'>
-    <i class='fa fa-puzzle-piece'></i>
-    <label>Custom Solution</label>
-   </a>
-   <a class='item' href='#sla'>
-    <i class='fa fa-wrench'></i>
-    <label>Service & Support</label>
-   </a>
-   <a class='item' href='#training'>
-    <i class='fa fa-user'></i>
-    <label>Training</label>
-   </a>
+ </div>
+ <div class='medium-6 small-12 columns'>
+  <div class='panel' data-equalizer-watch>
+   <ul class='pricing-table'>
+    <li class='title'>
+     <h3 style='color:white;'><i style='padding-right:10px;' class='fa fa-wrench'></i>Service & Support</h3>
+    </li>
+    <li class='price'>USD 70/hour<span class='price-comment'>Discount available with bulk reservation</span></li>
+    <li class='description'>2nd and 3rd level support for your Sahana Eden solution</li>
+    <li class='bullet-item'>Email support (48 hours turnaround)</li>
+    <li class='bullet-item'>Analysis and resolution of defects</li>
+    <li class='bullet-item'>Custom feature development, modifications and improvements</li>
+    <li class='bullet-item'>Data integration</li>
+    <li class='cta-button'>
+     <a class='button' href='{{=URL(c="default", f="index", args=["contact"])}}'>Contact us to get started</a>
+    </li>
+   </ul>
   </div>
  </div>
 </div>
+
+<div class='row content-dark'>
+ <div class='small-12 columns centered-content'>
+  <h2 style='color:white;padding:1.4rem;'><i style='padding-right:10px;' class='fa fa-puzzle-piece'></i>Custom Solution Development</h2>
+  <p style='max-width:50rem;margin:auto;'>
+   AidIQ designs, develops and deploys your Sahana Eden solution, made
+   to measure for the needs of your organization or community - at any scale
+   from small prototypes to large multi-year projects.
+  </p>
+  <a class='secondary button' style='margin:2.1rem;' href='{{=URL(c="default", f="index", args=["contact"])}}'>Contact us for an offer</a>
+ </div>
+</div>
+
 <div class='row content-light'>
- <div class='row'>
-  <div class='panel' style='background:transparent;'>
-   <h2><i style='padding-right:10px;' class='fa fa-play'></i>Starter Package</h2>
-   <a data-magellan-destination='starter' name='starter'></a>
-   <p>All you need to get your organization started with Sahana Eden:</p>
-   <ul style='list-style-type: none;line-height:2.0;'>
-    <li><i class='fa fa-check'></i>A cloud-hosted Sahana Eden instance including DNS for 1 year</li>
-    <li><i class='fa fa-check'></i>Initial setup, including:
-     <ul style='padding-left:4rem;'>
-      <li>Modules and menus</li>
-      <li>Master data and static contents</li>
-      <li>Messaging system</li>
-     </ul>
-    </li>
-    <li><i class='fa fa-check'></i>Basic Customization, including:
-     <ul style='padding-left:4rem;'>
-      <li>Localization</li>
-      <li>Homepage, branding and theme</li>
-      <li>Custom forms and reports</li>
-      <li>Authorization policy</li>
-     </ul>
-    </li>
-   </ul>
-   <p>Starts at: USD 4000 (EUR 3600)</p>
-   <a data-magellan-destination='custom' name='custom'></a>
-   <p><a href='#'><small><i class='fa fa-caret-up' style='padding-right:3px;'></i>Back to Top</small></a></p>
-  </div>
- </div>
- <div class='row'>
-  <div class='panel' style='background:transparent;'>
-   <h2><i style='padding-right:10px;' class='fa fa-puzzle-piece'></i>Custom Solution Development</h2>
-   <p>
-    AidIQ designs, develops and deploys your Sahana Eden solution, made
-    to measure for the needs of your organization or community - at any scale
-    from small prototypes to large multi-year projects:
-   </p>
-   <p>Price: contact us for an offer</p>
-   <a data-magellan-destination='sla' name='sla'></a>
-   <p><a href='#'><small><i class='fa fa-caret-up' style='padding-right:3px;'></i>Back to Top</small></a></p>
-  </div>
- </div>
- <div class='row'>
-  <div class='panel' style='background:transparent;'>
-   <h2><i style='padding-right:10px;' class='fa fa-wrench'></i>Service &amp; Support</h2>
-   <p>
-    AidIQ provide you with second and third level support for your Sahana Eden solution, including:
-   </p>
-   <ul style='list-style-type:none;line-height:2.0'>
-    <li><i class='fa fa-check'></i>Email support (48 hours turnaround)</li>
-    <li><i class='fa fa-check'></i>Analysis and resolution of defects</li>
-    <li><i class='fa fa-check'></i>Minor modifications and improvements</li>
-    <li><i class='fa fa-check'></i>Version Upgrades</li>
-    <li><i class='fa fa-check'></i>Database Maintenance</li>
-   </ul>
-   <p>Additional services are available upon request.</p>
-   <p>Price: charged hourly, please contact us for an offer</p>
-   <a data-magellan-destination='training' name='training'></a>
-   <p><a href='#'><small><i class='fa fa-caret-up' style='padding-right:3px;'></i>Back to Top</small></a></p>
-  </div>
- </div>
- <div class='row'>
-  <div class='panel' style='background:transparent;'>
-   <h2><i style='padding-right:10px;' class='fa fa-user'></i>Technical Training</h2>
-   <p>
-    AidIQ design, develop and facilitate technical trainings for your Sahana Eden
-    project team (including system administrators and developers).
-   </p>
-   <p>Price: contact us for an offer</p>
-   <p><a href='#'><small><i class='fa fa-caret-up' style='padding-right:3px;'></i>Back to Top</small></a></p>
-  </div>
+ <div class='small-12 columns centered-content'>
+  <h2 style='color:black;padding:1.4rem'><i style='padding-right:10px;' class='fa fa-user'></i>Technical Training</h2>
+  <p style='max-width:50rem;margin:auto;'>
+   AidIQ design, develop and facilitate technical trainings for your Sahana Eden
+   project team (including system administrators and developers).
+  </p>
+  <a class='secondary button' style='margin:2.1rem;' href='{{=URL(c="default", f="index", args=["contact"])}}'>Contact us for an offer</a>
  </div>
 </div>",
