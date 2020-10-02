@@ -57,6 +57,10 @@ def config(settings):
     settings.auth.registration_roles = {"site_id": ["project_reader"]}
 
     # -------------------------------------------------------------------------
+    # Uncomment to allow HR records to be deletable rather than just marking them as obsolete
+    settings.hrm.deletable = True
+
+    # -------------------------------------------------------------------------
     # Projects
     # Uncomment this to use settings suitable for detailed Task management
     settings.project.mode_task = True
@@ -76,7 +80,8 @@ def config(settings):
     # -------------------------------------------------------------------------
     def customise_project_project_resource(r, tablename):
 
-        from s3.s3forms import S3SQLCustomForm, S3SQLInlineLink
+        from s3 import S3SQLCustomForm, S3SQLInlineLink
+
         crud_form = S3SQLCustomForm("organisation_id",
                                     "name",
                                     "description",
@@ -177,7 +182,7 @@ def config(settings):
     # -------------------------------------------------------------------------
     def customise_project_activity_resource(r, tablename):
 
-        from s3.s3filter import S3OptionsFilter
+        from s3 import S3OptionsFilter
         filter_widgets = [S3OptionsFilter("activity_activity_type.activity_type_id",
                                           label = T("Type"),
                                           ),
@@ -213,8 +218,73 @@ def config(settings):
     settings.customise_project_activity_resource = customise_project_activity_resource
 
     # -------------------------------------------------------------------------
-    # Uncomment to allow HR records to be deletable rather than just marking them as obsolete
-    settings.hrm.deletable = True
+    def customise_proc_order_resource(r, tablename):
+        """
+            @ToDo:
+                Instance Size
+                Instance Location
+                Order in different Currencies
+        """
+
+        from gluon import IS_IN_SET
+        from s3 import S3SQLCustomForm, S3Represent
+
+        s3db = current.s3db
+
+        # Filtered components
+        s3db.add_components(tablename,
+                            proc_order_tag = ({"name": "term",
+                                               "joinby": "order_id",
+                                               "filterby": {"tag": "term"},
+                                               "multiple": False,
+                                               },
+                                              {"name": "hours",
+                                               "joinby": "order_id",
+                                               "filterby": {"tag": "hours"},
+                                               "multiple": False,
+                                               },
+                                              ),
+                            )
+
+        # Individual settings for specific tag components
+        components_get = s3db.resource(tablename).components.get
+
+        term_options = {1: T("Monthly"),
+                        2: T("Annual"),
+                        }
+
+        term_default = r.get_vars.get("term") or 2
+
+        term = components_get("term")
+        f = term.table.value
+        f.default = term_default
+        f.represent = S3Represent(options = term_options)
+        f.requires = IS_IN_SET(term_options)
+
+        hours_options = {0: "0",
+                         2: "2",
+                         10: "10",
+                         20: "20",
+                         40: "40",
+                         80: "80",
+                         }
+
+        hours = components_get("hours")
+        f = hours.table.value
+        f.default = 0
+        f.represent = S3Represent(options = hours_options)
+        f.requires = IS_IN_SET(hours_options)
+
+        crud_form = S3SQLCustomForm((T("Term"), "term.value"),
+                                    (T("Service Hours"), "hours.value"),
+                                    )
+        s3db.configure(tablename,
+                       crud_form = crud_form,
+                       )
+
+
+    settings.customise_proc_order_resource = customise_proc_order_resource
+    # -------------------------------------------------------------------------
 
     # Comment/uncomment modules here to disable/enable them
     settings.modules = OrderedDict([
@@ -306,6 +376,12 @@ def config(settings):
                 #description = "Sends & Receives Alerts via Email & SMS",
                 restricted = True,
                 # The user-visible functionality of this module isn't normally required. Rather it's main purpose is to be accessed from other modules.
+                module_type = None,
+            )),
+        ("proc", Storage(
+                name_nice = T("Procurement"),
+                #description = "Purchase Orders",
+                restricted = True,
                 module_type = None,
             )),
         #("dc", Storage(
