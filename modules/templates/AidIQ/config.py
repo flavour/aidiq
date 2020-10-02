@@ -221,9 +221,14 @@ def config(settings):
     def customise_proc_order_resource(r, tablename):
         """
             @ToDo:
-                Instance Size
-                Instance Location
-                Order in different Currencies
+                Explanatory Text
+                Javascript to total price client-side (pass details to JS from controller rather than hardcoding in the JS)
+                onaccept to total price server-side (avoid hacking)
+                Redirect to the Payments page (PayPal currently)
+                Later:
+                    Instance Size
+                    Instance Location
+                    Order in different Currencies
         """
 
         from gluon import IS_IN_SET
@@ -243,41 +248,65 @@ def config(settings):
                                                "filterby": {"tag": "hours"},
                                                "multiple": False,
                                                },
+                                              {"name": "hours_free",
+                                               "joinby": "order_id",
+                                               "filterby": {"tag": "hours_free"},
+                                               "multiple": False,
+                                               },
                                               ),
                             )
 
         # Individual settings for specific tag components
         components_get = s3db.resource(tablename).components.get
 
-        term_options = {1: T("Monthly"),
-                        2: T("Annual"),
-                        }
+        get_vars_get = r.get_vars.get
 
-        term_default = r.get_vars.get("term") or 2
+        service_only = get_vars_get("service")
 
-        term = components_get("term")
-        f = term.table.value
-        f.default = term_default
-        f.represent = S3Represent(options = term_options)
-        f.requires = IS_IN_SET(term_options)
+        if service_only:
+            hours_default = 10
+            hours_options = {10: "10 Hours. USD 750",
+                             40: "40 Hours. USD 2880",
+                             80: "80 Hours. USD 5600",
+                             }
 
-        hours_options = {0: "0",
-                         2: "2",
-                         10: "10",
-                         20: "20",
-                         40: "40",
-                         80: "80",
-                         }
+        else:
+            term_options = {"MO": T("Monthly. USD 50"),
+                            "YR": T("Annual. USD 500"),
+                            }
+
+            term_default = get_vars_get("term", "YR")
+
+            term = components_get("term")
+            f = term.table.value
+            f.default = term_default
+            f.represent = S3Represent(options = term_options)
+            f.requires = IS_IN_SET(term_options)
+
+            hours_default = 0
+            hours_options = {0: "0",
+                             10: "10. + USD 750",   # Basic Branding, Minor Modifications
+                             40: "40. + USD 2880",  # Full Branding, Multiple Modifications
+                             80: "80. + USD 5600",  # Significant Customisation
+                             }
 
         hours = components_get("hours")
         f = hours.table.value
-        f.default = 0
+        f.default = hours_default
         f.represent = S3Represent(options = hours_options)
         f.requires = IS_IN_SET(hours_options)
 
-        crud_form = S3SQLCustomForm((T("Term"), "term.value"),
-                                    (T("Service Hours"), "hours.value"),
-                                    )
+        if service_only:
+            crud_form = S3SQLCustomForm((T("Service Hours"), "hours.value"),
+                                        (T("Or Enter Manually"), "hours_free.value"), # Hide by default
+                                        )
+        else:
+            crud_form = S3SQLCustomForm((T("Term"), "term.value"),
+                                        (T("Service Hours"), "hours.value"),
+                                        )
+
+        current.response.s3.crud.submit_button = "Order"
+
         s3db.configure(tablename,
                        crud_form = crud_form,
                        )
