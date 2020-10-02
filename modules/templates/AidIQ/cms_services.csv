@@ -25,7 +25,7 @@ Series,Name,Title,Body,Module
    <li class='bullet-item'>Standard application template</li>
    <li class='bullet-item'>Web-frontend to manage system settings</li>
    <li class='cta-button'>
-    <a class='primary button' href='{{=URL(c=""default"", f=""index"", args=[""contact""])}}'>Subscribe</a>
+    <a class='primary button' href='{{=URL(c=""default"", f=""index"", args=[""contact""])}}'>Contact us to get started</a>
    </li>
   </ul>
  </div>
@@ -46,9 +46,9 @@ Series,Name,Title,Body,Module
    <li class='bullet-item'>Annual subscription</li>
    <li class='bullet-item'>Standard application template</li>
    <li class='bullet-item'>Web-frontend to manage system settings</li>
-   <li class='bullet-item'>2 hours startup-support</li>
+   <li class='bullet-item'>2 hours startup support</li>
    <li class='cta-button'>
-    <a class='primary button' href='{{=URL(c=""default"", f=""index"", args=[""contact""])}}'>Subscribe</a>
+    <a class='primary button' href='{{=URL(c=""default"", f=""index"", args=[""contact""])}}'>Contact us to get started</a>
    </li>
   </ul>
  </div>
@@ -66,12 +66,13 @@ Series,Name,Title,Body,Module
     USD 75<span class='price-term'>/ hour</span>
     <span class='price-comment'>Discount available with bulk reservation</span>
    </li>
-   <li class='bullet-item'>Email support (48 hours turnaround)</li>
-   <li class='bullet-item'>Analysis and resolution of defects</li>
-   <li class='bullet-item'>Custom feature development, modifications and improvements</li>
-   <li class='bullet-item'>Data integration</li>
+   <li class='bullet-item'>Customisation</li>
+   <li class='bullet-item'>New Feature Development</li>
+   <li class='bullet-item'>Help importing your Data</li>
+   <li class='bullet-item'>Integration with other applications</li>
+   <li class='bullet-item'>Training for Users, System Administrators &/or Developers</li>
    <li class='cta-button'>
-    <a class='info button' href='{{=URL(c=""default"", f=""index"", args=[""contact""])}}'>Contact us for pricing</a>
+    <a class='info button' href='{{=URL(c=""default"", f=""index"", args=[""contact""])}}'>Contact us to get started</a>
    </li>
   </ul>
  </div>
