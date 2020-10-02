@@ -122,6 +122,13 @@
             }
         }
 
+
+    }
+
+    .pricing-table {
+        &.priority {
+            border: 1px solid $nightsky;
+        }
         .price-comment {
             display: block;
             font-size: 0.9rem;
@@ -129,7 +136,35 @@
             padding: 0.3rem;
             color: #ccc;
         }
-
+        .title {
+            background: transparent;
+            padding-bottom: 0;
+            h4 {
+                color: $nightsky;
+                margin-bottom: 0;
+                .fa {
+                    padding-right:1rem;
+                }
+                .subtitle {
+                    display: block;
+                    font-size: 0.9rem;
+                    padding: 0.5rem;
+                }
+            }
+        }
+        .price {
+            .price-term {
+                 font-size: 1rem;
+                 padding-left: 0.3rem;
+            }
+        }
+        .cta-button {
+            .button {
+                @media #{$large-up} {
+                    min-width: 14rem;
+                }
+            }
+        }
     }
 
     .row.content-dark {
