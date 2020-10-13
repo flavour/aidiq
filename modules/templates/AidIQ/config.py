@@ -281,7 +281,7 @@ def config(settings):
             f = term.table.value
             f.default = term_default
             f.represent = S3Represent(options = term_options)
-            f.requires = IS_IN_SET(term_options)
+            f.requires = IS_IN_SET(term_options, zero=None)
 
             hours_default = 0
             hours_options = {0: "0",
@@ -294,7 +294,7 @@ def config(settings):
         f = hours.table.value
         f.default = hours_default
         f.represent = S3Represent(options = hours_options)
-        f.requires = IS_IN_SET(hours_options)
+        f.requires = IS_IN_SET(hours_options, zero=None)
 
         if service_only:
             crud_form = S3SQLCustomForm((T("Service Hours"), "hours.value"),
@@ -410,6 +410,12 @@ def config(settings):
         ("proc", Storage(
                 name_nice = T("Procurement"),
                 #description = "Purchase Orders",
+                restricted = True,
+                module_type = None,
+            )),
+        ("fin", Storage(
+                name_nice = T("Finance"),
+                #description = "Payment Service",
                 restricted = True,
                 module_type = None,
             )),
