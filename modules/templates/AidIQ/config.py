@@ -218,6 +218,83 @@ def config(settings):
     settings.customise_project_activity_resource = customise_project_activity_resource
 
     # -------------------------------------------------------------------------
+    def create_instance(subscription_id):
+        """
+            Create a new instance for a new subscription
+        """
+
+        db = current.db
+        s3db = current.s3db
+
+        # Lookup the Order
+        ttable = s3db.proc_order_tag
+        query = (ttable.tag == "subscription_id") & \
+                (ttable.value == subscription_id)
+        tag = db(query).select(ttable.order_id,
+                               limitby = (0, 1)
+                               ).first()
+        order_id = tag.order_id
+
+        # Check if we already have an instance for this subscription
+        query = (ttable.order_id == order_id) & \
+                (ttable.tag == "deployment_id")
+        tag = db(query).select(ttable.value,
+                               limitby = (0, 1)
+                               ).first()
+        if tag:
+            #deployment_id = tag.value
+            # We already have an instance: Take no action
+            return
+
+        # Deploy new instance
+        # @ToDo
+
+    # -------------------------------------------------------------------------
+    def delete_instance(subscription_id):
+        """
+            Delete an instance for a cancelled subscription
+        """
+
+        # @ToDo
+        pass
+
+    # -------------------------------------------------------------------------
+    def fin_subscription_onaccept(form):
+        """
+            After an Order has been approved or cancelled then take the appropriate action
+        """
+
+        # Read the status of the subscription
+        subscription_id = form.vars.get("id")
+        stable = current.s3db.fin_subscription
+        subscription = current.db(stable.id == subscription_id).select(stable.status,
+                                                                       limitby = (0, 1)
+                                                                       ).first()
+        status = subscription.status
+        if status == "ACTIVE":
+            # Create an instance
+            create_instance(subscription_id)
+        elif status in ("CANCELLED", "EXPIRED", "SUSPENDED"):
+            # Delete the instance
+            delete_instance(subscription_id)
+        else:
+            # Take no action
+            pass
+
+    # -------------------------------------------------------------------------
+    def customise_fin_subscription_resource(r, tablename):
+        """
+            Call custom Onaccept for fulfilment/cancellation
+        """
+
+        current.s3db.configure(tablename,
+                               onaccept = fin_subscription_onaccept,
+                               )
+
+
+    settings.customise_fin_subscription_resource = customise_fin_subscription_resource
+
+    # -------------------------------------------------------------------------
     def proc_order_create_onaccept(form):
         """
             After an Order has been created then redirect to PayPal to Register the Subscription
@@ -233,6 +310,7 @@ def config(settings):
         s3db = current.s3db
 
         # Lookup Plan
+        # @ToDo: Better link between Order & Plan (DRY, FKs)
         ptable = s3db.fin_subscription_plan
         if term == "YR":
             interval_count = 12
@@ -241,8 +319,8 @@ def config(settings):
             interval_count = 1
 
         plan = db(ptable.interval_count == interval_count).select(ptable.id,
-                                                     limitby = (0, 1)
-                                                     ).first()
+                                                                  limitby = (0, 1)
+                                                                  ).first()
         plan_id = plan.id
 
         # Assume only a single Payment Service defined
@@ -265,6 +343,12 @@ def config(settings):
         else:
             subscription_id = adapter.register_subscription(plan_id, pe_id)
             if subscription_id:
+                # Link PO to Subscription
+                ttable = s3db.proc_order_tag
+                ttable.insert(order_id = form.vars.id,
+                              tag = "subscription_id",
+                              value = subscription_id,
+                              )
                 # Go to PayPal to confirm payment
                 stable = s3db.fin_subscription
                 subscription = db(stable.id == subscription_id).select(stable.approval_url,
@@ -274,7 +358,7 @@ def config(settings):
                 redirect(subscription.approval_url)
             else:
                 # @ToDo: Read Details from the Log
-                current.response.error = "Subscription failed"
+                current.response.error = "Subscription registration failed"
 
     # -------------------------------------------------------------------------
     def customise_proc_order_resource(r, tablename):
@@ -367,12 +451,18 @@ def config(settings):
         current.response.s3.crud.submit_button = "Order"
 
         s3db.configure(tablename,
-                       create_onaccept = proc_order_create_onaccept,
                        crud_form = crud_form,
                        )
 
+        # Add custom callback (& keep default)
+        s3db.add_custom_callback(tablename,
+                                 "create_onaccept",
+                                 proc_order_create_onaccept,
+                                 )
+
 
     settings.customise_proc_order_resource = customise_proc_order_resource
+
     # -------------------------------------------------------------------------
 
     # Comment/uncomment modules here to disable/enable them
