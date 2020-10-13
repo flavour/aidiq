@@ -218,6 +218,65 @@ def config(settings):
     settings.customise_project_activity_resource = customise_project_activity_resource
 
     # -------------------------------------------------------------------------
+    def proc_order_create_onaccept(form):
+        """
+            After an Order has been created then redirect to PayPal to Register the Subscription
+        """
+
+        post_vars_get = current.request.post_vars.get
+        term = post_vars_get("sub_term_value")
+        if term is None:
+            # @ToDo: Handle Service
+            return
+
+        db = current.db
+        s3db = current.s3db
+
+        # Lookup Plan
+        ptable = s3db.fin_subscription_plan
+        if term == "YR":
+            interval_count = 12
+        else:
+            # term == "MO"
+            interval_count = 1
+
+        plan = db(ptable.interval_count == interval_count).select(ptable.id,
+                                                     limitby = (0, 1)
+                                                     ).first()
+        plan_id = plan.id
+
+        # Assume only a single Payment Service defined
+        stable = s3db.fin_payment_service
+        service = db(stable.deleted == False).select(stable.id,
+                                                     limitby = (0, 1)
+                                                     ).first()
+        service_id = service.id
+
+        # Lookup current User
+        auth = current.auth
+        pe_id = auth.s3_user_pe_id(auth.user.id)
+
+        # Register with PayPal
+        from s3.s3payments import S3PaymentService
+        try:
+            adapter = S3PaymentService.adapter(service_id)
+        except (KeyError, ValueError) as e:
+            current.response.error = "Service registration failed: %s" % e
+        else:
+            subscription_id = adapter.register_subscription(plan_id, pe_id)
+            if subscription_id:
+                # Go to PayPal to confirm payment
+                stable = s3db.fin_subscription
+                subscription = db(stable.id == subscription_id).select(stable.approval_url,
+                                                                       limitby = (0, 1)
+                                                                       ).first()
+                from gluon import redirect
+                redirect(subscription.approval_url)
+            else:
+                # @ToDo: Read Details from the Log
+                current.response.error = "Subscription failed"
+
+    # -------------------------------------------------------------------------
     def customise_proc_order_resource(r, tablename):
         """
             @ToDo:
@@ -285,9 +344,9 @@ def config(settings):
 
             hours_default = 0
             hours_options = {0: "0",
-                             10: "10. + USD 750",   # Basic Branding, Minor Modifications
-                             40: "40. + USD 2880",  # Full Branding, Multiple Modifications
-                             80: "80. + USD 5600",  # Significant Customisation
+                             10: "10. +USD 750",   # Basic Branding, Minor Modifications
+                             40: "40. +USD 2880",  # Full Branding, Multiple Modifications
+                             80: "80. +USD 5600",  # Significant Customisation
                              }
 
         hours = components_get("hours")
@@ -308,6 +367,7 @@ def config(settings):
         current.response.s3.crud.submit_button = "Order"
 
         s3db.configure(tablename,
+                       create_onaccept = proc_order_create_onaccept,
                        crud_form = crud_form,
                        )
 
