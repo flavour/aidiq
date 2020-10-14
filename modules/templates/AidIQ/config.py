@@ -218,6 +218,149 @@ def config(settings):
     settings.customise_project_activity_resource = customise_project_activity_resource
 
     # -------------------------------------------------------------------------
+    def create_instance(subscription_id):
+        """
+            Create a new instance for a new subscription
+        """
+
+        db = current.db
+        s3db = current.s3db
+
+        # Lookup the Order
+        ttable = s3db.proc_order_tag
+        query = (ttable.tag == "subscription_id") & \
+                (ttable.value == subscription_id)
+        tag = db(query).select(ttable.order_id,
+                               limitby = (0, 1)
+                               ).first()
+        order_id = tag.order_id
+
+        # Check if we already have an instance for this subscription
+        query = (ttable.order_id == order_id) & \
+                (ttable.tag == "deployment_id")
+        tag = db(query).select(ttable.value,
+                               limitby = (0, 1)
+                               ).first()
+        if tag:
+            #deployment_id = tag.value
+            # We already have an instance: Take no action
+            return
+
+        # Deploy new instance
+        # @ToDo
+
+    # -------------------------------------------------------------------------
+    def delete_instance(subscription_id):
+        """
+            Delete an instance for a cancelled subscription
+        """
+
+        # @ToDo
+        pass
+
+    # -------------------------------------------------------------------------
+    def fin_subscription_onaccept(form):
+        """
+            After an Order has been approved or cancelled then take the appropriate action
+        """
+
+        # Read the status of the subscription
+        subscription_id = form.vars.get("id")
+        stable = current.s3db.fin_subscription
+        subscription = current.db(stable.id == subscription_id).select(stable.status,
+                                                                       limitby = (0, 1)
+                                                                       ).first()
+        status = subscription.status
+        if status == "ACTIVE":
+            # Create an instance
+            create_instance(subscription_id)
+        elif status in ("CANCELLED", "EXPIRED", "SUSPENDED"):
+            # Delete the instance
+            delete_instance(subscription_id)
+        else:
+            # Take no action
+            pass
+
+    # -------------------------------------------------------------------------
+    def customise_fin_subscription_resource(r, tablename):
+        """
+            Call custom Onaccept for fulfilment/cancellation
+        """
+
+        current.s3db.configure(tablename,
+                               onaccept = fin_subscription_onaccept,
+                               )
+
+
+    settings.customise_fin_subscription_resource = customise_fin_subscription_resource
+
+    # -------------------------------------------------------------------------
+    def proc_order_create_onaccept(form):
+        """
+            After an Order has been created then redirect to PayPal to Register the Subscription
+        """
+
+        post_vars_get = current.request.post_vars.get
+        term = post_vars_get("sub_term_value")
+        if term is None:
+            # @ToDo: Handle Service
+            return
+
+        db = current.db
+        s3db = current.s3db
+
+        # Lookup Plan
+        # @ToDo: Better link between Order & Plan (DRY, FKs)
+        ptable = s3db.fin_subscription_plan
+        if term == "YR":
+            interval_count = 12
+        else:
+            # term == "MO"
+            interval_count = 1
+
+        plan = db(ptable.interval_count == interval_count).select(ptable.id,
+                                                                  limitby = (0, 1)
+                                                                  ).first()
+        plan_id = plan.id
+
+        # Assume only a single Payment Service defined
+        stable = s3db.fin_payment_service
+        service = db(stable.deleted == False).select(stable.id,
+                                                     limitby = (0, 1)
+                                                     ).first()
+        service_id = service.id
+
+        # Lookup current User
+        auth = current.auth
+        pe_id = auth.s3_user_pe_id(auth.user.id)
+
+        # Register with PayPal
+        from s3.s3payments import S3PaymentService
+        try:
+            adapter = S3PaymentService.adapter(service_id)
+        except (KeyError, ValueError) as e:
+            current.response.error = "Service registration failed: %s" % e
+        else:
+            subscription_id = adapter.register_subscription(plan_id, pe_id)
+            if subscription_id:
+                # Link PO to Subscription
+                ttable = s3db.proc_order_tag
+                ttable.insert(order_id = form.vars.id,
+                              tag = "subscription_id",
+                              value = subscription_id,
+                              )
+                # Go to PayPal to confirm payment
+                stable = s3db.fin_subscription
+                subscription = db(stable.id == subscription_id).select(stable.approval_url,
+                                                                       limitby = (0, 1)
+                                                                       ).first()
+                from gluon import redirect
+                redirect(subscription.approval_url)
+            else:
+                # @ToDo: Read Details from the Log
+                current.response.error = "Subscription registration failed"
+
+    # -------------------------------------------------------------------------
     def customise_proc_order_resource(r, tablename):
         """
             @ToDo:
@@ -281,20 +424,20 @@ def config(settings):
             f = term.table.value
             f.default = term_default
             f.represent = S3Represent(options = term_options)
-            f.requires = IS_IN_SET(term_options)
+            f.requires = IS_IN_SET(term_options, zero=None)
 
             hours_default = 0
             hours_options = {0: "0",
-                             10: "10. + USD 750",   # Basic Branding, Minor Modifications
-                             40: "40. + USD 2880",  # Full Branding, Multiple Modifications
-                             80: "80. + USD 5600",  # Significant Customisation
+                             10: "10. +USD 750",   # Basic Branding, Minor Modifications
+                             40: "40. +USD 2880",  # Full Branding, Multiple Modifications
+                             80: "80. +USD 5600",  # Significant Customisation
                              }
 
         hours = components_get("hours")
         f = hours.table.value
         f.default = hours_default
         f.represent = S3Represent(options = hours_options)
-        f.requires = IS_IN_SET(hours_options)
+        f.requires = IS_IN_SET(hours_options, zero=None)
 
         if service_only:
             crud_form = S3SQLCustomForm((T("Service Hours"), "hours.value"),
@@ -311,8 +454,15 @@ def config(settings):
                        crud_form = crud_form,
                        )
 
+        # Add custom callback (& keep default)
+        s3db.add_custom_callback(tablename,
+                                 "create_onaccept",
+                                 proc_order_create_onaccept,
+                                 )
+
 
     settings.customise_proc_order_resource = customise_proc_order_resource
+
     # -------------------------------------------------------------------------
 
     # Comment/uncomment modules here to disable/enable them
@@ -410,6 +560,12 @@ def config(settings):
         ("proc", Storage(
                 name_nice = T("Procurement"),
                 #description = "Purchase Orders",
+                restricted = True,
+                module_type = None,
+            )),
+        ("fin", Storage(
+                name_nice = T("Finance"),
+                #description = "Payment Service",
                 restricted = True,
                 module_type = None,
             )),

@@ -304,6 +304,7 @@ class FinProductModel(S3Model):
         db = current.db
         s3 = current.response.s3
 
+        configure = self.configure
         define_table = self.define_table
         crud_strings = s3.crud_strings
 
@@ -319,6 +320,7 @@ class FinProductModel(S3Model):
         tablename = "fin_product"
         define_table(tablename,
                      # The organisation offering the product/service
+                     # Merchant Name needed by PayPal
                      self.org_organisation_id(),
                      Field("name",
                            label = T("Name"),
@@ -345,6 +347,11 @@ class FinProductModel(S3Model):
                      # TODO product homepage
                      s3_comments(),
                      *s3_meta_fields())
+
+        # Table configuration
+        configure(tablename,
+                  deduplicate = S3Duplicate(primary = ("name",)),
+                  )
 
         # Components
         self.add_components(tablename,
@@ -410,12 +417,12 @@ class FinProductModel(S3Model):
         #      => in product controller prep
 
         # Table configuration
-        self.configure(tablename,
-                       editable = False,
-                       deletable = False, # TODO must retire, not delete
-                       onaccept = self.product_service_onaccept,
-                       ondelete = self.product_service_ondelete,
-                       )
+        configure(tablename,
+                  editable = False,
+                  deletable = False, # TODO must retire, not delete
+                  onaccept = self.product_service_onaccept,
+                  ondelete = self.product_service_ondelete,
+                  )
 
         # CRUD Strings
         crud_strings[tablename] = Storage(

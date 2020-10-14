@@ -38,7 +38,9 @@ from .base import S3PaymentService
 
 # =============================================================================
 class PayPalAdapter(S3PaymentService):
-    """ API Adapter for PayPal """
+    """
+        API Adapter for PayPal
+    """
 
     # -------------------------------------------------------------------------
     def get_access_token(self):
