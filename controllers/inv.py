@@ -395,7 +395,8 @@ def warehouse():
                                   #delete_url = delete_url,
                                   update_url = update_url)
 
-        if "add_btn" in output:
+        if isinstance(output, dict) and \
+           "add_btn" in output:
             del output["add_btn"]
         return output
     s3.postp = postp
@@ -537,10 +538,10 @@ def inv_item():
     if len(request.args) > 1 and request.args[1] == "track_item":
         # remove CRUD generated buttons in the tabs
         s3db.configure("inv_track_item",
-                       create=False,
-                       listadd=False,
-                       editable=False,
-                       deletable=False,
+                       create = False,
+                       listadd = False,
+                       editable = False,
+                       deletable = False,
                        )
     else:
         s3.filter = (table.quantity != 0)
@@ -636,7 +637,8 @@ def track_movement():
     output = s3_rest_controller("inv", "track_item",
                                 rheader = s3db.inv_rheader,
                                 )
-    if "add_btn" in output:
+    if isinstance(output, dict) and \
+       "add_btn" in output:
         del output["add_btn"]
 
     return output

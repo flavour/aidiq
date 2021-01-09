@@ -41,7 +41,7 @@ __all__ = ("S3SupplyModel",
            "supply_item_entity_contacts",
            "supply_item_entity_status",
            "supply_ItemRepresent",
-           #"supply_ItemCategoryRepresent",
+           "supply_ItemCategoryRepresent",
            "supply_get_shipping_code",
            "supply_item_pack_quantities",
            )
@@ -450,7 +450,7 @@ $.filterOptionsS3({
                      Field("volume", "double",
                            label = T("Volume (m3)"),
                            represent = lambda v: \
-                                       float_represent(v, precision=2),
+                                       float_represent(v, precision=3),
                            requires = IS_EMPTY_OR(IS_FLOAT_AMOUNT(minimum=0.0)),
                            ),
                      # These comments do *not* pull through to an Inventory's Items or a Request's Items
