@@ -1,2 +1,5 @@
-Organisation,Name,Description,Type
-AidIQ,Standard Instance,t3.micro,DIGITAL
+Organisation,Name,Description,Type,Category
+AidIQ,Standard Instance,t3.micro,DIGITAL,COMPUTER_AND_DATA_PROCESSING_SERVICES
+AidIQ,Support 10,10 Hours,SERVICE,CONSULTING_SERVICES
+AidIQ,Support 40,40 Hours,SERVICE,CONSULTING_SERVICES
+AidIQ,Support 80,80 Hours,SERVICE,CONSULTING_SERVICES

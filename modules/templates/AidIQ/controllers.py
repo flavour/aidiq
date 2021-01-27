@@ -15,17 +15,18 @@ class index(S3CustomController):
 
         page = current.request.get_vars.get("page", None)
         if page:
-            vars = {"page":page}
+            vars = {"page": page}
             table = current.s3db.cms_post
             query = (table.name == page) & \
                     (table.deleted != True)
             row = current.db(query).select(table.id,
                                            table.title,
                                            table.body,
-                                           limitby=(0, 1)).first()
+                                           limitby = (0, 1)
+                                           ).first()
         else:
             module = "default"
-            vars = {"module":module}
+            vars = {"module": module}
             table = current.s3db.cms_post
             db = current.db
             ltable = db.cms_post_module
@@ -35,7 +36,8 @@ class index(S3CustomController):
             row = db(query).select(table.id,
                                    table.title,
                                    table.body,
-                                   limitby=(0, 1)).first()
+                                   limitby = (0, 1)
+                                   ).first()
         title = None
         if row:
             title = row.title
@@ -49,17 +51,21 @@ class index(S3CustomController):
             if current.auth.s3_has_role(current.session.s3.system_roles.ADMIN):
                 item.append(BR())
                 item.append(A(current.T("Edit"),
-                             _href=URL(c="cms", f="post",
-                                       args=[row.id, "update"],
-                                       vars=vars),
-                             _class="action-btn",
+                             _href = URL(c="cms", f="post",
+                                         args = [row.id, "update"],
+                                         vars = vars,
+                                         ),
+                             _class = "action-btn",
                              ))
 
         elif current.auth.s3_has_role(current.session.s3.system_roles.ADMIN):
             item = A(current.T("Edit"),
-                     _href=URL(c="cms", f="post", args="create",
-                               vars=vars),
-                     _class="action-btn")
+                     _href = URL(c="cms", f="post",
+                                 args = "create",
+                                 vars = vars,
+                                 ),
+                     _class = "action-btn",
+                     )
         else:
             item = None
 

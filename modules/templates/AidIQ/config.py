@@ -246,7 +246,56 @@ def config(settings):
             # We already have an instance: Take no action
             return
 
-        # Deploy new instance
+        # Deploy New Instance
+
+        # Lookup the Deployment Details
+        # Initial case is no choice of location, so we do US West (cheapest & where our Monitor/SMTP are)
+        ctable = s3db.setup_cloud
+        cloud = db(ctable.name == "AWS AidIQ").select(ctable.cloud_id,
+                                                      limitby = (0, 1)
+                                                      ).first()
+        cloud_id = cloud.cloud_id
+        # Initial case is no custom URL, so we create as https://cloudxxxx.aidiq.com
+        dtable = s3db.setup_dns
+        dns = db(dtable.name == "aidiq.com").select(dtable.dns_id,
+                                                    limitby = (0, 1)
+                                                    ).first()
+        dns_id = dns.dns_id
+        # SMTP using AWS SES (@ToDo: Allow them to use their own Sendgrid - e.g. from a Control Panel we provide in their profile)
+        stable = s3db.setup_smtp
+        smtp = db(stable.name == "AidIQ SES").select(stable.id,
+                                                     limitby = (0, 1)
+                                                     ).first()
+        smtp_id = smtp.id
+
+        # Create Deployment
+        # eden-stable (default anyway)
+        # Default template (@ToDo: Allow them to switch Template - e.g. from a Control Panel we provide in their profile)
+        deployment_id = s3db.setup_deployment.insert(cloud_id = cloud_id,
+                                                     dns_id = dns_id,
+                                                     smtp_id = smtp_id,
+                                                     )
+        # Link instance to Order
+        ttable.insert(order_id = order_id,
+                      tag = "deployment_id",
+                      value = deployment_id,
+                      )
+
+        server_id = s3db.setup_server.insert(deployment_id = deployment_id,
+                                             host_ip = "127.0.0.1",
+                                             )
+        s3db.setup_aws_server.insert(server_id = server_id)
+        s3db.setup_monitor_server.insert(server_id = server_id)
+        #task_id = current.s3task.run_async("dummy")
+        instance_id = s3db.setup_instance.insert(deployment_id = deployment_id,
+                                                 url = public_url,
+                                                 sender = current.auth.user.email,
+                                                 #task_id = task_id,
+                                                 )
+        # Deploy
+        s3db.setup_instance_deploy(deployment_id, instance_id, current.request.folder)
+
+        # Email User that their instance is ready for them at https://cloudxxxx.aidiq.com
         # @ToDo
 
     # -------------------------------------------------------------------------
@@ -300,27 +349,38 @@ def config(settings):
             After an Order has been created then redirect to PayPal to Register the Subscription
         """
 
-        post_vars_get = current.request.post_vars.get
-        term = post_vars_get("sub_term_value")
-        if term is None:
-            # @ToDo: Handle Service
-            return
-
         db = current.db
         s3db = current.s3db
 
         # Lookup Plan
         # @ToDo: Better link between Order & Plan (DRY, FKs)
         ptable = s3db.fin_subscription_plan
-        if term == "YR":
-            interval_count = 12
+        post_vars_get = current.request.post_vars.get
+        term = post_vars_get("sub_term_value")
+        if term is None:
+            # Service
+            hours = post_vars_get("sub_hours_value")
+            if hours == "10":
+                plan = "Support 10"
+            elif hours == "40":
+                plan = "Support 40"
+            else:
+                plan = "Support 80"
+            plan = db(ptable.name == plan).select(ptable.id,
+                                                  limitby = (0, 1)
+                                                  ).first()
         else:
-            # term == "MO"
-            interval_count = 1
+            # Instance
+            if term == "YR":
+                interval_count = 12
+            else:
+                # term == "MO"
+                interval_count = 1
 
-        plan = db(ptable.interval_count == interval_count).select(ptable.id,
-                                                                  limitby = (0, 1)
-                                                                  ).first()
+            plan = db(ptable.interval_count == interval_count).select(ptable.id,
+                                                                      limitby = (0, 1)
+                                                                      ).first()
+
         plan_id = plan.id
 
         # Assume only a single Payment Service defined

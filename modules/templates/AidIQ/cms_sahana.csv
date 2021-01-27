@@ -1,8 +1,17 @@
 Series,Name,Title,Body,Module
-,sahana,SAHANA | AidIQ.com,"
+,sahana,Sahana | AidIQ.com,"
 <div class='row content-dark header'>
  <div class='small-12 columns'>
-  <div class='slogan'>SAHANA</div>
+  <div class='slogan'>Sahana</div>
  </div>
+</div>
+<div class='row content-light'>
+<p>Sahana EDEN is the world's most popular open-source information management system for disaster and humanitarian aid management. With over 20 modules, it can support all phases of the emergency cycle.</p>
+<p>The first version of Sahana was created in Sri Lanka to help coordinate the response to the 2004 Tsunami. Since then it has been deployed in over 30 countries by dozens of groups ranging from large international NGOs such as Internal Federation of Red Cross (IFRC) to grassroots networks such as Occupy Sandy.</p>
+<p>The word "Sahana" means "relief" in Sinhalese, the national language of Sri Lanka.</p>
+<p>The AidIQ team are core developers for Sahana EDEN and are the premier providers of commercial support services for it.</p>
+<p>The 
+<a href="http://sahanafoundation.org" target="_blank">Sahana Software Foundation</a> is a 501(c) non-profit foundation which oversees the community and guarantees that the code remains freely accessible.</p>
+<p><a href="https://en.wikipedia.org/wiki/Sahana_Software_Foundation" target="_blank">Wikipedia entry</a></p>
 </div>
 ",

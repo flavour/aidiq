@@ -1,3 +1,6 @@
-Name,Description,Product,Months,Price,Currency
-Standard Cloud Instance (Monthly),,Standard Instance,1,50,USD
-Standard Cloud Instance (Annual),,Standard Instance,12,500,USD
+Name,Description,Product,Cycles,Months,Price,Currency
+Standard Cloud Instance (Monthly),,Standard Instance,,1,50,USD
+Standard Cloud Instance (Annual),,Standard Instance,,12,500,USD
+Support 10,10 Hours of Support,Support 10,1,12,750,USD
+Support 40,40 Hours of Support,Support 40,1,12,2880,USD
+Support 80,80 Hours of Support,Support 80,1,12,5600,USD

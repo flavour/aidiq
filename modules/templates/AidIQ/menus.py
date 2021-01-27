@@ -31,9 +31,9 @@ class S3MainMenu(default.S3MainMenu):
             cls.menu_admin(right=True),
             )
 
-        # Render the off-canvas menu if on default/index
+        # Render the off-canvas menu if on default/index or default/page
         request = current.request
-        if request.controller == "default" and request.function == "index":
+        if request.controller == "default" and request.function in ("index", "page"):
             current.menu.top_menu = cls.menu_top()
             current.menu.bottom_menu = cls.menu_bottom()
         else:
@@ -96,9 +96,9 @@ class S3MainMenu(default.S3MainMenu):
 
         return WM(c="default", f="index", link=False, _class="top-menu")(
                   #WM("Home"),
-                  WM("Services", vars={"page": "services"}),
-                  WM("Projects", vars={"page": "projects"}),
-                  WM("Team", vars={"page": "team"}),
+                  WM("Services", f="page", args=["services"]),
+                  WM("Projects", f= "page", args=["projects"]),
+                  WM("Team", f= "page", args=["team"]),
                   WM("Contact Us", args=["contact"], _class="contact-link"),
                   )
 
@@ -111,9 +111,9 @@ class S3MainMenu(default.S3MainMenu):
 
         menu = WM(c="default", f="index", link=False, _class="bottom-menu")(
                   WM("AidIQ", _class="home-link"),
-                  WM("Services", vars={"page": "services"}),
-                  WM("Projects", vars={"page": "projects"}),
-                  WM("Team", vars={"page": "team"}),
+                  WM("Services", f="page", args=["services"]),
+                  WM("Projects", f= "page", args=["projects"]),
+                  WM("Team", f= "page", args=["team"]),
                   WM("Contact Us", args=["contact"], _class="contact-link"),
                   )
 
