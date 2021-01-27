@@ -2916,9 +2916,14 @@ class S3QRInput(FormWidget):
         @status: experimental
     """
 
-    def __init__(self):
+    def __init__(self, hidden=False):
+        """
+            Constructor
 
-        pass
+            @param hidden: use a hidden input
+        """
+
+        self.hidden = hidden
 
     # -------------------------------------------------------------------------
     def __call__(self, field, value, **attributes):
@@ -2934,8 +2939,18 @@ class S3QRInput(FormWidget):
 
         default = {"value": value,
                    }
-        attr = StringWidget._attributes(field, default, **attributes)
+        if self.hidden:
+            default["_type"] = "hidden"
 
+        # Choose input type
+        if field.type == "text":
+            input_type = TextWidget
+        elif field.type == "string":
+            input_type = StringWidget
+        else:
+            input_type = self
+
+        attr = input_type._attributes(field, default, **attributes)
         widget_id = attr.get("_id")
         if not widget_id:
             widget_id = attr["_id"] = str(field).replace(".", "_")
@@ -2973,7 +2988,7 @@ class S3QRInput(FormWidget):
         # Global scripts
         # TODO minify
         scripts = ["/%s/static/scripts/qr-scanner/qr-scanner.umd.min.js",
-                   "/%s/static/scripts/S3/s3.ui.qrcode.js",
+                   "/%s/static/scripts/S3/s3.ui.qrinput.js",
                    ]
         for script in scripts:
             path = script % appname
@@ -2981,7 +2996,7 @@ class S3QRInput(FormWidget):
                 s3.scripts.append(path)
 
         # jQuery-ready script
-        script = '''$('#%(selector)s').qrScannerWidget(%(options)s);''' % \
+        script = '''$('#%(selector)s').qrInput(%(options)s);''' % \
                  {"selector": selector, "options": json.dumps(opts)}
         s3.jquery_ready.append(script)
 
@@ -5010,7 +5025,7 @@ class S3LocationSelector(S3Selector):
         request = current.request
         s3 = current.response.s3
 
-        #self.field = field
+        self.field = field
 
         # Is the location input required?
         requires = field.requires
@@ -6103,7 +6118,6 @@ i18n.map_feature_required="%s"''' % (show_map_add,
 
         # Geocoder?
         if geocoder:
-
             if not location_selector_loaded:
                 global_append('''i18n.address_mapped="%s"
 i18n.address_not_mapped="%s"
@@ -6114,16 +6128,25 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
                                    T("Address NOT Found"),
                                    ))
 
-            map_icon.append(DIV(DIV(_class = "throbber hide"),
-                                DIV(_class = "geocode_success hide"),
-                                DIV(_class = "geocode_fail hide"),
-                                BUTTON(T("Geocode"),
-                                       _type = "button", # defaults to 'submit' otherwise!
-                                       _class = "hide",
-                                       ),
-                                _id = "%s_geocode" % fieldname,
-                                _class = "controls geocode",
-                                ))
+        # Generate form key
+        formkey = uuid4().hex
+
+        # Store form key in session
+        session = current.session
+        keyname = "_formkey[geocode]"
+        session[keyname] = session.get(keyname, [])[-9:] + [formkey]
+
+        map_icon.append(DIV(DIV(_class = "throbber hide"),
+                            DIV(_class = "geocode_success hide"),
+                            DIV(_class = "geocode_fail hide"),
+                            BUTTON(T("Geocode"),
+                                   _class = "hide",
+                                   _type = "button", # defaults to 'submit' otherwise!
+                                   data = {"k": formkey},
+                                   ),
+                            _class = "controls geocode",
+                            _id = "%s_geocode" % fieldname,
+                            ))
 
         # Inject map directly behind map icon
         map_icon.append(_map)
@@ -6197,7 +6220,7 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
         path_ok = True
         if level:
             # Lx location
-            values["level"] = level
+            #values["level"] = level # Currently unused and not updated by s3.ui.locationselector.js
             values["specific"] = None
 
             if len(path) != (int(level[1:]) + 1):
@@ -6584,9 +6607,11 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
                 # Create new specific location (indicate by id=0)
                 values["id"] = 0
 
-                # Permission to create?
-                if not current.auth.s3_has_permission("create", table):
-                    return (values, current.auth.messages.access_denied)
+                # Skip Permission check if the field is JSON type (e.g. during Registration)
+                if self.field.type != "json":
+                    # Permission to create?
+                    if not current.auth.s3_has_permission("create", table):
+                        return (values, current.auth.messages.access_denied)
 
                 # Check for duplicate address
                 if self.prevent_duplicate_addresses:
@@ -6719,9 +6744,24 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
         if location_id is None:
             return location_id, None
 
-        # Skip if the field is JSON type (e.g. during Registration)
-        #if self.field.type == "json":
-        #    return location_id, None
+        if self.field.type == "json":
+            # Save raw data suitable for later link to location_id or creation of new location
+            # e.g. during Approval of a new Registration
+            if location_id == 0:
+                del values["id"]
+            try:
+                del values["specific"]
+            except KeyError:
+                pass
+            try:
+                del values["address"] # Duplicate of addr_street
+            except KeyError:
+                pass
+            try:
+                del values["postcode"] # Duplicate of addr_postcode
+            except KeyError:
+                pass
+            return values, None
 
         db = current.db
         table = current.s3db.gis_location

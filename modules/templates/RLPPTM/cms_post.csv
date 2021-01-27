@@ -1,0 +1,18 @@
+Name,Module,Resource,Body,Comments
+Subject InviteOrg,auth,user,{system}: Invitation to Register Account,
+Message InviteOrg,auth,user,"Please visit {url} to register a user account.
+
+Your registration code: {code}",
+WelcomeMessageInvited,auth,user,"Welcome to the {system_name} Portal 
+
+- To edit your profile go to: {profile}
+
+Thank you",
+Subject WelcomeProvider,auth,user,Welcome to the {system} Portal,
+Message WelcomeProvider,auth,user,"Your account at the {system} Portal has been approved, you can now login.
+
+- Visit the portal: {homepage}
+- To edit your profile go to: {profile}
+
+Thank you",
+InvitedRegistrationIntro,auth,user,,

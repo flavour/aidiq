@@ -684,7 +684,7 @@
                 level,
                 value;
 
-            for (level=0; level<6; level++) {
+            for (level = 0; level < 6; level++) {
                 dropdown = $(selector + '_L' + level);
                 // Only update if the dropdown exists, else retain default
                 if (dropdown.length) {
@@ -921,41 +921,48 @@
             // Collect address and postcode
             this._collectData();
 
-            // Address is mandatory for geocoding
-            if (!data.address) {
-                return;
-            }
+            if (S3.gis.geocodeDecisionPlugin) {
+                // Use Plugin's custom Geocoder workflow
+                S3.gis.geocodeDecisionPlugin(selector, data, this);
+            } else {
+                // Use default Geocoder workflow
 
-            // Lx is mandatory to the lowest level if it has options
-            var levels = ['1', '2', '3', '4', '5'];
-            for (var i=0, dropdown; i < 5; i++) {
-                dropdown = $(selector + '_L' + levels[i]);
-                if (dropdown.length && !dropdown.val()) {
-                    if (dropdown[0].options.length > 1) {
-                        // User hasn't yet selected an option, but can do so
-                        return;
+                // Address is mandatory for geocoding
+                if (!data.address) {
+                    return;
+                }
+
+                // Lx is mandatory to the lowest level if it has options
+                var levels = ['1', '2', '3', '4', '5'];
+                for (var i=0, dropdown; i < 5; i++) {
+                    dropdown = $(selector + '_L' + levels[i]);
+                    if (dropdown.length && !dropdown.val()) {
+                        if (dropdown[0].options.length > 1) {
+                            // User hasn't yet selected an option, but can do so
+                            return;
+                        }
                     }
                 }
-            }
 
-            // Hide previous success/failure messages
-            $(selector + '_geocode .geocode_success,' +
-              selector + '_geocode .geocode_fail').hide();
+                // Hide previous success/failure messages
+                $(selector + '_geocode .geocode_success,' +
+                  selector + '_geocode .geocode_fail').hide();
 
-            var self = this,
-                ns = this.eventNamespace;
-            if (this.input.data('manually_geocoded')) {
-                // Show a button to allow the user to do a new automatic Geocode
-                $(selector + '_geocode button').removeClass('hide')
-                                               .show()
-                                               .unbind(ns)
-                                               .bind('click' + ns, function() {
-                    $(this).hide();
-                    self._geocode();
-                });
-            } else {
-                // Do an automatic Geocode
-                this._geocode();
+                var self = this,
+                    ns = this.eventNamespace;
+                if (this.input.data('manually_geocoded')) {
+                    // Show a button to allow the user to do a new automatic Geocode
+                    $(selector + '_geocode button').removeClass('hide')
+                                                   .show()
+                                                   .unbind(ns)
+                                                   .bind('click' + ns, function() {
+                        $(this).hide();
+                        self._geocode();
+                    });
+                } else {
+                    // Do an automatic Geocode
+                    this._geocode();
+                }
             }
         },
 
@@ -984,6 +991,9 @@
                     postData[k] = v;
                 }
             }
+
+            // Add the formkey
+            postData.k = $(selector + '_geocode button').data('k');
 
             // Submit to Geocoder
             var url = S3.Ap.concat('/gis/geocode');
@@ -1063,6 +1073,9 @@
             // Collect the Lat/Lon
             var data = this.data;
             var postData = {lat: data.lat, lon: data.lon};
+
+            // Add the formkey
+            postData.k = $(selector + '_geocode button').data('k');
 
             // Submit to Geocoder
             var url = S3.Ap.concat('/gis/geocode_r');

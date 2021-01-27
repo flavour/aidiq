@@ -17,6 +17,8 @@ class Daily():
         s3db = current.s3db
         request = current.request
 
+        current.log.info("Daily Maintenance RLP")
+
         now = datetime.datetime.utcnow()
         month_past = now - datetime.timedelta(weeks=4)
 
@@ -34,7 +36,9 @@ class Daily():
         osremove = os.remove
         folder = osjoin(global_settings.applications_parent,
                         request.folder,
-                        "sessions")
+                        "sessions",
+                        )
+
         # Convert to UNIX time
         month_past_u = time.mktime(month_past.timetuple())
         for file in os.listdir(folder):
