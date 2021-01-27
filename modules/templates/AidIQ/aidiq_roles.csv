@@ -1,4 +1,5 @@
 uid,role, description,controller,function,table,uacl,oacl,org,hidden,system,protected,Notes,
+ANONYMOUS,Anonymous,,,,cms_post,READ,,,Anonymous Users can see CMS pages
 AUTHENTICATED,Authenticated,,pr,,,READ|UPDATE,,,,,,Authenticated users can only see/edit their own PR records,
 AUTHENTICATED,Authenticated,,,,pr_person,READ|UPDATE,,,,,,Authenticated users can only see/edit their own PR records,
 AUTHENTICATED,Authenticated,,pr,person,,CREATE,READ|UPDATE,,,,,But need to be able to add/edit addresses,
