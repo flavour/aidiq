@@ -13,31 +13,20 @@ class index(S3CustomController):
 
     def __call__(self):
 
-        page = current.request.get_vars.get("page", None)
-        if page:
-            vars = {"page": page}
-            table = current.s3db.cms_post
-            query = (table.name == page) & \
-                    (table.deleted != True)
-            row = current.db(query).select(table.id,
-                                           table.title,
-                                           table.body,
-                                           limitby = (0, 1)
-                                           ).first()
-        else:
-            module = "default"
-            vars = {"module": module}
-            table = current.s3db.cms_post
-            db = current.db
-            ltable = db.cms_post_module
-            query = (ltable.module == module) & \
-                    (ltable.post_id == table.id) & \
-                    (table.deleted != True)
-            row = db(query).select(table.id,
-                                   table.title,
-                                   table.body,
-                                   limitby = (0, 1)
-                                   ).first()
+        module = "default"
+        vars = {"module": module}
+        table = current.s3db.cms_post
+        db = current.db
+        ltable = db.cms_post_module
+        query = (ltable.module == module) & \
+                (ltable.resource == "index") & \
+                (ltable.post_id == table.id) & \
+                (table.deleted != True)
+        row = db(query).select(table.id,
+                               table.title,
+                               table.body,
+                               limitby = (0, 1)
+                               ).first()
         title = None
         if row:
             title = row.title

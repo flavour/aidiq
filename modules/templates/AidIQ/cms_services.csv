@@ -1,4 +1,4 @@
-Series,Name,Title,Body,Module
+Series,Name,Title,Body,Module,Resource
 ,services,Services | AidIQ.com,"
 <div class='row content-dark header'>
  <div class='small-12 columns'>
@@ -76,4 +76,4 @@ Series,Name,Title,Body,Module
    </li>
   </ul>
  </div>
-</div>",
+</div>",default,page

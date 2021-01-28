@@ -1,4 +1,4 @@
-Series,Name,Title,Body,Module
+Series,Name,Title,Body,Module,Resource
 ,sahana,Sahana | AidIQ.com,"
 <div class='row content-dark header'>
  <div class='small-12 columns'>
@@ -14,4 +14,4 @@ Series,Name,Title,Body,Module
 <a href='http://sahanafoundation.org' target='_blank'>Sahana Software Foundation</a> is a 501(c) non-profit foundation which oversees the community and guarantees that the code remains freely accessible.</p>
 <p><a href='https://en.wikipedia.org/wiki/Sahana_Software_Foundation' target='_blank'>Wikipedia entry</a></p>
 </div>
-",
+",default,page

@@ -1,4 +1,4 @@
-Series,Name,Title,Body,Module
+Series,Name,Title,Body,Module,Resource
 ,projects,Projects | AidIQ.com,"
 <div class='row content-dark header'>
  <div class='small-12 columns'>
@@ -103,4 +103,4 @@ Series,Name,Title,Body,Module
    <a href='sites/default/files/BPKEL-IM-SOP.pdf'> Download draft document</a>
   </p>
  </div>
-</div>",
+</div>",default,page
