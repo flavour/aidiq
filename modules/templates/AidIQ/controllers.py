@@ -14,12 +14,15 @@ class index(S3CustomController):
     def __call__(self):
 
         module = "default"
-        vars = {"module": module}
+        resource = "index"
+        vars = {"module": module,
+                "resource": "index",
+                }
         table = current.s3db.cms_post
         db = current.db
         ltable = db.cms_post_module
         query = (ltable.module == module) & \
-                (ltable.resource == "index") & \
+                (ltable.resource == resource) & \
                 (ltable.post_id == table.id) & \
                 (table.deleted != True)
         row = db(query).select(table.id,
