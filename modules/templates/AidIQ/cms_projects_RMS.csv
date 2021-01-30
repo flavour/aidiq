@@ -1,0 +1,42 @@
+Series,Name,Title,Body,Module,Resource
+,resource-management-system,RMS | AidIQ.com,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <div class='slogan'>RMS: Resource Management System</div>
+  <p class='sub-header'>International Federation of Red Cross and Red Crescent Societies (IFRC)</p>
+ </div>
+</div>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""rms.png""])}}' style='float:right;margin-left:1.0rem;margin-bottom:1.0rem;'></img>
+  <p>
+   AidIQ developed the Resource Mapping System (RMS) in Sahana Eden for the
+   International Federation of Red Cross and Red Crescent Societies (IFRC) to
+   allow their National Societies to share information on their Inventory,
+   Assets, Staff and Volunteers.
+  <p>
+  <p>
+   Neighboring National Societies and the IFRC can quickly see what is available
+   in the event of a major disaster. This information is blended with data from
+   other Geographic Information Systems (GIS), such as Population Density, Rainfall
+   and Topography to allow for a more informed planning of the response.
+  </p>
+  <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""RedCross2.jpg""])}}' style='float:left;margin-right:1.0rem;margin-bottom:1.0rem;'></img>
+  <p>
+   The solution allows agencies to share a common server, yet retain full control
+   over their data and who can have access to it (i.e. a multi-tenancy system). The
+   open source nature of the software was important because it meant there was no
+   vendor lock-in and the software was easy to maintain. For this deployment the
+   AidIQ Team deployed using Amazon Web Services in the regional data center to
+   guarantee low latency.
+  </p>
+  <p>
+   The solution evolved into a Resource Management System and has been extended many times with new modules, as it was seen as such a cost-effective platform.
+  </p>
+  <p>
+   You can view a demo video of the IFRC Resource Mapping System <a href='http://www.youtube.com/watch?v=YV4EuwSTCUQ'>HERE</a>.
+  </p>
+ </div>
+</div>
+",default,page

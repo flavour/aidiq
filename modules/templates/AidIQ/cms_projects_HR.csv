@@ -1,0 +1,25 @@
+Series,Name,Title,Body,Module,Resource
+,humanitarian-response,Humanitarian | AidIQ.com,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <i class='fa fa-support'></i>
+  <div class='slogan'>Humanitarian Response</div>
+ </div>
+</div>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <h4>Project Management</h4>
+  <p></p>
+  <h4>Assessments</h4>
+  <p></p>
+  <h4>Situation Reporting</h4>
+  <p></p>
+  <h4>Case Studies</h4>
+  <ul>
+  <li><a href='{{=URL(c=""default"", f=""page"", args=[""resource-management-system""])}}'>RMS: Resource Management System</a>. International Federation of Red Cross and Red Crescent Societies</li>
+  <li>SHARE. UN Hugh Commisioner's Office, Sri Lanka</li>
+  <li>UCCE. Oxfam, Plan, Save the Children</li>
+  </ul>
+ </div>
+</div>",default,page

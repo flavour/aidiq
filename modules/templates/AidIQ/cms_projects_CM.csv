@@ -1,0 +1,26 @@
+Series,Name,Title,Body,Module,Resource
+,case-management,Case Management | AidIQ.com,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <i class='fa fa-id-card-o'></i>
+  <div class='slogan'>Case Management</div>
+ </div>
+</div>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <h4>Beneficiary Registry</h4>
+  <p>A case is recorded for the individual and their family members, where appropriate.</p>
+  <h4>Processing Workflows</h4>
+  <p>Workflows can be defined on how cases should be processed...setting up interviews as-required.</p>
+  <h4>Needs Assessment and Eligibility Screening</h4>
+  <p>Cases can be assessed for Eligibility and to determine Needs.</p>
+  <h4>Direct Assistance and Support Brokering</h4>
+  <p>Assistance can be provided by the Case Manager and managed using Activities or else they can refer the case to external partners.</p>
+  <h4>Case Studies</h4>
+  <ul>
+  <li>Support to Life: Syrian Refugees in Turkey</li>
+  <li>Refuscope. German Red Cross (DRK)</li>
+  </ul>
+ </div>
+</div>",default,page

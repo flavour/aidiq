@@ -1,0 +1,23 @@
+Series,Name,Title,Body,Module,Resource
+,HELIOShare,HELIOShare | AidIQ.com,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <div class='slogan'>HELIOShare: Inter-Agency Information Sharing</div>
+  <p class='sub-header'>HELIOS foundation</p>
+ </div>
+</div>
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <p>
+   AidIQ were commissioned by the <a href='http://helios-foundation.org' target='_blank'>HELIOS foundation</a>
+   to create a portal to allow NGOs working in the field to be able to share
+   information on their In Stock & On Order relief items. This allows them to
+   use up surplus items, avoid goods expiring and avoid duplicate procurement.
+   Future iterations could include sharing of information on Planned Procurements
+   to allow bulk discounts & shared freighting/importation costs. Data can be
+   automatically uploaded from HELIOS instances or via manual data entry or
+   uploading of spreadsheets.
+   This work was done for the <a href='http://thecbha.org' target='_blank'>Consortium of British Humanitarian Agencies</a> & funded by DfID.
+  </p>
+ </div>
+</div>",default,page

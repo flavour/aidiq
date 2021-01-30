@@ -1,0 +1,22 @@
+Series,Name,Title,Body,Module,Resource
+,shelter-management,Shelters | AidIQ.com,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <i class='fa fa-home'></i>
+  <div class='slogan'>Shelter Management</div>
+ </div>
+</div>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <h4>Client Registration, Mail, Meals</h4>
+  <p>This can, optionally, link to <a href='{{=URL(c=""default"", f=""page"", args=[""case-management""])}}'>Case Management</a>.</p>
+  <h4>Check In/Out</h4>
+  <p></p>
+  <h4>Case Studies</h4>
+  <ul>
+  <li>EVASS. Italy</li>
+  <li>Village. German Red Cross (DRK)</li>
+  </ul>
+ </div>
+</div>",default,page

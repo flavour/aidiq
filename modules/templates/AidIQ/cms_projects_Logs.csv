@@ -1,0 +1,32 @@
+Series,Name,Title,Body,Module,Resource
+,logistics,Logistics | AidIQ.com,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <i class='fa fa-truck'></i>
+  <div class='slogan'>Logistics</div>
+ </div>
+</div>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <p>Getting the right stuff to the right place at the right time.</p>
+  <h4>Warehouse Inventory</h4>
+  <p>Manage Intake, Shipments and Inventory Checks. Within Sahana, any Site can have Inventory, but Warehouses have this as a focus.</p>
+  <h4>Asset Tracking</h4>
+  <p>Track Assets throughout their life cycle</p>
+  <h4>Fleet Management</h4>
+  <p>Vehicles are a special class of Asset, with additional attributes. GPS Tracking.</p>
+  <h4>Donations</h4>
+  <p>Thankyou certificates</p>
+  <h4>Relief Goods Distributions</h4>
+  <p>Beneficiary Registration, <a href='{{=URL(c=""default"", f=""page"", args=[""logistics""])}}'>Logistics</a></p>
+  <h4>Case Studies</h4>
+  <ul>
+  <li>Give2LA. Los Angeles Emergency Management Department</li>
+  <li><a href='{{=URL(c=""default"", f=""page"", args=[""HELIOShare""])}}'>HELIOShare: InterAgency Information Sharing</a>. HELIOS Foundation</li>
+  <li>Oxfam Myanmar</li>
+  <li>RGIMS: Relief Goods Inventory and Monitoring System. Philippines Department of Social Welfare and Development</li>
+  <li><a href='{{=URL(c=""default"", f=""page"", args=[""resource-management-system""])}}'>RMS: Resource Management System</a>. International Federation of Red Cross and Red Crescent Societies</li>
+  </ul>
+ </div>
+</div>",default,page

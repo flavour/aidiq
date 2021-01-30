@@ -1,0 +1,26 @@
+Series,Name,Title,Body,Module,Resource
+,disaster-risk-reduction,DRR | AidIQ.com,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <i class='fa fa-map-o'></i>
+  <div class='slogan'>Disaster Risk Reduction</div>
+ </div>
+</div>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <p>Disasters will always happen, however there is much that we can do to reduce the risk that these have a negative impact upon us.</p>
+  <h4>Risk Mapping</h4>
+  <p>Map the Hazards, both Natural and Man-made</p>
+  <h4>Community Resilience Mapping</h4>
+  <p>Map the Vulnerable members of the community, Map the Resources available to the community including Evacuation Routes</p>
+  <h4>Case Studies</h4>
+  <ul>
+  <li>Climate Data Portal. Nepal Departmenty of Hydrology and Metereology</li>
+  <li>CRMT: Community Resilience Mapping Tool. Los Angeles County Public Health</li>
+  <li><a href='{{=URL(c=""default"", f=""page"", args=[""disaster-risk-reduction-project-portal""])}}'>DRRPP: Disaster Risk Reduction Project Portal</a>. Asia Disaster Preparedness Center</li>
+  <li>Map the Philippines. Making All Voices Count</li>
+  <li><a href='{{=URL(c=""default"", f=""page"", args=[""resource-management-system""])}}'>RMS: Resource Management System</a> (Vulnerability module). International Federation of Red Cross and Red Crescent Societies</li>
+  </ul>
+ </div>
+</div>",default,page

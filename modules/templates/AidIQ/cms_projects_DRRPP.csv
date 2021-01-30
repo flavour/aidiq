@@ -1,0 +1,36 @@
+Series,Name,Title,Body,Module,Resource
+,disaster-risk-reduction-project-portal,DRRPP | AidIQ.com,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <div class='slogan'>DRRPP: Disaster Risk Reduction Project Portal</div>
+  <p class='sub-header'>Asian Disaster Preparedness Center (ADPC)</p>
+ </div>
+</div>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""drrpp.png""])}}' style='float:left;margin-right:1.0rem;margin-bottom:1.0rem;'></img>
+  <p>
+   <a href='http://www.drrprojects.net' target='blank'>The Disaster Risk Reduction (DRR) Project Portal</a>
+   collects information on all multi-country and national level DRR projects
+   and initiatives in the Asia Pacific region implemented since 2005.
+   By facilitating information sharing across the region, the Portal aims to
+   advance the Hyogo Framework for Action (HFA) goals in building the resilience
+   of nations and communities to disasters.
+  </p>
+  <p>
+   This includes making disaster risk reduction a high priority on local and national
+   levels. There are many priorities for action, such as knowing the risks, enhancing
+   early warning systems to reduce vulnerabilities, and building a culture of safety
+   and resilience for all people by strengthening networks and working with the media.
+  </p>
+  <p>The DRR Project Portal:</p>
+  <ul>
+    <li>Helps effective planning, programming, cooperation, and collaboration of DRR projects and programs in the region by facilitating project analysis to identify gaps and overlaps.</li>
+    <li>Is essential for governments, organizations and donors involved in implementing and supporting DRR projects and program in the region.</li>
+    <li>Is a useful resource for academics, students and the media for obtaining an overview of DRR projects being implemented in the region.</li>
+  </ul>
+  <p>This Sahana Eden-powered portal was deployed at the Asian Disaster Preparedness Center.</p>
+ </div>
+</div>
+",default,page

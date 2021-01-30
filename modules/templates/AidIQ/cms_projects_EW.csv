@@ -1,0 +1,23 @@
+Series,Name,Title,Body,Module,Resource
+,early-warning,Early Warning | AidIQ.com,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <i class='fa fa-bullhorn'></i>
+  <div class='slogan'>Early Warning</div>
+ </div>
+</div>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <h4>Alert Publishing</h4>
+  <p></p>
+  <h4>Alert Subscription</h4>
+  <p></p>
+  <h4>Case Studies</h4>
+  <ul>
+  <li>SAMBRO. Maldives</li>
+  <li>SAMBRO. Myanmar</li>
+  <li>SAMBRO. Philippines</li>
+  </ul>
+ </div>
+</div>",default,page

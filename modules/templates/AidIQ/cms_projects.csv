@@ -2,105 +2,95 @@ Series,Name,Title,Body,Module,Resource
 ,projects,Projects | AidIQ.com,"
 <div class='row content-dark header'>
  <div class='small-12 columns'>
-  <div class='slogan'>Our Projects</div>
-  <p class='sub-header'>Some examples of the solutions we have implemented for our clients.</p>
+  <div class='slogan'>Case Studies</div>
+  <p class='sub-header'>AidIQ specialise in developing solutions to new problems in a rapid & cost-effective manner. Part of how this is possible is through extensive domain knowledge and drawing on elements from previous solutions. Here are some of the areas that we have worked in, along with case studies of the solutions we have implemented for our clients.</p>
  </div>
 </div>
-
 <div class='row content-light'>
- <div class='small-12 columns'>
-  <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""rms.png""])}}' style='float:right;margin-left:1.0rem;margin-bottom:1.0rem;'></img>
-  <h2>Resource Management System</h2>
-  <h5>International Federation of Red Cross and Red Crescent Societies (IFRC)</h5>
-  <p>
-   AidIQ developed the Resource Management System (RMS) in Sahana Eden for the
-   International Federation of Red Cross and Red Crescent Societies (IFRC) to
-   allow their National Societies to share information on their Inventory,
-   Assets, Staff and Volunteers.
-  <p>
-  <p>
-   Neighboring National Societies and the IFRC can quickly see what is available
-   in the event of a major disaster. This information is blended with data from
-   other Geographic Information Systems (GIS), such as Population Density, Rainfall
-   and Topography to allow for a more informed planning of the response.
-  </p>
-  <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""RedCross2.jpg""])}}' style='float:left;margin-right:1.0rem;margin-bottom:1.0rem;'></img>
-  <p>
-   The solution allowed agencies to share a common server, yet retain full control
-   over their data and who can have access to it (i.e. a multi-tenancy system). The
-   open source nature of the software was important because it meant there was no
-   vendor lock-in and the software was easy to maintain. For this deployment the
-   Sahana Team deployed using Amazon Web Services in the regional data center to
-   guarantee low latency.
-  </p>
-  <p>
-   You can view a demo video of the IFRC Resource Mapping System <a href='http://www.youtube.com/watch?v=YV4EuwSTCUQ'>HERE</a>.
-  </p>
- </div>
-</div>
-
-<div class='row content-light'>
- <div class='small-12 columns'>
-  <h2>Inter-Agency Information Sharing - HELIOS</h2>
-  <p>
-   AidIQ were commissioned by the <a href='http://helios-foundation.org' target='_blank'>HELIOS foundation</a>
-   to create a portal to allow NGOs working in the field to be able to share
-   information on their In Stock & On Order relief items. This allows them to
-   use up surplus items, avoid goods expiring and avoid duplicate procurement.
-   Future iterations could include sharing of information on Planned Procurements
-   to allow bulk discounts & shared freighting/importation costs. Data can be
-   automatically uploaded from HELIOS instances or via manual data entry or
-   uploading of spreadsheets.
-   This work was done for the <a href='http://thecbha.org' target='_blank'>Consortium of British Humanitarian Agencies</a> & funded by DfID.
-  </p>
- </div>
-</div>
-
-<div class='row content-light'>
- <div class='small-12 columns'>
-  <img src='{{=URL(c=""static"", f=""themes"", args=[""AidIQ"", ""img"", ""drrpp.png""])}}' style='float:left;margin-right:1.0rem;margin-bottom:1.0rem;'></img>
-  <h2>DRR Project Portal</h2>
-  <h5>Asian Disaster Preparedness Center (ADPC)</h5>
-  <p>
-   <a href='http://www.drrprojects.net' target='blank'>The Disaster Risk Reduction (DRR) Project Portal</a>
-   collects information on all multi-country and national level DRR projects
-   and initiatives in the Asia Pacific region implemented since 2005.
-   By facilitating information sharing across the region, the Portal aims to
-   advance the Hyogo Framework for Action (HFA) goals in building the resilience
-   of nations and communities to disasters.
-  </p>
-  <p>
-   This includes making disaster risk reduction a high priority on local and national
-   levels. There are many priorities for action, such as knowing the risks, enhancing
-   early warning systems to reduce vulnerabilities, and building a culture of safety
-   and resilience for all people by strengthening networks and working with the media.
-  </p>
-  <p>The DRR Project Portal:</p>
-  <ul>
-    <li>Helps effective planning, programming, cooperation, and collaboration of DRR projects and programs in the region by facilitating project analysis to identify gaps and overlaps.</li>
-    <li>Is essential for governments, organizations and donors involved in implementing and supporting DRR projects and program in the region.</li>
-    <li>Is a useful resource for academics, students and the media for obtaining an overview of DRR projects being implemented in the region.</li>
+ <div class='medium-12 large-10 large-centered columns'>
+  <ul class='small-block-grid-2 medium-block-grid-3 large-block-grid-4 icon-grid'>
+   <li>
+    <label>
+     <a href='{{=URL(c=""default"", f=""page"", args=[""disaster-risk-reduction""])}}'>
+     <i class='fa fa-map-o'></i>
+     <h6>Disaster Risk Reduction</h6>
+     <span class='sub'>Risk Mapping, Community Resilience Mapping</span>
+     </a>
+    </label>
+   </li>
+   <li>
+    <label>
+     <a href='{{=URL(c=""default"", f=""page"", args=[""early-warning""])}}'>
+     <i class='fa fa-bullhorn'></i>
+     <h6>Early Warning</h6>
+     <span class='sub'>Alerts Publishing & Subscription</span>
+     </a>
+    </label>
+   </li>
+   <li>
+    <label>
+     <a href='{{=URL(c=""default"", f=""page"", args=[""emergency-management""])}}'>
+     <i class='fa fa-bolt'></i>
+     <h6>Emergency Management</h6>
+     <span class='sub'>Incident Tracking, Command & Control, Situation Reporting</span>
+     </a>
+    </label>
+   </li>
+   <li>
+    <label>
+     <a href='{{=URL(c=""default"", f=""page"", args=[""humanitarian-response""])}}'>
+     <i class='fa fa-support'></i>
+     <h6>Humanitarian Response</h6>
+     <span class='sub'>Project Management, Assessments, Deployments, Relief Goods Distribution, Situation Reporting</span>
+     </a>
+    </label>
+   </li>
+   <li>
+    <label>
+     <a href='{{=URL(c=""default"", f=""page"", args=[""shelter-management""])}}'>
+     <i class='fa fa-home'></i>
+     <h6>Shelter Management</h6>
+     <span class='sub'>Client Registration, Check In/Out, Mail, Meals</span>
+     </a>
+    </label>
+   </li>
+   <li>
+    <label>
+     <a href='{{=URL(c=""default"", f=""page"", args=[""case-management""])}}'>
+     <i class='fa fa-id-card-o'></i>
+     <h6>Case Management</h6>
+     <span class='sub'>Beneficiary Registry, Needs Assessment, Eligibility Screening, Support Brokering</span>
+     </a>
+    </label>
+   </li>
+   <li>
+    <label>
+     <a href='{{=URL(c=""default"", f=""page"", args=[""logistics""])}}'>
+     <i class='fa fa-truck'></i>
+     <h6>Logistics</h6>
+     <span class='sub'>Warehouse Inventory, Asset Tracking, Fleet Management, Donations</span>
+     </a>
+    </label>
+   </li>
+   <li>
+    <label>
+     <a href='{{=URL(c=""default"", f=""page"", args=[""resource-management""])}}'>
+     <i class='fa fa-table'></i>
+     <h6>Resource Management</h6>
+     <span class='sub'>Staff, Volunteers, Members, Facilities, Assets and Inventory</span>
+     </a>
+    </label>
+   </li>
+   <li>
+    <label>
+     <a href='{{=URL(c=""default"", f=""page"", args=[""training""])}}'>
+     <i class='fa fa-university'></i>
+     <h6>Training and Workshops</h6>
+     <span class='sub'>Workshop Facilitation, User Training, Technical Training</span>
+     </a>
+    </label>
+   </li>
   </ul>
-  <p>This Sahana Eden-powered portal was deployed at the Asian Disaster Preparedness Center.</p>
  </div>
 </div>
-
-<div class='row content-light'>
- <div class='small-12 columns'>
-  <h2>Information Management Workshop - BPKEL</h2>
-  <p>
-   AidIQ facilitated a series of workshops for BPKEL (Badan Pengelola Kawasan
-   Ekosistem Leuser), the Aceh Conservation Agency in order to improve their
-   information management processes to better comply with requirements of the
-   REDD (Reducing Emissions from Deforestation and Forest Degradation) programme.
-   After the first workshop, the current processes were documented and gaps were
-   identified. A draft solutions document was then written and a second workshop
-   was held to review and refine this document. BPKEL have agreed to share the
-   final Information Management Standard Operating Procedures which were
-   developed as a result of these workshops.
-  </p>
-  <p>
-   <a href='sites/default/files/BPKEL-IM-SOP.pdf'> Download draft document</a>
-  </p>
- </div>
-</div>",default,page
+",default,page

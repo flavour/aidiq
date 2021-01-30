@@ -1,0 +1,27 @@
+Series,Name,Title,Body,Module,Resource
+,training,Training | AidIQ.com,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <i class='fa fa-university'></i>
+  <div class='slogan'>Training and Workshops</div>
+ </div>
+</div>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <h4>Workshops</h4>
+  <p>We can facilitate workshops between stakeholders to help determine what everyone wants from a new system</p>
+  <h4>User Training</h4>
+  <p>Training can be provided to the End Users. We include lots of Hands-on exercises & Testing to ensure that skills are usable.</p>
+  <h4>Technical Training</h4>
+  <p>Training can also be provided to the Technical staff: Developers and/or Systems Administrators</p>
+  <h4>Case Studies</h4>
+  <ul>
+  <li><a href='{{=URL(c=""default"", f=""page"", args=[""BPKEL""])}}'>BPKEL</a>. Information Management Workshop</li>
+  <li>Give2LA. Trained Developers & System Administrators to maintain the system</li>
+  <li>RGIMS. Trained Developers to maintain the system</li>
+  <li>SahanaCamp Taiwan</li>
+  <li>SahanaCamp Turkey</li>
+  </ul>
+ </div>
+</div>",default,page

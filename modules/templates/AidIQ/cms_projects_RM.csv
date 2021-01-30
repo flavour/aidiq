@@ -1,0 +1,30 @@
+Series,Name,Title,Body,Module,Resource
+,resource-management,Resource Management | AidIQ.com,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <i class='fa fa-table'></i>
+  <div class='slogan'>Resource Management</div>
+ </div>
+</div>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <h4>Human Talent</h4>
+  <p>Staff and Volunteers. Trainings. Deployments on Mission.</p>
+  <h4>Volunteer Management</h4>
+  <p>Active Volunteers, Certificates of Appreciation</p>
+  <h4>Member Management</h4>
+  <p>Membership Fees</p>
+  <h4>Facilities</h4>
+  <p>Offices, Warehouses, Clinics, Fire Stations, etc</p>
+  <h4>Inventory</h4>
+  <p>Simple Inventory tracking or full-blown <a href='{{=URL(c=""default"", f=""page"", args=[""logistics""])}}'>Logistics</a></p>
+  <h4>Assets</h4>
+  <p>Assets can be tracked through their lifecycle</p>
+  <h4>Case Studies</h4>
+  <ul>
+  <li><a href='{{=URL(c=""default"", f=""page"", args=[""resource-management-system""])}}'>RMS: Resource Management System</a>. International Federation of Red Cross and Red Crescent Societies</li>
+  <li>HowCalm: House of Worship Communitywide Asset and Logistics Management. New York Disaster Interfaith Services</li>
+  </ul>
+ </div>
+</div>",default,page

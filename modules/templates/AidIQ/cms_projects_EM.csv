@@ -1,0 +1,26 @@
+Series,Name,Title,Body,Module,Resource
+,emergency-management,EM | AidIQ.com,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <i class='fa fa-bolt'></i>
+  <div class='slogan'>Emergency Management</div>
+ </div>
+</div>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <h4>Incident Tracking</h4>
+  <p>Log Incident Reports, assign to open Incidents or create new Incidents</p>
+  <h4>Command and Control</h4>
+  <p>Deploy resources (people and equipment) & assign tasks. Can use Scenario templates to speed things up and improve consistency.</p>
+  <h4>Situation Reporting</h4>
+  <p>Expenses Tracking</p>
+  <h4>Case Studies</h4>
+  <ul>
+  <li>DRMIS: Disaster Risk Management Information System. Timor-Leste Government National Disaster Management Directorate (NDMD) and UNDP</li>
+  <li>SaFiRe: Sahana First Response. Seychelles Government Department of Risk and Disaster Management (DRDM)</li>
+  <li>SaFiRe: Sahana First Response. United Cajun Navy (USA)</li>
+  <li>SaFiRe: Sahana First Response. Urgences-Sante (Quebec, Canada)</li>
+  </ul>
+ </div>
+</div>",default,page

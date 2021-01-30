@@ -57,10 +57,6 @@ def config(settings):
     settings.auth.registration_roles = {"site_id": ["project_reader"]}
 
     # -------------------------------------------------------------------------
-    # Uncomment to allow CMS pages to be viewed through the default/page controller
-    settings.cms.expose_pages = True
-
-    # -------------------------------------------------------------------------
     # Uncomment to allow HR records to be deletable rather than just marking them as obsolete
     settings.hrm.deletable = True
 
