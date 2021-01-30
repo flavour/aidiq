@@ -4,6 +4,7 @@ Series,Name,Title,Body,Module,Resource
  <div class='small-12 columns'>
   <i class='fa fa-bullhorn'></i>
   <div class='slogan'>Early Warning</div>
+  <p class='sub-header'>Fast and accurate alerts to the right people is of the utmost importance during an emergency. AidIQ creates notification systems which help mitigate impact and speed response.</p>
  </div>
 </div>
 
@@ -14,7 +15,7 @@ Series,Name,Title,Body,Module,Resource
   <h4>Alert Publishing</h4>
   <p>Alerts are defined from templates & assigned tor specific Geographic areas (either pre-defined or ad-hoc). They are then Approved & Distributed via the CAP open standard, as well as simple RSS.</p>
   <h4>Alert Subscription</h4>
-  <p>Alerst can be subscribed to by Category &/or Geographic area. Alerts are transmitted via Email, SMS &/or Push Notifications to a Mobile App.</p>
+  <p>Alerts can be subscribed to by Category &/or Geographic area. Alerts are transmitted via Email, SMS &/or Push Notifications to a Mobile App.</p>
   <h4>Case Studies</h4>
   <ul>
   <li><a href='https://eden.sahanafoundation.org/wiki/BluePrint/CAPBroker/Maldives' target='_blank'>SAMBRO. National Disaster Management Centre of Maldives</a></li>

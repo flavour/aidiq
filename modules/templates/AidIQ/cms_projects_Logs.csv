@@ -4,12 +4,12 @@ Series,Name,Title,Body,Module,Resource
  <div class='small-12 columns'>
   <i class='fa fa-truck'></i>
   <div class='slogan'>Logistics</div>
+  <p class='sub-header'>Getting the right stuff to the right place at the right time.</p>
  </div>
 </div>
 
 <div class='row content-light'>
  <div class='small-12 columns'>
-  <p>Getting the right stuff to the right place at the right time.</p>
   <h4>Item Catalog(s)</h4>
   <p>Multiple Catalogs, Item Categories to any level of Hierarchy. Same Item can appear in multiple categories (or catalogs). Alternative Items for Matching.</p>
   <h4>Warehouse Inventory</h4>

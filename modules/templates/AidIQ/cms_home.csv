@@ -3,7 +3,7 @@ Series,Name,Title,Body,Module,Resource
 <div class='row content-dark header'>
  <div class='medium-12 large-10 large-centered columns'>
   <div class='slogan'>Intelligent Business Solutions<br>for the Humanitarian Community</div>
-  <p class='sub-header'>AidIQ provides information management solutions to organisations in the humanitarian, development, disaster and emergency management sectors.</p>
+  <p class='sub-header'>AidIQ develops information management solutions for organisations in the humanitarian, development, disaster and emergency management sectors.</p>
   <div class='buttons'>
     <a class='secondary button' href='{{=URL(c=""default"", f=""index"", args=[""contact""])}}'>Contact us</a>
   </div>

@@ -1,9 +1,11 @@
 Series,Name,Title,Body,Module,Resource
-,projects,Projects | AidIQ.com,"
+,solutions,Solutions | AidIQ.com,"
 <div class='row content-dark header'>
  <div class='small-12 columns'>
-  <div class='slogan'>Case Studies</div>
-  <p class='sub-header'>AidIQ specialise in developing solutions to new problems in a rapid & cost-effective manner. Part of how this is possible is through extensive domain knowledge and drawing on elements from previous solutions. Here are some of the areas that we have worked in, along with case studies of the solutions we have implemented for our clients.</p>
+  <div class='slogan'>Solutions</div>
+  <p class='sub-header'>AidIQ specialise in developing solutions to new problems in a rapid & cost-effective manner.<br/>
+  Part of how this is possible is through extensive domain knowledge and drawing on elements from previous solutions.<br/>
+  Here are some of the areas that we have worked in, along with case studies of the solutions we have implemented for our clients.</p>
  </div>
 </div>
 <div class='row content-light'>

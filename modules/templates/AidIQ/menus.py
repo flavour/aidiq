@@ -97,7 +97,7 @@ class S3MainMenu(default.S3MainMenu):
         return WM(c="default", f="index", link=False, _class="top-menu")(
                   #WM("Home"),
                   WM("Services", f="page", args=["services"]),
-                  WM("Projects", f= "page", args=["projects"]),
+                  WM("Solutions", f= "page", args=["solutions"]),
                   WM("Team", f= "page", args=["team"]),
                   WM("Contact Us", args=["contact"], _class="contact-link"),
                   )
@@ -112,7 +112,7 @@ class S3MainMenu(default.S3MainMenu):
         menu = WM(c="default", f="index", link=False, _class="bottom-menu")(
                   WM("AidIQ", _class="home-link"),
                   WM("Services", f="page", args=["services"]),
-                  WM("Projects", f= "page", args=["projects"]),
+                  WM("Solutions", f= "page", args=["solutions"]),
                   WM("Team", f= "page", args=["team"]),
                   WM("Contact Us", args=["contact"], _class="contact-link"),
                   )
