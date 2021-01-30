@@ -9,14 +9,16 @@ Series,Name,Title,Body,Module,Resource
 
 <div class='row content-light'>
  <div class='small-12 columns'>
-  <h4>Client Registration, Mail, Meals</h4>
+  <h4>Client Registration</h4>
   <p>This can, optionally, link to <a href='{{=URL(c=""default"", f=""page"", args=[""case-management""])}}'>Case Management</a>.</p>
   <h4>Check In/Out</h4>
-  <p></p>
+  <p>Barcode scanning on simplified mobile interface for Security guards...notifies of issues which need attention.</p>
+  <h4>Facility Management</h4>
+  <p>Mail, Meals, Security Checks</p>
   <h4>Case Studies</h4>
   <ul>
-  <li>EVASS. Italy</li>
-  <li>Village. German Red Cross (DRK)</li>
+  <li><a href='https://eden.sahanafoundation.org/wiki/Deployments/Italy/EVASS' target='_blank'>EVASS: EVAcuees ASSistance</a>. IBM team mentored by AidIQ built a system to support evacuees in Italy.</li>
+  <li>Village. German Red Cross (DRK). Managing a Refugee Reception Center in Germany.</li>
   </ul>
  </div>
 </div>",default,page

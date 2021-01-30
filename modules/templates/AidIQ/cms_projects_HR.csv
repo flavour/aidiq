@@ -10,16 +10,18 @@ Series,Name,Title,Body,Module,Resource
 <div class='row content-light'>
  <div class='small-12 columns'>
   <h4>Project Management</h4>
-  <p></p>
+  <p>Goals, Outcomes, Outputs, Indicators, Activities</p>
+  <p>4W Information Sharing (Who, What, Where, When)</p>
   <h4>Assessments</h4>
-  <p></p>
+  <p>Needs Assessments, which can be filled-out offline on Mobile app.</p>
   <h4>Situation Reporting</h4>
-  <p></p>
+  <p>Pull together information on deployed staff with current and upcoming gaps, along with baseline data & a textual summary</p>
   <h4>Case Studies</h4>
   <ul>
+  <li><a href='{{=URL(c=""default"", f=""page"", args=[""disaster-risk-reduction-project-portal""])}}'>DRRPP: Disaster Risk Reduction Project Portal</a>. Asia Disaster Preparedness Center</li>
   <li><a href='{{=URL(c=""default"", f=""page"", args=[""resource-management-system""])}}'>RMS: Resource Management System</a>. International Federation of Red Cross and Red Crescent Societies</li>
-  <li>SHARE. UN Hugh Commisioner's Office, Sri Lanka</li>
-  <li>UCCE. Oxfam, Plan, Save the Children</li>
+  <li>SHARE: Humanitarian Country Team (HCT) Relief and Rehabilitation System. <a href='https://lk.one.un.org/un-in-sri-lanka/un-resident-coordinators-office/' target='_blank'>UN Resident Coordinator's Office, Sri Lanka</a></li>
+  <li>UCCE: User-Centered Community Engagement. Oxfam, Plan International, Save the Children. Surveys designed on web, entered offline on mobile app.</li>
   </ul>
  </div>
 </div>",default,page

@@ -9,15 +9,17 @@ Series,Name,Title,Body,Module,Resource
 
 <div class='row content-light'>
  <div class='small-12 columns'>
+  <h4>SAMBRO</h4>
+  <p><a href='https://eden.sahanafoundation.org/wiki/Deployments/SAMBRO' target='_blank'>Sahana Alerting and Messaging Broker (SAMBRO)</a> is a template to support Alerting workflows.
   <h4>Alert Publishing</h4>
-  <p></p>
+  <p>Alerts are defined from templates & assigned tor specific Geographic areas (either pre-defined or ad-hoc). They are then Approved & Distributed via the CAP open standard, as well as simple RSS.</p>
   <h4>Alert Subscription</h4>
-  <p></p>
+  <p>Alerst can be subscribed to by Category &/or Geographic area. Alerts are transmitted via Email, SMS &/or Push Notifications to a Mobile App.</p>
   <h4>Case Studies</h4>
   <ul>
-  <li>SAMBRO. Maldives</li>
-  <li>SAMBRO. Myanmar</li>
-  <li>SAMBRO. Philippines</li>
+  <li><a href='https://eden.sahanafoundation.org/wiki/BluePrint/CAPBroker/Maldives' target='_blank'>SAMBRO. National Disaster Management Centre of Maldives</a></li>
+  <li><a href='https://eden.sahanafoundation.org/wiki/BluePrint/CAPBroker/Myanmar' target='_blank'>SAMBRO. National Department of Meteorology and Hydrology of Myanmar</a></li>
+  <li><a href='https://eden.sahanafoundation.org/wiki/BluePrint/CAPBroker/Philippines' target='_blank'>SAMBRO. National Disaster Management Centre of Philippines</a></li>
   </ul>
  </div>
 </div>",default,page

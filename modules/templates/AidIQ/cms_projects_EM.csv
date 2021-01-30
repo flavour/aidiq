@@ -9,6 +9,8 @@ Series,Name,Title,Body,Module,Resource
 
 <div class='row content-light'>
  <div class='small-12 columns'>
+  <h4>SaFiRe</h4>
+  <p><a href='https://eden.sahanafoundation.org/wiki/UserGuidelines/SAFIRE' target='_blank'>Sahana First Response</a> is a template to support common Emergency Management workflows out of the box.
   <h4>Incident Tracking</h4>
   <p>Log Incident Reports, assign to open Incidents or create new Incidents</p>
   <h4>Command and Control</h4>
@@ -21,6 +23,7 @@ Series,Name,Title,Body,Module,Resource
   <li>SaFiRe: Sahana First Response. Seychelles Government Department of Risk and Disaster Management (DRDM)</li>
   <li>SaFiRe: Sahana First Response. United Cajun Navy (USA)</li>
   <li>SaFiRe: Sahana First Response. Urgences-Sante (Quebec, Canada)</li>
+  <li>WACOP: Washington State Common Operating Picture (USA). Acted as a hub to share data between disparate systems</li>
   </ul>
  </div>
 </div>",default,page
