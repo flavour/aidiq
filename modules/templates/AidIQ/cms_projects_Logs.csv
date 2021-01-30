@@ -10,8 +10,14 @@ Series,Name,Title,Body,Module,Resource
 <div class='row content-light'>
  <div class='small-12 columns'>
   <p>Getting the right stuff to the right place at the right time.</p>
+  <h4>Item Catalog(s)</h4>
+  <p>Multiple Catalogs, Item Categories to any level of Hierarchy. Same Item can appear in multiple categories (or catalogs). Alternative Items for Matching.</p>
   <h4>Warehouse Inventory</h4>
   <p>Can be configured as a simple Inventory Tracking system or a full-blown Logistics system. Manage Intake, Shipments and Stock Checks. Within Sahana, any Site can have Inventory, but Warehouses have this as a focus.</p>
+  <p>Goods Received Notes (GRN), Waybills</p>
+  <p>Kitting & De-Kitting</p>
+  <h4>Requests</h4>
+  <p>Locate Inventory in warehouses (with appropriate permissions), support for Alternative Items</p>
   <h4>Asset Tracking</h4>
   <p>Track Assets throughout their life cycle</p>
   <h4>Fleet Management</h4>

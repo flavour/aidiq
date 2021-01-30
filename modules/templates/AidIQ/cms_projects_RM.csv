@@ -10,9 +10,11 @@ Series,Name,Title,Body,Module,Resource
 <div class='row content-light'>
  <div class='small-12 columns'>
   <h4>Human Talent</h4>
-  <p>Staff and Volunteers. Trainings. Deployments on Mission.</p>
+  <p>Staff and Volunteers. ID cards. Roster. Mission Deployments.</p>
+  <p>Skills, Trainings, Certifications, Credentials.</p>
   <h4>Volunteer Management</h4>
-  <p>Active Volunteers, Certificates of Appreciation</p>
+  <p>Track Hours by Activity. Use Hours spent on Activities & Trainings to determine Active Volunteers. Certificates of Appreciation.</p>
+  <p>Reports by Age, Gender, Ethnicity and Location.</p>
   <h4>Member Management</h4>
   <p>Membership Fees</p>
   <h4>Facilities</h4>
@@ -23,8 +25,10 @@ Series,Name,Title,Body,Module,Resource
   <p>Assets can be tracked through their lifecycle</p>
   <h4>Case Studies</h4>
   <ul>
-  <li><a href='{{=URL(c=""default"", f=""page"", args=[""resource-management-system""])}}'>RMS: Resource Management System</a>. International Federation of Red Cross and Red Crescent Societies</li>
   <li>HowCalm: House of Worship Communitywide Asset and Logistics Management. New York Disaster Interfaith Services</li>
+  <li>KrisenManagement. Rheinland-Pfalz State Government (Germany). Manage Volunteers for COVID-19 response.</li>
+  <li><a href='{{=URL(c=""default"", f=""page"", args=[""resource-management-system""])}}'>RMS: Resource Management System</a>. International Federation of Red Cross and Red Crescent Societies. Human Resources, Projects and Supplies.</li>
+  <li>SupportCumbria. Cumbria County Council (UK). Manage Volunteers for Emergencies, including COVID-19 response.</li>
   </ul>
  </div>
 </div>",default,page

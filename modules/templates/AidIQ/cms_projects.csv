@@ -38,6 +38,15 @@ Series,Name,Title,Body,Module,Resource
    </li>
    <li>
     <label>
+     <a href='{{=URL(c=""default"", f=""page"", args=[""health""])}}'>
+     <i class='fa fa-medkit'></i>
+     <h6>Health</h6>
+     <span class='sub'>Hospital Management, Disease Tracking</span>
+     </a>
+    </label>
+   </li>
+   <li>
+    <label>
      <a href='{{=URL(c=""default"", f=""page"", args=[""humanitarian-response""])}}'>
      <i class='fa fa-support'></i>
      <h6>Humanitarian Response</h6>

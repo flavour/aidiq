@@ -1,0 +1,26 @@
+Series,Name,Title,Body,Module,Resource
+,health,Health | AidIQ.com,"
+<div class='row content-dark header'>
+ <div class='small-12 columns'>
+  <i class='fa fa-medkit'></i>
+  <div class='slogan'>Health</div>
+ </div>
+</div>
+
+<div class='row content-light'>
+ <div class='small-12 columns'>
+  <h4>Hospital Management</h4>
+  <p>Share availability of beds using the EDXL-HAVE open standard</a>
+  <h4>Inventory</h4>
+  <p>Simple Inventory tracking or full-blown <a href='{{=URL(c=""default"", f=""page"", args=[""logistics""])}}'>Logistics</a></p>
+  <h4>Disease Tracking</h4>
+  <p>Track and Trace contacts of infectious people. Aggregate and Graph numbers of Cases and Fatalities</p>
+  <h4>Case Studies</h4>
+  <ul>
+  <li>Sahana. PAHO. Haiti Earthquake Response 2010. Crowdsourced locations of health facilities.</li>
+  <li>Patient Tracking. UN Libya. Managing locations of Patients sent abroad for treatment during the revolution.</li>
+  <li>Personnel Test and Vaccination Management. Rhineland-Pfalz State Government for COVID-19 response.</li>
+  <li>Track and Trace. Pakistan Government for COVID-19 response. Provided tool for local deployment partner.</li>
+  </ul>
+ </div>
+</div>",default,page
