@@ -283,7 +283,7 @@ def config(settings):
     # Now using req_need, so unused:
     #settings.req.req_type = ("People",)
 
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     def ccc_person_anonymize():
         """ Rules to anonymise a person """
 
@@ -408,7 +408,7 @@ def config(settings):
 
         return rules
 
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     def ccc_user_anonymize():
         """ Rules to anonymise a user """
 
@@ -693,7 +693,6 @@ def config(settings):
         T = current.T
 
         if tablename == "hrm_training_event":
-            T = current.T
             auth = current.auth
             has_role = auth.s3_has_role
             if has_role("ADMIN") or \
@@ -763,7 +762,6 @@ def config(settings):
                               rheader_tabs)
 
         elif tablename == "org_organisation":
-            T = current.T
             tabs = [(T("Basic Details"), None),
                     (T("Area Served"), "location"),
                     #(T("Offices"), "office"),
@@ -820,7 +818,6 @@ $('.copy-link').click(function(e){
                           rheader_tabs)
 
         elif tablename == "pr_group":
-            T = current.T
             tabs = [(T("Basic Details"), None),
                     # 'Person' allows native tab breakout
                     #(T("Members"), "group_membership"),
@@ -839,7 +836,6 @@ $('.copy-link').click(function(e){
                           rheader_tabs)
 
         elif tablename == "pr_person":
-            T = current.T
             controller = r.controller
             if controller == "br":
                 tabs = [(T("Basic Details"), None),
@@ -913,7 +909,6 @@ $('.copy-link').click(function(e){
                           rheader_tabs)
 
         elif tablename == "req_need":
-            T = current.T
             auth = current.auth
             db = current.db
             s3db = current.s3db
@@ -2393,7 +2388,7 @@ $('.copy-link').click(function(e){
         trainings = current.db(query).select(ttable.person_id)
         selected = [t.person_id for t in trainings]
 
-        # Sent Reminders async as it may take some time to run
+        # Send Reminders async as it may take some time to run
         current.s3task.run_async("settings_task",
                                  args = ["hrm_training_event_notification"],
                                  vars = {"record": r.record.as_json(),
@@ -2519,13 +2514,13 @@ $('.copy-link').click(function(e){
                 exists.update_record(start_time = start_time)
         else:
             current.s3task.schedule_task("settings_task",
-                                 args = ["hrm_training_event_reminder_day"],
-                                 vars = {"record_id": training_event_id},
-                                 start_time = start_time,
-                                 #period = 300,  # seconds
-                                 timeout = 300, # seconds
-                                 repeats = 1    # run once
-                                 )
+                                         args = ["hrm_training_event_reminder_day"],
+                                         vars = {"record_id": training_event_id},
+                                         start_time = start_time,
+                                         #period = 300,  # seconds
+                                         timeout = 300, # seconds
+                                         repeats = 1    # run once
+                                         )
 
     # -------------------------------------------------------------------------
     def customise_hrm_training_event_resource(r, tablename):
@@ -4632,7 +4627,7 @@ $('.copy-link').click(function(e){
 
         request_args = request.args
         len_request_args = len(request_args)
-        if len_request_args is 0 and request.get_vars.get("inactive") is None:
+        if len_request_args == 0 and request.get_vars.get("inactive") == None:
             # Add Bulk Messaging to List View
             dtargs["dt_bulk_actions"] = [(T("Message"), "message")]
 
@@ -5635,13 +5630,13 @@ $('.copy-link').click(function(e){
                 exists.update_record(start_time = start_time)
         else:
             current.s3task.schedule_task("settings_task",
-                                 args = ["req_need_reminder_day"],
-                                 vars = {"record_id": need_id},
-                                 start_time = start_time,
-                                 #period = 300,  # seconds
-                                 timeout = 300, # seconds
-                                 repeats = 1    # run once
-                                 )
+                                         args = ["req_need_reminder_day"],
+                                         vars = {"record_id": need_id},
+                                         start_time = start_time,
+                                         #period = 300,  # seconds
+                                         timeout = 300, # seconds
+                                         repeats = 1    # run once
+                                         )
 
     # -------------------------------------------------------------------------
     def req_need_organisation_onaccept(form):

@@ -11,7 +11,7 @@ import datetime
 
 from collections import OrderedDict
 
-from gluon import current, redirect, URL, DIV, TABLE, TAG, TR
+from gluon import current, redirect, URL, A, DIV, TABLE, TAG, TR
 from gluon.storage import Storage
 
 from s3 import FS, IS_LOCATION, S3DateFilter, S3Represent, s3_fieldmethod, s3_fullname, s3_yes_no_represent
@@ -20,7 +20,7 @@ from s3dal import original_tablename
 from .helpers import rlp_active_deployments
 #from ..RLPPTM.rlpgeonames import rlp_GeoNames
 
-MSAGD = "Ministerium für Soziales, Arbeit, Gesundheit und Demografie"
+MWG = "Ministerium für Wissenschaft und Gesundheit"
 ALLOWED_FORMATS = ("html", "iframe", "popup", "aadata", "json", "xls", "pdf")
 
 # =============================================================================
@@ -151,7 +151,7 @@ def config(settings):
 
     # -------------------------------------------------------------------------
     settings.org.projects_tab = False
-    settings.org.default_organisation = MSAGD
+    settings.org.default_organisation = MWG
 
     # -------------------------------------------------------------------------
     # Custom group types for volunteer pools
@@ -316,32 +316,65 @@ def config(settings):
     # -------------------------------------------------------------------------
     def customise_cms_post_resource(r, tablename):
 
-        from s3 import S3SQLCustomForm, S3SQLInlineComponent
 
-        crud_form = S3SQLCustomForm("name",
-                                    "body",
-                                    "date",
-                                    S3SQLInlineComponent("document",
-                                                         name = "file",
-                                                         label = T("Attachments"),
-                                                         fields = ["file", "comments"],
-                                                         filterby = {"field": "file",
-                                                                     "options": "",
-                                                                     "invert": True,
-                                                                     },
-                                                         ),
-                                    "comments",
-                                    )
+        s3db = current.s3db
 
-        current.s3db.configure("cms_post",
-                               crud_form = crud_form,
-                               list_fields = ["post_module.module",
-                                              "post_module.resource",
-                                              "name",
-                                              "date",
-                                              "comments",
-                                              ],
-                               )
+        from s3 import S3SQLCustomForm, S3SQLInlineComponent, S3SQLInlineLink
+
+        record = r.record
+        if r.tablename == "cms_series" and \
+           record and record.name == "Announcements":
+
+            table = s3db.cms_post
+            field = table.priority
+            field.readable = field.writable = True
+
+            crud_fields = ["name",
+                           "body",
+                           "priority",
+                           "date",
+                           "expired",
+                           S3SQLInlineLink("roles",
+                                           label = T("Roles"),
+                                           field = "group_id",
+                                           ),
+                           ]
+            list_fields = ["date",
+                           "priority",
+                           "name",
+                           "body",
+                           "post_role.group_id",
+                           "expired",
+                           ]
+            orderby = "cms_post.date desc"
+        else:
+            crud_fields = ["name",
+                           "body",
+                           "date",
+                           S3SQLInlineComponent("document",
+                                                name = "file",
+                                                label = T("Attachments"),
+                                                fields = ["file", "comments"],
+                                                filterby = {"field": "file",
+                                                            "options": "",
+                                                            "invert": True,
+                                                            },
+                                                ),
+                           "comments",
+                           ]
+            list_fields = ["post_module.module",
+                           "post_module.resource",
+                           "name",
+                           "date",
+                           "comments",
+                           ]
+            orderby = "cms_post.name"
+
+        s3db.configure("cms_post",
+                       crud_form = S3SQLCustomForm(*crud_fields),
+                       list_fields = list_fields,
+                       orderby = orderby,
+                       )
 
     settings.customise_cms_post_resource = customise_cms_post_resource
 
@@ -957,6 +990,7 @@ def config(settings):
                   #"pr_person.fullname": (HIDDEN, HIDDEN),
                   "pr_person_details.alias": (HIDDEN, HIDDEN),
                   "pr_phone_contact.value": (None, HIDDEN),
+                  "pr_phonenumber_contact.value": (None, HIDDEN),
                   "pr_email_contact.value": (None, HIDDEN),
                   }
         for person_id in person_ids:
@@ -1430,12 +1464,14 @@ def config(settings):
 
                 list_title = T("Volunteers")
                 from .helpers import RLPAvailabilityFilter, \
-                                        RLPAvailabilitySiteFilter, \
-                                        rlp_deployment_sites
+                                     RLPAvailabilitySiteFilter, \
+                                     RLPWeeklyAvailabilityFilter, \
+                                     rlp_deployment_sites
                 if not record:
                     # Apply custom filters
                     RLPAvailabilityFilter.apply_filter(resource, get_vars)
                     RLPAvailabilitySiteFilter.apply_filter(resource, get_vars)
+                    RLPWeeklyAvailabilityFilter.apply_filter(resource, get_vars)
 
                     # Ongoing deployments as component
                     s3db.add_components("pr_person",
@@ -1543,25 +1579,28 @@ def config(settings):
                         S3LocationFilter("current_address.location_id",
                                          label = T("Place of Residence"),
                                          levels = ("L2", "L3"),
+                                         bigtable = True,
+                                         translate = False,
                                          ),
                         RLPAvailabilityFilter("delegation.date",
                                               label = T("Available"),
                                               #hide_time = True,
                                               ),
-                        S3OptionsFilter("availability.days_of_week",
-                                        label = T("On Weekdays"),
-                                        options = OrderedDict((
-                                                    (1, T("Mon##weekday")),
-                                                    (2, T("Tue##weekday")),
-                                                    (3, T("Wed##weekday")),
-                                                    (4, T("Thu##weekday")),
-                                                    (5, T("Fri##weekday")),
-                                                    (6, T("Sat##weekday")),
-                                                    (0, T("Sun##weekday")),
-                                                    )),
-                                        cols = 7,
-                                        sort = False,
-                                        ),
+                        RLPWeeklyAvailabilityFilter("availability.weekly",
+                                                    label = T("On Weekdays"),
+                                                    options = OrderedDict((
+                                                                (1, T("Mon##weekday")),
+                                                                (2, T("Tue##weekday")),
+                                                                (3, T("Wed##weekday")),
+                                                                (4, T("Thu##weekday")),
+                                                                (5, T("Fri##weekday")),
+                                                                (6, T("Sat##weekday")),
+                                                                (0, T("Sun##weekday")),
+                                                                )),
+                                                    cols = 7,
+                                                    anyall = True,
+                                                    sort = False,
+                                                    ),
                         RLPAvailabilitySiteFilter("availability_site.site_id",
                                                   label = T("Possible Deployment Sites"),
                                                   options = lambda: rlp_deployment_sites(managed_orgs=True),
@@ -2321,15 +2360,19 @@ def config(settings):
                     organisations = None
 
                 # Append inline-notifications
+                from s3 import S3WithIntro
                 from .notifications import InlineNotifications
                 crud_form.append(
-                    InlineNotifications("notifications",
-                                        label = T("Notifications"),
-                                        person_id = volunteer_id,
-                                        recipients = ("volunteer",),
-                                        organisations = organisations,
-                                        reply_to_org = True,
-                                        ))
+                    S3WithIntro(
+                        InlineNotifications("notifications",
+                                            label = T("Notifications"),
+                                            person_id = volunteer_id,
+                                            organisations = organisations,
+                                            reply_to = "user", #"org",
+                                            sender = "org",
+                                            ),
+                        intro = ("hrm", "delegation", "NotificationIntroOrg"),
+                        ))
             s3db.configure("hrm_delegation", crud_form=crud_form)
 
             # Enable site_id and filter to sites of org
@@ -2392,11 +2435,11 @@ def config(settings):
                            insertable = False,
                            )
 
+        auth = current.auth
+        coordinator = auth.s3_has_role("COORDINATOR")
+
         standard_prep = s3.prep
         def custom_prep(r):
-
-            auth = current.auth
-            coordinator = auth.s3_has_role("COORDINATOR")
 
             if not coordinator:
                 settings.ui.export_formats = ("pdf", "xls")
@@ -2563,6 +2606,51 @@ def config(settings):
                             )
             return result
         s3.prep = custom_prep
+
+        standard_postp = s3.postp
+        def custom_postp(r, output):
+
+            # Call standard postp
+            if callable(standard_postp):
+                output = standard_postp(r, output)
+
+            if r.controller == "vol" and volunteer_id and isinstance(output, dict):
+
+                from s3 import S3CustomController
+
+                method = r.method
+                if not method:
+                    # Add link to organizer
+                    output["switch_btn"] = A(T("Switch to organizer"),
+                                             _href = r.url(method="organize"),
+                                             _class = "action-btn organizer-switch",
+                                             _title = T("Manage deployments in a calendar view"),
+                                             )
+
+                    # Use custom view to keep organizer-link above form
+                    S3CustomController._view("RLP", "delegation.html")
+
+                elif method == "organize":
+                    # Add hint how to use the organizer
+                    if not coordinator:
+                        from .helpers import get_cms_intro
+                        intro = get_cms_intro("hrm", "delegation",
+                                              "DelegationOrganizerIntro",
+                                              cmsxml = True,
+                                              )
+                        if intro:
+                            output["intro"] = intro
+                    # Add switch to list view
+                    output["switch"] = A(T("Switch to list view"),
+                                         _href = r.url(method=""),
+                                         _class = "action-btn",
+                                         _title = T("Manage deployments in a table view"),
+                                         )
+                    # Use custom view
+                    S3CustomController._view("RLP", "organize.html")
+
+            return output
+        s3.postp = custom_postp
 
         # Custom rheaders
         from .rheaders import rlp_vol_rheader, rlp_delegation_rheader

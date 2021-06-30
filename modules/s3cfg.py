@@ -1158,6 +1158,15 @@ class S3Config(Storage):
         """
         return self.base.get("solr_url", False)
 
+    def get_xml_formats(self):
+        """
+            Locations of custom export/import transformation stylesheets
+            - settings.base.xml_formats = {"<ext>": "<TMP>"}
+              => modules/templates/<TMP>/formats/<ext>/<method>.xsl
+        """
+        return self.base.get("xml_formats")
+
+
     def get_import_callback(self, tablename, callback):
         """
             Lookup callback to use for imports in the following order:
@@ -1326,6 +1335,22 @@ class S3Config(Storage):
         """
         return self.fin.get("voucher_eligibility_types")
 
+    def get_fin_voucher_invoice_status_labels(self):
+        """
+            Customise labels for invoice statuses
+            - dict {status: label}
+            - NEW, PAID, REJECTED are mandatory, can only change labels
+            - VERIFIED and APPROVED are optional, can be set to None to
+              disable completely
+        """
+        return self.fin.get("voucher_invoice_status_labels")
+
+    def get_fin_voucher_claim_paid_label(self):
+        """
+            Custom label for claim PAID-Status
+        """
+        return self.fin.get("voucher_claim_paid_label", "Paid")
+
     # -------------------------------------------------------------------------
     # GIS (Map) Settings
     #
@@ -1344,6 +1369,12 @@ class S3Config(Storage):
             API key for Google Maps
         """
         return self.gis.get("api_google", "")
+
+    def get_gis_api_openweathermap(self):
+        """
+            API key for Open Weather Map
+        """
+        return self.gis.get("api_openweathermap", "")
 
     def get_gis_bbox_min_size(self):
         """
@@ -1834,6 +1865,14 @@ class S3Config(Storage):
                                            "bahai": T("Bahai"),
                                            "other": T("other")
                                            })
+
+    def get_L10n_ethnicity(self):
+        """
+            Ethnicities used in Person Registry
+            - defaults to free-text
+            - dropdown options can be configured in Template (e.g. Locale)
+        """
+        return self.L10n.get("ethnicity", None)
 
     def get_L10n_date_format(self):
         """
@@ -5239,6 +5278,12 @@ class S3Config(Storage):
         """
         return self.pr.get("availability_json_rules", False)
 
+    def get_pr_editable_fields(self):
+        """
+            Fields which are editable in the AddPersonWidget
+        """
+        return self.pr.get("editable_fields", [])
+
     def get_pr_hide_third_gender(self):
         """
             Whether to hide the third gender ("Other")
@@ -5262,59 +5307,64 @@ class S3Config(Storage):
 
     def get_pr_label_fullname(self):
         """
-            Label for the AddPersonWidget2's 'Name' field
+            Label for the AddPersonWidget's 'Name' field
         """
         return self.__lazy("pr", "label_fullname", default="Name")
 
     def get_pr_lookup_duplicates(self):
         """
-            Whether the AddPersonWidget2 does a fuzzy search for duplicates
-
-            NB This setting has no effect with the old AddPersonWidget
+            Whether the AddPersonWidget does a fuzzy search for duplicates
         """
         return self.pr.get("lookup_duplicates", False)
 
     def get_pr_request_dob(self):
-        """ Include Date of Birth in the AddPersonWidget[2] """
+        """ Include Date of Birth in the AddPersonWidget """
         return self.__lazy("pr", "request_dob", default=True)
 
     def get_pr_dob_required(self):
-        """ Whether Date of Birth is Mandatory, including in the AddPersonWidget2 """
+        """ Whether Date of Birth is Mandatory, including in the AddPersonWidget """
         return self.__lazy("pr", "dob_required", default=False)
 
     def get_pr_request_email(self):
-        """ Include Email in the AddPersonWidget2 """
+        """ Include Email in the AddPersonWidget """
         return self.__lazy("pr", "request_email", default=True)
 
     def get_pr_request_father_name(self):
-        """ Include Father Name in the AddPersonWidget2 """
+        """ Include Father Name in the AddPersonWidget """
         return self.__lazy("pr", "request_father_name", default=False)
 
     def get_pr_request_grandfather_name(self):
-        """ Include GrandFather Name in the AddPersonWidget2 """
+        """ Include GrandFather Name in the AddPersonWidget """
         return self.__lazy("pr", "request_grandfather_name", default=False)
 
     def get_pr_request_gender(self):
-        """ Include Gender in the AddPersonWidget[2] """
+        """ Include Gender in the AddPersonWidget """
         return self.__lazy("pr", "request_gender", default=True)
 
     def get_pr_request_home_phone(self):
-        """ Include Home Phone in the AddPersonWidget2 """
+        """ Include Home Phone in the AddPersonWidget """
         return self.__lazy("pr", "request_home_phone", default=False)
 
     def get_pr_request_mobile_phone(self):
-        """ Include Mobile Phone in the AddPersonWidget2 """
+        """ Include Mobile Phone in the AddPersonWidget """
         return self.__lazy("pr", "request_mobile_phone", default=True)
 
+    def get_pr_request_tags(self):
+        """
+            Include Tags in the AddPersonWidget
+            List of Tuples: (label, tag)
+        """
+        return self.__lazy("pr", "request_tags", default=[])
+
     def get_pr_request_year_of_birth(self):
-        """ Include Year of Birth in the AddPersonWidget2 """
+        """ Include Year of Birth in the AddPersonWidget """
         return self.__lazy("pr", "request_year_of_birth", default=False)
 
     def get_pr_name_format(self):
         """
             Format with which to represent Person Names
 
-            Generally want an option in AddPersonWidget2 to handle the input like this too
+            Generally want an option in AddPersonWidget to handle the input like this too
         """
         return self.__lazy("pr", "name_format", default="%(first_name)s %(middle_name)s %(last_name)s")
 
@@ -5324,19 +5374,9 @@ class S3Config(Storage):
         """
         return self.pr.get("search_shows_hr_details", True)
 
-    def get_pr_select_existing(self):
-        """
-            Whether the AddPersonWidget allows selecting existing PRs
-            - set to True if Persons can be found in multiple contexts
-            - set to False if just a single context
-
-            NB This setting has no effect with the new AddPersonWidget2
-        """
-        return self.pr.get("select_existing", True)
-
     def get_pr_separate_name_fields(self):
         """
-            Whether the AddPersonWidget2 provides separate name fields or not
+            Whether the AddPersonWidget provides separate name fields or not
             Options:
                 False (single field)
                 2 (first/last)
@@ -5922,6 +5962,13 @@ class S3Config(Storage):
             Whether to allow Alternative Items to be defined
         """
         return self.supply.get("use_alt_name", True)
+
+    def get_supply_shipping_code(self):
+        """
+            Custom shipping code generator (REQ, WB, GRN etc)
+            - function(prefix, site_id, field)
+        """
+        return self.supply.get("shipping_code")
 
     # -------------------------------------------------------------------------
     # Vulnerability

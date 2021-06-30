@@ -453,6 +453,11 @@ $.filterOptionsS3({
                                        float_represent(v, precision=3),
                            requires = IS_EMPTY_OR(IS_FLOAT_AMOUNT(minimum=0.0)),
                            ),
+                     Field("obsolete", "boolean",
+                           default = False,
+                           readable = False,
+                           writable = False,
+                           ),
                      # These comments do *not* pull through to an Inventory's Items or a Request's Items
                      s3_comments(),
                      *s3_meta_fields())
@@ -2927,6 +2932,11 @@ def supply_get_shipping_code(doctype, site_id, field):
         @param field: the field where the reference numbers are stored
                       (to look up the previous number for incrementing)
     """
+
+    # Custom shipping code generator?
+    custom_code = current.deployment_settings.get_supply_shipping_code()
+    if callable(custom_code):
+        return custom_code(doctype, site_id, field)
 
     db = current.db
     if site_id:

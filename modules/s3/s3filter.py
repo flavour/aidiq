@@ -1752,12 +1752,24 @@ class S3LocationFilter(S3FilterWidget):
     @staticmethod
     def get_lx_ancestors(levels, resource, selector=None, location_ids=None, path=False):
         """
-            Look up the immediate Lx ancestors of relevant levels
-            for all locations referenced by selector
+            Look up the immediate Lx ancestors for all locations referenced
+            by selector
 
             @param levels: the relevant Lx levels, tuple of "L1", "L2" etc
             @param resource: the master resource
             @param selector: the selector for the location reference
+            @param location_ids: use these location_ids rather than looking them
+                                 up from the resource
+            @param path: include the Lx path in the result rows, to lookup
+                         local names for options (which is done via IDs in
+                         the path)
+
+            NB: path=True potentially requires additional iterations in order
+                to reduce the paths to only relevant Lx levels (so that fewer
+                local names would be extracted) - which though limits the
+                performance gain if there actually are only few or no translations.
+                If that becomes a problem somewhere, we can make the iteration
+                mode controllable by a separate parameter.
 
             @returns: gis_location Rows, or empty list
         """
@@ -1804,9 +1816,13 @@ class S3LocationFilter(S3FilterWidget):
                 query = ltable.id.belongs(location_ids)
                 join = None
 
-            # Extract all target locations resp. parents which
-            # are Lx of relevant levels
-            relevant_lx = (ltable.level.belongs(levels))
+            # Extract all target locations resp. parents which are Lx
+            if path:
+                #...of relevant levels
+                relevant_lx = (ltable.level.belongs(levels))
+            else:
+                #...of any level
+                relevant_lx = (ltable.level != None)
             lx = db(query & relevant_lx).select(join = join,
                                                 groupby = ltable.id,
                                                 *fields
@@ -1826,8 +1842,12 @@ class S3LocationFilter(S3FilterWidget):
                     # No more parents to look up
                     break
             else:
-                # ...all locations which are not Lx or not of relevant levels
-                query &= ((ltable.level == None) | (~(ltable.level.belongs(levels))))
+                # ...all locations which are not Lx
+                if path:
+                    # ...or not of relevant levels
+                    query &= ((ltable.level == None) | (~(ltable.level.belongs(levels))))
+                else:
+                    query &= (ltable.level == None)
 
             # From subset, just extract the parent ID
             query &= (ltable.parent != None)
@@ -2348,6 +2368,11 @@ class S3OptionsFilter(S3FilterWidget):
         @keyword size: maximum size of multi-letter options groups
         @keyword help_field: field in the referenced table to display on
                              hovering over a foreign key option
+
+        ** special purpose / custom filters:
+
+        @keyword anyall: use user-selectable any/all alternatives even
+                         if field is not a list-type
     """
 
     _class = "options-filter"
@@ -2383,7 +2408,7 @@ class S3OptionsFilter(S3FilterWidget):
         # Any-All-Option : for many-to-many fields the user can
         # search for records containing all the options or any
         # of the options:
-        if len(options) > 1 and ftype[:4] == "list":
+        if len(options) > 1 and (ftype[:4] == "list" or opts_get("anyall")):
             operator = opts_get("operator", None)
             if operator:
                 # Fixed operator
@@ -3491,8 +3516,8 @@ class S3FilterForm(object):
     @staticmethod
     def apply_filter_defaults(request, resource):
         """
-            Add default filters to resource, to be called a multi-record
-            view with a filter form is rendered the first time and before
+            Add default filters to resource, to be called on a multi-record
+            view when a filter form is rendered the first time and before
             the view elements get processed; can be overridden in request
             URL with ?default_filters=0
 
@@ -3534,6 +3559,9 @@ class S3FilterForm(object):
                 has_default = True
             elif filter_defaults is None:
                 continue
+
+            # Use alias in selectors if looking at a component
+            filter_widget.alias = resource.alias if resource.parent else None
 
             defaults = set()
             variable = filter_widget.variable(resource, get_vars)
@@ -3583,7 +3611,7 @@ class S3FilterForm(object):
 
                 if callable(applicable_defaults):
                     applicable_defaults = applicable_defaults(selector,
-                                                              tablename=tablename)
+                                                              tablename = tablename)
                 if isinstance(applicable_defaults, dict):
                     if operator in applicable_defaults:
                         default = applicable_defaults[operator]

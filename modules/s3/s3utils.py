@@ -248,10 +248,10 @@ def s3_represent_value(field,
                              lambda: field.represent(val),
                              time_expire = 60,
                              )
-            if isinstance(text, DIV):
-                text = str(text)
-            elif not isinstance(text, basestring):
-                text = s3_unicode(text)
+        if isinstance(text, DIV):
+            text = str(text)
+        elif not isinstance(text, basestring):
+            text = s3_unicode(text)
     else:
         if val is None:
             text = NONE
@@ -285,10 +285,10 @@ def s3_represent_value(field,
     elif xml_escape:
         text = xml_encode(text)
 
-    try:
-        text = text.decode("utf-8")
-    except:
-        pass
+    #try:
+    #    text = text.decode("utf-8")
+    #except:
+    #    pass
 
     return text
 
@@ -676,10 +676,16 @@ def s3_fullname(person=None, pe_id=None, truncate=True):
         record = db(query).select(ptable.first_name,
                                   ptable.middle_name,
                                   ptable.last_name,
-                                  limitby=(0, 1)).first()
+                                  limitby = (0, 1)
+                                  ).first()
     if record:
         fname, mname, lname = "", "", ""
         if "pr_person" in record:
+            # Check if this is a LazySet from db.auth_user
+            #test = record["pr_person"]
+            #from pydal.objects import LazySet
+            #if not isinstance(test, LazySet)
+            #    record = test
             record = record["pr_person"]
         if record.first_name:
             fname = record.first_name.strip()
@@ -963,6 +969,7 @@ def s3_auth_user_represent_name(user_id, row=None):
         table = db.auth_user
         row = db(table.id == user_id).select(table.first_name,
                                              table.last_name,
+                                             cache = current.s3db.cache,
                                              limitby = (0, 1),
                                              ).first()
     try:
@@ -995,9 +1002,10 @@ def s3_keep_messages():
     response = current.response
     session = current.session
 
-    session.flash = response.flash
     session.confirmation = response.confirmation
     session.error = response.error
+    session.flash = response.flash
+    session.information = response.information
     session.warning = response.warning
 
 # =============================================================================
@@ -1970,11 +1978,13 @@ class S3PriorityRepresent(object):
         self.options = dict(options)
         self.classes = classes
 
-    def represent(self, value, row=None):
+    # -------------------------------------------------------------------------
+    def __call__(self, value, row=None):
         """
             Representation function
 
             @param value: the value to represent
+            @param row: the Row (unused, for API compatibility)
         """
 
         css_class = base_class = "prio"
@@ -1988,6 +1998,14 @@ class S3PriorityRepresent(object):
         label = self.options.get(value)
 
         return DIV(label, _class=css_class)
+
+    # -------------------------------------------------------------------------
+    def represent(self, value, row=None):
+        """
+            Wrapper for self.__call__, for backwards-compatibility
+        """
+
+        return self(value, row=row)
 
 # =============================================================================
 class Traceback(object):

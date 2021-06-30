@@ -6565,13 +6565,18 @@ class S3Permission(object):
         return query
 
     # -------------------------------------------------------------------------
-    def permitted_realms(self, tablename, method="read"):
+    def permitted_realms(self, tablename, method="read", c=None, f=None):
         """
             Returns a list of the realm entities which a user can access for
             the given table.
 
             @param tablename: the tablename
             @param method: the method
+            @param c: override request.controller to look up for
+                      a different controller context
+            @param f: override request.function to look up for
+                      a different controller context
+
             @return: a list of pe_ids or None (for no restriction)
         """
 
@@ -6595,11 +6600,12 @@ class S3Permission(object):
         racl = self.required_acl([method])
         request = current.request
         acls = self.applicable_acls(racl,
-                                    realms=realms,
-                                    delegations=delegations,
-                                    c=request.controller,
-                                    f=request.function,
-                                    t=tablename)
+                                    realms = realms,
+                                    delegations = delegations,
+                                    c = c if c else request.controller,
+                                    f = f if f else request.function,
+                                    t = tablename,
+                                    )
         if "ANY" in acls:
             # User is permitted access for all Realms
             return None
@@ -7729,9 +7735,10 @@ class S3Audit(object):
     """ S3 Audit Trail Writer Class """
 
     def __init__(self,
-                 tablename="s3_audit",
-                 migrate=True,
-                 fake_migrate=False):
+                 tablename = "s3_audit",
+                 migrate = True,
+                 fake_migrate = False
+                 ):
         """
             Constructor
 
@@ -7765,8 +7772,8 @@ class S3Audit(object):
                             # List of Key:Values
                             Field("new_value", "text"),
                             Field("repository_id", "integer"),
-                            migrate=migrate,
-                            fake_migrate=fake_migrate,
+                            migrate = migrate,
+                            fake_migrate = fake_migrate,
                             )
         self.table = db[tablename]
 
@@ -7778,9 +7785,10 @@ class S3Audit(object):
 
     # -------------------------------------------------------------------------
     def __call__(self, method, prefix, name,
-                 form=None,
-                 record=None,
-                 representation="unknown"):
+                 form = None,
+                 record = None,
+                 representation = "unknown"
+                 ):
         """
             Audit
 
@@ -7911,7 +7919,8 @@ class S3Audit(object):
         elif method == "delete":
             db = current.db
             query = (db[tablename].id == record)
-            row = db(query).select(limitby=(0, 1)).first()
+            row = db(query).select(limitby = (0, 1)
+                                   ).first()
             old_value = []
             if row:
                 old_value = ["%s:%s" % (field, row[field])
@@ -7950,7 +7959,7 @@ class S3Audit(object):
                                            table.user_id,
                                            table.old_value,
                                            table.new_value,
-                                           limitby=(0, limit)
+                                           limitby = (0, limit)
                                            )
 
         # Convert to Human-readable form

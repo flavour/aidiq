@@ -125,7 +125,7 @@ def post():
                     # Lookup ID
                     stable = db.cms_series
                     row = db(stable.name == series).select(stable.id,
-                                                           limitby=(0, 1)
+                                                           limitby = (0, 1)
                                                            ).first()
                     if row:
                         field = table.series_id
@@ -146,7 +146,7 @@ def post():
                         query = (table.name == page) & \
                                 (table.deleted == False)
                         record = current.db(query).select(table.id,
-                                                          limitby=(0, 1)
+                                                          limitby = (0, 1)
                                                           ).first()
                         if record:
                             record_id = record.id
@@ -659,7 +659,8 @@ def newsfeed():
 
         elif r.representation == "xls":
             table.body.represent = None
-            table.created_by.represent = s3base.s3_auth_user_represent_name
+            table.created_by.represent = s3db.auth_UserRepresent(show_email = False,
+                                                                 show_link = False)
             #table.created_on.represent = datetime_represent
             utable = auth.settings.table_user
             utable.organisation_id.represent = s3db.org_organisation_represent
@@ -689,10 +690,11 @@ def newsfeed():
         elif r.representation == "plain":
             # Map Popups
             table.location_id.represent = s3db.gis_LocationRepresent(sep=" | ")
-            table.created_by.represent = s3base.s3_auth_user_represent_name
+            table.created_by.represent = s3db.auth_UserRepresent(show_email = False,
+                                                                 show_link = False)
             # Used by default popups
             series = table.series_id.represent(r.record.series_id)
-            s3.crud_strings["cms_post"].title_display = "%(series)s Details" % dict(series=series)
+            s3.crud_strings["cms_post"].title_display = "%(series)s Details" % {"series": series}
             s3db.configure("cms_post",
                            popup_url = "",
                            )
@@ -950,7 +952,7 @@ def posts():
                 user = row[utable._tablename]
                 username = s3_fullname(person)
                 email = user.email.strip().lower()
-                hash = hashlib.md5(email).hexdigest()
+                hash = hashlib.md5(email.encode("utf-8")).hexdigest()
                 url = "http://www.gravatar.com/%s" % hash
                 author = B(A(username, _href=url, _target="top"))
         header = H4(post.name)
