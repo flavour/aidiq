@@ -41,7 +41,7 @@ from collections import OrderedDict
 
 from gluon import current, redirect, HTTP, URL, \
                   A, BEAUTIFY, CODE, DIV, IMG, PRE, SPAN, TABLE, TAG, TR, XML, \
-                  IS_EMPTY_OR, IS_NOT_IN_DB, IS_TIME
+                  IS_EMPTY_OR, IS_NOT_IN_DB, IS_TIME, IS_URL
 from gluon.storage import Storage
 from gluon.languages import lazyT
 from gluon.tools import addrow
@@ -185,13 +185,14 @@ def s3_validate(table, field, value, record=None):
 
 # =============================================================================
 def s3_represent_value(field,
-                       value=None,
-                       record=None,
-                       linkto=None,
-                       strip_markup=False,
-                       xml_escape=False,
-                       non_xml_output=False,
-                       extended_comments=False):
+                       value = None,
+                       record = None,
+                       linkto = None,
+                       strip_markup = False,
+                       xml_escape = False,
+                       non_xml_output = False,
+                       extended_comments = False
+                       ):
     """
         Represent a field value
 
@@ -780,7 +781,13 @@ def s3_url_represent(url):
 
     if not url:
         return ""
-    return A(url, _href=url, _target="_blank")
+
+    url_, error = IS_URL(allowed_schemes = ["http", "https", None],
+                         prepend_scheme = "http",
+                         )(url)
+    if error:
+        return url
+    return A(url_, _href=url_, _target="_blank")
 
 # =============================================================================
 def s3_qrcode_represent(value, row=None, show_value=True):
@@ -806,7 +813,9 @@ def s3_qrcode_represent(value, row=None, show_value=True):
 
     # Generate the QR Code
     qr = qrcode.QRCode(version = 2,
-                       error_correction = qrcode.constants.ERROR_CORRECT_M,
+                       # L-level good enough for displaying on screen, as
+                       # it would rarely be damaged or dirty there ;)
+                       error_correction = qrcode.constants.ERROR_CORRECT_L,
                        box_size = 10,
                        border = 4,
                        image_factory=qrcode.image.svg.SvgImage,
@@ -855,70 +864,74 @@ def s3_avatar_represent(user_id, tablename="auth_user", gravatar=False, **attr):
         @param attr: additional HTML attributes for the IMG(), such as _class
     """
 
-    db = current.db
-    s3db = current.s3db
-    cache = s3db.cache
+    size = (50, 50)
 
-    table = s3db[tablename]
+    if user_id:
+        db = current.db
+        s3db = current.s3db
+        cache = s3db.cache
 
-    email = None
-    image = None
+        table = s3db[tablename]
 
-    if tablename == "auth_user":
-        user = db(table.id == user_id).select(table.email,
-                                              cache = cache,
-                                              limitby = (0, 1),
-                                              ).first()
-        if user:
-            email = user.email.strip().lower()
-        ltable = s3db.pr_person_user
-        itable = s3db.pr_image
-        query = (ltable.user_id == user_id) & \
-                (ltable.pe_id == itable.pe_id) & \
-                (itable.profile == True)
-        image = db(query).select(itable.image,
-                                 limitby = (0, 1),
-                                 ).first()
-        if image:
-            image = image.image
-    elif tablename == "pr_person":
-        user = db(table.id == user_id).select(table.pe_id,
-                                              cache = cache,
-                                              limitby = (0, 1),
-                                              ).first()
-        if user:
-            ctable = s3db.pr_contact
-            query = (ctable.pe_id == user.pe_id) & \
-                    (ctable.contact_method == "EMAIL")
-            email = db(query).select(ctable.value,
-                                     cache = cache,
-                                     limitby = (0, 1),
-                                     ).first()
-            if email:
-                email = email.value
+        email = None
+        image = None
+
+        if tablename == "auth_user":
+            user = db(table.id == user_id).select(table.email,
+                                                  cache = cache,
+                                                  limitby = (0, 1),
+                                                  ).first()
+            if user:
+                email = user.email.strip().lower()
+            ltable = s3db.pr_person_user
             itable = s3db.pr_image
-            query = (itable.pe_id == user.pe_id) & \
+            query = (ltable.user_id == user_id) & \
+                    (ltable.pe_id == itable.pe_id) & \
                     (itable.profile == True)
             image = db(query).select(itable.image,
                                      limitby = (0, 1),
                                      ).first()
             if image:
                 image = image.image
+        elif tablename == "pr_person":
+            user = db(table.id == user_id).select(table.pe_id,
+                                                  cache = cache,
+                                                  limitby = (0, 1),
+                                                  ).first()
+            if user:
+                ctable = s3db.pr_contact
+                query = (ctable.pe_id == user.pe_id) & \
+                        (ctable.contact_method == "EMAIL")
+                email = db(query).select(ctable.value,
+                                         cache = cache,
+                                         limitby = (0, 1),
+                                         ).first()
+                if email:
+                    email = email.value
+                itable = s3db.pr_image
+                query = (itable.pe_id == user.pe_id) & \
+                        (itable.profile == True)
+                image = db(query).select(itable.image,
+                                         limitby = (0, 1),
+                                         ).first()
+                if image:
+                    image = image.image
 
-    size = (50, 50)
-    if image:
-        image = s3db.pr_image_library_represent(image, size=size)
-        size = s3db.pr_image_size(image, size)
-        url = URL(c="default", f="download",
-                  args=image)
-    elif gravatar:
-        if email:
-            # If no Image uploaded, try Gravatar, which also provides a nice fallback identicon
-            import hashlib
-            email_hash = hashlib.md5(email).hexdigest()
-            url = "//www.gravatar.com/avatar/%s?s=50&d=identicon" % email_hash
+        if image:
+            image = s3db.pr_image_library_represent(image, size=size)
+            size = s3db.pr_image_size(image, size)
+            url = URL(c="default", f="download",
+                      args=image)
+        elif gravatar:
+            if email:
+                # If no Image uploaded, try Gravatar, which also provides a nice fallback identicon
+                import hashlib
+                email_hash = hashlib.md5(email).hexdigest()
+                url = "//www.gravatar.com/avatar/%s?s=50&d=identicon" % email_hash
+            else:
+                url = "//www.gravatar.com/avatar/00000000000000000000000000000000?d=mm"
         else:
-            url = "//www.gravatar.com/avatar/00000000000000000000000000000000?d=mm"
+            url = URL(c="static", f="img", args="blank-user.gif")
     else:
         url = URL(c="static", f="img", args="blank-user.gif")
 

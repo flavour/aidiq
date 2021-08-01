@@ -641,8 +641,9 @@ class approve(S3CustomController):
                         # Update user
                         user.update_record(registration_key = None)
 
-                    # Grant VOUCHER_PROVIDER
+                    # Grant VOUCHER_PROVIDER / TEST_PROVIDER
                     auth.s3_assign_role(user_id, "VOUCHER_PROVIDER")
+                    auth.s3_assign_role(user_id, "TEST_PROVIDER")
 
                     location_id = location_get("id")
                     if not location_id:
@@ -1444,7 +1445,7 @@ Thank you
                     organisation_id = match.first().organisation_id
         elif rows:
             # Single match - this organisation already exists
-            organisation_id = rows.first().organisation_id
+            organisation_id = rows.first().id
 
         return organisation_id
 

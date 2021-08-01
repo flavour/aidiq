@@ -513,7 +513,7 @@ form.anonymize-form,
     }
     .consent-explanation {
         white-space: pre-wrap;
-        padding: 0.3rem 2rem;
+        padding: 0.3rem 1.7rem;
         font-size: 0.8rem;
         font-style: italic;
         color: #7F7F7F;
@@ -523,7 +523,7 @@ form.anonymize-form,
     }
     .consent-checkbox {
         vertical-align: bottom;
-        margin-right: 0.5rem;
+        margin-right: 0.5rem!important;
     }
     .req {
         padding: 0 0.2rem;
@@ -792,6 +792,17 @@ body.rtl {
     margin-right: 20px;
 }
 
+.place-repr {
+    .place-name {
+        display: block;
+        font-weight: bold;
+        margin-bottom: 0.2rem;
+    }
+    .place-info {
+        white-space: pre-line;
+        font-size: 0.8rem;
+    }
+}
 .contact-repr {
     background-color: #FFF0C1;
     border: 1px solid #E0E0E0;
@@ -802,6 +813,7 @@ body.rtl {
         margin-bottom: 0.2rem;
     }
     .contact-info {
+        white-space: nowrap;
         font-size: 0.8rem;
         .fa {
             padding-right: 0.4rem;

@@ -31,6 +31,7 @@ __all__ = ("BRCaseModel",
            "BRNeedsModel",
            "BRCaseActivityModel",
            "BRAssistanceModel",
+           "BRAssistanceOfferModel",
            "BRAppointmentModel",
            "BRCaseEventModel",
            "BRPaymentModel",
@@ -41,13 +42,16 @@ __all__ = ("BRCaseModel",
            "BRReferralModel",
            "BRVulnerabilityModel",
            "br_AssistanceMeasureThemeRepresent",
+           "br_CaseActivityRepresent",
            "br_DocEntityRepresent",
+           "br_anonymous_address",
            "br_case_read_orgs",
            "br_case_default_org",
            "br_case_root_org",
            "br_case_default_status",
            "br_case_status_filter_opts",
            "br_case_activity_default_status",
+           "br_obscure_dob",
            "br_org_assistance_themes",
            "br_group_membership_onaccept",
            "br_assistance_default_status",
@@ -206,7 +210,10 @@ class BRCaseModel(S3Model):
         #
 
         # Case assignment options
-        default_organisation = settings.get_org_default_organisation()
+        if settings.get_br_case_global_default_org():
+            default_organisation = settings.get_org_default_organisation()
+        else:
+            default_organisation = None
         case_manager = settings.get_br_case_manager()
 
         # Household size tracking
@@ -377,6 +384,7 @@ class BRCaseModel(S3Model):
         query = (ctable.id == record_id)
         row = db(query).select(ctable.id,
                                ctable.person_id,
+                               ctable.invalid,
                                #ctable.closed_on,
                                stable.is_closed,
                                left = left,
@@ -386,13 +394,30 @@ class BRCaseModel(S3Model):
             return
         case = row.br_case
 
-        # Update closed_on date TODO
-        #if row.br_case_status.is_closed:
-        #    if not case.closed_on:
-        #        case.update_record(closed_on = current.request.utcnow.date())
-        #elif case.closed_on:
-        #    case.update_record(closed_on = None)
+        if row.br_case_status.is_closed or case.invalid:
 
+            # TODO Update end date in case
+            #if row.br_case_status.is_closed:
+            #    if not case.closed_on:
+            #        case.update_record(closed_on = current.request.utcnow.date())
+            #elif case.closed_on:
+            #    case.update_record(closed_on = None)
+
+            atable = s3db.br_case_activity
+            stable = s3db.br_case_activity_status
+
+            default_closure = br_case_activity_default_status(closing=True)
+            if default_closure:
+                join = stable.on((stable.id == atable.status_id) & \
+                                 (stable.is_closed == False))
+                query = (atable.person_id == case.person_id) & \
+                        (atable.deleted == False)
+                open_activities = db(query).select(atable.id,
+                                                   join = join,
+                                                   )
+                activity_ids = {row.id for row in open_activities}
+                db(atable.id.belongs(activity_ids)).update(status_id = default_closure,
+                                                           )
         # Get the person ID
         person_id = case.person_id
 
@@ -502,6 +527,11 @@ class BRCaseActivityModel(S3Model):
                            label = T("Closes Activity"),
                            represent = s3_yes_no_represent,
                            ),
+                     Field("is_default_closed", "boolean",
+                           # typically for "obsolete" type of status
+                           default = False,
+                           label = T("Is default closure status"),
+                           ),
                      s3_comments(),
                      *s3_meta_fields())
 
@@ -608,6 +638,13 @@ class BRCaseActivityModel(S3Model):
                             readable = case_activity_need,
                             writable = case_activity_need,
                             ),
+                     self.gis_location_id(
+                            # Location of the activity,
+                            # - usually the current tracking location of the beneficiary
+                            # - enable in template if/as necessary
+                            readable = False,
+                            writable = False,
+                            ),
                      Field("subject",
                            label = T("Subject / Occasion"),
                            readable = case_activity_subject,
@@ -655,6 +692,7 @@ class BRCaseActivityModel(S3Model):
         # Components
         self.add_components(tablename,
                             br_case_activity_update = "case_activity_id",
+                            br_direct_offer = "case_activity_id",
                             br_assistance_measure = "case_activity_id",
                             br_assistance_measure_theme = "case_activity_id",
                             )
@@ -711,6 +749,7 @@ class BRCaseActivityModel(S3Model):
                        "need_id",
                        "subject",
                        "need_details",
+                       "location_id",
                        assistance,
                        "status_id",
                        updates,
@@ -895,6 +934,7 @@ class BRCaseActivityModel(S3Model):
         """
             Onaccept routine for activity statuses:
             - only one status can be the default
+            - only one status can be the default closure
 
             @param form: the FORM
         """
@@ -907,10 +947,19 @@ class BRCaseActivityModel(S3Model):
         if not record_id:
             return
 
+        update = {}
+
         # Ensure that there is only one default status
         if "is_default" in form_vars and form_vars.is_default:
+            update["is_default"] = False
+
+        # Ensure that there is only one default closure status
+        if "is_default_closed" in form_vars and form_vars.is_default_closed:
+            update["is_default_closed"] = False
+
+        if update:
             table = current.s3db.br_case_activity_status
-            current.db(table.id != record_id).update(is_default = False)
+            current.db(table.id != record_id).update(**update)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -936,7 +985,7 @@ class BRCaseActivityModel(S3Model):
         atable = s3db.br_case_activity
         stable = s3db.br_case_activity_status
 
-        join = stable.on(atable.status_id == stable.id)
+        join = stable.on(stable.id == atable.status_id)
         query = (atable.id == record_id)
 
         row = db(query).select(atable.id,
@@ -956,9 +1005,6 @@ class BRCaseActivityModel(S3Model):
             elif activity.end_date:
                 # Remove the end-date
                 data["end_date"] = None
-
-            if data:
-                activity.update_record(**data)
 
 # =============================================================================
 class BRAppointmentModel(S3Model):
@@ -1262,6 +1308,7 @@ class BRAssistanceModel(S3Model):
              "br_assistance_status",
              "br_assistance_theme",
              "br_assistance_type",
+             "br_assistance_type_id",
              )
 
     def model(self):
@@ -1370,7 +1417,7 @@ class BRAssistanceModel(S3Model):
             msg_record_modified = T("Type updated"),
             msg_record_deleted = T("Type deleted"),
             msg_list_empty = T("No Types of Assistance currently defined"),
-        )
+            )
 
         # Reusable field
         represent = S3Represent(lookup=tablename, translate=True)
@@ -1700,14 +1747,18 @@ class BRAssistanceModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return {"br_assistance_type_id": assistance_type_id,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
     def defaults():
         """ Safe defaults for names in case the module is disabled """
 
-        return {}
+        dummy = S3ReusableField.dummy
+
+        return {"br_assistance_type_id": dummy("assistance_type_id"),
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2065,6 +2116,367 @@ class BRAssistanceModel(S3Model):
                                         layout = S3SQLVerticalSubFormLayout,
                                         explicit_add = T("Add Measure"),
                                         )
+
+# =============================================================================
+class BRAssistanceOfferModel(S3Model):
+    """
+        Generic model to track individual measures of assistance
+    """
+
+    names = ("br_assistance_offer",
+             "br_assistance_offer_status",
+             "br_assistance_offer_availability",
+             "br_direct_offer",
+             )
+
+    def model(self):
+
+        T = current.T
+
+        db = current.db
+        s3 = current.response.s3
+        crud_strings = s3.crud_strings
+
+        settings = current.deployment_settings
+
+        define_table = self.define_table
+
+        # Whether and how to use reference numbers in offers
+        refno = settings.get_br_assistance_offer_refno()
+
+        # ---------------------------------------------------------------------
+        # Offers of assistance
+        #
+        offer_availability = (("AVL", T("available")),
+                              ("OCP", T("occupied")),
+                              ("RTD", T("no longer available")),
+                              )
+        offer_status = (("NEW", T("new")),
+                        ("APR", T("approved")),
+                        ("BLC", T("blocked")),
+                        )
+
+        # Representation of provider
+        pe_represent = self.pr_PersonEntityRepresent(show_label = False,
+                                                     show_link = False,
+                                                     show_type = True,
+                                                     )
+        tablename = "br_assistance_offer"
+        define_table(tablename,
+                     self.event_event_id(),
+                     Field("pe_id", "reference pr_pentity",
+                           label = T("Provider##assistance"),
+                           represent = pe_represent,
+                           requires = IS_EMPTY_OR(IS_ONE_OF(db, "pr_pentity.pe_id",
+                                                            pe_represent,
+                                                            instance_types = ["pr_person",
+                                                                              "org_organisation",
+                                                                              ],
+                                                            )),
+                           ),
+                     self.br_need_id(),
+                     self.br_assistance_type_id(
+                         # Enable in template if/as required
+                         readable = False,
+                         writable = False,
+                         ),
+                     Field("refno", length=16,
+                           requires = IS_EMPTY_OR(IS_LENGTH(16)),
+                           label = T("Ref.No."),
+                           readable = refno,
+                           writable = refno and refno != "auto",
+                           ),
+                     Field("name",
+                           label = T("Offer"),
+                           requires = IS_NOT_EMPTY(),
+                           ),
+                     Field("description", "text",
+                           label = T("Details"),
+                           represent = s3_text_represent,
+                           widget = s3_comments_widget,
+                           ),
+                     Field("capacity",
+                           label = T("Quantity / Size / Capacity"),
+                           represent = lambda v, row=None: v if v else "-",
+                           ),
+                     Field("chargeable", "boolean",
+                           default = False,
+                           label = T("Chargeable"),
+                           represent = s3_yes_no_represent,
+                           ),
+                     self.gis_location_id(), # Location of the offer (if housing)
+                     Field("contact_name",
+                           label = T("Contact Name"),
+                           represent = lambda v, row=None: v if v else "-",
+                           ),
+                     Field("contact_email",
+                           label = T("Email"),
+                           requires = IS_EMPTY_OR(IS_EMAIL()),
+                           represent = lambda v, row=None: v if v else "-",
+                           ),
+                     Field("contact_phone",
+                           label = T("Contact Phone"),
+                           requires = IS_EMPTY_OR(IS_PHONE_NUMBER_SINGLE()),
+                           represent = lambda v, row=None: v if v else "-",
+                           ),
+                     Field("availability",
+                           default = "AVL",
+                           label = T("Availability"),
+                           requires = IS_IN_SET(offer_availability, zero=None, sort=False),
+                           represent = S3Represent(options=dict(offer_availability),
+                                                   ),
+                           ),
+                     s3_date(label = T("Available from"),
+                             default = "now",
+                             # TODO setmin
+                             ),
+                     s3_date("end_date",
+                             label = T("Available until"),
+                             # TODO setmax
+                             ),
+                     Field("status",
+                           default = "NEW",
+                           label = T("Status"),
+                           requires = IS_IN_SET(offer_status, zero=None, sort=False),
+                           represent = S3Represent(options=dict(offer_status),
+                                                   ),
+                           ),
+                     s3_comments(),
+                     *s3_meta_fields())
+
+        # Components
+        self.add_components(tablename,
+                            br_direct_offer = "offer_id",
+                            )
+
+        # List fields
+        list_fields = ["need_id",
+                       "name",
+                       "chargeable",
+                       "location_id",
+                       "availability",
+                       "date",
+                       "end_date",
+                       ]
+
+        # Filters
+        filter_widgets = [S3TextFilter(["name",
+                                        "description",
+                                        ],
+                                       label = T("Search"),
+                                       ),
+                          S3OptionsFilter("need_id",
+                                          ),
+                          S3OptionsFilter("chargeable",
+                                          cols = 2,
+                                          ),
+                          S3LocationFilter("location_id",
+                                           ),
+                          ]
+
+        self.configure(tablename,
+                       filter_widgets = filter_widgets,
+                       list_fields = list_fields,
+                       onaccept = self.assistance_offer_onaccept,
+                       )
+
+        # CRUD Strings
+        crud_strings[tablename] = Storage(
+            label_create = T("Create Assistance Offer"),
+            title_display = T("Assistance Offer Details"),
+            title_list = T("Assistance Offers"),
+            title_update = T("Edit Offer"),
+            label_list_button = T("List Offers"),
+            label_delete_button = T("Delete Offer"),
+            msg_record_created = T("Offer created"),
+            msg_record_modified = T("Offer updated"),
+            msg_record_deleted = T("Offer deleted"),
+            msg_list_empty = T("No Assistance Offers currently registered"),
+            )
+
+        # Reusable field
+        if refno:
+            represent = S3Represent(lookup=tablename,
+                                    fields = ["refno", "name"],
+                                    labels = "[%(refno)s] %(name)s",
+                                    show_link = True,
+                                    linkto = URL(c="br", f="offers", args=["[id]"]),
+                                    )
+        else:
+            represent = S3Represent(lookup=tablename)
+        offer_id = S3ReusableField("offer_id",
+                                   "reference %s" % tablename,
+                                   label = T("Offer"),
+                                   represent = represent,
+                                   requires = IS_EMPTY_OR(
+                                                IS_ONE_OF(db, "%s.id" % tablename,
+                                                          represent,
+                                                          )),
+                                   sortby = "date",
+                                   )
+
+        # ---------------------------------------------------------------------
+        # Link offer <=> case activity
+        #
+        tablename = "br_direct_offer"
+        define_table(tablename,
+                     self.br_case_activity_id(
+                         empty = False,
+                         label = T("Activity"),
+                         ondelete = "CASCADE",
+                         ),
+                     offer_id(
+                         empty = False,
+                         ondelete = "CASCADE",
+                         ),
+                     Field("notify", "boolean",
+                           label = T("Notify case manager"),
+                           default = True,
+                           readable = False,
+                           writable = False,
+                           ),
+                     s3_datetime("notified_on",
+                                 label = T("Case manager notified on"),
+                                 default = None,
+                                 readable = False,
+                                 writable = False,
+                                 ),
+                     *s3_meta_fields())
+
+        # List fields
+        list_fields = ["offer_id",
+                       "case_activity_id",
+                       ]
+
+        self.configure(tablename,
+                       list_fields = list_fields,
+                       create_onvalidation = self.direct_offer_create_onvalidation
+                       )
+
+        # CRUD Strings
+        crud_strings[tablename] = Storage(
+            label_create = T("Create Direct Offer"),
+            title_display = T("Direct Offer Details"),
+            title_list = T("Direct Offers"),
+            title_update = T("Edit Direct Offer"),
+            label_list_button = T("List Direct Offers"),
+            label_delete_button = T("Delete Direct Offer"),
+            msg_record_created = T("Direct Offer created"),
+            msg_record_modified = T("Direct Offer updated"),
+            msg_record_deleted = T("Direct Offer deleted"),
+            msg_list_empty = T("No Direct Offers currently registered"),
+            )
+
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        #
+        return {"br_assistance_offer_status": offer_status,
+                "br_assistance_offer_availability": offer_availability,
+                }
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def defaults():
+        """ Safe defaults for names in case the module is disabled """
+
+        return {"br_assistance_offer_status": (),
+                "br_assistance_offer_availability": (),
+                }
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def assistance_offer_onaccept(form):
+        """
+            Onaccept-routine for assistance offer
+                - auto-generate refno if so configured
+        """
+
+        db = current.db
+        s3db = current.s3db
+
+        settings = current.deployment_settings
+
+        # Read form data
+        form_vars = form.vars
+        if "id" in form_vars:
+            record_id = form_vars.id
+        elif hasattr(form, "record_id"):
+            record_id = form.record_id
+        else:
+            return
+
+        if settings.get_br_assistance_offer_refno() == "auto":
+
+            table = s3db.br_assistance_offer
+            query = (table.id == record_id) & \
+                    (table.deleted == False)
+            record = db(query).select(table.id,
+                                      table.refno,
+                                      limitby = (0, 1),
+                                      ).first()
+            if record and not record.refno:
+                refno = br_compact_code(record_id, length=3, prefix="A-")
+                record.update_record(refno = refno)
+
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def direct_offer_create_onvalidation(form):
+        """
+            Onvalidation of direct offer, on create
+                - prevent duplicate links
+                - offer must not be blocked, nor lapsed
+        """
+
+        T = current.T
+
+        db = current.db
+        s3db = current.s3db
+
+        table = s3db.br_direct_offer
+
+        form_vars = form.vars
+
+        error_field = "offer_id"
+        if "case_activity_id" in form_vars:
+            error_field = "case_activity_id"
+            case_activity_id = form_vars["case_activity_id"]
+        else:
+            case_activity_id = table.case_activity_id.default
+
+        if "offer_id" in form_vars:
+            error_field = "offer_id"
+            offer_id = form_vars["offer_id"]
+        else:
+            offer_id = table.offer_id.default
+
+        error = None
+
+        # Check for duplicate
+        query = (table.offer_id == offer_id) & \
+                (table.case_activity_id == case_activity_id) & \
+                (table.deleted == False)
+        duplicate = db(query).select(table.id, limitby=(0, 1)).first()
+        if duplicate:
+            error = T("This direct offer already exists")
+
+        if not error and offer_id:
+            # Check that offer is not blocked, nor lapsed
+            aotable = s3db.br_assistance_offer
+            query = (aotable.id == offer_id)
+            offer = db(query).select(aotable.status,
+                                     aotable.end_date,
+                                     limitby = (0, 1),
+                                     ).first()
+            if offer:
+                today = current.request.utcnow.date()
+                if offer.status == "BLC":
+                    error = T("Offer is blocked")
+                elif offer.end_date and offer.end_date < today:
+                    error = T("Offer has lapsed")
+
+        if error:
+            form.errors[error_field] = error
 
 # =============================================================================
 class BRDistributionModel(S3Model):
@@ -2847,6 +3259,13 @@ class br_CaseActivityRepresent(S3Represent):
             @param row: the row with this key
         """
 
+        # Allow override
+        if self.linkto:
+            k = s3_str(k)
+            return A(v, _href=self.linkto.replace("[id]", k) \
+                                         .replace("%5Bid%5D", k))
+
+        # Default: link to case activity inside case file
         try:
             beneficiary = row.pr_person
         except AttributeError:
@@ -3113,6 +3532,35 @@ class br_DocEntityRepresent(S3Represent):
 # =============================================================================
 # Utility Functions
 # =============================================================================
+def br_compact_code(record_id, length=3, alphabet=None, prefix=""):
+    """
+        Generate a compact code for a record ID
+
+        @param record_id: the record ID
+        @param length: the minimum length of the code
+        @param alphabet: the alphabet to use
+    """
+
+    if not alphabet:
+        # Default alphabet (Base 29 => ca. 700k codes with 4 digits)
+        alphabet = "0123456789ABCDEFHJKLNQRSUVWXYZ"
+
+    digits = []
+    base = len(alphabet)
+    remainder = record_id
+    while remainder:
+        digits.append(alphabet[remainder % base])
+        remainder = remainder // base
+
+    digits.reverse()
+    code = "".join(digits)
+
+    # Pad with leading "zeros"
+    code = (alphabet[0] * length + code)[-(max(length, len(code))):]
+
+    return "%s%s" % (prefix, code) if prefix else code
+
+# -----------------------------------------------------------------------------
 def br_case_read_orgs():
     """
         Check if the user has read access to cases of more than one org
@@ -3142,8 +3590,11 @@ def br_case_default_org():
         @returns: tuple (default_org, multiple_orgs)
     """
 
-    default_org = current.deployment_settings.get_org_default_organisation()
-    if default_org:
+    settings = current.deployment_settings
+
+    default_org = settings.get_org_default_organisation()
+    if default_org and settings.get_br_case_global_default_org():
+        # All cases are linked to the global default organisation
         return default_org, False
 
     auth = current.auth
@@ -3258,30 +3709,40 @@ def br_case_status_filter_opts(closed=None):
     return OrderedDict((row.id, T(row.name)) for row in rows)
 
 # -----------------------------------------------------------------------------
-def br_case_activity_default_status():
+def br_case_activity_default_status(closing=False):
     """
         Helper to get/set the default status for case activities
+
+        @param closing: return the default closure status
 
         @return: the default status_id
     """
 
     s3db = current.s3db
 
+    stable = s3db.br_case_activity_status
     atable = s3db.br_case_activity
+
     field = atable.status_id
+    if closing:
+        default = None
+        flag = stable.is_default_closed
+    else:
+        default = field.default
+        flag = stable.is_default
 
-    default = field.default
     if not default:
-
         # Look up the default status
-        stable = s3db.br_case_activity_status
-        query = (stable.is_default == True) & \
-                (stable.deleted != True)
-        row = current.db(query).select(stable.id, limitby=(0, 1)).first()
-
+        query = (flag == True) & (stable.deleted != True)
+        row = current.db(query).select(stable.id,
+                                       cache = s3db.cache,
+                                       limitby = (0, 1),
+                                       ).first()
         if row:
-            # Set as field default in case table
-            default = field.default = row.id
+            default = row.id
+            if not closing:
+                # Set as field default in case table
+                field.default = default
 
     return default
 
@@ -3706,6 +4167,7 @@ def br_rheader(r, tabs=None):
                                           ),
                                 )
                            )
+
         else:
             rheader = None
 

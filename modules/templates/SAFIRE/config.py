@@ -571,7 +571,7 @@ def config(settings):
             incident_type_id = form_vars_get("incident_type_id")
             ittable = s3db.event_incident_type
             incident_type = db(ittable.id == incident_type_id).select(ittable.name,
-                                                                      limitby = (0,1)
+                                                                      limitby = (0, 1)
                                                                       ).first().name
             if incident_type == "Chemical Hazard":
                 itable = s3db.event_incident
@@ -588,6 +588,7 @@ def config(settings):
                                     limitby = (0, 1)
                                     ).first()
             if duty:
+                # @ToDo: i18n
                 current.msg.send_sms_via_api(duty.value,
                     "You have been assigned an Incident: %s%s" % (settings.get_base_public_url(),
                                                                   URL(c="event", f= "incident",
@@ -645,7 +646,8 @@ def config(settings):
 
             # Redirect to action plan after create
             resource.configure(create_next = URL(c="event", f="incident",
-                                                 args = ["[id]", "plan"]),
+                                                 args = ["[id]", "plan"]
+                                                 ),
                                )
 
             method = r.method
@@ -835,6 +837,7 @@ def config(settings):
                 label = T("Ticket")
             else:
                 label = T("Incident")
+            # @ToDo: i18n
             current.msg.send_by_pe_id(pe_id,
                                       subject = "",
                                       message = "You have been assigned to an %s: %s%s" % \
@@ -843,7 +846,8 @@ def config(settings):
                                          URL(c="event", f= "incident",
                                              args = [incident_id, "human_resource", link_id]),
                                              ),
-                                      contact_method = "SMS")
+                                      contact_method = "SMS"
+                                      )
 
     # -------------------------------------------------------------------------
     def customise_event_human_resource_resource(r, tablename):
@@ -1153,6 +1157,7 @@ def config(settings):
 
         if pe_id:
             # Notify Assignee
+            # @ToDo: i18n
             message = "You have been assigned a Task: %s%s" % \
                         (settings.get_base_public_url(),
                          URL(c="event", f= "incident",

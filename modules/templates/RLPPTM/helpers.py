@@ -51,6 +51,46 @@ def get_role_realms(role):
     return role_realms
 
 # =============================================================================
+def get_managed_facilities(role="ORG_ADMIN", public_only=True):
+    """
+        Get test stations managed by the current user
+
+        @param role: the user role to consider
+        @param public_only: only include sites with PUBLIC=Y tag
+
+        @returns: list of site_ids
+    """
+
+
+    s3db = current.s3db
+
+    ftable = s3db.org_facility
+    query = (ftable.obsolete == False) & \
+            (ftable.deleted == False)
+
+    realms = get_role_realms(role)
+    if realms:
+        query = (ftable.realm_entity.belongs(realms)) & query
+    elif realms is not None:
+        # User does not have the required role, or at least not for any realms
+        return realms
+
+    if public_only:
+        ttable = s3db.org_site_tag
+        join = ttable.on((ttable.site_id == ftable.site_id) & \
+                         (ttable.tag == "PUBLIC") & \
+                         (ttable.deleted == False))
+        query &= (ttable.value == "Y")
+    else:
+        join = None
+
+    sites = current.db(query).select(ftable.site_id,
+                                     cache = s3db.cache,
+                                     join = join,
+                                     )
+    return [s.site_id for s in sites]
+
+# =============================================================================
 def get_org_accounts(organisation_id):
     """
         Get all user accounts linked to an organisation
@@ -337,6 +377,8 @@ def get_stats_projects():
         Find all projects the current user can report test results, i.e.
         - projects marked as STATS=Y where
         - the current user has the VOUCHER_PROVIDER role for a partner organisation
+
+        @status: obsolete, test results shall be reported for all projects
     """
 
     permitted_realms = current.auth.permission.permitted_realms
@@ -826,20 +868,20 @@ def add_organisation_default_tags(organisation_id):
     # Add default tags
     otable = s3db.org_organisation
     ttable = s3db.org_organisation_tag
-    rttable = ttable.with_alias("requester")
+    dttable = ttable.with_alias("delivery")
     ittable = ttable.with_alias("orgid")
 
-    left = [rttable.on((rttable.organisation_id == otable.id) & \
-                        (rttable.tag == "REQUESTER") & \
-                        (rttable.deleted == False)),
+    left = [dttable.on((dttable.organisation_id == otable.id) & \
+                       (dttable.tag == "DELIVERY") & \
+                       (dttable.deleted == False)),
             ittable.on((ittable.organisation_id == otable.id) & \
-                        (ittable.tag == "OrgID") & \
-                        (ittable.deleted == False)),
+                       (ittable.tag == "OrgID") & \
+                       (ittable.deleted == False)),
             ]
     query = (otable.id == organisation_id)
     row = db(query).select(otable.id,
                            otable.uuid,
-                           rttable.id,
+                           dttable.id,
                            ittable.id,
                            left = left,
                            limitby = (0, 1),
@@ -847,13 +889,13 @@ def add_organisation_default_tags(organisation_id):
     if row:
         org = row.org_organisation
 
-        # Add REQUESTER-tag
-        rtag = row.requester
-        if not rtag.id:
+        # Add DELIVERY-tag
+        dtag = row.delivery
+        if not dtag.id:
             ttable.insert(organisation_id = org.id,
-                            tag = "REQUESTER",
-                            value = "N",
-                            )
+                          tag = "DELIVERY",
+                          value = "DIRECT",
+                          )
 
         # Add OrgID-tag
         itag = row.orgid
@@ -865,9 +907,9 @@ def add_organisation_default_tags(organisation_id):
                 uid = int(uuid.uuid4().urn[9:14], 16)
             value = "%06d%04d" % (uid, org.id)
             ttable.insert(organisation_id = org.id,
-                            tag = "OrgID",
-                            value = value,
-                            )
+                          tag = "OrgID",
+                          value = value,
+                          )
 
 # -----------------------------------------------------------------------------
 def add_facility_default_tags(facility_id, approve=False):
@@ -925,6 +967,46 @@ def add_facility_default_tags(facility_id, approve=False):
                       value = default,
                       )
         existing[tag] = default
+
+# -----------------------------------------------------------------------------
+def set_facility_code(facility_id):
+    """
+        Generate and set a unique facility code
+
+        @param facility_id: the facility ID
+
+        @returns: the facility code
+    """
+
+    db = current.db
+    s3db = current.s3db
+
+    table = s3db.org_facility
+    query = (table.id == facility_id)
+
+    facility = db(query).select(table.id,
+                                table.uuid,
+                                table.code,
+                                limitby = (0, 1),
+                                ).first()
+
+    if not facility or facility.code:
+        return None
+
+    try:
+        uid = int(facility.uuid[9:14], 16) % 1000000
+    except (TypeError, ValueError):
+        import uuid
+        uid = int(uuid.uuid4().urn[9:14], 16) % 1000000
+
+    # Generate code
+    import random
+    suffix = "".join(random.choice("ABCFGHKLNPRSTWX12456789") for _ in range(3))
+    code = "%06d-%s" % (uid, suffix)
+
+    facility.update_record(code=code)
+
+    return code
 
 # -----------------------------------------------------------------------------
 def applicable_org_types(organisation_id, group=None, represent=False):

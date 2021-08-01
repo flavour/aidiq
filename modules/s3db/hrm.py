@@ -398,9 +398,10 @@ class HRModel(S3Model):
 
         if settings.get_org_site_autocomplete():
             site_widget = S3SiteAutocompleteWidget()
-            site_comment = DIV(_class="tooltip",
-                               _title="%s|%s" % (T("Requested By Facility"),
-                                                 AUTOCOMPLETE_HELP))
+            site_comment = DIV(_class = "tooltip",
+                               _title = "%s|%s" % (T("Requested By Facility"),
+                                                   AUTOCOMPLETE_HELP,
+                                                   ))
         else:
             site_widget = None
             site_comment = None
@@ -571,9 +572,9 @@ class HRModel(S3Model):
             requires = IS_EMPTY_OR(
                         IS_ONE_OF(db, "hrm_human_resource.id",
                                   hrm_human_resource_represent,
-                                  sort=True,
-                                  filterby="type",
-                                  filter_opts=(2,)
+                                  sort = True,
+                                  filterby = "type",
+                                  filter_opts = (2,)
                                   ))
             widget = S3HumanResourceAutocompleteWidget(group="volunteer")
         else:
@@ -581,7 +582,7 @@ class HRModel(S3Model):
             requires = IS_EMPTY_OR(
                         IS_ONE_OF(db, "hrm_human_resource.id",
                                   hrm_human_resource_represent,
-                                  sort=True
+                                  sort = True
                                   ))
             widget = S3HumanResourceAutocompleteWidget()
             if contacts:
@@ -592,7 +593,7 @@ class HRModel(S3Model):
                     title_display = T("Human Resource Details"),
                     title_list = T("Staff & Volunteers"),
                     title_update = T("Edit Record"),
-                    title_upload =T("Search Staff & Volunteers"),
+                    title_upload = T("Search Staff & Volunteers"),
                     label_list_button = T("List Staff & Volunteers"),
                     label_delete_button = T("Delete Record"),
                     msg_record_created = T("Human Resource added"),
@@ -7096,7 +7097,9 @@ def hrm_rheader(r, tabs=None, profile=False):
             # @ToDo handle multiple HR records (which one are we looking at?)
             query = (htable.person_id == record_id) & \
                     (htable.deleted == False)
-            hr = db(query).select(htable.id, limitby=(0, 1)).first()
+            hr = db(query).select(htable.id,
+                                  limitby = (0, 1)
+                                  ).first()
             if hr:
                 hr = hr.id
             name = s3_fullname(record)
@@ -7114,8 +7117,10 @@ def hrm_rheader(r, tabs=None, profile=False):
         service_record = ""
         tbl = TABLE(TR(TH(name,
                           # @ToDo: Move to CSS
-                          _style="padding-top:15px")
-                       ))
+                          _style = "padding-top:15px",
+                          ),
+                       ),
+                    )
         experience_tab2 = None
         if group == "volunteer":
             vol_experience = settings.get_hrm_vol_experience()
@@ -7150,7 +7155,8 @@ def hrm_rheader(r, tabs=None, profile=False):
                     query &= bquery
                     row = db(query).select(ptable.name,
                                            phtable.date,
-                                           orderby=phtable.date).last()
+                                           orderby = phtable.date
+                                           ).last()
                     if row:
                         programme = row.hrm_programme.name
                     else:
@@ -7218,26 +7224,29 @@ def hrm_rheader(r, tabs=None, profile=False):
                     if hr:
                         dtable = s3db.vol_details
                         row = db(dtable.human_resource_id == hr).select(dtable.active,
-                                                                        limitby=(0, 1)
+                                                                        limitby = (0, 1)
                                                                         ).first()
                         if row and row.active:
                             active = TD(DIV(T("Yes"),
                                             # @ToDo: Move to CSS
-                                            _style="color:green"))
+                                            _style = "color:green",
+                                            ))
                         else:
                             active = TD(DIV(T("No"),
                                             # @ToDo: Move to CSS
-                                            _style="color:red"))
+                                            _style = "color:red",
+                                            ))
                     else:
                         active = TD(DIV(T("No"),
                                         # @ToDo: Move to CSS
-                                        _style="color:red"))
+                                        _style = "color:red",
+                                        ))
                     vol_active_tooltip = settings.get_hrm_vol_active_tooltip()
                     if vol_active_tooltip:
-                        tooltip = SPAN(_class="tooltip",
-                                       _title="%s|%s" % (T("Active"),
-                                                         T(vol_active_tooltip)),
-                                       _style="display:inline-block"
+                        tooltip = SPAN(_class = "tooltip",
+                                       _title = "%s|%s" % (T("Active"),
+                                                           T(vol_active_tooltip)),
+                                       _style = "display:inline-block",
                                        )
                     else:
                         tooltip = ""
@@ -7279,7 +7288,8 @@ def hrm_rheader(r, tabs=None, profile=False):
                     row4 = ""
 
                 tbl = TABLE(TR(TH(name,
-                                  _colspan=4)
+                                  _colspan = 4,
+                                  ),
                                ),
                             row1,
                             row2,
@@ -7396,7 +7406,10 @@ def hrm_rheader(r, tabs=None, profile=False):
                         (htable.deleted == False)
                 hr_records = db(query).count()
                 if hr_records > 1:
-                    duplicates_tab = (T("Duplicates"), "human_resource", {"hr":"all"}) # Ensure no &human_resource.id=XXXX
+                    duplicates_tab = (T("Duplicates"),
+                                      "human_resource",
+                                      {"hr": "all"}, # Ensure no &human_resource.id=XXXX
+                                      )
         else:
             # Default
             record_method = "human_resource"
@@ -7530,18 +7543,22 @@ def hrm_rheader(r, tabs=None, profile=False):
         rheader_tabs = s3_rheader_tabs(r, tabs)
         rheader_btns = DIV(service_record, card_button,
                            # @ToDo: Move to CSS
-                           _style="margin-bottom:10px",
-                           _class="rheader-btns",
+                           _style = "margin-bottom:10px",
+                           _class = "rheader-btns",
                            )
         rheader = DIV(rheader_btns,
                       A(s3_avatar_represent(record_id,
                                             "pr_person",
-                                            _class="rheader-avatar"),
-                        _href=URL(f="person", args=[record_id, "image"],
-                                  vars = get_vars),
+                                            _class = "rheader-avatar",
+                                            ),
+                        _href = URL(f="person",
+                                    args = [record_id, "image", "create"],
+                                    vars = get_vars,
+                                    ),
                         ),
                       tbl,
-                      rheader_tabs)
+                      rheader_tabs,
+                      )
 
     elif resourcename == "activity":
         # Tabs
@@ -7561,7 +7578,8 @@ def hrm_rheader(r, tabs=None, profile=False):
                             TR(TH("%s: " % table.date.label),
                                table.date.represent(record.date)),
                             ),
-                      rheader_tabs)
+                      rheader_tabs,
+                      )
 
     elif resourcename == "training_event":
         settings = current.deployment_settings
@@ -7635,9 +7653,12 @@ def hrm_rheader(r, tabs=None, profile=False):
                             TR(TH("%s: " % table.start_date.label),
                                table.start_date.represent(record.start_date)),
                             instructors,
-                            TR(TH(action, _colspan=2)),
+                            TR(TH(action,
+                                  _colspan = 2,
+                                  )),
                             ),
-                      rheader_tabs)
+                      rheader_tabs,
+                      )
 
     elif resourcename == "certificate":
         # Tabs
@@ -7650,7 +7671,8 @@ def hrm_rheader(r, tabs=None, profile=False):
         rheader = DIV(TABLE(TR(TH("%s: " % table.name.label),
                                record.name),
                             ),
-                      rheader_tabs)
+                      rheader_tabs,
+                      )
 
     elif resourcename == "certification":
         # Tabs
@@ -7662,7 +7684,8 @@ def hrm_rheader(r, tabs=None, profile=False):
                             TR(TH("%s: " % table.certificate_id.label),
                                table.certificate_id.represent(record.certificate_id)),
                             ),
-                      rheader_tabs)
+                      rheader_tabs,
+                      )
 
     elif resourcename == "course":
         # Tabs
@@ -7674,7 +7697,8 @@ def hrm_rheader(r, tabs=None, profile=False):
         rheader = DIV(TABLE(TR(TH("%s: " % table.name.label),
                                record.name),
                             ),
-                      rheader_tabs)
+                      rheader_tabs,
+                      )
 
     elif resourcename == "programme":
         # Tabs
@@ -7685,7 +7709,9 @@ def hrm_rheader(r, tabs=None, profile=False):
         rheader = DIV(TABLE(TR(TH("%s: " % table.name.label),
                                record.name),
                             ),
-                      rheader_tabs)
+                      rheader_tabs,
+                      )
+
     elif resourcename == "shift":
         db = current.db
         s3db = current.s3db
@@ -8721,8 +8747,6 @@ def hrm_person_controller(**attr):
                 title_display = T("Staff Member Details"),
                 title_update = T("Staff Member Details")
                 )
-    # Upload for configuration (add replace option)
-    s3.importerPrep = lambda: {"ReplaceOption": T("Remove existing data before import")}
 
     # Import pre-process
     def import_prep(data, group=group):
@@ -8730,12 +8754,13 @@ def hrm_person_controller(**attr):
             Deletes all HR records (of the given group) of the
             organisation/branch before processing a new data import
         """
-        resource, tree = data
-        xml = current.xml
-        tag = xml.TAG
-        att = xml.ATTRIBUTE
         if s3.import_replace:
+            resource, tree = data
             if tree is not None:
+                xml = current.xml
+                tag = xml.TAG
+                att = xml.ATTRIBUTE
+
                 if group == "staff":
                     group = 1
                 elif group == "volunteer":
@@ -8803,13 +8828,14 @@ def hrm_person_controller(**attr):
                 person_details_table.occupation.readable = person_details_table.occupation.writable = False
 
                 # Organisation Dependent Fields
-                set_org_dependent_field = settings.set_org_dependent_field
-                set_org_dependent_field("pr_person", "middle_name")
-                set_org_dependent_field("pr_person_details", "father_name")
-                set_org_dependent_field("pr_person_details", "mother_name")
-                set_org_dependent_field("pr_person_details", "grandfather_name")
-                set_org_dependent_field("pr_person_details", "affiliations")
-                set_org_dependent_field("pr_person_details", "company")
+                # - deprecated (IFRC template only)
+                #set_org_dependent_field = settings.set_org_dependent_field
+                #set_org_dependent_field("pr_person", "middle_name")
+                #set_org_dependent_field("pr_person_details", "father_name")
+                #set_org_dependent_field("pr_person_details", "mother_name")
+                #set_org_dependent_field("pr_person_details", "grandfather_name")
+                #set_org_dependent_field("pr_person_details", "affiliations")
+                #set_org_dependent_field("pr_person_details", "company")
             else:
                 component_name = r.component_name
                 if component_name == "physical_description":
@@ -8859,8 +8885,45 @@ def hrm_person_controller(**attr):
                 elif component_name == "group_membership":
                     hrm_configure_pr_group_membership()
 
+                elif component_name == "image":
+                    if r.method == "create":
+                        # Coming from the rheader...simplify UI
+                        table = s3db.pr_image
+                        f = table.profile
+                        f.default = True
+                        f.readable = f.writable = False
+                        table.image.comment = None
+                        table.type.readable = table.type.writable = False
+                        table.url.readable = table.url.writable = False
+                        table.description.readable = table.description.writable = False
+
                 elif component_name == "salary":
                     hrm_configure_salary(r)
+
+                elif component_name == "user":
+                    r.component.configure(deletable = False)
+                    current.auth.configure_user_fields()
+                    utable = db.auth_user
+                    # Don't allow password changes here (doesn't require old password)
+                    utable.password.readable = utable.password.writable = False
+                    # User cannot amend their own Org/Site/Link
+                    f = utable.organisation_id
+                    f.writable = False
+                    f.comment = None
+                    f = utable.site_id
+                    f.writable = False
+                    f.comment = None
+                    f = utable.link_user_to
+                    f.writable = False
+                    f.comment = None
+                    def auth_user_onaccept(form):
+                        language = form.vars.get("language")
+                        if language:
+                            T.force(language)
+                            session.s3.language = language
+                    s3db.configure("auth_user",
+                                   onaccept = auth_user_onaccept
+                                   )
 
             if method == "record" or r.component_name == "human_resource":
                 table = s3db.hrm_human_resource
@@ -8881,6 +8944,7 @@ def hrm_person_controller(**attr):
                 #                  filterby="organisation_id",
                 #                  filter_opts=(session.s3.hrm.org,),
                 #                  ))
+
             elif method == "cv" or r.component_name == "training":
                 list_fields = ["course_id",
                                "grade",
@@ -9666,8 +9730,9 @@ class hrm_Medical(S3Method):
         if representation == "html":
             # Maintain normal rheader for consistency
             title = crud_strings["pr_person"].title_display
+            PROFILE = "profile" in r.get_vars
             profile_header = TAG[""](H2(title),
-                                     DIV(hrm_rheader(r),
+                                     DIV(hrm_rheader(r, profile=PROFILE),
                                          _id = "rheader",
                                          ))
             s3.jquery_ready.append('''S3.showHidden('%s',%s,'%s')''' % \
@@ -9700,11 +9765,12 @@ class hrm_Record(S3Method):
     """
 
     def __init__(self,
-                 salary=False,
-                 awards=False,
-                 disciplinary_record=False,
-                 org_experience=False,
-                 other_experience=False):
+                 salary = False,
+                 awards = False,
+                 disciplinary_record = False,
+                 org_experience = False,
+                 other_experience = False
+                 ):
         """
             Constructor
 
@@ -9999,8 +10065,9 @@ class hrm_Record(S3Method):
         if representation == "html":
             # Maintain normal rheader for consistency
             title = crud_strings["pr_person"].title_display
+            PROFILE = "profile" in r.get_vars
             profile_header = TAG[""](H2(title),
-                                     DIV(hrm_rheader(r),
+                                     DIV(hrm_rheader(r, profile=PROFILE),
                                          _id = "rheader",
                                          ))
         else:

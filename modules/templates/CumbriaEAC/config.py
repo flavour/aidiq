@@ -92,6 +92,8 @@ def config(settings):
     settings.ui.auth_user_represent = "name"
     settings.ui.export_formats = ("xls",)
 
+    settings.search.filter_manager = False
+
     # -------------------------------------------------------------------------
     # Comment/uncomment modules here to disable/enable them
     # Modules menu is defined in modules/eden/menu.py
@@ -282,7 +284,7 @@ def config(settings):
     settings.cr.shelter_population_dynamic = True
 
     cr_shelter_status_opts = {1 : T("Closed"), # Nominated Centres
-                              #2 : T("Open##the_shelter_is"),
+                              #2 : T("Open##status"),
                               3 : T("Green"),
                               4 : T("Amber"),
                               5 : T("Red"),
@@ -560,6 +562,19 @@ def config(settings):
 
         series = r.get_vars.get("~.series_id$name", None)
         if series == "CEP":
+            s3db = current.s3db
+            table = s3db.cms_post
+            table.body.default = "" # NotNull = True
+            if not r.method:
+                # Lookup ID
+                stable = s3db.cms_series
+                row = current.db(stable.name == series).select(stable.id,
+                                                               limitby = (0, 1)
+                                                               ).first()
+                if row:
+                    field = table.series_id
+                    field.default = row.id
+                    #field.readable = field.writable = False
             current.response.s3.crud_strings[tablename] = Storage(label_create = T("Create Plan"),
                                                                   title_display = T("Plan Details"),
                                                                   title_list = T("Community Emergency Plans"),
@@ -572,10 +587,35 @@ def config(settings):
                                                                   msg_list_empty = T("No plans currently available")
                                                                   )
             from s3 import S3SQLCustomForm
-            current.s3db.configure(tablename,
-                                   crud_form = S3SQLCustomForm("name"),
-                                   list_fields = ["name"],
-                                   )
+            s3db.configure(tablename,
+                           crud_form = S3SQLCustomForm("name"),
+                           list_fields = ["name"],
+                           orderby = "cms_post.name",
+                           )
+        elif r.id:
+            # Update form
+            s3db = current.s3db
+            stable = s3db.cms_series
+            row = current.db(stable.name == "CEP").select(stable.id,
+                                                          limitby = (0, 1)
+                                                          ).first()
+            if row and row.id == r.record.series_id:
+                current.response.s3.crud_strings[tablename] = Storage(label_create = T("Create Plan"),
+                                                                  title_display = T("Plan Details"),
+                                                                  title_list = T("Community Emergency Plans"),
+                                                                  title_update = T("Edit Plan"),
+                                                                  title_upload = T("Import Plans"),
+                                                                  label_list_button = T("List Plans"),
+                                                                  msg_record_created = T("Plan added"),
+                                                                  msg_record_modified = T("Plan updated"),
+                                                                  msg_record_deleted = T("Plan deleted"),
+                                                                  msg_list_empty = T("No plans currently available")
+                                                                  )
+                from s3 import S3SQLCustomForm
+                s3db.configure(tablename,
+                               crud_form = S3SQLCustomForm("name"),
+                               list_fields = ["name"],
+                               )
 
     settings.customise_cms_post_resource = customise_cms_post_resource
 
@@ -618,7 +658,7 @@ def config(settings):
                 - Control Workflow Flag to track Data Exporting/Anonymising
                 - Add Shelter to Session
             When a Shelter is Closed
-                - Check-out all Clients 
+                - Check-out all Clients
         """
 
         record = form.record
@@ -658,6 +698,7 @@ def config(settings):
 
             return
 
+        # Shelter has been Closed
         tag = db(query).select(table.id,
                                limitby = (0 ,1)
                                ).first()
@@ -796,7 +837,7 @@ def config(settings):
             if row.event != 2:
                 # Only interested in check-ins
                 continue
-            if row.comments == "Client":
+            if row.comments in ("Client", "Client Import"):
                 cappend(row.person_id)
 
         # Anonymise Clients
@@ -957,6 +998,7 @@ def config(settings):
             if row.comments == "Staff":
                 sappend(row.person_id)
             else:
+                # Client
                 cappend(row.person_id)
 
         # Users
@@ -1307,7 +1349,11 @@ def config(settings):
         if r.extension == "geojson":
             # GeoJSON should have smaller numbers which are also distinguishable across the 2x closed statuses
             f.represent = None
+        elif r.method == "report":
+            # Differentiate the 2x Closed
+            f.represent = S3Represent(options = cr_shelter_status_opts)
         else:
+            # Show the 2x Closed as 'Closed'
             f.represent = S3Represent(options = dict(cr_shelter_status_opts))
         table.population_day.label = T("Occupancy")
         table.obsolete.label = T("Unavailable")
@@ -1319,6 +1365,10 @@ def config(settings):
                                                       required_levels = ("L2", "L3"),
                                                       show_address = True,
                                                       )
+        # Now done centrally
+        #if r.representation == "plain":
+        #    # Don't have a clickable map in Popups
+        #    table.location_id.represent = s3db.gis_LocationRepresent(show_link = False)
 
         # Redefine as multiple=False
         s3db.add_components("cr_shelter",
@@ -1390,6 +1440,7 @@ def config(settings):
                         "storage": T("Storage"),
                         }
         f.requires = IS_EMPTY_OR(IS_IN_SET(purpose_opts, zero = T("Not defined")))
+        f.represent = S3Represent(options = purpose_opts)
 
         plan = components_get("plan")
         f = plan.table.value
@@ -1400,9 +1451,11 @@ def config(settings):
                 (ctable.deleted == False)
         plans = db(query).select(ctable.id,
                                  ctable.name,
+                                 cache = s3db.cache
                                  )
-        plan_opts = {p.id: p.name for p in plans}
+        plan_opts = {str(p.id): p.name for p in plans}
         f.requires = IS_EMPTY_OR(IS_IN_SET(plan_opts, zero = T("Unknown")))
+        f.represent = S3Represent(options = plan_opts)
 
         streetview = components_get("streetview")
         f = streetview.table.value
@@ -1582,6 +1635,15 @@ def config(settings):
             response.view = "popup.html"
             return {"form": form}
 
+        def clients_count(r, **attr):
+            table = s3db.cr_shelter_registration
+            query = (table.shelter_id == r.id) & \
+                    (table.registration_status == 2)
+            clients = current.db(query).count()
+
+            response.headers["Content-Type"] = "application/json"
+            return clients
+
         def staff_checkout(r, **attr):
             db = current.db
             component_id = r.component_id
@@ -1649,6 +1711,10 @@ def config(settings):
                    component_name = "human_resource_site",
                    method = "checkout",
                    action = staff_checkout)
+
+        set_method("cr", "shelter",
+                   method = "clients",
+                   action = clients_count)
 
         set_method("cr", "shelter",
                    method = "export",
@@ -1923,9 +1989,10 @@ def config(settings):
                                          "create_onaccept",
                                          staff_check_in,
                                          )
-            else:
-                s3.crud_strings["cr_shelter"].title_update = T("Manage Shelter")
+            elif r.id:
+                #s3.crud_strings["cr_shelter"].title_update = T("Manage Shelter")
                 s3.crud_strings["cr_shelter"].title_update = shelter_name
+                s3.js_global.append('''S3.r_id=%s''' % r.id)
                 s3.scripts.append("/%s/static/themes/CumbriaEAC/js/shelter.js" % r.application)
 
             return result
@@ -2054,12 +2121,27 @@ def config(settings):
         #table.comments.readable = table.comments.writable = False
 
         if r.method == "import":
-            # Importing Clients adds Event Log entries
-            def import_event_log(form):
 
+            def create_onaccept(form):
+                """
+                    Importing Clients
+                        * updates Occupancy
+                        * adds Event Log entry
+                """
                 form_vars_get = form.vars.get
                 person_id = form_vars_get("person_id")
                 shelter_id = form_vars_get("shelter_id")
+
+                # Delete old cr_shelter_registration records
+                ltable = s3db.cr_shelter_registration
+                query = (ltable.person_id == person_id) & \
+                        (ltable.id != form_vars_get("id"))
+                current.db(query).delete()
+
+                # Update Shelter Population
+                s3db.cr_update_shelter_population(shelter_id)
+
+                # Add Site Event Log
                 check_in_date = form_vars_get("check_in_date", r.utcnow)
 
                 stable = s3db.cr_shelter
@@ -2068,17 +2150,16 @@ def config(settings):
                                                                      ).first()
                 site_id = shelter.site_id
 
-                # Add Site Event Log
                 s3db.org_site_event.insert(site_id = site_id,
                                            person_id = person_id,
                                            event = 2, # Checked-In
                                            date = check_in_date,
-                                           comments = "Client",
+                                           comments = "Client Import",
                                            )
 
             s3db.add_custom_callback("cr_shelter_registration",
                                      "create_onaccept",
-                                     import_event_log,
+                                     create_onaccept,
                                      )
 
     settings.customise_cr_shelter_registration_resource = customise_cr_shelter_registration_resource
@@ -2086,7 +2167,61 @@ def config(settings):
     # -----------------------------------------------------------------------------
     def customise_cr_shelter_registration_controller(**attr):
 
+        s3db = current.s3db
+        s3 = current.response.s3
+
+        # NoKs shouldn't deduplicate with clients!
+        s3db.configure("pr_person",
+                       deduplicate = None
+                       )
+
+        # Default to True
+        from s3.s3import import S3Importer
+        S3Importer.define_upload_table()
+        s3db.s3_import_upload.replace_option.default = True
+
+        # Import pre-process
+        def import_prep(data):
+            """
+                Checks out all existing clients of the shelter
+                before processing a new data import
+            """
+            if s3.import_replace:
+                resource, tree = data
+                if tree is not None:
+                    xml = current.xml
+                    tag = xml.TAG
+                    att = xml.ATTRIBUTE
+
+                    root = tree.getroot()
+                    expr = "/%s/%s[@%s='cr_shelter']/%s[@%s='name']" % \
+                           (tag.root, tag.resource, att.name, tag.data, att.field)
+                    shelters = root.xpath(expr)
+                    for shelter in shelters:
+                        shelter_name = shelter.get("value", None) or shelter.text
+                        if shelter_name:
+                            try:
+                                shelter_name = json.loads(xml.xml_decode(shelter_name))
+                            except:
+                                pass
+                        if shelter_name:
+                            # Check-out all clients
+                            db = current.db
+                            rtable = s3db.cr_shelter_registration
+                            stable = s3db.cr_shelter
+                            query = (stable.name == shelter_name) & \
+                                    (rtable.shelter_id == stable.id) & \
+                                    (rtable.registration_status == 2)
+                            rows = db(query).select(rtable.id)
+                            db(rtable.id.belongs([row.id for row in rows])).update(registration_status = 3,# Checked-Out
+                                                                                   check_out_date = current.request.utcnow,
+                                                                                   )
+
+        s3.import_prep = import_prep
+
         attr["csv_template"] = ("../../themes/CumbriaEAC/xls", "Client_Registration.xlsm")
+        attr["replace_option"] = T("Checkout existing clients for this shelter before import")
+        attr["replace_option_help"] = T("If this option is checked, then it assumes that this spreadsheet includes all currently checked-in clients and so all existing clients should be checked-out.")
 
         return attr
 
@@ -2454,7 +2589,7 @@ def config(settings):
         for person_id in person_ids:
 
             row = records[person_id]
-            
+
             nok = nok_lookup_get(person_id)
 
             colname = "pr_person.nok_relationship"
@@ -2596,7 +2731,7 @@ def config(settings):
                                                )
                             ),
                            )
-            
+
         elif current.auth.permission.format == "xls":
             # Custom XLS Title Row
             settings.base.xls_title_row = xls_title_row
@@ -3008,7 +3143,7 @@ def config(settings):
             elif r.component_name == "nok":
                 # Next of Kin
                 s3.crud_strings["pr_person"].title_update = ""
-                
+
                 from gluon import IS_NOT_EMPTY
                 from s3 import S3SQLCustomForm, S3SQLInlineComponent, S3LocationSelector
 
@@ -3073,7 +3208,7 @@ def config(settings):
                 return result
 
             elif r.controller in ("hrm", "default"):
-                
+
                 from s3 import S3SQLCustomForm, S3SQLInlineComponent
 
                 if r.method == "lookup":

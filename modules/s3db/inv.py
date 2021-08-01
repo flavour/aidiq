@@ -1007,6 +1007,7 @@ class S3InventoryTrackingModel(S3Model):
         type_default = settings.get_inv_send_type_default()
         time_in = settings.get_inv_send_show_time_in()
         recv_shortname = settings.get_inv_recv_shortname()
+        document_filing = settings.get_inv_document_filing()
 
         is_logged_in = auth.is_logged_in
         user = auth.user
@@ -1029,6 +1030,12 @@ class S3InventoryTrackingModel(S3Model):
                                        represent = s3_string_represent,
                                        )
 
+        ship_doc_status = {SHIP_DOC_PENDING  : T("Pending"),
+                           SHIP_DOC_COMPLETE : T("Complete"),
+                           }
+        radio_widget = lambda field, value: \
+                              RadioWidget().widget(field, value, cols = 2)
+
         # ---------------------------------------------------------------------
         # Send (Outgoing / Dispatch / etc)
         #
@@ -1040,6 +1047,8 @@ class S3InventoryTrackingModel(S3Model):
         site_types = auth.org_site_types
         tablename = "inv_send"
         define_table(tablename,
+                     # Instance
+                     super_link("doc_id", "doc_entity"),
                      send_ref(),
                      req_ref(readable = show_req_ref,
                              writable = show_req_ref,
@@ -1165,6 +1174,22 @@ class S3InventoryTrackingModel(S3Model):
                                       ),
                            writable = False,
                            ),
+                     Field("filing_status", "integer",
+                           requires = IS_EMPTY_OR(
+                                        IS_IN_SET(ship_doc_status)
+                                       ),
+                           represent = S3Represent(options = ship_doc_status),
+                           default = SHIP_DOC_PENDING,
+                           widget = radio_widget,
+                           label = T("Filing Status"),
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s|%s" % (T("Filing Status"),
+                                                              T("Have all the signed documents for this shipment been filed?"),
+                                                              "* %s|* %s" % (T("Requisition"), T("Waybill")),
+                                                              )),
+                           readable = document_filing,
+                           writable = False,
+                           ),
                      s3_comments(),
                      *s3_meta_fields())
 
@@ -1283,34 +1308,30 @@ class S3InventoryTrackingModel(S3Model):
         if show_transport:
             list_fields.insert(10, "transport_type")
         configure(tablename,
+                  create_next = send_item_url,
+                  update_next = send_item_url,
                   # It shouldn't be possible for the user to delete a send item
                   # unless *maybe* if it is pending and has no items referencing it
                   deletable = False,
                   filter_widgets = filter_widgets,
+                  list_fields = list_fields,
                   onaccept = self.inv_send_onaccept,
                   onvalidation = self.inv_send_onvalidation,
-                  create_next = send_item_url,
-                  update_next = send_item_url,
-                  list_fields = list_fields,
                   orderby = "inv_send.date desc",
                   sortby = [[5, "desc"], [1, "asc"]],
+                  super_entity = ("doc_entity",),
                   )
 
         # ---------------------------------------------------------------------
         # Received (In/Receive / Donation / etc)
         #
-        ship_doc_status = {SHIP_DOC_PENDING  : T("Pending"),
-                           SHIP_DOC_COMPLETE : T("Complete"),
-                           }
-
         recv_type_opts = settings.get_inv_shipment_types()
         recv_type_opts.update(settings.get_inv_recv_types())
 
-        radio_widget = lambda field, value: \
-                              RadioWidget().widget(field, value, cols = 2)
-
         tablename = "inv_recv"
         define_table(tablename,
+                     # Instance
+                     super_link("doc_id", "doc_entity"),
                      # This is a component, so needs to be a super_link
                      # - can't override field name, ondelete or requires
                      super_link("site_id", "org_site",
@@ -1414,6 +1435,22 @@ class S3InventoryTrackingModel(S3Model):
                                          _title="%s|%s" % (T("Certificate Status"),
                                                            T("Has the Certificate for receipt of the shipment been given to the sender?"))),
                            ),
+                     Field("filing_status", "integer",
+                           requires = IS_EMPTY_OR(
+                                        IS_IN_SET(ship_doc_status)
+                                       ),
+                           represent = S3Represent(options = ship_doc_status),
+                           default = SHIP_DOC_PENDING,
+                           widget = radio_widget,
+                           label = T("Filing Status"),
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s|%s" % (T("Filing Status"),
+                                                              T("Have all the signed documents for this shipment been filed?"),
+                                                              "* %s|* %s|* %s" % (T("Requisition"), T("Waybill"), T("GRN")),
+                                                              )),
+                           readable = document_filing,
+                           writable = False,
+                           ),
                      s3_comments(),
                      *s3_meta_fields())
 
@@ -1501,8 +1538,11 @@ class S3InventoryTrackingModel(S3Model):
                             )
 
         configure(tablename,
+                  create_next = recv_item_url,
+                  update_next = recv_item_url,
                   # it shouldn't be possible for the user to delete a send item
                   deletable = False,
+                  filter_widgets = filter_widgets,
                   list_fields = ["id",
                                  "recv_ref",
                                  "send_ref",
@@ -1519,13 +1559,11 @@ class S3InventoryTrackingModel(S3Model):
                                  "comments"
                                  ],
                   mark_required = ("from_site_id", "organisation_id"),
-                  onvalidation = self.inv_recv_onvalidation,
                   onaccept = self.inv_recv_onaccept,
-                  filter_widgets = filter_widgets,
-                  create_next = recv_item_url,
-                  update_next = recv_item_url,
+                  onvalidation = self.inv_recv_onvalidation,
                   orderby = "inv_recv.date desc",
                   sortby = [[6, "desc"], [1, "asc"]],
+                  super_entity = ("doc_entity",),
                   )
 
         # Components
@@ -2255,7 +2293,7 @@ $.filterOptionsS3({
         def prep(r):
             record = db(sendtable.id == r.id).select(sendtable.status,
                                                      sendtable.req_ref,
-                                                     limitby=(0, 1)
+                                                     limitby = (0, 1)
                                                      ).first()
             if record:
                 status = record.status
@@ -2276,117 +2314,127 @@ $.filterOptionsS3({
                                    )
 
             if r.component:
-                record = r.record
-                values = current.deployment_settings.get_inv_track_pack_values()
-                if status in (SHIP_STATUS_RECEIVED, SHIP_STATUS_CANCEL):
-                    list_fields = ["status",
-                                   "item_id",
-                                   "item_pack_id",
-                                   "bin",
-                                   "quantity",
-                                   "recv_quantity",
-                                   "return_quantity",
-                                   "owner_org_id",
-                                   "supply_org_id",
-                                   "inv_item_status",
-                                   "comments",
-                                   ]
-                    if values:
-                        list_fields.insert(6, "pack_value")
-                        list_fields.insert(6, "currency")
-                elif status == SHIP_STATUS_RETURNING:
-                    list_fields = ["status",
-                                   "item_id",
-                                   "item_pack_id",
-                                   "quantity",
-                                   "return_quantity",
-                                   "bin",
-                                   "owner_org_id",
-                                   "supply_org_id",
-                                   "inv_item_status",
-                                   ]
-                    if values:
-                        list_fields.insert(4, "pack_value")
-                        list_fields.insert(4, "currency")
-                else:
-                    list_fields = ["status",
-                                   "item_id",
-                                   "item_pack_id",
-                                   "quantity",
-                                   "bin",
-                                   "owner_org_id",
-                                   "supply_org_id",
-                                   "inv_item_status",
-                                   ]
-                    if values:
-                        list_fields.insert(5, "pack_value")
-                        list_fields.insert(5, "currency")
-                    if record.req_ref and r.interactive:
-                        s3db.configure("inv_track_item",
-                                       extra_fields = ["req_item_id"],
-                                       )
-                        tracktable.quantity_needed = \
-                            Field.Method("quantity_needed",
-                                         cls.inv_track_item_quantity_needed)
-                        list_fields.insert(3, (T("Quantity Needed"),
-                                               "quantity_needed"))
+                if r.component_name == "document":
+                    # Simplify a little
+                    table = s3db.doc_document
+                    table.file.required = True
+                    table.url.readable = table.url.writable = False
+                    table.date.readable = table.date.writable = False
 
-                s3db.configure("inv_track_item", list_fields=list_fields)
+                elif r.component_name == "track_item":
+                    record = r.record
+                    values = current.deployment_settings.get_inv_track_pack_values()
+                    if status in (SHIP_STATUS_RECEIVED, SHIP_STATUS_CANCEL):
+                        list_fields = ["status",
+                                       "item_id",
+                                       "item_pack_id",
+                                       "bin",
+                                       "quantity",
+                                       "recv_quantity",
+                                       "return_quantity",
+                                       "owner_org_id",
+                                       "supply_org_id",
+                                       "inv_item_status",
+                                       "comments",
+                                       ]
+                        if values:
+                            list_fields.insert(6, "pack_value")
+                            list_fields.insert(6, "currency")
+                    elif status == SHIP_STATUS_RETURNING:
+                        list_fields = ["status",
+                                       "item_id",
+                                       "item_pack_id",
+                                       "quantity",
+                                       "return_quantity",
+                                       "bin",
+                                       "owner_org_id",
+                                       "supply_org_id",
+                                       "inv_item_status",
+                                       ]
+                        if values:
+                            list_fields.insert(4, "pack_value")
+                            list_fields.insert(4, "currency")
+                    else:
+                        list_fields = ["status",
+                                       "item_id",
+                                       "item_pack_id",
+                                       "quantity",
+                                       "bin",
+                                       "owner_org_id",
+                                       "supply_org_id",
+                                       "inv_item_status",
+                                       ]
+                        if values:
+                            list_fields.insert(5, "pack_value")
+                            list_fields.insert(5, "currency")
+                        if record.req_ref and r.interactive:
+                            s3db.configure("inv_track_item",
+                                           extra_fields = ["req_item_id"],
+                                           )
+                            tracktable.quantity_needed = \
+                                Field.Method("quantity_needed",
+                                             cls.inv_track_item_quantity_needed)
+                            list_fields.insert(3, (T("Quantity Needed"),
+                                                   "quantity_needed"))
 
-                # Can only create or delete track items for a send record if the status is preparing
-                method = r.method
-                if method in ("create", "delete"):
-                    if status != SHIP_STATUS_IN_PROCESS:
-                        return False
-                    if method == "delete":
-                        return s3db.inv_track_item_deleting(r.component_id)
+                    s3db.configure("inv_track_item",
+                                   list_fields = list_fields,
+                                   )
 
-                # Filter out Items which have Quantity 0, are Expired or in Bad condition
-                query = (iitable.quantity > 0) & \
-                        ((iitable.expiry_date >= r.now) | ((iitable.expiry_date == None))) & \
-                        (iitable.status == 0)
-                if record.get("site_id"):
-                    # Restrict to items from this facility only
-                    query &= (iitable.site_id == record.site_id)
-                tracktable.send_inv_item_id.requires = IS_ONE_OF(db(query), "inv_inv_item.id",
-                                                                 s3db.inv_item_represent,
-                                                                 #not_filterby = "quantity",
-                                                                 #not_filter_opts = (0,),
-                                                                 orderby = "inv_inv_item.id",
-                                                                 sort = True,
-                                                                 )
-                # Hide the values that will be copied from the inv_inv_item record
-                if r.component_id:
-                    track_record = db(tracktable.id == r.component_id).select(tracktable.req_item_id,
-                                                                              tracktable.send_inv_item_id,
-                                                                              tracktable.item_pack_id,
-                                                                              tracktable.status,
-                                                                              tracktable.quantity,
-                                                                              limitby=(0, 1)).first()
-                    set_track_attr(track_record.status)
-                    # If the track record is linked to a request item then
-                    # the stock item has already been selected so make it read only
-                    if track_record and track_record.get("req_item_id"):
-                        tracktable.send_inv_item_id.writable = False
-                        tracktable.item_pack_id.writable = False
-                        stock_qnty = track_record.quantity
-                        tracktable.quantity.comment = T("%(quantity)s in stock") % {"quantity": stock_qnty}
-                        tracktable.quantity.requires = IS_AVAILABLE_QUANTITY(
-                                                            track_record.send_inv_item_id,
-                                                            track_record.item_pack_id,
-                                                            )
-                    # Hide the item id
-                    tracktable.item_id.readable = False
-                else:
-                    set_track_attr(TRACK_STATUS_PREPARING)
-                if r.interactive:
-                    crud_strings = s3.crud_strings.inv_send
-                    if record.status == SHIP_STATUS_IN_PROCESS:
-                        crud_strings.title_update = \
-                        crud_strings.title_display = T("Process Shipment to Send")
-                    elif "site_id" in req_vars and status == SHIP_STATUS_SENT:
-                        crud_strings.title_update = \
-                        crud_strings.title_display = T("Review Incoming Shipment to Receive")
+                    # Can only create or delete track items for a send record if the status is preparing
+                    method = r.method
+                    if method in ("create", "delete"):
+                        if status != SHIP_STATUS_IN_PROCESS:
+                            return False
+                        if method == "delete":
+                            return s3db.inv_track_item_deleting(r.component_id)
+
+                    # Filter out Items which have Quantity 0, are Expired or in Bad condition
+                    query = (iitable.quantity > 0) & \
+                            ((iitable.expiry_date >= r.now) | ((iitable.expiry_date == None))) & \
+                            (iitable.status == 0)
+                    if record.get("site_id"):
+                        # Restrict to items from this facility only
+                        query &= (iitable.site_id == record.site_id)
+                    tracktable.send_inv_item_id.requires = IS_ONE_OF(db(query), "inv_inv_item.id",
+                                                                     s3db.inv_item_represent,
+                                                                     #not_filterby = "quantity",
+                                                                     #not_filter_opts = (0,),
+                                                                     orderby = "inv_inv_item.id",
+                                                                     sort = True,
+                                                                     )
+                    # Hide the values that will be copied from the inv_inv_item record
+                    if r.component_id:
+                        track_record = db(tracktable.id == r.component_id).select(tracktable.req_item_id,
+                                                                                  tracktable.send_inv_item_id,
+                                                                                  tracktable.item_pack_id,
+                                                                                  tracktable.status,
+                                                                                  tracktable.quantity,
+                                                                                  limitby=(0, 1)).first()
+                        set_track_attr(track_record.status)
+                        # If the track record is linked to a request item then
+                        # the stock item has already been selected so make it read only
+                        if track_record and track_record.get("req_item_id"):
+                            tracktable.send_inv_item_id.writable = False
+                            tracktable.item_pack_id.writable = False
+                            stock_qnty = track_record.quantity
+                            tracktable.quantity.comment = T("%(quantity)s in stock") % {"quantity": stock_qnty}
+                            tracktable.quantity.requires = IS_AVAILABLE_QUANTITY(
+                                                                track_record.send_inv_item_id,
+                                                                track_record.item_pack_id,
+                                                                )
+                        # Hide the item id
+                        tracktable.item_id.readable = False
+                    else:
+                        set_track_attr(TRACK_STATUS_PREPARING)
+                    if r.interactive:
+                        crud_strings = s3.crud_strings.inv_send
+                        if record.status == SHIP_STATUS_IN_PROCESS:
+                            crud_strings.title_update = \
+                            crud_strings.title_display = T("Process Shipment to Send")
+                        elif "site_id" in req_vars and status == SHIP_STATUS_SENT:
+                            crud_strings.title_update = \
+                            crud_strings.title_display = T("Review Incoming Shipment to Receive")
             else:
                 if r.id and request.get_vars.get("received"):
                     # "received" must not propagate:
@@ -3987,10 +4035,13 @@ def inv_send_rheader(r):
             s3db = current.s3db
             T = current.T
             s3 = current.response.s3
+            settings = current.deployment_settings
 
             tabs = [(T("Edit Details"), None),
                     (T("Items"), "track_item"),
                     ]
+            if settings.get_inv_document_filing():
+                tabs.append((T("Documents"), "document"))
 
             rheader_tabs = s3_rheader_tabs(r, tabs)
 
@@ -4032,7 +4083,7 @@ def inv_send_rheader(r):
             else:
                 address = current.messages["NONE"]
             shipment_details = TABLE(
-                          TR(TD(T(current.deployment_settings.get_inv_send_form_name().upper()),
+                          TR(TD(T(settings.get_inv_send_form_name().upper()),
                                 _colspan=2, _class="pdf_title"),
                              TD(logo, _colspan=2),
                              ),
@@ -4110,7 +4161,7 @@ def inv_send_rheader(r):
                                       )
 
                         s3.jquery_ready.append('''S3.confirmClick("#send_process","%s")''' \
-                                   % T("Do you want to send this shipment?"))
+                                                % T("Do you want to send this shipment?"))
                     #if not r.component and not r.method == "form":
                     #    ritable = s3db.req_req_item
                     #    rcitable = s3db.req_commit_item
@@ -4138,7 +4189,7 @@ def inv_send_rheader(r):
                                     )
                                   )
                     s3.jquery_ready.append('''S3.confirmClick("#return_process","%s")''' \
-                        % T("Do you want to complete the return process?") )
+                                    % T("Do you want to complete the return process?") )
                 else:
                     msg = T("You need to check all item quantities before you can complete the return process")
                     rfooter.append(SPAN(msg))
@@ -4155,27 +4206,27 @@ def inv_send_rheader(r):
                                                     args = [record.id],
                                                     vars = None,
                                                     ),
-                                        _id = "send_return",
+                                        _id = "send-return",
                                         _class = "action-btn",
                                         _title = T("Only use this button to accept back into stock some items that were returned from a delivery to beneficiaries who do not record the shipment details directly into the system")
                                         )
                                       )
 
-                        jappend('''S3.confirmClick("#send_return","%s")''' \
-                            % T("Confirm that some items were returned from a delivery to beneficiaries and they will be accepted back into stock."))
+                        jappend('''S3.confirmClick("#send-return","%s")''' % \
+                            T("Confirm that some items were returned from a delivery to beneficiaries and they will be accepted back into stock."))
                         action.append(A(T("Confirm Shipment Received"),
                                         _href = URL(f = "send",
                                                     args = [record.id],
                                                     vars = {"received": 1},
                                                     ),
-                                        _id = "send_receive",
+                                        _id = "send-receive",
                                         _class = "action-btn",
                                         _title = T("Only use this button to confirm that the shipment has been received by a destination which will not record the shipment directly into the system")
                                         )
                                       )
 
-                        jappend('''S3.confirmClick("#send_receive","%s")''' \
-                            % T("Confirm that the shipment has been received by a destination which will not record the shipment directly into the system and confirmed as received.") )
+                        jappend('''S3.confirmClick("#send-receive","%s")''' % \
+                            T("Confirm that the shipment has been received by a destination which will not record the shipment directly into the system and confirmed as received.") )
                     if s3_has_permission("delete",
                                          "inv_send",
                                          record_id=record.id):
@@ -4184,12 +4235,12 @@ def inv_send_rheader(r):
                                                     f = "send_cancel",
                                                     args = [record.id]
                                                     ),
-                                        _id = "send_cancel",
+                                        _id = "send-cancel",
                                         _class = "action-btn"
                                         )
                                       )
 
-                        jappend('''S3.confirmClick("#send_cancel","%s")''' \
+                        jappend('''S3.confirmClick("#send-cancel","%s")''' \
                             % T("Do you want to cancel this sent shipment? The items will be returned to the Warehouse. This action CANNOT be undone!") )
             if not r.method == "form":
             #    msg = ""
@@ -4270,10 +4321,13 @@ def inv_recv_rheader(r):
 
             T = current.T
             s3db = current.s3db
+            settings = current.deployment_settings
 
             tabs = [(T("Edit Details"), None),
                     (T("Items"), "track_item"),
                     ]
+            if settings.get_inv_document_filing():
+                tabs.append((T("Documents"), "document"))
 
             rheader_tabs = s3_rheader_tabs(r, tabs)
 
@@ -4292,7 +4346,7 @@ def inv_recv_rheader(r):
                 org_id = None
             logo = s3db.org_organisation_logo(org_id)
             shipment_details = TABLE(
-                          TR(TD(T(current.deployment_settings.get_inv_recv_form_name()),
+                          TR(TD(T(settings.get_inv_recv_form_name()),
                                 _colspan = 2,
                                 _class = "pdf_title",
                                 ),

@@ -18,225 +18,17 @@ class S3MainMenu(default.S3MainMenu):
     # -------------------------------------------------------------------------
     @classmethod
     def menu(cls):
-        """ Compose Menu """
+        """ Main Menus """
 
-        # Modules menus
-        main_menu = MM()(
-            cls.menu_modules(),
-        )
-
-        # Additional menus
-        current.menu.personal = cls.menu_personal()
-        current.menu.lang = cls.menu_lang()
+        # Footer
         current.menu.about = cls.menu_about()
-        current.menu.org = cls.menu_org()
 
-        # @todo: restore?
-        #current.menu.dashboard = cls.menu_dashboard()
-
-        return main_menu
-
-    # -------------------------------------------------------------------------
-    @classmethod
-    def menu_modules(cls):
-        """ Custom Modules Menu """
-
-        auth = current.auth
-        has_role = auth.s3_has_role
-        has_roles = auth.s3_has_roles
-        s3 = current.session.s3
-
-        len_roles = len(s3.roles)
-        if (len_roles <= 2) or \
-           (len_roles == 3 and has_role("RIT_MEMBER") and not has_role("ADMIN")):
-            # No specific Roles
-            # Just show Profile on main menu
-            return [MM("Profile", c="hrm", f="person",
-                       args=[str(auth.s3_logged_in_person())],
-                       vars={"profile":1},
-                       ),
-                    ]
-
-        #root_org = auth.root_org_name()
-        system_roles = s3.system_roles
-        #ADMIN = system_roles.ADMIN
-        ORG_ADMIN = system_roles.ORG_ADMIN
-
-        s3db = current.s3db
-        s3db.inv_recv_crud_strings()
-        inv_recv_list = current.response.s3.crud_strings.inv_recv.title_list
-
-        #def gis(item):
-        #    root_org = auth.root_org_name()
-        #    return root_org == "Honduran Red Cross"
-
-        def hrm(item):
-            return has_roles((ORG_ADMIN,
-                              "hr_manager",
-                              "hr_assistant",
-                              "training_coordinator",
-                              "training_assistant",
-                              "surge_capacity_manager",
-                              "disaster_manager",
-                              ))
-
-        def training(item):
-            return has_roles((ORG_ADMIN,
-                              "training_coordinator",
-                              "training_assistant",
-                              "ns_training_manager",
-                              "ns_training_assistant",
-                              "surge_capacity_manager",
-                              "disaster_manager",
-                              ))
-
-        def inv(item):
-            return has_roles((ORG_ADMIN,
-                              "wh_manager",
-                              "national_wh_manager",
-                              ))
-
-        def multi_warehouse(i):
-            return has_roles((ORG_ADMIN,
-                              "national_wh_manager",
-                              ))
-
-        def projects(item):
-            return has_roles(("project_reader",
-                              "project_manager",
-                              "monitoring_evaluation",
-                              ))
-
-        menu= [homepage("gis")(),
-               homepage("hrm", "org", name="Human Talent", check=hrm)(
-                   MM("Human Talent", c="hrm", f="human_resource", m="summary"),
-                   #MM("Teams", c="hrm", f="group"),
-                   MM("National Societies", c="org", f="organisation",
-                      vars = RC),
-                   #MM("Offices", c="org", f="office"),
-                   MM("Positions", c="hrm", f="job_title"),
-                   MM("Programs", c="hrm", f="programme"),
-               ),
-               homepage("hrm", f="training_event", name="Training", check=training)(
-                   MM("Training Centers", c="hrm", f="training_center"),
-                   MM("Training Course Catalog", c="hrm", f="course"),
-                   MM("Training Events", c="hrm", f="training_event"),
-                   MM("External Trainees", c="hrm", f="trainee"),
-               ),
-               homepage("member", f="membership", name="Partners")(
-               ),
-               homepage("inv", "supply", "req", check=inv)(
-                   MM("Warehouses", c="inv", f="warehouse", m="summary", check=multi_warehouse),
-                   MM(inv_recv_list, c="inv", f="recv"),
-                   MM("Sent Shipments", c="inv", f="send"),
-                   MM("Items", c="supply", f="item", check=multi_warehouse),
-                   #MM("Catalogs", c="supply", f="catalog", check=multi_warehouse),
-                   #MM("Item Categories", c="supply", f="item_category"),
-                   M("Suppliers", c="inv", f="supplier", check=multi_warehouse)(),
-                   #M("Facilities", c="inv", f="facility", check=multi_warehouse)(),
-                   M("Requests", c="req", f="req")(),
-                   #M("Commitments", f="commit")(),
-               ),
-               #homepage("asset")(
-               #    MM("Assets", c="asset", f="asset", m="summary"),
-               #    MM("Items", c="asset", f="item", m="summary"),
-               #),
-               homepage("project", f="project", m="summary", check=projects)(
-                   MM("Projects", c="project", f="project", m="summary"),
-                   #MM("Locations", c="project", f="location"),
-                   #MM("Outreach", c="po", f="index", check=outreach),
-               ),
-               ]
-
-        # For some reason the deploy menu is displaying even if users have NONE access to deploy!
-        # @ToDo: We will need to allow RIT members some basic access to the module
-        if has_roles(("surge_capacity_manager",
-                      "disaster_manager",
-                      )):
-            menu.append(
-                homepage("deploy", name="RIT", f="mission", m="summary",
-                         vars={"~.status__belongs": "2"})(
-                    MM("Missions", c="deploy", f="mission", m="summary"),
-                    MM("Members", c="deploy", f="human_resource", m="summary"),
-                ))
-
-        return menu
-
-    # -------------------------------------------------------------------------
-    @classmethod
-    def menu_org(cls):
-        """ Custom Organisation Menu """
-
-        OM = S3OrgMenuLayout
-        return OM()
-
-    # -------------------------------------------------------------------------
-    @classmethod
-    def menu_lang(cls):
-
-        languages = current.deployment_settings.get_L10n_languages()
-        represent_local = IS_ISO639_2_LANGUAGE_CODE.represent_local
-
-        # Language selector
-        menu_lang = ML("Language", right=True)
-        for code in languages:
-            # Show Language in it's own Language
-            lang_name = represent_local(code)
-            menu_lang(
-                ML(lang_name, translate=False, lang_code=code, lang_name=lang_name)
-            )
-        return menu_lang
-
-    # -------------------------------------------------------------------------
-    @classmethod
-    def menu_personal(cls):
-        """ Custom Personal Menu """
-
-        auth = current.auth
-        settings = current.deployment_settings
-
-        if not auth.is_logged_in():
-            request = current.request
-            login_next = URL(args=request.args, vars=request.vars)
-            if request.controller == "default" and \
-            request.function == "user" and \
-            "_next" in request.get_vars:
-                login_next = request.get_vars["_next"]
-
-            self_registration = settings.get_security_self_registration()
-            menu_personal = MP()(
-                        MP("Register", c="default", f="user",
-                           m="register", check=self_registration),
-                        MP("Login", c="default", f="user",
-                           m="login", vars=dict(_next=login_next)),
-                        MP("Lost Password", c="default", f="user",
-                           m="retrieve_password"),
-            )
+        if current.auth.is_logged_in():
+            # Provide top-level Navigation bar
+            return MM()
         else:
-            has_role = auth.s3_has_role
-            if has_role("ADMIN"):
-                admin = MP("Administration", c="admin", f="index")
-            elif has_role("ORG_ADMIN"):
-                admin = MP("Administration", c="admin", f="user")
-            elif auth.s3_has_roles(("hr_manager",
-                                    "ns_training_manager",
-                                    "training_coordinator",
-                                    )):
-                admin = MP("Administration", c="pr", f="forum")
-            else:
-                admin = None
-
-            menu_personal = MP()(admin,
-                                 MP("Profile", c="hrm", f="person",
-                                    args=[str(auth.s3_logged_in_person())],
-                                    vars={"profile":1},
-                                    ),
-                                 MP("Change Password", c="default", f="user",
-                                    m="change_password"),
-                                 MP("Logout", c="default", f="user",
-                                    m="logout"),
-                                 )
-        return menu_personal
+            # Blank top menu
+            return ""
 
     # -------------------------------------------------------------------------
     @classmethod
@@ -264,6 +56,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
 
             # Additional Items
             menu(M("Forums", c="pr", f="forum"),
+                 M("Request Approvers", c="req", f="approver"),
                  M("Map Settings", c="gis", f="config"),
                  M("Content Management", c="cms", f="index"),
                  )
@@ -313,6 +106,8 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         M("Forums", c="pr", f="forum")(
                             M("Create", m="create"),
                         ),
+                       M("Request Approvers", c="req", f="approver")(
+                        ),
                        )
 
         else:
@@ -345,9 +140,8 @@ class S3OptionsMenu(default.S3OptionsMenu):
         #ADMIN = s3.system_roles.ADMIN
         ORG_ADMIN = s3.system_roles.ORG_ADMIN
 
-        if request.function in ("certificate", "course", "course_certificate",
-                                "facility", "training", "training_center",
-                                "training_event", "trainee", "trainee_person"):
+        # training_functions imported from layouts
+        if request.function in training_functions:
             return M()( M("Training Centers", c="hrm", f="training_center")(
                         ),
                         M("Training Course Catalog", c="hrm", f="course")(
@@ -389,7 +183,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         M("Report", c="hrm", f="human_resource", m="report")(
                             #M("Staff Report", m="report"),
                             #M("Expiring Staff Contracts Report",
-                            #  vars=dict(expiring="1")),
+                            #  vars={"expiring": "1"}),
                             #M("Hours by Role Report", f="programme_hours", m="report",
                             #  vars=Storage(rows="job_title_id",
                             #               cols="month",
@@ -445,7 +239,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         #    M("Create", m="create"),
                         #),
                         #M("Personal Profile", c="hrm", f="person",
-                        #  vars=dict(access="personal"))
+                        #  vars={"access": "personal"})
                     )
 
     # -------------------------------------------------------------------------
@@ -477,148 +271,83 @@ class S3OptionsMenu(default.S3OptionsMenu):
     def inv():
         """ INV / Inventory """
 
-        #auth = current.auth
-        has_role = current.auth.s3_has_role
-        system_roles = current.session.s3.system_roles
-        ADMIN = system_roles.ADMIN
-        ORG_ADMIN = system_roles.ORG_ADMIN
+        if current.auth.s3_has_roles(("ORG_ADMIN",
+                                      "wh_manager",
+                                      "national_wh_manager",
+                                      )):
+            return M()(
+                        M("Stock Management", c="inv", link=False)(
+                            M("Stock Adjustments", f="adj"),
+                            M("Kitting", f="kitting"),
+                            M("Receive a new shipment", f="recv", m="create"),
+                            M("Send a new shipment", f="send", m="create"),
+                        ),
+                        M("Purchases", c="proc", link=False)(
+                            M("Items", f="order_item"),
+                        ),
+                        M("Requests", c="req", link=False)(
+                            M("My Requests", f="req",
+                              vars = {"mine": 1},
+                              ),
+                        ),
+                        M("Import Inventory", c="inv", f="inv_item", m="import",
+                          restrict=["national_wh_manager"]),
+                        M("Parameters", c="inv", link=False,
+                          restrict=["national_wh_manager"])(
+                            M("Warehouses", f="warehouse"),
+                            M("Projects", f="project"),
+                            M("Catalogs", c="supply", f="catalog"),
+                            M("Item Categories", c="supply", f="item_category"),
+                            M("Items", c="supply", f="item"),
+                            M("Suppliers", f="supplier"),
+                            M("Facilities", f="facility"),
+                            M("Stock limit", link=False),
+                        ),
+                        M("Reports", c="inv", link=False)(
+                            M("Short Inventory", f="inv_item", m="report"),
+                            M("Detailed Inventory", f="inv_item"),
+                            M("Stock Movements", f="inv_item", m="grouped",
+                              vars = {"report": "movements"},
+                              ),
+                            M("Stock Organisation", f="inv_item", m="grouped",
+                              vars = {"report": "default"},
+                              ),
+                        ),
+                    )
+        else:
+            # Normal users see their own Requests & Inventory Reports
+            return M()(
+                        M("Requests", c="req", link=False)(
+                            M("My Requests", f="req",
+                              vars = {"mine": 1},
+                              ),
+                        ),
+                        M("Reports", c="inv", link=False)(
+                            M("Short Inventory", f="inv_item", m="report"),
+                            M("Detailed Inventory", f="inv_item"),
+                        ),
+                    )
+            
 
-        s3db = current.s3db
-        s3db.inv_recv_crud_strings()
-        inv_recv_list = current.response.s3.crud_strings.inv_recv.title_list
+    # -------------------------------------------------------------------------
+    def proc(self):
+        """ Procurements """
 
-        settings = current.deployment_settings
-        #use_adjust = lambda i: not settings.get_inv_direct_stock_edits()
-        #root_org = auth.root_org_name()
-        #def use_adjust(i):
-        #    if root_org in ("Australian Red Cross", "Honduran Red Cross"):
-        #        # Australian & Honduran RC use proper Logistics workflow
-        #        return True
-        #    else:
-        #        # Others use simplified version
-        #        return False
-        #def use_facilities(i):
-        #    if root_org == "Honduran Red Cross":
-        #        # Honduran RC don't use Facilities
-        #        return False
-        #    else:
-        #        return True
-        def multi_warehouse(i):
-            if not (has_role("national_wh_manager") or \
-                    has_role(ORG_ADMIN)):
-                # Only responsible for 1 warehouse so hide menu entries which should be accessed via Tabs on their warehouse
-                # & other things that HNRC
-                return False
-            else:
-                return True
-        def basic_warehouse(i):
-            if (has_role("national_wh_manager") or \
-                has_role(ORG_ADMIN)):
-                return False
-            else:
-                return True
-        #def use_kits(i):
-        #    if root_org == "Honduran Red Cross":
-        #        # Honduran RC use Kits
-        #        return True
-        #    else:
-        #        return False
-        #def use_types(i):
-        #    if root_org == "Nepal Red Cross Society":
-        #        # Nepal RC use Warehouse Types
-        #        return True
-        #    else:
-        #        return False
-        use_commit = lambda i: settings.get_req_use_commit()
-
-        return M()(
-                    M("My Warehouse", c="inv", f="index", check=basic_warehouse)(), # Will redirect in customise_inv_home
-                    M("Warehouses", c="inv", f="warehouse", m="summary", check=multi_warehouse)(
-                        M("Create", m="create"),
-                        M("Import", m="import", p="create"),
-                    ),
-                    M("Warehouse Stock", c="inv", f="inv_item", args="summary")(
-                        M("Search Shipped Items", f="track_item"),
-                        M("Adjust Stock Levels", f="adj"#, check=use_adjust
-                          ),
-                        M("Kitting", f="kitting"#, check=use_kits
-                          ),
-                        M("Import", f="inv_item", m="import", p="create"),
-                    ),
-                    M("Reports", c="inv", f="inv_item")(
-                        M("Warehouse Stock", f="inv_item", m="report"),
-                        M("Stock Position", f="inv_item", m="grouped",
-                          vars={"report": "default"},
-                          ),
-                        M("Weight and Volume", f="inv_item", m="grouped",
-                          vars={"report": "weight_and_volume"},
-                          ),
-                        M("Stock Movements", f="inv_item", m="grouped",
-                          vars={"report": "movements"},
-                          ),
-                        M("Expiration Report", c="inv", f="track_item",
-                          vars=dict(report="exp")),
-                        #M("Monetization Report", c="inv", f="inv_item",
-                        #  vars=dict(report="mon")),
-                        #M("Utilization Report", c="inv", f="track_item",
-                        #  vars=dict(report="util")),
-                        #M("Summary of Incoming Supplies", c="inv", f="track_item",
-                        #  vars=dict(report="inc")),
-                        # M("Summary of Releases", c="inv", f="track_item",
-                        #  vars=dict(report="rel")),
-                    ),
-                    M(inv_recv_list, c="inv", f="recv", check=multi_warehouse)(
-                        M("Create", m="create"),
-                    ),
-                    M("Sent Shipments", c="inv", f="send", check=multi_warehouse)(
-                        M("Create", m="create"),
-                        M("Search Shipped Items", f="track_item"),
-                    ),
-                    M("Items", c="supply", f="item", m="summary", check=multi_warehouse)(
-                        M("Create", m="create"),
-                        M("Import", f="catalog_item", m="import", p="create", restrict=[ORG_ADMIN]),
-                    ),
-                    # Catalog Items moved to be next to the Item Categories
-                    #M("Catalog Items", c="supply", f="catalog_item")(
-                    #   M("Create", m="create"),
-                    #),
-                    #M("Brands", c="supply", f="brand",
-                    #  restrict=[ADMIN])(
-                    #    M("Create", m="create"),
-                    #),
-                    M("Catalogs", c="supply", f="catalog", check=multi_warehouse)(
-                        M("Create", m="create"),
-                    ),
-                    M("Item Categories", c="supply", f="item_category",
-                      restrict=[ORG_ADMIN])(
-                        M("Create", m="create"),
-                    ),
-                    M("Suppliers", c="inv", f="supplier")(
-                        M("Create", m="create"),
-                        M("Import", m="import", p="create", restrict=[ORG_ADMIN]),
-                    ),
-                    M("Facilities", c="inv", f="facility")(
-                        M("Create", m="create", t="org_facility"),
-                    ),
-                    M("Facility Types", c="inv", f="facility_type",
-                      restrict=[ADMIN])(
-                        M("Create", m="create"),
-                    ),
-                    #M("Warehouse Types", c="inv", f="warehouse_type", check=use_types,
-                    #  restrict=[ADMIN])(
-                    #    M("Create", m="create"),
-                    #),
-                    M("Requests", c="req", f="req")(
-                        M("Create", m="create"),
-                        M("Requested Items", f="req_item"),
-                    ),
-                    M("Commitments", c="req", f="commit", check=use_commit)(
-                    ),
-                )
+        # Same as Inventory
+        return self.inv()
 
     # -------------------------------------------------------------------------
     def req(self):
         """ Requests Management """
+
+        if current.request.function == "approver":
+            has_role = current.auth.s3_has_role
+            if has_role("ADMIN"):
+                return self.admin()
+            elif has_role("ORG_ADMIN"):
+                return self.pr()
+
+            return None
 
         # Same as Inventory
         return self.inv()
