@@ -28,7 +28,7 @@ class index(S3CustomController):
         row = db(query).select(table.id,
                                table.title,
                                table.body,
-                               limitby = (0, 1)
+                               limitby = (0, 1),
                                ).first()
         title = None
         if row:
