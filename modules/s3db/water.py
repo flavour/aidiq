@@ -27,7 +27,7 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ("S3WaterModel",)
+__all__ = ("WaterModel",)
 
 from gluon import *
 from gluon.storage import Storage
@@ -35,7 +35,7 @@ from ..s3 import *
 from s3layouts import S3PopupLink
 
 # =============================================================================
-class S3WaterModel(S3Model):
+class WaterModel(S3Model):
     """
         Water Sources
     """
@@ -45,7 +45,7 @@ class S3WaterModel(S3Model):
              "water_river",
              "water_gauge",
              #"water_debris_basin",
-             #"water_reservoir",
+             "water_reservoir",
              )
 
     def model(self):
@@ -258,27 +258,63 @@ class S3WaterModel(S3Model):
         # -----------------------------------------------------------------------------
         # Reservoirs
         # Water Storage areas
-        #
-        #tablename = "water_reservoir"
-        #define_table(tablename,
-        #             Field("name",
-        #                   label = T("Name"),
-        #                   ),
-        #             location_id(),
-        #             s3_comments(),
-        #             *s3_meta_fields())
 
-        #crud_strings[tablename] = Storage(
-        #    label_create = T("Create Reservoir"),
-        #    title_display = T("Reservoir Details"),
-        #    title_list = T("Reservoirs"),
-        #    title_update = T("Edit Reservoir"),
-        #    title_map = T("Map of Reservoirs"),
-        #    label_list_button = T("List Reservoirs"),
-        #    msg_record_created = T("Reservoir added"),
-        #    msg_record_modified = T("Reservoir updated"),
-        #    msg_record_deleted = T("Reservoir deleted"),
-        #    msg_list_empty = T("No Reservoirs currently registered"))
+        tablename = "water_reservoir"
+        define_table(tablename,
+                     Field("name",
+                           label = T("Name"),
+                           ),
+                     location_id(),
+                     #Field("good_for_human_usage", "boolean"),
+                     #Field("fresh", "boolean"),
+                     #Field("Salt", "boolean"),
+                     #Field("toponymy", "string"),
+                     #Field("parish", "string"),
+                     #Field("type", "string"),
+                     #Field("owner", "string"),
+                     #person_id(),
+                     #organisation_id(),
+                     #Field("shape", "string"),
+                     #Field("diameter", "string"),
+                     #Field("depth", "string"),
+                     #Field("volume", "integer"),
+                     #Field("lenght", "integer"),
+                     #Field("height", "integer"),
+                     #Field("useful_volume", "integer"),
+                     #Field("catchment", "integer"),
+                     #Field("area", "integer"),
+                     #Field("date", "date"),
+                     #Field("access_type", "string"),
+                     #Field("previews_usage", "boolean"),
+                     #Field("car_access", "string"),
+                     #Field("mid_truck_access", "string"),
+                     #Field("truck_access", "string"),
+                     #Field("distance_from_trees", "integer"),
+                     #Field("distance_from_buildings", "integer"),
+                     #Field("helicopter_access", "string"),
+                     #Field("previews_usage_air", "boolean"),
+                     #Field("car_movement_conditions", "string"),
+                     #Field("midtruck_movement_conditions", "string"),
+                     #Field("truck_movement_conditions", "string"),
+                     #Field("powerline_distance", "integer"),
+                     #Field("distance_other_risks", "integer"),
+                     #Field("anti_seismic_construction", "boolean"),
+                     #Field("isolated_from_air", "boolean"),
+                     #Field("hermetic", "boolean"),
+                     s3_comments(),
+                     *s3_meta_fields())
+
+        crud_strings[tablename] = Storage(
+            label_create = T("Create Reservoir"),
+            title_display = T("Reservoir Details"),
+            title_list = T("Reservoirs"),
+            title_update = T("Edit Reservoir"),
+            title_map = T("Map of Reservoirs"),
+            label_list_button = T("List Reservoirs"),
+            msg_record_created = T("Reservoir added"),
+            msg_record_modified = T("Reservoir updated"),
+            msg_record_deleted = T("Reservoir deleted"),
+            msg_list_empty = T("No Reservoirs currently registered"))
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)

@@ -1,11 +1,13 @@
 /*
  * Map Widget
  */
+import { googleInteractions, GoogleLayer, OLGoogleMaps } from '../gis/olgm.min.js'; // This includes some core OL too, which isn't ideal
+ 
 (function(factory) {
     'use strict';
     // Use window. for Browser globals (not AMD or Node):
-    factory(window.jQuery, window._, window.ol);
-})(function($, _, ol) {
+    factory(window.jQuery, window._, window.ol, googleInteractions, GoogleLayer, OLGoogleMaps);
+})(function($, _, ol, googleInteractions, GoogleLayer, OLGoogleMaps) {
 
     'use strict';
     var mapID = 0;
@@ -24,9 +26,8 @@
             //width: 400,         // Map Width (pixels)
             lat: 0,             // Center Lat
             lon: 0,             // Center Lon
-            //projection: 3857,  // EPSG:3857 = Spherical Mercator
-            zoom: 0,            // Map Zoom
-            layers_osm: []      // OpenStreetMap Layers
+            //projection: 3857,   // EPSG:3857 = Spherical Mercator
+            zoom: 0             // Map Zoom
         },
 
         /**
@@ -63,6 +64,7 @@
          * Redraw widget contents
          */
         refresh: function() {
+
             //this._unbindEvents();
             //this._deserialize();
 
@@ -75,20 +77,28 @@
                 extent: extent
             });*/
 
-            var layers = this.addLayers();
+            var layers = this.addLayers(options);
 
-            var map = new ol.Map({
+            var map_options = {
                 layers: layers,
                 target: options.id,
                 view: new ol.View({
                     center: ol.proj.fromLonLat([options.lon, options.lat]),
                     zoom: options.zoom
                 })
-            });
+            };
+
+            var Google = options.Google;
+            if (undefined != Google) {
+                // If using a Google baselayer then need to limit the interactions
+                map_options.interactions = googleInteractions();
+            }
+
+            var map = new ol.Map(map_options);
             this.map = map;
 
             // Tooltip
-            var tooltip = $('#' + this.options.id + ' .s3-gis-tooltip');
+            var tooltip = $('#' + options.id + ' .s3-gis-tooltip');
             this.tooltip = tooltip;
 
             var tooltip_ol = new ol.Overlay({
@@ -102,34 +112,56 @@
 
             //this._serialize();
             this._bindEvents(map);
+
+            if (undefined != Google) {
+                var olGM = new OLGoogleMaps({map: map});
+                olGM.activate();
+            }
         },
 
         /**
          * Add Layers to the Map
          */
-        addLayers: function() {
-            var layers = [];
+        addLayers: function(options) {
+
+            var allLayers = [];
 
             // OpenStreetMap
-            this.addLayersOSM(layers);
+            var layers_osm = options.layers_osm;
+            if (undefined != layers_osm) {
+                this.addLayersOSM(allLayers, layers_osm);
+            }
+
+            // Bing
+            var Bing = options.Bing;
+            if (undefined != Bing) {
+                this.addLayersBing(allLayers, Bing);
+            }
+
+            // Google
+            var Google = options.Google;
+            if (undefined != Google) {
+                this.addLayersGoogle(allLayers, Google);
+            }
 
             // GeoJSON Layers
-            this.addLayersGeoJSON(layers);
+            this.addLayersGeoJSON(allLayers, options);
 
-            return layers;
+            return allLayers;
         },
 
         /**
          * Add OSM Layers to the Map
          */
-        addLayersOSM: function(layers) {
+        addLayersOSM: function(allLayers, layers_osm) {
+
             var attributions,
                 base,
                 layer,
-                layers_osm = this.options.layers_osm || [],
                 maxZoom,
                 opaque,
                 options,
+                osmLayer,
                 url;
 
             for (var i=0; i < layers_osm.length; i++) {
@@ -164,10 +196,91 @@
                            maxZoom: maxZoom,
                            opaque: opaque,
                            url: url
-                           }
-                layers.push(new ol.layer.Tile({
+                           };
+
+                osmLayer = new ol.layer.Tile({
                                 source: new ol.source.OSM(options)
-                            }));
+                            });
+
+                if (undefined != layer._base) {
+                    osmLayer.setVisible(layer._base);
+                } else {
+                    // defaults to OFF
+                    osmLayer.setVisible(false);
+                }
+
+                allLayers.push(osmLayer);
+            }
+        },
+
+        /**
+         * Add Bing Layers to the Map
+         */
+        addLayersBing: function(allLayers, Bing) {
+
+            var apiKey = Bing.a,
+                bingLayer,
+                layer,
+                layers_bing = Bing.l;
+
+            for (var i=0; i < layers_bing.length; i++) {
+
+                layer = layers_bing[i];
+
+                bingLayer = new ol.layer.Tile({
+                                source: new ol.source.BingMaps({
+                                    key: apiKey,
+                                    imagerySet: layer.t,
+                                    name: layer.n,
+                                    // This is used to Save State
+                                    s3_layer_id: layer.i,
+                                    s3_layer_type: 'bing'
+                                    // use maxZoom 19 to see stretched tiles instead of the BingMaps
+                                    // "no photos at this zoom level" tiles
+                                    // maxZoom: 19
+                                })
+                            });
+
+                if (undefined != layer.b) {
+                    bingLayer.setVisible(true);
+                } else {
+                    // defaults to OFF
+                    bingLayer.setVisible(false);
+                }
+
+                allLayers.push(bingLayer);
+            }
+        },
+
+        /**
+         * Add Google Layers to the Map
+         */
+        addLayersGoogle: function(allLayers, Google) {
+
+            var googleLayer,
+                layer,
+                layers_google = Google.l;
+
+            for (var i=0; i < layers_google.length; i++) {
+
+                layer = layers_google[i];
+
+                googleLayer = new GoogleLayer({
+                                mapTypeId: layer.t,
+                                name: layer.n,
+                                // This is used to Save State
+                                s3_layer_id: layer.i,
+                                s3_layer_type: 'google'
+                            });
+
+                if (undefined != layer.b) {
+                    googleLayer.setVisible(true);
+                } else {
+                    // defaults to OFF
+                    googleLayer.setVisible(false);
+                }
+
+                allLayers.push(googleLayer);
             }
         },
 
@@ -175,10 +288,11 @@
          * Add GeoJSON Layers to the Map
          *
          * @ToDo: Combine these 7 layer types server-side to save a little bandwidth
+         * @ToDo: Option to use Tiles (geojson-vt)
          */
-        addLayersGeoJSON: function(layers) {
-            var options = this.options,
-                feature_queries = options.feature_queries || [],
+        addLayersGeoJSON: function(allLayers, options) {
+
+            var feature_queries = options.feature_queries || [],
                 feature_resources = options.feature_resources || [],
                 format,
                 layer,
@@ -188,7 +302,7 @@
                 layers_georss = options.layers_georss || [],
                 layers_shapefile = options.layers_shapefile || [],
                 layers_theme = options.layers_theme || [],
-                s3_popup_format,
+                proxyHost = this.proxyHost,
                 style,
                 url,
                 vectorLayer,
@@ -216,11 +330,14 @@
                 style = this.layerStyle(layer);
 
                 url = layer.url;
-                /* @ToDo: Optimise by not xferring appname
-                if (!url.startsWith('http')) {
+                if (url.startsWith('http')) {
+                    // Layer read from remote server: add proxy to avoid issues with CORS
+                    url = proxyHost.concat(url);
+                }/* else {
                     // Feature Layer read from this server
+                    // @ToDo: Optimise by not xferring appname
                     url = S3.Ap.concat(url);
-                } */
+                */
 
                 vectorSource = new ol.source.Vector({
                     url: url,
@@ -231,6 +348,10 @@
                     source: vectorSource,
                     style: style
                 });
+
+                if (undefined != layer.dir) {
+                    vectorLayer.dir = layer.dir;
+                }
 
                 // Set the popup_format, even if empty
                 // - leave if not set (e.g. Feature Queries)
@@ -246,7 +367,11 @@
                 }
                 vectorLayer.s3_layer_type = layerType;
 
-                layers.push(vectorLayer);
+                if (undefined != layer.visibility) {
+                    vectorLayer.setVisible(layer.visibility);
+                }
+
+                allLayers.push(vectorLayer);
             }
         },
 
@@ -327,7 +452,7 @@
             var map = this.map,
                 id = this.id + '_' + layer.ol_uid + '_' + feature.get('id') + '_popup';
             if (iframe && url) {
-                if (url.indexOf('http://') === 0 ) {
+                if (url.indexOf('http') === 0 ) {
                     // Use Proxy for remote popups
                     url = this.proxyHost + encodeURIComponent(url);
                 }
@@ -371,7 +496,7 @@
          */
         _loadDetails: function(url, id, popup) {
             var self = this;
-            if (url.indexOf('http://') === 0) {
+            if (url.indexOf('http') === 0) {
                 // Use Proxy for remote popups
                 url = this.proxyHost + encodeURIComponent(url);
             }
@@ -431,6 +556,8 @@
          *
          * (unused)
          *
+         * @ToDo: Use this to save a gis_config (WMC)
+         *
          * @returns {JSON} the JSON data
          *
         _serialize: function() {
@@ -445,6 +572,8 @@
          * Parse the JSON from real input into this.data
          *
          * (unused)
+         *
+         * @ToDo: Use this to load a gis_config (WMC)
          *
          * @returns {object} this.data
          */
@@ -469,10 +598,12 @@
                 coordinates,
                 defaults,
                 feature,
+                geometry,
+                geometryType,
                 key,
                 keys,
                 layer,
-                popup_format,
+                popupFormat,
                 results,
                 template;
 
@@ -490,18 +621,28 @@
                 if (results) {
                     feature = results.feature;
                     layer = results.layer;
-                    coordinates = feature.getGeometry().getCoordinates();
+                    geometry = feature.getGeometry();
+                    geometryType = geometry.getType();
+                    if (geometryType == 'Point') {
+                        coordinates = geometry.getCoordinates();
+                    } else if (geometryType == 'Polygon') {
+                        coordinates = geometry.getInteriorPoint().getCoordinates();
+                    } else {
+                        // @ToDo
+                        throw 'No support yet for Popups other than for Points or Polygons!';
+                    }
+
                     self.tooltip_ol.setPosition(coordinates);
 
                     if (undefined != layer.s3_popup_format) {
-                        // GeoJSON Feature Layers
+                        // GeoJSON Feature Layers (can also be used for external GeoJSON layers)
                         _.templateSettings = {interpolate: /\{(.+?)\}/g};
-                        popup_format = layer.s3_popup_format;
-                        template = _.template(popup_format);
+                        popupFormat = layer.s3_popup_format;
+                        template = _.template(popupFormat);
                         // Ensure we have all keys (we don't transmit empty attr)
                         attributes = {};//= feature.getProperties()
                         defaults = {};
-                        keys = popup_format.split('{');
+                        keys = popupFormat.split('{');
                         for (var i = 0; i < keys.length; i++) {
                             key = keys[i].split('}')[0];
                             attributes[key] = feature.get(key);
@@ -509,7 +650,7 @@
                         }
                         _.defaults(attributes, defaults);
                         content = template(attributes);
-                    } else if (undefined != attributes.popup) {
+                    } else if (undefined != feature.get('popup')) {
                         // Feature Queries or Theme Layers
                         content = feature.get('popup');
                     } else if (undefined != feature.get('name')) {

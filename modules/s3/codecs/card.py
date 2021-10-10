@@ -31,6 +31,8 @@
 __all__ = ("S3PDFCard",
            )
 
+from io import BytesIO
+
 try:
     from reportlab.lib.pagesizes import A4, LETTER, landscape, portrait
     from reportlab.platypus import BaseDocTemplate, PageTemplate, Flowable, \
@@ -47,7 +49,6 @@ except ImportError:
 
 from gluon import current, HTTP
 
-from s3compat import BytesIO
 from ..s3codec import S3Codec
 from ..s3resource import S3Resource
 from ..s3utils import s3_str
@@ -586,12 +587,12 @@ class S3PDFCardLayout(Flowable):
                      value,
                      x,
                      y,
-                     bctype="code128",
-                     height=12,
-                     barwidth=0.85,
-                     halign=None,
-                     valign=None,
-                     maxwidth=None,
+                     bctype = "code128",
+                     height = 12,
+                     barwidth = 0.85,
+                     halign = None,
+                     valign = None,
+                     maxwidth = None,
                      ):
         """
             Helper function to render a barcode
@@ -705,12 +706,12 @@ class S3PDFCardLayout(Flowable):
                    img,
                    x,
                    y,
-                   width=None,
-                   height=None,
-                   proportional=True,
-                   scale=None,
-                   halign=None,
-                   valign=None,
+                   width = None,
+                   height = None,
+                   proportional = True,
+                   scale = None,
+                   halign = None,
+                   valign = None,
                    ):
         """
             Helper function to draw an image

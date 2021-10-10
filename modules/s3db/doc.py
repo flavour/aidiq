@@ -27,26 +27,26 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ("S3DocumentLibrary",
-           "S3DocumentTagModel",
-           "S3CKEditorModel",
-           "S3DataCardModel",
+__all__ = ("DocumentLibrary",
+           "DocumentTagModel",
+           "CKEditorModel",
+           "DataCardModel",
            "doc_image_represent",
            "doc_document_list_layout",
            )
 
 import os
 
+from io import BytesIO
 from uuid import uuid4
 
 from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
-from s3compat import BytesIO
 
 # =============================================================================
-class S3DocumentLibrary(S3Model):
+class DocumentLibrary(S3Model):
 
     names = ("doc_entity",
              "doc_document",
@@ -59,6 +59,7 @@ class S3DocumentLibrary(S3Model):
         T = current.T
         db = current.db
         s3 = current.response.s3
+        request = current.request
         settings = current.deployment_settings
 
         person_comment = self.pr_person_comment
@@ -73,60 +74,16 @@ class S3DocumentLibrary(S3Model):
         configure = self.configure
         crud_strings = s3.crud_strings
         define_table = self.define_table
-        folder = current.request.folder
+        folder = request.folder
         super_link = self.super_link
 
         # ---------------------------------------------------------------------
         # Document-referencing entities
         #
-        entity_types = Storage(asset_asset = T("Asset"),
-                               cap_resource = T("CAP Resource"),
-                               cms_post = T("Post"),
-                               cr_shelter = T("Shelter"),
-                               deploy_mission = T("Mission"),
-                               dc_response = T(settings.get_dc_response_label()),
-                               dvr_case = T("Case"),
-                               dvr_case_activity = T("Case Activity"),
-                               event_event = T("Event"),
-                               event_incident = T("Incident"),
-                               event_incident_report = T("Incident Report"),
-                               event_scenario = T("Scenario"),
-                               event_sitrep = T("Situation Report"),
-                               fin_expense = T("Expense"),
-                               fire_station = T("Fire Station"),
-                               hms_hospital = T("Hospital"),
-                               hrm_human_resource = T("Human Resource"),
-                               hrm_training_event_report = T("Training Event Report"),
-                               inv_adj = T("Stock Adjustment"),
-                               inv_recv = T("Incoming Shipment"),
-                               inv_send = T("Sent Shipment"),
-                               inv_warehouse = T("Warehouse"),
-                               # @ToDo: Deprecate
-                               #irs_ireport = T("Incident Report"),
-                               police_station = T("Police Station"),
-                               pr_group = T("Team"),
-                               project_project = T("Project"),
-                               project_activity = T("Project Activity"),
-                               project_framework = T("Project Framework"),
-                               project_programme = T("Project Programme"),
-                               project_task = T("Task"),
-                               org_facility = T("Facility"),
-                               org_group = T("Organization Group"),
-                               org_office = T("Office"),
-                               req_need = T("Need"),
-                               req_need_response = T("Activity Group"),
-                               req_req = T("Request"),
-                               security_seized_item = T("Seized Item"),
-                               # @ToDo: Deprecate
-                               #stats_people = T("People"),
-                               stdm_tenure = T("Tenure"),
-                               vulnerability_document = T("Vulnerability Document"),
-                               vulnerability_risk = T("Risk"),
-                               vulnerability_evac_route = T("Evacuation Route"),
-                               )
+        instance_types = {} # This can be an empty list as doc_entity is never exposed to end-users
 
         tablename = "doc_entity"
-        self.super_entity(tablename, "doc_id", entity_types)
+        self.super_entity(tablename, "doc_id", instance_types)
 
         # Components
         doc_id = "doc_id"
@@ -166,8 +123,7 @@ class S3DocumentLibrary(S3Model):
                            ),
                      Field("url",
                            label = T("URL"),
-                           represent = lambda url: \
-                            url and A(url, _href=url) or NONE,
+                           represent = s3_url_represent,
                            requires = IS_EMPTY_OR(IS_URL()),
                            ),
                      # Mailmerge template?
@@ -249,15 +205,16 @@ class S3DocumentLibrary(S3Model):
         represent = doc_DocumentRepresent(lookup = tablename,
                                           fields = ("name", "file", "url"),
                                           labels = "%(name)s",
-                                          show_link = True)
+                                          show_link = True,
+                                          )
 
         document_id = S3ReusableField("document_id", "reference %s" % tablename,
                                       label = T("Document"),
                                       ondelete = "CASCADE",
                                       represent = represent,
-                                      requires = IS_ONE_OF(db,
-                                                           "doc_document.id",
-                                                           represent),
+                                      requires = IS_ONE_OF(db, "doc_document.id",
+                                                           represent,
+                                                           ),
                                       )
 
         add_components(tablename,
@@ -289,15 +246,15 @@ class S3DocumentLibrary(S3Model):
                            label = T("File"),
                            length = current.MAX_FILENAME_LENGTH,
                            represent = doc_image_represent,
-                           requires = IS_EMPTY_OR(
-                                        IS_IMAGE(extensions = (s3.IMAGE_EXTENSIONS)),
-                                        # Distinguish from prepop
-                                        null = "",
-                                      ),
+                           requires = IS_EMPTY_OR(IS_IMAGE(extensions = (s3.IMAGE_EXTENSIONS)),
+                                                  # Distinguish from prepop
+                                                  null = "",
+                                                  ),
                            # upload folder needs to be visible to the download() function as well as the upload
                            uploadfolder = os.path.join(folder,
                                                        "uploads",
-                                                       "images"),
+                                                       "images",
+                                                       ),
                            widget = S3ImageCropWidget((600, 600)),
                            ),
                      Field("mime_type",
@@ -311,6 +268,7 @@ class S3DocumentLibrary(S3Model):
                            ),
                      Field("url",
                            label = T("URL"),
+                           represent = s3_url_represent,
                            requires = IS_EMPTY_OR(IS_URL()),
                            ),
                      Field("type", "integer",
@@ -318,7 +276,7 @@ class S3DocumentLibrary(S3Model):
                            label = T("Image Type"),
                            represent = S3Represent(options = doc_image_type_opts),
                            requires = IS_IN_SET(doc_image_type_opts,
-                                                zero=None),
+                                                zero = None),
                            ),
                      person_id(label = T("Author"),
                                ),
@@ -350,8 +308,7 @@ class S3DocumentLibrary(S3Model):
         # Resource Configuration
         configure(tablename,
                   deduplicate = self.document_duplicate,
-                  onvalidation = lambda form: \
-                            self.document_onvalidation(form, document=False)
+                  onvalidation = self.image_onvalidation,
                   )
 
         # ---------------------------------------------------------------------
@@ -364,10 +321,7 @@ class S3DocumentLibrary(S3Model):
     def defaults(self):
         """ Safe defaults if the module is disabled """
 
-        document_id = S3ReusableField("document_id", "integer",
-                                      readable=False, writable=False)
-
-        return {"doc_document_id": document_id,
+        return {"doc_document_id": S3ReusableField.dummy("document_id"),
                 }
 
     # -------------------------------------------------------------------------
@@ -390,7 +344,10 @@ class S3DocumentLibrary(S3Model):
                 return current.T("File not found")
             else:
                 return A(origname,
-                         _href=URL(c="default", f="download", args=[filename]))
+                         _href = URL(c="default", f="download",
+                                     args = [filename],
+                                     )
+                         )
         else:
             return current.messages["NONE"]
 
@@ -413,7 +370,8 @@ class S3DocumentLibrary(S3Model):
 
         if query:
             duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
+                                                 limitby = (0, 1)
+                                                 ).first()
 
             if duplicate:
                 item.id = duplicate.id
@@ -421,8 +379,8 @@ class S3DocumentLibrary(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def document_onvalidation(form, document=True):
-        """ Form validation for both, documents and images """
+    def document_onvalidation(form):
+        """ Form validation for documents """
 
         form_vars = form.vars
         doc = form_vars.file
@@ -431,21 +389,6 @@ class S3DocumentLibrary(S3Model):
             # If this is a prepop, then file not in form
             # Interactive forms with empty doc has this as "" not None
             return
-
-        if not document:
-            encoded_file = form_vars.get("imagecrop-data", None)
-            if encoded_file:
-                # S3ImageCropWidget
-                import base64
-                metadata, encoded_file = encoded_file.split(",")
-                #filename, datatype, enctype = metadata.split(";")
-                filename = metadata.split(";", 1)[0]
-                f = Storage()
-                f.filename = uuid4().hex + filename
-                f.file = BytesIO(base64.b64decode(encoded_file))
-                doc = form_vars.file = f
-                if not form_vars.name:
-                    form_vars.name = filename
 
         if not hasattr(doc, "file"):
             # Record update without new file upload => keep existing
@@ -493,7 +436,91 @@ class S3DocumentLibrary(S3Model):
         #    query = ((table.checksum == form_vars.checksum) & \
         #             (table.deleted == False))
         #    result = db(query).select(table.name,
-        #                              limitby=(0, 1)).first()
+        #                              limitby = (0, 1),
+        #                              ).first()
+        #    if result:
+        #        doc_name = result.name
+        #        form.errors["file"] = "%s %s" % \
+        #                              (T("This file already exists on the server as"), doc_name)
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def image_onvalidation(form):
+        """ Form validation for images """
+
+        form_vars = form.vars
+        doc = form_vars.file
+
+        if doc is None:
+            # If this is a prepop, then file not in form
+            # Interactive forms with empty doc has this as "" not None
+            return
+
+        cropped_image = form_vars.get("imagecrop-data", None)
+        if cropped_image:
+            # S3ImageCropWidget
+            import base64
+
+            metadata, cropped_image = cropped_image.rsplit(",", 1)
+            #filename, datatype, enctype = metadata.split(";")
+            filename = metadata.rsplit(";", 2)[0]
+
+            f = Storage()
+            f.filename = uuid4().hex + filename
+            f.file = BytesIO(base64.b64decode(cropped_image))
+            form_vars.file = doc =  f
+
+            if not form_vars.name:
+                form_vars.name = filename
+
+        if not hasattr(doc, "file"):
+            # Record update without new file upload => keep existing
+            record_id = current.request.post_vars.id
+            if record_id:
+                db = current.db
+                if document:
+                    tablename = "doc_document"
+                else:
+                    tablename = "doc_image"
+                table = db[tablename]
+                record = db(table.id == record_id).select(table.file,
+                                                          limitby = (0, 1),
+                                                          ).first()
+                if record:
+                    doc = record.file
+
+        if not hasattr(doc, "file") and not doc and not form_vars.url:
+            if document:
+                msg = current.T("Either file upload or document URL required.")
+            else:
+                msg = current.T("Either file upload or image URL required.")
+            if "file" in form_vars:
+                form.errors.file = msg
+            if "url" in form_vars:
+                form.errors.url = msg
+
+        if hasattr(doc, "file"):
+            name = form_vars.name
+            if not name:
+                # Use filename as document/image title
+                form_vars.name = doc.filename
+
+        # Do a checksum on the file to see if it's a duplicate
+        #import cgi
+        #if isinstance(doc, cgi.FieldStorage) and doc.filename:
+        #    f = doc.file
+        #    form_vars.checksum = doc_checksum(f.read())
+        #    f.seek(0)
+        #    if not form_vars.name:
+        #        form_vars.name = doc.filename
+
+        #if form_vars.checksum is not None:
+        #    # Duplicate allowed if original version is deleted
+        #    query = ((table.checksum == form_vars.checksum) & \
+        #             (table.deleted == False))
+        #    result = db(query).select(table.name,
+        #                              limitby = (0, 1),
+        #                              ).first()
         #    if result:
         #        doc_name = result.name
         #        form.errors["file"] = "%s %s" % \
@@ -503,7 +530,7 @@ class S3DocumentLibrary(S3Model):
     @staticmethod
     def document_onaccept(form):
         """
-            Build a full-text index
+            Build a full-text index (only run when SOLR is configured)
         """
 
         form_vars = form.vars
@@ -524,13 +551,14 @@ class S3DocumentLibrary(S3Model):
     @staticmethod
     def document_ondelete(row):
         """
-            Remove the full-text index
+            Remove the full-text index (only run when SOLR is configured)
         """
 
         db = current.db
         table = db.doc_document
         record = db(table.id == row.id).select(table.file,
-                                               limitby=(0, 1)).first()
+                                               limitby = (0, 1)
+                                               ).first()
 
         document = json.dumps({"filename": record.file,
                                "id": row.id,
@@ -541,7 +569,7 @@ class S3DocumentLibrary(S3Model):
                                  )
 
 # =============================================================================
-class S3DocumentTagModel(S3Model):
+class DocumentTagModel(S3Model):
     """
         Document Tags
     """
@@ -594,25 +622,23 @@ def doc_image_represent(filename):
     if not filename:
         return current.messages["NONE"]
 
-    return DIV(A(IMG(_src=URL(c="default", f="download",
-                              args=filename),
-                     _height=40),
-                     _class="zoom",
-                     _href=URL(c="default", f="download",
-                               args=filename)))
+    div = DIV(A(IMG(_src = URL(c="default", f="download",
+                               args = filename,
+                               ),
+                    ),
+                _href = URL(c="default", f="download",
+                            args = filename,
+                            ),
+                ))
 
-    # @todo: implement/activate the JavaScript for this:
-    #anchor = "zoom-media-image-%s" % uuid4()
-    #return DIV(A(IMG(_src=URL(c="default", f="download",
-                              #args=filename),
-                     #_height=40),
-                     #_class="zoom",
-                     #_href="#%s" % anchor),
-               #DIV(IMG(_src=URL(c="default", f="download",
-                                #args=filename),
-                       #_width=600),
-                       #_id="%s" % anchor,
-                       #_class="hide"))
+    height, width = current.deployment_settings.get_ui_thumbnail()
+    if height:
+        div["_style"] = "height:%spx;width:%spx;" % (height, width)
+        # Add fancyZoom to show in Lightbox rather than just provide download option
+        # - JS/CSS not loaded by default, so need enabling for this to work
+        div[0]["_class"] = "fancy"
+
+    return div
 
 # =============================================================================
 def doc_checksum(docstr):
@@ -654,28 +680,31 @@ def doc_document_list_layout(list_id, item_id, resource, rfields, record):
             origname = current.s3db.doc_document.file.retrieve(filename)[0]
         except (IOError, TypeError):
             origname = current.messages["NONE"]
-        doc_url = URL(c="default", f="download", args=[filename])
+        doc_url = URL(c="default", f="download",
+                      args = [filename],
+                      )
         body = P(ICON("attachment"),
                  " ",
                  SPAN(A(origname,
-                        _href=doc_url,
+                        _href = doc_url,
                         )
                       ),
                  " ",
-                 _class="card_1_line",
+                 _class = "card_1_line",
                  )
     elif url:
         body = P(ICON("link"),
                  " ",
                  SPAN(A(url,
-                        _href=url,
+                        _href = url,
                         )),
                  " ",
-                 _class="card_1_line",
+                 _class = "card_1_line",
                  )
     else:
         # Shouldn't happen!
-        body = P(_class="card_1_line")
+        body = P(_class = "card_1_line",
+                 )
 
     # Edit Bar
     permit = current.auth.s3_has_permission
@@ -683,45 +712,47 @@ def doc_document_list_layout(list_id, item_id, resource, rfields, record):
     if permit("update", table, record_id=record_id):
         edit_btn = A(ICON("edit"),
                      _href=URL(c="doc", f="document",
-                               args=[record_id, "update.popup"],
-                               vars={"refresh": list_id,
-                                     "record": record_id}),
-                     _class="s3_modal",
-                     _title=current.T("Edit Document"),
+                               args = [record_id, "update.popup"],
+                               vars = {"refresh": list_id,
+                                       "record": record_id,
+                                       }),
+                     _class = "s3_modal",
+                     _title = current.T("Edit Document"),
                      )
     else:
         edit_btn = ""
     if permit("delete", table, record_id=record_id):
         delete_btn = A(ICON("delete"),
-                       _class="dl-item-delete",
+                       _class = "dl-item-delete",
                        )
     else:
         delete_btn = ""
     edit_bar = DIV(edit_btn,
                    delete_btn,
-                   _class="edit-bar fright",
+                   _class = "edit-bar fright",
                    )
 
     # Render the item
     item = DIV(DIV(ICON("icon"),
                    SPAN(" %s" % title,
-                        _class="card-title"),
+                        _class = "card-title",
+                        ),
                    edit_bar,
-                   _class="card-header",
+                   _class = "card-header",
                    ),
                DIV(DIV(DIV(body,
                            P(SPAN(comments),
                              " ",
-                             _class="card_manylines",
+                             _class = "card_manylines",
                              ),
-                           _class="media",
+                           _class = "media",
                            ),
-                       _class="media-body",
+                       _class = "media-body",
                        ),
-                   _class="media",
+                   _class = "media",
                    ),
-               _class=item_class,
-               _id=item_id,
+               _class = item_class,
+               _id = item_id,
                )
 
     return item
@@ -754,7 +785,7 @@ class doc_DocumentRepresent(S3Represent):
         return v
 
 # =============================================================================
-class S3CKEditorModel(S3Model):
+class CKEditorModel(S3Model):
     """
         Storage for Images used by CKEditor
         - and hence the s3_richtext_widget
@@ -782,8 +813,9 @@ class S3CKEditorModel(S3Model):
                           Field("upload", "upload",
                                 #uploadfs = self.settings.uploadfs,
                                 requires = [IS_NOT_EMPTY(),
-                                            IS_LENGTH(maxsize=10485760, # 10 Mb
-                                                      minsize=0)],
+                                            IS_LENGTH(maxsize = 10485760, # 10 Mb
+                                                      minsize = 0),
+                                            ],
                                 ),
                           *s3_meta_fields())
 
@@ -828,7 +860,7 @@ class S3CKEditorModel(S3Model):
         return ftype
 
 # =============================================================================
-class S3DataCardModel(S3Model):
+class DataCardModel(S3Model):
     """
         Model to manage context-specific features of printable
         data cards (S3PDFCard)
@@ -940,11 +972,6 @@ class S3DataCardModel(S3Model):
     @classmethod
     def defaults(cls):
         """ Safe defaults for names in case the module is disabled """
-
-        #dummy = S3ReusableField("dummy_id", "integer",
-        #                        readable = False,
-        #                        writable = False,
-        #                        )
 
         return {"doc_card_types": {},
                 "doc_update_card_type_requires": cls.update_card_type_requires,

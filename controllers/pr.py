@@ -4,34 +4,38 @@
     Person Registry, Controllers
 """
 
-module = request.controller
-
 # -----------------------------------------------------------------------------
 # Options Menu (available in all Functions' Views)
 def s3_menu_postp():
     # Unused
     # @todo: rewrite this for new framework?
     menu_selected = []
-    group_id = s3base.s3_get_last_record_id("pr_group")
+    from s3 import s3_get_last_record_id
+    group_id = s3_get_last_record_id("pr_group")
     if group_id:
-        group = s3db.pr_group
-        query = (group.id == group_id)
-        record = db(query).select(group.id, group.name, limitby=(0, 1)).first()
+        gtable = s3db.pr_group
+        record = db(gtable.id == group_id).select(gtable.id,
+                                                  gtable.name,
+                                                  limitby = (0, 1),
+                                                  ).first()
         if record:
             name = record.name
             menu_selected.append(["%s: %s" % (T("Group"), name), False,
-                                  URL(f="group",
-                                      args=[record.id])])
-    person_id = s3base.s3_get_last_record_id("pr_person")
+                                  URL(f = "group",
+                                      args = [record.id],
+                                      )])
+    person_id = s3_get_last_record_id("pr_person")
     if person_id:
-        person = s3db.pr_person
-        query = (person.id == person_id)
-        record = db(query).select(person.id, limitby=(0, 1)).first()
+        ptable = s3db.pr_person
+        record = db(ptable.id == person_id).select(ptable.id,
+                                                   limitby = (0, 1),
+                                                   ).first()
         if record:
             name = s3db.pr_person_id().represent(record.id)
             menu_selected.append(["%s: %s" % (T("Person"), name), False,
-                                  URL(f="person",
-                                      args=[record.id])])
+                                  URL(f = "person",
+                                      args = [record.id],
+                                      )])
     if menu_selected:
         menu_selected = [T("Open recent"), True, None, menu_selected]
         response.menu_options.append(menu_selected)
@@ -40,7 +44,7 @@ def s3_menu_postp():
 def index():
     """ Module's Home Page """
 
-    module_name = settings.modules[module].get("name_nice", T("Person Registry"))
+    module_name = settings.modules[c].get("name_nice", T("Person Registry"))
 
     # Load Model
     s3db.table("pr_address")
@@ -48,7 +52,9 @@ def index():
     def prep(r):
         if r.representation == "html":
             if r.id or r.method:
-               redirect(URL(f="person", args=request.args))
+               redirect(URL(f = "person",
+                            args = request.args,
+                            ))
         return True
     s3.prep = prep
 
@@ -75,19 +81,22 @@ def index():
                 age.append([str(pr_age_group_opts[a_opt]), int(count)])
 
             total = int(db(table.deleted == False).count())
-            output.update(module_name=module_name,
-                          gender=json.dumps(gender),
-                          age=json.dumps(age),
-                          total=total)
+            output.update(module_name = module_name,
+                          gender = json.dumps(gender),
+                          age = json.dumps(age),
+                          total = total,
+                          )
         if r.interactive:
             if not r.component:
                 label = READ
             else:
                 label = UPDATE
             linkto = r.resource.crud._linkto(r)("[id]")
-            s3.actions = [
-                dict(label=str(label), _class="action-btn", url=str(linkto))
-            ]
+            s3.actions = [{"label": s3_str(label),
+                           "url": str(linkto),
+                           "_class": "action-btn",
+                           },
+                          ]
         r.next = None
         return output
     s3.postp = postp
@@ -106,14 +115,6 @@ def person():
                 #(s3db.auth_user.id == s3db.pr_person_user.user_id) & \
                 #(s3db.auth_user.registration_key != "disabled")
 
-    # Organisation Dependent Fields
-    # @ToDo: Deprecate (only used by IFRC template)
-    #set_org_dependent_field = settings.set_org_dependent_field
-    #set_org_dependent_field("pr_person_details", "father_name")
-    #set_org_dependent_field("pr_person_details", "mother_name")
-    #set_org_dependent_field("pr_person_details", "affiliations")
-    #set_org_dependent_field("pr_person_details", "company")
-
     def prep(r):
         if r.representation == "json" and \
            not r.component and session.s3.filter_staff:
@@ -123,10 +124,9 @@ def person():
 
         elif r.interactive:
             if r.representation == "popup":
-                # Hide "pe_label" and "missing" fields in person popups
+                # Hide "pe_label" field in person popups
                 table = r.table
                 table.pe_label.readable = table.pe_label.writable = False
-                table.missing.readable = table.missing.writable = False
 
                 # S3SQLCustomForm breaks popup return, so disable
                 s3db.clear_config("pr_person", "crud_form")
@@ -134,8 +134,9 @@ def person():
             if r.component:
                 component_name = r.component_name
                 if component_name == "config":
+                    from s3db.gis import gis_config_form_setup
+                    gis_config_form_setup()
                     ctable = s3db.gis_config
-                    s3db.gis_config_form_setup()
                     # Name will be generated from person's name.
                     field = ctable.name
                     field.readable = field.writable = False
@@ -172,23 +173,26 @@ def person():
     set_method = s3db.set_method
     setting = settings.get_pr_contacts_tabs()
     if "all" in setting:
-        s3db.set_method(module, resourcename,
+        s3db.set_method(c, f,
                         method = "contacts",
-                        action = s3db.pr_Contacts)
+                        action = s3db.pr_Contacts,
+                        )
         contacts_tabs.append((settings.get_pr_contacts_tab_label("all"),
                               "contacts",
                               ))
     if "public" in setting:
-        s3db.set_method(module, resourcename,
+        s3db.set_method(c, f,
                         method = "public_contacts",
-                        action = s3db.pr_Contacts)
+                        action = s3db.pr_Contacts,
+                        )
         contacts_tabs.append((settings.get_pr_contacts_tab_label("public_contacts"),
                               "public_contacts",
                               ))
     if "private" in setting and auth.is_logged_in():
-        s3db.set_method(module, resourcename,
+        s3db.set_method(c, f,
                         method = "private_contacts",
-                        action = s3db.pr_Contacts)
+                        action = s3db.pr_Contacts,
+                        )
         contacts_tabs.append((settings.get_pr_contacts_tab_label("private_contacts"),
                               "private_contacts",
                               ))
@@ -215,12 +219,11 @@ def person():
                    listadd = False,
                    )
 
-    output = s3_rest_controller(main = "first_name",
+    from s3db.pr import pr_rheader
+    return s3_rest_controller(main = "first_name",
                                 extra = "last_name",
                                 rheader = lambda r: \
-                                            s3db.pr_rheader(r, tabs=tabs))
-
-    return output
+                                            pr_rheader(r, tabs=tabs))
 
 # -----------------------------------------------------------------------------
 def address():
@@ -243,17 +246,19 @@ def address():
             elif access == "2":
                 method = "public_contacts"
             s3db.configure("pr_address",
-                            create_next = URL(c=controller,
-                                              f="person",
-                                              args=[person_id, method]),
-                            update_next = URL(c=controller,
-                                              f="person",
-                                              args=[person_id, method])
+                            create_next = URL(c = controller,
+                                              f = "person",
+                                              args = [person_id, method],
+                                              ),
+                            update_next = URL(c = controller,
+                                              f = "person",
+                                              args = [person_id, method],
+                                              )
                             )
             if r.method == "create":
                 table = s3db.pr_person
                 pe_id = db(table.id == person_id).select(table.pe_id,
-                                                         limitby=(0, 1)
+                                                         limitby = (0, 1),
                                                          ).first().pe_id
                 s3db.pr_address.pe_id.default = pe_id
 
@@ -275,8 +280,7 @@ def address():
         return True
     s3.prep = prep
 
-    output = s3_rest_controller()
-    return output
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def contact():
@@ -368,18 +372,20 @@ def contact_emergency():
             elif access == "2":
                 method = "public_contacts"
             s3db.configure("pr_contact_emergency",
-                           create_next = URL(c=controller,
-                                             f="person",
-                                             args=[person_id, method]),
-                           update_next = URL(c=controller,
-                                             f="person",
-                                             args=[person_id, method])
+                           create_next = URL(c = controller,
+                                             f = "person",
+                                             args = [person_id, method],
+                                             ),
+                           update_next = URL(c = controller,
+                                             f = "person",
+                                             args = [person_id, method],
+                                             )
                            )
             if r.method == "create":
                 table = s3db.pr_person
-                query = (table.id == person_id)
-                pe_id = db(query).select(table.pe_id,
-                                         limitby=(0, 1)).first().pe_id
+                pe_id = db(table.id == person_id).select(table.pe_id,
+                                                         limitby = (0, 1),
+                                                         ).first().pe_id
                 s3db.pr_contact_emergency.pe_id.default = pe_id
         else:
             field = s3db.pr_contact_emergency.pe_id
@@ -395,8 +401,7 @@ def contact_emergency():
         return True
     s3.prep = prep
 
-    output = s3_rest_controller()
-    return output
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def person_search():
@@ -407,7 +412,8 @@ def person_search():
     """
 
     s3.prep = lambda r: r.method == "search_ac"
-    return s3_rest_controller(module, "person")
+
+    return s3_rest_controller("pr", "person")
 
 # -----------------------------------------------------------------------------
 def forum():
@@ -447,22 +453,20 @@ def forum():
         return True
     s3.prep = prep
 
-    output = s3_rest_controller(rheader = s3db.pr_rheader)
-    return output
+    from s3db.pr import pr_rheader
+    return s3_rest_controller(rheader = pr_rheader)
 
 # -----------------------------------------------------------------------------
 #def forum_membership():
 #    """ RESTful CRUD controller """
 #
-#    output = s3_rest_controller()
-#
-#    return output
+#    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def group():
     """ RESTful CRUD controller """
 
-    FS = s3base.S3FieldSelector
+    from s3 import FS
     s3.filter = (FS("group.system") == False) # do not show system groups
 
     # Modify list_fields for the component tab
@@ -475,16 +479,15 @@ def group():
                                   ],
                    )
 
+    from s3db.pr import pr_rheader
     rheader = lambda r: \
-        s3db.pr_rheader(r, tabs = [(T("Group Details"), None),
-                                   (T("Address"), "address"),
-                                   (T("Contact Data"), "contact"),
-                                   (T("Members"), "group_membership")
-                                   ])
+        pr_rheader(r, tabs = [(T("Group Details"), None),
+                              (T("Address"), "address"),
+                              (T("Contact Data"), "contact"),
+                              (T("Members"), "group_membership")
+                              ])
 
-    output = s3_rest_controller(rheader = rheader)
-
-    return output
+    return s3_rest_controller(rheader = rheader)
 
 # -----------------------------------------------------------------------------
 def group_member_role():
@@ -596,10 +599,15 @@ def presence():
 def pentity():
     """
         RESTful CRUD controller
-        - limited to just search_ac for use in Autocompletes
+        - limited to just search_ac for use by S3PentityAutocompleteWidget
+
+        May have to add rules in the template's customise_pr_pentity_controller to filter the options appropriately
+        - permission sets (inc realms) should only be applied to the instances, not the super-entity
+        If this needs to be different for different usecases then can provide a re-routed instance so that r.function can be differentiated on
     """
 
     s3.prep = lambda r: r.method == "search_ac"
+
     return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
@@ -665,8 +673,7 @@ def filter():
         return output
     s3.postp = postp
 
-    output = s3_rest_controller()
-    return output
+    return s3_rest_controller()
 
 # =============================================================================
 def subscription():
@@ -675,8 +682,7 @@ def subscription():
         - to allow Admins to control subscriptions for people
     """
 
-    output = s3_rest_controller()
-    return output
+    return s3_rest_controller()
 
 # =============================================================================
 def human_resource():
@@ -686,15 +692,8 @@ def human_resource():
           pr_person form
     """
 
-    if auth.permission.format != "s3json":
-        return ""
-
-    # Pre-process
-    def prep(r):
-        if r.method != "options":
-            return False
-        return True
-    s3.prep = prep
+    s3.prep = lambda r: \
+        r.representation == "s3json" and r.method == "options"
 
     return s3_rest_controller("hrm", "human_resource")
 

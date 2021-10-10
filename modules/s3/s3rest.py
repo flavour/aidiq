@@ -37,10 +37,12 @@ import os
 import re
 import sys
 
+from io import StringIO
+from urllib.request import urlopen
+
 from gluon import current, redirect, HTTP, URL
 from gluon.storage import Storage
 
-from s3compat import PY2, CLASS_TYPES, StringIO, basestring, urlopen
 from .s3datetime import s3_parse_datetime
 from .s3resource import S3Resource
 from .s3utils import s3_get_extension, s3_keep_messages, s3_remove_last_record_id, s3_store_last_record_id, s3_str
@@ -108,8 +110,8 @@ class S3Request(object):
                 extension = ext
         if c or f:
             if not auth.permission.has_permission("read",
-                                                  c=self.controller,
-                                                  f=self.function):
+                                                  c = self.controller,
+                                                  f = self.function):
                 auth.permission.fail()
 
         # Allow override of request args/vars
@@ -373,7 +375,7 @@ class S3Request(object):
             if handler is not None:
                 break
 
-        if isinstance(handler, CLASS_TYPES):
+        if isinstance(handler, type):
             return handler()
         else:
             return handler
@@ -398,8 +400,9 @@ class S3Request(object):
 
         custom_action = current.s3db.get_method(prefix,
                                                 name,
-                                                component_name=component_name,
-                                                method=method)
+                                                component_name = component_name,
+                                                method = method,
+                                                )
 
         http = self.http
         handler = None
@@ -435,7 +438,7 @@ class S3Request(object):
 
         if handler is None:
             handler = resource.crud
-        if isinstance(handler, CLASS_TYPES):
+        if isinstance(handler, type):
             handler = handler()
         return handler
 
@@ -481,7 +484,8 @@ class S3Request(object):
         if l > 1:
             m = f[1][0].lower()
             i = f[1][1]
-            components = current.s3db.get_components(tablename, names=[m])
+            components = current.s3db.get_components(tablename,
+                                                     names = [m])
             if components and m in components:
                 self.component_name = m
                 self.component_id = i
@@ -535,14 +539,11 @@ class S3Request(object):
             # Read body JSON (e.g. from $.searchS3)
             body = self.body
             body.seek(0)
-            if PY2:
-                s = body.read()
-            else:
-                # Decode request body (=bytes stream) into a str
-                # - json.load/loads do not accept bytes in Py3 before 3.6
-                # - minor performance advantage by avoiding the need for
-                #   json.loads to detect the encoding
-                s = body.read().decode("utf-8")
+            # Decode request body (=bytes stream) into a str
+            # - json.load/loads do not accept bytes in Py3 before 3.6
+            # - minor performance advantage by avoiding the need for
+            #   json.loads to detect the encoding
+            s = body.read().decode("utf-8")
             try:
                 filters = json.loads(s)
             except ValueError:
@@ -562,7 +563,7 @@ class S3Request(object):
         del get_vars["$search"]
         for k, v in filters.items():
             k0 = k[0]
-            if k == "$filter" or k[0:2] == "$$" or \
+            if k == "$filter" or k[0:2] == "$$" or k == "bbox" or \
                k0 != "_" and ("." in k or k0 == "(" and ")" in k):
                 try:
                     value = decode(v) if decode else v
@@ -571,7 +572,7 @@ class S3Request(object):
                 # Catch any non-str values
                 if type(value) is list:
                     value = [s3_str(item)
-                             if not isinstance(item, basestring) else item
+                             if not isinstance(item, str) else item
                              for item in value
                              ]
                 elif type(value) is not str:
@@ -661,7 +662,7 @@ class S3Request(object):
                                              self.name,
                                              component_name = self.component_name,
                                              method = self.method)
-            if isinstance(action, CLASS_TYPES):
+            if isinstance(action, type):
                 self.custom_action = action()
             else:
                 self.custom_action = action
@@ -1229,12 +1230,12 @@ class S3Request(object):
             r.error(415, current.ERROR.BAD_FORMAT)
 
         component = r.component_name
-        output = r.resource.export_options(component=component,
-                                           fields=fields,
-                                           show_uids=show_uids,
-                                           only_last=only_last,
-                                           hierarchy=hierarchy,
-                                           as_json=as_json,
+        output = r.resource.export_options(component = component,
+                                           fields = fields,
+                                           show_uids = show_uids,
+                                           only_last = only_last,
+                                           hierarchy = hierarchy,
+                                           as_json = as_json,
                                            )
 
         if flat:
@@ -1374,14 +1375,15 @@ class S3Request(object):
 
     # -------------------------------------------------------------------------
     def url(self,
-            id=None,
-            component=None,
-            component_id=None,
-            target=None,
-            method=None,
-            representation=None,
-            vars=None,
-            host=None):
+            id = None,
+            component = None,
+            component_id = None,
+            target = None,
+            method = None,
+            representation = None,
+            vars = None,
+            host = None,
+            ):
         """
             Returns the URL of this request, use parameters to override
             current requests attributes:
@@ -1643,7 +1645,7 @@ class S3Request(object):
                 elif v.endswith(ext):
                     if isinstance(p, cgi.FieldStorage):
                         source.append((v, p.value))
-                    elif isinstance(p, basestring):
+                    elif isinstance(p, str):
                         source.append((v, StringIO(p)))
         else:
             s = self.body
@@ -2153,16 +2155,16 @@ def s3_request(*args, **kwargs):
             message = message.message
         if current.auth.permission.format == "html":
             current.session.error = message
-            redirect(URL(f="index"))
+            redirect(URL(f = "index"))
         else:
             headers = {"Content-Type":"application/json"}
             current.log.error(message)
             raise HTTP(error,
-                       body=current.xml.json_message(success=False,
-                                                     statuscode=error,
-                                                     message=message,
-                                                     ),
-                       web2py_error=message,
+                       body = current.xml.json_message(success = False,
+                                                       statuscode = error,
+                                                       message = message,
+                                                       ),
+                       web2py_error = message,
                        **headers)
     return r
 

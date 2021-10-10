@@ -36,7 +36,6 @@ from collections import OrderedDict
 from gluon import current, URL
 from gluon.storage import Storage
 
-from s3compat import basestring, INTEGER_TYPES
 from s3theme import FORMSTYLES
 
 class S3Config(Storage):
@@ -134,7 +133,7 @@ class S3Config(Storage):
     # Unifont can be downloaded from http://unifoundry.com/unifont/index.html
     fonts = {"ar": ["unifont", "unifont"], # Note that this isn't an ideal font for Arabic as it doesn't support reshaping. We use arabic_reshaper to improve this.
              #"dv": ["unifont", "unifont"],
-             #"dz": ["unifont", "unifont"],
+             "dz": ["unifont", "unifont"],
              "km": ["unifont", "unifont"],
              "ko": ["unifont", "unifont"],
              "mn": ["unifont", "unifont"],
@@ -150,6 +149,13 @@ class S3Config(Storage):
              "zh-cn": ["unifont", "unifont"],
              "zh-tw": ["unifont", "unifont"],
              }
+
+    # Can be over-ridden in the template as settings.L10n.languages_by_country
+    languages_by_country = {"France": ["fr"],
+                            "Guadeloupe": ["fr"],
+                            "Haiti": ["fr", "ht"],
+                            "Martinique": ["fr"],
+                            }
 
     def __init__(self):
 
@@ -179,16 +185,12 @@ class S3Config(Storage):
         # Allow templates to append rather than replace
         self.fin.currencies = {}
         self.fire = Storage()
-        # @ToDo: Move to self.ui
-        self.frontpage = Storage()
-        self.frontpage.rss = []
         self.gis = Storage()
         # Allow templates to append rather than replace
         self.gis.countries = []
         self.hms = Storage()
         self.hrm = Storage()
         self.inv = Storage()
-        self.irs = Storage()
         self.L10n = Storage()
         # Allow templates to append rather than replace
         self.L10n.languages = {"en": "English"}
@@ -300,6 +302,8 @@ class S3Config(Storage):
             else:
                 s3.debug = False
                 track_changes(False)
+
+        return debug
 
     # -------------------------------------------------------------------------
     # Template
@@ -777,15 +781,6 @@ class S3Config(Storage):
         """
         return self.auth.get("registration_link_user_to_default")
 
-    def get_auth_opt_in_team_list(self):
-        return self.auth.get("opt_in_team_list", [])
-
-    def get_auth_opt_in_to_email(self):
-        return self.get_auth_opt_in_team_list() != []
-
-    def get_auth_opt_in_default(self):
-        return self.auth.get("opt_in_default", False)
-
     def get_auth_registration_requests_home_phone(self):
         return self.auth.get("registration_requests_home_phone", False)
 
@@ -895,13 +890,6 @@ class S3Config(Storage):
         """
         return self.auth.get("org_admin_to_first", False)
 
-    def get_auth_terms_of_service(self):
-        """
-            Force users to accept Terms of Service before Registering an account
-            - uses <template>/views/tos.html
-        """
-        return self.auth.get("terms_of_service", False)
-
     def get_auth_consent_tracking(self):
         """ Expose options to track user consent """
         return self.auth.get("consent_tracking", False)
@@ -991,7 +979,6 @@ class S3Config(Storage):
             ("asset", T("Assets")),
             ("project", T("Projects")),
             ("survey", T("Assessments")),
-            ("irs", T("Incidents"))
         ]))
 
     def get_auth_access_levels(self):
@@ -1061,6 +1048,21 @@ class S3Config(Storage):
         """
 
         return self.base.get("allow_testing", True)
+
+    def get_base_custom_models(self):
+        """
+            Custom Models
+            - a dict {prefix: template}
+            Also need to enable prefix in modules and add to template's __init__.py __all__
+        """
+        return self.base.get("custom_models", {})
+
+    def get_base_rest_controllers(self):
+        """
+            Re-routed RESTful CRUD controllers
+            - a dict {(controller, function): (prefix, name)}
+        """
+        return self.base.get("rest_controllers")
 
     def get_base_migrate(self):
         """ Whether to allow Web2Py to migrate the SQL database to the new structure """
@@ -1842,7 +1844,25 @@ class S3Config(Storage):
         return self.L10n.get("default_language", "en")
 
     def get_L10n_display_toolbar(self):
+        """
+            Whether to display a Menu to select the User Language
+            - this may not be available in custom Themes
+            - other options include just having this defined in the user profile
+        """
         return self.L10n.get("display_toolbar", True)
+
+    def get_L10n_languages(self):
+        """
+            List of Languages to show in the User Profile & the Language Menu (if-configured) 
+        """
+        return self.L10n.get("languages")
+
+    def get_L10n_languages_readonly(self):
+        """
+            Whether the languages/*.py files are editable
+            - improves performance to have this off
+        """
+        return self.L10n.get("languages_readonly", True)
 
     def get_L10n_extra_codes(self):
         """
@@ -1851,11 +1871,23 @@ class S3Config(Storage):
         """
         return self.L10n.get("extra_codes", None)
 
-    def get_L10n_languages(self):
-        return self.L10n.get("languages")
+    def get_L10n_languages_by_country(self, countryname):
+        """
+            List of Official Languages for a Country
+            Used by the inv_gift_certificate
+        """
+        languages_by_country = self.L10n.get("languages_by_country", self.languages_by_country)
+        return languages_by_country.get(countryname, [])
 
-    def get_L10n_languages_readonly(self):
-        return self.L10n.get("languages_readonly", True)
+    def get_L10n_date_format(self):
+        """
+            Lookup the Date Format - either by locale or by global setting
+        """
+        language = current.session.s3.language
+        if language in self.date_formats:
+            return self.date_formats.get(language)
+        else:
+            return self.L10n.get("date_format", "%Y-%m-%d")
 
     def get_L10n_religions(self):
         """
@@ -1964,7 +1996,7 @@ class S3Config(Storage):
             e.g. Apellido Paterno in Hispanic names
 
             Setting this means that auth_user.last_name matches with pr_person.middle_name
-            e.g. RMSAmericas
+            e.g. RMS
         """
         return self.__lazy("L10n", "mandatory_middlename", False)
 
@@ -1983,6 +2015,12 @@ class S3Config(Storage):
         return self.L10n.get("thousands_separator", " ")
     def get_L10n_thousands_grouping(self):
         return self.L10n.get("thousands_grouping", 3)
+
+    def get_L10n_translate_cap_area(self):
+        """
+            Whether to translate CAP Area names
+        """
+        return self.L10n.get("translate_cap_area", False)
 
     def get_L10n_translate_cms_series(self):
         """
@@ -2019,11 +2057,14 @@ class S3Config(Storage):
         """
         return self.L10n.get("translate_org_site", False)
 
-    def get_L10n_translate_cap_area(self):
+    def get_L10n_translate_supply_item(self):
         """
-            Whether to translate CAP Area names
+            Whether to translate Supply names:
+                - Catalogs
+                - Categories
+                - Items
         """
-        return self.L10n.get("translate_cap_area", False)
+        return self.L10n.get("translate_supply_item", False)
 
     def get_L10n_pootle_url(self):
         """ URL for Pootle server """
@@ -2158,7 +2199,7 @@ class S3Config(Storage):
 
         setting = self.ui.get("formstyle", "default")
 
-        if isinstance(setting, basestring):
+        if isinstance(setting, str):
             # Try to find the corresponding _inline formstyle
             inline_formstyle_name = "%s_inline" % setting
             formstyle = FORMSTYLES.get(inline_formstyle_name)
@@ -2535,10 +2576,10 @@ class S3Config(Storage):
             'css' is a folder relative to static/styles
             - /jstree.css or /jstree.min.css is added as-required
         """
-        return self.ui.get("hierarchy_theme", dict(css = "plugins",
-                                                   icons = False,
-                                                   stripes = True,
-                                                   ))
+        return self.ui.get("hierarchy_theme", {"css": "plugins",
+                                               "icons": False,
+                                               "stripes": True,
+                                               })
 
     def get_ui_hierarchy_cascade_option_in_tree(self):
         """
@@ -2655,6 +2696,11 @@ class S3Config(Storage):
             Snap raster width in organizer (hh:mm:ss), default 00:15:00
         """
         return self.__lazy("ui", "organizer_snap_duration", None)
+
+    def get_ui_thumbnail(self):
+        """ Get the size of Thumbnail to use for Images """
+
+        return self.ui.get("thumbnail", (None, None))
 
     # =========================================================================
     # Messaging
@@ -3256,7 +3302,7 @@ class S3Config(Storage):
             query = ((table.organisation_id == auth.user.organisation_id) & \
                      (table.tag == "cap_oid"))
             record = current.db(query).select(table.value,
-                                              limitby=(0, 1)
+                                              limitby = (0, 1),
                                               ).first()
             if record and record.value:
                 return record.value
@@ -4240,12 +4286,6 @@ class S3Config(Storage):
         """
         return self.__lazy("hrm", "event_course_mandatory", default=True)
 
-    #def get_hrm_event_programme(self):
-    #    """
-    #        Whether (Training) Events should be linked to Programmes
-    #    """
-    #    return self.__lazy("hrm", "event_programme", default=False)
-
     def get_hrm_event_site(self):
         """
             How (Training) Events should be Located:
@@ -4734,6 +4774,30 @@ class S3Config(Storage):
         """
         return self.inv.get("facility_manage_staff", True)
 
+    def get_inv_minimums(self):
+        """
+            Manage Minimum Stock Levels
+        """
+        return self.inv.get("minimums", False)
+
+    def get_inv_send_gift_certificate(self):
+        """
+            Whether to show a button to generate a Gift Certificate for Outbound Shipments
+        """
+        return self.inv.get("send_gift_certificate", False)
+
+    def get_inv_send_packaging(self):
+        """
+            Whether to manage Packaging for Outbound Shipments
+        """
+        return self.inv.get("send_packaging", False)
+
+    def get_inv_stock_cards(self):
+        """
+            Use Stock Cards
+        """
+        return self.inv.get("stock_cards", False)
+
     def get_inv_recv_tab_label(self):
         label = self.inv.get("recv_tab_label")
         if not label:
@@ -4753,29 +4817,55 @@ class S3Config(Storage):
         """
         return self.inv.get("direct_stock_edits", False)
 
+    def get_inv_recv_ref_writable(self):
+        """
+            Whether Received Shipment Reference should be manually editable
+            - only possible before shipment processed
+        """
+        return self.inv.get("recv_ref_writable", False)
+
+    def get_inv_send_ref_writable(self):
+        """
+            Whether Sent Shipment Reference should be manually editable
+            - only possible before shipment processed
+        """
+        return self.inv.get("send_ref_writable", False)
+
     def get_inv_org_dependent_warehouse_types(self):
         """
             Whether Warehouse Types vary by Organisation
         """
         return self.inv.get("org_dependent_warehouse_types", False)
 
-    def get_inv_send_show_mode_of_transport(self):
+    def get_inv_send_req(self):
         """
-            Show mode of transport on Sent Shipments
+            Whether Outbound Shipments link to Inventory Requisitions
         """
-        return self.inv.get("show_mode_of_transport", False)
+        return self.inv.get("send_req", True)
 
+    def get_inv_send_req_ref(self):
+        """
+            Whether Outbound Shipments show a freetext Req Ref field for Requests from external systems
+        """
+        return self.inv.get("send_req_ref", False)
+    
+    def get_inv_recv_req(self):
+        """
+            Whether Incoming Shipments link to Inventory Requisitions
+        """
+        return self.inv.get("recv_req", True)
+
+    def get_inv_recv_req_ref(self):
+        """
+            Whether Inbound Shipments show a freetext Req Ref field for Requests from external systems
+        """
+        return self.inv.get("recv_req_ref", False)
+    
     def get_inv_send_show_org(self):
         """
             Show Organisation on Sent Shipments
         """
         return self.inv.get("send_show_org", True)
-
-    def get_inv_send_show_time_in(self):
-        """
-            Show Time In on Sent Shipments
-        """
-        return self.inv.get("send_show_time_in", False)
 
     def get_inv_stock_count(self):
         """
@@ -4805,8 +4895,8 @@ class S3Config(Storage):
         """
             Get the name of Shipments
             - currently supported options are:
-            * shipment
-            * order
+            * shipment (default)
+            * order (currently unused)
         """
         return self.inv.get("shipment_name", "shipment")
 
@@ -4814,10 +4904,9 @@ class S3Config(Storage):
         """
             Shipment types which are common to both Send & Receive
         """
-        return self.inv.get("shipment_types", {
-                                0 : current.messages["NONE"],
-                                11: current.T("Internal Shipment"),
-                                })
+        return self.inv.get("shipment_types", {0 : current.messages["NONE"],
+                                               11: current.T("Internal Shipment"),
+                                               })
 
     def get_inv_send_types(self):
         """
@@ -4858,6 +4947,12 @@ class S3Config(Storage):
     def get_inv_recv_shortname(self):
         return self.inv.get("recv_shortname", "GRN")
 
+    def get_inv_warehouse_free_capacity_calculated(self):
+        """
+            Whether to calculate Free Capacity for Warehouses
+        """
+        return self.inv.get("warehouse_free_capacity_calculated", False)
+
     def get_inv_warehouse_code_unique(self):
         """
             Validate for Unique Warehouse Codes
@@ -4865,13 +4960,161 @@ class S3Config(Storage):
         return self.inv.get("warehouse_code_unique", False)
 
     # -------------------------------------------------------------------------
-    # IRS
-    #
-    def get_irs_vehicle(self):
+    # Inventory Requisitions Settings
+    def get_inv_req_copyable(self):
         """
-            Use Vehicles to respond to Incident Reports?
+            Provide a Copy button for Inventory Requisitions?
         """
-        return self.irs.get("vehicle", False)
+        return self.inv.get("req_copyable", False)
+
+    def get_inv_req_recurring(self):
+        """
+            Do we allow creation of recurring Inventory Requisitions?
+        """
+        return self.inv.get("req_recurring", True)
+
+    def get_inv_requester_label(self):
+        return current.T(self.inv.get("requester_label", "Requester"))
+
+    def get_inv_requester_optional(self):
+        return self.inv.get("requester_optional", False)
+
+    def get_inv_requester_is_author(self):
+        """
+            Whether the User Account logging the Inventory Requisition is normally the Requester
+        """
+        return self.inv.get("requester_is_author", True)
+
+    def get_inv_requester_from_site(self):
+        """
+            Whether the Requester has to be a staff of the site making the Inventory Requisitions
+        """
+        return self.inv.get("requester_from_site", False)
+
+    def get_inv_requester_to_site(self):
+        """
+            Whether to set the Requester as being an HR for the Site if no HR record yet & as Site contact if none yet exists
+        """
+        return self.inv.get("requester_to_site", False)
+
+    def get_inv_req_date_writable(self):
+        """ Whether Inventory Requisition Date should be manually editable """
+        return self.inv.get("req_date_writable", True)
+
+    def get_inv_req_status_writable(self):
+        """ Whether Inventory Requisition Status should be manually editable """
+        return self.inv.get("req_status_writable", True)
+
+    def get_inv_req_item_quantities_writable(self):
+        """ Whether Item Quantities should be manually editable """
+        return self.inv.get("req_item_quantities_writable", False)
+
+    def get_inv_req_pack_values(self):
+        """
+            Do we show pack values in Inventory Requisitions?
+        """
+        return self.inv.get("req_pack_values", True)
+
+    def get_inv_multiple_req_items(self):
+        """
+            Can an Inventory Requisitions have multiple line items?
+            - e.g. ICS says that each request should be just for items of a single Type
+        """
+        return self.inv.get("multiple_req_items", True)
+
+    def get_inv_req_show_quantity_transit(self):
+        return self.inv.get("req_show_quantity_transit", True)
+
+    def get_inv_req_inline_forms(self):
+        """
+            Whether Requests module should use inline forms for Items
+        """
+        return self.inv.get("req_inline_forms", True)
+
+    def get_inv_req_match_tab(self):
+        """
+            Whether to show the Match Requests tab
+        """
+        return self.inv.get("req_match_tab", True)
+
+    def get_inv_req_prompt_match(self):
+        """
+            Whether a Requester is prompted to match each line item in an Inventory Requisitions
+        """
+        return self.req.get("req_prompt_match", True)
+
+    def get_inv_use_commit(self):
+        """
+            Whether there is a Commit step in Inventory Requisitions Management
+        """
+        return self.inv.get("use_commit", False)
+
+    def get_inv_commit_value(self):
+        """
+            Whether Donations should have a Value field
+        """
+        return self.inv.get("commit_value", False)
+
+    def get_inv_commit_without_request(self):
+        """
+            Whether to allow Donations to be made without a matching Inventory Requisitions
+        """
+        return self.inv.get("commit_without_request", False)
+
+    def get_inv_committer_is_author(self):
+        """ Whether the User Account logging the Commitment is normally the Committer """
+        return self.inv.get("committer_is_author", True)
+
+    def get_inv_req_ask_security(self):
+        """
+            Should Inventory Requisitions ask whether Security is required?
+        """
+        return self.inv.get("req_ask_security", False)
+
+    def get_inv_req_ask_transport(self):
+        """
+            Should Inventory Requisitions ask whether Transportation is required?
+        """
+        return self.inv.get("req_ask_transport", False)
+
+    def get_inv_req_ask_purpose(self):
+        """
+            Should Inventory Requisitions ask for Purpose?
+        """
+        return self.inv.get("req_ask_purpose", True)
+
+    def get_inv_use_req_number(self):
+        """
+            Do Inventory Requisitions use a Requisition Number
+        """
+        return self.inv.get("use_req_number", True)
+
+    def get_inv_generate_req_number(self):
+        """
+            Do Inventory Requisitions generate their Requisition Number automatically?
+        """
+        return self.inv.get("generate_req_number", True)
+
+    def get_inv_req_form_name(self):
+        return self.inv.get("req_form_name", "Requisition Form")
+
+    def get_inv_req_shortname(self):
+        return self.inv.get("req_shortname", "REQ")
+
+    def get_inv_req_restrict_on_complete(self):
+        """
+            To restrict adding new commits to the Completed commits.
+        """
+        return self.inv.get("req_restrict_on_complete", False)
+
+    def get_inv_req_order_item(self):
+        return self.inv.get("req_order_item", False)
+
+    def get_inv_req_workflow(self):
+        """
+            Whether to use Workflow for Inventory Requisitions
+        """
+        return self.inv.get("req_workflow", False)
 
     # -------------------------------------------------------------------------
     # Members
@@ -4916,7 +5159,7 @@ class S3Config(Storage):
                  }
 
             Example:
-                settings.mobile.forms = [("Request", "req_req")]
+                settings.mobile.forms = [("Request", "inv_req")]
         """
         return self.mobile.get("forms", [])
 
@@ -4948,7 +5191,7 @@ class S3Config(Storage):
         """
         default_organisation = self.__lazy("org", "default_organisation", default=None)
         if default_organisation:
-            if not isinstance(default_organisation, INTEGER_TYPES):
+            if not isinstance(default_organisation, int):
                 # Check Session cache
                 default_organisation_id = current.session.s3.default_organisation_id
                 if default_organisation_id:
@@ -4957,7 +5200,7 @@ class S3Config(Storage):
                     # Convert Name to ID
                     table = current.s3db.org_organisation
                     org = current.db(table.name == default_organisation).select(table.id,
-                                                                                limitby=(0, 1),
+                                                                                limitby = (0, 1),
                                                                                 ).first()
                     try:
                         default_organisation = org.id
@@ -4977,7 +5220,7 @@ class S3Config(Storage):
         """
         default_site = self.org.get("default_site", None)
         if default_site:
-            if not isinstance(default_site, INTEGER_TYPES):
+            if not isinstance(default_site, int):
                 # Check Session cache
                 default_site_id = current.session.s3.default_site_id
                 if default_site_id:
@@ -5172,7 +5415,8 @@ class S3Config(Storage):
 
     def get_org_site_inv_req_tabs(self):
         """
-            Whether Sites should have Tabs for Inv/Req
+            Whether Sites should have Tabs for Inventory & Requisitions
+            - only shows if the module is enabled & permissions granted
         """
         return self.org.get("site_inv_req_tabs", True)
 
@@ -5193,6 +5437,12 @@ class S3Config(Storage):
             Whether to display the last_contacted field for a Site
         """
         return self.org.get("site_last_contacted", False)
+
+    #def get_org_site_show_type(self):
+    #    """
+    #        Whether to show the Type of Sites in Represents
+    #    """
+    #    return self.org.get("site_show_type", True)
 
     def get_org_site_volunteers(self):
         """
@@ -5791,196 +6041,6 @@ class S3Config(Storage):
         return self.project.get("my_tasks_include_team_tasks", False)
 
     # -------------------------------------------------------------------------
-    # Requests Management Settings
-    #
-    def get_req_req_type(self):
-        """
-            The Types of Request which can be made.
-            Select one or more from:
-            * People
-            * Stock
-            * Other
-            tbc: Assets, Shelter, Food
-        """
-        return self.req.get("req_type", ("Stock", "People", "Other"))
-
-    def get_req_type_inv_label(self):
-        return current.T(self.req.get("type_inv_label", "Warehouse Stock"))
-
-    def get_req_type_hrm_label(self):
-        return current.T(self.req.get("type_hrm_label", "People"))
-
-    def get_req_copyable(self):
-        """
-            Provide a Copy button for Requests?
-        """
-        return self.req.get("copyable", False)
-
-    #def get_req_document_filing(self):
-    #    return self.req.get("document_filing", False)
-
-    def get_req_recurring(self):
-        """
-            Do we allow creation of recurring requests?
-        """
-        return self.req.get("recurring", True)
-
-    def get_req_requester_label(self):
-        return current.T(self.req.get("requester_label", "Requester"))
-
-    def get_req_requester_optional(self):
-        return self.req.get("requester_optional", False)
-
-    def get_req_requester_is_author(self):
-        """
-            Whether the User Account logging the Request is normally the Requester
-        """
-        return self.req.get("requester_is_author", True)
-
-    def get_req_requester_from_site(self):
-        """
-            Whether the Requester has to be a staff of the site making the Request
-        """
-        return self.req.get("requester_from_site", False)
-
-    def get_req_requester_to_site(self):
-        """
-            Whether to set the Requester as being an HR for the Site if no HR record yet & as Site contact if none yet exists
-        """
-        return self.req.get("requester_to_site", False)
-
-    def get_req_date_writable(self):
-        """ Whether Request Date should be manually editable """
-        return self.req.get("date_writable", True)
-
-    def get_req_status_writable(self):
-        """ Whether Request Status should be manually editable """
-        return self.req.get("status_writable", True)
-
-    def get_req_item_quantities_writable(self):
-        """ Whether Item Quantities should be manually editable """
-        return self.req.get("item_quantities_writable", False)
-
-    def get_req_skill_quantities_writable(self):
-        """ Whether People Quantities should be manually editable """
-        return self.req.get("skill_quantities_writable", False)
-
-    def get_req_summary(self):
-        # Whether to use Summary page for Requests
-        return self.req.get("summary", False)
-
-    def get_req_pack_values(self):
-        """
-            Do we show pack values in Requests?
-        """
-        return self.req.get("pack_values", True)
-
-    def get_req_multiple_req_items(self):
-        """
-            Can a Request have multiple line items?
-            - e.g. ICS says that each request should be just for items of a single Type
-        """
-        return self.req.get("multiple_req_items", True)
-
-    def get_req_show_quantity_transit(self):
-        return self.req.get("show_quantity_transit", True)
-
-    def get_req_inline_forms(self):
-        """
-            Whether Requests module should use inline forms for Items/Skills
-        """
-        return self.req.get("inline_forms", True)
-
-    def get_req_prompt_match(self):
-        """
-            Whether a Requester is prompted to match each line item in an Item request
-        """
-        return self.req.get("prompt_match", True)
-
-    #def get_req_summary(self):
-    #    """
-    #        Whether to use Summary Needs for Sites (Office/Facility currently):
-    #    """
-    #    return self.req.get("summary", False)
-
-    def get_req_use_commit(self):
-        """
-            Whether there is a Commit step in Requests Management
-        """
-        return self.req.get("use_commit", True)
-
-    def get_req_commit_people(self):
-        """
-            Whether Skills Requests should be Committed with Named Indviduals
-            or just Anonymous Skill
-
-            @ToDo: Make this do something
-        """
-        return self.req.get("commit_people", False)
-
-    def get_req_commit_value(self):
-        """
-            Whether Donations should have a Value field
-        """
-        return self.req.get("commit_value", False)
-
-    def get_req_commit_without_request(self):
-        """
-            Whether to allow Donations to be made without a matching Request
-        """
-        return self.req.get("commit_without_request", False)
-
-    def get_req_committer_is_author(self):
-        """ Whether the User Account logging the Commitment is normally the Committer """
-        return self.req.get("committer_is_author", True)
-
-    def get_req_ask_security(self):
-        """
-            Should Requests ask whether Security is required?
-        """
-        return self.req.get("ask_security", False)
-
-    def get_req_ask_transport(self):
-        """
-            Should Requests ask whether Transportation is required?
-        """
-        return self.req.get("ask_transport", False)
-
-    def get_req_items_ask_purpose(self):
-        """
-            Should Requests for Items ask for Purpose?
-        """
-        return self.req.get("items_ask_purpose", True)
-
-    def get_req_req_crud_strings(self, req_type=None):
-        return self.req.get("req_crud_strings") and \
-               self.req.req_crud_strings.get(req_type)
-
-    def get_req_use_req_number(self):
-        return self.req.get("use_req_number", True)
-
-    def get_req_generate_req_number(self):
-        return self.req.get("generate_req_number", True)
-
-    def get_req_form_name(self):
-        return self.req.get("req_form_name", "Requisition Form")
-
-    def get_req_shortname(self):
-        return self.req.get("req_shortname", "REQ")
-
-    def get_req_restrict_on_complete(self):
-        """
-            To restrict adding new commits to the Completed commits.
-        """
-        return self.req.get("req_restrict_on_complete", False)
-
-    def get_req_workflow(self):
-        """
-            Whether to use Workflow for Requests
-        """
-        return self.req.get("workflow", False)
-
-    # -------------------------------------------------------------------------
     # Supply
     #
     def get_supply_catalog_default(self):
@@ -6057,24 +6117,11 @@ class S3Config(Storage):
                  }
 
             Example:
-                settings.xforms.resources = [("Request", "req_req")]
+                settings.xforms.resources = [("Request", "inv_req")]
 
             @todo: move this documentation to the wiki?
         """
         return self.xforms.get("resources")
-
-    # -------------------------------------------------------------------------
-    # Frontpage Options
-    #
-    def get_frontpage(self, key=None, default=None):
-        """
-            Template-specific frontpage configuration options
-        """
-
-        if key:
-            return self.frontpage.get(key, default)
-        else:
-            return default
 
     # -------------------------------------------------------------------------
     # Custom template options

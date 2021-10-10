@@ -106,7 +106,7 @@
             tree.jstree({
                 'core': {
                     'themes': {
-                        name: 's3',
+                        //name: 'default', // 'default-dark' available, although not in our sources
                         icons: opts.icons,
                         stripes: opts.stripes
                     },
@@ -122,43 +122,44 @@
                            deletable = opts.deleteRoot;
                         }
 
-                        var items = {
-                            'open': {
-                                label: self.options.openLabel,
+                        var items = {};
+                        if (opts.openURL) {
+                            items.open = {
+                                label: opts.openLabel,
                                 action: function(obj) {
                                     self._openNode($node);
                                 },
                                 separator_after: true
                             }
-                        };
+                        }
 
                         // @todo: check permission for node and disable if forbidden
                         if (opts.editURL) {
                             items.edit = {
-                                label: self.options.editLabel,
+                                label: opts.editLabel,
                                 action: function(obj) {
                                     self._editNode($node);
-                                },
+                                }
                             }
                         }
 
                         // @todo: check permission for node and disable if forbidden
                         if (deletable && opts.deleteURL) {
                             items.delete = {
-                                label: self.options.deleteLabel,
+                                label: opts.deleteLabel,
                                 separator_after: true,
                                 action: function(obj) {
                                     self._deleteNode($node);
-                                },
+                                }
                             }
                         }
 
                         if (opts.addURL) {
                             items.add = {
-                                label: self.options.addLabel,
+                                label: opts.addLabel,
                                 action: function(obj) {
                                     self._addNode($node);
-                                },
+                                }
                             }
                         }
 
@@ -170,6 +171,24 @@
             });
 
             this._bindEvents();
+        },
+
+        /**
+         * Reload Tree
+         * - called from s3.popup.js after a new top-level node created
+         */
+        reload: function() {
+            // Load the data
+            var ajaxURL = this.options.ajaxURL.replace('json', 'tree'),
+                self = this;
+            $.getS3(ajaxURL, function (data) {
+
+                // Replace in the DOM
+                self.tree.html(data);
+
+                // Redraw the Tree
+                self.refresh();
+            }, 'html');
         },
 
         /**
@@ -209,7 +228,7 @@
                 ajaxURL = ajaxURL + '?node=' + record_id;
                 var tree = this.tree,
                     treeID = this.treeID;
-                $.getJSONS3(ajaxURL, function (data) {
+                $.getJSONS3(ajaxURL, function(data) {
                     if (data.label) {
                         tree.jstree('rename_node', node, data.label);
                     }
@@ -397,6 +416,7 @@
          * Unbind events (before refresh)
          */
         _unbindEvents: function() {
+            this.tree.jstree('destroy', 'true'); // true = keep_html
             return true;
         }
     });

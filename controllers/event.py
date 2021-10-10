@@ -6,17 +6,14 @@
     http://eden.sahanafoundation.org/wiki/BluePrintScenario
 """
 
-module = request.controller
-resourcename = request.function
-
-if not settings.has_module(module):
-    raise HTTP(404, body="Module disabled: %s" % module)
+if not settings.has_module(c):
+    raise HTTP(404, body="Module disabled: %s" % c)
 
 # -----------------------------------------------------------------------------
 def index():
     """ Module's Home Page """
 
-    return s3db.cms_index(module, alt_function="index_alt")
+    return s3db.cms_index(c, alt_function="index_alt")
 
 # -----------------------------------------------------------------------------
 def index_alt():
@@ -30,7 +27,9 @@ def index_alt():
 # -----------------------------------------------------------------------------
 def create():
     """ Redirect to event/create """
-    redirect(URL(f="event", args="create"))
+    redirect(URL(f = "event",
+                 args = "create",
+                 ))
 
 # -----------------------------------------------------------------------------
 def event():
@@ -48,7 +47,8 @@ def event():
                     if method != "update" and method != "read":
                         # Hide fields which don't make sense in a Create form
                         # inc list_create (list_fields over-rides)
-                        s3db.req_create_form_mods()
+                        from s3db.inv import inv_req_create_form_mods
+                        inv_req_create_form_mods(r)
 
                 #elif cname == "document":
                 #    # @ToDo: Filter Locations available based on Event Locations
@@ -68,8 +68,13 @@ def event():
                     s3.crud_strings["dc_response"].label_create = T("Add Assessment")
 
                 elif cname == "target":
-                    # @ToDo: Filter Locations available based on Event Locations
-                    #s3db.dc_target.location_id.default = r.record.location_id
+                    # Filter Locations available based on Event Locations
+                    ltable = s3db.event_event_location
+                    locations = db(ltable.event_id == r.id).select(ltable.location_id)
+                    if len(locations) == 1:
+                        s3db.dc_target.location_id.default = locations.first().location_id
+                    #else:
+                    #    # @ToDo: Filter to Event Locations
                     s3.crud_strings["dc_target"].label_create = T("Add Target")
 
             elif method in ("create", "list", "summary"):
@@ -86,7 +91,8 @@ def event():
         return True
     s3.prep = prep
 
-    return s3_rest_controller(rheader = s3db.event_rheader)
+    from s3db.event import event_rheader
+    return s3_rest_controller(rheader = event_rheader)
 
 # -----------------------------------------------------------------------------
 def event_location():
@@ -126,7 +132,8 @@ def incident():
                     if not r.method:
                         r.method = "assign"
                     if r.method == "assign":
-                        r.custom_action = s3db.hrm_AssignMethod(component="assign")
+                        r.custom_action = s3db.hrm_AssignMethod(component = "assign")
+
                 cname = r.component_name
                 if cname == "config":
                     s3db.configure("gis_config",
@@ -144,12 +151,23 @@ def incident():
                     except ValueError:
                         # Already removed
                         pass
+                    # @ToDo: PDF export of Single SitReps
+                    # - UI Button
+                    # - Custom layout
+                    # Remove PDF export of List of SitReps
+                    # - currently crashing when there is significant richtext content & an unlikely usecase
+                    export_formats = settings.ui.export_formats
+                    if not export_formats:
+                        export_formats = settings.get_ui_export_formats()
+                    if "pdf" in export_formats:
+                        export_formats = list(export_formats)
+                        export_formats.remove("pdf")
+                        settings.ui.export_formats = export_formats
 
                 elif cname in ("asset", "human_resource", "event_organisation", "organisation", "site"):
                     atable = s3db.table("budget_allocation")
                     if atable:
-                        field = atable.budget_entity_id
-                        field.readable = field.writable = True
+                        atable.budget_entity_id.default = r.record.budget_entity_id
 
                     #s3.crud.submit_button = T("Assign")
                     #s3.crud.submit_button = T("Add")
@@ -157,18 +175,11 @@ def incident():
 
                     if cname == "asset":
                         # Filter Assets by Item Type
-                        script = '''
-var fncRepresentAsset = function(record) {
- return record.number;
-}
-$.filterOptionsS3({
- 'trigger': 'item_id',
- 'target': 'asset_id',
- 'lookupPrefix': 'asset',
- 'lookupResource': 'asset',
- 'fncRepresent': fncRepresentAsset
-})'''
-                        s3.jquery_ready.append(script)
+                        s3.scripts.append("/%s/static/scripts/S3/s3.event_asset.js" % r.application)
+                        # Modify Popup URL
+                        s3db.event_asset.asset_id.comment.vars = {"prefix": "event",
+                                                                  "parent": "asset",
+                                                                  }
 
                     # Default Event in the link to that of the Incident
                     if cname == "event_organisation":
@@ -179,19 +190,11 @@ $.filterOptionsS3({
                         f = ltable.event_id
                         f.default = r.record.event_id
                         f.readable = f.writable = False
-                        if cname in ("asset", "human_resource"):
-                            # DateTime
-                            datetime_represent = s3base.S3DateTime.datetime_represent
-                            for f in (ltable.start_date, ltable.end_date):
-                                f.requires = IS_EMPTY_OR(IS_UTC_DATETIME())
-                                f.represent = lambda dt: datetime_represent(dt, utc=True)
-                                f.widget = S3CalendarWidget(timepicker = True)
 
                 elif cname == "incident_asset":
                     atable = s3db.table("budget_allocation")
                     if atable:
-                        field = atable.budget_entity_id
-                        field.readable = field.writable = True
+                        atable.budget_entity_id.default = r.record.budget_entity_id
 
                     #s3.crud.submit_button = T("Assign")
                     #s3.crud.submit_button = T("Add")
@@ -231,19 +234,23 @@ $.filterOptionsS3({
         if r.interactive:
             if r.component:
                 if r.component.name == "human_resource":
-                    #update_url = URL(c="hrm", f="human_resource", args=["[id]"])
+                    #update_url = URL(c="hrm", f="human_resource",
+                    #                 args = ["[id]"],
+                    #                 )
                     #s3_action_buttons(r, update_url=update_url)
                     s3_action_buttons(r)
                     if "msg" in settings.modules:
-                        s3base.S3CRUD.action_button(url = URL(f="compose",
-                                                              vars = {"hrm_id": "[id]"}),
+                        s3base.S3CRUD.action_button(url = URL(f = "compose",
+                                                              vars = {"hrm_id": "[id]"}
+                                                              ),
                                                     _class = "action-btn send",
-                                                    label = str(T("Send Notification")))
+                                                    label = s3_str(T("Send Notification")),
+                                                    )
         return output
     s3.postp = postp
 
-    output = s3_rest_controller(rheader = s3db.event_rheader)
-    return output
+    from s3db.event import event_rheader
+    return s3_rest_controller(rheader = event_rheader)
 
 # -----------------------------------------------------------------------------
 def incident_report():
@@ -254,22 +261,23 @@ def incident_report():
     def prep(r):
         if r.http == "GET":
             if r.method in ("create", "create.popup"):
+                get_vars_get = get_vars.get
                 # Lat/Lon from Feature?
                 # @ToDo: S3PoIWidget() instead to pickup the passed Lat/Lon/WKT
                 field = r.table.location_id
-                lat = get_vars.get("lat", None)
+                lat = get_vars_get("lat", None)
                 if lat is not None:
                     lon = get_vars.get("lon", None)
                     if lon is not None:
                         form_vars = Storage(lat = float(lat),
                                             lon = float(lon),
                                             )
-                        form = Storage(vars=form_vars)
+                        form = Storage(vars = form_vars)
                         s3db.gis_location_onvalidation(form)
                         location_id = s3db.gis_location.insert(**form_vars)
                         field.default = location_id
                 # WKT from Feature?
-                wkt = get_vars.get("wkt", None)
+                wkt = get_vars_get("wkt", None)
                 if wkt is not None:
                     form_vars = Storage(wkt = wkt,
                                         )
@@ -277,6 +285,14 @@ def incident_report():
                     s3db.gis_location_onvalidation(form)
                     location_id = s3db.gis_location.insert(**form_vars)
                     field.default = location_id
+                # Incident Type from caller?
+                incident_type = get_vars_get("incident_type", None)
+                if incident_type is not None:
+                    ttable = s3db.event_incident_type
+                    incident_type = db(ttable.name == incident_type).select(ttable.id,
+                                                                            limitby = (0, 1),
+                                                                            ).first()
+                    r.table.incident_type_id.default = incident_type.id
 
         return True
     s3.prep = prep
@@ -298,7 +314,8 @@ def job_title():
         msg_record_created = T("Position added"),
         msg_record_modified = T("Position updated"),
         msg_record_deleted = T("Position removed"),
-        msg_list_empty = T("No Positions currently registered"))
+        msg_list_empty = T("No Positions currently registered"),
+        )
 
     def prep(r):
         # Default / Hide type
@@ -314,8 +331,8 @@ def job_title():
             # Export format should match Import format
             current.messages["NONE"] = ""
             #f.represent = \
-            #    s3db.org_OrganisationRepresent(acronym=False,
-            #                                   parent=False)
+            #    s3db.org_OrganisationRepresent(acronym = False,
+            #                                   parent = False)
             #f.label = None
             table.comments.label = None
             table.comments.represent = lambda v: v or ""
@@ -356,7 +373,7 @@ def sitrep():
                     (stable.template_id == ttable.id) & \
                     (ttable.table_id == dtable.id)
             template = db(query).select(dtable.name,
-                                        limitby=(0, 1),
+                                        limitby = (0, 1),
                                         ).first()
             try:
                 dtablename = template.name
@@ -391,12 +408,14 @@ def sitrep():
                 #)
 
                 # Custom Form with Questions & Subheadings sorted correctly
-                s3db.dc_answer_form(r, tablename)
+                from s3db.dc import dc_answer_form
+                dc_answer_form(r, tablename)
 
         return True
     s3.prep = prep
 
-    return s3_rest_controller(rheader = s3db.event_rheader)
+    from s3db.event import event_rheader
+    return s3_rest_controller(rheader = event_rheader)
 
 # -----------------------------------------------------------------------------
 def template():
@@ -407,41 +426,10 @@ def template():
 
     s3db.dc_template.master.default = "event_sitrep"
 
+    from s3db.dc import dc_rheader
     return s3_rest_controller("dc", "template",
-                              rheader = s3db.dc_rheader,
+                              rheader = dc_rheader,
                               )
-
-# -----------------------------------------------------------------------------
-def resource():
-    """
-        RESTful CRUD controller
-    """
-
-    def prep(r):
-        if r.interactive:
-            if r.method in ("create", "update"):
-                table = r.table
-                if r.method == "create":
-                    # Enable Location field
-                    field = table.location_id
-                    field.readable = field.writable = True
-
-                get_vars = r.get_vars
-                # Context from a Profile page?"
-                #location_id = get_vars.get("(location)")
-                #if location_id:
-                #    field = table.location_id
-                #    field.default = location_id
-                #    field.readable = field.writable = False
-                incident_id = get_vars.get("~.(incident)")
-                if incident_id:
-                    field = table.incident_id
-                    field.default = incident_id
-                    field.readable = field.writable = False
-        return True
-    s3.prep = prep
-
-    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def person():
@@ -520,6 +508,34 @@ def organisation():
     return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
+def asset():
+    """ RESTful CRUD controller for options.s3json lookups """
+
+    if auth.permission.format != "s3json":
+        return ""
+
+    # Pre-process
+    def prep(r):
+        if r.method != "options":
+            return False
+        item_id = r.get_vars.get("item_id")
+        if item_id:
+            # e.g. Coming from event_asset form in Incident Action Plan
+            requires = r.table.asset_id.requires
+            if hasattr(requires, 'other'):
+                requires.other.set_filter(filterby = "item_id",
+                                          filter_opts = [item_id],
+                                          )
+            else:
+                requires.set_filter(filterby = "item_id",
+                                    filter_opts = [item_id],
+                                    )
+        return True
+    s3.prep = prep
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
 def compose():
     """ Send message to people/teams """
 
@@ -538,7 +554,7 @@ def compose():
         redirect(URL(f="index"))
 
     pe = db(pe_id_query).select(table.pe_id,
-                                limitby=(0, 1),
+                                limitby = (0, 1),
                                 ).first()
     if not pe:
         session.error = T("Record not found")
@@ -549,8 +565,8 @@ def compose():
     # Get the individual's communications options & preference
     table = s3db.pr_contact
     contact = db(table.pe_id == pe_id).select(table.contact_method,
-                                              orderby="priority",
-                                              limitby=(0, 1),
+                                              orderby = "priority",
+                                              limitby = (0, 1),
                                               ).first()
     if contact:
         s3db.msg_outbox.contact_method.default = contact.contact_method
@@ -559,13 +575,15 @@ def compose():
         redirect(URL(f="index"))
 
     # URL to redirect to after message sent
-    url = URL(c = module,
+    url = URL(c = "event",
               f = "compose",
               vars = {fieldname: hrm_id},
               )
 
     # Create the form
-    output = msg.compose(recipient=pe_id, url=url)
+    output = msg.compose(recipient = pe_id,
+                         url = url,
+                         )
 
     output["title"] = title
     response.view = "msg/compose.html"

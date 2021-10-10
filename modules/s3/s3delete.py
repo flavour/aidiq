@@ -47,7 +47,11 @@ class S3Delete(object):
         Process to delete/archive records in a S3Resource
     """
 
-    def __init__(self, resource, archive=None, representation=None):
+    def __init__(self,
+                 resource,
+                 archive = None,
+                 representation = None,
+                 ):
         """
             Constructor
 
@@ -91,7 +95,11 @@ class S3Delete(object):
         self.permission_error = False
 
     # -------------------------------------------------------------------------
-    def __call__(self, cascade=False, replaced_by=None, skip_undeletable=False):
+    def __call__(self,
+                 cascade = False,
+                 replaced_by = None,
+                 skip_undeletable = False,
+                 ):
         """
             Main deletion process, deletes/archives all records
             in the resource
@@ -121,7 +129,8 @@ class S3Delete(object):
         rows = self.extract()
         if not rows:
             # No rows to delete
-            # => not an error, but log anyway to assist caller debugging
+            # => not always an error (caller must decide this)
+            #    log anyway to assist caller debugging
             if not cascade:
                 current.log.debug("Delete %s: no rows found" % tablename)
             return 0

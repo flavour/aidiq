@@ -46,12 +46,15 @@ import sys
 #import logging
 
 from collections import OrderedDict
-
+from http import cookies as Cookie
+from io import StringIO
 try:
     from lxml import etree # Needed to follow NetworkLinks
 except ImportError:
     sys.stderr.write("ERROR: lxml module needed for XML handling\n")
     raise
+from urllib.parse import quote as urllib_quote
+from urllib.error import HTTPError, URLError
 
 KML_NAMESPACE = "http://earth.google.com/kml/2.2"
 
@@ -65,7 +68,6 @@ from gluon.languages import lazyT, regex_translate
 from gluon.settings import global_settings
 from gluon.storage import Storage
 
-from s3compat import Cookie, HTTPError, StringIO, URLError, basestring, urllib_quote
 from s3dal import Rows
 from .s3datetime import s3_format_datetime, s3_parse_datetime
 from .s3fields import s3_all_meta_field_names
@@ -738,7 +740,7 @@ class GIS(object):
             else:
                 table = current.s3db.gis_location
                 query = (table.level != None) & \
-                        (table.deleted != True)
+                        (table.deleted == False)
                 if current.deployment_settings.get_gis_spatialdb():
                     point = "POINT (%s %s)" % (lon, lat)
                     query &= (table.the_geom.st_intersects(point))
@@ -955,6 +957,7 @@ class GIS(object):
         wkt = feature.wkt
 
         query = (table.level == level) & \
+                (table.deleted == False) & \
                 (table.id != location_id)
         if SPATIAL:
             query &= (table.the_geom.st_intersects(wkt))
@@ -997,7 +1000,7 @@ class GIS(object):
                         nappend(row.id)
                 except ReadingError:
                     current.log.error("Error reading wkt of location with id",
-                                      value=row.id)
+                                      value = row.id)
 
         return neighbours
 
@@ -1036,7 +1039,8 @@ class GIS(object):
                                                table.lon_min,
                                                table.lat_min,
                                                table.lon_max,
-                                               table.lat_max).first()
+                                               table.lat_max,
+                                               ).first()
         if parent.lon_min is None or \
            parent.lon_max is None or \
            parent.lat_min is None or \
@@ -1051,7 +1055,8 @@ class GIS(object):
                                                               table.lon_min,
                                                               table.lat_min,
                                                               table.lon_max,
-                                                              table.lat_max).first()
+                                                              table.lat_max,
+                                                              ).first()
                     return L0.lat_min, L0.lon_min, L0.lat_max, L0.lon_max, L0.name
             if parent.path:
                 path = parent.path
@@ -1070,7 +1075,8 @@ class GIS(object):
                                                               table.lat_min,
                                                               table.lon_max,
                                                               table.lat_max,
-                                                              orderby=table.level)
+                                                              orderby = table.level,
+                                                              )
                 row_list = rows.as_list()
                 row_list.reverse()
                 ok = False
@@ -1149,7 +1155,8 @@ class GIS(object):
         query &= ((path.like(term + "/%")) | \
                   (path.like("%/" + term + "/%")))
         children = db(query).select(table.id,
-                                    table.name)
+                                    table.name,
+                                    )
         return children
 
     # -------------------------------------------------------------------------
@@ -1212,7 +1219,7 @@ class GIS(object):
             table = s3db.gis_location
             query = (table.id.belongs(path_list))
             fields = [table.id, table.name, table.level, table.lat, table.lon]
-            unordered_parents = current.db(query).select(cache=s3db.cache,
+            unordered_parents = current.db(query).select(cache = s3db.cache,
                                                          *fields)
 
             # Reorder parents in order of reversed path.
@@ -1227,9 +1234,10 @@ class GIS(object):
 
     # -------------------------------------------------------------------------
     def get_parent_per_level(self, results, feature_id,
-                             feature=None,
-                             ids=True,
-                             names=True):
+                             feature = None,
+                             ids = True,
+                             names = True,
+                             ):
         """
             Adds ancestor of requested feature for each level to supplied dict.
 
@@ -1708,7 +1716,7 @@ class GIS(object):
                     levels[key] = COUNTRY
                 elif key in row and row[key]:
                     # Only include rows with values
-                    levels[key] = str(T(row[key]))
+                    levels[key] = s3_str(T(row[key]))
             if not _location:
                 # Cache the value
                 self.hierarchy_levels = levels
@@ -2297,7 +2305,8 @@ class GIS(object):
                                            locations.lat_min,
                                            locations.lon_min,
                                            locations.lat_max,
-                                           locations.lon_max)
+                                           locations.lon_max,
+                                           )
             else:
                 # Lookup the raw Locations
                 records = db(query).select(locations.id,
@@ -2308,7 +2317,8 @@ class GIS(object):
                                            locations.lat_min,
                                            locations.lon_min,
                                            locations.lat_max,
-                                           locations.lon_max)
+                                           locations.lon_max,
+                                           )
             features = Rows()
             for row in records:
                 # Calculate the Great Circle distance
@@ -2316,12 +2326,14 @@ class GIS(object):
                     distance = self.greatCircleDistance(lat,
                                                         lon,
                                                         row["gis_location.lat"],
-                                                        row["gis_location.lon"])
+                                                        row["gis_location.lon"],
+                                                        )
                 else:
                     distance = self.greatCircleDistance(lat,
                                                         lon,
                                                         row.lat,
-                                                        row.lon)
+                                                        row.lon,
+                                                        )
                 if distance < radius:
                     features.records.append(row)
                 else:
@@ -2348,7 +2360,8 @@ class GIS(object):
                                                     table.lon,
                                                     table.parent,
                                                     table.path,
-                                                    limitby = (0, 1)).first()
+                                                    limitby = (0, 1)
+                                                    ).first()
 
         # Zero is an allowed value, hence explicit test for None.
         if "lon" in feature and "lat" in feature and \
@@ -2436,15 +2449,16 @@ class GIS(object):
                         output[key] = [row.wkt]
         else:
             rows = db(query).select(table.id,
-                                    gtable.wkt)
+                                    gtable.wkt,
+                                    )
             simplify = GIS.simplify
             if geojson:
                 # Simplify the polygon to reduce download size
                 if join:
                     for row in rows:
                         g = simplify(row["gis_location"].wkt,
-                                     tolerance=tolerance,
-                                     output="geojson")
+                                     tolerance = tolerance,
+                                     output = "geojson")
                         if g:
                             key = row[tablename].id
                             if key in output:
@@ -2455,8 +2469,8 @@ class GIS(object):
                     # gis_location: always single
                     for row in rows:
                         g = simplify(row.wkt,
-                                     tolerance=tolerance,
-                                     output="geojson")
+                                     tolerance = tolerance,
+                                     output = "geojson")
                         if g:
                             output[row.id] = g
 
@@ -2528,10 +2542,10 @@ class GIS(object):
                 message = "Too Many Records"
                 status = 509
                 raise HTTP(status,
-                           body=current.xml.json_message(success=False,
-                                                         statuscode=status,
-                                                         message=message),
-                           web2py_error=message,
+                           body = current.xml.json_message(success = False,
+                                                           statuscode = status,
+                                                           message = message),
+                           web2py_error = message,
                            **headers)
             # Lookups per layer not per record
             if len(tablename) > 19 and \
@@ -2752,7 +2766,8 @@ class GIS(object):
                         #((stable.config_id == config.id) |
                         # (stable.config_id == None))
                 rows = db(query).select(stable.record_id,
-                                        stable.style)
+                                        stable.style,
+                                        )
                 for row in rows:
                     styles[row.record_id] = json.dumps(row.style, separators=SEPARATORS)
 
@@ -2791,8 +2806,9 @@ class GIS(object):
                 # This table isn't trackable
                 pass
             else:
-                _latlons = tracker.get_location(_fields=[gtable.lat,
-                                                         gtable.lon],
+                _latlons = tracker.get_location(_fields = [gtable.lat,
+                                                           gtable.lon,
+                                                           ],
                                                 empty = False,
                                                 )
                 index = 0
@@ -2858,7 +2874,8 @@ class GIS(object):
                 # Points
                 rows = db(query).select(table.id,
                                         gtable.lat,
-                                        gtable.lon)
+                                        gtable.lon,
+                                        )
                 #if custom:
                 #    # Add geoJSONs
                 #elif join:
@@ -2938,8 +2955,9 @@ class GIS(object):
                                       mtable.width,
                                       ftable.style_default,
                                       stable.gps_marker,
-                                      left=left,
-                                      orderby=orderby)
+                                      left = left,
+                                      orderby = orderby,
+                                      )
             if len(layers) > 1:
                 layers.exclude(lambda row: row["gis_layer_feature.style_default"] == False)
             if len(layers) == 1:
@@ -2975,8 +2993,8 @@ class GIS(object):
 
         style = None
         if layer_id:
-            style = Style(layer_id=layer_id,
-                          aggregate=aggregate).as_dict()
+            style = Style(layer_id = layer_id,
+                          aggregate = aggregate).as_dict()
 
         if not style:
             # Default
@@ -3240,7 +3258,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         #else:
         rows = current.db(query).select(table.id,
                                         gtable.level,
-                                        gtable.wkt)
+                                        gtable.wkt,
+                                        )
         simplify = GIS.simplify
         tolerance = {"L0": 0.01,
                      "L1": 0.005,
@@ -3253,8 +3272,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             grow = row.gis_location
             # Simplify the polygon to reduce download size
             geojson = simplify(grow.wkt,
-                               tolerance=tolerance[grow.level],
-                               output="geojson")
+                               tolerance = tolerance[grow.level],
+                               output = "geojson")
             if geojson:
                 geojsons[row["gis_theme_data.id"]] = geojson
 
@@ -3373,11 +3392,11 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def export_admin_areas(countries=[],
-                           levels=("L0", "L1", "L2", "L3"),
-                           format="geojson",
-                           simplify=0.01,
-                           precision=4,
+    def export_admin_areas(countries = [],
+                           levels = ("L0", "L1", "L2", "L3"),
+                           format = "geojson",
+                           simplify = 0.01,
+                           precision = 4,
                            ):
         """
             Export admin areas to /static/cache for use by interactive web-mapping services
@@ -3405,7 +3424,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             # All countries
             cquery = (table.level == "L0") & \
                      (table.end_date == None) & \
-                     (table.deleted != True)
+                     (table.deleted == False)
 
         if current.deployment_settings.get_gis_spatialdb():
             spatial = True
@@ -3447,7 +3466,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     field = _field.st_asgeojson(precision=_decimals).with_alias("geojson")
 
             countries = db(cquery).select(ifield,
-                                          field)
+                                          field,
+                                          )
             for row in countries:
                 if spatial:
                     id = row["gis_location"].id
@@ -3456,12 +3476,14 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     id = row.id
                     wkt = row.wkt
                     if wkt:
-                        geojson = _simplify(wkt, tolerance=simplify,
-                                            precision=_decimals,
-                                            output="geojson")
+                        geojson = _simplify(wkt,
+                                            tolerance = simplify,
+                                            precision = _decimals,
+                                            output = "geojson")
                     else:
                         name = db(table.id == id).select(table.name,
-                                                         limitby = (0, 1)).first().name
+                                                         limitby = (0, 1)
+                                                         ).first().name
                         sys.stderr.write("No WKT: L0 %s %s\n" % (name, id))
                         continue
                 else:
@@ -3487,16 +3509,16 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 File.close()
 
         q1 = (table.level == "L1") & \
-             (table.deleted != True) & \
+             (table.deleted == False) & \
              (table.end_date == None)
         q2 = (table.level == "L2") & \
-             (table.deleted != True) & \
+             (table.deleted == False) & \
              (table.end_date == None)
         q3 = (table.level == "L3") & \
-             (table.deleted != True) & \
+             (table.deleted == False) & \
              (table.end_date == None)
         q4 = (table.level == "L4") & \
-             (table.deleted != True) & \
+             (table.deleted == False) & \
              (table.end_date == None)
 
         if "L1" in levels:
@@ -3525,12 +3547,14 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                         id = row.id
                         wkt = row.wkt
                         if wkt:
-                            geojson = _simplify(wkt, tolerance=simplify,
-                                                precision=precision,
-                                                output="geojson")
+                            geojson = _simplify(wkt,
+                                                tolerance = simplify,
+                                                precision = precision,
+                                                output = "geojson")
                         else:
                             name = db(table.id == id).select(table.name,
-                                                             limitby = (0, 1)).first().name
+                                                             limitby = (0, 1)
+                                                             ).first().name
                             sys.stderr.write("No WKT: L1 %s %s\n" % (name, id))
                             continue
                     else:
@@ -3586,12 +3610,14 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                             id = row.id
                             wkt = row.wkt
                             if wkt:
-                                geojson = _simplify(wkt, tolerance=simplify,
-                                                    precision=precision,
-                                                    output="geojson")
+                                geojson = _simplify(wkt,
+                                                    tolerance = simplify,
+                                                    precision = precision,
+                                                    output = "geojson")
                             else:
                                 name = db(table.id == id).select(table.name,
-                                                                 limitby = (0, 1)).first().name
+                                                                 limitby = (0, 1)
+                                                                 ).first().name
                                 sys.stderr.write("No WKT: L2 %s %s\n" % (name, id))
                                 continue
                         else:
@@ -3650,12 +3676,14 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                 id = row.id
                                 wkt = row.wkt
                                 if wkt:
-                                    geojson = _simplify(wkt, tolerance=simplify,
-                                                        precision=precision,
-                                                        output="geojson")
+                                    geojson = _simplify(wkt,
+                                                        tolerance = simplify,
+                                                        precision = precision,
+                                                        output = "geojson")
                                 else:
                                     name = db(table.id == id).select(table.name,
-                                                                     limitby = (0, 1)).first().name
+                                                                     limitby = (0, 1)
+                                                                     ).first().name
                                     sys.stderr.write("No WKT: L3 %s %s\n" % (name, id))
                                     continue
                             else:
@@ -3717,12 +3745,14 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                     id = row.id
                                     wkt = row.wkt
                                     if wkt:
-                                        geojson = _simplify(wkt, tolerance=simplify,
-                                                            precision=precision,
-                                                            output="geojson")
+                                        geojson = _simplify(wkt,
+                                                            tolerance = simplify,
+                                                            precision = precision,
+                                                            output = "geojson")
                                     else:
                                         name = db(table.id == id).select(table.name,
-                                                                         limitby = (0, 1)).first().name
+                                                                         limitby = (0, 1)
+                                                                         ).first().name
                                         sys.stderr.write("No WKT: L4 %s %s\n" % (name, id))
                                         continue
                                 else:
@@ -3751,9 +3781,9 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
     # -------------------------------------------------------------------------
     def import_admin_areas(self,
-                           source="gadmv1",
-                           countries=[],
-                           levels=["L0", "L1", "L2"]
+                           source = "gadmv1",
+                           countries = [],
+                           levels = ["L0", "L1", "L2"]
                           ):
         """
            Import Admin Boundaries into the Locations table
@@ -4226,7 +4256,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             parent = db(query).select(table.id,
                                       ttable.value,
                                       limitby = (0, 1),
-                                      cache=cache).first()
+                                      cache = cache,
+                                      ).first()
             if not parent:
                 # Skip locations for which we don't have a valid parent
                 current.log.warning("Skipping - cannot find parent with key: %s, value: %s" % \
@@ -4244,7 +4275,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 else:
                     # Check grandparent
                     country = self.get_parent_country(parent.id,
-                                                      key_type="code")
+                                                      key_type = "code")
                     if country not in countries:
                         count += 1
                         continue
@@ -4261,18 +4292,21 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 if geom.GetGeometryType() == ogr.wkbPoint:
                     lat = geom.GetX()
                     lon = geom.GetY()
-                    id = table.insert(name=name,
-                                      level=level,
-                                      gis_feature_type=1,
-                                      lat=lat,
-                                      lon=lon,
-                                      parent=parent.id)
-                    ttable.insert(location_id = id,
+                    location_id = table.insert(name = name,
+                                               level = level,
+                                               gis_feature_type = 1,
+                                               lat = lat,
+                                               lon = lon,
+                                               parent = parent.id,
+                                               )
+                    ttable.insert(location_id = location_id,
                                   tag = edenCodeField,
-                                  value = code)
-                    # ttable.insert(location_id = id,
-                                  # tag = "area",
-                                  # value = area)
+                                  value = code,
+                                  )
+                    #ttable.insert(location_id = location_id,
+                    #              tag = "area",
+                    #              value = area,
+                    #              )
                 else:
                     wkt = geom.ExportToWkt()
                     if wkt.startswith("LINESTRING"):
@@ -4287,17 +4321,20 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                         gis_feature_type = 6
                     elif wkt.startswith("GEOMETRYCOLLECTION"):
                         gis_feature_type = 7
-                    id = table.insert(name=name,
-                                      level=level,
-                                      gis_feature_type=gis_feature_type,
-                                      wkt=wkt,
-                                      parent=parent.id)
-                    ttable.insert(location_id = id,
+                    location_id = table.insert(name = name,
+                                               level = level,
+                                               gis_feature_type = gis_feature_type,
+                                               wkt = wkt,
+                                               parent = parent.id,
+                                               )
+                    ttable.insert(location_id = location_id,
                                   tag = edenCodeField,
-                                  value = code)
-                    # ttable.insert(location_id = id,
-                                  # tag = "area",
-                                  # value = area)
+                                  value = code,
+                                  )
+                    #ttable.insert(location_id = location_id,
+                    #              tag = "area",
+                    #              value = area,
+                    #              )
             else:
                 current.log.debug("No geometry\n")
 
@@ -4598,23 +4635,25 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         deleted = (table.deleted == False)
         query = deleted & (table.level == parent_level)
         # Do the DB query once (outside loop)
-        all_parents = db(query).select(table.wkt,
+        all_parents = db(query).select(table.id,
+                                       table.wkt,
                                        table.lon_min,
                                        table.lon_max,
                                        table.lat_min,
                                        table.lat_max,
-                                       table.id)
+                                       )
         if not all_parents:
             # No locations in the parent level found
             # - use the one higher instead
             parent_level = "L" + str(int(parent_level[1:]) + 1)
             query = deleted & (table.level == parent_level)
-            all_parents = db(query).select(table.wkt,
+            all_parents = db(query).select(table.id,
+                                           table.wkt,
                                            table.lon_min,
                                            table.lon_max,
                                            table.lat_min,
                                            table.lat_max,
-                                           table.id)
+                                           )
 
         # Parse File
         current_row = 0
@@ -4675,19 +4714,21 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                         current.log.error("Error reading wkt of location with id", row.id)
 
                 # Add entry to database
-                new_id = table.insert(name=name,
-                                      level=level,
-                                      parent=parent,
-                                      lat=lat,
-                                      lon=lon,
-                                      wkt=wkt,
-                                      lon_min=lon_min,
-                                      lon_max=lon_max,
-                                      lat_min=lat_min,
-                                      lat_max=lat_max)
-                ttable.insert(location_id=new_id,
-                              tag="geonames",
-                              value=geonameid)
+                location_id = table.insert(name = name,
+                                           level = level,
+                                           parent = parent,
+                                           lat = lat,
+                                           lon = lon,
+                                           wkt = wkt,
+                                           lon_min = lon_min,
+                                           lon_max = lon_max,
+                                           lat_min = lat_min,
+                                           lat_max = lat_max,
+                                           )
+                ttable.insert(location_id = location_id,
+                              tag = "geonames",
+                              value = geonameid,
+                              )
             else:
                 continue
 
@@ -4797,7 +4838,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                   table.lat,
                   table.lon,
                   table.wkt,
-                  table.inherited
+                  table.inherited,
                   )
 
         # ---------------------------------------------------------------------
@@ -7381,11 +7422,11 @@ class MAP2(DIV):
 
         # Load CSS now as too late in xml()
         stylesheets = current.response.s3.stylesheets
-        stylesheet = "gis/ol6.css"
+        stylesheet = "gis/ol.css"
         if stylesheet not in stylesheets:
             stylesheets.append(stylesheet)
         # @ToDo: Move this to Theme
-        stylesheet = "gis/ol6_popup.css"
+        stylesheet = "gis/ol_popup.css"
         if stylesheet not in stylesheets:
             stylesheets.append(stylesheet)
 
@@ -7622,7 +7663,8 @@ class MAP2(DIV):
                                   left = left,
                                   limitby = limitby,
                                   orderby = orderby,
-                                  *fields)
+                                  *fields
+                                  )
         if not layers:
             # Use Site Default base layer
             # (Base layer doesn't need a style)
@@ -7716,7 +7758,7 @@ class MAP2(DIV):
             # No Map Config: Just show error in the DIV
             auth = current.auth
 
-            if auth.s3_has_permission("create", "gis_hierarchy"):
+            if auth.s3_has_permission("create", "gis_config"):
                 error_message = DIV(_class = "mapError")
                 # Deliberately not T() to save unneccessary load on translators
                 error_message.append("Map cannot display without GIS config!")
@@ -8136,7 +8178,7 @@ def addFeatureResources(feature_resources):
                 # i18n
                 items = regex_translate.findall(popup_format)
                 for item in items:
-                    titem = str(T(item[1:-1]))
+                    titem = s3_str(T(item[1:-1]))
                     popup_format = popup_format.replace("T(%s)" % item,
                                                         titem)
             _layer["popup_format"] = popup_format
@@ -8237,7 +8279,7 @@ class Layer(object):
                 style = row.get("gis_style", None)
                 if style:
                     style_dict = style.style
-                    if isinstance(style_dict, basestring):
+                    if isinstance(style_dict, str):
                         # Matryoshka (=double-serialized JSON)?
                         # - should no longer happen, but a (now-fixed) bug
                         #   regularly produced double-serialized JSON, so
@@ -8273,7 +8315,7 @@ class Layer(object):
                     record["cluster_distance"] = CLUSTER_DISTANCE
                     record["cluster_threshold"] = CLUSTER_THRESHOLD
                     # Default Marker?
-                    record["marker"] = Marker(tablename=tablename)
+                    record["marker"] = Marker(tablename = tablename)
 
             if metadata:
                 post_id = row.get("cms_post_layer.post_id", None)
@@ -8440,29 +8482,32 @@ class LayerBing(Layer):
     def as_dict(self, options=None):
         sublayers = self.sublayers
         if sublayers:
+
             if Projection().epsg != 900913:
+                # Raising exception prevents Map from loading in debug mode, otherwise just logs error
                 raise Exception("Cannot display Bing layers unless we're using the Spherical Mercator Projection\n")
+
             apikey = current.deployment_settings.get_gis_api_bing()
             if not apikey:
+                # Raising exception prevents Map from loading in debug mode, otherwise just logs error
                 raise Exception("Cannot display Bing layers unless we have an API key\n")
-            # Mandatory attributes
-            ldict = {"ApiKey": apikey
+
+            # Global attributes
+            layers = []
+            ldict = {"a": apikey,
+                     "l": layers,
                      }
 
             for sublayer in sublayers:
-                # Attributes which are defaulted client-side if not set
+                layer = {"i": sublayer.layer_id,
+                         "n": sublayer.name,
+                         "t": sublayer.type,
+                         }
                 if sublayer._base:
                     # Set default Base layer
-                    ldict["Base"] = sublayer.type
-                if sublayer.type == "aerial":
-                    ldict["Aerial"] = {"name": sublayer.name or "Bing Satellite",
-                                       "id": sublayer.layer_id}
-                elif sublayer.type == "road":
-                    ldict["Road"] = {"name": sublayer.name or "Bing Roads",
-                                     "id": sublayer.layer_id}
-                elif sublayer.type == "hybrid":
-                    ldict["Hybrid"] = {"name": sublayer.name or "Bing Hybrid",
-                                       "id": sublayer.layer_id}
+                    layer["b"] = 1
+                layers.append(layer)
+
             if options:
                 # Used by Map._setup()
                 options[self.dictname] = ldict
@@ -8604,7 +8649,7 @@ class LayerFeature(Layer):
                     T = current.T
                     items = regex_translate.findall(popup_format)
                     for item in items:
-                        titem = str(T(item[1:-1]))
+                        titem = s3_str(T(item[1:-1]))
                         popup_format = popup_format.replace("T(%s)" % item,
                                                             titem)
                 output["popup_format"] = popup_format
@@ -8678,7 +8723,7 @@ class LayerGeoJSON(Layer):
                     T = current.T
                     items = regex_translate.findall(popup_format)
                     for item in items:
-                        titem = str(T(item[1:-1]))
+                        titem = s3_str(T(item[1:-1]))
                         popup_format = popup_format.replace("T(%s)" % item,
                                                             titem)
                 output["popup_format"] = popup_format
@@ -8795,82 +8840,56 @@ class LayerGoogle(Layer):
     def as_dict(self, options=None):
         sublayers = self.sublayers
         if sublayers:
-            T = current.T
-            spherical_mercator = (Projection().epsg == 900913)
-            settings = current.deployment_settings
-            apikey = settings.get_gis_api_google()
+
+            if Projection().epsg != 900913:
+                # Raising exception prevents Map from loading in debug mode, otherwise just logs error
+                raise Exception("Cannot display Google layers unless we're using the Spherical Mercator Projection\n")
+
+            apikey = current.deployment_settings.get_gis_api_google()
+            if not apikey:
+                # Raising exception prevents Map from loading in debug mode, otherwise just logs error
+                raise Exception("Cannot display Google layers unless we have an API key\n")
+
             s3 = current.response.s3
-            debug = s3.debug
             # Google scripts use document.write so cannot be loaded async via yepnope.js
-            s3_scripts = s3.scripts
+            # v3 API
+            # https://developers.google.com/maps/documentation/javascript/versions
+            script = "//maps.google.com/maps/api/js?v=quarterly&key=%s" % apikey
+            if script not in s3.scripts:
+                s3.scripts.append(script)
+            if self.openlayers > 2:
+                # OL6 only
+                # https://github.com/mapgears/ol3-google-maps
+                #if script not in s3.scripts:
+                #    s3.scripts.append(script)
+                stylesheet = "gis/olgm.css"
+                if stylesheet not in s3.stylesheets:
+                    s3.stylesheets.append(stylesheet)
 
-            ldict = {}
-
-            if spherical_mercator:
-                # Earth was the only layer which can run in non-Spherical Mercator
-                # @ToDo: Warning?
-                for sublayer in sublayers:
-                    # Attributes which are defaulted client-side if not set
-                    #if sublayer.type == "earth":
-                    #    # Deprecated:
-                    #    # https://maps-apis.googleblog.com/2014/12/announcing-deprecation-of-google-earth.html
-                    #    ldict["Earth"] = str(T("Switch to 3D"))
-                    #    #{"modules":[{"name":"earth","version":"1"}]}
-                    #    script = "//www.google.com/jsapi?key=" + apikey + "&autoload=%7B%22modules%22%3A%5B%7B%22name%22%3A%22earth%22%2C%22version%22%3A%221%22%7D%5D%7D"
-                    #    if script not in s3_scripts:
-                    #        s3_scripts.append(script)
-                    #    # Dynamic Loading not supported: https://developers.google.com/loader/#Dynamic
-                    #    #s3.jquery_ready.append('''try{google.load('earth','1')catch(e){}''')
-                    #    if debug:
-                    #        self.scripts.append("gis/gxp/widgets/GoogleEarthPanel.js")
-                    #    else:
-                    #        self.scripts.append("gis/gxp/widgets/GoogleEarthPanel.min.js")
-                    #    s3.js_global.append('''S3.public_url="%s"''' % settings.get_base_public_url())
-                    if sublayer._base:
-                        # Set default Base layer
-                        ldict["Base"] = sublayer.type
-                    if sublayer.type == "satellite":
-                        ldict["Satellite"] = {"name": sublayer.name or "Google Satellite",
-                                              "id": sublayer.layer_id}
-                    elif sublayer.type == "maps":
-                        ldict["Maps"] = {"name": sublayer.name or "Google Maps",
-                                         "id": sublayer.layer_id}
-                    elif sublayer.type == "hybrid":
-                        ldict["Hybrid"] = {"name": sublayer.name or "Google Hybrid",
-                                           "id": sublayer.layer_id}
-                    elif sublayer.type == "streetview":
-                        ldict["StreetviewButton"] = "Click where you want to open Streetview"
-                    elif sublayer.type == "terrain":
-                        ldict["Terrain"] = {"name": sublayer.name or "Google Terrain",
-                                            "id": sublayer.layer_id}
-                    elif sublayer.type == "mapmaker":
-                        ldict["MapMaker"] = {"name": sublayer.name or "Google MapMaker",
-                                             "id": sublayer.layer_id}
-                    elif sublayer.type == "mapmakerhybrid":
-                        ldict["MapMakerHybrid"] = {"name": sublayer.name or "Google MapMaker Hybrid",
-                                                   "id": sublayer.layer_id}
-
-                if "MapMaker" in ldict or "MapMakerHybrid" in ldict:
-                    # Need to use v2 API
-                    # This should be able to be fixed in OpenLayers now since Google have fixed in v3 API:
-                    # http://code.google.com/p/gmaps-api-issues/issues/detail?id=2349#c47
-                    script = "//maps.google.com/maps?file=api&v=2&key=%s" % apikey
-                    if script not in s3_scripts:
-                        s3_scripts.append(script)
-                else:
-                    # v3 API
-                    # https://developers.google.com/maps/documentation/javascript/versions
-                    script = "//maps.google.com/maps/api/js?v=quarterly&key=%s" % apikey
-                    if script not in s3_scripts:
-                        s3_scripts.append(script)
-                    if "StreetviewButton" in ldict:
-                        # Streetview doesn't work with v2 API
-                        ldict["StreetviewButton"] = str(T("Click where you want to open Streetview"))
-                        ldict["StreetviewTitle"] = str(T("Street View"))
-                        if debug:
-                            self.scripts.append("gis/gxp/widgets/GoogleStreetViewPanel.js")
-                        else:
-                            self.scripts.append("gis/gxp/widgets/GoogleStreetViewPanel.min.js")
+            # Global attributes
+            layers = []
+            ldict = {"l": layers,
+                     }
+            for sublayer in sublayers:
+                sublayer_type = sublayer.type
+                if sublayer_type == "streetview":
+                    # Streetview isn't a Layer
+                    T = current.T
+                    ldict["svb"] = s3_str(T("Click where you want to open Streetview"))
+                    ldict["svt"] = s3_str(T("Street View"))
+                    if s3.debug:
+                        self.scripts.append("gis/gxp/widgets/GoogleStreetViewPanel.js")
+                    else:
+                        self.scripts.append("gis/gxp/widgets/GoogleStreetViewPanel.min.js")
+                    continue
+                layer = {"i": sublayer.layer_id,
+                         "n": sublayer.name,
+                         "t": sublayer_type,
+                         }
+                if sublayer._base:
+                    # Set default Base layer
+                    layer["b"] = 1
+                layers.append(layer)
 
             if options:
                 # Used by Map._setup()
@@ -8964,7 +8983,8 @@ class LayerKML(Layer):
         request = current.request
         cachepath = os.path.join(request.folder,
                                  "uploads",
-                                 "gis_cache")
+                                 "gis_cache",
+                                 )
 
         if os.path.exists(cachepath):
             cacheable = os.access(cachepath, os.W_OK)
@@ -9004,7 +9024,8 @@ class LayerKML(Layer):
                 download = True
                 query = (cachetable.name == name)
                 cached = db(query).select(cachetable.modified_on,
-                                          limitby = (0, 1)).first()
+                                          limitby = (0, 1),
+                                          ).first()
                 refresh = self.refresh or 900 # 15 minutes set if we have no data (legacy DB)
                 if cached:
                     modified_on = cached.modified_on
@@ -9024,12 +9045,15 @@ class LayerKML(Layer):
                                                      session_id,
                                                      ])
                     if cached:
-                        db(query).update(modified_on=request.utcnow)
+                        db(query).update(modified_on = request.utcnow)
                     else:
-                        cachetable.insert(name=name, file=filename)
+                        cachetable.insert(name = name,
+                                          file = filename,
+                                          )
 
                 url = URL(c="default", f="download",
-                          args=[filename])
+                          args = [filename],
+                          )
             else:
                 # No caching possible (e.g. GAE), display file direct from remote (using Proxy)
                 # (Requires OpenLayers.Layer.KML to be available)
@@ -9140,11 +9164,9 @@ class LayerOpenWeatherMap(Layer):
         if sublayers:
             apikey = current.deployment_settings.get_gis_api_openweathermap()
             if not apikey:
-                # Raising exception prevents gis/index view from loading
-                # - logging the error should suffice?
-                #raise Exception("Cannot display OpenWeatherMap layers unless we have an API key\n")
-                current.log.error("Cannot display OpenWeatherMap layers unless we have an API key")
-                return {}
+                # Raising exception prevents Map from loading in debug mode, otherwise just logs error
+                raise Exception("Cannot display OpenWeatherMap layers unless we have an API key\n")
+
             current.response.s3.js_global.append("S3.gis.openweathermap='%s'" % apikey)
             ldict = {}
             for sublayer in sublayers:
@@ -9696,7 +9718,7 @@ class Style(object):
            cluster_threshold != CLUSTER_THRESHOLD:
             output.cluster_threshold = cluster_threshold
         if style.style:
-            if isinstance(style.style, basestring):
+            if isinstance(style.style, str):
                 # Native JSON
                 try:
                     style.style = json.loads(style.style)

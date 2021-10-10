@@ -51,7 +51,6 @@ __all__ = ("S3ACLWidget",
            "S3HierarchyWidget",
            "S3HumanResourceAutocompleteWidget",
            "S3ImageCropWidget",
-           "S3InvBinWidget",
            "S3KeyValueWidget",
            # Only used inside this module
            #"S3LatLonWidget",
@@ -111,7 +110,6 @@ from gluon.languages import lazyT
 from gluon.sqlhtml import *
 from gluon.storage import Storage
 
-from s3compat import INTEGER_TYPES, basestring, long, sorted_locale, xrange
 from .s3datetime import S3Calendar, S3DateTime
 from .s3utils import *
 from .s3validators import *
@@ -678,7 +676,7 @@ class S3AddPersonWidget(FormWidget):
         # Extract existing values
         if value:
             record_id = None
-            if isinstance(value, basestring) and not value.isdigit():
+            if isinstance(value, str) and not value.isdigit():
                 data, error = self.parse(value)
                 if not error:
                     if all(k in data for k in formfields):
@@ -1163,7 +1161,7 @@ class S3AddPersonWidget(FormWidget):
                      selected or newly created record
         """
 
-        if not isinstance(value, basestring) or value.isdigit():
+        if not isinstance(value, str) or value.isdigit():
             # Not a JSON object => return as-is
             return value, None
 
@@ -1362,7 +1360,7 @@ class S3AddPersonWidget(FormWidget):
         # Unique email?
         s3db = current.s3db
         ctable = s3db.pr_contact
-        query = (ctable.deleted != True) & \
+        query = (ctable.deleted == False) & \
                 (ctable.contact_method == "EMAIL") & \
                 (ctable.value == value)
         if person_id:
@@ -1626,7 +1624,7 @@ class S3AgeWidget(FormWidget):
             @param attributes: additional HTML attributes for the widget
         """
 
-        if isinstance(value, basestring) and value and not value.isdigit():
+        if isinstance(value, str) and value and not value.isdigit():
             # ISO String
             value = current.calendar.parse_date(value)
 
@@ -1769,7 +1767,7 @@ class S3AutocompleteWidget(FormWidget):
 
         if value:
             try:
-                value = long(value)
+                value = int(value)
             except ValueError:
                 pass
             text = s3_unicode(field.represent(value))
@@ -3103,7 +3101,7 @@ class S3WeeklyHoursWidget(FormWidget):
             @returns: UL instance
         """
 
-        if isinstance(rules, basestring) and rules:
+        if isinstance(rules, str) and rules:
             try:
                 rules = json.loads(rules)
             except JSONERRORS:
@@ -3538,7 +3536,7 @@ class S3EmbeddedComponentWidget(FormWidget):
             fq = (linktable[rkey] == table[fkey]) & \
                  (linktable[lkey] == _id)
             if "deleted" in linktable:
-                fq &= (linktable.deleted != True)
+                fq &= (linktable.deleted == False)
             linked = current.db(fq).select(table._id)
             from .s3query import FS
             pkey = FS("id")
@@ -3580,7 +3578,7 @@ def S3GenericAutocompleteTemplate(post_process,
 
     if value:
         try:
-            value = long(value)
+            value = int(value)
         except ValueError:
             pass
         # Provide the representation for the current/default Value
@@ -3630,17 +3628,17 @@ class S3GroupedOptionsWidget(FormWidget):
     """
 
     def __init__(self,
-                 options=None,
-                 multiple=True,
-                 size=None,
-                 cols=None,
-                 help_field=None,
-                 none=None,
-                 sort=True,
-                 orientation=None,
-                 table=True,
-                 no_opts=None,
-                 option_comment=None,
+                 options = None,
+                 multiple = True,
+                 size = None,
+                 cols = None,
+                 help_field = None,
+                 none = None,
+                 sort = True,
+                 orientation = None,
+                 table = True,
+                 no_opts = None,
+                 option_comment = None,
                  ):
         """
             Constructor
@@ -3660,7 +3658,7 @@ class S3GroupedOptionsWidget(FormWidget):
             @param orientation: the ordering orientation, "columns"|"rows"
             @param table: whether to render options inside a table or not
             @param no_opts: text to show if no options available
-            @param comment: HTML template to render after the LABELs
+            @param option_comment: HTML template to render after the LABELs
         """
 
         self.options = options
@@ -3687,7 +3685,7 @@ class S3GroupedOptionsWidget(FormWidget):
 
         fieldname = field.name
 
-        default = dict(value=value)
+        default = {"value": value}
         attr = self._attributes(field, default, **attributes)
 
         if "_id" in attr:
@@ -3726,8 +3724,9 @@ class S3GroupedOptionsWidget(FormWidget):
             widget_opts["comment"] = self.option_comment
             s3_include_underscore()
 
-        script = '''$('#%s').groupedopts(%s)''' % \
-                 (_id, json.dumps(widget_opts, separators=SEPARATORS))
+        script = '''$('#%s').groupedopts(%s)''' % (_id,
+                                                   json.dumps(widget_opts, separators=SEPARATORS),
+                                                   )
         jquery_ready = current.response.s3.jquery_ready
         if script not in jquery_ready:
             jquery_ready.append(script)
@@ -3748,7 +3747,9 @@ class S3GroupedOptionsWidget(FormWidget):
             render_item = self._render_item
             options = [render_item(i) for i in items]
             if label:
-                return [OPTGROUP(options, _label=label)]
+                return [OPTGROUP(options,
+                                 _label = label,
+                                 )]
             else:
                 return options
         else:
@@ -3832,7 +3833,8 @@ class S3GroupedOptionsWidget(FormWidget):
                         keys = [k for k, v in options if k.isdigit()]
                         query = ktable[pkey].belongs(keys)
                         rows = current.db(query).select(ktable[pkey],
-                                                        ktable[help_field])
+                                                        ktable[help_field],
+                                                        )
                         for row in rows:
                             helptext[s3_unicode(row[pkey])] = row[help_field]
 
@@ -3849,7 +3851,10 @@ class S3GroupedOptionsWidget(FormWidget):
 
         # Sort letters
         if letter_options:
-            all_letters = sorted_locale(letter_options.keys())
+            import locale
+            all_letters = sorted(letter_options.keys(),
+                                 key = locale.strxfrm,
+                                 )
             first_letter = min(u"A", all_letters[0])
             last_letter = max(u"Z", all_letters[-1])
         else:
@@ -3922,7 +3927,8 @@ class S3GroupedOptionsWidget(FormWidget):
         if group_letters:
             if len(group_letters) > 1:
                 group["label"] = "%s - %s" % (group_letters[0],
-                                              group_letters[-1])
+                                              group_letters[-1],
+                                              )
             else:
                 group["label"] = group_letters[0]
         else:
@@ -3959,11 +3965,12 @@ class S3RadioOptionsWidget(FormWidget):
     """
 
     def __init__(self,
-                 options=None,
-                 cols=None,
-                 help_field=None,
-                 none=None,
-                 sort=True):
+                 options = None,
+                 cols = None,
+                 help_field = None,
+                 none = None,
+                 sort = True
+                 ):
         """
             Constructor
 
@@ -4008,10 +4015,12 @@ class S3RadioOptionsWidget(FormWidget):
         options = self._options(field, value)
         if "empty" in options:
             widget = DIV(SPAN(options["empty"],
-                              _class="no-options-available"),
-                         INPUT(_type="hidden",
-                               _name=fieldname,
-                               _value=None),
+                              _class = "no-options-available",
+                              ),
+                         INPUT(_type = "hidden",
+                               _name = fieldname,
+                               _value = None,
+                               ),
                          **attr)
         else:
             widget = DIV(**attr)
@@ -4184,7 +4193,7 @@ class S3HumanResourceAutocompleteWidget(FormWidget):
 
         if value:
             try:
-                value = long(value)
+                value = int(value)
             except ValueError:
                 pass
             # Provide the representation for the current/default Value
@@ -4293,18 +4302,21 @@ i18n.upload_image='%s' ''' % (T("Please select a valid image!"),
                                         "_class": "imagecrop-upload"
                                         }, **attributes)
 
-        elements = [INPUT(_type="hidden", _name="imagecrop-points")]
+        elements = [INPUT(_type = "hidden",
+                          _name = "imagecrop-points",
+                          )]
         append = elements.append
 
-        append(DIV(_class="tooltip",
-                   _title="%s|%s" % \
-                 (T("Crop Image"),
-                 T("Select an image to upload. You can crop this later by opening this record."))))
+        append(DIV(_class = "tooltip",
+                   _title = "%s|%s" % (T("Crop Image"),
+                                       T("Select an image to upload. You can crop this later by opening this record."),
+                                       ),
+                   ))
 
         # Set up the canvas
         # Canvas is used to scale and crop the Image on the client side
-        canvas = TAG["canvas"](_class="imagecrop-canvas",
-                               _style="display:none",
+        canvas = TAG["canvas"](_class = "imagecrop-canvas",
+                               _style = "display:none",
                                )
         image_bounds = self.image_bounds
 
@@ -4322,26 +4334,32 @@ i18n.upload_image='%s' ''' % (T("Please select a valid image!"),
             btn_class = "imagecrop-btn"
 
         buttons = [ A(T("Enable Crop"),
-                      _id="select-crop-btn",
-                      _class=btn_class,
-                      _role="button"),
+                      _id = "select-crop-btn",
+                      _class = btn_class,
+                      _role = "button",
+                      ),
                     A(T("Crop Image"),
-                      _id="crop-btn",
-                      _class=btn_class,
-                      _role="button"),
+                      _id = "crop-btn",
+                      _class = btn_class,
+                      _role = "button",
+                      ),
                     A(T("Cancel"),
-                      _id="remove-btn",
-                      _class="imagecrop-btn")
+                      _id = "remove-btn",
+                      _class = "imagecrop-btn",
+                      ),
                     ]
 
         parts = [LEGEND(T("Uploaded Image"))] + buttons + \
-                [HR(_style="display:none"),
-                 IMG(_id="uploaded-image",
-                     _style="display:none")
+                [HR(_style = "display:none",
+                    ),
+                 IMG(_id = "uploaded-image",
+                     _style = "display:none",
+                     )
                  ]
 
         display_div = FIELDSET(parts,
-                               _class="image-container")
+                               _class = "image-container",
+                               )
 
         crop_data_attr = {"_type": "hidden",
                           "_name": "imagecrop-data",
@@ -4356,19 +4374,25 @@ i18n.upload_image='%s' ''' % (T("Please select a valid image!"),
             # Add Image
             crop_data_attr["_value"] = url
             append(FIELDSET(LEGEND(A(T("Upload different Image")),
-                                   _id="upload-title"),
+                                   _id = "upload-title",
+                                   ),
                             DIV(INPUT(**attr),
                                 DIV(T("or Drop here"),
-                                    _class="imagecrop-drag"),
-                                _id="upload-container",
-                                _style="display:none")))
+                                    _class = "imagecrop-drag",
+                                    ),
+                                _id = "upload-container",
+                                _style = "display:none",
+                                )))
         else:
             append(FIELDSET(LEGEND(T("Upload Image"),
-                                   _id="upload-title"),
+                                   _id = "upload-title",
+                                   ),
                             DIV(INPUT(**attr),
                                 DIV(T("or Drop here"),
-                                    _class="imagecrop-drag"),
-                                _id="upload-container")))
+                                    _class = "imagecrop-drag",
+                                    ),
+                                _id = "upload-container",
+                                )))
 
         append(INPUT(**crop_data_attr))
         append(display_div)
@@ -4379,73 +4403,6 @@ i18n.upload_image='%s' ''' % (T("Please select a valid image!"),
             element.attributes["_data-uid"] = uid
 
         return DIV(elements)
-
-# =============================================================================
-class S3InvBinWidget(FormWidget):
-    """
-        Widget used by S3CRUD to offer the user matching bins where
-        stock items can be placed
-    """
-
-    def __init__(self,
-                 tablename,):
-        self.tablename = tablename
-
-    def __call__(self, field, value, **attributes):
-
-        T = current.T
-        request = current.request
-        s3db = current.s3db
-        tracktable = s3db.inv_track_item
-        stocktable = s3db.inv_inv_item
-
-        new_div = INPUT(value = value or "",
-                        requires = field.requires,
-                        _id = "i_%s_%s" % (self.tablename, field.name),
-                        _name = field.name,
-                       )
-        id = None
-        function = self.tablename[4:]
-        if len(request.args) > 2:
-            if request.args[1] == function:
-                id = request.args[2]
-
-        if id == None or tracktable[id] == None:
-            return TAG[""](
-                           new_div
-                          )
-
-        record = tracktable[id]
-        site_id = s3db.inv_recv[record.recv_id].site_id
-        query = (stocktable.site_id == site_id) & \
-                (stocktable.item_id == record.item_id) & \
-                (stocktable.item_source_no == record.item_source_no) & \
-                (stocktable.item_pack_id == record.item_pack_id) & \
-                (stocktable.currency == record.currency) & \
-                (stocktable.pack_value == record.pack_value) & \
-                (stocktable.expiry_date == record.expiry_date) & \
-                (stocktable.supply_org_id == record.supply_org_id)
-        rows = current.db(query).select(stocktable.bin,
-                                        stocktable.id)
-        if len(rows) == 0:
-            return TAG[""](
-                           new_div
-                          )
-        bins = []
-        for row in rows:
-            bins.append(OPTION(row.bin))
-
-        match_lbl = LABEL(T("Select an existing bin"))
-        match_div = SELECT(bins,
-                           _id = "%s_%s" % (self.tablename, field.name),
-                           _name = field.name,
-                           )
-        new_lbl = LABEL(T("...or add a new bin"))
-        return TAG[""](match_lbl,
-                       match_div,
-                       new_lbl,
-                       new_div
-                       )
 
 # =============================================================================
 class S3KeyValueWidget(ListWidget):
@@ -4556,18 +4513,20 @@ class S3LatLonWidget(DoubleWidget):
                          INPUT(_class="seconds", **attr_dms), "\" ",
                          ["",
                           DIV(A(T("Use decimal"),
-                                _class="action-btn gis_coord_switch_decimal"))
+                                _class = "action-btn gis_coord_switch_decimal",
+                                ))
                           ][switch],
-                         _style="display:none",
-                         _class="gis_coord_dms",
+                         _style = "display:none",
+                         _class = "gis_coord_dms",
                          )
 
         decimal = SPAN(INPUT(**attr),
                        ["",
                         DIV(A(T("Use deg, min, sec"),
-                              _class="action-btn gis_coord_switch_dms"))
+                              _class = "action-btn gis_coord_switch_dms",
+                              ))
                         ][switch],
-                       _class="gis_coord_decimal",
+                       _class = "gis_coord_decimal",
                        )
 
         if not s3.lat_lon_i18n_appended:
@@ -4596,7 +4555,7 @@ i18n.gis_range_error={degrees:{lat:'%s',lon:'%s'},minutes:'%s',seconds:'%s',deci
 
         return SPAN(decimal,
                     dms_boxes,
-                    _class="gis_coord_wrap",
+                    _class = "gis_coord_wrap",
                     )
 
 # =============================================================================
@@ -4652,7 +4611,7 @@ class S3LocationAutocompleteWidget(FormWidget):
 
         if value:
             try:
-                value = long(value)
+                value = int(value)
             except ValueError:
                 pass
             # Provide the representation for the current/default Value
@@ -4730,14 +4689,15 @@ class S3LocationDropdownWidget(FormWidget):
         if self.blank:
             query = (table.id == value)
         elif level:
-            query = (table.deleted != True) & \
+            query = (table.deleted == False) & \
                     (table.level == level)
         else:
             # Workaround for merge form
             query = (table.id == value)
         locations = current.db(query).select(table.name,
                                              table.id,
-                                             cache=s3db.cache)
+                                             cache = s3db.cache,
+                                             )
 
         # Build OPTIONs
         for location in locations:
@@ -4803,7 +4763,7 @@ class S3LocationLatLonWidget(FormWidget):
             table = db.gis_location
             record = db(table.id == value).select(table.lat,
                                                   table.lon,
-                                                  limitby=(0, 1)
+                                                  limitby = (0, 1)
                                                   ).first()
             try:
                 lat = record.lat
@@ -4827,7 +4787,10 @@ class S3LocationLatLonWidget(FormWidget):
         label = "%s:" % label
         if not empty:
             label = DIV(label,
-                        SPAN(" *", _class="req"))
+                        SPAN(" *",
+                             _class = "req",
+                             ),
+                        )
 
         row = formstyle(row_id, label, widget, comment)
         if isinstance(row, tuple):
@@ -5039,9 +5002,9 @@ class S3Selector(FormWidget):
         values = None
 
         if value:
-            if isinstance(value, basestring):
+            if isinstance(value, str):
                 if value.isdigit():
-                    record_id = long(value)
+                    record_id = int(value)
                 else:
                     try:
                         values = json.loads(value)
@@ -6433,7 +6396,7 @@ i18n.map_feature_required="%s"''' % (show_map_add,
         row_id = "%s_map_icon__row" % fieldname
         _formstyle = settings.ui.formstyle
         if not _formstyle or \
-           isinstance(_formstyle, basestring) and "foundation" in _formstyle:
+           isinstance(_formstyle, str) and "foundation" in _formstyle:
             # Default: Foundation
             # Need to add custom classes to core HTML markup
             map_icon = DIV(DIV(BUTTON(ICON("globe"),
@@ -6712,7 +6675,7 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
         path = [str(record_id)]
         level = None
         append = None
-        for l in xrange(5, -1, -1):
+        for l in range(5, -1, -1):
             lx = value_get("L%s" % l)
             if lx:
                 if not level and not specific and l < 5:
@@ -6744,7 +6707,7 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
                                                 ltable.name,
                                                 limitby = limitby
                                                 ).as_dict()
-            for l in xrange(0, 6):
+            for l in range(0, 6):
                 if l in lx_ids:
                     lx_name = lx_names.get(lx_ids[l])["name"]
                 else:
@@ -6979,7 +6942,7 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
                 if self.prevent_duplicate_addresses:
                     query = (table.addr_street == address) & \
                             (table.parent == parent) & \
-                            (table.deleted != True)
+                            (table.deleted == False)
                     duplicate = current.db(query).select(table.id,
                                                          limitby = (0, 1)
                                                          ).first()
@@ -7037,9 +7000,9 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
                 level = location.level
                 if level:
                     # Accept all levels above and including the lowest selectable level
-                    for i in xrange(5, -1, -1):
+                    for i in range(5, -1, -1):
                         if "L%s" % i in levels:
-                            accepted_levels = set("L%s" % l for l in xrange(i, -1, -1))
+                            accepted_levels = set("L%s" % l for l in range(i, -1, -1))
                             break
                     if level not in accepted_levels:
                         return (values, msg or \
@@ -7399,7 +7362,7 @@ class S3MultiSelectWidget(MultipleOptionsWidget):
             # Select All / Unselect All doesn't make sense if multiple == False
             header_opt = False
         if not isinstance(search_opt, bool) and \
-           (search_opt == "auto" or isinstance(search_opt, INTEGER_TYPES)):
+           (search_opt == "auto" or isinstance(search_opt, int)):
             max_options = 10 if search_opt == "auto" else search_opt
             if options_len > max_options:
                 search_opt = True
@@ -7454,15 +7417,15 @@ class S3CascadeSelectWidget(FormWidget):
     """ Cascade Selector for Hierarchies """
 
     def __init__(self,
-                 lookup=None,
-                 formstyle=None,
-                 levels=None,
-                 multiple=False,
-                 filter=None,
-                 leafonly=True,
-                 cascade=None,
-                 represent=None,
-                 inline=False,
+                 lookup = None,
+                 formstyle = None,
+                 levels = None,
+                 multiple = False,
+                 filter = None,
+                 leafonly = True,
+                 cascade = None,
+                 represent = None,
+                 inline = False,
                  ):
         """
             Constructor
@@ -7560,7 +7523,7 @@ class S3CascadeSelectWidget(FormWidget):
 
             # The label for the selector
             row_id = "%s_level_%s" % (input_id, depth)
-            label = T(level) if isinstance(level, basestring) else level
+            label = T(level) if isinstance(level, str) else level
             if self.inline:
                 label = "%s:" % label
             label = LABEL(label, _for=row_id, _id="%s__label" % row_id)
@@ -7614,14 +7577,14 @@ class S3CascadeSelectWidget(FormWidget):
         # Currently selected values
         selected = []
         append = selected.append
-        if isinstance(value, basestring) and value and not value.isdigit():
+        if isinstance(value, str) and value and not value.isdigit():
             value = self.parse(value)[0]
         if not isinstance(value, (list, tuple, set)):
             values = [value]
         else:
             values = value
         for v in values:
-            if isinstance(v, INTEGER_TYPES) or str(v).isdigit():
+            if isinstance(v, int) or str(v).isdigit():
                 append(v)
 
         # Prepend value parser to field validator
@@ -7720,6 +7683,7 @@ class S3HierarchyWidget(FormWidget):
                  filter = None,
                  columns = None,
                  none = None,
+                 sep = None,
                  ):
         """
             Constructor
@@ -7743,6 +7707,7 @@ class S3HierarchyWidget(FormWidget):
             @param columns: set the columns width class for Foundation forms
             @param none: label for an option that delivers "None" as value
                          (useful for HierarchyFilters with explicit none-selection)
+            @param sep: separator to use to concatenate the hierarchy to represent the selected node
         """
 
         self.lookup = lookup
@@ -7757,6 +7722,7 @@ class S3HierarchyWidget(FormWidget):
         self.bulk_select = bulk_select
 
         self.none = none
+        self.sep = sep
 
     # -------------------------------------------------------------------------
     def __call__(self, field, value, **attr):
@@ -7834,14 +7800,14 @@ class S3HierarchyWidget(FormWidget):
         # Currently selected values
         selected = []
         append = selected.append
-        if isinstance(value, basestring) and value and not value.isdigit():
+        if isinstance(value, str) and value and not value.isdigit():
             value = self.parse(value)[0]
         if not isinstance(value, (list, tuple, set)):
             values = [value]
         else:
             values = value
         for v in values:
-            if isinstance(v, INTEGER_TYPES) or str(v).isdigit():
+            if isinstance(v, int) or str(v).isdigit():
                 append(v)
 
         # Prepend value parser to field validator
@@ -7867,13 +7833,14 @@ class S3HierarchyWidget(FormWidget):
         widget = DIV(hidden_input,
                      DIV(header,
                          DIV(h.html("%s-tree" % widget_id,
-                                    none=self.none,
+                                    none = self.none,
                                     ),
                              _class = "s3-hierarchy-tree",
                              ),
                          _class = "s3-hierarchy-wrapper",
                          ),
-                     **attr)
+                     **attr
+                     )
         widget.add_class("s3-hierarchy-widget")
 
         s3 = current.response.s3
@@ -7904,11 +7871,11 @@ class S3HierarchyWidget(FormWidget):
         T = current.T
 
         widget_opts = {"selected": selected,
-                       "selectedText": str(T("# selected")),
-                       "noneSelectedText": str(T("Select")),
-                       "noOptionsText": str(T("No options available")),
-                       "selectAllText": str(T("Select All")),
-                       "deselectAllText": str(T("Deselect All")),
+                       "selectedText": s3_str(T("# selected")),
+                       "noneSelectedText": s3_str(T("Select")),
+                       "noOptionsText": s3_str(T("No options available")),
+                       "selectAllText": s3_str(T("Select All")),
+                       "deselectAllText": s3_str(T("Deselect All")),
                        }
 
         # Only include non-default options
@@ -7918,6 +7885,8 @@ class S3HierarchyWidget(FormWidget):
             widget_opts["leafonly"] = False
         if self.cascade:
             widget_opts["cascade"] = True
+        if self.sep:
+            widget_opts["sep"] = self.sep
         if self.bulk_select:
             widget_opts["bulkSelect"] = True
         if not cascade_option_in_tree:
@@ -8026,11 +7995,10 @@ class S3OptionsMatrixWidget(FormWidget):
                 else:
                     checked = False
 
-                row_cells.append(TD(
-                                    INPUT(_type="checkbox",
-                                          _name=field.name,
-                                          _value=option,
-                                          value=checked
+                row_cells.append(TD(INPUT(_type = "checkbox",
+                                          _name = field.name,
+                                          _value = option,
+                                          value = checked
                                           )
                                     ))
             grid_rows.append(TR(row_cells))
@@ -8148,14 +8116,16 @@ class S3PersonAutocompleteWidget(FormWidget):
     def __init__(self,
                  controller = "pr",
                  function = "person_search",
+                 ajax_filter = "",
+                 field = "id",      # Can also support "pe_id"
                  post_process = "",
                  hideerror = False,
-                 ajax_filter = "",
                  ):
 
         self.post_process = post_process
         self.c = controller
         self.f = function
+        self.return_field = field
         self.hideerror = hideerror
         self.ajax_filter = ajax_filter
 
@@ -8178,7 +8148,7 @@ class S3PersonAutocompleteWidget(FormWidget):
 
         if value:
             try:
-                value = long(value)
+                value = int(value)
             except ValueError:
                 pass
             # Provide the representation for the current/default Value
@@ -8195,30 +8165,42 @@ class S3PersonAutocompleteWidget(FormWidget):
              "input": real_input,
              }
         options = ""
-        post_process = self.post_process
 
+        ajax_filter = self.ajax_filter
+        if self.return_field == "pe_id":
+            if ajax_filter:
+                ajax_filter = "pe_id=1&%s" % ajax_filter
+            else:
+                ajax_filter = "pe_id=1"
+        post_process = self.post_process
         settings = current.deployment_settings
         delay = settings.get_ui_autocomplete_delay()
         min_length = settings.get_ui_autocomplete_min_chars()
 
-        if self.ajax_filter:
-            options = ''',"%(ajax_filter)s"''' % \
-                {"ajax_filter": self.ajax_filter}
-
-        if min_length != 2:
-            options += ''',"%(postprocess)s",%(delay)s,%(min_length)s''' % \
-                {"postprocess": post_process,
+        if min_length != 2: # default in s3.autocomplete.js
+            options = ''',"%(ajax_filter)s","%(postprocess)s",%(delay)s,%(min_length)s''' % \
+                {"ajax_filter": ajax_filter,
+                 "postprocess": post_process,
                  "delay": delay,
                  "min_length": min_length,
                  }
-        elif delay != 800:
-            options += ''',"%(postprocess)s",%(delay)s''' % \
-                {"postprocess": post_process,
+        elif delay != 800: # default in s3.autocomplete.js
+            options = ''',"%(ajax_filter)s","%(postprocess)s",%(delay)s''' % \
+                {"ajax_filter": ajax_filter,
+                 "postprocess": post_process,
                  "delay": delay,
                  }
         elif post_process:
-            options += ''',"%(postprocess)s"''' % \
-                {"postprocess": post_process}
+            options = ''',"%(ajax_filter)s","%(postprocess)s"''' % \
+                {"ajax_filter": ajax_filter,
+                 "postprocess": post_process,
+                 }
+        elif ajax_filter:
+            options = ''',"%(ajax_filter)s"''' % \
+                {"ajax_filter": ajax_filter,
+                 }
+        else:
+            options = ""
 
         script = '''%s%s)''' % (script, options)
         current.response.s3.jquery_ready.append(script)
@@ -8241,12 +8223,15 @@ class S3PentityAutocompleteWidget(FormWidget):
         Renders a pr_pentity SELECT as an INPUT field with AJAX Autocomplete.
         Differs from the S3AutocompleteWidget in that it can filter by type &
         also represents results with the type
+
+        May have to add rules in the template's customise_pr_pentity_controller to filter the options appropriately
+        - permission sets (inc realms) should only be applied to the instances, not the super-entity
     """
 
     def __init__(self,
                  controller = "pr",
                  function = "pentity",
-                 types = None,
+                 instance_types = None,
                  post_process = "",
                  hideerror = False,
                  ):
@@ -8254,7 +8239,7 @@ class S3PentityAutocompleteWidget(FormWidget):
         self.post_process = post_process
         self.c = controller
         self.f = function
-        self.types = types
+        self.instance_types = instance_types
         self.hideerror = hideerror
 
     def __call__(self, field, value, **attributes):
@@ -8276,7 +8261,7 @@ class S3PentityAutocompleteWidget(FormWidget):
 
         if value:
             try:
-                value = long(value)
+                value = int(value)
             except ValueError:
                 pass
             # Provide the representation for the current/default Value
@@ -8294,11 +8279,11 @@ class S3PentityAutocompleteWidget(FormWidget):
             (T("Person"), T("Group"), T("None of the above"))
         s3.js_global.append(script)
 
-        if self.types:
+        if self.instance_types:
             # Something other than default: ("pr_person", "pr_group")
-            types = json.dumps(self.types, separators=SEPARATORS)
+            instance_types = json.dumps(self.instance_types, separators=SEPARATORS)
         else:
-            types = ""
+            instance_types = ""
 
         script = '''S3.autocomplete.pentity('%(controller)s','%(fn)s',"%(input)s"''' % \
             {"controller": self.c,
@@ -8313,12 +8298,12 @@ class S3PentityAutocompleteWidget(FormWidget):
         delay = settings.get_ui_autocomplete_delay()
         min_length = settings.get_ui_autocomplete_min_chars()
 
-        if types:
+        if instance_types:
             options = ''',"%(postprocess)s",%(delay)s,%(min_length)s,%(types)s''' % \
                 {"postprocess": post_process,
                  "delay": delay,
                  "min_length": min_length,
-                 "types": types,
+                 "types": instance_types,
                  }
         elif min_length != 2:
             options = ''',"%(postprocess)s",%(delay)s,%(min_length)s''' % \
@@ -8414,7 +8399,7 @@ class S3SiteAutocompleteWidget(FormWidget):
 
         if value:
             try:
-                value = long(value)
+                value = int(value)
             except ValueError:
                 pass
             # Provide the representation for the current/default Value
@@ -8625,7 +8610,7 @@ class S3TimeIntervalWidget(FormWidget):
 
         if value is None:
             value = 0
-        elif isinstance(value, basestring):
+        elif isinstance(value, str):
             try:
                 value = int(value)
             except ValueError:
@@ -8940,10 +8925,13 @@ class CheckboxesWidgetS3(OptionsWidget):
         if totals == 0:
             T = current.T
             opts.append(TR(TD(SPAN(T("no options available"),
-                                   _class="no-options-available"),
-                              INPUT(_name=field.name,
-                                    _class="hide",
-                                    _value=None))))
+                                   _class = "no-options-available",
+                                   ),
+                              INPUT(_name = field.name,
+                                    _class = "hide",
+                                    _value = None,
+                                    )
+                              )))
 
         for r_index in range(rows):
             tds = []
@@ -8957,16 +8945,17 @@ class CheckboxesWidgetS3(OptionsWidget):
                     # Don't provide empty client-side popups
                     label = LABEL(v, _for=input_id)
 
-                tds.append(TD(INPUT(_type="checkbox",
-                                    _name=field.name,
-                                    _id=input_id,
+                tds.append(TD(INPUT(_type = "checkbox",
+                                    _name = field.name,
+                                    _id = input_id,
                                     # Hide checkboxes without a label
-                                    _class="" if v else "hide",
-                                    requires=attr.get("requires", None),
-                                    hideerror=True,
-                                    _value=k,
-                                    value=(str(k) in values)),
-                              label))
+                                    _class = "" if v else "hide",
+                                    requires = attr.get("requires", None),
+                                    hideerror = True,
+                                    _value = k,
+                                    value = (str(k) in values)),
+                              label,
+                              ))
 
                 input_index += 1
             opts.append(TR(tds))
@@ -9643,11 +9632,14 @@ class ICON(I):
             "administration": "fa-cog",
             "alert": "fa-bell",
             "arrow-down": "fa-arrow-down",
+            "arrow-left": "fa-arrow-left",
+            "arrow-right": "fa-arrow-right",
             "assessment": "fa-bar-chart",
             "asset": "fa-fire-extinguisher",
             "attachment": "fa-paperclip",
             "bar-chart": "fa-bar-chart",
             "bars": "fa-bars",
+            "bell-o": "fa-bell-o",
             "book": "fa-book",
             "bookmark": "fa-bookmark",
             "bookmark-empty": "fa-bookmark-o",
@@ -9655,6 +9647,8 @@ class ICON(I):
             "calendar": "fa-calendar",
             "caret-right": "fa-caret-right",
             "certificate": "fa-certificate",
+            "check": "fa-check",
+            "close": "fa-close",
             "cog": "fa-cog",
             "comment-alt": "fa-comment-o",
             "commit": "fa-check-square-o",
@@ -9674,7 +9668,7 @@ class ICON(I):
             "facility": "fa-home",
             "file": "fa-file",
             "file-alt": "fa-file-o",
-            "file-excel": "fa-excel-o",
+            "file-excel": "fa-file-excel-o",
             "file-text": "fa-file-text",
             "file-text-alt": "fa-file-text-o",
             "flag": "fa-flag",
@@ -9686,6 +9680,7 @@ class ICON(I):
             "globe": "fa-globe",
             "goods": "fa-cubes",
             "group": "fa-group",
+            "hand-grab": "fa-hand-grab-o",
             "hashtag": "fa-hashtag",
             "hint": "fa-hand-o-right",
             "home": "fa-home",
@@ -9711,6 +9706,7 @@ class ICON(I):
             "pencil": "fa-pencil",
             "phone": "fa-phone",
             "picture": "fa-picture-o",
+            "plane": "fa-plane",
             "play": "fa-play",
             "plus": "fa-plus",
             "plus-sign": "fa-plus-sign",
@@ -9729,6 +9725,7 @@ class ICON(I):
             "sent": "fa-check",
             "settings": "fa-wrench",
             "share": "fa-share-alt",
+            "ship": "fa-ship",
             "shipment": "fa-truck",
             "site": "fa-home",
             "skype": "fa-skype",

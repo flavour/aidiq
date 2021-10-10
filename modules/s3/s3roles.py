@@ -34,9 +34,10 @@ import uuid
 import json
 #import sys
 
+from io import StringIO
+
 from gluon import current, URL, DIV, SPAN, SQLFORM, INPUT, A, LI, UL
 
-from s3compat import StringIO, long
 from s3dal import Field
 from .s3crud import S3CRUD
 from .s3rest import S3Method
@@ -644,7 +645,7 @@ class S3RoleManager(S3Method):
                     else:
                         unrestricted = False
                         try:
-                            entity = long(entity) if entity else None
+                            entity = int(entity) if entity else None
                         except (ValueError, TypeError):
                             entity = None
 
@@ -1519,7 +1520,7 @@ class S3PermissionWidget(object):
 
         # Load all dynamic tables (TODO: how does this make sense?)
         #ttable = s3db.s3_table
-        #rows = db(ttable.deleted != True).select(ttable.name)
+        #rows = db(ttable.deleted == False).select(ttable.name)
         #for row in rows:
         #    s3db.table(row.name)
 

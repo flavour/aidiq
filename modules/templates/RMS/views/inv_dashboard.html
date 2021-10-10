@@ -1,0 +1,25 @@
+{{extend "layout.html"}}
+<div id='home'>
+ <div class='row'>
+{{=H2(title)}}
+ </div>
+ <div class='row'>
+  <div class='columns medium-12'>
+   {{=shipments}}
+  </div>
+ </div>
+ <div class='row'>
+  <div class='columns medium-8'>
+   {{=capacity}}
+  </div>
+  <div class='columns medium-4'>
+  <div class='row'>
+   {{=alerts}}
+  </div>
+   <div class='row'>
+   {{=H3("KPI")}}
+   {{=kpi}}
+   </div>
+  </div>
+ </div>
+</div>

@@ -13,7 +13,7 @@ if settings.get_L10n_languages_readonly():
 get_vars = request.get_vars
 
 # Are we running in debug mode?
-settings.check_debug()
+debug = settings.check_debug()
 
 import datetime
 import json
@@ -105,9 +105,13 @@ if not session.s3:
 #auth.settings.login_userfield = "username"
 
 auth.settings.hmac_key = settings.get_auth_hmac_key()
-auth.define_tables(migrate=migrate, fake_migrate=fake_migrate)
+auth.define_tables(migrate = migrate,
+                   fake_migrate = fake_migrate,
+                   )
 
-current.audit = audit = s3base.S3Audit(migrate=migrate, fake_migrate=fake_migrate)
+current.audit = audit = s3base.S3Audit(migrate = migrate,
+                                       fake_migrate = fake_migrate,
+                                       )
 
 # Shortcuts for models/controllers/views
 # - removed to reduce per-request overheads & harmonise the environment in
@@ -138,9 +142,6 @@ from s3.s3data import *
 # GIS Module
 gis = s3base.GIS()
 current.gis = gis
-
-# s3_request
-s3_request = s3base.s3_request
 
 # Field Selectors
 FS = s3base.FS

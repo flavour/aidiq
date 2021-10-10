@@ -39,15 +39,20 @@ __all__ = ("S3Importer",
 import datetime
 import json
 import os
+import pickle
 import sys
 import uuid
 
 from copy import deepcopy
+from io import BytesIO, StringIO
 try:
     from lxml import etree
 except ImportError:
     sys.stderr.write("ERROR: lxml module needed for XML handling\n")
     raise
+from urllib import request as urllib2
+from urllib.request import urlopen
+from urllib.error import HTTPError, URLError
 
 from gluon import current, redirect, URL, \
                   A, B, DIV, INPUT, LI, P, TABLE, TBODY, TD, TFOOT, TH, TR, UL, \
@@ -55,7 +60,6 @@ from gluon import current, redirect, URL, \
 from gluon.storage import Storage, Messages
 from gluon.tools import callback, fetch
 
-from s3compat import basestring, pickle, urllib2, urlopen, BytesIO, StringIO, HTTPError, URLError
 from s3dal import Field
 from .s3datetime import s3_utc
 from .s3fields import S3Represent
@@ -208,9 +212,9 @@ class S3Importer(S3Method):
         self.function = r.function
 
         try:
-            self.uploadTitle = current.response.s3.crud_strings[tablename].title_upload or T("Import")
+            self.upload_title = current.response.s3.crud_strings[tablename].title_upload or T("Import")
         except (KeyError, AttributeError):
-            self.uploadTitle = T("Import")
+            self.upload_title = T("Import")
 
         # @todo: correct to switch this off for the whole session?
         current.session.s3.ocr_enabled = False
@@ -247,7 +251,8 @@ class S3Importer(S3Method):
         # If we have an upload ID, then get upload and import job
         self.upload_id = upload_id
         query = (self.upload_table.id == upload_id)
-        self.upload_job = current.db(query).select(limitby=(0, 1)).first()
+        self.upload_job = current.db(query).select(limitby = (0, 1)
+                                                   ).first()
         if self.upload_job:
             self.job_id = self.upload_job.job_id
         else:
@@ -302,14 +307,14 @@ class S3Importer(S3Method):
 
         #current.log.debug("S3Importer.upload()")
 
-        request = self.request
-
-        form = self._upload_form(r, **attr)
         output = self._create_upload_dataTable()
-        if request.representation == "aadata":
+        if r.representation == "aadata":
             return output
 
-        output.update(form=form, title=self.uploadTitle)
+        form = self._upload_form(r, **attr)
+        output.update(form = form,
+                      title = self.upload_title,
+                      )
         return output
 
     # -------------------------------------------------------------------------
@@ -335,7 +340,7 @@ class S3Importer(S3Method):
                                      user_id = current.session.auth.user.id
                                      )
         else:
-            title = self.uploadTitle
+            title = self.upload_title
             form = self._upload_form(r, **attr)
 
             r = self.request
@@ -709,7 +714,7 @@ class S3Importer(S3Method):
         template = attr.get(TEMPLATE, True)
         if template is True:
             args.extend([self.controller, "%s.csv" % self.function])
-        elif isinstance(template, basestring):
+        elif isinstance(template, str):
             # Standard location in static/formats/s3csv/<controller>/*
             if os.path.splitext(template)[1] not in KNOWN_SPREADSHEET_EXTENSIONS:
                 # Assume CSV if no known spreadsheet extension found
@@ -1849,7 +1854,7 @@ class S3ImportItem(object):
         if original is None:
             original = S3Resource.original(table, element,
                                            mandatory = self._mandatory_fields())
-        elif isinstance(original, basestring) and UID in table.fields:
+        elif isinstance(original, str) and UID in table.fields:
             # Single-component update in add-item => load the original now
             query = (table[UID] == original)
             pkeys = set(fname for fname in table.fields if table[fname].unique)
@@ -2855,7 +2860,7 @@ class S3ImportItem(object):
         item_id = self.item_id
         db = current.db
         row = db(item_table.item_id == item_id).select(item_table.id,
-                                                       limitby=(0, 1)
+                                                       limitby = (0, 1)
                                                        ).first()
         if row:
             record_id = row.id
@@ -2913,12 +2918,12 @@ class S3ImportItem(object):
                 if store_entry is not None:
                     ritems.append(json.dumps(store_entry))
         if ritems:
-            record.update(ritems=ritems)
+            record.update(ritems = ritems)
         citems = [c.item_id for c in self.components]
         if citems:
-            record.update(citems=citems)
+            record.update(citems = citems)
         if self.parent:
-            record.update(parent=self.parent.item_id)
+            record.update(parent = self.parent.item_id)
         if record_id:
             db(item_table.id == record_id).update(**record)
         else:
@@ -3000,14 +3005,15 @@ class S3ImportJob():
 
     # -------------------------------------------------------------------------
     def __init__(self, table,
-                 tree=None,
-                 files=None,
-                 job_id=None,
-                 strategy=None,
-                 update_policy=None,
-                 conflict_policy=None,
-                 last_sync=None,
-                 onconflict=None):
+                 tree = None,
+                 files = None,
+                 job_id = None,
+                 strategy = None,
+                 update_policy = None,
+                 conflict_policy = None,
+                 last_sync = None,
+                 onconflict = None,
+                 ):
         """
             Constructor
 
@@ -3085,7 +3091,8 @@ class S3ImportJob():
                 query = (jobtable.job_id == job_id)
             row = current.db(query).select(jobtable.job_id,
                                            jobtable.tablename,
-                                           limitby=(0, 1)).first()
+                                           limitby = (0, 1)
+                                           ).first()
             if not row:
                 raise SyntaxError("Job record not found")
             self.job_id = row.job_id
@@ -3142,7 +3149,8 @@ class S3ImportJob():
                  original = None,
                  components = None,
                  parent = None,
-                 joinby = None):
+                 joinby = None,
+                 ):
         """
             Parse and validate an XML element and add it as new item
             to the job.
@@ -3401,7 +3409,8 @@ class S3ImportJob():
                   fields = None,
                   tree = None,
                   directory = None,
-                  lookup = None):
+                  lookup = None,
+                  ):
         """
             Find referenced elements in the tree
 
@@ -3913,7 +3922,7 @@ class S3ObjectReferences(object):
             refs = S3ObjectReferences(obj).refs
         @example
             # Resolve a reference in obj
-            S3ObjectReferences(obj).resolve("req_req", "uuid", "REQ1", 57)
+            S3ObjectReferences(obj).resolve("inv_req", "uuid", "REQ1", 57)
     """
 
     TABLENAME_KEYS = ("@resource", "r")
@@ -4119,11 +4128,11 @@ class S3Duplicate(object):
 
         # Ignore deleted records?
         if self.ignore_deleted and "deleted" in table.fields:
-            query &= (table.deleted != True)
+            query &= (table.deleted == False)
 
         # Find a match
         duplicate = current.db(query).select(table._id,
-                                             limitby = (0, 1)
+                                             limitby = (0, 1),
                                              ).first()
 
         if duplicate:
@@ -4692,7 +4701,7 @@ class S3BulkImporter(object):
                      imagefield
                      ):
         """
-            Import images, such as a logo or person image
+            Import images, such as a logo
 
             filename     a CSV list of records and filenames
             tablename    the name of the table
@@ -4708,12 +4717,8 @@ class S3BulkImporter(object):
         """
 
         # Check if the source file is accessible
-        from s3compat import PY2
         try:
-            if PY2:
-                openFile = open(filename, "r")
-            else:
-                openFile = open(filename, "r", encoding="utf-8")
+            openFile = open(filename, "r", encoding="utf-8")
         except IOError:
             return "Unable to open file %s" % filename
 
@@ -4726,7 +4731,7 @@ class S3BulkImporter(object):
         audit = current.audit
         table = s3db[tablename]
         idfield = table[idfield]
-        base_query = (table.deleted != True)
+        base_query = (table.deleted == False)
         fieldnames = [table._id.name,
                       imagefield
                       ]
@@ -4765,7 +4770,8 @@ class S3BulkImporter(object):
                 # Get the id of the resource
                 query = base_query & (idfield == row["id"])
                 record = db(query).select(limitby = (0, 1),
-                                          *fields).first()
+                                          *fields
+                                          ).first()
                 try:
                     record_id = record.id
                 except AttributeError:
@@ -4796,7 +4802,112 @@ class S3BulkImporter(object):
                     callback(onaccept, form, tablename=tablename)
                 else:
                     for (key, error) in form.errors.items():
-                        current.log.error("error importing logo %s: %s %s" % (image, key, error))
+                        current.log.error("error importing image %s: %s %s" % (image, key, error))
+
+    # -------------------------------------------------------------------------
+    def import_pr_image(self, filename):
+        """
+            Import person images from CSV
+
+            Example:
+            bi.import_pr_image("pr_image.csv")
+            and the file pr_image.csv may look as follows
+            First Name,Middle Name,Last Name,Image,Profile,Type
+            John,,Doe,jdoe.jpg,Y,
+            Type should be an integer If empty then uses default (usually 1 (Photograph))
+        """
+
+        # Check if the source file is accessible
+        try:
+            openFile = open(filename, "r", encoding="utf-8")
+        except IOError:
+            return "Unable to open file %s" % filename
+
+        tablename = "pr_image"
+
+        reader = self.csv.DictReader(openFile)
+
+        db = current.db
+        s3db = current.s3db
+        audit = current.audit
+        ptable = s3db.pr_person
+        table = s3db.pr_image
+        table.pe_id.writable = True
+        type_default = table.type.default
+
+        # Get callbacks
+        get_config = s3db.get_config
+        onvalidation = get_config(tablename, "create_onvalidation") or \
+                       get_config(tablename, "onvalidation")
+        onaccept = get_config(tablename, "create_onaccept") or \
+                   get_config(tablename, "onaccept")
+
+        for row in reader:
+            if row != None:
+                # Open the file
+                image = row["Image"]
+                try:
+                    # Extract the path to the CSV file, image should be in
+                    # this directory, or relative to it
+                    path = os.path.split(filename)[0]
+                    imagepath = os.path.join(path, image)
+                    openFile = open(imagepath, "rb")
+                except IOError:
+                    current.log.error("Unable to open image file %s" % image)
+                    continue
+                image_source = BytesIO(openFile.read())
+                # Get the pe_id of the person
+                first_name = row.get("First Name")
+                middle_name = row.get("Middle Name")
+                last_name = row.get("Last Name")
+                query = (ptable.first_name == first_name) & \
+                        (ptable.middle_name == middle_name) & \
+                        (ptable.last_name == last_name)
+                person = db(query).select(ptable.pe_id,
+                                          limitby = (0, 1)
+                                          ).first()
+                try:
+                    pe_id = person.pe_id
+                except AttributeError:
+                    from s3 import s3_fullname
+                    person = Storage(first_name = first_name,
+                                     middle_name = middle_name,
+                                     last_name = last_name,
+                                     )
+                    current.log.error("Unable to find person %s to attach the image file to" % s3_fullname(person))
+                    continue
+                # Create and accept the form
+                form = SQLFORM(table, fields=["pe_id", "image", "type", "profile"])
+                form_vars = Storage()
+                form_vars._formname = "%s/create" % tablename
+                source = Storage()
+                source.filename = imagepath
+                source.file = image_source
+                form_vars.pe_id = pe_id
+                form_vars.image = source
+                form_vars["type"] = row.get("Type", type_default)
+                profile = row.get("Profile")
+                if profile:
+                    if profile.upper() in ("Y","YES","T","TRUE"):
+                        form_vars.profile = True
+                    elif profile.upper() in ("N","NO","F","FALSE"):
+                        form_vars.profile = False
+                    else:
+                        # default (usually False)
+                        form_vars.profile = None
+                else:
+                    # default (usually False)
+                    form_vars.profile = None
+                if form.accepts(form_vars, onvalidation=onvalidation):
+                    # Audit
+                    audit("create", "pr", "image", form=form, representation="csv")
+
+                    # Execute onaccept
+                    callback(onaccept, form, tablename=tablename)
+                else:
+                    current.log.debug("Not Accepted")
+                    for (key, error) in form.errors.items():
+                        current.log.error("error importing image %s: %s %s" % (image, key, error))
 
     # -------------------------------------------------------------------------
     @staticmethod

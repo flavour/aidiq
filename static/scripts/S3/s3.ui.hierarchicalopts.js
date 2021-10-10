@@ -47,6 +47,7 @@
          * @prop {string} selectAllText - localized label for 'select all'
          * @prop {string} deselectAllText - localized label for 'deselect all'
          * @prop {bool} icons - show icons for nodes (default: false)
+         * @prop {bool} sep - separator to use to concatenate the hierarchy to represent the selected node (default: don't concatenate)
          * @prop {bool} stripes - render alternating background for even/odd rows (default: true)
          * @prop {bool} htmlTitles - treat node titles as HTML (default: true)
          */
@@ -66,6 +67,7 @@
             deselectAllText: 'Deselect All',
 
             icons: false,
+            sep: null,
             stripes: true,
             htmlTitles: true
         },
@@ -151,12 +153,13 @@
                 self = this;
 
             if (!tree.find('li').length) {
-                this.button.hide();
+                // .hide() not strong enough to beat the !important on .form-container form .ui-multiselect
+                this.button.attr('style', 'display:none!important');
                 this.noopts.show();
                 return;
             } else {
                 this.noopts.hide();
-                this.button.show();
+                this.button.attr('style', '');
             }
 
             // Move error-wrapper behind button
@@ -229,7 +232,7 @@
             tree.jstree({
                 'core': {
                     'themes': {
-                        name: 's3',
+                        //name: 'default', // 'default-dark' available, although not in our sources
                         icons: opts.icons,
                         stripes: opts.stripes
                     },
@@ -288,7 +291,7 @@
                                 'rel': 'bulk',
                                 'class': 's3-hierarchy-action-node'
                             }
-                        }, "first");
+                        }, 'first');
                 } else {
                     this.wrapper.find('.s3-hierarchy-header').removeClass('hide').show();
                 }
@@ -301,6 +304,32 @@
             });
 
             this._bindEvents();
+        },
+
+        /**
+         * Reload Tree
+         * - called from scripts similar to filterOptionsS3
+         */
+        reload: function(ajaxURL) {
+            // Load the data
+            var self = this;
+            ajaxURL += '?widget_id=' + $(this.element).attr('id');
+
+            // Remove old JSTree
+            this.tree.jstree('destroy');
+
+            // Remove old Value(s)
+            this.input.val('');
+
+            $.getS3(ajaxURL, function (data) {
+
+                // Update the DOM
+                self.tree.html(data);
+
+                // Redraw the Tree
+                self.refresh();
+
+            }, 'html');
         },
 
         /**
@@ -402,9 +431,27 @@
                 if (numSelected > limit) {
                     text = options.selectedText.replace('#', numSelected);
                 } else {
-                    var items = [];
-                    for (var i=0; i < numSelected; i++) {
-                        items.push($('#' + selectedIDs[i] + " > a").text().replace(/^\s+|\s+$/g, ''));
+                    var inst = jQuery.jstree.reference($(this.tree)),
+                        items = [],
+                        label,
+                        parent,
+                        selector,
+                        sep = options.sep;
+                    for (var i = 0; i < numSelected; i++) {
+                        if (sep) {
+                            // Concatenate the hierarchy
+                            selector = selectedIDs[i];
+                            label = $('#' + selector + ' > a').text().replace(/^\s+|\s+$/g, '');
+                            parent = inst.get_parent(selector);
+                            while(parent != '#') {
+                                label = $('#' + parent + ' > a').text().replace(/^\s+|\s+$/g, '') + sep + label;
+                                parent = inst.get_parent(parent);
+                            }
+                        } else {
+                            // Just show the node Text
+                            label = $('#' + selectedIDs[i] + ' > a').text().replace(/^\s+|\s+$/g, '');
+                        }
+                        items.push(label);
                     }
                     text = items.length ? items.join(' ') : options.noneSelectedText;
                 }
@@ -544,7 +591,7 @@
                                 'rel': 'bulk',
                                 'class': 's3-hierarchy-action-node'
                             }
-                        }, "first"
+                        }, 'first'
                     );
                     bulkNode = inst.get_node(bulkNodeID);
                 }
@@ -757,31 +804,41 @@
 
             var tree = this.tree,
                 treeID = this.treeID,
-                parentNode = '#';
+                nodeID = treeID + '-' + id,
+                inst = jQuery.jstree.reference(tree);
 
-            // Get parent node
-            if (parent) {
-                parentNode = $('#' + treeID + '-' + parent);
-                if (!parentNode.length) {
-                    parentNode = '#';
+            if (inst) {
+                // We have an instance to add a node to
+                var parentNode = '#';
+
+                // Get parent node
+                if (parent) {
+                    parentNode = $('#' + treeID + '-' + parent + '_anchor');
+                    if (!parentNode.length) {
+                        parentNode = '#';
+                    }
                 }
-            }
 
-            // Insert the node
-            var nodeID = treeID + '-' + id;
-            tree.jstree('create_node', parentNode, {
-                id: nodeID,
-                text: title,
-                li_attr: {
-                    // HTML attributes of the new node
-                    rel: 'leaf'
+                // Insert the node
+                tree.jstree('create_node', parentNode, {
+                    id: nodeID,
+                    text: title,
+                    li_attr: {
+                        // HTML attributes of the new node
+                        rel: 'leaf'
+                    }
+                }, "last");
+
+                // Update the parent relationship and open the parent node
+                if (parent) {
+                    parentNode.attr({rel: 'parent'});
+                    tree.jstree('open_node', parentNode);
                 }
-            }, "last");
-
-            // Update the parent relationship and open the parent node
-            if (parent) {
-                parentNode.attr({rel: 'parent'});
-                tree.jstree('open_node', parentNode);
+            } else {
+                // We do not have an instance to add a node to, so need to add manually & refresh
+                var node = '<li rel="leaf" class="s3-hierarchy-node" id="' + nodeID + '">' + title + '</li>';
+                $('#' + treeID).append(node);
+                this.refresh();
             }
             if (check) {
                 tree.jstree('check_node', $('#' + nodeID));

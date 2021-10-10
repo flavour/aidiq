@@ -4,18 +4,16 @@
     Document Library - Controllers
 """
 
-module = request.controller
-
-if not settings.has_module(module):
-    raise HTTP(404, body="Module disabled: %s" % module)
+if not settings.has_module(c):
+    raise HTTP(404, body="Module disabled: %s" % c)
 
 # =============================================================================
 def index():
     "Module's Home Page"
 
-    module_name = settings.modules[module].get("name_nice")
+    module_name = settings.modules[c].get("name_nice")
     response.title = module_name
-    return dict(module_name=module_name)
+    return {"module_name": module_name}
 
 # =============================================================================
 def document():
@@ -24,7 +22,8 @@ def document():
     # Pre-processor
     def prep(r):
         # Location Filter
-        s3db.gis_location_filter(r)
+        from s3db.gis import gis_location_filter
+        gis_location_filter(r)
 
         if r.method in ("create", "create.popup"):
             doc_id = get_vars.get("~.doc_id", None)
@@ -88,7 +87,7 @@ def document_tabs(r):
                 # "one_title": "1 Flood Report",
                 # "num_title": " Flood Reports",
                 #},
-                {"tablename": "req_req",
+                {"tablename": "inv_req",
                  "resource": "req",
                  "one_title": "1 Request",
                  "num_title": " Requests",
@@ -120,7 +119,8 @@ def image():
     # Pre-processor
     def prep(r):
         # Location Filter
-        s3db.gis_location_filter(r)
+        from s3db.gis import gis_location_filter
+        gis_location_filter(r)
 
         if r.method in ("create", "create.popup"):
             doc_id = get_vars.get("~.doc_id", None)
@@ -176,7 +176,7 @@ def upload_bulk():
 
         image = request.body.read()
         # Convert to StringIO for onvalidation/import
-        from s3compat import StringIO
+        from io import StringIO
         image = StringIO(image)
         source = Storage()
         source.filename = name

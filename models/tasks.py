@@ -156,9 +156,9 @@ tasks = {"dummy": dummy,
          "org_site_check": org_site_check,
          }
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # Optional Modules
-# -----------------------------------------------------------------------------
+# =============================================================================
 if has_module("cap"):
 
     # -------------------------------------------------------------------------
@@ -178,7 +178,7 @@ if has_module("cap"):
 
     tasks["cap_ftp_sync"] = cap_ftp_sync
 
-# -----------------------------------------------------------------------------
+## =============================================================================
 if has_module("doc"):
 
     # -----------------------------------------------------------------------------
@@ -197,8 +197,10 @@ if has_module("doc"):
         name = document["name"]
         filename = document["filename"]
 
-        filename = "%s/%s/uploads/%s" % (os.path.abspath("applications"), \
-                                        request.application, filename)
+        filename = "%s/%s/uploads/%s" % (os.path.abspath("applications"),
+                                         request.application,
+                                         filename
+                                         )
 
         si = sunburnt.SolrInterface(settings.get_base_solr_url())
 
@@ -268,7 +270,26 @@ if has_module("doc"):
 
     tasks["document_delete_index"] = document_delete_index
 
-# -----------------------------------------------------------------------------
+# =============================================================================
+if has_module("inv"):
+
+    def inv_req_add_from_template(requisition_id, user_id=None):
+        """
+            Add a Request from template
+        """
+        if user_id:
+            # Authenticate
+            auth.s3_impersonate(user_id)
+
+        # Run the Task & return the result
+        from s3db.inv import inv_req_add_from_template
+        result = inv_req_add_from_template(requisition_id)
+        db.commit()
+        return result
+
+    tasks["inv_req_add_from_template"] = inv_req_add_from_template
+
+# =============================================================================
 if has_module("msg"):
 
     # -------------------------------------------------------------------------
@@ -405,25 +426,7 @@ if has_module("msg"):
 
     tasks["notify_notify"] = notify_notify
 
-# -----------------------------------------------------------------------------
-if has_module("req"):
-
-    def req_add_from_template(req_id, user_id=None):
-        """
-            Add a Request from template
-        """
-        if user_id:
-            # Authenticate
-            auth.s3_impersonate(user_id)
-
-        # Run the Task & return the result
-        result = s3db.req_add_from_template(req_id)
-        db.commit()
-        return result
-
-    tasks["req_add_from_template"] = req_add_from_template
-
-# -----------------------------------------------------------------------------
+# =============================================================================
 if has_module("setup"):
 
     def setup_run_playbook(playbook,
@@ -475,8 +478,7 @@ if has_module("setup"):
 
     tasks["setup_monitor_check_email_reply"] = setup_monitor_check_email_reply
 
-
-# -----------------------------------------------------------------------------
+# =============================================================================
 if has_module("stats"):
 
     def stats_demographic_update_aggregates(records = None,
@@ -655,7 +657,7 @@ if has_module("stats"):
 
         tasks["vulnerability_update_location_aggregate"] = vulnerability_update_location_aggregate
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 if has_module("sync"):
 
     def sync_synchronize(repository_id, user_id=None, manual=False):
@@ -669,20 +671,21 @@ if has_module("sync"):
         rtable = s3db.sync_repository
         query = (rtable.deleted != True) & \
                 (rtable.id == repository_id)
-        repository = db(query).select(limitby=(0, 1)).first()
+        repository = db(query).select(limitby = (0, 1)
+                                      ).first()
         if repository:
             sync = s3base.S3Sync()
             status = sync.get_status()
             if status.running:
                 message = "Synchronization already active - skipping run"
-                sync.log.write(repository_id=repository.id,
-                               resource_name=None,
-                               transmission=None,
-                               mode=None,
-                               action="check",
-                               remote=False,
-                               result=sync.log.ERROR,
-                               message=message)
+                sync.log.write(repository_id = repository.id,
+                               resource_name = None,
+                               transmission = None,
+                               mode = None,
+                               action = "check",
+                               remote = False,
+                               result = sync.log.ERROR,
+                               message = message)
                 db.commit()
                 return sync.log.ERROR
             sync.set_status(running=True, manual=manual)
@@ -695,7 +698,7 @@ if has_module("sync"):
 
     tasks["sync_synchronize"] = sync_synchronize
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # Instantiate Scheduler instance with the list of tasks
 s3.tasks = tasks
 s3task = s3base.S3Task()

@@ -50,7 +50,6 @@ from gluon.sqlhtml import StringWidget
 from gluon.tools import callback
 from gluon.validators import Validator
 
-from s3compat import basestring, unicodeT, xrange
 from s3dal import Field, original_tablename
 from .s3query import FS
 from .s3utils import s3_mark_required, s3_store_last_record_id, s3_str, s3_validate
@@ -198,7 +197,7 @@ class S3SQLForm(object):
             submit.extend(settings.custom_submit)
             buttons = []
             for name, label, _class in submit:
-                if isinstance(label, basestring):
+                if isinstance(label, str):
                     label = T(label)
                 button = INPUT(_type = "submit",
                                _class = "btn crud-submit-button",
@@ -1219,7 +1218,9 @@ class S3SQLCustomForm(S3SQLForm):
 
             # Get the onvalidation callback for this subtable
             subtable = self.resource.components[alias].table
-            subform = Storage(vars=subdata, errors=Storage())
+            subform = Storage(vars = subdata,
+                              errors = Storage(),
+                              )
 
             rows = self.subrows
             if alias in rows and rows[alias] is not None:
@@ -1434,7 +1435,7 @@ class S3SQLCustomForm(S3SQLForm):
                 format = None,
                 hierarchy = None,
                 link = None,
-                undelete = False
+                undelete = False,
                 ):
         """
             Create or update a record
@@ -1492,10 +1493,12 @@ class S3SQLCustomForm(S3SQLForm):
             query = (table._id == record_id)
             if onaccept:
                 # Get oldrecord in full to save in form
-                oldrecord = db(query).select(limitby=(0, 1)).first()
+                oldrecord = db(query).select(limitby = (0, 1),
+                                             ).first()
             elif "deleted" in table_fields:
                 oldrecord = db(query).select(table.deleted,
-                                             limitby=(0, 1)).first()
+                                             limitby = (0, 1),
+                                             ).first()
             else:
                 oldrecord = None
 
@@ -1524,15 +1527,20 @@ class S3SQLCustomForm(S3SQLForm):
         data[table._id.name] = accept_id
         prefix, name = tablename.split("_", 1)
         form_vars = Storage(data)
-        form = Storage(vars=form_vars, record=oldrecord)
+        form = Storage(vars = form_vars,
+                       record = oldrecord,
+                       )
 
         # Audit
         if record_id is None or undelete:
-            current.audit("create", prefix, name, form=form,
-                          representation=format)
+            current.audit("create", prefix, name,
+                          form = form,
+                          representation = format)
         else:
-            current.audit("update", prefix, name, form=form,
-                          record=accept_id, representation=format)
+            current.audit("update", prefix, name,
+                          form = form,
+                          record = accept_id,
+                          representation = format)
 
         # Update super entity links
         s3db.update_super(table, form_vars)
@@ -1634,7 +1642,7 @@ class S3SQLFormElement(object):
                       label = DEFAULT,
                       popup = None,
                       skip_post_validation = False,
-                      widget = DEFAULT
+                      widget = DEFAULT,
                       ):
         """
             Rename a field (actually: create a new Field instance with the
@@ -1647,7 +1655,7 @@ class S3SQLFormElement(object):
                              method will be rendered (unless popup is None)
             @param label: override option for the original field label
             @param popup: only if comments=False, additional vars for comment
-                          navigation items (e.g. AddResourceLink), None prevents
+                          navigation items (e.g. S3PopupLink), None prevents
                           rendering of navigation items
             @param skip_post_validation: skip field validation during POST,
                                          useful for client-side processed
@@ -2025,7 +2033,7 @@ class S3SQLInlineInstruction(S3SQLFormElement):
             @return: the widget for this form element as HTML helper
         """
 
-        element = DIV(_class="s3-inline-instructions",
+        element = DIV(_class = "s3-inline-instructions",
                       )
         element["data-do"] = self.do
         element["data-say"] = self.say
@@ -2214,7 +2222,8 @@ class S3SQLSubFormLayout(object):
                 item_rows,
                 action_rows,
                 empty = False,
-                readonly = False):
+                readonly = False,
+                ):
         """
             Outer container for the subform
 
@@ -2232,7 +2241,7 @@ class S3SQLSubFormLayout(object):
             subform = TABLE(headers,
                             TBODY(item_rows),
                             TFOOT(action_rows),
-                            _class= " ".join(("embeddedComponent", self.layout_class)),
+                            _class =  " ".join(("embeddedComponent", self.layout_class)),
                             )
         return subform
 
@@ -2344,7 +2353,7 @@ class S3SQLSubFormLayout(object):
                 item = None,
                 readonly = True,
                 editable = True,
-                deletable = True
+                deletable = True,
                 ):
         """
             Render subform row actions into the row
@@ -2387,14 +2396,14 @@ class S3SQLSubFormLayout(object):
                           _class = _class,
                           ))
             else:
-                append(TD(_class=_class))
+                append(TD(_class = _class))
 
             if deletable:
                 append(TD(action(T("Remove this entry"), "rmv"),
                           _class = _class,
                           ))
             else:
-                append(TD(_class=_class))
+                append(TD(_class = _class))
         else:
             if index != "none" or item:
                 append(TD(action(T("Update this entry"), "rdy", throbber=True),
@@ -2405,7 +2414,7 @@ class S3SQLSubFormLayout(object):
                           ))
             else:
                 append(TD(action(T("Discard this entry"), "dsc"),
-                          _class=_class,
+                          _class = _class,
                           ))
                 append(TD(action(T("Add this entry"), "add", throbber=True),
                           _class = _class,
@@ -2433,9 +2442,15 @@ class S3SQLSubFormLayout(object):
                     widget.add_class("inline-row-actions")
                 col = TD(widget)
             elif comment:
-                col = TD(DIV(widget, comment), _id=col_id)
+                col = TD(DIV(widget,
+                             comment,
+                             ),
+                         _id = col_id,
+                         )
             else:
-                col = TD(widget, _id=col_id)
+                col = TD(widget,
+                         _id = col_id,
+                         )
             return col
 
         if args:
@@ -2791,7 +2806,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
                 "component": component_name,
                 "fields": headers,
                 "defaults": self._filterby_defaults(),
-                "data": items
+                "data": items,
                 }
 
         return json.dumps(data, separators=SEPARATORS)
@@ -2810,7 +2825,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
         """
 
         # @todo: catch uploads during validation errors
-        if isinstance(value, basestring):
+        if isinstance(value, str):
             try:
                 value = json.loads(value)
             except JSONERRORS:
@@ -2850,7 +2865,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
 
         if value is None:
             value = field.default
-        if isinstance(value, basestring):
+        if isinstance(value, str):
             data = json.loads(value)
         else:
             data = value
@@ -2908,7 +2923,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
             # Mark to client-side JS that we should open Edit Row
             _class = "%s single" % _class
         item = None
-        for i in xrange(len(items)):
+        for i in range(len(items)):
             has_rows = True
             item = items[i]
             # Get the item record ID
@@ -3100,7 +3115,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
             @param value: the value returned from extract()
         """
 
-        if isinstance(value, basestring):
+        if isinstance(value, str):
             data = json.loads(value)
         else:
             data = value
@@ -3127,7 +3142,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
         layout.set_columns(None)
 
         return DIV(output,
-                   _id = self._formname(separator="-"),
+                   _id = self._formname(separator = "-"),
                    _class = "inline-component readonly",
                    )
 
@@ -3145,9 +3160,9 @@ class S3SQLInlineComponent(S3SQLSubForm):
         # Name of the real input field
         fname = self._formname(separator="_")
 
-        options = self.options
-        multiple = options.get("multiple", True)
-        defaults = options.get("default", {})
+        options_get = self.options.get
+        multiple = options_get("multiple", True)
+        defaults = options_get("default", {})
 
         if fname in form.vars:
 
@@ -3171,7 +3186,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
 
             # Link table handling
             link = component.link
-            if link and options.get("link", True):
+            if link and options_get("link", True):
                 # Data are for the link table
                 actuate_link = False
                 component = link
@@ -3266,7 +3281,9 @@ class S3SQLInlineComponent(S3SQLSubForm):
                         DELETED = current.xml.DELETED
                         if DELETED in table.fields:
                             query &= table[DELETED] != True
-                        row = db(query).select(table._id, limitby=(0, 1)).first()
+                        row = db(query).select(table._id,
+                                               limitby = (0, 1),
+                                               ).first()
                         if row:
                             record_id = row[table._id]
 
@@ -3301,9 +3318,9 @@ class S3SQLInlineComponent(S3SQLSubForm):
                             update_realm = s3db.get_config(table, "update_realm")
                             if update_realm:
                                 auth.set_realm_entity(table, values,
-                                                      force_update=True)
+                                                      force_update = True)
                             # Onaccept
-                            onaccept(table, Storage(vars=values), method="update")
+                            onaccept(table, Storage(vars = values), method = "update")
                 else:
                     # Create a new record
                     authorized = has_permission("create", tablename)
@@ -3317,7 +3334,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
                         query = (mastertable._id == master_id)
                         master = db(query).select(mastertable._id,
                                                   mastertable[pkey],
-                                                  limitby = (0, 1)
+                                                  limitby = (0, 1),
                                                   ).first()
                         if not master:
                             return False
@@ -3346,7 +3363,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
                                 ptable = s3db.pr_person
                                 query = (ptable.id == master[pkey])
                                 person = db(query).select(ptable.pe_id,
-                                                          limitby = (0, 1)
+                                                          limitby = (0, 1),
                                                           ).first()
                                 if person:
                                     values["pe_id"] = person.pe_id
@@ -3359,7 +3376,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
                                 ltable = component.link.table
                                 query = (ltable.person_id == master[pkey])
                                 link_record = db(query).select(ltable.id,
-                                                               limitby = (0, 1)
+                                                               limitby = (0, 1),
                                                                ).first()
                                 if link_record:
                                     values[fkey] = link_record[pkey]
@@ -3392,12 +3409,12 @@ class S3SQLInlineComponent(S3SQLSubForm):
                         s3db.update_super(table, values)
                         # Update link table
                         if link and actuate_link and \
-                           options.get("update_link", True):
+                           options_get("update_link", True):
                             link.update_link(master, values)
                         # Set record owner
                         auth.s3_set_record_owner(table, record_id)
                         # onaccept
-                        subform = Storage(vars=Storage(values))
+                        subform = Storage(vars = Storage(values))
                         onaccept(table, subform, method="create")
 
             # Success
@@ -3419,7 +3436,8 @@ class S3SQLInlineComponent(S3SQLSubForm):
             return "%s%s%s%s" % (self.prefix,
                                  separator,
                                  self.alias,
-                                 self.selector)
+                                 self.selector,
+                                 )
         else:
             return "%s%s" % (self.alias, self.selector)
 
@@ -3480,7 +3498,9 @@ class S3SQLInlineComponent(S3SQLSubForm):
                 # Use unaliased name to avoid need to create additional controllers
                 parent = original_tablename(table).split("_", 1)[1]
                 caller = "sub_%s_%s" % (formname, idxname)
-                popup = Storage(parent=parent, caller=caller)
+                popup = Storage(parent = parent,
+                                caller = caller,
+                                )
             else:
                 popup = None
 
@@ -3530,7 +3550,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
                     data[idxname] = filename
                 else:
                     value = item[fname]["value"]
-                    if type(value) is unicodeT:
+                    if type(value) is str:
                         value = s3_str(value)
                     widget = formfield.widget
                     if isinstance(widget, S3Selector):
@@ -3561,7 +3581,8 @@ class S3SQLInlineComponent(S3SQLSubForm):
                                   table_name = subform_name,
                                   separator = ":",
                                   submit = False,
-                                  buttons = [])
+                                  buttons = [],
+                                  )
         subform = subform[0]
 
         # Retain any CSS classes added by the layout
@@ -3778,7 +3799,7 @@ class S3SQLInlineComponent(S3SQLSubForm):
                 self.upload[upload] = nfilename
                 return nfilename
 
-            elif isinstance(f, basestring):
+            elif isinstance(f, str):
                 # Previously uploaded file
                 return f
 
@@ -4120,12 +4141,15 @@ class S3SQLInlineLink(S3SQLInlineComponent):
                 # Different pkey (e.g. super-key) => reload the master
                 query = (resource._id == master_id)
                 master = current.db(query).select(resource.table[pkey],
-                                                  limitby=(0, 1)).first()
+                                                  limitby = (0, 1),
+                                                  ).first()
 
             if master:
                 # Find existing links
                 query = FS(component.lkey) == master[pkey]
-                lresource = s3db.resource(link.tablename, filter = query)
+                lresource = s3db.resource(link.tablename,
+                                          filter = query,
+                                          )
                 rows = lresource.select([component.rkey], as_rows=True)
 
                 # Determine which to delete and which to add
@@ -4142,7 +4166,9 @@ class S3SQLInlineLink(S3SQLInlineComponent):
                 # @todo: apply filterby to only delete within the subset?
                 if delete:
                     query &= FS(component.rkey).belongs(delete)
-                    lresource = s3db.resource(link.tablename, filter = query)
+                    lresource = s3db.resource(link.tablename,
+                                              filter = query,
+                                              )
                     lresource.delete()
 
                 # Insert new links
@@ -4285,7 +4311,8 @@ class S3SQLInlineLink(S3SQLInlineComponent):
 
             # Select the filtered component rows
             filter_resource = current.s3db.resource(component.tablename,
-                                                    filter = filter_query)
+                                                    filter = filter_query,
+                                                    )
             rows = filter_resource.select(["id"], as_rows=True)
 
             filtered_opts = []
@@ -4389,7 +4416,9 @@ class S3WithIntro(S3SQLFormElement):
             else:
                 intro = None
         if intro:
-            return TAG[""](DIV(intro, _class="s3-widget-intro"), w)
+            return TAG[""](DIV(intro,
+                               _class = "s3-widget-intro",
+                               ), w)
         else:
             return w
 

@@ -29,17 +29,17 @@ function s3_popup_refresh_caller(popupData) {
         strategies,
         strategy;
 
-    // Is this a modal that is to refresh a datatable/datalist/map?
-    // => must specify ?refresh=list_id in the popup-URL, and for
+    // Is this a modal that is to refresh a Widget?
+    // => must specify ?refresh=widget_id in the popup-URL, and for
     //    datalists (optionally) &record_id=record_id in order to just
-    //    refresh this one record
+    //    refresh a single record
     var refresh = $_GET.refresh;
 
     if (undefined !== refresh) {
         if (! isNaN(parseInt(refresh))) {
             parentWindow.location.reload(true);
         }
-        // Update DataList/DataTable (if appropriate)
+        // Update Widget
         callerWidget = parentWindow.$('#' + refresh);
         if (callerWidget.hasClass('dl')) {
             // Refresh dataList
@@ -54,6 +54,10 @@ function s3_popup_refresh_caller(popupData) {
         } else if (callerWidget.hasClass('s3-organizer')) {
             try {
                 callerWidget.organizer('reload');
+            } catch(e) {}
+        } else if (callerWidget.children('div').hasClass('s3-hierarchy-tree')) {
+            try {
+                callerWidget.hierarchicalcrud('reload');
             } catch(e) {}
         } else {
             // Refresh dataTable
@@ -185,7 +189,7 @@ function s3_popup_refresh_caller(popupData) {
         parentWindow.S3.popup_remove();
         return;
     } else {
-        s3_debug('Caller: ', caller);
+        s3_debug('Caller', caller);
     }
 
     var personID = $_GET.person_id;
@@ -197,11 +201,17 @@ function s3_popup_refresh_caller(popupData) {
         return;
     }
 
-    var re = new RegExp('.*\\' + S3.Ap + '\\/'),
+    var args,
         child = $_GET.child,
-        relativeURL,
-        args,
-        childResource;
+        childResource,
+        lookupPrefix = $_GET.prefix,
+        optionsVar = $_GET.optionsVar,
+        optionsValue = $_GET.optionsValue,
+        parent = $_GET.parent,
+        parentURL = '' + parentWindow.location,
+        parentResource,
+        re = new RegExp('.*\\' + S3.Ap + '\\/'),
+        relativeURL;
 
     if (typeof child === 'undefined') {
         // Use default
@@ -215,11 +225,6 @@ function s3_popup_refresh_caller(popupData) {
         childResource = child;
     }
     s3_debug('childResource', childResource);
-
-    var parent = $_GET.parent,
-        parentURL = '' + parentWindow.location,
-        parentResource,
-        lookupPrefix = $_GET.prefix;
 
     relativeURL = parentURL.replace(re, '');
 
@@ -262,9 +267,14 @@ function s3_popup_refresh_caller(popupData) {
     }
     s3_debug('parentResource', parentResource);
     s3_debug('lookupPrefix', lookupPrefix);
+    s3_debug('optionsVar', optionsVar);
+    s3_debug('optionsValue', optionsValue);
 
     // URL to retrieve the Options list for the field of the master resource
-    var optionsURL = S3.Ap.concat('/' + lookupPrefix + '/' + parentResource + '/options.s3json?field=' + childResource);
+    var optionsURL = S3.Ap.concat('/' + lookupPrefix + '/' + parentResource + '/options.s3json?field=' + childResource)
+    if (typeof optionsVar !== 'undefined' && typeof optionsValue !== 'undefined') {
+        optionsURL += '&' + optionsVar + '=' + optionsValue;
+    }
 
     // Identify the widget type (Dropdown, Checkboxes, Hierarchy or Autocomplete)
     callerWidget = parentWindow.$('#' + caller);
@@ -334,7 +344,7 @@ function s3_popup_refresh_caller(popupData) {
                 count++;
             } else if (isHierarchyWidget) {
                 // Add new node
-                parent = this['@parent'];
+                parent = option['@parent'];
                 callerWidget.parent().hierarchicalopts('addNode', parent, value, represent, true);
             }
             // Type conversion: http://www.jibbering.com/faq/faq_notes/type_convert.html#tcNumber

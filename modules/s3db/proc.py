@@ -38,17 +38,18 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ("S3ProcurementPlansModel",
-           "S3PurchaseOrdersModel",
+__all__ = ("ProcurementPlansModel",
+           "PurchaseOrdersModel",
            "proc_rheader"
            )
 
 from gluon import *
 from gluon.storage import Storage
 from ..s3 import *
+#from .supply import SupplyItemPackQuantity
 
 # =============================================================================
-class S3ProcurementPlansModel(S3Model):
+class ProcurementPlansModel(S3Model):
     """
         Procurement Plans
 
@@ -183,7 +184,7 @@ class S3ProcurementPlansModel(S3Model):
                      #      "double",
                      #      compute = record_pack_quantity), # defined in supply
                      #Field.Method("pack_quantity",
-                     #             self.supply_item_pack_quantity(tablename=tablename)),
+                     #             SupplyItemPackQuantity(tablename)),
                      s3_comments(),
                      *s3_meta_fields())
 
@@ -272,11 +273,12 @@ class S3ProcurementPlansModel(S3Model):
             return current.messages.UNKNOWN_OPT
 
 # =============================================================================
-class S3PurchaseOrdersModel(S3Model):
+class PurchaseOrdersModel(S3Model):
     """
         Purchase Orders (PO)
 
         @ToDo: Link to inv_send
+        @ToDo: Link to inv_req
     """
 
     names = ("proc_order",
@@ -396,11 +398,8 @@ class S3PurchaseOrdersModel(S3Model):
                            readable = False,
                            writable = False,
                            ),
-                     #Field("pack_quantity",
-                     #      "double",
-                     #      compute = record_pack_quantity), # defined in supply
                      #Field.Method("pack_quantity",
-                     #             self.supply_item_pack_quantity(tablename=tablename)),
+                     #             SupplyItemPackQuantity(tablename)),
                      s3_comments(),
                      *s3_meta_fields())
 
@@ -483,7 +482,17 @@ class S3PurchaseOrdersModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return {"proc_order_id": order_id,
+                }
+
+    # -------------------------------------------------------------------------
+    def defaults(self):
+        """
+            Safe defaults for model-global names in case module is disabled
+        """
+
+        return {"proc_order_id": S3ReusableField.dummy("order_id"),
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod

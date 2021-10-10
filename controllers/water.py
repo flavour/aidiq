@@ -4,17 +4,15 @@
     Water module
 """
 
-module = request.controller
-resourcename = request.function
-
-if not settings.has_module(module):
-    raise HTTP(404, body="Module disabled: %s" % module)
+if not settings.has_module(c):
+    raise HTTP(404, body="Module disabled: %s" % c)
 
 # -----------------------------------------------------------------------------
 def index():
     """ Module's Home Page """
 
-    return s3db.cms_index(module)
+    from s3db.cms import cms_index
+    return cms_index(c)
 
 # -----------------------------------------------------------------------------
 def debris_basin():
@@ -46,20 +44,25 @@ def gauge():
             # @ToDo: The default photo not the 1st
             image_url = r.record.image_url
             if image_url:
-                output["item"].append(IMG(_src=image_url,
+                output["item"].append(IMG(_src = image_url,
                                           # @ToDo: capture the size on upload & have controller resize where-required on-download
-                                          _width=400,
-                                          _height=310))
+                                          _width = 400,
+                                          _height = 310,
+                                          ))
         return output
     s3.postp = postp
 
-    output = s3_rest_controller()
-
-    return output
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def river():
     """ Rivers, RESTful controller """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def reservoir():
+    """ Reservoirs, RESTful controller """
 
     return s3_rest_controller()
 

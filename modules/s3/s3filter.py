@@ -60,7 +60,6 @@ from gluon import current, URL, A, DIV, FORM, INPUT, LABEL, OPTION, SELECT, \
 from gluon.storage import Storage
 from gluon.tools import callback
 
-from s3compat import INTEGER_TYPES, PY2, basestring, long, unicodeT
 from s3dal import Field
 from .s3datetime import s3_decode_iso_datetime, S3DateTime
 from .s3query import FS, S3ResourceField, S3ResourceQuery, S3URLQuery
@@ -206,6 +205,8 @@ class S3FilterWidget(object):
         # Extract the URL values to populate the widget
         variable = self.variable(resource, get_vars)
 
+        # This gets done in S3FilterForm.apply_filter_defaults()
+        #defaults = self.opts.get("default", {})
         defaults = {}
         for k, v in self.values.items():
             selector = self._prefix(k)
@@ -1204,7 +1205,7 @@ class S3DateFilter(S3RangeFilter):
                     value = value[0]
 
                 # Widget expects a string in local calendar and format
-                if isinstance(value, basestring):
+                if isinstance(value, str):
                     # URL filter or filter default come as string in
                     # Gregorian calendar and ISO format => convert into
                     # a datetime
@@ -1318,7 +1319,7 @@ class S3SliderFilter(S3RangeFilter):
         maximum = row[field.max()]
 
         empty = db(query & (field == None)).select(resource.table.id,
-                                                   limitby = (0, 1)
+                                                   limitby = (0, 1),
                                                    ).first()
 
         return minimum, maximum, empty
@@ -2282,7 +2283,7 @@ class S3MapFilter(S3FilterWidget):
                 (ltable.deleted == False)
         layer = current.db(query).select(ltable.layer_id,
                                          ltable.name,
-                                         limitby=(0, 1)
+                                         limitby = (0, 1),
                                          ).first()
         try:
             layer_id = layer.layer_id
@@ -2395,7 +2396,9 @@ class S3OptionsFilter(S3FilterWidget):
         name = attr["_name"]
 
         # Get the options
-        ftype, options, noopt = self._options(resource, values=values)
+        ftype, options, noopt = self._options(resource,
+                                              values = values,
+                                              )
         if options is None:
             options = []
             hide_widget = True
@@ -2446,7 +2449,7 @@ class S3OptionsFilter(S3FilterWidget):
                                     T("All##filter_options"),
                                     _for = "%s_filter_all" % name,
                                     ),
-                              _class="s3-options-filter-anyall",
+                              _class = "s3-options-filter-anyall",
                               )
         else:
             any_all = ""
@@ -2519,14 +2522,13 @@ class S3OptionsFilter(S3FilterWidget):
             cols = opts.get("cols", None)
             if cols:
                 # Use the widget method to group and sort the options
-                widget = S3GroupedOptionsWidget(
-                                options = options,
-                                multiple = True,
-                                cols = cols,
-                                size = opts["size"] or 12,
-                                help_field = opts["help_field"],
-                                sort = opts.get("sort", True),
-                                )
+                widget = S3GroupedOptionsWidget(options = options,
+                                                multiple = True,
+                                                cols = cols,
+                                                size = opts.get("size", 12),
+                                                help_field = opts.get("help_field"),
+                                                sort = opts.get("sort", True),
+                                                )
                 options = {attr["_id"]:
                            widget._options({"type": ftype}, [])}
             else:
@@ -2721,7 +2723,7 @@ class S3OptionsFilter(S3FilterWidget):
                 else:
                     val = _val
                 if val not in opt_keys and \
-                   (not isinstance(val, INTEGER_TYPES) or not str(val) in opt_keys):
+                   (not isinstance(val, int) or not str(val) in opt_keys):
                     opt_keys.append(val)
 
         # No options?
@@ -2741,7 +2743,7 @@ class S3OptionsFilter(S3FilterWidget):
             if opts.get("translate"):
                 # Translate the labels
                 opt_list = [(opt, T(label))
-                            if isinstance(label, basestring) else (opt, label)
+                            if isinstance(label, str) else (opt, label)
                             for opt, label in options.items()
                             ]
             else:
@@ -2754,8 +2756,9 @@ class S3OptionsFilter(S3FilterWidget):
             if hasattr(represent, "bulk"):
                 # S3Represent => use bulk option
                 opt_dict = represent.bulk(opt_keys,
-                                          list_type=False,
-                                          show_link=False)
+                                          list_type = False,
+                                          show_link = False,
+                                          )
                 if None in opt_keys:
                     opt_dict[None] = EMPTY
                 elif None in opt_dict:
@@ -2766,10 +2769,7 @@ class S3OptionsFilter(S3FilterWidget):
 
             else:
                 # Simple represent function
-                if PY2:
-                    varnames = represent.func_code.co_varnames
-                else:
-                    varnames = represent.__code__.co_varnames
+                varnames = represent.__code__.co_varnames
                 args = {"show_link": False} if "show_link" in varnames else {}
                 if multiple:
                     repr_opt = lambda opt: opt in (None, "") and (opt, EMPTY) or \
@@ -2798,7 +2798,7 @@ class S3OptionsFilter(S3FilterWidget):
             query = (ktable.id.belongs([k for k in opt_keys
                                               if str(k).isdigit()])) & \
                     (ktable.deleted == False)
-            rows = db(query).select(*represent_fields).as_dict(key=k_id)
+            rows = db(query).select(*represent_fields).as_dict(key = k_id)
 
             # Run all referenced records against the format string
             opt_list = []
@@ -2816,9 +2816,9 @@ class S3OptionsFilter(S3FilterWidget):
 
         if opts.get("sort", True):
             try:
-                opt_list.sort(key=lambda item: item[1])
+                opt_list.sort(key = lambda item: item[1])
             except:
-                opt_list.sort(key=lambda item: s3_unicode(item[1]))
+                opt_list.sort(key = lambda item: s3_unicode(item[1]))
         options = []
         empty = False
         none = opts["none"]
@@ -2910,7 +2910,7 @@ class S3HierarchyFilter(S3FilterWidget):
         if not isinstance(values, (list, tuple, set)):
             values = [values]
         for v in values:
-            if isinstance(v, INTEGER_TYPES) or str(v).isdigit():
+            if isinstance(v, int) or str(v).isdigit():
                 append(v)
 
         # Resolve the field selector
@@ -3283,9 +3283,9 @@ class S3FilterForm(object):
 
         T = current.T
         controls = []
-        opts = self.opts
+        opts_get = self.opts.get
 
-        advanced = opts.get("advanced", False)
+        advanced = opts_get("advanced", False)
         if advanced:
             _class = "filter-advanced"
             if advanced is True:
@@ -3306,11 +3306,11 @@ class S3FilterForm(object):
                               ),
                          ICON("down"),
                          ICON("up", _style = "display:none"),
-                         _class=_class
+                         _class = _class
                          )
             controls.append(advanced)
 
-        clear = opts.get("clear", True)
+        clear = opts_get("clear", True)
         if clear:
             _class = "filter-clear"
             if clear is True:
@@ -3320,7 +3320,9 @@ class S3FilterForm(object):
                 _class = "%s %s" % (clear[1], _class)
             else:
                 label = clear
-            clear = A(label, _class=_class)
+            clear = A(label,
+                      _class = _class,
+                      )
             clear.add_class("action-lnk")
             controls.append(clear)
 
@@ -3330,14 +3332,17 @@ class S3FilterForm(object):
                         )
             controls.append(show_fm)
 
-        return DIV(controls, _class="filter-controls") if controls else None
+        return DIV(controls,
+                   _class = "filter-controls",
+                   ) if controls else None
 
     # -------------------------------------------------------------------------
     def _render_widgets(self,
                         resource,
-                        get_vars=None,
-                        alias=None,
-                        formstyle=None):
+                        get_vars = None,
+                        alias = None,
+                        formstyle = None,
+                        ):
         """
             Render the filter widgets
 
@@ -3371,7 +3376,10 @@ class S3FilterForm(object):
                 row_id = None
                 label_id = None
             if label:
-                label = LABEL("%s:" % label, _id=label_id, _for=widget_id)
+                label = LABEL("%s:" % label,
+                              _id = label_id,
+                              _for = widget_id,
+                              )
             elif label is not False:
                 label = ""
             if not comment:
@@ -3404,7 +3412,7 @@ class S3FilterForm(object):
 
         SELECT_FILTER = current.T("Saved Filters")
 
-        ajaxurl = self.opts.get("saveurl", URL(args=["filter.json"], vars={}))
+        ajaxurl = self.opts.get("saveurl", URL(args = ["filter.json"], vars={}))
 
         # Current user
         auth = current.auth
@@ -3413,7 +3421,7 @@ class S3FilterForm(object):
             return None
 
         table = current.s3db.pr_filter
-        query = (table.deleted != True) & \
+        query = (table.deleted == False) & \
                 (table.pe_id == pe_id)
 
         if resource:
@@ -3424,7 +3432,7 @@ class S3FilterForm(object):
         rows = current.db(query).select(table._id,
                                         table.title,
                                         table.query,
-                                        orderby = table.title
+                                        orderby = table.title,
                                         )
 
         options = [OPTION(SELECT_FILTER,
@@ -3436,7 +3444,9 @@ class S3FilterForm(object):
         filters = {}
         for row in rows:
             filter_id = row[table._id]
-            add_option(OPTION(row.title, _value=filter_id))
+            add_option(OPTION(row.title,
+                              _value = filter_id,
+                              ))
             query = row.query
             if query:
                 query = json.loads(query)
@@ -3770,7 +3780,7 @@ class S3Filter(S3Method):
             query = (table.id == record_id) & \
                     (table.pe_id == pe_id)
             record = db(query).select(table.id,
-                                      limitby = (0, 1)
+                                      limitby = (0, 1),
                                       ).first()
         if not record:
             r.error(404, current.ERROR.BAD_RECORD)
@@ -3822,7 +3832,7 @@ class S3Filter(S3Method):
             query = (table.id == record_id) & \
                     (table.pe_id == pe_id)
             record = db(query).select(table.id,
-                                      limitby = (0, 1)
+                                      limitby = (0, 1),
                                       ).first()
             if not record:
                 r.error(404, current.ERROR.BAD_RECORD)
@@ -3908,7 +3918,7 @@ class S3Filter(S3Method):
             r.unauthorised()
 
         # Build query
-        query = (table.deleted != True) & \
+        query = (table.deleted == False) & \
                 (table.resource == self.resource.tablename) & \
                 (table.pe_id == pe_id)
 
@@ -4154,11 +4164,11 @@ class S3FilterString(object):
         ftype = rfield.ftype
         if ftype[:5] == "list:":
             if ftype[5:8] in ("int", "ref"):
-                ftype = long
+                ftype = int
             else:
-                ftype = unicodeT
+                ftype = str
         elif ftype == "id" or ftype [:9] == "reference":
-            ftype = long
+            ftype = int
         elif ftype == "integer":
             ftype = int
         elif ftype == "date":
@@ -4172,7 +4182,7 @@ class S3FilterString(object):
         elif ftype == "boolean":
             ftype = bool
         else:
-            ftype = unicodeT
+            ftype = str
 
         convert = S3TypeConverter.convert
         if type(value) is list:
@@ -4298,7 +4308,7 @@ def s3_get_filter_opts(tablename,
     if auth.s3_has_permission("read", table):
         query = auth.s3_accessible_query("read", table)
         if "deleted" in table.fields:
-            query &= (table.deleted != True)
+            query &= (table.deleted == False)
         if location_filter:
             location = current.session.s3.location_filter
             if location:

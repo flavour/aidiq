@@ -5,10 +5,8 @@
         Assists with Installation, Configuration & Maintenance of Sahana Eden Deployment(s)
 """
 
-module = request.controller
-
-if not settings.has_module(module):
-    raise HTTP(404, body="Module disabled: %s" % module)
+if not settings.has_module(c):
+    raise HTTP(404, body="Module disabled: %s" % c)
 
 if not auth.s3_has_role("ADMIN"):
         auth.permission.fail()
@@ -135,7 +133,7 @@ def deployment():
                 #                   insertable = False
                 #                   )
 
-                cname = r.component.name
+                cname = r.component_name
                 if cname == "server":
 
                     from s3 import S3SQLCustomForm
@@ -471,7 +469,7 @@ def deployment():
                 restrict_d = [str(row.id) for row in rows if row.task_id is None]
                 restrict_s = [str(row.id) for row in rows if row.task_id is not None]
                 restrict_c = [str(row.id) for row in rows if row.type in (3, 4)]
-                s3.actions += [{"url": URL(c = module,
+                s3.actions += [{"url": URL(c = "setup",
                                            f = "deployment",
                                            args = [deployment_id, "instance", "[id]", "deploy"],
                                            ),
@@ -479,7 +477,7 @@ def deployment():
                                 "label": s3_str(T("Deploy")),
                                 "restrict": restrict_d,
                                 },
-                               {"url": URL(c = module,
+                               {"url": URL(c = "setup",
                                            f = "deployment",
                                            args = [deployment_id, "instance", "[id]", "settings"],
                                            ),
@@ -487,7 +485,7 @@ def deployment():
                                 "label": s3_str(T("Read Settings")),
                                 "restrict": restrict_s,
                                 },
-                               {"url": URL(c = module,
+                               {"url": URL(c = "setup",
                                            f = "deployment",
                                            args = [deployment_id, "instance", "[id]", "start"],
                                            ),
@@ -495,7 +493,7 @@ def deployment():
                                 "label": s3_str(T("Start")),
                                 "restrict": restrict_s,
                                 },
-                               {"url": URL(c = module,
+                               {"url": URL(c = "setup",
                                            f = "deployment",
                                            args = [deployment_id, "instance", "[id]", "stop"],
                                            ),
@@ -503,7 +501,7 @@ def deployment():
                                 "label": s3_str(T("Stop")),
                                 "restrict": restrict_s,
                                 },
-                               {"url": URL(c = module,
+                               {"url": URL(c = "setup",
                                            f = "deployment",
                                            args = [deployment_id, "instance", "[id]", "clean"],
                                            ),
@@ -512,7 +510,7 @@ def deployment():
                                 "restrict": restrict_c,
                                 },
                                # @ToDo: Better handled not as an Action Button as this is a rarer, more elaborate workflow
-                               #{"url": URL(c = module,
+                               #{"url": URL(c = "setup",
                                #            f = "deployment",
                                #            args = [deployment_id, "instance", "[id]", "upgrade"],
                                #            ),
@@ -533,7 +531,7 @@ def deployment():
                                         table.new_value,
                                         )
                 restrict_a = [str(row.id) for row in rows if row.new_value is not None]
-                s3.actions.append({"url": URL(c = module,
+                s3.actions.append({"url": URL(c = "setup",
                                               f = "deployment",
                                               args = [deployment_id, "setting", "[id]", "apply"],
                                               ),

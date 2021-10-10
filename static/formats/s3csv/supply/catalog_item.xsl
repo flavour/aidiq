@@ -11,7 +11,7 @@
          Category........................supply_item_category.name
          Item Code.......................supply_item.code
          Item Name.......................supply_item.name
-         Brand...........................supply_brand.name
+         Brand...........................supply_item.brand
          Model...........................supply_item.model
          Year............................supply_item.year
          Unit of Measure.................supply_item.um
@@ -29,6 +29,8 @@
          Height..........................supply_item.height
          Volume..........................supply_item.volume
          Kit.............................supply_item.kit
+         URL.............................supply_item.url
+         Image...........................supply_item.file (URL to remote server to download)
          Distributed.....................supply_distribution_item (boolean to create)
          Comments........................supply_item.comments
 
@@ -43,7 +45,6 @@
     <xsl:key name="catalog" match="row" use="col[@field='Catalog']"/>
     <xsl:key name="item_category" match="row" use="col[@field='Category']"/>
     <xsl:key name="supply_item" match="row" use="concat(col[@field='Item Name'],col[@field='Item Code'])"/>
-    <xsl:key name="brand" match="row" use="col[@field='Brand']"/>
 
     <!-- ****************************************************************** -->
 
@@ -58,11 +59,6 @@
            <!-- Item Categories -->
             <xsl:for-each select="//row[generate-id(.)=generate-id(key('item_category', col[@field='Category'])[1])]">
                 <xsl:call-template name="ItemCategory"/>
-            </xsl:for-each>
-
-            <!-- Brand -->
-            <xsl:for-each select="//row[generate-id(.)=generate-id(key('brand', col[@field='Brand'])[1])]">
-                <xsl:call-template name="Brand"/>
             </xsl:for-each>
 
             <!-- Items -->
@@ -114,16 +110,6 @@
             <data field="name"><xsl:value-of select="$catalog"/></data>
         </resource>
 
-    </xsl:template>
-    
-    <!-- ****************************************************************** -->
-    <xsl:template name="Brand">
-        <resource name="supply_brand">
-            <xsl:attribute name="tuid">
-                <xsl:value-of select="col[@field='Brand']"/>
-            </xsl:attribute>
-            <data field="name"><xsl:value-of select="col[@field='Brand']"/></data>
-        </resource>
     </xsl:template>
 
     <!-- ****************************************************************** -->
@@ -182,6 +168,7 @@
             <xsl:if test="$currency!=''">
                 <data field="currency"><xsl:value-of select="$currency"/></data>
             </xsl:if>
+            <data field="brand"><xsl:value-of select="col[@field='Brand']"/></data>
             <data field="model"><xsl:value-of select="col[@field='Model']"/></data>
             <data field="year"><xsl:value-of select="col[@field='Year']"/></data>
             <data field="weight"><xsl:value-of select="col[@field='Weight']"/></data>
@@ -189,16 +176,21 @@
             <data field="width"><xsl:value-of select="col[@field='Width']"/></data>
             <data field="height"><xsl:value-of select="col[@field='Height']"/></data>
             <data field="volume"><xsl:value-of select="col[@field='Volume']"/></data>
+            <data field="url"><xsl:value-of select="col[@field='URL']"/></data>
             <data field="comments"><xsl:value-of select="col[@field='Comments']"/></data>
 	        <xsl:if test="$kit='Y' or $kit='YES' or $kit='T' or $kit='TRUE'">
 	            <data field="kit" value="true">True</data>
 	        </xsl:if>
-            <!-- Link to Brand -->
-            <reference field="brand_id" resource="supply_brand">
-                <xsl:attribute name="tuid">
-                    <xsl:value-of select="col[@field='Brand']"/>
-                </xsl:attribute>
-            </reference>
+
+            <!-- Image -->
+            <xsl:if test="col[@field='Image']!=''">
+                <data field="file">
+                    <xsl:attribute name="url">
+                        <xsl:value-of select="col[@field='Image']"/>
+                    </xsl:attribute>
+                </data>
+            </xsl:if>
+
             <!-- Link to Supply Catalog -->
             <reference field="catalog_id" resource="supply_catalog">
                 <xsl:attribute name="tuid">

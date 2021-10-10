@@ -15,12 +15,18 @@ def config(settings):
 
     # Uncomment to restrict to specific country/countries
     settings.gis.countries.append("BT")
+    # Disable the Postcode selector in the LocationSelector
+    settings.gis.postcode_selector = False
 
     # -------------------------------------------------------------------------
     # L10n (Localization) settings
     settings.L10n.languages["dz"] = "Dzongkha"
     # Default Language (put this in custom template if-required)
     #settings.L10n.default_language = "dz"
+    # Uncomment this to Translate Location Names
+    settings.L10n.translate_gis_location = True
+    # Uncomment this to use Alternate Location Names
+    settings.L10n.name_alt_gis_location = True
     # Default timezone for users
     settings.L10n.timezone = "Asia/Thimphu"
     # Default Country Code for telephone numbers

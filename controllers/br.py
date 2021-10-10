@@ -4,16 +4,14 @@
     Beneficiary Registry and Case Management Controllers
 """
 
-module = request.controller
-
-if not settings.has_module(module):
-    raise HTTP(404, body="Module disabled: %s" % module)
+if not settings.has_module(c):
+    raise HTTP(404, body="Module disabled: %s" % c)
 
 # -----------------------------------------------------------------------------
 def index():
     """ Module's Home Page """
 
-    return settings.customise_home(module, alt_function="index_alt")
+    return settings.customise_home(c, alt_function="index_alt")
 
 # -----------------------------------------------------------------------------
 def index_alt():
@@ -22,7 +20,9 @@ def index_alt():
     from gluon import current
     if current.auth.s3_has_permission("read", "pr_person", c="br", f="person"):
         # Just redirect to list of current cases
-        s3_redirect_default(URL(f="person", vars={"closed": "0"}))
+        s3_redirect_default(URL(f="person",
+                                vars = {"closed": "0"},
+                                ))
 
     return {"module_name": settings.modules["br"].get("name_nice")}
 
@@ -113,6 +113,7 @@ def person():
                                (FS("case.invalid") == None))
 
             if queries:
+                from functools import reduce
                 query = reduce(lambda a, b: a & b, queries)
                 resource.add_filter(query)
 

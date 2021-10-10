@@ -4,13 +4,13 @@ import json
 import os
 
 from collections import OrderedDict
+from io import BytesIO
 
 from gluon import current
 from gluon.html import *
 from gluon.storage import Storage
 from gluon.languages import lazyT
 
-from s3compat import BytesIO
 from s3 import FS, s3_str, s3_truncate, s3_utc
 
 def config(settings):
@@ -56,7 +56,6 @@ def config(settings):
     # 5: Apply Controller, Function & Table ACLs
     # 6: Apply Controller, Function, Table ACLs and Entity Realm
     # 7: Apply Controller, Function, Table ACLs and Entity Realm + Hierarchy
-    # 8: Apply Controller, Function, Table ACLs, Entity Realm + Hierarchy and Delegations
     settings.security.policy = 4 # Controller-Function ACLs
 
     # Record Approval
@@ -562,15 +561,15 @@ def config(settings):
                         send_by_pe_id(row.pe_id,
                                       subject,
                                       email_content,
-                                      document_ids=cap_document_id,
-                                      alert_id=alert_id,
+                                      document_ids = cap_document_id,
+                                      alert_id = alert_id,
                                       )
                         try:
                             send_by_pe_id(row.pe_id,
                                           subject,
                                           sms_content,
-                                          contact_method="SMS",
-                                          alert_id=alert_id,
+                                          contact_method = "SMS",
+                                          alert_id = alert_id,
                                           )
                         except ValueError:
                             current.log.error("No SMS Handler defined!")

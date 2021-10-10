@@ -43,6 +43,7 @@ __all__ = ("IS_ACL",
            "IS_LON",
            "IS_LAT_LON",
            "IS_LOCATION",
+           "IS_NOT_EMPTY_STR",
            "IS_ONE_OF",
            "IS_ONE_OF_EMPTY",
            "IS_ONE_OF_EMPTY_SELECT",
@@ -54,7 +55,6 @@ __all__ = ("IS_ACL",
            "IS_UTC_DATETIME",
            "IS_UTC_DATE",
            "IS_UTC_OFFSET",
-           "IS_AVAILABLE_QUANTITY",
            "SINGLE_PHONE_NUMBER_PATTERN",
            "MULTI_PHONE_NUMBER_PATTERN",
            "JSONERRORS",
@@ -63,6 +63,8 @@ __all__ = ("IS_ACL",
 import datetime
 import json
 import re
+from functools import reduce
+from io import BytesIO
 from uuid import uuid4
 
 from gluon import current, IS_FLOAT_IN_RANGE, IS_INT_IN_RANGE, IS_IN_SET, \
@@ -70,7 +72,6 @@ from gluon import current, IS_FLOAT_IN_RANGE, IS_INT_IN_RANGE, IS_IN_SET, \
 from gluon.storage import Storage
 from gluon.validators import Validator, ValidationError
 
-from s3compat import BytesIO, STRING_TYPES, basestring, reduce, unichr
 from .s3datetime import S3DateTime
 from .s3utils import s3_orderby_fields, s3_str, s3_unicode
 
@@ -85,7 +86,7 @@ IBAN_SCHEMA = re.compile(r"([A-Z]{2})([0-9]{2})([0-9A-Z]{4,30})")
 def translate(text):
     if text is None:
         return None
-    elif isinstance(text, STRING_TYPES):
+    elif isinstance(text, str):
         if hasattr(current, "T"):
             return str(current.T(text))
     return s3_str(text)
@@ -183,7 +184,7 @@ class IS_JSONS3(Validator):
         """
 
         if value is None or \
-           self.native_json and isinstance(value, basestring):
+           self.native_json and isinstance(value, str):
             return value
         else:
             return json.dumps(value, separators = SEPARATORS)
@@ -518,10 +519,10 @@ class IS_FLOAT_AMOUNT(IS_FLOAT_IN_RANGE):
             dot = current.deployment_settings.get_L10n_decimal_separator()
 
         IS_FLOAT_IN_RANGE.__init__(self,
-                                   minimum=minimum,
-                                   maximum=maximum,
-                                   error_message=error_message,
-                                   dot=dot,
+                                   minimum = minimum,
+                                   maximum = maximum,
+                                   error_message = error_message,
+                                   dot = dot,
                                    )
 
     # -------------------------------------------------------------------------
@@ -538,7 +539,7 @@ class IS_FLOAT_AMOUNT(IS_FLOAT_IN_RANGE):
 
         # Strip the thousands-separator
         thousands_sep = current.deployment_settings.get_L10n_thousands_separator()
-        if thousands_sep and isinstance(value, basestring):
+        if thousands_sep and isinstance(value, str):
             value = s3_str(s3_unicode(value).replace(thousands_sep, ""))
 
         return IS_FLOAT_IN_RANGE.validate(self, value, record_id=record_id)
@@ -633,6 +634,33 @@ class IS_HTML_COLOUR(IS_MATCH):
         IS_MATCH.__init__(self, "^[0-9a-fA-F]{6}$",
                           error_message = error_message,
                           )
+
+# =============================================================================
+class IS_NOT_EMPTY_STR(Validator):
+    """
+        Prevent storing empty string "" in fields (use None instead)
+            - this allows more accurate matching without complex ity
+
+        Used by inv: item_source_no
+    """
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def validate(value, record_id=None):
+        """
+            Validator
+
+            @param value: the input value
+            @param record_id: the current record_id
+                              (unused, for API-compatibility)
+
+            @returns: the value (as str or None)
+        """
+
+        if value == "":
+            value = None
+
+        return value
 
 # =============================================================================
 REGEX1 = re.compile(r"[\w_]+\.[\w_]+")
@@ -1069,7 +1097,7 @@ class IS_ONE_OF_EMPTY(Validator):
                 q = (itable._id != None) & \
                     auth.s3_accessible_query(method, itable)
                 if "deleted" in itable:
-                    q &= itable.deleted != True
+                    q &= itable.deleted == False
                 if query is None:
                     query = q
                 else:
@@ -1122,7 +1150,7 @@ class IS_ONE_OF_EMPTY(Validator):
             # Multiple values
             if isinstance(value, list):
                 values = [str(v) for v in value]
-            elif isinstance(value, basestring):
+            elif isinstance(value, str):
                 if not value:
                     values = []
                 elif len(value) > 2 and value[0] == "|" and value[-1] == "|":
@@ -1361,7 +1389,7 @@ class IS_LOCATION(Validator):
         else:
             self.error_message = current.T("Invalid Location!")
 
-        # Make it like IS_ONE_OF to support AddResourceLink
+        # Make it like IS_ONE_OF to support S3PopupLink
         self.ktable = "gis_location"
         self.kfield = "id"
 
@@ -1472,20 +1500,15 @@ class IS_PROCESSED_IMAGE(Validator):
         if uploaded_image not in (b"", None): # Py 3.x it's b"", which is equivalent to "" in Py 2.x
             return uploaded_image
 
-        cropped_image = post_vars.get("imagecrop-data")
-        uploaded_image = self.file_cb()
-
-        if not (cropped_image or uploaded_image):
-            raise ValidationError(translate(self.error_message))
-
         # Decode the base64-encoded image from the client side image crop
         # process, if that worked
+        cropped_image = post_vars.get("imagecrop-data")
         if cropped_image:
             import base64
 
-            metadata, cropped_image = cropped_image.split(",")
+            metadata, cropped_image = cropped_image.rsplit(",", 1)
             #filename, datatype, enctype = metadata.split(";")
-            filename = metadata.split(";", 1)[0]
+            filename = metadata.rsplit(";", 2)[0]
 
             f = Storage()
             f.filename = uuid4().hex + filename
@@ -1493,9 +1516,14 @@ class IS_PROCESSED_IMAGE(Validator):
 
             return f
 
+        uploaded_image = self.file_cb()
+
+        if not uploaded_image:
+            raise ValidationError(translate(self.error_message))
+
         # Crop the image, if we've got the crop points
         points = post_vars.get("imagecrop-points")
-        if points and uploaded_image:
+        if points:
             import os
             points = [float(p) for p in points.split(",")]
 
@@ -1511,7 +1539,8 @@ class IS_PROCESSED_IMAGE(Validator):
                                     )
 
             current.s3task.run_async("crop_image",
-                            args = [path] + points + [self.image_bounds[0]])
+                                     args = [path] + points + [self.image_bounds[0]],
+                                     )
 
         return uploaded_image
 
@@ -1595,7 +1624,7 @@ class IS_UTC_DATETIME(Validator):
         else:
             self.format = str(format)
 
-        if isinstance(calendar, basestring):
+        if isinstance(calendar, str):
             # Instantiate calendar by name
             from .s3datetime import S3Calendar
             calendar = S3Calendar(calendar)
@@ -1640,7 +1669,7 @@ class IS_UTC_DATETIME(Validator):
             @returns: the corresponding UTC datetime, timezone-naive
         """
 
-        if isinstance(value, basestring):
+        if isinstance(value, str):
 
             val = value.strip()
 
@@ -1788,7 +1817,7 @@ class IS_UTC_DATE(IS_UTC_DATETIME):
 
         is_datetime = False
 
-        if isinstance(value, basestring):
+        if isinstance(value, str):
             # Convert into date object
             dt = self.calendar.parse_date(value.strip(),
                                           dtfmt = self.format,
@@ -1873,95 +1902,6 @@ class IS_ACL(IS_IN_SET):
                 acl |= flag
 
         return acl
-
-# =============================================================================
-class IS_AVAILABLE_QUANTITY(Validator):
-    """
-        For Inventory module, check that quantity added to a shipment
-        is available in the warehouse stock
-    """
-
-    def __init__(self, inv_item_id, item_pack_id):
-        """
-            Constructor
-
-            @param inv_item_id: the inventory item ID to check against
-            @param item_pack_id: the shipment pack ID
-        """
-
-        self.inv_item_id = inv_item_id
-        self.item_pack_id = item_pack_id
-
-    # -------------------------------------------------------------------------
-    def validate(self, value, record_id=None):
-        """
-            Validator
-
-            @param value: the input value (new track item quantity)
-            @param record_id: the current record ID (track item)
-
-            @returns: the value
-        """
-
-        db = current.db
-        args = current.request.args
-
-        track_quantity = 0
-
-        track_item_id = record_id
-        if args[1] == "track_item" and len(args) > 2:
-            track_item_id = args[2]
-
-        if track_item_id:
-            # Check if new quantity exceeds quantity already tracked
-            ttable = current.s3db.inv_track_item
-            query = (ttable.id == track_item_id)
-            track_record = db(query).select(ttable.quantity,
-                                            limitby = (0, 1),
-                                            ).first()
-            track_quantity = track_record.quantity
-            if track_quantity >= float(value):
-                # Quantity reduced or unchanged, no need to re-validate
-                return value
-
-        error = None
-
-        # Get the inventory item
-        query = (db.inv_inv_item.id == self.inv_item_id) & \
-                (db.inv_inv_item.item_pack_id == db.supply_item_pack.id)
-        inv_item_record = db(query).select(db.inv_inv_item.quantity,
-                                           db.supply_item_pack.quantity,
-                                           db.supply_item_pack.name,
-                                           limitby = (0, 1),
-                                           ).first() # @todo: this should be a virtual field
-        if not inv_item_record:
-            error = "Inventory item not found"
-
-        elif value:
-            # Compute the quantity to be added
-            query = (db.supply_item_pack.id == self.item_pack_id)
-            pack = db(query).select(db.supply_item_pack.quantity,
-                                    limitby=(0, 1),
-                                    ).first()
-            send_quantity = (float(value) - track_quantity) * pack.quantity
-
-            # Compute the quantity in stock
-            inv_quantity = inv_item_record.inv_inv_item.quantity * \
-                           inv_item_record.supply_item_pack.quantity
-
-            if send_quantity > inv_quantity:
-                error = "Only %s %s (%s) in the Warehouse Stock." % \
-                            (inv_quantity,
-                             inv_item_record.supply_item_pack.name,
-                             inv_item_record.supply_item_pack.quantity,
-                             )
-        else:
-            error = "Invalid Quantity"
-
-        if error:
-            raise ValidationError(translate(error))
-
-        return value
 
 # =============================================================================
 class IS_IN_SET_LAZY(Validator):
@@ -2109,7 +2049,7 @@ class IS_IN_SET_LAZY(Validator):
 
         multiple = self.multiple
         if multiple:
-            if isinstance(value, STRING_TYPES):
+            if isinstance(value, str):
                 values = [value]
             elif isinstance(value, (tuple, list)):
                 values = value
@@ -2214,9 +2154,9 @@ class IS_PHONE_NUMBER_SINGLE(Validator):
 
         error = False
 
-        if isinstance(value, basestring):
+        if isinstance(value, str):
             value = value.strip()
-            if value and value[0] == unichr(8206):
+            if value and value[0] == chr(8206):
                 # Strip the LRM character
                 value = value[1:]
             requires = IS_MATCH(SINGLE_PHONE_NUMBER_PATTERN)
@@ -2284,7 +2224,7 @@ class IS_PHONE_NUMBER_MULTI(Validator):
         if value == "":
             # e.g. s3_mark_required test
             raise ValidationError(translate(self.error_message))
-        if value[0] == unichr(8206):
+        if value[0] == chr(8206):
             # Strip the LRM character
             value = value[1:]
         number = s3_str(value)

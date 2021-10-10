@@ -30,8 +30,10 @@
         Service.................org_organisation$service_id or org_service.parent
         SubService..............org_organisation$service_id or org_service.parent
         SubSubService...........org_organisation$service_id or org_service.parent
+        Group...................org_group_membership$group_id (more efficient if only 1)
         Groups..................org_group_membership$group_id
-        Region..................org_organisation.region_id
+        Parent..................org_organisation_organisation$parent_id
+        Region..................org_organisation_region$region_id
         Country.................org_organisation.country (ISO Code)
         L1......................gis_location.L1 (org_organisation_location)
         L2......................gis_location.L2 (org_organisation_location)
@@ -39,6 +41,7 @@
         L4......................gis_location.L4 (org_organisation_location)
         L5......................gis_location.L5 (org_organisation_location)
         Website.................org_organisation.website
+        Contact.................org_organisation.contact
         Phone...................org_organisation.phone
         Phone2..................pr_contact.value
         Facebook................pr_contact.value
@@ -105,6 +108,8 @@
                          col[@field='L3'], '/',
                          col[@field='L4'], '/',
                          col[@field='L5'])"/>
+    <xsl:key name="group" match="row" use="col[@field='Group']"/>
+    <xsl:key name="parent" match="row" use="col[@field='Parent']"/>
     <xsl:key name="region" match="row" use="col[@field='Region']"/>
     <xsl:key name="religion" match="row" use="concat(col[@field='Religion'], '/',
                                                      col[@field='SubReligion'], '/',
@@ -227,6 +232,18 @@
                          <xsl:value-of select="col[@field='SubSubService']"/>
                     </xsl:with-param>
                 </xsl:call-template>
+            </xsl:for-each>
+
+            <!-- Groups -->
+            <xsl:for-each select="//row[generate-id(.)=generate-id(key('group',
+                                                                       col[@field='Group'])[1])]">
+                <xsl:call-template name="Group" />
+            </xsl:for-each>
+
+            <!-- Parents -->
+            <xsl:for-each select="//row[generate-id(.)=generate-id(key('parent',
+                                                                       col[@field='Parent'])[1])]">
+                <xsl:call-template name="Parent" />
             </xsl:for-each>
 
             <!-- Regions -->
@@ -393,6 +410,12 @@
                     </data>
                 </xsl:if>
 
+                <xsl:if test="col[@field='Contact']!=''">
+                    <data field="contact">
+                        <xsl:value-of select="col[@field='Contact']"/>
+                    </data>
+                </xsl:if>
+
                 <!-- Link to Organisation Type -->
                 <xsl:if test="$Type!=''">
                     <resource name="org_organisation_organisation_type">
@@ -493,14 +516,40 @@
                     <xsl:call-template name="Locations"/>
                 </xsl:if>
 
+                <!-- Link to Group -->
+                <xsl:variable name="Group" select="col[@field='Group']/text()"/>
+                <xsl:if test="$Group!=''">
+                    <resource name="org_group_membership">
+                        <reference field="group_id" resource="org_group">
+                            <xsl:attribute name="tuid">
+                                <xsl:value-of select="concat('Group:', $Group)"/>
+                            </xsl:attribute>
+                        </reference>
+                    </resource>
+                </xsl:if>
+
+                <!-- Link to Parent -->
+                <xsl:variable name="Parent" select="col[@field='Parent']/text()"/>
+                <xsl:if test="$Parent!=''">
+                    <resource name="org_organisation_organisation">
+                        <reference field="parent_id" resource="org_organisation">
+                            <xsl:attribute name="tuid">
+                                <xsl:value-of select="concat('ORG:', $Parent)"/>
+                            </xsl:attribute>
+                        </reference>
+                    </resource>
+                </xsl:if>
+
                 <!-- Link to Region -->
                 <xsl:variable name="Region" select="col[@field='Region']/text()"/>
                 <xsl:if test="$Region!=''">
-                    <reference field="region_id" resource="org_region">
-                        <xsl:attribute name="tuid">
-                            <xsl:value-of select="concat('Region:', $Region)"/>
-                        </xsl:attribute>
-                    </reference>
+                    <resource name="org_organisation_region">
+                        <reference field="region_id" resource="org_region">
+                            <xsl:attribute name="tuid">
+                                <xsl:value-of select="concat('Region:', $Region)"/>
+                            </xsl:attribute>
+                        </reference>
+                    </resource>
                 </xsl:if>
 
                 <!-- Website -->
@@ -813,14 +862,51 @@
     </xsl:template>
 
     <!-- ****************************************************************** -->
-    <xsl:template name="Region">
-        <xsl:if test="col[@field='Region']!=''">
-            <resource name="org_region">
+    <xsl:template name="Group">
+        <xsl:variable name="Group">
+            <xsl:value-of select="col[@field='Group']/text()"/>
+        </xsl:variable>
+        <xsl:if test="$Group!=''">
+            <resource name="org_group">
                 <xsl:attribute name="tuid">
-                    <xsl:value-of select="concat('Region:', col[@field='Region'])"/>
+                    <xsl:value-of select="concat('Group:', $Group)"/>
                 </xsl:attribute>
                 <data field="name">
-                    <xsl:value-of select="col[@field='Region']"/>
+                    <xsl:value-of select="$Group"/>
+                </data>
+            </resource>
+        </xsl:if>
+    </xsl:template>
+
+    <!-- ****************************************************************** -->
+    <xsl:template name="Parent">
+        <xsl:variable name="Parent">
+            <xsl:value-of select="col[@field='Parent']/text()"/>
+        </xsl:variable>
+        <xsl:if test="$Parent!=''">
+            <resource name="org_organisation">
+                <xsl:attribute name="tuid">
+                    <xsl:value-of select="concat('ORG:', $Parent)"/>
+                </xsl:attribute>
+                <data field="name">
+                    <xsl:value-of select="$Parent"/>
+                </data>
+            </resource>
+        </xsl:if>
+    </xsl:template>
+
+    <!-- ****************************************************************** -->
+    <xsl:template name="Region">
+        <xsl:variable name="Region">
+            <xsl:value-of select="col[@field='Region']/text()"/>
+        </xsl:variable>
+        <xsl:if test="$Region!=''">
+            <resource name="org_region">
+                <xsl:attribute name="tuid">
+                    <xsl:value-of select="concat('Region:', $Region)"/>
+                </xsl:attribute>
+                <data field="name">
+                    <xsl:value-of select="$Region"/>
                 </data>
             </resource>
         </xsl:if>

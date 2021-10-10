@@ -4,17 +4,15 @@
     Organization Registry - Controllers
 """
 
-module = request.controller
-#resourcename = request.function
-
-if not settings.has_module(module):
-    raise HTTP(404, body="Module disabled: %s" % module)
+if not settings.has_module(c):
+    raise HTTP(404, body="Module disabled: %s" % c)
 
 # -----------------------------------------------------------------------------
 def index():
     """ Module's Home Page """
 
-    return s3db.cms_index(module, alt_function="index_alt")
+    from s3db.cms import cms_index
+    return cms_index(c, alt_function="index_alt")
 
 # -----------------------------------------------------------------------------
 def index_alt():
@@ -23,13 +21,13 @@ def index_alt():
     """
 
     # Just redirect to the list of Organisations
-    s3_redirect_default(URL(f="organisation"))
+    s3_redirect_default(URL(f = "organisation"))
 
 # -----------------------------------------------------------------------------
 def capacity_assessment():
     """ RESTful CRUD controller """
 
-    S3SQLInlineComponent = s3base.S3SQLInlineComponent
+    from s3 import S3SQLCustomForm, S3SQLInlineComponent
 
     crud_fields = ["organisation_id",
                    "date",
@@ -70,7 +68,7 @@ def capacity_assessment():
                                      ),
                 )
 
-    crud_form = s3base.S3SQLCustomForm(*crud_fields)
+    crud_form = S3SQLCustomForm(*crud_fields)
 
     s3db.configure("org_capacity_assessment",
                    crud_form = crud_form,
@@ -101,24 +99,23 @@ def group():
     # Use hrm/group controller for teams rather than pr/group
     s3db.configure("pr_group",
                    linkto = lambda record_id: \
-                            URL(c="hrm", f="group", args=[record_id]),
+                            URL(c="hrm", f="group",
+                                args = [record_id],
+                                ),
                    )
 
-    return s3_rest_controller(rheader = s3db.org_rheader)
+    from s3db.org import org_rheader
+    return s3_rest_controller(rheader = org_rheader)
 
 # -----------------------------------------------------------------------------
 def group_membership():
-    """ RESTful CRUD controller for options.s3json lookups """
+    """
+        RESTful CRUD controller
+        - just used for options.s3json lookups
+    """
 
-    if auth.permission.format != "s3json":
-        return ""
-
-    # Pre-process
-    def prep(r):
-        if r.method != "options":
-            return False
-        return True
-    s3.prep = prep
+    s3.prep = lambda r: \
+        r.representation == "s3json" and r.method == "options"
 
     return s3_rest_controller()
 
@@ -130,9 +127,13 @@ def group_membership_status():
 
 # -----------------------------------------------------------------------------
 def group_person():
-    """ REST controller for options.s3json lookups """
+    """
+        RESTful CRUD controller
+        - just used for options.s3json lookups
+    """
 
-    s3.prep = lambda r: r.representation == "s3json" and r.method == "options"
+    s3.prep = lambda r: \
+        r.representation == "s3json" and r.method == "options"
 
     return s3_rest_controller()
 
@@ -146,7 +147,8 @@ def group_person_status():
 def facility():
     """ RESTful CRUD controller """
 
-    return s3db.org_facility_controller()
+    from s3db.org import org_facility_controller
+    return org_facility_controller()
 
 # -----------------------------------------------------------------------------
 def facility_type():
@@ -159,7 +161,8 @@ def office():
     """ RESTful CRUD controller """
 
     # Defined in the Model for use from Multiple Controllers for unified menus
-    return s3db.org_office_controller()
+    from s3db.org import org_office_controller
+    return org_office_controller()
 
 # -----------------------------------------------------------------------------
 def office_type():
@@ -172,7 +175,8 @@ def organisation():
     """ RESTful CRUD controller """
 
     # Defined in the Model for use from Multiple Controllers for unified menus
-    return s3db.org_organisation_controller()
+    from s3db.org import org_organisation_controller
+    return org_organisation_controller()
 
 # -----------------------------------------------------------------------------
 def organisation_type():
@@ -182,9 +186,13 @@ def organisation_type():
 
 # -----------------------------------------------------------------------------
 def organisation_organisation_type():
-    """ REST controller for options.s3json lookups """
+    """
+        RESTful CRUD controller
+        - just used for options.s3json lookups
+    """
 
-    s3.prep = lambda r: r.representation == "s3json" and r.method == "options"
+    s3.prep = lambda r: \
+        r.representation == "s3json" and r.method == "options"
 
     return s3_rest_controller()
 
@@ -198,7 +206,7 @@ def org_search():
 
     s3.prep = lambda r: r.method == "search_ac"
 
-    return s3_rest_controller(module, "organisation")
+    return s3_rest_controller("org", "organisation")
 
 # -----------------------------------------------------------------------------
 def organisation_list_represent(l):
@@ -223,12 +231,10 @@ def region():
 
             if settings.get_org_regions_hierarchical():
 
-                table = r.table
-
                 # Zone is required when creating new regions from popup
-                field = table.parent
+                field = r.table.parent
                 requires = field.requires
-                if isinstance(requires, IS_EMPTY_OR):
+                if hasattr(requires, "other"):
                     field.requires = requires.other
 
         return True
@@ -243,7 +249,9 @@ def sector():
     # Pre-processor
     def prep(r):
         # Location Filter
-        s3db.gis_location_filter(r)
+        from s3db.gis import gis_location_filter
+        gis_location_filter(r)
+
         return True
     s3.prep = prep
 
@@ -263,16 +271,30 @@ def site():
           which doesn't yet support filtering to just updateable sites
         - used by site_contact_person()
         - used by S3OptionsFilter (e.g. Asset Log)
+        - used by s3.asset_log.js to read the Site Layout Hierarchy
     """
 
     # Pre-processor
     def prep(r):
         if r.representation != "json" and \
            r.method not in ("search_ac", "search_address_ac", "site_contact_person"):
-            return False
+            if r.id:
+                # Redirect to the instance controller
+                (prefix, resourcename, id) = s3db.get_instance(db.org_site, r.id)
+                args = r.args
+                args[0] = id
+                redirect(URL(c=prefix, f=resourcename,
+                             args = args,
+                             vars = r.get_vars,
+                             ))
+            else:
+                # Not supported
+                return False
 
         # Location Filter
-        s3db.gis_location_filter(r)
+        from s3db.gis import gis_location_filter
+        gis_location_filter(r)
+
         return True
     s3.prep = prep
 
@@ -312,7 +334,8 @@ def sites_for_org():
                         (stable.deleted != True)
             rows = db(query).select(stable.site_id,
                                     stable.name,
-                                    orderby=stable.name)
+                                    orderby = stable.name,
+                                    )
             result = rows.json()
     finally:
         response.headers["Content-Type"] = "application/json"
@@ -332,27 +355,6 @@ def person():
     s3.prep = prep
 
     return s3_rest_controller("pr", "person")
-
-# -----------------------------------------------------------------------------
-def room():
-    """ RESTful CRUD controller """
-
-    def prep(r):
-
-        field = r.table.site_id
-        field.readable = field.writable = True
-
-        if r.representation == "popup":
-            site_id = r.get_vars.get("site_id")
-            if site_id:
-                # Coming from dynamically filtered AddResourceLink
-                field.default = site_id
-                field.writable = False
-
-        return True
-    s3.prep = prep
-
-    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def mailing_list():
@@ -387,7 +389,9 @@ def mailing_list():
             table = s3db[tablename]
             _rheader = s3db.org_rheader
             _tabs = []
-    s3db.add_components("pr_group", pr_group_membership="group_id")
+    s3db.add_components("pr_group",
+                        pr_group_membership = "group_id",
+                        )
 
     rheader = lambda r: _rheader(r, tabs = _tabs)
 
@@ -413,7 +417,8 @@ def donor():
         msg_record_created = T("Donor added"),
         msg_record_modified = T("Donor updated"),
         msg_record_deleted = T("Donor deleted"),
-        msg_list_empty = T("No Donors currently registered"))
+        msg_list_empty = T("No Donors currently registered"),
+        )
 
     s3db.configure(tablename,
                    listadd = False,
@@ -493,7 +498,8 @@ def site_location():
 def req_match():
     """ Match Requests for Sites """
 
-    return s3db.req_match()
+    from s3db.inv import inv_req_match
+    return inv_req_match()
 
 # -----------------------------------------------------------------------------
 def incoming():

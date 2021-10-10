@@ -14,17 +14,14 @@
         Purchase Requests (PRs)
 """
 
-module = request.controller
-#resourcename = request.function
-
-if not settings.has_module(module):
-    raise HTTP(404, body="Module disabled: %s" % module)
+if not settings.has_module(c):
+    raise HTTP(404, body="Module disabled: %s" % c)
 
 # -----------------------------------------------------------------------------
 def index():
     """ Module's Home Page """
 
-    return s3db.cms_index(module)
+    return s3db.cms_index(c)
 
 # -----------------------------------------------------------------------------
 def order():
@@ -35,10 +32,10 @@ def order():
                               )
 
 # -----------------------------------------------------------------------------
-def order_item():
-    """ RESTful CRUD controller """
+#def order_item():
+#    """ RESTful CRUD controller """
 
-    return s3_rest_controller()
+#    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def plan():

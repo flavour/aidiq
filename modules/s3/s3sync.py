@@ -31,10 +31,11 @@ import json
 import sys
 import datetime
 
+from io import BytesIO
+
 from gluon import current, URL, DIV
 from gluon.storage import Storage
 
-from s3compat import BytesIO, unicodeT
 from .s3datetime import s3_parse_datetime, s3_utc
 from .s3rest import S3Method
 from .s3import import S3ImportItem
@@ -350,7 +351,7 @@ class S3Sync(S3Method):
         if not mixed:
             query = (ttable.repository_id == connector.id) & \
                     (ttable.resource_name == r.tablename) & \
-                    (ttable.deleted != True)
+                    (ttable.deleted == False)
             task = db(query).select(limitby=(0, 1)).first()
         else:
             task = None
@@ -576,7 +577,7 @@ class S3Sync(S3Method):
             policies = S3ImportItem.POLICY
             query = (ttable.repository_id == repository.id) & \
                     (ttable.resource_name == tablename) & \
-                    (ttable.deleted != True)
+                    (ttable.deleted == False)
             task = current.db(query).select(limitby=(0, 1)).first()
             if task and item.original:
                 original = item.original
@@ -787,7 +788,7 @@ class S3Sync(S3Method):
 
         ftable = s3db.sync_resource_filter
         query = (ftable.task_id == task_id) & \
-                (ftable.deleted != True)
+                (ftable.deleted == False)
         rows = db(query).select(ftable.tablename,
                                 ftable.filter_string,
                                 )
@@ -1249,7 +1250,7 @@ class S3SyncDataArchive(object):
         elif isinstance(obj, (str, bytes)):
             archive.writestr(name, obj)
 
-        elif isinstance(obj, unicodeT):
+        elif isinstance(obj, str):
             # Convert unicode objects to str (Py2 backwards-compatibility)
             archive.writestr(name, s3_str(obj))
 

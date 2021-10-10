@@ -27,45 +27,43 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-from __future__ import division
-
-__all__ = ("S3ProjectModel",
-           "S3ProjectActivityModel",
-           "S3ProjectActivityDemographicsModel",
-           "S3ProjectActivityItemModel",
-           "S3ProjectActivityTypeModel",
-           "S3ProjectActivityPersonModel",
-           "S3ProjectActivityOrganisationModel",
-           "S3ProjectActivityOrganisationGroupModel",
-           "S3ProjectActivitySectorModel",
-           "S3ProjectActivityTagModel",
-           "S3ProjectAnnualBudgetModel",
-           "S3ProjectBeneficiaryModel",
-           "S3ProjectCampaignModel",
-           "S3ProjectFrameworkModel",
-           "S3ProjectHazardModel",
-           "S3ProjectHRModel",
-           #"S3ProjectIndicatorModel",
-           "S3ProjectL10nModel",
-           "S3ProjectLocationModel",
-           "S3ProjectMasterKeyModel",
-           "S3ProjectOrganisationModel",
-           "S3ProjectPlanningModel",
-           "S3ProjectProgrammeModel",
-           "S3ProjectProgrammeProjectModel",
-           "S3ProjectSectorModel",
-           "S3ProjectStatusModel",
-           "S3ProjectStrategyModel",
-           "S3ProjectTagModel",
-           "S3ProjectThemeModel",
-           "S3ProjectDRRModel",
-           "S3ProjectDRRPPModel",
-           "S3ProjectTargetModel",
-           "S3ProjectTaskModel",
-           "S3ProjectTaskForumModel",
-           "S3ProjectTaskHRMModel",
-           "S3ProjectTaskTagModel",
-           "S3ProjectWindowModel",
+__all__ = ("ProjectModel",
+           "ProjectActivityModel",
+           "ProjectActivityDemographicsModel",
+           "ProjectActivityItemModel",
+           "ProjectActivityTypeModel",
+           "ProjectActivityPersonModel",
+           "ProjectActivityOrganisationModel",
+           "ProjectActivityOrganisationGroupModel",
+           "ProjectActivitySectorModel",
+           "ProjectActivityTagModel",
+           "ProjectAnnualBudgetModel",
+           "ProjectBeneficiaryModel",
+           "ProjectCampaignModel",
+           "ProjectFrameworkModel",
+           "ProjectHazardModel",
+           "ProjectHRModel",
+           #"ProjectIndicatorModel",
+           "ProjectL10nModel",
+           "ProjectLocationModel",
+           "ProjectMasterKeyModel",
+           "ProjectOrganisationModel",
+           "ProjectPlanningModel",
+           "ProjectProgrammeModel",
+           "ProjectProgrammeProjectModel",
+           "ProjectSectorModel",
+           "ProjectStatusModel",
+           "ProjectStrategyModel",
+           "ProjectTagModel",
+           "ProjectThemeModel",
+           "ProjectDRRModel",
+           "ProjectDRRPPModel",
+           "ProjectTargetModel",
+           "ProjectTaskModel",
+           "ProjectTaskForumModel",
+           "ProjectTaskHRMModel",
+           "ProjectTaskTagModel",
+           "ProjectWindowModel",
            "project_ActivityRepresent",
            "project_activity_year_options",
            "project_ckeditor",
@@ -81,6 +79,7 @@ __all__ = ("S3ProjectModel",
            "project_project_filters",
            "project_project_list_layout",
            "project_activity_list_layout",
+           "project_task_active_statuses",
            "project_task_list_layout",
            "project_TaskRepresent",
            )
@@ -89,19 +88,29 @@ import datetime
 import json
 
 from collections import OrderedDict
+from io import BytesIO
 
 from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
-from s3compat import BytesIO, xrange
 from s3layouts import S3PopupLink
+
+from .req import req_timeframe
 
 # Compact JSON encoding
 SEPARATORS = (",", ":")
 
+# Which options for the Status for a Task count as the task being 'Active'
+project_task_active_statuses = [2,
+                                3,
+                                4,
+                                11,
+                                ]
+
+
 # =============================================================================
-class S3ProjectModel(S3Model):
+class ProjectModel(S3Model):
     """
         Project Model
 
@@ -397,7 +406,7 @@ class S3ProjectModel(S3Model):
             cappend(S3SQLInlineLink("hazard",
                                     label = T("Hazards"),
                                     field = "hazard_id",
-                                    help_field = self.project_hazard_help_fields,
+                                    help_field = project_hazard_help_fields,
                                     cols = 4,
                                     translate = True,
                                     ))
@@ -409,7 +418,7 @@ class S3ProjectModel(S3Model):
             cappend(S3SQLInlineLink("theme",
                                     label = T("Themes"),
                                     field = "theme_id",
-                                    help_field = self.project_theme_help_fields,
+                                    help_field = project_theme_help_fields,
                                     cols = 4,
                                     translate = True,
                                     # Filter Theme by Sector
@@ -433,7 +442,7 @@ class S3ProjectModel(S3Model):
             rappend("sum(total_organisation_amount)")
             rappend("avg(total_organisation_amount)")
         if budget_monitoring:
-            # @ToDo: Add the defaulting from RMSAmericas/config.py
+            # @ToDo: Add the defaulting from RMS/config.py
             #cappend(S3SQLInlineComponent("budget",
             #                             label = T("Budget"),
             #                             #link = False,
@@ -511,65 +520,75 @@ class S3ProjectModel(S3Model):
 
         # Reusable Field
         if use_codes:
-            project_represent = S3Represent(lookup=tablename,
+            project_represent = S3Represent(lookup = tablename,
                                             field_sep = ": ",
-                                            fields=["code", "name"])
+                                            fields = ["code", "name"],
+                                            )
         else:
-            project_represent = S3Represent(lookup=tablename)
+            project_represent = S3Represent(lookup = tablename)
 
         project_id = S3ReusableField("project_id", "reference %s" % tablename,
-            label = T("Project"),
-            ondelete = "CASCADE",
-            represent = project_represent,
-            requires = IS_EMPTY_OR(
-                        IS_ONE_OF(db, "project_project.id",
-                                  project_represent,
-                                  updateable = True,
-                                  )
-                        ),
-            sortby = "name",
-            comment = S3PopupLink(c = "project",
-                                  f = "project",
-                                  tooltip = T("If you don't see the project in the list, you can add a new one by clicking link 'Create Project'."),
-                                  ),
-            )
+                                     label = T("Project"),
+                                     ondelete = "CASCADE",
+                                     represent = project_represent,
+                                     requires = IS_EMPTY_OR(
+                                                    IS_ONE_OF(db, "project_project.id",
+                                                              project_represent,
+                                                              updateable = True,
+                                                              )
+                                                    ),
+                                     sortby = "name",
+                                     comment = S3PopupLink(c = "project",
+                                                           f = "project",
+                                                           tooltip = T("If you don't see the project in the list, you can add a new one by clicking link 'Create Project'."),
+                                                           ),
+                                     )
 
         # Custom Methods
         set_method("project", "project",
                    method = "assign",
-                   action = self.hrm_AssignMethod(component="human_resource"))
+                   action = self.hrm_AssignMethod(component = "human_resource"),
+                   )
 
         set_method("project", "project",
                    method = "details",
-                   action = project_Details)
+                   action = project_Details,
+                   )
 
         set_method("project", "project",
                    method = "map",
-                   action = self.project_map)
+                   action = self.project_map,
+                   )
 
         set_method("project", "project",
                    method = "timeline",
-                   action = self.project_timeline)
+                   action = self.project_timeline,
+                   )
 
         set_method("project", "project",
                    method = "summary_report",
-                   action = project_SummaryReport)
+                   action = project_SummaryReport,
+                   )
 
         set_method("project", "project",
                    method = "indicator_summary_report",
-                   action = project_IndicatorSummaryReport)
+                   action = project_IndicatorSummaryReport,
+                   )
 
         set_method("project", "project",
                    method = "project_progress_report",
-                   action = project_ProgressReport)
+                   action = project_ProgressReport,
+                   )
 
         #set_method("project", "project",
         #           method = "budget_progress_report",
-        #           action = project_BudgetProgressReport)
+        #           action = project_BudgetProgressReport,
+        #           )
 
         #set_method("project", "project",
         #           method = "indicator_progress_report",
-        #           action = project_IndicatorProgressReport)
+        #           action = project_IndicatorProgressReport,
+        #           )
 
         # Components
         add_components(tablename,
@@ -691,7 +710,7 @@ class S3ProjectModel(S3Model):
                                             "multiple": False,
                                             },
                        # Requests
-                       req_req = {"link": "req_project_req",
+                       inv_req = {"link": "inv_req_project",
                                   "joinby": "project_id",
                                   "key": "req_id",
                                   "actuate": "hide",
@@ -740,11 +759,7 @@ class S3ProjectModel(S3Model):
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
-
-        return {"project_project_id": lambda **attr: dummy("project_id"),
+        return {"project_project_id": S3ReusableField.dummy("project_id"),
                 }
 
     # -------------------------------------------------------------------------
@@ -895,7 +910,8 @@ class S3ProjectModel(S3Model):
                 return
 
         duplicate = current.db(query).select(table.id,
-                                             limitby=(0, 1)).first()
+                                             limitby = (0, 1),
+                                             ).first()
         if duplicate:
             item.id = duplicate.id
             item.method = item.METHOD.UPDATE
@@ -1095,7 +1111,7 @@ class S3ProjectModel(S3Model):
             r.error(405, current.ERROR.BAD_METHOD)
 
 # =============================================================================
-class S3ProjectActivityModel(S3Model):
+class ProjectActivityModel(S3Model):
     """
         Project Activity Model
 
@@ -1407,25 +1423,26 @@ class S3ProjectActivityModel(S3Model):
         #    # Custom Method to Assign Cases
         #    self.set_method("project", "activity",
         #                    method = "assign",
-        #                    action = self.dvr_AssignMethod(component="case_activity"),
+        #                    action = self.dvr_AssignMethod(component = "case_activity"),
         #                    )
 
         # Reusable Field
         activity_id = S3ReusableField("activity_id", "reference %s" % tablename,
-                        comment = S3PopupLink(ADD_ACTIVITY,
-                                              c = "project",
-                                              f = "activity",
-                                              tooltip = ACTIVITY_TOOLTIP,
-                                              ),
-                        label = T("Activity"),
-                        ondelete = "CASCADE",
-                        represent = represent,
-                        requires = IS_EMPTY_OR(
-                                    IS_ONE_OF(db, "project_activity.id",
-                                              represent,
-                                              sort=True)),
-                        sortby="name",
-                        )
+                                      comment = S3PopupLink(ADD_ACTIVITY,
+                                                            c = "project",
+                                                            f = "activity",
+                                                            tooltip = ACTIVITY_TOOLTIP,
+                                                            ),
+                                      label = T("Activity"),
+                                      ondelete = "CASCADE",
+                                      represent = represent,
+                                      requires = IS_EMPTY_OR(
+                                                    IS_ONE_OF(db, "project_activity.id",
+                                                              represent,
+                                                              sort = True,
+                                                              )),
+                                      sortby = "name",
+                                      )
 
         # Components
         add_components(tablename,
@@ -1571,11 +1588,7 @@ class S3ProjectActivityModel(S3Model):
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
-
-        return {"project_activity_id": lambda **attr: dummy("activity_id"),
+        return {"project_activity_id": S3ReusableField.dummy("activity_id"),
                 }
 
     # ---------------------------------------------------------------------
@@ -1608,8 +1621,8 @@ class S3ProjectActivityModel(S3Model):
             table = s3db.project_activity
             activity = current.db(table.id == activity_id).select(table.date,
                                                                   table.end_date,
-                                                                  cache=s3db.cache,
-                                                                  limitby=(0, 1)
+                                                                  cache = s3db.cache,
+                                                                  limitby = (0, 1),
                                                                   ).first()
             if activity:
                 start_date = activity.date
@@ -1622,7 +1635,7 @@ class S3ProjectActivityModel(S3Model):
         elif not start_date:
             return [end_date.year]
         else:
-            return list(xrange(start_date.year, end_date.year + 1))
+            return list(range(start_date.year, end_date.year + 1))
 
     # ---------------------------------------------------------------------
     @staticmethod
@@ -1644,7 +1657,7 @@ class S3ProjectActivityModel(S3Model):
         atable = db.project_activity
         activity = db(atable.id == activity_id).select(atable.project_id,
                                                        atable.location_id,
-                                                       limitby=(0, 1)
+                                                       limitby = (0, 1),
                                                        ).first()
         try:
             project_id = activity.project_id
@@ -1663,7 +1676,7 @@ class S3ProjectActivityModel(S3Model):
         query = (ltable.project_id == project_id) &\
                 (ltable.location_id == location_id)
         location = db(query).select(ltable.id,
-                                    limitby=(0, 1)
+                                    limitby = (0, 1),
                                     ).first()
 
         if location:
@@ -1680,7 +1693,7 @@ class S3ProjectActivityModel(S3Model):
         query = (latable.project_location_id == pl_id) &\
                 (latable.activity_type_id == activity_type_id)
         exists = db(query).select(latable.id,
-                                  limitby=(0, 1)
+                                  limitby = (0, 1),
                                   ).first()
         if not exists:
             # Create it
@@ -1700,14 +1713,15 @@ class S3ProjectActivityModel(S3Model):
         query = (table.id == activity_id) & \
                 (table.project_id == ptable.id)
         project = db(query).select(ptable.realm_entity,
-                                   limitby=(0, 1)).first()
+                                   limitby = (0, 1),
+                                   ).first()
         try:
             return project.realm_entity
         except AttributeError:
             return None
 
 # =============================================================================
-class S3ProjectActivityTypeModel(S3Model):
+class ProjectActivityTypeModel(S3Model):
     """
         Project Activity Type Model
 
@@ -1866,7 +1880,7 @@ class S3ProjectActivityTypeModel(S3Model):
                 }
 
 # =============================================================================
-class S3ProjectActivityPersonModel(S3Model):
+class ProjectActivityPersonModel(S3Model):
     """
         Project Activity Person Model
 
@@ -1931,7 +1945,7 @@ class S3ProjectActivityPersonModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectActivityOrganisationModel(S3Model):
+class ProjectActivityOrganisationModel(S3Model):
     """
         Project Activity Organisation Model
 
@@ -1998,7 +2012,7 @@ class S3ProjectActivityOrganisationModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectActivityOrganisationGroupModel(S3Model):
+class ProjectActivityOrganisationGroupModel(S3Model):
     """
         Project Activity Organisation Group Model
 
@@ -2038,7 +2052,7 @@ class S3ProjectActivityOrganisationGroupModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectActivityDemographicsModel(S3Model):
+class ProjectActivityDemographicsModel(S3Model):
     """
         Project Activity Demographics Model
 
@@ -2080,7 +2094,7 @@ class S3ProjectActivityDemographicsModel(S3Model):
                                           empty = False,
                                           comment = parameter_id_comment,
                                           ),
-                          self.req_timeframe(),
+                          req_timeframe()(),
                           Field("target_value", "integer",
                                 label = T("Target Value"),
                                 represent = IS_INT_AMOUNT.represent,
@@ -2104,7 +2118,7 @@ class S3ProjectActivityDemographicsModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectActivityItemModel(S3Model):
+class ProjectActivityItemModel(S3Model):
     """
         Project Activity Item Model
 
@@ -2143,7 +2157,7 @@ $.filterOptionsS3({
                                               widget = None,
                                               ),
                           self.supply_item_pack_id(),
-                          self.req_timeframe(),
+                          req_timeframe()(),
                           Field("target_value", "integer",
                                 label = T("Target Value"),
                                 represent = IS_INT_AMOUNT.represent,
@@ -2167,7 +2181,7 @@ $.filterOptionsS3({
         return {}
 
 # =============================================================================
-class S3ProjectActivitySectorModel(S3Model):
+class ProjectActivitySectorModel(S3Model):
     """
         Project Activity Sector Model
 
@@ -2205,7 +2219,7 @@ class S3ProjectActivitySectorModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectActivityTagModel(S3Model):
+class ProjectActivityTagModel(S3Model):
     """
         Activity Tags
     """
@@ -2248,7 +2262,7 @@ class S3ProjectActivityTagModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectAnnualBudgetModel(S3Model):
+class ProjectAnnualBudgetModel(S3Model):
     """
         Project Budget Model
 
@@ -2324,7 +2338,7 @@ class S3ProjectAnnualBudgetModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectBeneficiaryModel(S3Model):
+class ProjectBeneficiaryModel(S3Model):
     """
         Project Beneficiary Model
         - depends on Stats module
@@ -2620,20 +2634,21 @@ class S3ProjectBeneficiaryModel(S3Model):
 
         # Reusable Field
         beneficiary_id = S3ReusableField("beneficiary_id", "reference %s" % tablename,
-            label = T("Beneficiaries"),
-            ondelete = "SET NULL",
-            represent = self.project_beneficiary_represent,
-            requires = IS_EMPTY_OR(
-                        IS_ONE_OF(db, "project_beneficiary.id",
-                                  self.project_beneficiary_represent,
-                                  sort=True)),
-            sortby = "name",
-            comment = S3PopupLink(c = "project",
-                                  f = "beneficiary",
-                                  title = ADD_BNF,
-                                  tooltip = T("If you don't see the beneficiary in the list, you can add a new one by clicking link 'Add Beneficiaries'."),
-                                  ),
-            )
+                                         label = T("Beneficiaries"),
+                                         ondelete = "SET NULL",
+                                         represent = self.project_beneficiary_represent,
+                                         requires = IS_EMPTY_OR(
+                                                        IS_ONE_OF(db, "project_beneficiary.id",
+                                                                  self.project_beneficiary_represent,
+                                                                  sort = True,
+                                                                  )),
+                                         sortby = "name",
+                                         comment = S3PopupLink(c = "project",
+                                                               f = "beneficiary",
+                                                               title = ADD_BNF,
+                                                               tooltip = T("If you don't see the beneficiary in the list, you can add a new one by clicking link 'Add Beneficiaries'."),
+                                                               ),
+                                         )
 
         # Components
         self.add_components(tablename,
@@ -2738,7 +2753,8 @@ class S3ProjectBeneficiaryModel(S3Model):
                 (ltable.id == btable.project_location_id)
         project_location = db(query).select(ltable.project_id,
                                             ltable.location_id,
-                                            limitby=(0, 1)).first()
+                                            limitby = (0, 1),
+                                            ).first()
         if project_location:
             db(btable.id == record_id).update(
                     project_id = project_location.project_id,
@@ -2746,7 +2762,7 @@ class S3ProjectBeneficiaryModel(S3Model):
                 )
 
 # =============================================================================
-class S3ProjectCampaignModel(S3Model):
+class ProjectCampaignModel(S3Model):
     """
         Project Campaign Model
         - used for TERA integration:
@@ -2813,11 +2829,12 @@ class S3ProjectCampaignModel(S3Model):
         # Reusable Field
         represent = S3Represent(lookup=tablename)
         campaign_id = S3ReusableField("campaign_id", "reference %s" % tablename,
-                                      sortby="name",
+                                      sortby = "name",
                                       requires = IS_EMPTY_OR(
                                                     IS_ONE_OF(db, "project_campaign.id",
                                                               represent,
-                                                              sort=True)),
+                                                              sort = True,
+                                                              )),
                                       represent = represent,
                                       label = T("Campaign"),
                                       comment = S3PopupLink(c = "project",
@@ -2825,7 +2842,8 @@ class S3ProjectCampaignModel(S3Model):
                                                             title = ADD_CAMPAIGN,
                                                             tooltip = T("If you don't see the campaign in the list, you can add a new one by clicking link 'Add Campaign'."),
                                                             ),
-                                      ondelete = "CASCADE")
+                                      ondelete = "CASCADE",
+                                      )
 
         add_components(tablename,
                        project_campaign_message = "campaign_id",
@@ -2872,14 +2890,16 @@ class S3ProjectCampaignModel(S3Model):
         # Reusable Field
         represent = S3Represent(lookup=tablename)
         message_id = S3ReusableField("campaign_message_id", "reference %s" % tablename,
-                                     sortby="name",
+                                     sortby = "name",
                                      requires = IS_EMPTY_OR(
                                                     IS_ONE_OF(db, "project_campaign_message.id",
                                                               represent,
-                                                              sort=True)),
+                                                              sort = True,
+                                                              )),
                                      represent = represent,
                                      label = T("Campaign Message"),
-                                     ondelete = "CASCADE")
+                                     ondelete = "CASCADE",
+                                     )
 
         # Components
         add_components(tablename,
@@ -3027,7 +3047,7 @@ class S3ProjectCampaignModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectFrameworkModel(S3Model):
+class ProjectFrameworkModel(S3Model):
     """
         Project Framework Model
     """
@@ -3101,10 +3121,10 @@ class S3ProjectFrameworkModel(S3Model):
                 "document",
                 label = T("Files"),
                 fields = ["file"],
-                filterby = dict(field = "file",
-                                options = "",
-                                invert = True,
-                                )
+                filterby = {"field": "file",
+                            "options": "",
+                            "invert": True,
+                            }
             ),
         )
 
@@ -3171,7 +3191,7 @@ class S3ProjectFrameworkModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectHazardModel(S3Model):
+class ProjectHazardModel(S3Model):
     """
         Project Hazard Model
     """
@@ -3229,7 +3249,8 @@ class S3ProjectHazardModel(S3Model):
                                     requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "project_hazard.id",
                                                           represent,
-                                                          sort=True)),
+                                                          sort = True,
+                                                          )),
                                     represent = represent,
                                     ondelete = "CASCADE",
                                     )
@@ -3269,7 +3290,7 @@ class S3ProjectHazardModel(S3Model):
                 }
 
 # =============================================================================
-class S3ProjectHRModel(S3Model):
+class ProjectHRModel(S3Model):
     """
         Optionally link Projects <> Human Resources
     """
@@ -3359,14 +3380,15 @@ class S3ProjectHRModel(S3Model):
                 (hr.project_id == form_vars.project_id) & \
                 (hr.id != form_vars.id)
         row = current.db(query).select(hr.id,
-                                       limitby=(0, 1)).first()
+                                       limitby = (0, 1),
+                                       ).first()
 
         if row:
             # We have a duplicate. Return an error to the user.
             form.errors.human_resource_id = current.T("Record already exists")
 
 # =============================================================================
-class S3ProjectIndicatorModel(S3Model):
+class ProjectIndicatorModel(S3Model):
     """
         Project Indicator Model
         - depends on Stats module
@@ -3459,7 +3481,7 @@ class S3ProjectIndicatorModel(S3Model):
                                 writable = True,
                                 comment = S3PopupLink(c = "project",
                                                       f = "indicator",
-                                                      vars = dict(child="parameter_id"),
+                                                      vars = {"child": "parameter_id"},
                                                       title = ADD_INDICATOR,
                                                       ),
                                 ),
@@ -3633,7 +3655,7 @@ class S3ProjectIndicatorModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectL10nModel(S3Model):
+class ProjectL10nModel(S3Model):
     """
         Project L10n Model
 
@@ -3659,7 +3681,7 @@ class S3ProjectL10nModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectLocationModel(S3Model):
+class ProjectLocationModel(S3Model):
     """
         Project Location Model
         - these can simply be ways to display a Project on the Map
@@ -4026,12 +4048,7 @@ class S3ProjectLocationModel(S3Model):
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False,
-                                )
-
-        return {"project_location_id": lambda **attr: dummy("project_location_id"),
+        return {"project_location_id": S3ReusableField.dummy("project_location_id"),
                 "project_location_represent": lambda v, row=None: "",
                 }
 
@@ -4072,7 +4089,7 @@ class S3ProjectLocationModel(S3Model):
             table = db.project_location_contact
             record = db(table.id == form_vars.get("id")).select(table.person_id,
                                                                 table.realm_entity,
-                                                                limitby=(0, 1),
+                                                                limitby = (0, 1),
                                                                 ).first()
             if not record:
                 return
@@ -4083,13 +4100,13 @@ class S3ProjectLocationModel(S3Model):
             ptable = db.pr_person
             person = db(ptable.id == person_id).select(ptable.id,
                                                        ptable.realm_entity,
-                                                       limitby=(0, 1),
+                                                       limitby = (0, 1),
                                                        ).first()
             if person and not person.realm_entity:
                 person.update_record(realm_entity = realm_entity)
 
 # =============================================================================
-class S3ProjectMasterKeyModel(S3Model):
+class ProjectMasterKeyModel(S3Model):
     """
         Link Projects to Master Keys for Mobile Data Entry
     """
@@ -4116,7 +4133,7 @@ class S3ProjectMasterKeyModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectOrganisationModel(S3Model):
+class ProjectOrganisationModel(S3Model):
     """
         Project Organisation Model
     """
@@ -4255,7 +4272,8 @@ class S3ProjectOrganisationModel(S3Model):
                     (otable.role == lead_role) & \
                     (otable.organisation_id != organisation_id)
             row = db(query).select(otable.id,
-                                   limitby=(0, 1)).first()
+                                   limitby = (0, 1),
+                                   ).first()
             if row:
                 form.errors.role = \
                     current.T("Lead Implementer for this project is already set, please choose another role.")
@@ -4319,7 +4337,8 @@ class S3ProjectOrganisationModel(S3Model):
         query = (potable.id == row.get("id"))
         deleted_row = db(query).select(potable.deleted_fk,
                                        potable.role,
-                                       limitby=(0, 1)).first()
+                                       limitby = (0, 1),
+                                       ).first()
 
         if str(deleted_row.role) == \
            str(current.deployment_settings.get_project_organisation_lead_role()):
@@ -4328,7 +4347,7 @@ class S3ProjectOrganisationModel(S3Model):
             project_id = deleted_fk["project_id"]
 
             # Set the project organisation_id to NULL (using None)
-            db(ptable.id == project_id).update(organisation_id=None)
+            db(ptable.id == project_id).update(organisation_id = None)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -4342,14 +4361,15 @@ class S3ProjectOrganisationModel(S3Model):
         query = (table.id == po_id) & \
                 (table.project_id == ptable.id)
         project = db(query).select(ptable.realm_entity,
-                                   limitby=(0, 1)).first()
+                                   limitby = (0, 1),
+                                   ).first()
         try:
             return project.realm_entity
         except AttributeError:
             return None
 
 # =============================================================================
-class S3ProjectPlanningModel(S3Model):
+class ProjectPlanningModel(S3Model):
     """
         Project Planning Model:
             Goals (Objectives)
@@ -4387,7 +4407,6 @@ class S3ProjectPlanningModel(S3Model):
              "project_indicator_activity_represent",
              "project_indicator_activity_activity",
              "project_activity_data",
-             "project_planning_status_update",
              )
 
     def model(self):
@@ -5036,7 +5055,7 @@ class S3ProjectPlanningModel(S3Model):
                                  (T("Percentage"), "percentage"),
                                  "comments",
                                  ],
-                  onaccept = self.project_indicator_data_onaccept,
+                  onaccept = project_indicator_data_onaccept,
                   ondelete = self.project_indicator_data_ondelete,
                   orderby = ("project_indicator_data.end_date", "project_indicator_data.indicator_id"),
                   report_options = report_options,
@@ -5236,7 +5255,7 @@ class S3ProjectPlanningModel(S3Model):
                      indicator_id(readable = False,
                                   writable = False,
                                   ),
-                     # Used as linktable for RMSAmericas HNRC for their UI
+                     # Used as linktable for RMS HNRC for their UI
                      indicator_activity_id(),
                      # Populated Automatically
                      # Used for Timeplot &, in future, to ease changing the monitoring frequency
@@ -5325,763 +5344,7 @@ class S3ProjectPlanningModel(S3Model):
                 "project_indicator_represent": indicator_represent,
                 #"project_indicator_activity_id": indicator_activity_id,
                 "project_indicator_activity_represent": indicator_activity_represent,
-                "project_planning_status_update": self.project_planning_status_update,
                 }
-
-    # -------------------------------------------------------------------------
-    def project_planning_status_update(self, project_id):
-        """
-            Update the status fields of the different Project levels
-            Fired onaccept of:
-                project_activity_data (if status_from_activities)
-                project_indicator_activity (if status_from_activities, weightings may have changed)
-                project_indicator_data (if status_from_activities is False)
-                project_indicator (weightings may have changed)
-                project_output (weightings may have changed)
-                project_outcome (weightings may have changed)
-                project_goal (weightings may have changed)
-
-            @param project_id: the ID of the project record to update
-
-            @ToDo: Handle deployment_settings for which levels are exposed
-        """
-
-        db = current.db
-        s3db = current.s3db
-
-        if current.deployment_settings.get_project_status_from_activities():
-            # Progress from Activities
-            # Read all of the Activity Data for this Project (past & future)
-            table = s3db.project_activity_data
-            query = (table.project_id == project_id) & \
-                    (table.deleted == False)
-            activity_data = db(query).select(table.indicator_activity_id,
-                                             table.indicator_id,
-                                             table.target_value,
-                                             table.value,
-                                             table.end_date,
-                                             )
-            if not activity_data:
-                # No Activity Data yet recorded
-                # => Nothing we can do
-                return
-
-            project = None
-            goals = {}
-            outcomes = {}
-            outputs = {}
-            indicators = {}
-            indicator_data = {}
-            activities = {}
-
-            # Populate Indicator Data (for the IndicatorSummaryReport)
-            # Wipe all existing Data
-            table = s3db.project_indicator_data
-            table.truncate()
-            # Aggregate Data by Indicator and Date
-            for d in activity_data:
-                indicator_id = d.indicator_id
-                end_date = d.end_date
-                key = "%s-%s" % (indicator_id, end_date)
-                if key not in indicator_data:
-                    indicator_data[key] = {"project_id": project_id,
-                                           "indicator_id": indicator_id,
-                                           "end_date": end_date,
-                                           "value": d.value or 0,
-                                           "target_value": d.target_value or 0,
-                                           }
-                else:
-                    # Add this data to Totals
-                    i = indicator_data[key]
-                    value = d.value
-                    if value:
-                        i["value"] += value
-                    target_value = d.target_value
-                    if target_value:
-                        i["target_value"] += target_value
-
-            insert = table.insert
-            for key in indicator_data:
-                indicator_data_id = insert(**indicator_data[key])
-                self.project_indicator_data_onaccept(Storage(vars={"id": indicator_data_id}),
-                                                     status=False)
-
-            # Populate Activities dict
-            now = current.request.utcnow
-            current_year = now.year
-            current_date = now.date()
-            records = 0
-            current_records = 0
-            for d in activity_data:
-                target_value = d.target_value
-                if not target_value:
-                    # Skip
-                    continue
-                records += 1
-                end_date = d.end_date
-                if end_date > current_date:
-                    # Future result, no values expected yet
-                    total_percentage_target = 0
-                else:
-                    # Past result
-                    total_percentage_target = 100
-                value = d.value
-                if value:
-                    total_percentage_value = min(100, value / target_value * 100)
-                else:
-                    total_percentage_value = 0
-                if end_date.year == current_year:
-                    # Current Year
-                    current_records += 1
-                    current_percentage_target = total_percentage_target
-                    current_percentage_value = total_percentage_value
-                else:
-                    # Previous Year
-                    current_percentage_target = 0
-                    current_percentage_value = 0
-                indicator_activity_id = d.indicator_activity_id
-                if indicator_activity_id not in activities:
-                    activities[indicator_activity_id] = {"records": records,
-                                                         "total_percentage_target": total_percentage_target,
-                                                         "total_percentage_value": total_percentage_value,
-                                                         "current_records": current_records,
-                                                         "current_percentage_target": current_percentage_target,
-                                                         "current_percentage_value": current_percentage_value,
-                                                         }
-                else:
-                    # Add this data to Totals
-                    a = activities[indicator_activity_id]
-                    a["records"] = records
-                    a["current_records"] = current_records
-                    a["total_percentage_target"] += total_percentage_target
-                    a["total_percentage_value"] += total_percentage_value
-                    a["current_percentage_target"] += current_percentage_target
-                    a["current_percentage_value"] += current_percentage_value
-
-            # Read all of the Activities for this Project
-            table = s3db.project_indicator_activity
-            query = (table.project_id == project_id) & \
-                    (table.deleted == False)
-            rows = db(query).select(table.id,
-                                    #table.goal_id,
-                                    #table.outcome_id,
-                                    #table.output_id,
-                                    table.indicator_id,
-                                    table.weighting,
-                                    )
-            for r in rows:
-                activity_id = r.id
-                if activity_id not in activities:
-                    # We have no data for this activity, so ignore (not actually ignored due to weighting!)
-                    actual_progress = planned_progress = years_actual_progress = years_planned_progress = None
-                else:
-                    a = activities[activity_id]
-                    records = a["records"]
-                    actual_progress = a["total_percentage_value"] / records
-                    planned_progress = a["total_percentage_target"] / records
-                    current_records = a["current_records"]
-                    if current_records:
-                        years_actual_progress = a["current_percentage_value"] / current_records
-                        years_planned_progress = a["current_percentage_target"] / current_records
-                    else:
-                        years_actual_progress = 0
-                        years_planned_progress = 0
-
-                # Update Activity Progress
-                r.update_record(actual_progress = actual_progress,
-                                planned_progress = planned_progress,
-                                years_actual_progress = years_actual_progress,
-                                years_planned_progress = years_planned_progress,
-                                )
-
-                if actual_progress is not None:
-                    # Populate Indicators dict
-                    indicator_id = r.indicator_id
-                    weighting = r.weighting
-                    actual_progress = actual_progress * weighting
-                    planned_progress = planned_progress * weighting
-                    years_actual_progress = years_actual_progress * weighting
-                    years_planned_progress = years_planned_progress * weighting
-                    if indicator_id not in indicators:
-                        indicators[indicator_id] = {"actual_progress": actual_progress,
-                                                    "planned_progress": planned_progress,
-                                                    "years_actual_progress": years_actual_progress,
-                                                    "years_planned_progress": years_planned_progress,
-                                                    }
-                    else:
-                        # Add this data to Totals
-                        i = indicators[indicator_id]
-                        i["actual_progress"] += actual_progress
-                        i["planned_progress"] += planned_progress
-                        i["years_actual_progress"] += years_actual_progress
-                        i["years_planned_progress"] += years_planned_progress
-
-            # Read all of the Indicators for this Project
-            table = s3db.project_indicator
-            query = (table.project_id == project_id) & \
-                    (table.deleted == False)
-            rows = db(query).select(table.id,
-                                    #table.goal_id,
-                                    #table.outcome_id,
-                                    table.output_id,
-                                    table.weighting,
-                                    )
-            for r in rows:
-                indicator_id = r.id
-                if indicator_id not in indicators:
-                    # We have no data for this indicator, so ignore (not actually ignored due to weighting!)
-                    actual_progress = planned_progress = years_actual_progress = years_planned_progress = None
-                else:
-                    i = indicators[indicator_id]
-                    actual_progress = i["actual_progress"]
-                    planned_progress = i["planned_progress"]
-                    years_actual_progress = i["years_actual_progress"]
-                    years_planned_progress = i["years_planned_progress"]
-
-                # Update Indicator Progress
-                r.update_record(actual_progress_by_activities = actual_progress,
-                                planned_progress_by_activities = planned_progress,
-                                years_actual_progress_by_activities = years_actual_progress,
-                                years_planned_progress_by_activities = years_planned_progress,
-                                )
-
-                if actual_progress is not None:
-                    # Populate Outputs dict
-                    output_id = r.output_id
-                    weighting = r.weighting
-                    actual_progress = actual_progress * weighting
-                    planned_progress = planned_progress * weighting
-                    years_actual_progress = years_actual_progress * weighting
-                    years_planned_progress = years_planned_progress * weighting
-                    if output_id not in outputs:
-                        outputs[output_id] = {"actual_progress": actual_progress,
-                                              "planned_progress": planned_progress,
-                                              "years_actual_progress": years_actual_progress,
-                                              "years_planned_progress": years_planned_progress,
-                                              }
-                    else:
-                        # Add this data to Totals
-                        o = outputs[output_id]
-                        o["actual_progress"] += actual_progress
-                        o["planned_progress"] += planned_progress
-                        o["years_actual_progress"] += years_actual_progress
-                        o["years_planned_progress"] += years_planned_progress
-
-            # Read all of the Outputs for this Project
-            table = s3db.project_output
-            query = (table.project_id == project_id) & \
-                    (table.deleted == False)
-            rows = db(query).select(table.id,
-                                    #table.goal_id,
-                                    table.outcome_id,
-                                    table.weighting,
-                                    )
-            for r in rows:
-                output_id = r.id
-                if output_id not in outputs:
-                    # We have no data for this output, so ignore (not actually ignored due to weighting!)
-                    actual_progress = planned_progress = years_actual_progress = years_planned_progress = None
-                else:
-                    o = outputs[output_id]
-                    actual_progress = o["actual_progress"]
-                    planned_progress = o["planned_progress"]
-                    years_actual_progress = o["years_actual_progress"]
-                    years_planned_progress = o["years_planned_progress"]
-
-                # Update Indicator Progress
-                r.update_record(actual_progress_by_activities = actual_progress,
-                                planned_progress_by_activities = planned_progress,
-                                years_actual_progress_by_activities = years_actual_progress,
-                                years_planned_progress_by_activities = years_planned_progress,
-                                )
-
-                if actual_progress is not None:
-                    # Populate Outcomes dict
-                    outcome_id = r.outcome_id
-                    weighting = r.weighting
-                    actual_progress = actual_progress * weighting
-                    planned_progress = planned_progress * weighting
-                    years_actual_progress = years_actual_progress * weighting
-                    years_planned_progress = years_planned_progress * weighting
-                    if outcome_id not in outcomes:
-                        outcomes[outcome_id] = {"actual_progress": actual_progress,
-                                                "planned_progress": planned_progress,
-                                                "years_actual_progress": years_actual_progress,
-                                                "years_planned_progress": years_planned_progress,
-                                                }
-                    else:
-                        # Add this data to Totals
-                        o = outcomes[outcome_id]
-                        o["actual_progress"] += actual_progress
-                        o["planned_progress"] += planned_progress
-                        o["years_actual_progress"] += years_actual_progress
-                        o["years_planned_progress"] += years_planned_progress
-
-            # Read all of the Outcomes for this Project
-            table = s3db.project_outcome
-            query = (table.project_id == project_id) & \
-                    (table.deleted == False)
-            rows = db(query).select(table.id,
-                                    table.goal_id,
-                                    table.weighting,
-                                    )
-            for r in rows:
-                outcome_id = r.id
-                if outcome_id not in outcomes:
-                    # We have no data for this outcome, so ignore (not actually ignored due to weighting!)
-                    actual_progress = planned_progress = years_actual_progress = years_planned_progress = None
-                else:
-                    o = outcomes[outcome_id]
-                    actual_progress = o["actual_progress"]
-                    planned_progress = o["planned_progress"]
-                    years_actual_progress = o["years_actual_progress"]
-                    years_planned_progress = o["years_planned_progress"]
-
-                # Update Indicator Progress
-                r.update_record(actual_progress_by_activities = actual_progress,
-                                planned_progress_by_activities = planned_progress,
-                                years_actual_progress_by_activities = years_actual_progress,
-                                years_planned_progress_by_activities = years_planned_progress,
-                                )
-
-                if actual_progress is not None:
-                    # Populate Goals dict
-                    goal_id = r.goal_id
-                    weighting = r.weighting
-                    actual_progress = actual_progress * weighting
-                    planned_progress = planned_progress * weighting
-                    years_actual_progress = years_actual_progress * weighting
-                    years_planned_progress = years_planned_progress * weighting
-                    if goal_id not in goals:
-                        goals[goal_id] = {"actual_progress": actual_progress,
-                                          "planned_progress": planned_progress,
-                                          "years_actual_progress": years_actual_progress,
-                                          "years_planned_progress": years_planned_progress,
-                                          }
-                    else:
-                        # Add this data to Totals
-                        g = goals[goal_id]
-                        g["actual_progress"] += actual_progress
-                        g["planned_progress"] += planned_progress
-                        g["years_actual_progress"] += years_actual_progress
-                        g["years_planned_progress"] += years_planned_progress
-
-            # Read all of the Goals for this Project
-            table = s3db.project_goal
-            query = (table.project_id == project_id) & \
-                    (table.deleted == False)
-            rows = db(query).select(table.id,
-                                    table.weighting,
-                                    )
-            for r in rows:
-                goal_id = r.id
-                if goal_id not in goals:
-                    # We have no data for this goal, so ignore (not actually ignored due to weighting!)
-                    actual_progress = planned_progress = years_actual_progress = years_planned_progress = None
-                else:
-                    g = goals[goal_id]
-                    actual_progress = g["actual_progress"]
-                    planned_progress = g["planned_progress"]
-                    years_actual_progress = g["years_actual_progress"]
-                    years_planned_progress = g["years_planned_progress"]
-
-                # Update Indicator Progress
-                r.update_record(actual_progress_by_activities = actual_progress,
-                                planned_progress_by_activities = planned_progress,
-                                years_actual_progress_by_activities = years_actual_progress,
-                                years_planned_progress_by_activities = years_planned_progress,
-                                )
-
-                if actual_progress is not None:
-                    # Populate Project dict
-                    weighting = r.weighting
-                    actual_progress = actual_progress * weighting
-                    planned_progress = planned_progress * weighting
-                    years_actual_progress = years_actual_progress * weighting
-                    years_planned_progress = years_planned_progress * weighting
-                    if project is None:
-                        project = {"actual_progress": actual_progress,
-                                   "planned_progress": planned_progress,
-                                   "years_actual_progress": years_actual_progress,
-                                   "years_planned_progress": years_planned_progress,
-                                   }
-                    else:
-                        # Add this data to Totals
-                        project["actual_progress"] += actual_progress
-                        project["planned_progress"] += planned_progress
-                        project["years_actual_progress"] += years_actual_progress
-                        project["years_planned_progress"] += years_planned_progress
-
-            # Update project Progress
-            table = s3db.project_project
-            pset = db(table.id == project_id)
-            if project is None:
-                pset.update(actual_progress_by_activities = None,
-                            planned_progress_by_activities = None,
-                            years_actual_progress_by_activities = None,
-                            years_planned_progress_by_activities = None,
-                            )
-            else:
-                pset.update(actual_progress_by_activities = project["actual_progress"],
-                            planned_progress_by_activities = project["planned_progress"],
-                            years_actual_progress_by_activities = project["years_actual_progress"],
-                            years_planned_progress_by_activities = project["years_planned_progress"],
-                            )
-
-            # Finish Status from Activities
-            return
-
-
-        # Status from Indicator Data
-        # Read all of the past Indicator Data for this Project
-        # (We ignore future values)
-        table = s3db.project_indicator_data
-        query = (table.project_id == project_id) & \
-                (table.deleted == False) & \
-                (table.end_date < current.request.utcnow) & \
-                (table.target_value != None) & \
-                (table.value != None)
-        indicator_data = db(query).select(table.indicator_id,
-                                          table.target_value,
-                                          table.value,
-                                          table.end_date,
-                                          orderby = ~table.end_date,
-                                          )
-        if not indicator_data:
-            # No Indicator Data yet recorded
-            # => Nothing we can do
-            return
-
-        project = None
-        goals = {}
-        outcomes = {}
-        outputs = {}
-        indicators = {}
-
-        # Populate Indicators dict
-        latest_date = None
-        for d in indicator_data:
-            target_value = d.target_value
-            value = d.value
-            if target_value == 0.0 and value == 0.0:
-                # Ignore
-                continue
-            else:
-                end_date = d.end_date
-                if not latest_date:
-                    latest_date = end_date
-                indicator_id = d.indicator_id
-                if indicator_id not in indicators:
-                    indicators[indicator_id] = {"total_target": target_value,
-                                                "total_value": value,
-                                                "current_target": target_value,
-                                                "current_value": value,
-                                                "current_date": end_date,
-                                                }
-                else:
-                    # Add this data to Totals
-                    i = indicators[indicator_id]
-                    i["total_target"] += target_value
-                    i["total_value"] += value
-                    # Should never happen due to the orderby:
-                    #if end_date > i["current_date"]:
-                    #    # Replace the Current data
-                    #    i.update(current_target = target_value,
-                    #             current_value = value,
-                    #             current_date = end_date)
-
-        # Current Status only includes data in the Current Month
-        latest_month = latest_date.month
-        latest_year = latest_date.year
-        for indicator_id in indicators:
-            i = indicators[indicator_id]
-            current_date = i["current_date"]
-            if current_date.month != latest_month or \
-               current_date.year != latest_year:
-                # This indicator should be ignored for Current Status
-                i.update(current_target = None,
-                         current_value = None)
-
-        # Read all of the Indicators for this Project
-        table = s3db.project_indicator
-        query = (table.project_id == project_id) & \
-                (table.deleted == False)
-        rows = db(query).select(table.id,
-                                #table.goal_id,
-                                #table.outcome_id,
-                                table.output_id,
-                                table.weighting,
-                                )
-        for r in rows:
-            indicator_id = r.id
-            if indicator_id not in indicators:
-                # We have no data for this indicator, so ignore
-                current_status = overall_status = None
-            else:
-                i = indicators[indicator_id]
-                total_target = i["total_target"]
-                total_value = i["total_value"]
-                current_target = i["current_target"]
-                current_value = i["current_value"]
-                if total_target is None:
-                    # Ignore
-                    overall_status = None
-                elif total_target == 0.0:
-                    if total_value == 0.0:
-                        # Ignore
-                        overall_status = None
-                    else:
-                        # Assume complete
-                        overall_status = 100.0
-                elif total_value == 0.0:
-                    overall_status = 0.0
-                else:
-                    overall_status = total_value / total_target * 100
-                if current_target is None:
-                    # Ignore
-                    current_status = None
-                elif current_target == 0.0:
-                    if current_value == 0.0:
-                        # Ignore
-                        current_status = None
-                    else:
-                        # Assume complete
-                        current_status = 100.0
-                elif current_value == 0.0:
-                    current_status = 0.0
-                else:
-                    current_status = current_value / current_target * 100
-
-            # Update Indicator Status
-            r.update_record(current_status_by_indicators = current_status,
-                            overall_status_by_indicators = overall_status,
-                            )
-
-            # Populate Outputs dict
-            output_id = r.output_id
-            weighting = r.weighting
-            if current_status is None:
-                current_status = current_weighting = 0
-            else:
-                if current_status > 100:
-                    current_status = 100
-                current_status = current_status * weighting
-                current_weighting = weighting
-            if overall_status is None:
-                overall_status = overall_weighting = 0
-            else:
-                if overall_status > 100:
-                    overall_status = 100
-                overall_status = overall_status * weighting
-                overall_weighting = weighting
-            if output_id not in outputs:
-                outputs[output_id] = {"current_status": current_status,
-                                      "overall_status": overall_status,
-                                      "total_current_weighting": current_weighting,
-                                      "total_overall_weighting": overall_weighting,
-                                      }
-            else:
-                o = outputs[output_id]
-                o.update(current_status = o["current_status"] + current_status,
-                         overall_status = o["overall_status"] + overall_status,
-                         total_current_weighting = o["total_current_weighting"] + current_weighting,
-                         total_overall_weighting = o["total_overall_weighting"] + overall_weighting,
-                         )
-
-        # Read all of the Outputs for this Project
-        table = s3db.project_output
-        query = (table.project_id == project_id) & \
-                (table.deleted == False)
-        rows = db(query).select(table.id,
-                                #table.goal_id,
-                                table.outcome_id,
-                                table.weighting,
-                                )
-        for r in rows:
-            output_id = r.id
-            if output_id not in outputs:
-                # We have no data for this output, so ignore
-                current_status = overall_status = None
-            else:
-                o = outputs[output_id]
-                total_current_weighting = o["total_current_weighting"]
-                if total_current_weighting:
-                    current_status = o["current_status"] / total_current_weighting
-                else:
-                    # Weightings are zero, so ignore
-                    current_status = None
-                total_overall_weighting = o["total_overall_weighting"]
-                if total_overall_weighting:
-                    overall_status = o["overall_status"] / total_overall_weighting
-                else:
-                    # Weightings are zero, so ignore
-                    overall_status = None
-
-            # Update Output Status
-            r.update_record(current_status_by_indicators = current_status,
-                            overall_status_by_indicators = overall_status,
-                            )
-
-            # Populate Outcomes dict
-            outcome_id = r.outcome_id
-            weighting = r.weighting
-            if current_status is None:
-                current_status = current_weighting = 0
-            else:
-                current_status = current_status * weighting
-                current_weighting = weighting
-            if overall_status is None:
-                overall_status = overall_weighting = 0
-            else:
-                overall_status = overall_status * weighting
-                overall_weighting = weighting
-            if outcome_id not in outcomes:
-                outcomes[outcome_id] = {"current_status": current_status,
-                                        "overall_status": overall_status,
-                                        "total_current_weighting": current_weighting,
-                                        "total_overall_weighting": overall_weighting,
-                                        }
-            else:
-                o = outcomes[outcome_id]
-                o.update(current_status = o["current_status"] + current_status,
-                         overall_status = o["overall_status"] + overall_status,
-                         total_current_weighting = o["total_current_weighting"] + current_weighting,
-                         total_overall_weighting = o["total_overall_weighting"] + overall_weighting,
-                         )
-
-        # Read all of the Outcomes for this Project
-        table = s3db.project_outcome
-        query = (table.project_id == project_id) & \
-                (table.deleted == False)
-        rows = db(query).select(table.id,
-                                table.goal_id,
-                                table.weighting,
-                                )
-        for r in rows:
-            outcome_id = r.id
-            if outcome_id not in outcomes:
-                # We have no data for this outcome, so ignore
-                current_status = overall_status = None
-            else:
-                o = outcomes[outcome_id]
-                total_current_weighting = o["total_current_weighting"]
-                if total_current_weighting:
-                    current_status = o["current_status"] / total_current_weighting
-                else:
-                    # Weightings are zero, so ignore
-                    current_status = None
-                total_overall_weighting = o["total_overall_weighting"]
-                if total_overall_weighting:
-                    overall_status = o["overall_status"] / total_overall_weighting
-                else:
-                    # Weightings are zero, so ignore
-                    overall_status = None
-
-            # Update Outcome Status
-            r.update_record(current_status_by_indicators = current_status,
-                            overall_status_by_indicators = overall_status,
-                            )
-
-            # Populate Goals dict
-            goal_id = r.goal_id
-            weighting = r.weighting
-            if current_status is None:
-                current_status = current_weighting = 0
-            else:
-                current_status = current_status * weighting
-                current_weighting = weighting
-            if overall_status is None:
-                overall_status = overall_weighting = 0
-            else:
-                overall_status = overall_status * weighting
-                overall_weighting = weighting
-            if goal_id not in goals:
-                goals[goal_id] = {"current_status": current_status,
-                                  "overall_status": overall_status,
-                                  "total_current_weighting": current_weighting,
-                                  "total_overall_weighting": overall_weighting,
-                                  }
-            else:
-                g = goals[goal_id]
-                g.update(current_status = g["current_status"] + current_status,
-                         overall_status = g["overall_status"] + overall_status,
-                         total_current_weighting = g["total_current_weighting"] + current_weighting,
-                         total_overall_weighting = g["total_overall_weighting"] + overall_weighting,
-                         )
-
-        # Read all of the Goals for this Project
-        table = s3db.project_goal
-        query = (table.project_id == project_id) & \
-                (table.deleted == False)
-        rows = db(query).select(table.id,
-                                table.weighting,
-                                )
-        for r in rows:
-            goal_id = r.id
-            if goal_id not in goals:
-                # We have no data for this goal, so ignore
-                current_status = overall_status = None
-            else:
-                g = goals[goal_id]
-                total_current_weighting = g["total_current_weighting"]
-                if total_current_weighting:
-                    current_status = g["current_status"] / total_current_weighting
-                else:
-                    # Weightings are zero, so ignore
-                    current_status = None
-                total_overall_weighting = g["total_overall_weighting"]
-                if total_overall_weighting:
-                    overall_status = g["overall_status"] / total_overall_weighting
-                else:
-                    # Weightings are zero, so ignore
-                    overall_status = None
-
-            # Update Goal Status
-            r.update_record(current_status_by_indicators = current_status,
-                            overall_status_by_indicators = overall_status,
-                            )
-
-            # Populate Project dict
-            weighting = r.weighting
-            if current_status is None:
-                current_status = current_weighting = 0
-            else:
-                current_status = current_status * weighting
-                current_weighting = weighting
-            if overall_status is None:
-                overall_status = overall_weighting = 0
-            else:
-                overall_status = overall_status * weighting
-                overall_weighting = weighting
-            if project is None:
-                project = {"current_status": current_status,
-                           "overall_status": overall_status,
-                           "total_current_weighting": current_weighting,
-                           "total_overall_weighting": overall_weighting,
-                           }
-            else:
-                project["current_status"] += current_status
-                project["overall_status"] += overall_status
-                project["total_current_weighting"] += current_weighting
-                project["total_overall_weighting"] += overall_weighting
-
-        # Update Project Status
-        total_current_weighting = project["total_current_weighting"]
-        if total_current_weighting:
-            current_status = project["current_status"] / total_current_weighting
-        else:
-            # Nothing available
-            current_status = None
-        total_overall_weighting = project["total_overall_weighting"]
-        if total_overall_weighting:
-            overall_status = project["overall_status"] / total_overall_weighting
-        else:
-            # Nothing available
-            overall_status = None
-        table = s3db.project_project
-        db(table.id == project_id).update(current_status_by_indicators = current_status,
-                                          overall_status_by_indicators = overall_status,
-                                          )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -6099,7 +5362,8 @@ class S3ProjectPlanningModel(S3Model):
                           (table.project_id == None))
 
             duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
+                                                 limitby = (0, 1),
+                                                 ).first()
             if duplicate:
                 item.id = duplicate.id
                 item.method = item.METHOD.UPDATE
@@ -6116,7 +5380,7 @@ class S3ProjectPlanningModel(S3Model):
         # Find the project_id
         table = current.s3db.project_goal
         record = db(table.id == record_id).select(table.project_id,
-                                                  limitby=(0, 1)
+                                                  limitby = (0, 1),
                                                   ).first()
         try:
             project_id = record.project_id
@@ -6137,7 +5401,8 @@ class S3ProjectPlanningModel(S3Model):
         self.project_goal_onaccept(form, create=True)
 
     # -------------------------------------------------------------------------
-    def project_goal_onaccept(self, form, create=False):
+    @staticmethod
+    def project_goal_onaccept(form, create=False):
         """
             Warn if total weightings are not equal to 1.0
 
@@ -6151,7 +5416,7 @@ class S3ProjectPlanningModel(S3Model):
         # Find the project_id
         table = current.s3db.project_goal
         record = db(table.id == record_id).select(table.project_id,
-                                                  limitby=(0, 1)
+                                                  limitby = (0, 1),
                                                   ).first()
         try:
             project_id = record.project_id
@@ -6176,7 +5441,7 @@ class S3ProjectPlanningModel(S3Model):
                 current.response.warning = current.T("Weightings should add up to 1.0")
 
         # Update Statuses
-        self.project_planning_status_update(project_id)
+        project_planning_status_update(project_id)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -6194,7 +5459,8 @@ class S3ProjectPlanningModel(S3Model):
                           (table.project_id == None))
 
             duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
+                                                 limitby = (0, 1),
+                                                 ).first()
             if duplicate:
                 item.id = duplicate.id
                 item.method = item.METHOD.UPDATE
@@ -6213,7 +5479,7 @@ class S3ProjectPlanningModel(S3Model):
         # Find the goal_id
         table = current.s3db.project_outcome
         record = db(table.id == record_id).select(table.goal_id,
-                                                  limitby=(0, 1)
+                                                  limitby = (0, 1),
                                                   ).first()
         try:
             goal_id = record.goal_id
@@ -6236,7 +5502,8 @@ class S3ProjectPlanningModel(S3Model):
         self.project_outcome_onaccept(form, create=True)
 
     # -------------------------------------------------------------------------
-    def project_outcome_onaccept(self, form, create=False):
+    @staticmethod
+    def project_outcome_onaccept(form, create=False):
         """
             Warn if totals are not equal to 1.0
             @ToDo: Handle deployment_settings which have Outcomes directly
@@ -6251,7 +5518,7 @@ class S3ProjectPlanningModel(S3Model):
         table = current.s3db.project_outcome
         record = db(table.id == record_id).select(table.goal_id,
                                                   table.project_id,
-                                                  limitby=(0, 1)
+                                                  limitby = (0, 1),
                                                   ).first()
         try:
             project_id = record.project_id
@@ -6278,7 +5545,7 @@ class S3ProjectPlanningModel(S3Model):
                 current.response.warning = current.T("Weightings should add up to 1.0")
 
         # Update Statuses
-        self.project_planning_status_update(project_id)
+        project_planning_status_update(project_id)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -6296,7 +5563,8 @@ class S3ProjectPlanningModel(S3Model):
                           (table.project_id == None))
 
             duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
+                                                 limitby = (0, 1),
+                                                 ).first()
             if duplicate:
                 item.id = duplicate.id
                 item.method = item.METHOD.UPDATE
@@ -6315,7 +5583,7 @@ class S3ProjectPlanningModel(S3Model):
         # Find the outcome_id
         table = current.s3db.project_output
         record = db(table.id == record_id).select(table.outcome_id,
-                                                  limitby=(0, 1)
+                                                  limitby = (0, 1),
                                                   ).first()
         try:
             outcome_id = record.outcome_id
@@ -6336,7 +5604,8 @@ class S3ProjectPlanningModel(S3Model):
         self.project_output_onaccept(form, create=True)
 
     # -------------------------------------------------------------------------
-    def project_output_onaccept(self, form, create=False):
+    @staticmethod
+    def project_output_onaccept(form, create=False):
         """
             Update all ancestor fields from immediate parent
 
@@ -6361,7 +5630,7 @@ class S3ProjectPlanningModel(S3Model):
                 # Populate the Goal from the Outcome
                 otable = s3db.project_outcome
                 outcome = db(otable.id == outcome_id).select(otable.goal_id,
-                                                             limitby=(0, 1)
+                                                             limitby = (0, 1),
                                                              ).first()
                 if outcome:
                     db(table.id == record_id).update(goal_id = outcome.goal_id)
@@ -6384,14 +5653,14 @@ class S3ProjectPlanningModel(S3Model):
 
         # Update Statuses
         row = db(table.id == record_id).select(table.project_id,
-                                               limitby = (0, 1)
+                                               limitby = (0, 1),
                                                ).first()
         try:
             project_id = row.project_id
         except AttributeError:
             current.log.error("Cannot find Project record (no record for this ID), so cannot update statuses")
         else:
-            self.project_planning_status_update(project_id)
+            project_planning_status_update(project_id)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -6412,7 +5681,7 @@ class S3ProjectPlanningModel(S3Model):
                           (table.project_id == None))
 
             duplicate = current.db(query).select(table.id,
-                                                 limitby = (0, 1)
+                                                 limitby = (0, 1),
                                                  ).first()
             if duplicate:
                 item.id = duplicate.id
@@ -6432,7 +5701,7 @@ class S3ProjectPlanningModel(S3Model):
         # Find the output_id
         table = current.s3db.project_indicator
         record = db(table.id == record_id).select(table.output_id,
-                                                  limitby=(0, 1)
+                                                  limitby = (0, 1),
                                                   ).first()
         try:
             output_id = record.output_id
@@ -6453,7 +5722,8 @@ class S3ProjectPlanningModel(S3Model):
         self.project_indicator_onaccept(form, create=True)
 
     # -------------------------------------------------------------------------
-    def project_indicator_onaccept(self, form, create=False):
+    @staticmethod
+    def project_indicator_onaccept(form, create=False):
         """
             Update all ancestor fields from immediate parent
 
@@ -6480,7 +5750,7 @@ class S3ProjectPlanningModel(S3Model):
                 otable = s3db.project_output
                 output = db(otable.id == output_id).select(otable.goal_id,
                                                            otable.outcome_id,
-                                                           limitby=(0, 1)
+                                                           limitby = (0, 1),
                                                            ).first()
                 if output:
                     db(table.id == record_id).update(goal_id = output.goal_id,
@@ -6510,97 +5780,25 @@ class S3ProjectPlanningModel(S3Model):
                 # Populate the Goal from the Outcome
                 otable = s3db.project_outcome
                 outcome = db(otable.id == outcome_id).select(otable.goal_id,
-                                                             limitby=(0, 1)
+                                                             limitby = (0, 1),
                                                              ).first()
                 if outcome:
                     db(table.id == record_id).update(goal_id = outcome.goal_id)
 
         # Update Statuses
         row = db(table.id == record_id).select(table.project_id,
-                                               limitby=(0, 1)
+                                               limitby = (0, 1),
                                                ).first()
         try:
             project_id = row.project_id
         except AttributeError:
             current.log.error("Cannot find Project record (no record for this ID), so cannot update statuses")
         else:
-            self.project_planning_status_update(project_id)
+            project_planning_status_update(project_id)
 
     # -------------------------------------------------------------------------
-    def project_indicator_data_onaccept(self, form, status=True):
-        """
-            Handle Updates of entries to reset the hidden start_date
-
-            Update Project Status at all levels
-        """
-
-        db = current.db
-        s3db = current.s3db
-        table = s3db.project_indicator_data
-        record_id = form.vars.get("id")
-
-        # Read the Indicator Data record
-        record = db(table.id == record_id).select(table.indicator_id,
-                                                  table.start_date,
-                                                  table.end_date,
-                                                  limitby = (0, 1)
-                                                  ).first()
-        try:
-            indicator_id = record.indicator_id
-        except AttributeError:
-            current.log.error("Cannot find Project Indicator Data record (no record for this ID), so cannot update start_date or statuses")
-            return
-        start_date = record.start_date
-        end_date = record.end_date
-
-        # Locate the immediately preceding record
-        query = (table.indicator_id == indicator_id)  & \
-                (table.deleted == False) & \
-                (table.end_date < end_date)
-        date_field = table.end_date
-        record = db(query).select(date_field,
-                                  limitby = (0, 1),
-                                  orderby = date_field,
-                                  ).first()
-        if record and record[date_field] != start_date:
-            # Update this record's start_date
-            db(table.id == record_id).update(start_date = record[date_field])
-
-        # Locate the immediately succeeding record
-        query = (table.indicator_id == indicator_id)  & \
-                (table.deleted == False) & \
-                (table.end_date > end_date)
-        record = db(query).select(table.id,
-                                  table.start_date,
-                                  date_field, # Needed for orderby on Postgres
-                                  limitby = (0, 1),
-                                  orderby = date_field,
-                                  ).first()
-        if record and record.start_date != end_date:
-            # Update that record's start_date
-            db(table.id == record.id).update(start_date = end_date)
-
-        if not status:
-            # Don't update Status when this is being run from inside project_planning_status_update
-            return
-
-        #if not current.deployment_settings.get_project_status_from_activities():
-        # Update Statuses
-        table = s3db.project_indicator
-        row = db(table.id == indicator_id).select(table.project_id,
-                                                  limitby=(0, 1)
-                                                  ).first()
-        try:
-            project_id = row.project_id
-        except AttributeError:
-            error = "Cannot find Project record (no record for this ID), so cannot update statuses"
-            current.log.error(error)
-            current.session.error = error
-        else:
-            self.project_planning_status_update(project_id)
-
-    # -------------------------------------------------------------------------
-    def project_indicator_data_ondelete(self, row):
+    @staticmethod
+    def project_indicator_data_ondelete(row):
         """
             Handle Updates of entries to reset the hidden start_date
 
@@ -6616,7 +5814,7 @@ class S3ProjectPlanningModel(S3Model):
         record = db(table.id == record_id).select(table.deleted_fk,
                                                   table.start_date,
                                                   table.end_date,
-                                                  limitby = (0, 1)
+                                                  limitby = (0, 1),
                                                   ).first()
         try:
             fks = json.loads(record.deleted_fk)
@@ -6658,14 +5856,14 @@ class S3ProjectPlanningModel(S3Model):
         # Update Statuses
         table = s3db.project_indicator
         row = db(table.id == indicator_id).select(table.project_id,
-                                                  limitby = (0, 1)
+                                                  limitby = (0, 1),
                                                   ).first()
         try:
             project_id = row.project_id
         except AttributeError:
             current.log.error("Cannot find Project record (no record for this ID), so cannot update statuses")
         else:
-            self.project_planning_status_update(project_id)
+            project_planning_status_update(project_id)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -6683,7 +5881,8 @@ class S3ProjectPlanningModel(S3Model):
                           (table.project_id == None))
 
             duplicate = current.db(query).select(table.id,
-                                                 limitby=(0, 1)).first()
+                                                 limitby = (0, 1),
+                                                 ).first()
             if duplicate:
                 item.id = duplicate.id
                 item.method = item.METHOD.UPDATE
@@ -6707,7 +5906,7 @@ class S3ProjectPlanningModel(S3Model):
             indicator = db(itable.id == indicator_id).select(itable.goal_id,
                                                              itable.outcome_id,
                                                              itable.output_id,
-                                                             limitby=(0, 1)
+                                                             limitby = (0, 1),
                                                              ).first()
             if indicator:
                 db(table.id == record_id).update(goal_id = indicator.goal_id,
@@ -6727,7 +5926,7 @@ class S3ProjectPlanningModel(S3Model):
         # Find the indicator_id
         table = current.s3db.project_indicator_activity
         record = db(table.id == record_id).select(table.indicator_id,
-                                                  limitby=(0, 1)
+                                                  limitby = (0, 1),
                                                   ).first()
         try:
             indicator_id = record.indicator_id
@@ -6748,7 +5947,8 @@ class S3ProjectPlanningModel(S3Model):
         self.project_indicator_activity_onaccept(form, create=True)
 
     # -------------------------------------------------------------------------
-    def project_indicator_activity_onaccept(self, form, create=False):
+    @staticmethod
+    def project_indicator_activity_onaccept(form, create=False):
         """
             Update all ancestor fields from immediate parent
 
@@ -6770,7 +5970,7 @@ class S3ProjectPlanningModel(S3Model):
                                                              itable.goal_id,
                                                              itable.outcome_id,
                                                              itable.output_id,
-                                                             limitby=(0, 1)
+                                                             limitby = (0, 1),
                                                              ).first()
             if indicator:
                 db(table.id == record_id).update(goal_id = indicator.goal_id,
@@ -6797,17 +5997,18 @@ class S3ProjectPlanningModel(S3Model):
         if current.deployment_settings.get_project_status_from_activities():
             # Update Statuses
             row = db(table.id == record_id).select(table.project_id,
-                                                   limitby=(0, 1)
+                                                   limitby = (0, 1),
                                                    ).first()
             try:
                 project_id = row.project_id
             except AttributeError:
                 current.log.error("Cannot find Project record (no record for this ID), so cannot update statuses")
             else:
-                self.project_planning_status_update(project_id)
+                project_planning_status_update(project_id)
 
     # -------------------------------------------------------------------------
-    def project_indicator_activity_postprocess(self, form):
+    @staticmethod
+    def project_indicator_activity_postprocess(form):
         """
             Set the Activity's project_id when created via this Custom Form
         """
@@ -6819,14 +6020,14 @@ class S3ProjectPlanningModel(S3Model):
         indicator_id = vars_get("indicator_id")
         itable = s3db.project_indicator
         indicator = db(itable.id == indicator_id).select(itable.project_id,
-                                                         limitby=(0, 1)
+                                                         limitby = (0, 1),
                                                          ).first()
         if indicator:
             indicator_activity_id = vars_get("id")
 
             ltable = s3db.project_indicator_activity_activity
             link = db(ltable.indicator_activity_id == indicator_activity_id).select(ltable.activity_id,
-                                                                                    limitby=(0, 1)
+                                                                                    limitby = (0, 1),
                                                                                     ).first()
             if link:
                 project_id = indicator.project_id
@@ -6835,10 +6036,11 @@ class S3ProjectPlanningModel(S3Model):
 
                 if current.deployment_settings.get_project_status_from_activities():
                     # Update Statuses or else only this record's weighting is taken into account
-                    self.project_planning_status_update(project_id)
+                    project_planning_status_update(project_id)
 
     # -------------------------------------------------------------------------
-    def project_activity_data_onaccept(self, form):
+    @staticmethod
+    def project_activity_data_onaccept(form):
         """
             Handle Updates of entries to reset the hidden start_date
 
@@ -6856,7 +6058,7 @@ class S3ProjectPlanningModel(S3Model):
                                                   table.indicator_activity_id,
                                                   table.start_date,
                                                   table.end_date,
-                                                  limitby=(0, 1)
+                                                  limitby = (0, 1),
                                                   ).first()
         try:
             indicator_activity_id = record.indicator_activity_id
@@ -6872,7 +6074,7 @@ class S3ProjectPlanningModel(S3Model):
         # Populate the Indicator from the Activity
         atable = s3db.project_indicator_activity
         activity = db(atable.id == indicator_activity_id).select(atable.indicator_id,
-                                                                 limitby = (0, 1)
+                                                                 limitby = (0, 1),
                                                                  ).first()
 
         record.update_record(indicator_id = activity.indicator_id)
@@ -6909,7 +6111,7 @@ class S3ProjectPlanningModel(S3Model):
         # Update Statuses
         table = s3db.project_indicator_activity
         row = db(table.id == indicator_activity_id).select(table.project_id,
-                                                           limitby=(0, 1)
+                                                           limitby = (0, 1),
                                                            ).first()
         try:
             project_id = row.project_id
@@ -6918,10 +6120,11 @@ class S3ProjectPlanningModel(S3Model):
             current.log.error(error)
             current.session.error = error
         else:
-            self.project_planning_status_update(project_id)
+            project_planning_status_update(project_id)
 
     # -------------------------------------------------------------------------
-    def project_activity_data_ondelete(self, row):
+    @staticmethod
+    def project_activity_data_ondelete(row):
         """
             Handle Updates of entries to reset the hidden start_date
 
@@ -6937,7 +6140,7 @@ class S3ProjectPlanningModel(S3Model):
         record = db(table.id == record_id).select(table.deleted_fk,
                                                   table.start_date,
                                                   table.end_date,
-                                                  limitby = (0, 1)
+                                                  limitby = (0, 1),
                                                   ).first()
         try:
             fks = json.loads(record.deleted_fk)
@@ -6984,14 +6187,14 @@ class S3ProjectPlanningModel(S3Model):
         # Update Statuses
         table = s3db.project_indicator_activity
         row = db(table.id == indicator_activity_id).select(table.project_id,
-                                                           limitby = (0, 1)
+                                                           limitby = (0, 1),
                                                            ).first()
         try:
             project_id = row.project_id
         except AttributeError:
             current.log.error("Cannot find Project record (no record for this ID), so cannot update statuses")
         else:
-            self.project_planning_status_update(project_id)
+            project_planning_status_update(project_id)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -7024,7 +6227,7 @@ class S3ProjectPlanningModel(S3Model):
             table = current.s3db.project_indicator_data
             r = current.db(table.id == row.id).select(table.target_value,
                                                       table.value,
-                                                      limitby=(0, 1)
+                                                      limitby = (0, 1),
                                                       ).first()
             if r:
                 planned = r.target_value
@@ -7076,7 +6279,7 @@ class S3ProjectPlanningModel(S3Model):
             table = current.s3db.project_activity_data
             r = current.db(table.id == row.id).select(table.target_value,
                                                       table.value,
-                                                      limitby=(0, 1)
+                                                      limitby = (0, 1),
                                                       ).first()
             if r:
                 planned = r.target_value
@@ -7096,6 +6299,834 @@ class S3ProjectPlanningModel(S3Model):
 
         # Ignored
         return current.messages["NONE"]
+
+# =============================================================================
+def project_indicator_data_onaccept(form, status=True):
+    """
+        Handle Updates of entries to reset the hidden start_date
+
+        Update Project Status at all levels
+    """
+
+    db = current.db
+    s3db = current.s3db
+    table = s3db.project_indicator_data
+    record_id = form.vars.get("id")
+
+    # Read the Indicator Data record
+    record = db(table.id == record_id).select(table.indicator_id,
+                                              table.start_date,
+                                              table.end_date,
+                                              limitby = (0, 1),
+                                              ).first()
+    try:
+        indicator_id = record.indicator_id
+    except AttributeError:
+        current.log.error("Cannot find Project Indicator Data record (no record for this ID), so cannot update start_date or statuses")
+        return
+    start_date = record.start_date
+    end_date = record.end_date
+
+    # Locate the immediately preceding record
+    query = (table.indicator_id == indicator_id)  & \
+            (table.deleted == False) & \
+            (table.end_date < end_date)
+    date_field = table.end_date
+    record = db(query).select(date_field,
+                              limitby = (0, 1),
+                              orderby = date_field,
+                              ).first()
+    if record and record[date_field] != start_date:
+        # Update this record's start_date
+        db(table.id == record_id).update(start_date = record[date_field])
+
+    # Locate the immediately succeeding record
+    query = (table.indicator_id == indicator_id)  & \
+            (table.deleted == False) & \
+            (table.end_date > end_date)
+    record = db(query).select(table.id,
+                              table.start_date,
+                              date_field, # Needed for orderby on Postgres
+                              limitby = (0, 1),
+                              orderby = date_field,
+                              ).first()
+    if record and record.start_date != end_date:
+        # Update that record's start_date
+        db(table.id == record.id).update(start_date = end_date)
+
+    if not status:
+        # Don't update Status when this is being run from inside project_planning_status_update
+        return
+
+    #if not current.deployment_settings.get_project_status_from_activities():
+    # Update Statuses
+    table = s3db.project_indicator
+    row = db(table.id == indicator_id).select(table.project_id,
+                                              limitby = (0, 1),
+                                              ).first()
+    try:
+        project_id = row.project_id
+    except AttributeError:
+        error = "Cannot find Project record (no record for this ID), so cannot update statuses"
+        current.log.error(error)
+        current.session.error = error
+    else:
+        project_planning_status_update(project_id)
+
+# =============================================================================
+def project_planning_status_update(project_id):
+    """
+        Update the status fields of the different Project levels
+        Fired onaccept of:
+            project_activity_data (if status_from_activities)
+            project_indicator_activity (if status_from_activities, weightings may have changed)
+            project_indicator_data (if status_from_activities is False)
+            project_indicator (weightings may have changed)
+            project_output (weightings may have changed)
+            project_outcome (weightings may have changed)
+            project_goal (weightings may have changed)
+
+        @param project_id: the ID of the project record to update
+
+        @ToDo: Handle deployment_settings for which levels are exposed
+    """
+
+    db = current.db
+    s3db = current.s3db
+
+    if current.deployment_settings.get_project_status_from_activities():
+        # Progress from Activities
+        # Read all of the Activity Data for this Project (past & future)
+        table = s3db.project_activity_data
+        query = (table.project_id == project_id) & \
+                (table.deleted == False)
+        activity_data = db(query).select(table.indicator_activity_id,
+                                         table.indicator_id,
+                                         table.target_value,
+                                         table.value,
+                                         table.end_date,
+                                         )
+        if not activity_data:
+            # No Activity Data yet recorded
+            # => Nothing we can do
+            return
+
+        project = None
+        goals = {}
+        outcomes = {}
+        outputs = {}
+        indicators = {}
+        indicator_data = {}
+        activities = {}
+
+        # Populate Indicator Data (for the IndicatorSummaryReport)
+        # Wipe all existing Data
+        table = s3db.project_indicator_data
+        table.truncate()
+        # Aggregate Data by Indicator and Date
+        for d in activity_data:
+            indicator_id = d.indicator_id
+            end_date = d.end_date
+            key = "%s-%s" % (indicator_id, end_date)
+            if key not in indicator_data:
+                indicator_data[key] = {"project_id": project_id,
+                                       "indicator_id": indicator_id,
+                                       "end_date": end_date,
+                                       "value": d.value or 0,
+                                       "target_value": d.target_value or 0,
+                                       }
+            else:
+                # Add this data to Totals
+                i = indicator_data[key]
+                value = d.value
+                if value:
+                    i["value"] += value
+                target_value = d.target_value
+                if target_value:
+                    i["target_value"] += target_value
+
+        insert = table.insert
+        for key in indicator_data:
+            indicator_data_id = insert(**indicator_data[key])
+            project_indicator_data_onaccept(Storage(vars = {"id": indicator_data_id}),
+                                            status = False)
+
+        # Populate Activities dict
+        now = current.request.utcnow
+        current_year = now.year
+        current_date = now.date()
+        records = 0
+        current_records = 0
+        for d in activity_data:
+            target_value = d.target_value
+            if not target_value:
+                # Skip
+                continue
+            records += 1
+            end_date = d.end_date
+            if end_date > current_date:
+                # Future result, no values expected yet
+                total_percentage_target = 0
+            else:
+                # Past result
+                total_percentage_target = 100
+            value = d.value
+            if value:
+                total_percentage_value = min(100, value / target_value * 100)
+            else:
+                total_percentage_value = 0
+            if end_date.year == current_year:
+                # Current Year
+                current_records += 1
+                current_percentage_target = total_percentage_target
+                current_percentage_value = total_percentage_value
+            else:
+                # Previous Year
+                current_percentage_target = 0
+                current_percentage_value = 0
+            indicator_activity_id = d.indicator_activity_id
+            if indicator_activity_id not in activities:
+                activities[indicator_activity_id] = {"records": records,
+                                                     "total_percentage_target": total_percentage_target,
+                                                     "total_percentage_value": total_percentage_value,
+                                                     "current_records": current_records,
+                                                     "current_percentage_target": current_percentage_target,
+                                                     "current_percentage_value": current_percentage_value,
+                                                     }
+            else:
+                # Add this data to Totals
+                a = activities[indicator_activity_id]
+                a["records"] = records
+                a["current_records"] = current_records
+                a["total_percentage_target"] += total_percentage_target
+                a["total_percentage_value"] += total_percentage_value
+                a["current_percentage_target"] += current_percentage_target
+                a["current_percentage_value"] += current_percentage_value
+
+        # Read all of the Activities for this Project
+        table = s3db.project_indicator_activity
+        query = (table.project_id == project_id) & \
+                (table.deleted == False)
+        rows = db(query).select(table.id,
+                                #table.goal_id,
+                                #table.outcome_id,
+                                #table.output_id,
+                                table.indicator_id,
+                                table.weighting,
+                                )
+        for r in rows:
+            activity_id = r.id
+            if activity_id not in activities:
+                # We have no data for this activity, so ignore (not actually ignored due to weighting!)
+                actual_progress = planned_progress = years_actual_progress = years_planned_progress = None
+            else:
+                a = activities[activity_id]
+                records = a["records"]
+                actual_progress = a["total_percentage_value"] / records
+                planned_progress = a["total_percentage_target"] / records
+                current_records = a["current_records"]
+                if current_records:
+                    years_actual_progress = a["current_percentage_value"] / current_records
+                    years_planned_progress = a["current_percentage_target"] / current_records
+                else:
+                    years_actual_progress = 0
+                    years_planned_progress = 0
+
+            # Update Activity Progress
+            r.update_record(actual_progress = actual_progress,
+                            planned_progress = planned_progress,
+                            years_actual_progress = years_actual_progress,
+                            years_planned_progress = years_planned_progress,
+                            )
+
+            if actual_progress is not None:
+                # Populate Indicators dict
+                indicator_id = r.indicator_id
+                weighting = r.weighting
+                actual_progress = actual_progress * weighting
+                planned_progress = planned_progress * weighting
+                years_actual_progress = years_actual_progress * weighting
+                years_planned_progress = years_planned_progress * weighting
+                if indicator_id not in indicators:
+                    indicators[indicator_id] = {"actual_progress": actual_progress,
+                                                "planned_progress": planned_progress,
+                                                "years_actual_progress": years_actual_progress,
+                                                "years_planned_progress": years_planned_progress,
+                                                }
+                else:
+                    # Add this data to Totals
+                    i = indicators[indicator_id]
+                    i["actual_progress"] += actual_progress
+                    i["planned_progress"] += planned_progress
+                    i["years_actual_progress"] += years_actual_progress
+                    i["years_planned_progress"] += years_planned_progress
+
+        # Read all of the Indicators for this Project
+        table = s3db.project_indicator
+        query = (table.project_id == project_id) & \
+                (table.deleted == False)
+        rows = db(query).select(table.id,
+                                #table.goal_id,
+                                #table.outcome_id,
+                                table.output_id,
+                                table.weighting,
+                                )
+        for r in rows:
+            indicator_id = r.id
+            if indicator_id not in indicators:
+                # We have no data for this indicator, so ignore (not actually ignored due to weighting!)
+                actual_progress = planned_progress = years_actual_progress = years_planned_progress = None
+            else:
+                i = indicators[indicator_id]
+                actual_progress = i["actual_progress"]
+                planned_progress = i["planned_progress"]
+                years_actual_progress = i["years_actual_progress"]
+                years_planned_progress = i["years_planned_progress"]
+
+            # Update Indicator Progress
+            r.update_record(actual_progress_by_activities = actual_progress,
+                            planned_progress_by_activities = planned_progress,
+                            years_actual_progress_by_activities = years_actual_progress,
+                            years_planned_progress_by_activities = years_planned_progress,
+                            )
+
+            if actual_progress is not None:
+                # Populate Outputs dict
+                output_id = r.output_id
+                weighting = r.weighting
+                actual_progress = actual_progress * weighting
+                planned_progress = planned_progress * weighting
+                years_actual_progress = years_actual_progress * weighting
+                years_planned_progress = years_planned_progress * weighting
+                if output_id not in outputs:
+                    outputs[output_id] = {"actual_progress": actual_progress,
+                                          "planned_progress": planned_progress,
+                                          "years_actual_progress": years_actual_progress,
+                                          "years_planned_progress": years_planned_progress,
+                                          }
+                else:
+                    # Add this data to Totals
+                    o = outputs[output_id]
+                    o["actual_progress"] += actual_progress
+                    o["planned_progress"] += planned_progress
+                    o["years_actual_progress"] += years_actual_progress
+                    o["years_planned_progress"] += years_planned_progress
+
+        # Read all of the Outputs for this Project
+        table = s3db.project_output
+        query = (table.project_id == project_id) & \
+                (table.deleted == False)
+        rows = db(query).select(table.id,
+                                #table.goal_id,
+                                table.outcome_id,
+                                table.weighting,
+                                )
+        for r in rows:
+            output_id = r.id
+            if output_id not in outputs:
+                # We have no data for this output, so ignore (not actually ignored due to weighting!)
+                actual_progress = planned_progress = years_actual_progress = years_planned_progress = None
+            else:
+                o = outputs[output_id]
+                actual_progress = o["actual_progress"]
+                planned_progress = o["planned_progress"]
+                years_actual_progress = o["years_actual_progress"]
+                years_planned_progress = o["years_planned_progress"]
+
+            # Update Indicator Progress
+            r.update_record(actual_progress_by_activities = actual_progress,
+                            planned_progress_by_activities = planned_progress,
+                            years_actual_progress_by_activities = years_actual_progress,
+                            years_planned_progress_by_activities = years_planned_progress,
+                            )
+
+            if actual_progress is not None:
+                # Populate Outcomes dict
+                outcome_id = r.outcome_id
+                weighting = r.weighting
+                actual_progress = actual_progress * weighting
+                planned_progress = planned_progress * weighting
+                years_actual_progress = years_actual_progress * weighting
+                years_planned_progress = years_planned_progress * weighting
+                if outcome_id not in outcomes:
+                    outcomes[outcome_id] = {"actual_progress": actual_progress,
+                                            "planned_progress": planned_progress,
+                                            "years_actual_progress": years_actual_progress,
+                                            "years_planned_progress": years_planned_progress,
+                                            }
+                else:
+                    # Add this data to Totals
+                    o = outcomes[outcome_id]
+                    o["actual_progress"] += actual_progress
+                    o["planned_progress"] += planned_progress
+                    o["years_actual_progress"] += years_actual_progress
+                    o["years_planned_progress"] += years_planned_progress
+
+        # Read all of the Outcomes for this Project
+        table = s3db.project_outcome
+        query = (table.project_id == project_id) & \
+                (table.deleted == False)
+        rows = db(query).select(table.id,
+                                table.goal_id,
+                                table.weighting,
+                                )
+        for r in rows:
+            outcome_id = r.id
+            if outcome_id not in outcomes:
+                # We have no data for this outcome, so ignore (not actually ignored due to weighting!)
+                actual_progress = planned_progress = years_actual_progress = years_planned_progress = None
+            else:
+                o = outcomes[outcome_id]
+                actual_progress = o["actual_progress"]
+                planned_progress = o["planned_progress"]
+                years_actual_progress = o["years_actual_progress"]
+                years_planned_progress = o["years_planned_progress"]
+
+            # Update Indicator Progress
+            r.update_record(actual_progress_by_activities = actual_progress,
+                            planned_progress_by_activities = planned_progress,
+                            years_actual_progress_by_activities = years_actual_progress,
+                            years_planned_progress_by_activities = years_planned_progress,
+                            )
+
+            if actual_progress is not None:
+                # Populate Goals dict
+                goal_id = r.goal_id
+                weighting = r.weighting
+                actual_progress = actual_progress * weighting
+                planned_progress = planned_progress * weighting
+                years_actual_progress = years_actual_progress * weighting
+                years_planned_progress = years_planned_progress * weighting
+                if goal_id not in goals:
+                    goals[goal_id] = {"actual_progress": actual_progress,
+                                      "planned_progress": planned_progress,
+                                      "years_actual_progress": years_actual_progress,
+                                      "years_planned_progress": years_planned_progress,
+                                      }
+                else:
+                    # Add this data to Totals
+                    g = goals[goal_id]
+                    g["actual_progress"] += actual_progress
+                    g["planned_progress"] += planned_progress
+                    g["years_actual_progress"] += years_actual_progress
+                    g["years_planned_progress"] += years_planned_progress
+
+        # Read all of the Goals for this Project
+        table = s3db.project_goal
+        query = (table.project_id == project_id) & \
+                (table.deleted == False)
+        rows = db(query).select(table.id,
+                                table.weighting,
+                                )
+        for r in rows:
+            goal_id = r.id
+            if goal_id not in goals:
+                # We have no data for this goal, so ignore (not actually ignored due to weighting!)
+                actual_progress = planned_progress = years_actual_progress = years_planned_progress = None
+            else:
+                g = goals[goal_id]
+                actual_progress = g["actual_progress"]
+                planned_progress = g["planned_progress"]
+                years_actual_progress = g["years_actual_progress"]
+                years_planned_progress = g["years_planned_progress"]
+
+            # Update Indicator Progress
+            r.update_record(actual_progress_by_activities = actual_progress,
+                            planned_progress_by_activities = planned_progress,
+                            years_actual_progress_by_activities = years_actual_progress,
+                            years_planned_progress_by_activities = years_planned_progress,
+                            )
+
+            if actual_progress is not None:
+                # Populate Project dict
+                weighting = r.weighting
+                actual_progress = actual_progress * weighting
+                planned_progress = planned_progress * weighting
+                years_actual_progress = years_actual_progress * weighting
+                years_planned_progress = years_planned_progress * weighting
+                if project is None:
+                    project = {"actual_progress": actual_progress,
+                               "planned_progress": planned_progress,
+                               "years_actual_progress": years_actual_progress,
+                               "years_planned_progress": years_planned_progress,
+                               }
+                else:
+                    # Add this data to Totals
+                    project["actual_progress"] += actual_progress
+                    project["planned_progress"] += planned_progress
+                    project["years_actual_progress"] += years_actual_progress
+                    project["years_planned_progress"] += years_planned_progress
+
+        # Update project Progress
+        table = s3db.project_project
+        pset = db(table.id == project_id)
+        if project is None:
+            pset.update(actual_progress_by_activities = None,
+                        planned_progress_by_activities = None,
+                        years_actual_progress_by_activities = None,
+                        years_planned_progress_by_activities = None,
+                        )
+        else:
+            pset.update(actual_progress_by_activities = project["actual_progress"],
+                        planned_progress_by_activities = project["planned_progress"],
+                        years_actual_progress_by_activities = project["years_actual_progress"],
+                        years_planned_progress_by_activities = project["years_planned_progress"],
+                        )
+
+        # Finish Status from Activities
+        return
+
+
+    # Status from Indicator Data
+    # Read all of the past Indicator Data for this Project
+    # (We ignore future values)
+    table = s3db.project_indicator_data
+    query = (table.project_id == project_id) & \
+            (table.deleted == False) & \
+            (table.end_date < current.request.utcnow) & \
+            (table.target_value != None) & \
+            (table.value != None)
+    indicator_data = db(query).select(table.indicator_id,
+                                      table.target_value,
+                                      table.value,
+                                      table.end_date,
+                                      orderby = ~table.end_date,
+                                      )
+    if not indicator_data:
+        # No Indicator Data yet recorded
+        # => Nothing we can do
+        return
+
+    project = None
+    goals = {}
+    outcomes = {}
+    outputs = {}
+    indicators = {}
+
+    # Populate Indicators dict
+    latest_date = None
+    for d in indicator_data:
+        target_value = d.target_value
+        value = d.value
+        if target_value == 0.0 and value == 0.0:
+            # Ignore
+            continue
+        else:
+            end_date = d.end_date
+            if not latest_date:
+                latest_date = end_date
+            indicator_id = d.indicator_id
+            if indicator_id not in indicators:
+                indicators[indicator_id] = {"total_target": target_value,
+                                            "total_value": value,
+                                            "current_target": target_value,
+                                            "current_value": value,
+                                            "current_date": end_date,
+                                            }
+            else:
+                # Add this data to Totals
+                i = indicators[indicator_id]
+                i["total_target"] += target_value
+                i["total_value"] += value
+                # Should never happen due to the orderby:
+                #if end_date > i["current_date"]:
+                #    # Replace the Current data
+                #    i.update(current_target = target_value,
+                #             current_value = value,
+                #             current_date = end_date)
+
+    # Current Status only includes data in the Current Month
+    latest_month = latest_date.month
+    latest_year = latest_date.year
+    for indicator_id in indicators:
+        i = indicators[indicator_id]
+        current_date = i["current_date"]
+        if current_date.month != latest_month or \
+           current_date.year != latest_year:
+            # This indicator should be ignored for Current Status
+            i.update(current_target = None,
+                     current_value = None)
+
+    # Read all of the Indicators for this Project
+    table = s3db.project_indicator
+    query = (table.project_id == project_id) & \
+            (table.deleted == False)
+    rows = db(query).select(table.id,
+                            #table.goal_id,
+                            #table.outcome_id,
+                            table.output_id,
+                            table.weighting,
+                            )
+    for r in rows:
+        indicator_id = r.id
+        if indicator_id not in indicators:
+            # We have no data for this indicator, so ignore
+            current_status = overall_status = None
+        else:
+            i = indicators[indicator_id]
+            total_target = i["total_target"]
+            total_value = i["total_value"]
+            current_target = i["current_target"]
+            current_value = i["current_value"]
+            if total_target is None:
+                # Ignore
+                overall_status = None
+            elif total_target == 0.0:
+                if total_value == 0.0:
+                    # Ignore
+                    overall_status = None
+                else:
+                    # Assume complete
+                    overall_status = 100.0
+            elif total_value == 0.0:
+                overall_status = 0.0
+            else:
+                overall_status = total_value / total_target * 100
+            if current_target is None:
+                # Ignore
+                current_status = None
+            elif current_target == 0.0:
+                if current_value == 0.0:
+                    # Ignore
+                    current_status = None
+                else:
+                    # Assume complete
+                    current_status = 100.0
+            elif current_value == 0.0:
+                current_status = 0.0
+            else:
+                current_status = current_value / current_target * 100
+
+        # Update Indicator Status
+        r.update_record(current_status_by_indicators = current_status,
+                        overall_status_by_indicators = overall_status,
+                        )
+
+        # Populate Outputs dict
+        output_id = r.output_id
+        weighting = r.weighting
+        if current_status is None:
+            current_status = current_weighting = 0
+        else:
+            if current_status > 100:
+                current_status = 100
+            current_status = current_status * weighting
+            current_weighting = weighting
+        if overall_status is None:
+            overall_status = overall_weighting = 0
+        else:
+            if overall_status > 100:
+                overall_status = 100
+            overall_status = overall_status * weighting
+            overall_weighting = weighting
+        if output_id not in outputs:
+            outputs[output_id] = {"current_status": current_status,
+                                  "overall_status": overall_status,
+                                  "total_current_weighting": current_weighting,
+                                  "total_overall_weighting": overall_weighting,
+                                  }
+        else:
+            o = outputs[output_id]
+            o.update(current_status = o["current_status"] + current_status,
+                     overall_status = o["overall_status"] + overall_status,
+                     total_current_weighting = o["total_current_weighting"] + current_weighting,
+                     total_overall_weighting = o["total_overall_weighting"] + overall_weighting,
+                     )
+
+    # Read all of the Outputs for this Project
+    table = s3db.project_output
+    query = (table.project_id == project_id) & \
+            (table.deleted == False)
+    rows = db(query).select(table.id,
+                            #table.goal_id,
+                            table.outcome_id,
+                            table.weighting,
+                            )
+    for r in rows:
+        output_id = r.id
+        if output_id not in outputs:
+            # We have no data for this output, so ignore
+            current_status = overall_status = None
+        else:
+            o = outputs[output_id]
+            total_current_weighting = o["total_current_weighting"]
+            if total_current_weighting:
+                current_status = o["current_status"] / total_current_weighting
+            else:
+                # Weightings are zero, so ignore
+                current_status = None
+            total_overall_weighting = o["total_overall_weighting"]
+            if total_overall_weighting:
+                overall_status = o["overall_status"] / total_overall_weighting
+            else:
+                # Weightings are zero, so ignore
+                overall_status = None
+
+        # Update Output Status
+        r.update_record(current_status_by_indicators = current_status,
+                        overall_status_by_indicators = overall_status,
+                        )
+
+        # Populate Outcomes dict
+        outcome_id = r.outcome_id
+        weighting = r.weighting
+        if current_status is None:
+            current_status = current_weighting = 0
+        else:
+            current_status = current_status * weighting
+            current_weighting = weighting
+        if overall_status is None:
+            overall_status = overall_weighting = 0
+        else:
+            overall_status = overall_status * weighting
+            overall_weighting = weighting
+        if outcome_id not in outcomes:
+            outcomes[outcome_id] = {"current_status": current_status,
+                                    "overall_status": overall_status,
+                                    "total_current_weighting": current_weighting,
+                                    "total_overall_weighting": overall_weighting,
+                                    }
+        else:
+            o = outcomes[outcome_id]
+            o.update(current_status = o["current_status"] + current_status,
+                     overall_status = o["overall_status"] + overall_status,
+                     total_current_weighting = o["total_current_weighting"] + current_weighting,
+                     total_overall_weighting = o["total_overall_weighting"] + overall_weighting,
+                     )
+
+    # Read all of the Outcomes for this Project
+    table = s3db.project_outcome
+    query = (table.project_id == project_id) & \
+            (table.deleted == False)
+    rows = db(query).select(table.id,
+                            table.goal_id,
+                            table.weighting,
+                            )
+    for r in rows:
+        outcome_id = r.id
+        if outcome_id not in outcomes:
+            # We have no data for this outcome, so ignore
+            current_status = overall_status = None
+        else:
+            o = outcomes[outcome_id]
+            total_current_weighting = o["total_current_weighting"]
+            if total_current_weighting:
+                current_status = o["current_status"] / total_current_weighting
+            else:
+                # Weightings are zero, so ignore
+                current_status = None
+            total_overall_weighting = o["total_overall_weighting"]
+            if total_overall_weighting:
+                overall_status = o["overall_status"] / total_overall_weighting
+            else:
+                # Weightings are zero, so ignore
+                overall_status = None
+
+        # Update Outcome Status
+        r.update_record(current_status_by_indicators = current_status,
+                        overall_status_by_indicators = overall_status,
+                        )
+
+        # Populate Goals dict
+        goal_id = r.goal_id
+        weighting = r.weighting
+        if current_status is None:
+            current_status = current_weighting = 0
+        else:
+            current_status = current_status * weighting
+            current_weighting = weighting
+        if overall_status is None:
+            overall_status = overall_weighting = 0
+        else:
+            overall_status = overall_status * weighting
+            overall_weighting = weighting
+        if goal_id not in goals:
+            goals[goal_id] = {"current_status": current_status,
+                              "overall_status": overall_status,
+                              "total_current_weighting": current_weighting,
+                              "total_overall_weighting": overall_weighting,
+                              }
+        else:
+            g = goals[goal_id]
+            g.update(current_status = g["current_status"] + current_status,
+                     overall_status = g["overall_status"] + overall_status,
+                     total_current_weighting = g["total_current_weighting"] + current_weighting,
+                     total_overall_weighting = g["total_overall_weighting"] + overall_weighting,
+                     )
+
+    # Read all of the Goals for this Project
+    table = s3db.project_goal
+    query = (table.project_id == project_id) & \
+            (table.deleted == False)
+    rows = db(query).select(table.id,
+                            table.weighting,
+                            )
+    for r in rows:
+        goal_id = r.id
+        if goal_id not in goals:
+            # We have no data for this goal, so ignore
+            current_status = overall_status = None
+        else:
+            g = goals[goal_id]
+            total_current_weighting = g["total_current_weighting"]
+            if total_current_weighting:
+                current_status = g["current_status"] / total_current_weighting
+            else:
+                # Weightings are zero, so ignore
+                current_status = None
+            total_overall_weighting = g["total_overall_weighting"]
+            if total_overall_weighting:
+                overall_status = g["overall_status"] / total_overall_weighting
+            else:
+                # Weightings are zero, so ignore
+                overall_status = None
+
+        # Update Goal Status
+        r.update_record(current_status_by_indicators = current_status,
+                        overall_status_by_indicators = overall_status,
+                        )
+
+        # Populate Project dict
+        weighting = r.weighting
+        if current_status is None:
+            current_status = current_weighting = 0
+        else:
+            current_status = current_status * weighting
+            current_weighting = weighting
+        if overall_status is None:
+            overall_status = overall_weighting = 0
+        else:
+            overall_status = overall_status * weighting
+            overall_weighting = weighting
+        if project is None:
+            project = {"current_status": current_status,
+                       "overall_status": overall_status,
+                       "total_current_weighting": current_weighting,
+                       "total_overall_weighting": overall_weighting,
+                       }
+        else:
+            project["current_status"] += current_status
+            project["overall_status"] += overall_status
+            project["total_current_weighting"] += current_weighting
+            project["total_overall_weighting"] += overall_weighting
+
+    # Update Project Status
+    total_current_weighting = project["total_current_weighting"]
+    if total_current_weighting:
+        current_status = project["current_status"] / total_current_weighting
+    else:
+        # Nothing available
+        current_status = None
+    total_overall_weighting = project["total_overall_weighting"]
+    if total_overall_weighting:
+        overall_status = project["overall_status"] / total_overall_weighting
+    else:
+        # Nothing available
+        overall_status = None
+    table = s3db.project_project
+    db(table.id == project_id).update(current_status_by_indicators = current_status,
+                                      overall_status_by_indicators = overall_status,
+                                      )
 
 # =============================================================================
 def project_status_represent(value):
@@ -8050,10 +8081,10 @@ class project_SummaryReport(S3Method):
                 goal_id = row.goal_id
                 outcome_id = row.outcome_id
                 output_id = row.output_id
-                indicators[indicator_id] = dict(goal = goal_id,
-                                                outcome = outcome_id,
-                                                output = output_id,
-                                                )
+                indicators[indicator_id] = {"goal": goal_id,
+                                            "outcome": outcome_id,
+                                            "output": output_id,
+                                            }
                 goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id] = {"code" : row.code,
                                                                                                             "name" : row.name,
                                                                                                             #"comments" : NONE,
@@ -8067,10 +8098,10 @@ class project_SummaryReport(S3Method):
                 goal_id = row.goal_id
                 outcome_id = row.outcome_id
                 output_id = row.output_id
-                indicators[indicator_id] = dict(goal = goal_id,
-                                                outcome = outcome_id,
-                                                output = output_id,
-                                                )
+                indicators[indicator_id] = {"goal": goal_id,
+                                            "outcome": outcome_id,
+                                            "output": output_id,
+                                            }
                 goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id] = {"code" : row.code,
                                                                                                             "name" : row.name,
                                                                                                             "current_status" : row.current_status_by_indicators,
@@ -8134,10 +8165,10 @@ class project_SummaryReport(S3Method):
                 outcome_id = row.outcome_id
                 output_id = row.output_id
                 indicator_id = row.indicator_id
-                indicators[indicator_id] = dict(goal = goal_id,
-                                                outcome = outcome_id,
-                                                output = output_id,
-                                                )
+                indicators[indicator_id] = {"goal": goal_id,
+                                            "outcome": outcome_id,
+                                            "output": output_id,
+                                            }
                 goals[goal_id]["outcomes"][outcome_id]["outputs"][output_id]["indicators"][indicator_id] = {"name" : name,
                                                                                                             "actual_progress" : row.actual_progress_by_activities,
                                                                                                             "planned_progress" : row.planned_progress_by_activities,
@@ -8375,7 +8406,8 @@ class project_SummaryReport(S3Method):
         query = (ltable.project_id == project_id) & \
                 (ltable.programme_id == ptable.id)
         program = db(query).select(ptable.name,
-                                   limitby=(0, 1)).first()
+                                   limitby = (0, 1),
+                                   ).first()
         if program:
             program = program.name
         else:
@@ -8383,7 +8415,7 @@ class project_SummaryReport(S3Method):
 
         stable = s3db.project_status
         status = db(stable.id == record.status_id).select(stable.name,
-                                                          limitby=(0, 1)
+                                                          limitby = (0, 1),
                                                           ).first()
         if status:
             status = status.name
@@ -8393,7 +8425,7 @@ class project_SummaryReport(S3Method):
         btable = s3db.budget_budget
         budget = db(btable.budget_entity_id == record.budget_entity_id).select(btable.total_budget,
                                                                                btable.currency,
-                                                                               limitby=(0, 1)
+                                                                               limitby = (0, 1),
                                                                                ).first()
         if budget:
             if hasattr(btable.currency, "represent"):
@@ -8410,7 +8442,7 @@ class project_SummaryReport(S3Method):
                 (ltable.hazard_id == htable.id)
         hazards = db(query).select(htable.name)
         if hazards:
-            hazards = ", ".join([s3_unicode(T(h.name)) for h in hazards])
+            hazards = ", ".join([s3_str(T(h.name)) for h in hazards])
         else:
             hazards = NONE
 
@@ -8420,7 +8452,7 @@ class project_SummaryReport(S3Method):
                 (ltable.sector_id == stable.id)
         sectors = db(query).select(stable.name)
         if sectors:
-            sectors = ", ".join([s3_unicode(T(s.name)) for s in sectors])
+            sectors = ", ".join([s3_str(T(s.name)) for s in sectors])
         else:
             sectors = NONE
 
@@ -8430,7 +8462,7 @@ class project_SummaryReport(S3Method):
                 (ltable.theme_id == ttable.id)
         themes = db(query).select(ttable.name)
         if themes:
-            themes = ", ".join([s3_unicode(T(t.name)) for t in themes])
+            themes = ", ".join([s3_str(T(t.name)) for t in themes])
         else:
             themes = NONE
 
@@ -8776,11 +8808,11 @@ class project_IndicatorSummaryReport(S3Method):
                                 table[status_field],
                                 )
         for row in rows:
-            goals[row.goal_id]["outcomes"][row.id] = dict(code = row.code,
-                                                          name = row.name,
-                                                          outputs = {},
-                                                          status = row[status_field],
-                                                          )
+            goals[row.goal_id]["outcomes"][row.id] = {"code": row.code,
+                                                      "name": row.name,
+                                                      "outputs": {},
+                                                      "status": row[status_field],
+                                                      }
 
         # Outputs
         table = s3db.project_output
@@ -9080,7 +9112,7 @@ class project_IndicatorSummaryReport(S3Method):
             #           _colspan = colspan + 5,
             #           ))
 
-        output = dict(item=item)
+        output = {"item": item}
         output["title"] = T("Summary of Progress Indicators for Outcomes and Indicators")
         output["subtitle"] = "%s: %s" % (T("Project"), s3db.project_project_represent(None, record))
 
@@ -9124,9 +9156,9 @@ class project_IndicatorSummaryReport(S3Method):
 
         date_represent = s3db.project_indicator_data.end_date.represent
 
-        labels11 = [s3_unicode(T("Number")),
-                    s3_unicode(T("Indicators")),
-                    s3_unicode(T("Total Target")),
+        labels11 = [s3_str(T("Number")),
+                    s3_str(T("Indicators")),
+                    s3_str(T("Total Target")),
                     ]
         labels12 = []
         lappend = labels12.append
@@ -9139,16 +9171,16 @@ class project_IndicatorSummaryReport(S3Method):
                 year = years[y]
             lappend(date_represent(d))
         lappend(str(year))
-        labels13 = [s3_unicode(T("Actual Total")),
-                    s3_unicode(T("% Achieved")),
+        labels13 = [s3_str(T("Actual Total")),
+                    s3_str(T("% Achieved")),
                     ]
 
         labels22 = []
         lappend = labels22.append
         y = 0
         year = years[y]
-        TARGET = s3_unicode(T("Target"))
-        ACTUAL = s3_unicode(T("Actual"))
+        TARGET = s3_str(T("Target"))
+        ACTUAL = s3_str(T("Actual"))
         for d in dates:
             if d.year != year:
                 lappend(TARGET)
@@ -9172,10 +9204,10 @@ class project_IndicatorSummaryReport(S3Method):
         notes_style = styles["notes"]
 
         # Create the workbook
-        book = xlwt.Workbook(encoding="utf-8")
+        book = xlwt.Workbook(encoding = "utf-8")
 
         # Add sheet
-        sheet = book.add_sheet(s3_unicode(T("Report")))
+        sheet = book.add_sheet(s3_str(T("Report")))
 
         # Set column Widths
         col_index = 0
@@ -9188,7 +9220,7 @@ class project_IndicatorSummaryReport(S3Method):
             col_index += 1
 
         # 1st row => Report Title
-        title = s3_unicode(T("Summary of Progress Indicators for Outcomes and Indicators"))
+        title = s3_str(T("Summary of Progress Indicators for Outcomes and Indicators"))
         current_row = sheet.row(0)
         current_row.height = 500
         current_row.write(0, title, large_header_style)
@@ -9201,8 +9233,9 @@ class project_IndicatorSummaryReport(S3Method):
         current_row.write(0, label, large_header_style)
         current_row.write(1, project_represent, large_header_style)
         # Fix the size of the first column to display the label
-        if len(label) * COL_WIDTH_MULTIPLIER * 2 > sheet.col(0).width:
-            sheet.col(0).width = len(label) * COL_WIDTH_MULTIPLIER * 2
+        width = len(label) * COL_WIDTH_MULTIPLIER * 2
+        if width > sheet.col(0).width:
+            sheet.col(0).width = width
 
         # 3rd row => Export date/time
         current_row = sheet.row(2)
@@ -9365,7 +9398,7 @@ class project_IndicatorSummaryReport(S3Method):
                         row_index += 1
 
         current_row = sheet.row(row_index)
-        label = s3_unicode(T(self.project_status_label))
+        label = s3_str(T(self.project_status_label))
         # Fix the size of the column to display the label
         if len(label) * COL_WIDTH_MULTIPLIER > sheet.col(colspan).width:
             sheet.col(colspan).width = len(label) * COL_WIDTH_MULTIPLIER
@@ -9384,7 +9417,7 @@ class project_IndicatorSummaryReport(S3Method):
         output.seek(0)
 
         # Response headers
-        filename = "%s.xls" % title.encode("utf8")
+        filename = "%s.xls" % title
         response = current.response
         from gluon.contenttype import contenttype
         response.headers["Content-Type"] = contenttype(".xls")
@@ -9446,11 +9479,11 @@ def project_ProgressReport(r, **attr):
                 number_of_outcomes += 1
                 goal_id = row.goal_id
                 append(goal_id)
-                goals[goal_id]["outcomes"][row.id] = dict(code = row.code,
-                                                          name = row.name,
-                                                          outputs = {},
-                                                          status = row.actual_progress_by_activities,
-                                                          )
+                goals[goal_id]["outcomes"][row.id] = {"code": row.code,
+                                                      "name": row.name,
+                                                      "outputs": {},
+                                                      "status": row.actual_progress_by_activities,
+                                                      }
             goals_without_outcomes = len(goals) - len(set(goals_with_outcomes))
 
             # Outputs
@@ -9840,7 +9873,7 @@ def project_ProgressReport(r, **attr):
 #        r.error(405, current.ERROR.BAD_METHOD)
 
 # =============================================================================
-class S3ProjectProgrammeModel(S3Model):
+class ProjectProgrammeModel(S3Model):
     """
         Programmes Model
     """
@@ -9906,21 +9939,21 @@ class S3ProjectProgrammeModel(S3Model):
 
         represent = S3Represent(lookup=tablename, translate=True)
         programme_id = S3ReusableField("programme_id", "reference %s" % tablename,
-                            label = T("Program"),
-                            ondelete = "CASCADE",
-                            represent = represent,
-                            requires = IS_EMPTY_OR(
-                                            IS_ONE_OF(db, "project_programme.id",
-                                                      represent,
-                                                      # We want to allow creation of Projects linked to Programmes
-                                                      # without giving update access to the Programme
-                                                      #updateable = True,
-                                                      )),
-                            sortby = "name",
-                            comment = S3PopupLink(c = "project",
-                                                  f = "programme",
-                                                  ),
-                            )
+                                       label = T("Program"),
+                                       ondelete = "CASCADE",
+                                       represent = represent,
+                                       requires = IS_EMPTY_OR(
+                                                    IS_ONE_OF(db, "project_programme.id",
+                                                              represent,
+                                                              # We want to allow creation of Projects linked to Programmes
+                                                              # without giving update access to the Programme
+                                                              #updateable = True,
+                                                              )),
+                                       sortby = "name",
+                                       comment = S3PopupLink(c = "project",
+                                                             f = "programme",
+                                                             ),
+                                       )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("name",),
@@ -9951,15 +9984,11 @@ class S3ProjectProgrammeModel(S3Model):
     def defaults():
         """ Safe defaults for names if module is disabled """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
-
-        return {"project_programme_id": lambda **attr: dummy("programme_id"),
+        return {"project_programme_id": S3ReusableField.dummy("programme_id"),
                 }
 
 # =============================================================================
-class S3ProjectProgrammeProjectModel(S3Model):
+class ProjectProgrammeProjectModel(S3Model):
     """
         Project Programme<>Project Model
     """
@@ -9984,7 +10013,7 @@ class S3ProjectProgrammeProjectModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectSectorModel(S3Model):
+class ProjectSectorModel(S3Model):
     """
         Project Sector Model
     """
@@ -10027,7 +10056,7 @@ class S3ProjectSectorModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectStatusModel(S3Model):
+class ProjectStatusModel(S3Model):
     """
         Project Status Model
         - used by both Projects & Activities
@@ -10074,19 +10103,20 @@ class S3ProjectStatusModel(S3Model):
         represent = S3Represent(lookup=tablename, translate=True)
                                 #none = T("Unknown"))
         status_id = S3ReusableField("status_id", "reference %s" % tablename,
-                        comment = S3PopupLink(title = ADD_STATUS,
-                                              c = "project",
-                                              f = "status",
-                                              ),
-                        label = T("Status"),
-                        ondelete = "SET NULL",
-                        represent = represent,
-                        requires = IS_EMPTY_OR(
-                                    IS_ONE_OF(current.db, "project_status.id",
-                                              represent,
-                                              sort=True)),
-                        sortby = "name",
-                        )
+                                    comment = S3PopupLink(title = ADD_STATUS,
+                                                          c = "project",
+                                                          f = "status",
+                                                          ),
+                                    label = T("Status"),
+                                    ondelete = "SET NULL",
+                                    represent = represent,
+                                    requires = IS_EMPTY_OR(
+                                                IS_ONE_OF(current.db, "project_status.id",
+                                                          represent,
+                                                          sort = True,
+                                                          )),
+                                    sortby = "name",
+                                    )
 
         # Pass names back to global scope (s3.*)
         return {"project_status_id": status_id,
@@ -10098,16 +10128,11 @@ class S3ProjectStatusModel(S3Model):
             Safe defaults for model-global names in case module is disabled
         """
 
-        dummy = S3ReusableField("dummy", "string",
-                                readable = False,
-                                writable = False,
-                                )
-
-        return {"project_status_id": lambda **attr: dummy("status_id"),
+        return {"project_status_id": S3ReusableField.dummy("status_id"),
                 }
 
 # =============================================================================
-class S3ProjectStrategyModel(S3Model):
+class ProjectStrategyModel(S3Model):
     """
         Project Strategy Model
         - currently just used by IFRC to hold AoF/SFI (& then only for (Training) Events for Bangkok CCST)
@@ -10156,19 +10181,20 @@ class S3ProjectStrategyModel(S3Model):
         # Reusable Field
         represent = S3Represent(lookup=tablename)
         strategy_id = S3ReusableField("strategy_id", "reference %s" % tablename,
-                        comment = S3PopupLink(title = ADD_STRATEGY,
-                                              c = "project",
-                                              f = "strategy",
-                                              ),
-                        label = T("Strategy"),
-                        ondelete = "SET NULL",
-                        represent = represent,
-                        requires = IS_EMPTY_OR(
-                                    IS_ONE_OF(current.db, "project_strategy.id",
-                                              represent,
-                                              sort=True)),
-                        sortby = "name",
-                        )
+                                      comment = S3PopupLink(title = ADD_STRATEGY,
+                                                            c = "project",
+                                                            f = "strategy",
+                                                            ),
+                                      label = T("Strategy"),
+                                      ondelete = "SET NULL",
+                                      represent = represent,
+                                      requires = IS_EMPTY_OR(
+                                                    IS_ONE_OF(current.db, "project_strategy.id",
+                                                              represent,
+                                                              sort = True,
+                                                              )),
+                                      sortby = "name",
+                                      )
 
         # Pass names back to global scope (s3.*)
         return {"project_strategy_id": strategy_id,
@@ -10179,15 +10205,11 @@ class S3ProjectStrategyModel(S3Model):
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
-
-        return {"project_strategy_id": lambda **attr: dummy("strategy_id"),
+        return {"project_strategy_id": S3ReusableField.dummy("strategy_id"),
                 }
 
 # =============================================================================
-class S3ProjectTagModel(S3Model):
+class ProjectTagModel(S3Model):
     """
         Project Tags
     """
@@ -10230,7 +10252,7 @@ class S3ProjectTagModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectThemeModel(S3Model):
+class ProjectThemeModel(S3Model):
     """
         Project Theme Model
     """
@@ -10299,7 +10321,8 @@ class S3ProjectThemeModel(S3Model):
                                    requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "project_theme.id",
                                                           represent,
-                                                          sort=True)),
+                                                          sort = True,
+                                                          )),
                                    sortby = "name",
                                    )
 
@@ -10528,7 +10551,7 @@ class S3ProjectThemeModel(S3Model):
                                  percentage = percentages[theme_id])
 
 # =============================================================================
-class S3ProjectDRRModel(S3Model):
+class ProjectDRRModel(S3Model):
     """
         Models for DRR (Disaster Risk Reduction) extensions
     """
@@ -10581,7 +10604,7 @@ class S3ProjectDRRModel(S3Model):
         return ", ".join(vals)
 
 # =============================================================================
-class S3ProjectDRRPPModel(S3Model):
+class ProjectDRRPPModel(S3Model):
     """
         Models for DRR Project Portal extensions
         - injected into custom Project CRUD forms
@@ -10759,7 +10782,7 @@ class S3ProjectDRRPPModel(S3Model):
 
         table = db.project_project
         hr_id = db(table.id == project_id).select(table.human_resource_id,
-                                                  limitby=(0, 1)
+                                                  limitby = (0, 1),
                                                   ).first().human_resource_id
         if hr_id:
             s3db = current.s3db
@@ -10776,15 +10799,15 @@ class S3ProjectDRRPPModel(S3Model):
                                    ptable.last_name,
                                    ctable.value,
                                    left = left,
-                                   limitby = (0, 1)).first()
+                                   limitby = (0, 1),
+                                   ).first()
             focal_person = s3_fullname(row[ptable])
             organisation_id = row[htable].organisation_id
             email = row[ctable].value
-            db(dtable.id == record_id).update(
-                                        focal_person = focal_person,
-                                        organisation_id = organisation_id,
-                                        email = email,
-                                        )
+            db(dtable.id == record_id).update(focal_person = focal_person,
+                                              organisation_id = organisation_id,
+                                              email = email,
+                                              )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -10802,7 +10825,7 @@ class S3ProjectDRRPPModel(S3Model):
             return current.messages["NONE"]
 
 # =============================================================================
-class S3ProjectTargetModel(S3Model):
+class ProjectTargetModel(S3Model):
     """
         Project Target Model
     """
@@ -10845,7 +10868,7 @@ class S3ProjectTargetModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectTaskModel(S3Model):
+class ProjectTaskModel(S3Model):
     """
         Project Task Model
 
@@ -10863,15 +10886,12 @@ class S3ProjectTaskModel(S3Model):
              "project_task_project",
              "project_task_activity",
              "project_task_milestone",
-             "project_task_represent_w_project",
-             "project_task_active_statuses",
-             "project_task_project_opts",
              )
 
     def model(self):
 
-        db = current.db
         T = current.T
+        db = current.db
         auth = current.auth
         request = current.request
         s3 = current.response.s3
@@ -10918,13 +10938,13 @@ class S3ProjectTaskModel(S3Model):
             msg_record_created = T("Milestone Added"),
             msg_record_modified = T("Milestone Updated"),
             msg_record_deleted = T("Milestone Deleted"),
-            msg_list_empty = T("No Milestones Found")
+            msg_list_empty = T("No Milestones Found"),
         )
 
         # Reusable Field
-        represent = S3Represent(lookup=tablename,
-                                fields=["name", "date"],
-                                labels="%(name)s: %(date)s",
+        represent = S3Represent(lookup = tablename,
+                                fields = ["name", "date"],
+                                labels = "%(name)s: %(date)s",
                                 )
         milestone_id = S3ReusableField("milestone_id", "reference %s" % tablename,
                                        label = T("Milestone"),
@@ -10932,7 +10952,8 @@ class S3ProjectTaskModel(S3Model):
                                        represent = represent,
                                        requires = IS_EMPTY_OR(
                                                     IS_ONE_OF(db, "project_milestone.id",
-                                                              represent)),
+                                                              represent,
+                                                              )),
                                        sortby = "name",
                                        comment = S3PopupLink(c = "project",
                                                              f = "milestone",
@@ -10960,10 +10981,9 @@ class S3ProjectTaskModel(S3Model):
 
         project_task_priority_opts = settings.get_project_task_priority_opts()
         project_task_status_opts = settings.get_project_task_status_opts()
-        # Which options for the Status for a Task count as the task being 'Active'
-        project_task_active_statuses = [2, 3, 4, 11]
         assignee_represent = self.pr_PersonEntityRepresent(show_label = False,
-                                                           show_type = False)
+                                                           show_type = False,
+                                                           )
 
         #staff = auth.s3_has_role("STAFF")
         staff = auth.is_logged_in()
@@ -10984,9 +11004,11 @@ class S3ProjectTaskModel(S3Model):
                            ),
                      Field("description", "text",
                            label = T("Detailed Description"),
-                           comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Detailed Description"),
-                                                           T("Please provide as much detail as you can, including any URL(s) for more information."))),
+                           comment = DIV(_class = "tooltip",
+                                         _title = "%s|%s" % (T("Detailed Description"),
+                                                             T("Please provide as much detail as you can, including any URL(s) for more information."),
+                                                             ),
+                                         ),
                            ),
                      self.org_site_id(),
                      self.gis_location_id(
@@ -10998,14 +11020,15 @@ class S3ProjectTaskModel(S3Model):
                      Field("source",
                            label = T("Source"),
                            ),
-                     Field("source_url",
-                           label = T("Source Link"),
-                           represent = s3_url_represent,
-                           requires = IS_EMPTY_OR(IS_URL()),
-                           # Can be enabled & labelled within a Template as-required
-                           readable = False,
-                           writable = False
-                           ),
+                     # Was used for Wrike integration in MCOP
+                     #Field("source_url",
+                     #      label = T("Source Link"),
+                     #      represent = s3_url_represent,
+                     #      requires = IS_EMPTY_OR(IS_URL()),
+                     #      # Can be enabled & labelled within a Template as-required
+                     #      readable = False,
+                     #      writable = False
+                     #      ),
                      Field("priority", "integer",
                            default = 3,
                            label = T("Priority"),
@@ -11013,20 +11036,36 @@ class S3ProjectTaskModel(S3Model):
                            requires = IS_IN_SET(project_task_priority_opts,
                                                 zero = None),
                            ),
+                     # FK, not Instance or Component
                      # Could be a Person, Team or Organisation
-                     super_link("pe_id", "pr_pentity",
-                                readable = staff,
-                                writable = staff,
-                                label = T("Assigned to"),
-                                filterby = "instance_type", # Not using instance_types as not a Super-Entity
-                                filter_opts = ("pr_person", "pr_group", "org_organisation"),
-                                represent = assignee_represent,
-                                # @ToDo: Widget
-                                #widget = S3PentityWidget(),
-                                #comment = DIV(_class = "tooltip",
-                                #              _title = "%s|%s" % (T("Assigned to"),
-                                #                                  messages.AUTOCOMPLETE_HELP))
-                                ),
+                     # - may have to add rules in the template's customise_project_task_resource to filter the options appropriately
+                     # - permission sets (inc realms) should only be applied to the instances, not the super-entity
+                     Field("pe_id", "reference pr_pentity",
+                           label = T("Assigned to"),
+                           represent = assignee_represent,
+                           requires = IS_EMPTY_OR(
+                                        IS_ONE_OF(db, "pr_pentity.pe_id",
+                                                  assignee_represent,
+                                                  filterby = "instance_type",
+                                                  filter_opts = ("pr_person", "pr_group", "org_organisation"),
+                                                  sort = True,
+                                                  )),
+                           ondelete = "SET NULL",
+                           readable = staff,
+                           writable = staff,
+                           # To use an Autocomplete instead of a dropdown:
+                           #widget = S3PentityAutocompleteWidget(instance_types = ("pr_person",
+                           #                                                       "pr_group",
+                           #                                                       "org_organisation",
+                           #                                                       ))
+                           # If just needing Persons:
+                           #widget = S3PersonAutocompleteWidget(field = "pe_id"),
+                           #comment = DIV(_class = "tooltip",
+                           #              _title = "%s|%s" % (T("Assigned to"),
+                           #                                  messages.AUTOCOMPLETE_HELP,
+                           #                                  ),
+                           #              ),
+                           ),
                      s3_datetime("date_due",
                                  label = T("Date Due"),
                                  represent = "date",
@@ -11086,7 +11125,8 @@ class S3ProjectTaskModel(S3Model):
             msg_record_created = T("Task added"),
             msg_record_modified = T("Task updated"),
             msg_record_deleted = T("Task deleted"),
-            msg_list_empty = T("No tasks currently registered"))
+            msg_list_empty = T("No tasks currently registered"),
+            )
 
         # Basic list fields, filter widgets and CRUD fields for tasks
         list_fields = ["id",
@@ -11120,7 +11160,7 @@ class S3ProjectTaskModel(S3Model):
             jquery_ready_append = s3.jquery_ready.append
             lappend("task_project.project_id")
             fappend(S3OptionsFilter("task_project.project_id",
-                                    options = self.project_task_project_opts,
+                                    options = project_task_project_opts,
                                     ))
             cappend(S3SQLInlineComponent("task_project",
                                          label = T("Project"),
@@ -11300,14 +11340,15 @@ class S3ProjectTaskModel(S3Model):
                   )
 
         # Reusable field
-        represent = project_TaskRepresent(show_link=True)
+        represent = project_TaskRepresent(show_link = True)
         task_id = S3ReusableField("task_id", "reference %s" % tablename,
                                   label = T("Task"),
                                   ondelete = "CASCADE",
                                   represent = represent,
                                   requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "project_task.id",
-                                                          represent)),
+                                                          represent,
+                                                          )),
                                   sortby = "name",
                                   comment = S3PopupLink(c = "project",
                                                         f = "task",
@@ -11317,20 +11358,23 @@ class S3ProjectTaskModel(S3Model):
                                   )
 
         # Representation with project name, for time log form
-        project_task_represent_w_project = project_TaskRepresent(show_project=True)
+        project_task_represent_w_project = project_TaskRepresent(show_project = True)
 
         # Custom Methods
         set_method("project", "task",
                    method = "share",
-                   action = self.project_task_share)
+                   action = self.project_task_share,
+                   )
 
         set_method("project", "task",
                    method = "unshare",
-                   action = self.project_task_unshare)
+                   action = self.project_task_unshare,
+                   )
 
         set_method("project", "task",
                    method = "dispatch",
-                   action = self.project_task_dispatch)
+                   action = self.project_task_dispatch,
+                   )
 
         # Components
         add_components(tablename,
@@ -11398,14 +11442,6 @@ class S3ProjectTaskModel(S3Model):
                                              "autocomplete": "name",
                                              "autodelete": False
                                              },
-                       # Requests
-                       req_req = {"link": "project_task_req",
-                                  "joinby": "task_id",
-                                  "key": "req_id",
-                                  "actuate": "embed",
-                                  "autocomplete": "request_number",
-                                  "autodelete": False,
-                                  },
                        # Tags
                        project_task_tag = {"name": "tag",
                                            "joinby": "task_id",
@@ -11436,7 +11472,7 @@ class S3ProjectTaskModel(S3Model):
                         ondelete = "CASCADE",
                         # Override requires so that update access to the projects isn't required
                         requires = IS_ONE_OF(db, "project_project.id",
-                                             self.project_project_represent
+                                             self.project_project_represent,
                                              )
                         ),
                       *s3_meta_fields())
@@ -11533,16 +11569,19 @@ class S3ProjectTaskModel(S3Model):
             msg_record_created = T("Role added"),
             msg_record_modified = T("Role updated"),
             msg_record_deleted = T("Role deleted"),
-            msg_list_empty = T("No such Role exists"))
+            msg_list_empty = T("No such Role exists"),
+            )
 
-        represent = S3Represent(lookup=tablename,
-                                fields=["role"])
+        represent = S3Represent(lookup = tablename,
+                                fields = ["role"],
+                                )
 
         role_id = S3ReusableField("role_id", "reference %s" % tablename,
                                   ondelete = "CASCADE",
                                   requires = IS_EMPTY_OR(IS_ONE_OF(db,
                                                                    "project_role.id",
-                                                                   represent)),
+                                                                   represent,
+                                                                   )),
                                   represent = represent,
                                   )
 
@@ -11556,10 +11595,12 @@ class S3ProjectTaskModel(S3Model):
         define_table(tablename,
                      person_id(label = T("Member"),
                                default = auth.s3_logged_in_person(),
-                               widget = SQLFORM.widgets.options.widget),
-                     role_id(label=T("Role")),
+                               widget = SQLFORM.widgets.options.widget,
+                               ),
+                     role_id(label = T("Role")),
                      task_id(empty = False,
-                             ondelete = "CASCADE"),
+                             ondelete = "CASCADE",
+                             ),
                      *s3_meta_fields())
 
         # ---------------------------------------------------------------------
@@ -11573,7 +11614,7 @@ class S3ProjectTaskModel(S3Model):
                                             project_task_represent_w_project,
                                             ),
                      ),
-                     self.pr_person_id(default=auth.s3_logged_in_person(),
+                     self.pr_person_id(default = auth.s3_logged_in_person(),
                                        widget = SQLFORM.widgets.options.widget
                                        ),
                      s3_datetime(default="now",
@@ -11607,13 +11648,12 @@ class S3ProjectTaskModel(S3Model):
             msg_record_created = T("Time Logged"),
             msg_record_modified = T("Time Log Updated"),
             msg_record_deleted = T("Time Log Deleted"),
-            msg_list_empty = T("No Time Logged")
+            msg_list_empty = T("No Time Logged"),
         )
         if "rows" in request.get_vars and request.get_vars.rows == "project":
             crud_strings[tablename].title_report = T("Project Time Report")
 
-        list_fields = ["id",
-                       (T("Project"), "task_id$task_project.project_id"),
+        list_fields = [(T("Project"), "task_id$task_project.project_id"),
                        (T("Activity"), "task_id$task_activity.activity_id"),
                        "task_id",
                        "person_id",
@@ -11628,7 +11668,7 @@ class S3ProjectTaskModel(S3Model):
                             ),
             S3OptionsFilter("task_id$task_project.project_id",
                             #label = T("Project"),
-                            options = self.project_task_project_opts,
+                            options = project_task_project_opts,
                             ),
             S3OptionsFilter("task_id$task_activity.activity_id",
                             #label = T("Activity"),
@@ -11644,7 +11684,7 @@ class S3ProjectTaskModel(S3Model):
 
         if settings.get_project_milestones():
             # Use the field in this format to get the custom represent
-            list_fields.insert(3, (T("Milestone"), "task_id$task_milestone.milestone_id"))
+            list_fields.insert(2, (T("Milestone"), "task_id$task_milestone.milestone_id"))
             filter_widgets.insert(3, S3OptionsFilter("task_id$task_milestone.milestone_id",
                                                      #label = T("Milestone"),
                                                      hidden = True,
@@ -11684,9 +11724,6 @@ class S3ProjectTaskModel(S3Model):
         # Pass names back to global scope (s3.*)
         #
         return {"project_task_id": task_id,
-                "project_task_active_statuses": project_task_active_statuses,
-                "project_task_represent_w_project": project_task_represent_w_project,
-                "project_task_project_opts": self.project_task_project_opts,
                 }
 
     # -------------------------------------------------------------------------
@@ -11694,12 +11731,7 @@ class S3ProjectTaskModel(S3Model):
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
-
-        return {"project_task_id": lambda **attr: dummy("task_id"),
-                "project_task_active_statuses": [],
+        return {"project_task_id": S3ReusableField.dummy("task_id"),
                 }
 
     # -------------------------------------------------------------------------
@@ -11713,24 +11745,6 @@ class S3ProjectTaskModel(S3Model):
             return row.id
         except AttributeError:
             return None
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def project_task_project_opts():
-        """
-            Provide the options for the Project search filter
-            - all Projects with Tasks
-        """
-
-        db = current.db
-        ptable = db.project_project
-        ttable = db.project_task
-        ltable = db.project_task_project
-        query = (ttable.deleted != True) & \
-                (ltable.task_id == ttable.id) & \
-                (ltable.project_id == ptable.id)
-        rows = db(query).select(ptable.id, ptable.name)
-        return dict((row.id, row.name) for row in rows)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -11780,7 +11794,8 @@ class S3ProjectTaskModel(S3Model):
         query = (ltable.task_id == task_id) & \
                 (ltable.project_id == ptable.id)
         project = db(query).select(ptable.realm_entity,
-                                   limitby=(0, 1)).first()
+                                   limitby = (0, 1),
+                                   ).first()
         if project:
             return project.realm_entity
         else:
@@ -11795,7 +11810,7 @@ class S3ProjectTaskModel(S3Model):
         if str(form_vars.status) == "3" and not form_vars.pe_id:
             form.errors.pe_id = \
                 current.T("Status 'assigned' requires the %(fieldname)s to not be blank") % \
-                    dict(fieldname=current.db.project_task.pe_id.label)
+                    {"fieldname": current.db.project_task.pe_id.label}
         elif form_vars.pe_id and str(form_vars.status) == "2":
             # Set the Status to 'Assigned' if left at default 'New'
             form_vars.status = 3
@@ -11859,7 +11874,7 @@ class S3ProjectTaskModel(S3Model):
             query = (lta.task_id == task_id) & \
                     (lta.activity_id == ta.id)
             row = db(query).select(ta.project_id,
-                                   limitby = (0, 1)
+                                   limitby = (0, 1),
                                    ).first()
             if row and row.project_id:
                 ltp.insert(task_id = task_id,
@@ -11932,13 +11947,14 @@ class S3ProjectTaskModel(S3Model):
                 #ptable = db.project_project
                 #master = s3db.resource("project_task", id=task_id)
                 #record = db(ptable.id == project).select(ptable.id,
-                #                                         limitby=(0, 1)).first()
+                #                                         limitby = (0, 1),
+                #                                         ).first()
                 #link = s3db.resource("project_task_project")
                 #link_id = link.update_link(master, record)
                 query = (ltable.task_id == task_id) & \
                         (ltable.project_id == project)
                 record = db(query).select(ltable.id,
-                                          limitby = (0, 1)
+                                          limitby = (0, 1),
                                           ).first()
                 if record:
                     link_id = record.id
@@ -11960,13 +11976,14 @@ class S3ProjectTaskModel(S3Model):
                 #atable = db.project_activity
                 #master = s3db.resource("project_task", id=task_id)
                 #record = db(atable.id == activity).select(atable.id,
-                #                                          limitby=(0, 1)).first()
+                #                                          limitby = (0, 1),
+                #                                          ).first()
                 #link = s3db.resource("project_task_activity")
                 #link_id = link.update_link(master, record)
                 query = (ltable.task_id == task_id) & \
                         (ltable.activity_id == activity)
                 record = db(query).select(ltable.id,
-                                          limitby = (0, 1)
+                                          limitby = (0, 1),
                                           ).first()
                 if record:
                     link_id = record.id
@@ -11988,13 +12005,14 @@ class S3ProjectTaskModel(S3Model):
                 #mtable = db.project_milestone
                 #master = s3db.resource("project_task", id=task_id)
                 #record = db(mtable.id == milestone).select(mtable.id,
-                #                                           limitby=(0, 1)).first()
+                #                                           limitby = (0, 1),
+                #                                           ).first()
                 #link = s3db.resource("project_task_milestone")
                 #link_id = link.update_link(master, record)
                 query = (ltable.task_id == task_id) & \
                         (ltable.milestone_id == milestone)
                 record = db(query).select(ltable.id,
-                                          limitby = (0, 1)
+                                          limitby = (0, 1),
                                           ).first()
                 if record:
                     link_id = record.id
@@ -12004,7 +12022,9 @@ class S3ProjectTaskModel(S3Model):
                                             )
                 filter_ = filter_ & (ltable.id != link_id)
             # Remove any other links
-            links = s3db.resource("project_task_milestone", filter=filter_)
+            links = s3db.resource("project_task_milestone",
+                                  filter = filter_,
+                                  )
             links.delete()
 
         # Notify Assignee
@@ -12040,7 +12060,7 @@ class S3ProjectTaskModel(S3Model):
             query = (ptable.pe_id == auth.user.pe_id) & \
                     (mtable.person_id == ptable.id)
             member = db(query).select(mtable.id,
-                                      limitby = (0, 1)
+                                      limitby = (0, 1),
                                       ).first()
             if not member:
                 output = current.xml.json_message(False, 403, current.T("Cannot Share to a Forum unless you are a Member"))
@@ -12051,7 +12071,7 @@ class S3ProjectTaskModel(S3Model):
         query = (ltable.task_id == task_id) & \
                 (ltable.forum_id == forum_id)
         exists = db(query).select(ltable.id,
-                                  limitby = (0, 1)
+                                  limitby = (0, 1),
                                   ).first()
         if not exists:
             ltable.insert(task_id = task_id,
@@ -12087,7 +12107,7 @@ class S3ProjectTaskModel(S3Model):
                 (ltable.forum_id == forum_id)
         exists = db(query).select(ltable.id,
                                   ltable.created_by,
-                                  limitby = (0, 1)
+                                  limitby = (0, 1),
                                   ).first()
         if exists:
             auth = current.auth
@@ -12172,7 +12192,7 @@ class S3ProjectTaskModel(S3Model):
             # Component Form
             query = (titable.id == form.vars.id)
             record = db(query).select(titable.task_id,
-                                      limitby = (0, 1)
+                                      limitby = (0, 1),
                                       ).first()
             if record:
                 task_id = record.task_id
@@ -12194,7 +12214,7 @@ class S3ProjectTaskModel(S3Model):
         query = (tatable.deleted == False) & \
                 (tatable.task_id == task_id)
         activity = db(query).select(tatable.activity_id,
-                                    limitby = (0, 1)
+                                    limitby = (0, 1),
                                     ).first()
         if activity:
             activity_id = activity.activity_id
@@ -12216,7 +12236,7 @@ class S3ProjectTaskModel(S3Model):
             db(query).update(time_actual = hours)
 
 # =============================================================================
-class S3ProjectTaskForumModel(S3Model):
+class ProjectTaskForumModel(S3Model):
     """
         Shares for Tasks
     """
@@ -12256,7 +12276,7 @@ class S3ProjectTaskForumModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectTaskHRMModel(S3Model):
+class ProjectTaskHRMModel(S3Model):
     """
         Project Task HRM Model
 
@@ -12305,7 +12325,7 @@ class S3ProjectTaskHRMModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectTaskTagModel(S3Model):
+class ProjectTaskTagModel(S3Model):
     """
         Task Tags
     """
@@ -12347,7 +12367,7 @@ class S3ProjectTaskTagModel(S3Model):
         return {}
 
 # =============================================================================
-class S3ProjectWindowModel(S3Model):
+class ProjectWindowModel(S3Model):
     """
         Project Window Model
 
@@ -12611,7 +12631,7 @@ def task_notify(form):
             table = current.s3db.project_task
             status = table.status.default
 
-    if status not in current.response.s3.project_task_active_statuses:
+    if status not in project_task_active_statuses:
         # No need to notify about closed tasks
         return
 
@@ -12644,9 +12664,9 @@ class project_TaskRepresent(S3Represent):
     """ Representation of project tasks """
 
     def __init__(self,
-                 show_link=False,
-                 show_project=False,
-                 project_first=True):
+                 show_link = False,
+                 show_project = False,
+                 project_first = True):
         """
             Constructor
 
@@ -12795,8 +12815,9 @@ class project_ActivityRepresent(S3Represent):
         rows = current.db(query).select(atable.id,
                                         atable.name,
                                         ptable.code,
-                                        left=left,
-                                        limitby=limitby)
+                                        left = left,
+                                        limitby = limitby,
+                                        )
         self.queries += 1
         return rows
 
@@ -12840,8 +12861,8 @@ def project_activity_year_options():
     query = (table.deleted == False)
     min_field = table.date.min()
     start_date_min = db(query).select(min_field,
-                                      orderby=min_field,
-                                      limitby=(0, 1)
+                                      limitby = (0, 1),
+                                      orderby = min_field,
                                       ).first()[min_field]
     if start_date_min:
         start_year = start_date_min.year
@@ -12850,8 +12871,8 @@ def project_activity_year_options():
 
     max_field = table.end_date.max()
     end_date_max = db(query).select(max_field,
-                                    orderby=max_field,
-                                    limitby=(0, 1)
+                                    limitby = (0, 1),
+                                    orderby = max_field,
                                     ).first()[max_field]
     if end_date_max:
         end_year = end_date_max.year
@@ -12861,12 +12882,12 @@ def project_activity_year_options():
     if not start_year or not end_year:
         return {start_year:start_year} or {end_year:end_year}
     years = {}
-    for year in xrange(start_year, end_year + 1):
+    for year in range(start_year, end_year + 1):
         years[year] = year
     return years
 
 # =============================================================================
-class S3ProjectThemeVirtualFields(object):
+class ProjectThemeVirtualFields(object):
     """
         Virtual fields for the project table
 
@@ -13080,13 +13101,13 @@ def project_rheader(r):
         if settings.get_hrm_show_staff():
             STAFF = settings.get_hrm_staff_label()
             if not details_tab:
-                #append((STAFF, "human_resource", dict(group="staff")))
+                #append((STAFF, "human_resource", {"group": "staff"}))
                 append((STAFF, "human_resource"))
             if settings.get_project_assign_staff_tab() and \
                current.auth.s3_has_permission("create", "project_human_resource_project"):
-                append((T("Assign %(staff)s") % dict(staff=STAFF), "assign"))
+                append((T("Assign %(staff)s") % {"staff": STAFF}, "assign"))
         #if settings.has_module("vol"):
-        #    append((T("Volunteers"), "human_resource", dict(group="volunteer")))
+        #    append((T("Volunteers"), "human_resource", {"group": "volunteer"}))
 
         rheader_fields = [["code", "name"],
                           ["organisation_id"],
@@ -13106,30 +13127,30 @@ def project_rheader(r):
             rfooter = DIV(A(ICON("print"),
                             " ",
                             T("Project Summary Report"),
-                            _href=URL(args=[r.id, "summary_report"]),#, extension="pdf"),
-                            _class="action-btn",
+                            _href = URL(args = [r.id, "summary_report"]),#, extension="pdf"),
+                            _class = "action-btn",
                             ),
                           A(T("Summary of Progress by Indicator"),
-                            _href=URL(args=[r.id, "indicator_summary_report"]),
-                            _class="action-btn",
+                            _href = URL(args = [r.id, "indicator_summary_report"]),
+                            _class = "action-btn",
                             ),
                           A(ICON("table"),
                             " ",
                             T("Summary of Progress by Indicator"),
-                            _href=URL(args=[r.id, "indicator_summary_report"], extension="xls"),
-                            _class="action-btn",
+                            _href = URL(args = [r.id, "indicator_summary_report"], extension="xls"),
+                            _class = "action-btn",
                             ),
                           A(T("Total Project Progress"),
-                            _href=URL(args=[r.id, "project_progress_report"]),
-                            _class="action-btn",
+                            _href = URL(args = [r.id, "project_progress_report"]),
+                            _class = "action-btn",
                             ),
                           #A(T("Total Budget Progress"),
-                          #  _href=URL(args=[r.id, "budget_progress_report"]),
-                          #  _class="action-btn",
+                          #  _href = URL(args = [r.id, "budget_progress_report"]),
+                          #  _class = "action-btn",
                           #  ),
                           #A(T("Monthly Progress by Indicator"),
-                          #  _href=URL(args=[r.id, "indicator_progress_report"]),
-                          #  _class="action-btn",
+                          #  _href = URL(args = [r.id, "indicator_progress_report"]),
+                          #  _class = "action-btn",
                           #  ),
                           )
             current.response.s3.rfooter = rfooter
@@ -13202,7 +13223,8 @@ def project_rheader(r):
         row = db(query).select(ptable.id,
                                ptable.code,
                                ptable.name,
-                               limitby=(0, 1)).first()
+                               limitby = (0, 1),
+                               ).first()
         if row:
             project = s3db.project_project_represent(None, row)
             project = TR(TH("%s: " % T("Project")),
@@ -13217,7 +13239,8 @@ def project_rheader(r):
                 (ltable.task_id == r.id) & \
                 (ltable.activity_id == atable.id)
         activity = db(query).select(atable.name,
-                                    limitby=(0, 1)).first()
+                                    limitby = (0, 1),
+                                    ).first()
         if activity:
             activity = TR(TH("%s: " % T("Activity")),
                           activity.name
@@ -13288,9 +13311,9 @@ class project_IndicatorActivityRepresent(S3Represent):
     """ Representation of Indicator Activities """
 
     def __init__(self,
-                 show_link=False,
-                 linkto=None,
-                 multiple=False,
+                 show_link = False,
+                 linkto = None,
+                 multiple = False,
                  translate = True,
                  ):
 
@@ -13331,7 +13354,9 @@ class project_IndicatorActivityRepresent(S3Represent):
         query &= (table.id == ltable.indicator_activity_id) & \
                  (ltable.activity_id == atable.id)
 
-        rows = current.db(query).select(limitby=(0, count), *fields)
+        rows = current.db(query).select(limitby = (0, count),
+                                        *fields
+                                        )
         self.queries += 1
 
         return rows
@@ -13364,7 +13389,6 @@ def project_task_controller():
     def prep(r):
         tablename = "project_task"
         table = s3db.project_task
-        statuses = s3.project_task_active_statuses
         crud_strings = s3.crud_strings[tablename]
 
         if r.record:
@@ -13372,8 +13396,8 @@ def project_task_controller():
                 # Put the Comments in the RFooter
                 project_ckeditor()
                 s3.rfooter = LOAD("project", "comments.load",
-                                  args=[r.id],
-                                  ajax=True)
+                                  args = [r.id],
+                                  ajax = True)
 
         if r.method == "datalist":
             # Set list_fields for renderer (project_task_list_layout)
@@ -13404,7 +13428,7 @@ def project_task_controller():
             # Show open tasks assigned to the current user
 
             # Show only open tasks
-            query = (FS("status").belongs(statuses))
+            query = (FS("status").belongs(project_task_active_statuses))
 
             if auth.user:
                 hide_fields = ("pe_id", "status")
@@ -13464,16 +13488,16 @@ def project_task_controller():
             ptable = s3db.project_project
             try:
                 name = current.db(ptable.id == project).select(ptable.name,
-                                                               limitby=(0, 1)
+                                                               limitby = (0, 1),
                                                                ).first().name
             except AttributeError:
                 current.session.error = T("Project not Found")
                 redirect(URL(args=None, vars=None))
             query = (FS("task_id:project_task_project.project_id") == project) & \
-                    (FS("status").belongs(statuses))
+                    (FS("status").belongs(project_task_active_statuses))
             r.resource.add_filter(query)
-            crud_strings.title_list = T("Open Tasks for %(project)s") % dict(project=name)
-            crud_strings.msg_list_empty = T("No Open Tasks for %(project)s") % dict(project=name)
+            crud_strings.title_list = T("Open Tasks for %(project)s") % {"project": name}
+            crud_strings.msg_list_empty = T("No Open Tasks for %(project)s") % {"project": name}
             # Add Activity
             list_fields = s3db.get_config(tablename,
                                           "list_fields")
@@ -13493,7 +13517,7 @@ def project_task_controller():
         elif "open" in get_vars:
             # Show Only Open Tasks
             crud_strings.title_list = T("All Open Tasks")
-            r.resource.add_filter(table.status.belongs(statuses))
+            r.resource.add_filter(table.status.belongs(project_task_active_statuses))
 
         if r.component:
             if r.component_name == "req":
@@ -13501,7 +13525,8 @@ def project_task_controller():
                     r.component.table.type.default = 3
                 if r.method != "update" and r.method != "read":
                     # Hide fields which don't make sense in a Create form
-                    s3db.req_create_form_mods()
+                    from .inv import inv_req_create_form_mods
+                    inv_req_create_form_mods(r)
             elif r.component_name == "human_resource":
                 r.component.table.type.default = 2
         else:
@@ -13531,7 +13556,7 @@ def project_task_controller():
 
     return current.rest_controller("project", "task",
                                    hide_filter = hide_filter,
-                                   rheader = s3db.project_rheader,
+                                   rheader = project_rheader,
                                    )
 
 # =============================================================================
@@ -13758,6 +13783,23 @@ def project_project_filters(org_label):
     return filter_widgets
 
 # =============================================================================
+def project_task_project_opts():
+    """
+        Provide the options for the Project search filter
+        - all Projects with Tasks
+    """
+
+    db = current.db
+    ptable = db.project_project
+    ttable = db.project_task
+    ltable = db.project_task_project
+    query = (ttable.deleted != True) & \
+            (ltable.task_id == ttable.id) & \
+            (ltable.project_id == ptable.id)
+    rows = db(query).select(ptable.id, ptable.name)
+    return dict((row.id, row.name) for row in rows)
+
+# =============================================================================
 def project_project_list_layout(list_id, item_id, resource, rfields, record,
                                 icon="tasks"):
     """
@@ -13785,20 +13827,25 @@ def project_project_list_layout(list_id, item_id, resource, rfields, record,
     organisation_id = raw["project_project.organisation_id"]
     location = record["project_location.location_id"]
 
-    org_url = URL(c="org", f="organisation", args=[organisation_id, "profile"])
+    org_url = URL(c="org", f="organisation",
+                  args = [organisation_id, "profile"],
+                  )
     org_logo = raw["org_organisation.logo"]
     if org_logo:
-        org_logo = A(IMG(_src=URL(c="default", f="download", args=[org_logo]),
-                         _class="media-object",
+        org_logo = A(IMG(_src = URL(c="default", f="download",
+                                    args = [org_logo],
+                                    ),
+                         _class = "media-object",
                          ),
-                     _href=org_url,
-                     _class="pull-left",
+                     _href = org_url,
+                     _class = "pull-left",
                      )
     else:
         # @ToDo: use a dummy logo image
-        org_logo = A(IMG(_class="media-object"),
-                     _href=org_url,
-                     _class="pull-left",
+        org_logo = A(IMG(_class = "media-object",
+                         ),
+                     _href = org_url,
+                     _class = "pull-left",
                      )
 
     # Edit Bar
@@ -13807,58 +13854,64 @@ def project_project_list_layout(list_id, item_id, resource, rfields, record,
     table = current.db.project_project
     if permit("update", table, record_id=record_id):
         edit_btn = A(ICON("edit"),
-                     _href=URL(c="project", f="project",
-                               args=[record_id, "update.popup"]
-                               ),
-                     _class="s3_modal",
-                     _title=S3CRUD.crud_string(resource.tablename,
-                                               "title_update"),
+                     _href = URL(c="project", f="project",
+                                 args = [record_id, "update.popup"],
+                                 ),
+                     _class = "s3_modal",
+                     _title = S3CRUD.crud_string(resource.tablename,
+                                                 "title_update"),
                      )
     else:
         edit_btn = ""
     if permit("delete", table, record_id=record_id):
         delete_btn = A(ICON("delete"),
-                       _class="dl-item-delete",
-                       _title=S3CRUD.crud_string(resource.tablename,
-                                                 "label_delete_button"),
+                       _class = "dl-item-delete",
+                       _title = S3CRUD.crud_string(resource.tablename,
+                                                   "label_delete_button"),
                        )
     else:
         delete_btn = ""
     edit_bar = DIV(edit_btn,
                    delete_btn,
-                   _class="edit-bar fright",
+                   _class = "edit-bar fright",
                    )
 
     # Render the item
     item = DIV(DIV(ICON(icon),
                    SPAN(A(name,
-                          _href =  URL(c="project", f="project",
-                                       args=[record_id, "profile"])),
-                        _class="card-title"),
-                   SPAN(location, _class="location-title"),
-                   SPAN(start_date, _class="date-title"),
+                          _href = URL(c="project", f="project",
+                                      args = [record_id, "profile"]),
+                                      ),
+                        _class = "card-title",
+                        ),
+                   SPAN(location,
+                        _class = "location-title",
+                        ),
+                   SPAN(start_date,
+                        _class = "date-title",
+                        ),
                    edit_bar,
-                   _class="card-header",
+                   _class = "card-header",
                    ),
                DIV(org_logo,
                    DIV(DIV((description or ""),
                            DIV(author or "",
                                " - ",
                                A(organisation,
-                                 _href=org_url,
-                                 _class="card-organisation",
+                                 _href = org_url,
+                                 _class = "card-organisation",
                                  ),
-                               _class="card-person",
+                               _class = "card-person",
                                ),
-                           _class="media",
+                           _class = "media",
                            ),
-                       _class="media-body",
+                       _class = "media-body",
                        ),
-                   _class="media",
+                   _class = "media",
                    ),
                #docs,
-               _class=item_class,
-               _id=item_id,
+               _class = item_class,
+               _id = item_id,
                )
 
     return item
@@ -13892,24 +13945,29 @@ def project_activity_list_layout(list_id, item_id, resource, rfields, record,
     organisation_id = raw["project_activity_organisation.organisation_id"]
     if organisation_id:
         organisation = record["project_activity_organisation.organisation_id"]
-        org_url = URL(c="org", f="organisation", args=[organisation_id, "profile"])
+        org_url = URL(c="org", f="organisation",
+                      args = [organisation_id, "profile"],
+                      )
         org_logo = raw["org_organisation.logo"]
         if org_logo:
-            org_logo = A(IMG(_src=URL(c="default", f="download", args=[org_logo]),
-                             _class="media-object",
+            org_logo = A(IMG(_src = URL(c="default", f="download",
+                                        args = [org_logo],
+                                        ),
+                             _class = "media-object",
                              ),
-                         _href=org_url,
-                         _class="pull-left",
+                         _href = org_url,
+                         _class = "pull-left",
                          )
         else:
             # @ToDo: use a dummy logo image
-            org_logo = A(IMG(_class="media-object"),
-                         _href=org_url,
-                         _class="pull-left",
+            org_logo = A(IMG(_class = "media-object",
+                             ),
+                         _href = org_url,
+                         _class = "pull-left",
                          )
         organisation = A(organisation,
-                         _href=org_url,
-                         _class="card-organisation",
+                         _href = org_url,
+                         _class = "card-organisation",
                          )
     else:
         organisation = ""
@@ -13920,56 +13978,63 @@ def project_activity_list_layout(list_id, item_id, resource, rfields, record,
     table = current.db.project_activity
     if permit("update", table, record_id=record_id):
         edit_btn = A(ICON("edit"),
-                     _href=URL(c="project", f="activity",
-                               args=[record_id, "update.popup"],
-                               vars={"refresh": list_id,
-                                     "record": record_id},
-                               ),
-                     _class="s3_modal",
-                     _title=S3CRUD.crud_string(resource.tablename,
-                                               "title_update"),
+                     _href = URL(c="project", f="activity",
+                                 args = [record_id, "update.popup"],
+                                 vars = {"refresh": list_id,
+                                         "record": record_id,
+                                         },
+                                 ),
+                     _class = "s3_modal",
+                     _title = S3CRUD.crud_string(resource.tablename,
+                                                 "title_update"),
                      )
     else:
         edit_btn = ""
     if permit("delete", table, record_id=record_id):
         delete_btn = A(ICON("delete"),
-                       _class="dl-item-delete",
-                       _title=S3CRUD.crud_string(resource.tablename,
-                                                 "label_delete_button"),
+                       _class = "dl-item-delete",
+                       _title = S3CRUD.crud_string(resource.tablename,
+                                                   "label_delete_button"),
                        )
     else:
         delete_btn = ""
     edit_bar = DIV(edit_btn,
                    delete_btn,
-                   _class="edit-bar fright",
+                   _class = "edit-bar fright",
                    )
 
     # Render the item
     item = DIV(DIV(ICON(icon),
-                   SPAN(location, _class="location-title"),
-                   SPAN(start_date, _class="date-title"),
+                   SPAN(location,
+                        _class = "location-title",
+                        ),
+                   SPAN(start_date,
+                        _class = "date-title",
+                        ),
                    edit_bar,
-                   _class="card-header",
+                   _class = "card-header",
                    ),
                DIV(DIV(A(name,
-                          _href=URL(c="project", f="activity",
-                                    args=[record_id, "profile"])),
-                        _class="card-title"),
+                         _href = URL(c="project", f="activity",
+                                     args = [record_id, "profile"],
+                                     )),
+                        _class = "card-title",
+                        ),
                    DIV(DIV((description or ""),
                            DIV(author or "",
                                " - ",
                                organisation,
-                               _class="card-person",
+                               _class = "card-person",
                                ),
-                           _class="media",
+                           _class = "media",
                            ),
-                       _class="media-body",
+                       _class = "media-body",
                        ),
-                   _class="media",
+                   _class = "media",
                    ),
                #docs,
-               _class=item_class,
-               _id=item_id,
+               _class = item_class,
+               _id = item_id,
                )
 
     return item
@@ -13997,7 +14062,7 @@ def project_task_list_layout(list_id, item_id, resource, rfields, record,
     assigned_to = record["project_task.pe_id"] or ""
     description = record["project_task.description"]
     date_due = record["project_task.date_due"]
-    source_url = raw["project_task.source_url"]
+    #source_url = raw["project_task.source_url"]
     status = raw["project_task.status"]
     priority = raw["project_task.priority"]
 
@@ -14006,10 +14071,11 @@ def project_task_list_layout(list_id, item_id, resource, rfields, record,
         project = record["project_task_project.project_id"]
         project = SPAN(A(project,
                          _href = URL(c="project", f="project",
-                                     args=[project_id, "profile"])
+                                     args = [project_id, "profile"],
+                                     )
                          ),
                        " > ",
-                       _class="task_project_title"
+                       _class = "task_project_title",
                        )
     else:
         project = ""
@@ -14017,11 +14083,13 @@ def project_task_list_layout(list_id, item_id, resource, rfields, record,
     if priority in (1, 2):
         # Urgent / High
         priority_icon = DIV(ICON("exclamation"),
-                            _class="task_priority")
+                            _class = "task_priority",
+                            )
     elif priority == 4:
         # Low
         priority_icon = DIV(ICON("arrow-down"),
-                            _class="task_priority")
+                            _class = "task_priority",
+                            )
     else:
         priority_icon = ""
     # @ToDo: Support more than just the Wrike/MCOP statuses
@@ -14030,10 +14098,9 @@ def project_task_list_layout(list_id, item_id, resource, rfields, record,
                           7:  "#CEC1FF",
                           12: "#C6C6C6",
                           }
-    active_statuses = current.s3db.project_task_active_statuses
-    status_icon  = DIV(ICON("active" if status in active_statuses else "inactive"),
-                       _class="task_status",
-                       _style="background-color:%s" % (status_icon_colour.get(status, "none"))
+    status_icon  = DIV(ICON("active" if status in project_task_active_statuses else "inactive"),
+                       _class = "task_status",
+                       _style = "background-color:%s" % (status_icon_colour.get(status, "none"))
                        )
 
     location = record["project_task.location_id"]
@@ -14042,17 +14109,17 @@ def project_task_list_layout(list_id, item_id, resource, rfields, record,
     #org_url = URL(c="org", f="organisation", args=[organisation_id, "profile"])
     #org_logo = raw["org_organisation.logo"]
     #if org_logo:
-    #    org_logo = A(IMG(_src=URL(c="default", f="download", args=[org_logo]),
-    #                     _class="media-object",
+    #    org_logo = A(IMG(_src = URL(c="default", f="download", args=[org_logo]),
+    #                     _class = "media-object",
     #                     ),
-    #                 _href=org_url,
-    #                 _class="pull-left",
+    #                 _href = org_url,
+    #                 _class = "pull-left",
     #                 )
     #else:
     #    # @ToDo: use a dummy logo image
-    #    org_logo = A(IMG(_class="media-object"),
-    #                 _href=org_url,
-    #                 _class="pull-left",
+    #    org_logo = A(IMG(_class = "media-object"),
+    #                 _href = org_url,
+    #                 _class = "pull-left",
     #                 )
 
     # Edit Bar
@@ -14061,72 +14128,78 @@ def project_task_list_layout(list_id, item_id, resource, rfields, record,
     table = current.db.project_task
     if permit("update", table, record_id=record_id):
         edit_btn = A(ICON("edit"),
-                     _href=URL(c="project", f="task",
-                               args=[record_id, "update.popup"],
-                               vars={"refresh": list_id,
+                     _href = URL(c="project", f="task",
+                                 args=[record_id, "update.popup"],
+                                 vars={"refresh": list_id,
                                      "record": record_id},
-                               ),
-                     _class="s3_modal",
-                     _title=S3CRUD.crud_string(resource.tablename,
-                                               "title_update"),
+                                 ),
+                     _class = "s3_modal",
+                     _title = S3CRUD.crud_string(resource.tablename,
+                                                 "title_update"),
                      )
     else:
         edit_btn = ""
     if permit("delete", table, record_id=record_id):
         delete_btn = A(ICON("delete"),
-                       _class="dl-item-delete",
-                       _title=S3CRUD.crud_string(resource.tablename,
-                                                 "label_delete_button"),
+                       _class = "dl-item-delete",
+                       _title = S3CRUD.crud_string(resource.tablename,
+                                                   "label_delete_button"),
                        )
     else:
         delete_btn = ""
 
-    if source_url:
-        source_btn =  A(ICON("link"),
-                       _title=source_url,
-                       _href=source_url,
-                       _target="_blank"
-                       )
-    else:
-        source_btn = ""
+    #if source_url:
+    #    source_btn =  A(ICON("link"),
+    #                   _title = source_url,
+    #                   _href = source_url,
+    #                   _target = "_blank"
+    #                   )
+    #else:
+    #    source_btn = ""
 
     edit_bar = DIV(edit_btn,
                    delete_btn,
                    source_btn,
-                   _class="edit-bar fright",
+                   _class = "edit-bar fright",
                    )
 
     # Render the item
     item = DIV(DIV(ICON(icon),
-                   SPAN(location, _class="location-title"),
-                   SPAN(date_due, _class="date-title"),
+                   SPAN(location,
+                        _class = "location-title",
+                        ),
+                   SPAN(date_due,
+                        _class = "date-title",
+                        ),
                    edit_bar,
-                   _class="card-header",
+                   _class = "card-header",
                    ),
                DIV(org_logo,
                    priority_icon,
                    DIV(project,
-                        name, _class="card-title task_priority"),
+                       name,
+                       _class = "card-title task_priority",
+                       ),
                    status_icon,
                    DIV(DIV((description or ""),
                            DIV(author,
                                " - ",
                                assigned_to,
                                #A(organisation,
-                               #  _href=org_url,
-                               #  _class="card-organisation",
+                               #  _href = org_url,
+                               #  _class = "card-organisation",
                                #  ),
-                               _class="card-person",
+                               _class = "card-person",
                                ),
-                           _class="media",
+                           _class = "media",
                            ),
-                       _class="media-body",
+                       _class = "media-body",
                        ),
-                   _class="media",
+                   _class = "media",
                    ),
                #docs,
-               _class=item_class,
-               _id=item_id,
+               _class = item_class,
+               _id = item_id,
                )
 
     return item
@@ -14173,16 +14246,17 @@ class project_Details(S3Method):
             def dt_row_actions(component):
                 return lambda r, list_id: [
                     {"label": T("Open"),
-                     "url": r.url(component=component,
-                                  component_id="[id]",
-                                  method="update.popup",
-                                  vars={"refresh": list_id}),
+                     "url": r.url(component = component,
+                                  component_id = "[id]",
+                                  method = "update.popup",
+                                  vars = {"refresh": list_id},
+                                  ),
                      "_class": "action-btn edit s3_modal",
                      },
                     {"label": T("Delete"),
-                     "_ajaxurl": r.url(component=component,
-                                       component_id="[id]",
-                                       method="delete.json",
+                     "_ajaxurl": r.url(component = component,
+                                       component_id = "[id]",
+                                       method = "delete.json",
                                        ),
                      "_class": "action-btn delete-btn-ajax dt-ajax-delete",
                      },
@@ -14197,17 +14271,17 @@ class project_Details(S3Method):
                     profile_widgets.append(form)
 
             if settings.get_project_multiple_organisations():
-                orgs_widget = dict(label = "Organizations",
-                                   label_create = "Add Organization",
-                                   type = "datatable",
-                                   actions = dt_row_actions("organisation"),
-                                   tablename = "project_organisation",
-                                   context = "project",
-                                   create_controller = "project",
-                                   create_function = "project",
-                                   create_component = "organisation",
-                                   pagesize = None, # all records
-                                   )
+                orgs_widget = {"label": "Organizations",
+                               "label_create": "Add Organization",
+                               "type": "datatable",
+                               "actions": dt_row_actions("organisation"),
+                               "tablename": "project_organisation",
+                               "context": "project",
+                               "create_controller": "project",
+                               "create_function": "project",
+                               "create_component": "organisation",
+                               "pagesize": None, # all records
+                               }
                 profile_widgets.append(orgs_widget)
 
             if settings.get_project_community():
@@ -14216,72 +14290,74 @@ class project_Details(S3Method):
             else:
                 label = "Locations"
                 label_create = "Add Location"
-            locations_widget = dict(label = label,
-                                    label_create = label_create,
-                                    type = "datatable",
-                                    actions = dt_row_actions("location"),
-                                    tablename = "project_location",
-                                    context = "project",
-                                    create_controller = "project",
-                                    create_function = "project",
-                                    create_component = "location",
-                                    pagesize = None, # all records
-                                    )
+            locations_widget = {"label": label,
+                                "label_create": label_create,
+                                "type": "datatable",
+                                "actions": dt_row_actions("location"),
+                                "tablename": "project_location",
+                                "context": "project",
+                                "create_controller": "project",
+                                "create_function": "project",
+                                "create_component": "location",
+                                "pagesize": None, # all records
+                                }
             profile_widgets.append(locations_widget)
 
             if settings.get_project_mode_3w():
-                beneficiaries_widget = dict(label = "Beneficiaries",
-                                            label_create = "Add Beneficiaries",
-                                            type = "datatable",
-                                            actions = dt_row_actions("beneficiary"),
-                                            tablename = "project_beneficiary",
-                                            context = "project",
-                                            create_controller = "project",
-                                            create_function = "project",
-                                            create_component = "beneficiary",
-                                            pagesize = None, # all records
-                                            )
+                beneficiaries_widget = {"label": "Beneficiaries",
+                                        "label_create": "Add Beneficiaries",
+                                        "type": "datatable",
+                                        "actions": dt_row_actions("beneficiary"),
+                                        "tablename": "project_beneficiary",
+                                        "context": "project",
+                                        "create_controller": "project",
+                                        "create_function": "project",
+                                        "create_component": "beneficiary",
+                                        "pagesize": None, # all records
+                                        }
                 profile_widgets.append(beneficiaries_widget)
                 label = T("Documents")
             else:
                 label = settings.get_ui_label_attachments()
 
-            docs_widget = dict(label = label,
-                               label_create = "Add Document",
-                               type = "datatable",
-                               actions = dt_row_actions("document"),
-                               tablename = "doc_document",
-                               # @ToDo: Fix Filter
-                               #context = "project",
-                               context = ("~.doc_id", "doc_id"),
-                               create_controller = "project",
-                               create_function = "project",
-                               create_component = "document",
-                               pagesize = None, # all records
-                               )
+            docs_widget = {"label": label,
+                           "label_create": "Add Document",
+                           "type": "datatable",
+                           "actions": dt_row_actions("document"),
+                           "tablename": "doc_document",
+                           # @ToDo: Fix Filter
+                           #"context": "project",
+                           "context": ("~.doc_id", "doc_id"),
+                           "create_controller": "project",
+                           "create_function": "project",
+                           "create_component": "document",
+                           "pagesize": None, # all records
+                           }
             profile_widgets.append(docs_widget)
 
             if settings.get_hrm_show_staff():
                 STAFF = settings.get_hrm_staff_label()
-                hr_widget = dict(label = STAFF,
-                                 # NB T() here to prevent requiring an extra translation of 'Add <translation of Staff>'
-                                 label_create = T("Add %(staff)s") % dict(staff=STAFF),
-                                 type = "datatable",
-                                 actions = dt_row_actions("human_resource_project"),
-                                 tablename = "project_human_resource_project",
-                                 context = "project",
-                                 create_controller = "project",
-                                 create_function = "project",
-                                 create_component = "human_resource_project",
-                                 pagesize = None, # all records
-                                 )
+                hr_widget = {"label": STAFF,
+                             # NB T() here to prevent requiring an extra translation of 'Add <translation of Staff>'
+                             "label_create": T("Add %(staff)s") % {"staff": STAFF},
+                             "type": "datatable",
+                             "actions": dt_row_actions("human_resource_project"),
+                             "tablename": "project_human_resource_project",
+                             "context": "project",
+                             "create_controller": "project",
+                             "create_function": "project",
+                             "create_component": "human_resource_project",
+                             "pagesize": None, # all records
+                             }
                 profile_widgets.append(hr_widget)
 
             if r.representation == "html":
                 response = current.response
                 # Maintain normal rheader for consistency
                 profile_header = TAG[""](H2(response.s3.crud_strings["project_project"].title_display),
-                                         DIV(project_rheader(r), _id="rheader"),
+                                         DIV(project_rheader(r),
+                                             _id = "rheader",
+                                             ),
                                          )
             else:
                 profile_header = None

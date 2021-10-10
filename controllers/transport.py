@@ -4,16 +4,15 @@
     Transport
 """
 
-module = request.controller
-
-if not settings.has_module(module):
-    raise HTTP(404, body="Module disabled: %s" % module)
+if not settings.has_module(c):
+    raise HTTP(404, body="Module disabled: %s" % c)
 
 # -----------------------------------------------------------------------------
 def index():
     "Module's Home Page"
 
-    return s3db.cms_index(module)
+    from s3db.cms import cms_index
+    return s3db.cms_index(c)
 
 # -----------------------------------------------------------------------------
 def airport():
@@ -22,33 +21,38 @@ def airport():
     # Pre-processor
     def prep(r):
         # Location Filter
-        s3db.gis_location_filter(r)
+        from s3db.gis import gis_location_filter
+        gis_location_filter(r)
 
         if r.interactive:
             if r.component:
-                if r.component.name == "human_resource":
-                    s3db.org_site_staff_config(r)
-                elif r.component.name == "inv_item":
-                    # remove CRUD generated buttons in the tabs
-                    s3db.configure("inv_inv_item",
-                                   create = False,
-                                   deletable = False,
-                                   editable = False,
-                                   listadd = False,
-                                   )
+                component_name = r.component_name
+                if component_name == "human_resource":
+                    from s3db.org import org_site_staff_config
+                    org_site_staff_config(r)
+                elif component_name == "inv_item":
+                    # Filter out items which are already in this inventory
+                    from s3db.inv import inv_prep
+                    inv_prep(r)
+                elif component_name == "layout" and \
+                     r.method != "hierarchy":
+                    from s3db.org import org_site_layout_config
+                    org_site_layout_config(r.record.site_id)
             elif r.method == "update":
                 field = r.table.obsolete
                 field.readable = field.writable = True
         return True
     s3.prep = prep
 
-    return s3_rest_controller(rheader=s3db.transport_rheader)
+    from s3db.transport import transport_rheader
+    return s3_rest_controller(rheader = transport_rheader)
 
 # -----------------------------------------------------------------------------
 def border_crossing():
     """ RESTful CRUD controller """
 
-    return s3_rest_controller(rheader=s3db.transport_rheader)
+    from s3db.transport import transport_rheader
+    return s3_rest_controller(rheader = transport_rheader)
 
 # -----------------------------------------------------------------------------
 def border_control_point():
@@ -57,27 +61,37 @@ def border_control_point():
     # Pre-processor
     def prep(r):
         # Location Filter
-        s3db.gis_location_filter(r)
+        from s3db.gis import gis_location_filter
+        gis_location_filter(r)
 
         if r.interactive:
             if r.component:
-                if r.component.name == "human_resource":
-                    s3db.org_site_staff_config(r)
-                elif r.component.name == "inv_item":
-                    # remove CRUD generated buttons in the tabs
-                    s3db.configure("inv_inv_item",
-                                   create = False,
-                                   deletable = False,
-                                   editable = False,
-                                   listadd = False,
-                                   )
+                if r.component_name == "human_resource":
+                    from s3db.org import org_site_staff_config
+                    org_site_staff_config(r)
+                elif r.component_name == "inv_item":
+                    # Filter out items which are already in this inventory
+                    from s3db.inv import inv_prep
+                    inv_prep(r)
+                elif component_name == "layout" and \
+                     r.method != "hierarchy":
+                    from s3db.org import org_site_layout_config
+                    org_site_layout_config(r.record.site_id)
             #elif r.method == "update":
             #    field = r.table.obsolete
             #    field.readable = field.writable = True
         return True
     s3.prep = prep
 
-    return s3_rest_controller(rheader=s3db.transport_rheader)
+    from s3db.transport import transport_rheader
+    return s3_rest_controller(rheader = transport_rheader)
+
+# -----------------------------------------------------------------------------
+def bridge():
+    """ RESTful CRUD controller """
+
+    from s3db.transport import transport_rheader
+    return s3_rest_controller(rheader = transport_rheader)
 
 # -----------------------------------------------------------------------------
 def heliport():
@@ -86,27 +100,30 @@ def heliport():
     # Pre-processor
     def prep(r):
         # Location Filter
-        s3db.gis_location_filter(r)
+        from s3db.gis import gis_location_filter
+        gis_location_filter(r)
 
         if r.interactive:
             if r.component:
-                if r.component.name == "human_resource":
-                    s3db.org_site_staff_config(r)
-                elif r.component.name == "inv_item":
-                    # remove CRUD generated buttons in the tabs
-                    s3db.configure("inv_inv_item",
-                                   create = False,
-                                   deletable = False,
-                                   editable = False,
-                                   listadd = False,
-                                   )
+                if r.component_name == "human_resource":
+                    from s3db.org import org_site_staff_config
+                    org_site_staff_config(r)
+                elif r.component_name == "inv_item":
+                    # Filter out items which are already in this inventory
+                    from s3db.inv import inv_prep
+                    inv_prep(r)
+                elif component_name == "layout" and \
+                     r.method != "hierarchy":
+                    from s3db.org import org_site_layout_config
+                    org_site_layout_config(r.record.site_id)
             elif r.method == "update":
                 field = r.table.obsolete
                 field.readable = field.writable = True
         return True
     s3.prep = prep
 
-    return s3_rest_controller(rheader=s3db.transport_rheader)
+    from s3db.transport import transport_rheader
+    return s3_rest_controller(rheader = transport_rheader)
 
 # -----------------------------------------------------------------------------
 def seaport():
@@ -115,27 +132,30 @@ def seaport():
     # Pre-processor
     def prep(r):
         # Location Filter
-        s3db.gis_location_filter(r)
+        from s3db.gis import gis_location_filter
+        gis_location_filter(r)
 
         if r.interactive:
             if r.component:
-                if r.component.name == "human_resource":
-                    s3db.org_site_staff_config(r)
-                elif r.component.name == "inv_item":
-                    # remove CRUD generated buttons in the tabs
-                    s3db.configure("inv_inv_item",
-                                   create = False,
-                                   deletable = False,
-                                   editable = False,
-                                   listadd = False,
-                                   )
+                if r.component_name == "human_resource":
+                    from s3db.org import org_site_staff_config
+                    org_site_staff_config(r)
+                elif r.component_name == "inv_item":
+                    # Filter out items which are already in this inventory
+                    from s3db.inv import inv_prep
+                    inv_prep(r)
+                elif component_name == "layout" and \
+                     r.method != "hierarchy":
+                    from s3db.org import org_site_layout_config
+                    org_site_layout_config(r.record.site_id)
             elif r.method == "update":
                 field = r.table.obsolete
                 field.readable = field.writable = True
         return True
     s3.prep = prep
 
-    return s3_rest_controller(rheader=s3db.transport_rheader)
+    from s3db.transport import transport_rheader
+    return s3_rest_controller(rheader = transport_rheader)
 
 # -----------------------------------------------------------------------------
 def incoming():
@@ -152,6 +172,8 @@ def incoming():
 def req_match():
     """ Match Requests """
 
-    return s3db.req_match(rheader=s3db.transport_rheader)
+    from s3db.inv import inv_req_match
+    from s3db.transport import transport_rheader
+    return inv_req_match(rheader = transport_rheader)
 
 # END =========================================================================

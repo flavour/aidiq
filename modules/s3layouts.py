@@ -40,7 +40,6 @@ __all__ = ("S3MainMenuDefaultLayout",
            "SEP",
            "S3BreadcrumbsLayout",
            "S3PopupLink",
-           "S3AddResourceLink",
            "homepage",
            )
 
@@ -95,13 +94,13 @@ class S3MainMenuDefaultLayout(S3NavigationItem):
                     if item.get_first(enabled=True):
                         _href = item.url()
                         return LI(A(item.label,
-                                    _href=_href,
-                                    _id=item.attr._id
+                                    _href = _href,
+                                    _id = item.attr._id
                                     ),
                                   UL(items,
-                                     _class="dropdown"
+                                     _class = "dropdown"
                                      ),
-                                  _class=_class,
+                                  _class = _class,
                                   )
                 else:
                     # Menu item without Drop-Down
@@ -118,11 +117,11 @@ class S3MainMenuDefaultLayout(S3NavigationItem):
                         else:
                             label = item.label
                         return LI(A(label,
-                                    _href=item_url,
-                                    _id=item.attr._id,
-                                    _target=item.attr._target,
+                                    _href = item_url,
+                                    _id = item.attr._id,
+                                    _target = item.attr._target,
                                     ),
-                                  _class=_class,
+                                  _class = _class,
                                   )
                     else:
                         # Submenu item
@@ -136,12 +135,14 @@ class S3MainMenuDefaultLayout(S3NavigationItem):
                         else:
                             label = item.label
                         link = A(label,
-                                 _href=item.url(),
-                                 _id=item.attr._id,
-                                 _target=item.attr._target,
+                                 _href = item.url(),
+                                 _id = item.attr._id,
+                                 _target = item.attr._target,
                                  )
                         _class = " ".join(classes)
-                        return LI(link, _class=_class)
+                        return LI(link,
+                                  _class = _class,
+                                  )
             else:
                 # The main menu itself
                 T = current.T
@@ -156,7 +157,7 @@ class S3MainMenuDefaultLayout(S3NavigationItem):
                     if logo is None:
                         # Render an icon
                         logo = SPAN(settings.get_system_name_short(),
-                                    _class="logo",
+                                    _class = "logo",
                                     )
                     elif isinstance(logo, str):
                         # Assume image-URL
@@ -188,20 +189,20 @@ class S3MainMenuDefaultLayout(S3NavigationItem):
 
                 # Build top-bar HTML
                 return NAV(UL(LI(title_area,
-                                 _class="name",
+                                 _class = "name",
                                  ),
                               LI(A(SPAN(T("Menu"))),
-                                 _class="toggle-topbar menu-icon",
+                                 _class = "toggle-topbar menu-icon",
                                  ),
-                              _class="title-area",
+                              _class = "title-area",
                               ),
                            SECTION(UL(right,
-                                      _class="right",
+                                      _class = "right",
                                       ),
                                    UL(left,
-                                      _class="left",
+                                      _class = "left",
                                       ),
-                                   _class="top-bar-section",
+                                   _class = "top-bar-section",
                                    ),
                            _class = "top-bar",
                            data = {"topbar": " "},
@@ -231,24 +232,24 @@ class S3MainMenuDefaultLayout(S3NavigationItem):
             _request_type = "ajax"
         if link:
             if _request_type == "ajax":
-                _onchange='''var val=$('#%s:checked').length;$.getS3('%s'+'?val='+val,null,false,null,false,false)''' % \
+                _onchange = '''var val=$('#%s:checked').length;$.getS3('%s'+'?val='+val,null,false,null,false,false)''' % \
                           (_id, link)
             else:
                 # Just load the page. Use this if the changed menu
                 # item should alter the contents of the page, and
                 # it's simpler just to load it.
-                _onchange="location.href='%s'" % link
+                _onchange = "location.href='%s'" % link
         else:
-            _onchange=None
-        return LI(A(INPUT(_type="checkbox",
-                          _id=_id,
-                          _onchange=_onchange,
-                          value=_value,
+            _onchange = None
+        return LI(A(INPUT(_type = "checkbox",
+                          _id = _id,
+                          _onchange = _onchange,
+                          value = _value,
                           ),
                     "%s" % _name,
-                    _nowrap="nowrap",
+                    _nowrap = "nowrap",
                     ),
-                  _class="menu-toggle",
+                  _class = "menu-toggle",
                   )
 
 # =============================================================================
@@ -296,7 +297,7 @@ class S3OptionsMenuDefaultLayout(S3NavigationItem):
                         section = [LI(A(item.label,
                                         **attr
                                         ),
-                                      _class="heading %s" % _class,
+                                      _class = "heading %s" % _class,
                                       ),
                                    ]
 
@@ -314,12 +315,18 @@ class S3OptionsMenuDefaultLayout(S3NavigationItem):
                         return LI(A(item.label,
                                     **attr
                                     ),
-                                  _class=_class,
+                                  _class = _class,
                                   )
             else:
                 # Main menu
                 items = item.render_components()
-                return DIV(NAV(UL(items, _id="main-sub-menu", _class="side-nav")), _class="sidebar")
+                return DIV(NAV(UL(items,
+                                  _id = "main-sub-menu",
+                                  _class = "side-nav",
+                                  ),
+                               ),
+                           _class = "sidebar",
+                           )
 
         else:
             return None
@@ -346,7 +353,9 @@ class S3OAuthMenuDefaultLayout(S3NavigationItem):
             else:
                 items = item.render_components()
                 if items:
-                    output = DIV(items, _class="zocial-login")
+                    output = DIV(items,
+                                 _class = "zocial-login",
+                                 )
                 else:
                     # Hide if empty
                     output = None
@@ -369,7 +378,7 @@ class S3MenuSeparatorDefaultLayout(S3NavigationItem):
         """ Layout Method (Item Renderer) """
 
         if item.parent is not None:
-            return LI(_class="divider hide-for-small")
+            return LI(_class = "divider hide-for-small")
         else:
             return None
 
@@ -390,13 +399,19 @@ class S3BreadcrumbsLayout(S3NavigationItem):
 
         if item.parent is None:
             items = item.render_components()
-            return DIV(UL(items), _class='breadcrumbs')
+            return DIV(UL(items),
+                       _class = "breadcrumbs",
+                       )
         else:
             if item.is_last():
                 _class = "highlight"
             else:
                 _class = "ancestor"
-            return LI(A(item.label, _href=item.url(), _class=_class))
+            return LI(A(item.label,
+                        _href = item.url(),
+                        _class = _class,
+                        ),
+                      )
 
 # =============================================================================
 class S3HomepageMenuLayout(S3NavigationItem):
@@ -485,6 +500,7 @@ class S3PopupLink(S3NavigationItem):
                  info = None,
                  title = None,
                  tooltip = None,
+                 _id = None,
                  ):
         """
             Constructor
@@ -499,6 +515,7 @@ class S3PopupLink(S3NavigationItem):
             @param info: hover-title for the label
             @param title: the tooltip title
             @param tooltip: the tooltip text
+            @param _id: the HTML ID of the button
         """
 
         if label is None:
@@ -521,14 +538,18 @@ class S3PopupLink(S3NavigationItem):
                 label = S3CRUD.crud_string(t, "label_update")
 
         super(S3PopupLink, self).__init__(label,
-                                          c=c, f=f, t=t,
-                                          m=m,
-                                          args=args,
-                                          vars=vars,
-                                          info=info,
-                                          title=title,
-                                          tooltip=tooltip,
-                                          mandatory=True)
+                                          c = c,
+                                          f = f,
+                                          t = t,
+                                          m = m,
+                                          args = args,
+                                          vars = vars,
+                                          info = info,
+                                          title = title,
+                                          tooltip = tooltip,
+                                          mandatory = True,
+                                          _id = _id,
+                                          )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -543,10 +564,12 @@ class S3PopupLink(S3NavigationItem):
         else:
             label = item.label
 
+        _id = item.attr._id or "%s_add" % item.function
+
         popup_link = A(label,
-                       _href = item.url(format="popup"),
+                       _href = item.url(format = "popup"),
                        _class = "s3_add_resource_link",
-                       _id = "%s_add" % item.function,
+                       _id = _id,
                        _target = "top",
                        _title = item.opts.info,
                        )
@@ -554,7 +577,10 @@ class S3PopupLink(S3NavigationItem):
         tooltip = item.opts.tooltip
         if tooltip is not None:
             ttip = DIV(_class = "tooltip",
-                       _title = "%s|%s" % (item.opts.title, tooltip))
+                       _title = "%s|%s" % (item.opts.title,
+                                           tooltip,
+                                           ),
+                       )
         else:
             ttip = ""
 
@@ -568,20 +594,21 @@ class S3PopupLink(S3NavigationItem):
         if not item.authorized:
             return None
 
+        _id = item.attr._id or "%s_%s_add" % (item.vars["caller"],
+                                              item.function,
+                                              )
+
         popup_link = A(item.label,
-                       _href = item.url(format="popup"),
+                       _href = item.url(format = "popup"),
                        _class = "s3_add_resource_link action-lnk",
-                       _id = "%s_%s_add" % (item.vars["caller"], item.function),
+                       _id = _id,
                        _target = "top",
                        _title = item.opts.info,
                        )
 
-        return DIV(popup_link, _class="s3_inline_add_resource_link")
-
-# =============================================================================
-# Maintained for backward compatibility
-#
-S3AddResourceLink = S3PopupLink
+        return DIV(popup_link,
+                   _class = "s3_inline_add_resource_link",
+                   )
 
 # =============================================================================
 def homepage(module=None, *match, **attr):

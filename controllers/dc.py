@@ -5,16 +5,14 @@
     - a front-end UI to manage Assessments which uses the Dynamic Tables back-end
 """
 
-module = request.controller
-
-if not settings.has_module(module):
-    raise HTTP(404, body="Module disabled: %s" % module)
+if not settings.has_module(c):
+    raise HTTP(404, body="Module disabled: %s" % c)
 
 # -----------------------------------------------------------------------------
 def index():
     """ Module's Home Page """
 
-    module_name = settings.modules[module].get("name_nice")
+    module_name = settings.modules[c].get("name_nice")
     response.title = module_name
     return {"module_name": module_name,
             }
@@ -69,7 +67,8 @@ def template():
         return True
     s3.prep = prep
 
-    return s3_rest_controller(rheader = s3db.dc_rheader)
+    from s3db.dc import dc_rheader
+    return s3_rest_controller(rheader = dc_rheader)
 
 # -----------------------------------------------------------------------------
 def question():
@@ -78,7 +77,8 @@ def question():
         - used for imports & to manage translations
     """
 
-    return s3_rest_controller(rheader = s3db.dc_rheader,
+    from s3db.dc import dc_rheader
+    return s3_rest_controller(rheader = dc_rheader,
                               )
 
 # -----------------------------------------------------------------------------
@@ -88,6 +88,7 @@ def question_l10n():
         - used for imports
     """
 
+    #from s3db.dc import dc_rheader
     return s3_rest_controller(#rheader = s3db.dc_rheader,
                               )
 
@@ -109,8 +110,25 @@ def target():
                 f.writable = False
                 f.comment = None
 
+                if settings.has_module("event"):
+                    def response_onaccept(form):
+                        # Inherit the Event from the Target
+                        ltable = s3db.event_target
+                        link = current.db(ltable.target_id == r.id).select(ltable.event_id,
+                                                                           limitby = (0, 1),
+                                                                           ).first()
+                        if link:
+                            ltable = s3db.event_response
+                            ltable.insert(event_id = link.event_id,
+                                          response_id = form.vars.id,
+                                          )
+                    create_onaccept = response_onaccept
+                else:
+                    create_onaccept = None
+
                 # Open in native controller (cannot just set native as can't call this 'response')
                 s3db.configure("dc_response",
+                               create_onaccept = create_onaccept,
                                linkto = lambda record_id: \
                                             URL(f="respnse",
                                                 args = [record_id, "read"],
@@ -130,7 +148,8 @@ def target():
         return True
     s3.prep = prep
 
-    return s3_rest_controller(rheader = s3db.dc_rheader,
+    from s3db.dc import dc_rheader
+    return s3_rest_controller(rheader = dc_rheader,
                               )
 
 # -----------------------------------------------------------------------------
@@ -186,13 +205,15 @@ def respnse(): # Cannot call this 'response' or it will clobber the global
                 )
 
                 # Custom Form with Questions & Subheadings sorted correctly
-                s3db.dc_answer_form(r, tablename)
+                from s3db.dc import dc_answer_form
+                dc_answer_form(r, tablename)
 
         return True
     s3.prep = prep
 
+    from s3db.dc import dc_rheader
     return s3_rest_controller("dc", "response",
-                              rheader = s3db.dc_rheader,
+                              rheader = dc_rheader,
                               )
 
 # END =========================================================================

@@ -6,10 +6,8 @@
     Generic Supply functionality such as catalogs and items that are used across multiple applications
 """
 
-module = request.controller
-
-if not settings.has_module("supply"):
-    raise HTTP(404, body="Module disabled: %s" % module)
+if not settings.has_module(c):
+    raise HTTP(404, body="Module disabled: %s" % c)
 
 # =============================================================================
 def index():
@@ -17,22 +15,17 @@ def index():
         Application Home page
     """
 
-    module_name = settings.modules[module].get("name_nice")
+    module_name = settings.modules[c].get("name_nice")
     response.title = module_name
     return {"module_name": module_name,
             }
 
 # -----------------------------------------------------------------------------
-def brand():
-    """ RESTful CRUD controller """
-
-    return s3_rest_controller()
-
-# -----------------------------------------------------------------------------
 def catalog():
     """ RESTful CRUD controller """
 
-    return s3_rest_controller(rheader=s3db.supply_catalog_rheader)
+    from s3db.supply import supply_catalog_rheader
+    return s3_rest_controller(rheader = supply_catalog_rheader)
 
 # -----------------------------------------------------------------------------
 def catalog_item():
@@ -117,7 +110,8 @@ def item():
     """ RESTful CRUD controller """
 
     # Defined in the Model for use from Multiple Controllers for unified menus
-    return s3db.supply_item_controller()
+    from s3db.supply import supply_item_controller
+    return supply_item_controller()
 
 # -----------------------------------------------------------------------------
 def item_category():
@@ -135,11 +129,13 @@ def item_category():
         if r.id:
             # Should not be able to set the Parent to this record
             # @ToDo: Also prevent setting to any of the categories of which this is an ancestor
+            from s3db.supply import supply_ItemCategoryRepresent
             the_set = db(table.id != r.id)
             table.parent_item_category_id.requires = IS_EMPTY_OR(
                 IS_ONE_OF(the_set, "supply_item_category.id",
-                          s3db.supply_ItemCategoryRepresent(use_code=False),
-                          sort=True)
+                          supply_ItemCategoryRepresent(use_code = False),
+                          sort = True,
+                          )
                 )
 
         return True
@@ -152,7 +148,8 @@ def item_entity():
     """ RESTful CRUD controller """
 
     # Defined in the Model for use from Multiple Controllers for unified menus
-    return s3db.supply_item_entity_controller()
+    from s3db.supply import supply_item_entity_controller
+    return supply_item_entity_controller()
 
 # -----------------------------------------------------------------------------
 def item_pack():

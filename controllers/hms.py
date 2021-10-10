@@ -4,11 +4,8 @@
     HMS Hospital Status Assessment and Request Management System
 """
 
-module = request.controller
-#resourcename = request.function
-
-if not settings.has_module(module):
-    raise HTTP(404, body="Module disabled: %s" % module)
+if not settings.has_module(c):
+    raise HTTP(404, body="Module disabled: %s" % c)
 
 # -----------------------------------------------------------------------------
 #def s3_menu_postp():
@@ -41,7 +38,8 @@ if not settings.has_module(module):
 def index():
     """ Module's Home Page """
 
-    return s3db.cms_index(module, alt_function="index_alt")
+    from s3db.cms import cms_index
+    return cms_index(c, alt_function="index_alt")
 
 # -----------------------------------------------------------------------------
 def index_alt():
@@ -50,16 +48,9 @@ def index_alt():
     """
 
     # Just redirect to the Hospitals Map
-    s3_redirect_default(URL(f="hospital", args=["map"]))
-
-# -----------------------------------------------------------------------------
-def ltc():
-    """
-        Filtered REST Controller for Sandy
-    """
-
-    s3.filter = (s3db.hms_hospital.facility_type == 31)
-    return hospital()
+    s3_redirect_default(URL(f = "hospital",
+                            args = ["map"],
+                            ))
 
 # -----------------------------------------------------------------------------
 def hospital():
@@ -70,14 +61,12 @@ def hospital():
     # Load Models to add tabs
     if settings.has_module("inv"):
         s3db.table("inv_inv_item")
-    elif settings.has_module("req"):
-        # (gets loaded by Inv if available)
-        s3db.table("req_req")
 
     # Pre-processor
     def prep(r):
         # Location Filter
-        s3db.gis_location_filter(r)
+        from s3db.gis import gis_location_filter
+        gis_location_filter(r)
 
         if r.interactive:
             if r.component:
@@ -86,16 +75,24 @@ def hospital():
                    cname == "recv" or \
                    cname == "send":
                     # Filter out items which are already in this inventory
-                    s3db.inv_prep(r)
+                    from s3db.inv import inv_prep
+                    inv_prep(r)
 
                 elif cname == "human_resource":
-                    s3db.org_site_staff_config(r)
+                    from s3db.org import org_site_staff_config
+                    org_site_staff_config(r)
+
+                elif cname == "layout" and \
+                     r.method != "hierarchy":
+                    from s3db.org import org_site_layout_config
+                    org_site_layout_config(r.record.site_id)
 
                 elif cname == "req":
                     if r.method != "update" and r.method != "read":
                         # Hide fields which don't make sense in a Create form
                         # inc list_create (list_fields over-rides)
-                        s3db.req_create_form_mods()
+                        from s3db.inv import inv_req_create_form_mods
+                        inv_req_create_form_mods(r)
 
                 elif cname == "status":
                     table = db.hms_status
@@ -272,7 +269,8 @@ def incoming():
 def req_match():
     """ Match Requests """
 
-    return s3db.req_match()
+    from s3db.inv import inv_req_match
+    return inv_req_match()
 
 # END =========================================================================
 

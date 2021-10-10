@@ -16,9 +16,30 @@ def config(settings):
         Template settings for IFRC's Resource Management System
 
         http://eden.sahanafoundation.org/wiki/Deployments/IFRC
+
+        This version was developed for the Asia-Pacific Zone and also used in:
+            * Madagascar
+            * Nairobi (RDRT)
+        Currently used in:
+            * Iraq
+            * Yemen
     """
 
     T = current.T
+
+    # -------------------------------------------------------------------------
+    # System Name
+    #
+    settings.base.system_name = T("Resource Management System")
+    settings.base.system_name_short = T("RMS")
+
+    # -------------------------------------------------------------------------
+    # Custom Models
+    #
+    settings.base.custom_models = {"deploy": "RMS",
+                                   "po": "IFRC",
+                                   "survey": "IFRC",
+                                   }
 
     # -------------------------------------------------------------------------
     # Pre-Populate
@@ -27,9 +48,6 @@ def config(settings):
                                        #"IFRC/Demo", # Takes a long time to import
                                        )
 
-    settings.base.system_name = T("Resource Management System")
-    settings.base.system_name_short = T("RMS")
-
     # =========================================================================
     # System Settings
     # -------------------------------------------------------------------------
@@ -37,7 +55,7 @@ def config(settings):
     settings.base.session_db = True
 
     # Security Policy
-    settings.security.policy = 8 # Delegations
+    settings.security.policy = 7
     settings.security.map = True
 
     # Authorization Settings
@@ -127,7 +145,7 @@ def config(settings):
                             "po_area": OID,
                             "po_household": "area_id",
                             "po_organisation_area": "area_id",
-                            "req_req_item": "req_id",
+                            "inv_req_item": "req_id",
                             }
 
         # Default Foreign Keys (ordered by priority)
@@ -182,7 +200,8 @@ def config(settings):
                 query = (table.id == row["id"]) & \
                         (table[fk] == ftable.id)
             record = db(query).select(ftable.realm_entity,
-                                      limitby=(0, 1)).first()
+                                      limitby = (0, 1),
+                                      ).first()
             if record:
                 realm_entity = record.realm_entity
                 break
@@ -194,7 +213,7 @@ def config(settings):
         use_user_organisation = False
         #use_user_root_organisation = False
 
-        if tablename in ("org_facility", "req_req"):
+        if tablename in ("org_facility", "inv_req"):
             # Facilities & Requisitions are in the user organisation's realm
             use_user_organisation = True
 
@@ -215,7 +234,9 @@ def config(settings):
                     query = (ltable.organisation_id == row["id"]) & \
                             (ottable.id == ltable.organisation_type_id) & \
                             (ottable.name == "Red Cross / Red Crescent")
-                    rclink = db(query).select(ltable.id, limitby=(0, 1)).first()
+                    rclink = db(query).select(ltable.id,
+                                              limitby = (0, 1),
+                                              ).first()
                     if not rclink:
                         use_user_organisation = True
 
@@ -225,7 +246,9 @@ def config(settings):
                 query = (table.id == row["id"]) & \
                         (htable.person_id == table.person_id) & \
                         (htable.deleted != True)
-                rows = db(query).select(htable.realm_entity, limitby=(0, 2))
+                rows = db(query).select(htable.realm_entity,
+                                        limitby = (0, 2),
+                                        )
                 if len(rows) == 1:
                     realm_entity = rows.first().realm_entity
                 else:
@@ -236,7 +259,7 @@ def config(settings):
                             (ctable.id == table.course_id) & \
                             (otable.id == ctable.organisation_id)
                     org = db(query).select(otable.pe_id,
-                                           limitby = (0, 1)
+                                           limitby = (0, 1),
                                            ).first()
                     if org:
                         realm_entity = org.pe_id
@@ -656,8 +679,6 @@ def config(settings):
 
     # -------------------------------------------------------------------------
     # Inventory Management
-    settings.inv.show_mode_of_transport = True
-    settings.inv.send_show_time_in = True
     #settings.inv.collapse_tabs = True
     # Uncomment if you need a simpler (but less accountable) process for managing stock levels
     settings.inv.direct_stock_edits = True
@@ -683,16 +704,15 @@ def config(settings):
     # -------------------------------------------------------------------------
     # Request Management
     # Uncomment to disable Inline Forms in Requests module
-    settings.req.inline_forms = False
-    settings.req.req_type = ["Stock"]
-    settings.req.use_commit = False
+    settings.inv.req_inline_forms = False
+    settings.inv.use_commit = False
     # Should Requests ask whether Transportation is required?
-    settings.req.ask_transport = True
-    settings.req.pack_values = False
+    settings.inv.req_ask_transport = True
+    settings.inv.req_pack_values = False
     # Disable Request Matching as we don't want users making requests to see what stock is available
-    #settings.req.prompt_match = False # HNRC
+    #settings.inv.req_prompt_match = False # HNRC
     # Uncomment to disable Recurring Request
-    #settings.req.recurring = False # HNRC
+    #settings.inv.req_recurring = False # HNRC
 
     # =========================================================================
     # Template Modules
@@ -819,12 +839,12 @@ def config(settings):
                 restricted = True,
                 #module_type = 5,
             )),
-        ("req", Storage(
-                name_nice = T("Requests"),
-                #description = "Manage requests for supplies, assets, staff or other resources. Matches against Inventories where supplies are requested.",
-                restricted = True,
-                #module_type = 10,
-            )),
+        #("req", Storage(
+        #        name_nice = T("Requests"),
+        #        #description = "Manage requests for supplies, assets, staff or other resources. Matches against Inventories where supplies are requested.",
+        #        restricted = True,
+        #        #module_type = 10,
+        #    )),
         ("project", Storage(
                 name_nice = T("Projects"),
                 #description = "Tracking of Projects, Activities and Tasks",
@@ -1127,13 +1147,13 @@ def config(settings):
         if user_org_id:
             db = current.db
             s3db = current.s3db
-            otable = s3db.org_organisation
-            org = db(otable.id == user_org_id).select(otable.region_id,
-                                                      limitby=(0, 1),
-                                                      cache = s3db.cache,
-                                                      ).first()
-            if org:
-                region_id = org.region_id
+            ortable = s3db.org_organisation_region
+            link = db(ortable.organisation_id == user_org_id).select(ortable.region_id,
+                                                                     cache = s3db.cache,
+                                                                     limitby = (0, 1)
+                                                                     ).first()
+            if link:
+                region_id = link.region_id
                 # Find Sub regions (just 1 level needed)
                 rtable = s3db.org_region
                 query = (rtable.parent == region_id) & \
@@ -1647,7 +1667,7 @@ def config(settings):
                                         fields = ("item_id",
                                                   "quantity",
                                                   "sn",
-                                                  # These are too wide for the screen & hence hide the AddResourceLinks
+                                                  # These are too wide for the screen & hence hide the S3PopupLinks
                                                   #"supply_org_id",
                                                   #"purchase_date",
                                                   #"purchase_price",
@@ -1787,7 +1807,7 @@ def config(settings):
                         return A(T("Add"))
 
                 etable = s3db.hrm_training_event
-                ltable = s3db.hrm_event_target
+                ltable = s3db.dc_target_event
                 ttable = s3db.dc_target
                 query = (ttable.id == record.target_id) & \
                         (ltable.target_id == ttable.id) & \
@@ -1852,7 +1872,7 @@ def config(settings):
                 db = current.db
 
                 etable = s3db.hrm_training_event
-                ltable = s3db.hrm_event_target
+                ltable = s3db.dc_target_event
                 query = (ltable.target_id == record.id) & \
                         (ltable.training_event_id == etable.id)
                 training_event = db(query).select(etable.id,
@@ -1959,7 +1979,7 @@ def config(settings):
 
         # Read Survey Record
         ttable = s3db.dc_target
-        ltable = s3db.hrm_event_target
+        ltable = s3db.dc_target_event
         etable = s3db.hrm_training_event
         query = (ttable.id == target_id)
         left = etable.on((ttable.id == ltable.target_id) & \
@@ -2063,7 +2083,7 @@ def config(settings):
 
         # Read Survey Record
         ttable = s3db.dc_target
-        ltable = s3db.hrm_event_target
+        ltable = s3db.dc_target_event
         etable = s3db.hrm_training_event
         query = (ttable.id == target_id)
         left = etable.on((ttable.id == ltable.target_id) & \
@@ -2352,7 +2372,7 @@ def config(settings):
         event = db(etable.id == training_event_id).select(etable.name,
                                                           etable.start_date,
                                                           etable.location_id,
-                                                          limitby=(0, 1),
+                                                          limitby = (0, 1),
                                                           ).first()
         event_name = event.name
         event_date = event.start_date
@@ -2360,7 +2380,7 @@ def config(settings):
 
         # Find the Target (for URLs & to update Date)
         dtable = s3db.dc_target
-        ltable = s3db.hrm_event_target
+        ltable = s3db.dc_target_event
         query = (ltable.training_event_id == training_event_id) & \
                 (ltable.target_id == dtable.id)
         target = db(query).select(dtable.id,
@@ -2716,7 +2736,7 @@ def config(settings):
             return
 
         stable = s3db.dc_target
-        ltable = s3db.hrm_event_target
+        ltable = s3db.dc_target_event
         target_id = stable.insert(template_id = template_id,
                                   date = None, # Gets set when notifications sent (onapprove here)
                                   owned_by_user = EO,
@@ -2873,7 +2893,7 @@ def config(settings):
 
         target_id = row.id
 
-        ltable = current.s3db.hrm_event_target
+        ltable = current.s3db.dc_target_event
         training_event = current.db(ltable.target_id == target_id).select(ltable.training_event_id,
                                                                           limitby = (0, 1),
                                                                           ).first()
@@ -2962,7 +2982,7 @@ def config(settings):
     settings.customise_dc_target_resource = customise_dc_target_resource
 
     # -------------------------------------------------------------------------
-    def _is_asia_pacific(region_id=False):
+    def _is_asia_pacific(region_id = False):
         """
             Helper to determine if the user is in the Asia Pacific region
             - used for RDRT
@@ -2975,14 +2995,14 @@ def config(settings):
             db = current.db
             s3db = current.s3db
 
-            otable = s3db.org_organisation
+            ortable = s3db.org_organisation_region
             rtable = s3db.org_region
-            query = (otable.id == organisation_id) & \
-                    (otable.region_id == rtable.id)
+            query = (ortable.organisation_id == organisation_id) & \
+                    (ortable.region_id == rtable.id)
             region = db(query).select(rtable.id,
                                       rtable.name,
                                       cache = s3db.cache,
-                                      limitby=(0, 1)
+                                      limitby = (0, 1)
                                       ).first()
             if region:
                 if region_id:
@@ -2991,7 +3011,7 @@ def config(settings):
                             region_id = region.id
                         else:
                             region_id = db(rtable.name == "Asia Pacific").select(rtable.id,
-                                                                                 limitby=(0, 1)
+                                                                                 limitby = (0, 1)
                                                                                  ).first().id
                         #return (True, region_id)
                         return region_id
@@ -3000,7 +3020,7 @@ def config(settings):
                             region_id = region.id
                         else:
                             region_id = db(rtable.name == "Africa").select(rtable.id,
-                                                                           limitby=(0, 1)
+                                                                           limitby = (0, 1)
                                                                            ).first().id
                         #return (False, region_id)
                         return region_id
@@ -3022,14 +3042,14 @@ def config(settings):
             db = current.db
             s3db = current.s3db
 
-            otable = s3db.org_organisation
+            ortable = s3db.org_organisation_region
             rtable = s3db.org_region
-            query = (otable.id == organisation_id) & \
-                    (rtable.id == otable.region_id)
+            query = (ortable.organisation_id == organisation_id) & \
+                    (rtable.id == ortable.region_id)
             region = db(query).select(rtable.id,
                                       rtable.parent,
                                       cache = s3db.cache,
-                                      limitby=(0, 1)
+                                      limitby = (0, 1)
                                       ).first()
             if region:
                 ctable = s3db.org_region_country
@@ -3068,7 +3088,7 @@ def config(settings):
         table = s3db.hrm_job_title
         query = (table.type == 4)
 
-        region_id = _is_asia_pacific(region_id=True)
+        region_id = _is_asia_pacific(region_id = True)
         if region_id:
             query &= (table.region_id == region_id)
 
@@ -4300,7 +4320,7 @@ def config(settings):
             if controller == "deploy":
                 # Default Filter
                 from s3 import s3_set_default_filter
-                s3_set_default_filter("~.organisation_id$region_id",
+                s3_set_default_filter("~.organisation_id$organisation_region.region_id",
                                       user_region_and_children_default_filter,
                                       tablename = tablename)
 
@@ -5636,7 +5656,7 @@ def config(settings):
                                  "course_id",
                                  "grade",
                                  (T("National Society"), "person_id$human_resource.organisation_id"),
-                                 (T("Region"), "person_id$human_resource.organisation_id$region_id"),
+                                 (T("Region"), "person_id$human_resource.organisation_id$organisation_region.region_id"),
                                  (T("Training Location"), "training_event_id$site_id"),
                                  #(T("Month"), "month"),
                                  (T("Year"), "year"),
@@ -5647,7 +5667,7 @@ def config(settings):
                                          fact = report_fields,
                                          methods = ["count", "list"],
                                          defaults = Storage(
-                                            rows = "person_id$human_resource.organisation_id$region_id",
+                                            rows = "person_id$human_resource.organisation_id$organisation_region.region_id",
                                             cols = "training.course_id",
                                             fact = "count(training.person_id)",
                                             totals = True,
@@ -5997,7 +6017,7 @@ def config(settings):
 
                         # Virtual Fields for Dashboard
                         ttable = s3db.dc_target
-                        ltable = s3db.hrm_event_target
+                        ltable = s3db.dc_target_event
                         rtable = s3db.dc_response
                         squery = (etable.id == ltable.training_event_id) & \
                                  (ttable.id == ltable.target_id)
@@ -6091,33 +6111,34 @@ def config(settings):
                         f.label = T("Status")
 
                         # Filter Programmes to this Org (not root)
-                        f = s3db.hrm_event_programme.programme_id
-                        f.requires = IS_EMPTY_OR(
-                                        IS_ONE_OF(db, "hrm_programme.id",
-                                                  f.represent,
-                                                  filterby="organisation_id",
-                                                  filter_opts=(organisation_id,),
-                                                  ))
+                        #f = s3db.project_programme_event.programme_id
+                        #f.requires = IS_EMPTY_OR(
+                        #                IS_ONE_OF(db, "hrm_programme.id",
+                        #                          f.represent,
+                        #                          filterby = "organisation_id",
+                        #                          filter_opts = (organisation_id,),
+                        #                          ))
 
                         # Customise
                         crud_form = S3SQLCustomForm("name",
-                                                    S3SQLInlineLink("strategy",
-                                                                    field = "strategy_id",
-                                                                    label = T("AoF/SFI"),
-                                                                    multiple = False,
-                                                                    ),
-                                                    S3SQLInlineLink("programme",
-                                                                    field = "programme_id",
-                                                                    label = T("Programme"),
-                                                                    multiple = False,
-                                                                    ),
 
-                                                    S3SQLInlineLink("project",
-                                                                    field = "project_id",
-                                                                    label = T("Project"),
-                                                                    multiple = False,
-                                                                    required = True,
-                                                                    ),
+                                                    # If these are-required in-future then create link tables for them in Project module
+                                                    #S3SQLInlineLink("strategy",
+                                                    #                field = "strategy_id",
+                                                    #                label = T("AoF/SFI"),
+                                                    #                multiple = False,
+                                                    #                ),
+                                                    #S3SQLInlineLink("programme",
+                                                    #                field = "programme_id",
+                                                    #                label = T("Programme"),
+                                                    #                multiple = False,
+                                                    #                ),
+                                                    #S3SQLInlineLink("project",
+                                                    #                field = "project_id",
+                                                    #                label = T("Project"),
+                                                    #                multiple = False,
+                                                    #                required = True,
+                                                    #                ),
 
                                                     "event_type_id",
                                                     "location_id",
@@ -6128,9 +6149,9 @@ def config(settings):
                                                     )
 
                         list_fields = ["name",
-                                       (T("AoF/SFI"), "strategy__link.strategy_id"),
-                                       "programme__link.programme_id",
-                                       "project__link.project_id",
+                                       #(T("AoF/SFI"), "strategy__link.strategy_id"),
+                                       #"programme__link.programme_id",
+                                       #"project__link.project_id",
                                        "event_type_id",
                                        "location_id$L0",
                                        "location_id$L1",
@@ -6869,7 +6890,7 @@ def config(settings):
                                                     "phone",
                                                     "comments",
                                                     )
-                        resource.configure(crud_form=crud_form,
+                        resource.configure(crud_form = crud_form,
                                            )
                     elif r.controller == "po":
                         # Referral Agencies in PO module
@@ -6955,11 +6976,13 @@ def config(settings):
                                     msg_list_empty = T("No Red Cross & Red Crescent National Societies currently registered")
                                     )
                                 # Add Region to list_fields
-                                list_fields.insert(-1, "region_id")
+                                list_fields.insert(-1, "organisation_region.region_id")
                                 # Region is required
-                                r.table.region_id.requires = r.table.region_id.requires.other
+                                f = current.s3db.org_organisation_region.region_id
+                                f.requires = f.requires.other
                             else:
-                                r.table.region_id.readable = r.table.region_id.writable = False
+                                f = current.s3db.org_organisation_region.region_id
+                                f.readable = f.writable = False
                         resource.configure(list_fields = list_fields)
 
                         if r.interactive:
@@ -6974,14 +6997,14 @@ def config(settings):
                                                             multiple = False,
                                                             #widget = "hierarchy",
                                                             ),
-                                            "region_id",
+                                            "organisation_region.region_id",
                                             "country",
                                             "phone",
                                             "website",
                                             "logo",
                                             "comments",
                                             )
-                            resource.configure(crud_form=crud_form)
+                            resource.configure(crud_form = crud_form)
 
             return result
         s3.prep = custom_prep
@@ -7421,9 +7444,6 @@ def config(settings):
         elif root_org == CRMADA:
             crmada = True
             table = s3db.pr_person
-            table.initials.readable = table.initials.writable = False
-            table.local_name.readable = table.local_name.writable = False
-            table.preferred_name.readable = table.preferred_name.writable = False
             dtable = s3db.pr_person_details
             dtable.religion.readable = dtable.religion.writable = False
             dtable.nationality.default = "MG"
@@ -7438,8 +7458,6 @@ def config(settings):
             settings.hrm.activity_types = None
             settings.hrm.use_id = False
             table = s3db.pr_person
-            table.initials.readable = table.initials.writable = False
-            table.preferred_name.readable = table.preferred_name.writable = False
         elif root_org == PMI:
             settings.hrm.staff_experience = "experience"
             settings.hrm.vol_active_tooltip = "A volunteer is defined as active if they've participated in an average of 8 or more hours of Program work or Trainings per month in the last year"
@@ -8605,7 +8623,7 @@ def config(settings):
         from s3 import S3SQLCustomForm, S3SQLInlineComponent, S3SQLInlineLink
 
         if settings.get_project_programmes():
-            # Inject inline link for programmes including AddResourceLink
+            # Inject inline link for programmes including S3PopupLink
             #from s3layouts import S3PopupLink
             comment = s3db.project_programme_id.attr.comment
             comment.vars = {"caller": "link_defaultprogramme",
@@ -8994,38 +9012,39 @@ $.filterOptionsS3({
     settings.customise_project_location_resource = customise_project_location_resource
 
     # -------------------------------------------------------------------------
-    def customise_req_commit_controller(**attr):
+    def customise_inv_commit_controller(**attr):
 
         # Request is mandatory
-        field = current.s3db.req_commit.req_id
+        field = current.s3db.inv_commit.req_id
         field.requires = field.requires.other
 
         return attr
 
-    settings.customise_req_commit_controller = customise_req_commit_controller
+    settings.customise_inv_commit_controller = customise_inv_commit_controller
 
     # -------------------------------------------------------------------------
-    def customise_req_req_resource(r, tablename):
+    def customise_inv_req_resource(r, tablename):
+
+        from s3db.inv import inv_ReqRefRepresent
 
         s3db = current.s3db
 
         # Request is mandatory
-        field = s3db.req_commit.req_id
+        field = s3db.inv_commit.req_id
         field.requires = field.requires.other
 
-        table = s3db.req_req
-        table.req_ref.represent = lambda v, show_link=True, pdf=True: \
-                s3db.req_ref_represent(v, show_link, pdf)
+        table = s3db.inv_req
+        table.req_ref.represent = inv_ReqRefRepresent(show_link=True, pdf=True)
         table.site_id.label = T("Deliver To")
         # Hide Drivers list_field
-        list_fields = s3db.get_config("req_req", "list_fields")
+        list_fields = s3db.get_config("inv_req", "list_fields")
         try:
             list_fields.remove((T("Drivers"), "drivers"))
         except:
             # Already removed
             pass
 
-    settings.customise_req_req_resource = customise_req_req_resource
+    settings.customise_inv_req_resource = customise_inv_req_resource
 
     # -------------------------------------------------------------------------
     def customise_vulnerability_data_resource(r, tablename):

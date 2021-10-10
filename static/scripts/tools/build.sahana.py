@@ -23,11 +23,9 @@ import os
 import shutil
 import sys
 
-PY2 = sys.version_info[0] == 2
-
 # Open file in text mode, with Py3 to use encoding for unicode I/O
 def openf(fn, mode):
-    return open(fn, mode) if PY2 else open(fn, mode, encoding="utf-8")
+    return open(fn, mode, encoding="utf-8")
 
 # For JS
 SCRIPTPATH = os.path.join(request.folder, "static", "scripts", "tools")
@@ -137,15 +135,26 @@ def cleanline(theLine):
     return cleaned
 
 def compressCSS(inputFilename, outputFilename):
-    """ Compress a CSS file """
+    """
+        Compress a CSS file
+        
+        Uses cssnano via cssqueeze, if-available, otherwise an internal routine
+        npm install -g cssqueeze
+    """
 
-    with openf(inputFilename, "r") as inFile:
-        output = ""
-        for line in inFile:
-            output = output + cleanline(line)
+    cssqueeze = "cssqueeze --source %s --destination %s" % (inputFilename,
+                                                            outputFilename,
+                                                            )
+    error = os.system(cssqueeze)
+    if error:
+        info("cssqueeze not available, so using internal routine")
+        with openf(inputFilename, "r") as inFile:
+            output = ""
+            for line in inFile:
+                output = output + cleanline(line)
 
-    with openf(outputFilename, "w") as outFile:
-        outFile.write(cleanline(output))
+        with openf(outputFilename, "w") as outFile:
+            outFile.write(cleanline(output))
 
 def do_css():
     """ Compresses the  CSS files """
@@ -293,7 +302,8 @@ def minify_from_cfg(minimize,
                     source_dir,
                     cfg_name,
                     out_filename,
-                    extra_params = None):
+                    extra_params = None,
+                    ):
     """
         Merge+minify JS files from a JS config file (DRY helper for do_js)
     """
@@ -455,6 +465,16 @@ def do_js(minimize,
                      "gis.latlon",
                      "gis.loader",
                      "gis.pois",
+                     #"inv_adj_item",
+                     "inv_item",
+                     "inv_package",
+                     "inv_recv",
+                     "inv_recv_item",
+                     "inv_recv_multisite",
+                     "inv_req_item",
+                     "inv_send",
+                     "inv_send_item",
+                     "inv_send_package_item",
                      "msg",
                      "popup",
                      "register_validation",
@@ -469,7 +489,8 @@ def do_js(minimize,
                      "ui.contacts",
                      "ui.dashboard",
                      "ui.embeddedcomponent",
-                     "ui.gis",
+                     # Need to use Terser for this as Closure doesn't like ES6 modules
+                     #"ui.gis",
                      "ui.locationselector",
                      "ui.organizer",
                      "ui.permissions",
@@ -487,6 +508,35 @@ def do_js(minimize,
             with openf(outputFilename, "w") as outFile:
                 outFile.write(minimize(inFile.read()))
         move_to(outputFilename, "../S3")
+
+    # -------------------------------------------------------------------------
+    # Build JS for OL6 maps
+    #
+    cwd = os.getcwd()
+    # Assume ol-rollup at same level as eden
+    # https://github.com/openlayers/ol-rollup
+    # format: 'es'
+    rollup_dir = os.path.join("..", "..", "..", "..", "ol-rollup")
+    try:
+        os.chdir(rollup_dir)
+    except FileNotFoundError:
+        info("Unable to build olgm as ol-rollup not found")
+    else:
+        os.system("npm run-script build")
+        output_dir = os.path.join("..", request.application, "static", "scripts", "gis")
+        move_to("olgm.min.js", output_dir)
+    finally:
+        # Restore CWD
+        os.chdir(cwd)
+
+    output_dir = os.path.join("..", "S3")
+    os.chdir(output_dir)
+    error = os.system("terser s3.ui.gis.js -c -o s3.ui.gis.min.js")
+    if error:
+        info("Unable to compress s3.ui.gis.js as terser not found")
+        info("npm install -g terser")
+    # Restore CWD
+    os.chdir(cwd)
 
     # -------------------------------------------------------------------------
     # Optional JS builds
@@ -567,7 +617,7 @@ def do_js(minimize,
         sourceDirectoryMGRS = "../gis"
         sourceDirectoryGeoExt = "../gis/GeoExt/lib"
         sourceDirectoryGxp = "../gis/gxp"
-        configFilenameOpenLayers = "sahana.js.ol.cfg"
+        configFilenameOpenLayers = "sahana.js.ol2.cfg"
         configFilenameMGRS = "sahana.js.mgrs.cfg"
         configFilenameGeoExt = "sahana.js.geoext.cfg"
         configFilenameGxpMin = "sahana.js.gxp.cfg"
@@ -732,6 +782,7 @@ def do_template(minimize, warnings):
         rollup_dir = os.path.join("..", "..", "..", "..", "ol5-rollup")
         os.chdir(rollup_dir)
         os.system("npm run-script build")
+        # npm install -g terser
         os.system("terser ol5.js -c --source-map -o ol5.min.js")
         theme_dir = os.path.join("..", request.application, "static", "themes", "UCCE", "JS")
         move_to("ol5.min.js", theme_dir)
@@ -762,18 +813,6 @@ def main(argv):
         if "template" in argv:
             # Build Template only
             pass
-        #elif "ol6" in argv:
-        #    # Build OpenLayers 6 only
-        #    cwd = os.getcwd()
-        #    # Assume ol6-rollup at same level as eden
-        #    rollup_dir = os.path.join("..", "..", "..", "..", "ol6-rollup")
-        #    os.chdir(rollup_dir)
-        #    #os.system("npm run-script build") # Commented due to __extends()
-        #    os.system("terser ol6.js -c -o ol6.min.js")
-        #    gis_dir = os.path.join("..", request.application, "static", "scripts", "gis")
-        #    move_to("ol6.min.js", gis_dir)
-        #    # Restore CWD
-        #    os.chdir(cwd)
         else:
             # Do All
             # Rebuild GIS JS?
@@ -793,10 +832,7 @@ def main(argv):
 
 if __name__ == "__main__":
 
-    if PY2:
-        sys.exit(main(sys.argv[1:]))
-    else:
-        # Don't end with a SystemExit Exception
-        main(sys.argv[1:])
+    # Py3: Don't end with a SystemExit Exception
+    main(sys.argv[1:])
 
 # END =========================================================================

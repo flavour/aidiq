@@ -62,10 +62,6 @@ def config(settings):
     # Always notify the approver of a new (verified) user, even if the user is automatically approved
     #settings.auth.always_notify_approver = False
 
-    # The name of the teams that users are added to when they opt-in to receive alerts
-    #settings.auth.opt_in_team_list = ["Updates"]
-    # Uncomment this to set the opt in default to True
-    #settings.auth.opt_in_default = True
     # Uncomment this to request the Home Phone when a user registers
     #settings.auth.registration_requests_home_phone = True
     # Uncomment this to request the Mobile Phone when a user registers
@@ -118,7 +114,6 @@ def config(settings):
     # Terms of Service to be able to Register on the system
     # https://termsfeed.com/terms-conditions/generator/
     # uses <template>/views/tos.html
-    #settings.auth.terms_of_service = True
     # Enable options for tracking user consent
     #settings.auth.consent_tracking = True
     # Uncomment this to allow users to Login using Gmail's SMTP
@@ -489,8 +484,6 @@ def config(settings):
     # 5: Apply Controller, Function & Table ACLs
     # 6: Apply Controller, Function, Table ACLs and Entity Realm
     # 7: Apply Controller, Function, Table ACLs and Entity Realm + Hierarchy
-    # 8: Apply Controller, Function, Table ACLs, Entity Realm + Hierarchy and Delegations
-
     settings.security.policy = 5 # Controller, Function & Table ACLs
 
     # Ownership-rule for records without owner:
@@ -584,6 +577,8 @@ def config(settings):
     #settings.ui.organizer_time_format = "H:mm"
     # Configure the snap raster width in organizer (hh:mm:ss)
     #settings.ui.organizer_snap_duration = "00:15:00"
+    # Thumbnail size for Images. Requires enabling fancyZoom JS & CSS
+    #settings.ui.thumbnail = (60,60)
 
     # -------------------------------------------------------------------------
     # Sync
@@ -750,87 +745,6 @@ def config(settings):
     #settings.cr.shelter_inspection_tasks = True
     # Configure active statuses for shelter inspection tasks (subset of project.task_status_opts)
     #settings.cr.shelter_inspection_task_active_statuses = (2, 3, 6)
-
-    # -------------------------------------------------------------------------
-    # Disaster Victim Registry / Case Management
-
-    # Uncomment to use the term Beneficiary instead of Case
-    #settings.dvr.label = "Beneficiary"
-
-    # Uncomment this to enable tracking of transfer origin/destination sites
-    #settings.dvr.track_transfer_sites = True
-    # Uncomment this to enable features to manage transferability of cases
-    #settings.dvr.manage_transferability = True
-
-    # Uncomment this to enable household size in cases, set to "auto" for automatic counting
-    #settings.dvr.household_size = True
-
-    # Uncomment this to expose flags to mark appointment types as mandatory
-    #settings.dvr.mandatory_appointments = True
-    # Uncomment this to have appointments with personal presence update last_seen_on
-    #settings.dvr.appointments_update_last_seen_on = True
-    # Uncomment this to automatically update the case status when appointments are completed
-    #settings.dvr.appointments_update_case_status = True
-    # Uncomment this to automatically close appointments when registering certain case events
-    #settings.dvr.case_events_close_appointments = True
-
-    # Uncomment this to have allowance payments update last_seen_on
-    #settings.dvr.payments_update_last_seen_on = True
-
-    # Uncomment this to use service types for group/case activites
-    #settings.dvr.activity_use_service_type = True
-    # Uncomment this to use sectors in group/case activities
-    #settings.dvr.activity_sectors = True
-    # Uncomment this to use case activity types
-    #settings.dvr.activity_types = True
-    # Uncomment this to use hierarchical case activity types
-    #settings.dvr.activity_types_hierarchical = True
-    # Uncomment this to use status field in case activities
-    #settings.dvr.case_activity_use_status = True
-    # Uncomment this to disable follow-up fields in case activities
-    #settings.dvr.case_activity_follow_up = False
-
-    # Uncomment this to include case activity docs on beneficiary documents-tab
-    #settings.dvr.case_include_activity_docs = True
-    # Uncomment this to include case group docs on beneficiary documents-tab
-    #settings.dvr.case_include_group_docs = True
-
-    # Uncomment this if Case activities use multiple Needs
-    #settings.dvr.case_activity_needs_multiple = True
-    # Uncomment this to use service types for needs
-    #settings.dvr_needs_use_service_type = True
-    # Uncomment this to use hierarchical need types
-    #settings.dvr.needs_hierarchical = True
-    # Uncomment this to use hierarchical vulnerability types
-    #settings.dvr.vulnerability_types_hierarchical = True
-
-    # Uncomment this to manage individual response actions in case activities
-    #settings.dvr.manage_response_actions = True
-    # Uncomment this to not use response action types
-    #settings.dvr.response_types = False
-    # Uncomment this to use response themes
-    #settings.dvr.response_themes = True
-    # Uncomment this to not use org-specific response themes
-    #settings.dvr.response_themes_org_specific = False
-    # Uncomment this to link response themes to org sectors
-    #settings.dvr.response_themes_sectors = True
-    # Uncomment this to link response themes to needs
-    #settings.dvr.response_themes_needs = True
-    # Uncomment this to automatically link responses to case activities
-    #settings.dvr.response_activity_autolink = True
-    # Uncomment this to activate features for response planning
-    #settings.dvr.response_planning = True
-    # Uncomment this to use a separate due-date for responses
-    #settings.dvr.response_due_date = True
-    # Uncomment this to use date+time for responses (instead of just date)
-    #settings.dvr.response_use_time = True
-
-    # Configure a regular expression pattern for ID Codes (QR Codes)
-    #settings.dvr.id_code_pattern = "(?P<label>[^,]*),(?P<first_name>[^,]*),(?P<last_name>[^,]*),(?P<date_of_birth>[^,]*)"
-    # Uncomment this to show a warning during event registration if the person is not currently checked-in
-    #settings.dvr.event_registration_checkin_warning = True
-    # Uncomment this to show profile pictures in event registration UI only on demand
-    #settings.dvr.event_registration_show_picture = False
 
     # -------------------------------------------------------------------------
     # Events
@@ -1073,9 +987,7 @@ def config(settings):
     #settings.inv.warehouse_code_unique = True
     # Uncomment to not track pack values
     #settings.inv.track_pack_values = False
-    #settings.inv.show_mode_of_transport = True
     #settings.inv.send_show_org = False
-    #settings.inv.send_show_time_in = True
     #settings.inv.send_form_name = "Tally Out Sheet"
     #settings.inv.send_short_name = "TO"
     #settings.inv.send_ref_field_name = "Tally Out Number"
@@ -1107,89 +1019,47 @@ def config(settings):
     #   }
 
     # -------------------------------------------------------------------------
-    # Requests Management
-    # Uncomment to disable Inline Forms in Requests module
-    #settings.req.inline_forms = False
-    # Label for Inventory Requests
-    #settings.req.type_inv_label = "Donations"
-    # Label for People Requests
-    #settings.req.type_hrm_label = "Volunteers"
+    # Inventory Requisitions
+    # Uncomment to disable Inline Forms for Inventory Requisitions
+    #settings.inv.req_inline_forms = False
     # Label for Requester
-    #settings.req.requester_label = "Site Contact"
-    # Uncomment to disable Recurring Request
-    #settings.req.recurring = False
-    #settings.req.requester_optional = True
-    # Uncomment if the User Account logging the Request is NOT normally the Requester
-    #settings.req.requester_is_author = False
+    #settings.inv.requester_label = "Site Contact"
+    # Uncomment to disable Recurring Inventory Requisitions
+    #settings.inv.req_recurring = False
+    #settings.inv.requester_optional = True
+    # Uncomment if the User Account logging the Inventory Requisitions is NOT normally the Requester
+    #settings.inv.requester_is_author = False
     # Filter Requester as being from the Site
-    #settings.req.requester_from_site = True
+    #settings.inv.requester_from_site = True
     # Set the Requester as being an HR for the Site if no HR record yet & as Site contact if none yet exists
-    #settings.req.requester_to_site = True
-    #settings.req.date_writable = False
-    # Allow the status for requests to be set manually,
+    #settings.inv.requester_to_site = True
+    #settings.inv.req_date_writable = False
+    # Allow the status for Inventory Requisitions to be set manually,
     # rather than just automatically from commitments and shipments
-    #settings.req.status_writable = False
-    #settings.req.item_quantities_writable = True
-    #settings.req.skill_quantities_writable = True
-    #settings.req.show_quantity_transit = False
-    #settings.req.multiple_req_items = False
-    #settings.req.prompt_match = False
-    #settings.req.items_ask_purpose = False
+    #settings.inv.req_status_writable = False
+    #settings.inv.req_item_quantities_writable = True
+    #settings.inv.req_show_quantity_transit = False
+    #settings.inv.multiple_req_items = False
+    #settings.inv.req_prompt_match = False
+    #settings.inv.req_ask_purpose = False
     # Uncomment to disable the Commit step in the workflow & simply move direct to Ship
-    #settings.req.use_commit = False
+    #settings.inv.req_use_commit = False
     # Uncomment to have Donations include a 'Value' field
-    #settings.req.commit_value = True
+    #settings.inv.commit_value = True
     # Uncomment to allow Donations to be made without a matching Request
-    #settings.req.commit_without_request = True
-    # Uncomment to Commit Named People rather than simply Anonymous Skills
-    #settings.req.commit_people = True
+    #settings.inv.commit_without_request = True
     # Uncomment if the User Account logging the Commitment is NOT normally the Committer
-    #settings.req.comittter_is_author = False
-    # Should Requests ask whether Security is required?
-    #settings.req.ask_security = True
-    # Should Requests ask whether Transportation is required?
-    #settings.req.ask_transport = True
-    #settings.req.use_req_number = False
-    #settings.req.generate_req_number = False
-    #settings.req.req_form_name = "Request Issue Form"
-    #settings.req.req_shortname = "RIS"
-    # Restrict the type of requests that can be made, valid values in the
-    # list are ("Stock", "People", "Other"). If this is commented out then
-    # all types will be valid.
-    #settings.req.req_type = ("Stock",)
-    # Uncomment to enable Summary 'Site Needs' tab for Offices/Facilities
-    #settings.req.summary = True
+    #settings.inv.comittter_is_author = False
+    # Should Inventory Requisitions ask whether Security is required?
+    #settings.inv.req_ask_security = True
+    # Should Inventory Requisitions ask whether Transportation is required?
+    #settings.inv.req_ask_transport = True
+    #settings.inv.use_req_number = False
+    #settings.inv.generate_req_number = False
+    #settings.inv.req_form_name = "Request Issue Form"
+    #settings.inv.req_shortname = "RIS"
     # Uncomment to restrict adding new commits to Completed commits
-    #settings.req.req_restrict_on_complete = True
-
-    # Custom Crud Strings for specific req_req types
-    #settings.req.req_crud_strings = dict()
-    #ADD_ITEM_REQUEST = T("Make a Request for Donations")
-    # req_req Crud Strings for Item Request (type=1)
-    #settings.req.req_crud_strings[1] = Storage(
-    #    label_create = ADD_ITEM_REQUEST,
-    #    title_display = T("Request for Donations Details"),
-    #    title_list = T("Requests for Donations"),
-    #    title_update = T("Edit Request for Donations"),
-    #    label_list_button = T("List Requests for Donations"),
-    #    label_delete_button = T("Delete Request for Donations"),
-    #    msg_record_created = T("Request for Donations Added"),
-    #    msg_record_modified = T("Request for Donations Updated"),
-    #    msg_record_deleted = T("Request for Donations Canceled"),
-    #    msg_list_empty = T("No Requests for Donations"))
-    #ADD_PEOPLE_REQUEST = T("Make a Request for Volunteers")
-    # req_req Crud Strings for People Request (type=3)
-    #settings.req.req_crud_strings[3] = Storage(
-    #    label_create = ADD_PEOPLE_REQUEST,
-    #    title_display = T("Request for Volunteers Details"),
-    #    title_list = T("Requests for Volunteers"),
-    #    title_update = T("Edit Request for Volunteers"),
-    #    label_list_button = T("List Requests for Volunteers"),
-    #    label_delete_button = T("Delete Request for Volunteers"),
-    #    msg_record_created = T("Request for Volunteers Added"),
-    #    msg_record_modified = T("Request for Volunteers Updated"),
-    #    msg_record_deleted = T("Request for Volunteers Canceled"),
-    #    msg_list_empty = T("No Requests for Volunteers"))
+    #settings.inv.req_restrict_on_complete = True
 
     # -------------------------------------------------------------------------
     # Supply
@@ -1272,11 +1142,6 @@ def config(settings):
     #settings.project.task_status_opts =
 
     # -------------------------------------------------------------------------
-    # Incidents
-    # Uncomment this to use vehicles when responding to Incident Reports
-    #settings.irs.vehicle = True
-
-    # -------------------------------------------------------------------------
     # Transport
     # Uncomment to make Airport codes unique
     #settings.transport.airport_code_unique = True
@@ -1306,7 +1171,7 @@ def config(settings):
     # -----------------------------------------------------------------------------
     # XForms
     # Configure xform resources (example)
-    #settings.xforms.resources = [("Request", "req_req")]
+    #settings.xforms.resources = [("Request", "inv_req")]
 
     # -------------------------------------------------------------------------
     # Comment/uncomment modules here to disable/enable them
@@ -1451,11 +1316,11 @@ def config(settings):
         #    #description = "Allow affected individuals & households to register to receive compensation and distributions",
         #    module_type = 10,
         #)),
-        #("cr", Storage(
-        #    name_nice = T("Shelters"),
-        #    #description = "Tracks the location, capacity and breakdown of victims in Shelters",
-        #    module_type = 10
-        #)),
+        ("cr", Storage(
+            name_nice = T("Shelters"),
+            #description = "Tracks the location, capacity and breakdown of victims in Shelters",
+            module_type = 10
+        )),
         #("dc", Storage(
         #   name_nice = T("Assessments"),
         #   #description = "Data collection tool",
@@ -1510,11 +1375,6 @@ def config(settings):
         #    #description = "Tracking of Patients",
         #    module_type = 10
         #)),
-        #("po", Storage(
-        #    name_nice = T("Population Outreach"),
-        #    #description = "Population Outreach",
-        #    module_type = 10
-        #)),
         #("security", Storage(
         #   name_nice = T("Security"),
         #   #description = "Security Management System",
@@ -1525,30 +1385,6 @@ def config(settings):
         #    #description = "Manages vulnerability indicators",
         #    module_type = 10,
         # )),
-        #("work", Storage(
-        #   name_nice = T("Jobs"),
-        #   #description = "Simple Volunteer Jobs Management",
-        #   restricted = False,
-        #   module_type = None,
-        #)),
-        # Deprecated: Replaced by BR
-        #("dvr", Storage(
-        #    name_nice = T("Beneficiary Registry"),
-        #    #description = "Disaster Victim Registry",
-        #    module_type = 10
-        #)),
-        # Deprecated: Replaced by event
-        #("irs", Storage(
-        #    name_nice = T("Incidents"),
-        #    #description = "Incident Reporting System",
-        #    module_type = 10
-        #)),
-        # Deprecated: Replaced by DC
-        #("survey", Storage(
-        #    name_nice = T("Surveys"),
-        #    #description = "Create, enter, and manage surveys.",
-        #    module_type = 5,
-        #)),
         # These are specialist modules
         #("cap", Storage(
         #    name_nice = T("CAP"),
@@ -1565,36 +1401,6 @@ def config(settings):
         #   name_nice = T("Missing Person Registry"),
         #   #description = "Helps to report and search for missing persons",
         #   module_type = 10,
-        #)),
-        # Requires RPy2 & PostgreSQL
-        #("climate", Storage(
-        #    name_nice = T("Climate"),
-        #    #description = "Climate data portal",
-        #    module_type = 10,
-        #)),
-        #("delphi", Storage(
-        #    name_nice = T("Delphi Decision Maker"),
-        #    #description = "Supports the decision making of large groups of Crisis Management Experts by helping the groups create ranked list.",
-        #    restricted = False,
-        #    module_type = 10,
-        #)),
-        # @ToDo: Port these Assessments to the Survey module
-        #("building", Storage(
-        #    name_nice = T("Building Assessments"),
-        #    #description = "Building Safety Assessments",
-        #    module_type = 10,
-        #)),
-        # Deprecated by Surveys module
-        # - depends on CR, IRS & Impact
-        #("assess", Storage(
-        #    name_nice = T("Assessments"),
-        #    #description = "Rapid Assessments & Flexible Impact Assessments",
-        #    module_type = 10,
-        #)),
-        #("impact", Storage(
-        #    name_nice = T("Impacts"),
-        #    #description = "Used by Assess",
-        #    module_type = None,
         #)),
         #("ocr", Storage(
         #   name_nice = T("Optical Character Recognition"),
