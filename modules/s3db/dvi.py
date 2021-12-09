@@ -54,11 +54,6 @@ class DVIModel(S3Model):
         person_id = self.pr_person_id
         location_id = self.gis_location_id
 
-        messages = current.messages
-        NONE = messages["NONE"]
-        OBSOLETE = messages.OBSOLETE
-        UNKNOWN_OPT = messages.UNKNOWN_OPT
-
         YES = T("yes")
 
         configure = self.configure
@@ -95,32 +90,39 @@ class DVIModel(S3Model):
                      Field("marker", length=64,
                            label = T("Marker"),
                            requires = IS_LENGTH(64),
-                           comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Marker"),
-                                                           T("Number or code used to mark the place of find, e.g. flag code, grid coordinates, site reference number or similar (if available)"))),
+                           comment = DIV(_class = "tooltip",
+                                         _title = "%s|%s" % (T("Marker"),
+                                                             T("Number or code used to mark the place of find, e.g. flag code, grid coordinates, site reference number or similar (if available)"),
+                                                             ),
+                                         ),
                            ),
                      person_id(label = T("Finder")),
                      Field("bodies_found", "integer",
-                           label = T("Bodies found"),
-                           requires = IS_INT_IN_RANGE(1, None),
-                           represent = lambda v, row=None: IS_INT_AMOUNT.represent(v),
                            default = 0,
-                           comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Number of bodies found"),
-                                                           T("Please give an estimated figure about how many bodies have been found.")))),
+                           label = T("Bodies found"),
+                           represent = lambda v: IS_INT_AMOUNT.represent(v),
+                           requires = IS_INT_IN_RANGE(1, None),
+                           comment = DIV(_class = "tooltip",
+                                         _title = "%s|%s" % (T("Number of bodies found"),
+                                                             T("Please give an estimated figure about how many bodies have been found."),
+                                                             ),
+                                         ),
+                           ),
                      Field("bodies_recovered", "integer",
+                           default = 0,
                            label = T("Bodies recovered"),
                            requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, None)),
-                           represent = lambda v, row=None: IS_INT_AMOUNT.represent(v),
-                           default = 0),
+                           represent = lambda v: IS_INT_AMOUNT.represent(v),
+                           ),
                      Field("description", "text"),
-                     location_id(label=T("Location")),
+                     location_id(label = T("Location"),
+                                 ),
                      Field("status", "integer",
                            default = 1,
                            label = T("Task Status"),
                            requires = IS_IN_SET(task_status,
-                                                zero=None),
-                           represent = S3Represent(options = task_status),
+                                                zero = None),
+                           represent = s3_options_represent(task_status),
                            ),
                      *s3_meta_fields())
 
@@ -135,19 +137,20 @@ class DVIModel(S3Model):
             msg_record_created = T("Recovery Request added"),
             msg_record_modified = T("Recovery Request updated"),
             msg_record_deleted = T("Recovery Request deleted"),
-            msg_list_empty = T("No requests found"))
+            msg_list_empty = T("No requests found"),
+            )
 
         # Resource configuration
         configure(tablename,
-                  orderby = "dvi_recreq.date desc",
-                  list_fields = ["id",
-                                 "date",
+                  list_fields = ["date",
                                  "marker",
                                  "location_id",
                                  "bodies_found",
                                  "bodies_recovered",
                                  "status"
-                                 ])
+                                 ],
+                  orderby = "dvi_recreq.date desc",
+                  )
 
         # Reusable fields
         represent = S3Represent(lookup = "dvi_recreq",
@@ -155,12 +158,12 @@ class DVIModel(S3Model):
                                 labels = T("[%(marker)s] %(date)s: %(bodies_found)s bodies"),
                                 )
         dvi_recreq_id = S3ReusableField("dvi_recreq_id", "reference %s" % tablename,
+                                        label = T("Recovery Request"),
+                                        represent = represent,
                                         requires = IS_EMPTY_OR(
                                                     IS_ONE_OF(db, "dvi_recreq.id",
                                                               represent,
                                                               )),
-                                        represent = represent,
-                                        label = T("Recovery Request"),
                                         ondelete = "RESTRICT",
                                         )
 
@@ -193,7 +196,7 @@ class DVIModel(S3Model):
                      location_id(),
                      Field("obsolete", "boolean",
                            label = T("Obsolete"),
-                           represent = lambda opt: OBSOLETE if opt else NONE,
+                           represent = lambda opt: current.messages.OBSOLETE if opt else NONE,
                            default = False,
                            readable = False,
                            writable = False,
@@ -221,7 +224,8 @@ class DVIModel(S3Model):
             msg_record_created = T("Morgue added"),
             msg_record_modified = T("Morgue updated"),
             msg_record_deleted = T("Morgue deleted"),
-            msg_list_empty = T("No morgues found"))
+            msg_list_empty = T("No morgues found"),
+            )
 
         # Resource Configuration
         configure(tablename,
@@ -245,7 +249,8 @@ class DVIModel(S3Model):
                      super_link("pe_id", "pr_pentity"),
                      super_link("track_id", "sit_trackable"),
                      self.pr_pe_label(requires = [IS_NOT_EMPTY(error_message=T("Enter a unique label!")),
-                                                  IS_NOT_ONE_OF(db, "dvi_body.pe_label")]),
+                                                  IS_NOT_ONE_OF(db, "dvi_body.pe_label"),
+                                                  ]),
                      morgue_id(),
                      dvi_recreq_id(),
                      s3_datetime("date_of_recovery",
@@ -324,11 +329,11 @@ class DVIModel(S3Model):
         # Checklist of operations
         #
         checklist_item = S3ReusableField("checklist_item", "integer",
-                                         requires = IS_IN_SET(task_status, zero=None),
                                          default = 1,
                                          label = T("Checklist Item"),
-                                         represent = lambda opt: \
-                                                     task_status.get(opt, UNKNOWN_OPT))
+                                         represent = s3_options_represent(task_status),
+                                         requires = IS_IN_SET(task_status, zero=None),
+                                         )
 
         tablename = "dvi_checklist"
         define_table(tablename,
@@ -421,7 +426,7 @@ class DVIModel(S3Model):
                            default = 1,
                            label = T("Identification Status"),
                            requires = IS_IN_SET(dvi_id_status, zero=None),
-                           represent = S3Represent(options = dvi_id_status),
+                           represent = s3_options_represent(dvi_id_status),
                            ),
                      person_id("identity",
                                label = T("Identified as"),
@@ -438,7 +443,7 @@ class DVIModel(S3Model):
                            default = 1,
                            label = T("Method used"),
                            requires = IS_IN_SET(dvi_id_methods, zero=None),
-                           represent = S3Represent(options = dvi_id_methods),
+                           represent = s3_options_represent(dvi_id_methods),
                            ),
                      Field("comment", "text"),
                      *s3_meta_fields())
@@ -478,11 +483,13 @@ class DVIModel(S3Model):
                                                    table.location_id,
                                                    table.track_id,
                                                    table.date_of_recovery,
-                                                   limitby=(0, 1)).first()
+                                                   limitby = (0, 1),
+                                                   ).first()
         if body and body.location_id:
             tracker = S3Tracker()
-            tracker(record=body).set_location(body.location_id,
-                                              timestmp=body.date_of_recovery)
+            tracker(record = body).set_location(body.location_id,
+                                                timestmp = body.date_of_recovery,
+                                                )
 
     # -------------------------------------------------------------------------
     @staticmethod

@@ -63,7 +63,7 @@ from gluon.html import *
 from .s3crud import S3CRUD
 from .s3datetime import s3_decode_iso_datetime
 from .s3forms import S3SQLDefaultForm
-from .s3utils import s3_str
+from .s3utils import get_crud_string, s3_str
 from .s3validators import IS_IN_SET, IS_ONE_OF
 from .s3widgets import S3PentityAutocompleteWidget
 
@@ -78,11 +78,12 @@ TWITTER_HAS_PREV_PREFIX = u'\u2026 '
 SENDER = re.compile(r"(.*)\s*\<(.+@.+)\>\s*")
 
 # =============================================================================
-class S3Msg(object):
+class S3Msg:
     """ Messaging framework """
 
     def __init__(self,
-                 modem=None):
+                 modem = None,
+                 ):
 
         T = current.T
         self.modem = modem
@@ -195,7 +196,8 @@ class S3Msg(object):
             Decode an RFC2047-encoded email header (e.g.
             "Dominic =?ISO-8859-1?Q?K=F6nig?=") and return it as unicode.
 
-            @param header: the header
+            Args:
+                header: the header
         """
 
         # Deal with missing word separation (thanks Ingmar Hupp)
@@ -247,11 +249,12 @@ class S3Msg(object):
     @staticmethod
     def parse(channel_id, function_name):
         """
-           Parse unparsed Messages from Channel with Parser
-           - called from Scheduler
+            Parse unparsed Messages from Channel with Parser
+            - called from Scheduler
 
-           @param channel_id: Channel
-           @param function_name: Parser
+            Args:
+                channel_id: Channel
+                function_name: Parser
         """
 
         from .s3parser import S3Parsing
@@ -291,19 +294,20 @@ class S3Msg(object):
         """
             Form to Compose a Message
 
-            @param type: The default message type: None, EMAIL, SMS or TWITTER
-            @param recipient_type: Send to Persons or Groups? (pr_person or pr_group)
-            @param recipient: The pe_id of the person/group to send the message to
-                              - this can also be set by setting one of
-                                (in priority order, if multiple found):
-                                request.vars.pe_id
-                                request.vars.person_id @ToDo
-                                request.vars.group_id  @ToDo
-                                request.vars.hrm_id    @ToDo
-            @param subject: The default subject text (for Emails)
-            @param message: The default message text
-            @param url: Redirect to the specified URL() after message sent
-            @param formid: If set, allows multiple forms open in different tabs
+            Args:
+                type: The default message type: None, EMAIL, SMS or TWITTER
+                recipient_type: Send to Persons or Groups? (pr_person or pr_group)
+                recipient: The pe_id of the person/group to send the message to
+                           - this can also be set by setting one of
+                             (in priority order, if multiple found):
+                             request.vars.pe_id
+                             request.vars.person_id @ToDo
+                             request.vars.group_id  @ToDo
+                             request.vars.hrm_id    @ToDo
+                subject: The default subject text (for Emails)
+                message: The default message text
+                url: Redirect to the specified URL() after message sent
+                formid: If set, allows multiple forms open in different tabs
         """
 
         if not url:
@@ -353,9 +357,10 @@ class S3Msg(object):
         """
             Send a single message to an Address
 
-            @param recipient: "email@address", "+4412345678", "@nick"
-            @param message: message body
-            @param subject: message subject (Email only)
+            Args:
+                recipient: "email@address", "+4412345678", "@nick"
+                message: message body
+                subject: message subject (Email only)
         """
 
         # Determine channel to send on based on format of recipient
@@ -384,11 +389,11 @@ class S3Msg(object):
         """
             Send a single message to a Person Entity (or list thereof)
 
-            @ToDo: contact_method = ALL
+            TODO:
+                contact_method = ALL
                 - look up the pr_contact options available for the pe & send via all
-
-            @ToDo: This is not transaction safe
-              - power failure in the middle will cause no message in the outbox
+                This is not transaction safe
+                - power failure in the middle will cause no message in the outbox
         """
 
         s3db = current.s3db
@@ -485,9 +490,11 @@ class S3Msg(object):
         """
             Send pending messages from outbox (usually called from scheduler)
 
-            @param contact_method: the output channel (see pr_contact.method)
+            Args:
+                contact_method: the output channel (see pr_contact.method)
 
-            @todo: contact_method = "ALL"
+            TODO:
+                contact_method = "ALL"
         """
 
         db = current.db
@@ -560,13 +567,14 @@ class S3Msg(object):
             """
                 Helper method to send messages by pe_id
 
-                @param pe_id: the pe_id
-                @param subject: the message subject
-                @param message: the message body
-                @param outbox_id: the outbox record ID
-                @param message_id: the message_id
-                @param organisation_id: the organisation_id (for SMS)
-                @param contact_method: the contact method
+                Args:
+                    pe_id: the pe_id
+                    subject: the message subject
+                    message: the message body
+                    outbox_id: the outbox record ID
+                    message_id: the message_id
+                    organisation_id: the organisation_id (for SMS)
+                    contact_method: the contact method
             """
 
             # Get the recipient's contact info
@@ -682,47 +690,62 @@ class S3Msg(object):
         if not rows:
             return
 
-        htable = s3db.table("hrm_human_resource")
-        otable = s3db.org_organisation
         ptable = s3db.pr_person
-        gtable = s3db.pr_group
-        mtable = db.pr_group_membership
-        ftable = s3db.pr_forum
-        fmtable = db.pr_forum_membership
 
         # Left joins for multi-recipient lookups
-        gleft = [mtable.on((mtable.group_id == gtable.id) & \
-                           (mtable.person_id != None) & \
-                           (mtable.deleted == False)),
-                 ptable.on((ptable.id == mtable.person_id) & \
-                           (ptable.deleted == False))
-                 ]
-        fleft = [fmtable.on((fmtable.forum_id == ftable.id) & \
-                           (fmtable.person_id != None) & \
-                           (fmtable.deleted == False)),
-                 ptable.on((ptable.id == fmtable.person_id) & \
-                           (ptable.deleted == False))
-                 ]
+        instance_types = set([row["pr_pentity.instance_type"] for row in rows])
 
-        if htable:
-            oleft = [htable.on((htable.organisation_id == otable.id) & \
-                               (htable.person_id != None) & \
-                               (htable.deleted == False)),
-                     ptable.on((ptable.id == htable.person_id) & \
-                               (ptable.deleted == False)),
+        if "pr_forum" in instance_types:
+            ftable = s3db.pr_forum
+            fmtable = db.pr_forum_membership
+            fleft = [fmtable.on((fmtable.forum_id == ftable.id) & \
+                               (fmtable.person_id != None) & \
+                               (fmtable.deleted == False)),
+                     ptable.on((ptable.id == fmtable.person_id) & \
+                               (ptable.deleted == False))
                      ]
 
-            etable = s3db.hrm_training_event
-            ttable = s3db.hrm_training
-            tleft = [ttable.on((ttable.training_event_id == etable.id) & \
-                               (ttable.person_id != None) & \
-                               (ttable.deleted == False)),
-                     ptable.on((ptable.id == ttable.person_id) & \
-                               (ptable.deleted == False)),
+        if "pr_group" in instance_types:
+            gtable = s3db.pr_group
+            mtable = db.pr_group_membership
+            gleft = [mtable.on((mtable.group_id == gtable.id) & \
+                               (mtable.person_id != None) & \
+                               (mtable.deleted == False)),
+                     ptable.on((ptable.id == mtable.person_id) & \
+                               (ptable.deleted == False))
                      ]
 
+        if "hrm_human_resource" in instance_types or \
+           "org_organisation" in instance_types:
+            htable = s3db.table("hrm_human_resource")
+            if htable:
+                otable = s3db.org_organisation
+                oleft = [htable.on((htable.organisation_id == otable.id) & \
+                                   (htable.person_id != None) & \
+                                   (htable.deleted == False)),
+                         ptable.on((ptable.id == htable.person_id) & \
+                                   (ptable.deleted == False)),
+                         ]
+        else:
+            htable = False
+
+        if "hrm_training_event" in instance_types:
+            etable = s3db.table("hrm_training_event")
+            if etable:
+                ttable = s3db.hrm_training
+                tleft = [ttable.on((ttable.training_event_id == etable.id) & \
+                                   (ttable.person_id != None) & \
+                                   (ttable.deleted == False)),
+                         ptable.on((ptable.id == ttable.person_id) & \
+                                   (ptable.deleted == False)),
+                         ]
+        else:
+            etable = False
+
+        if "deploy_alert" in instance_types:
             atable = s3db.table("deploy_alert")
             if atable:
+                htable = s3db.table("hrm_human_resource")
                 ltable = db.deploy_alert_recipient
                 aleft = [ltable.on(ltable.alert_id == atable.id),
                          htable.on((htable.id == ltable.human_resource_id) & \
@@ -731,6 +754,8 @@ class S3Msg(object):
                          ptable.on((ptable.id == htable.person_id) & \
                                    (ptable.deleted == False))
                          ]
+        else:
+            atable = False
 
         # chainrun: used to fire process_outbox again,
         # when messages are sent to groups or organisations
@@ -863,7 +888,7 @@ class S3Msg(object):
                     chainrun = True
                 status = True
 
-            elif entity_type == "hrm_training_event":
+            elif etable and entity_type == "hrm_training_event":
                 # Re-queue the message for each participant
                 recipients = db(etable.pe_id == pe_id).select(ptable.pe_id,
                                                               left = tleft,
@@ -929,11 +954,12 @@ class S3Msg(object):
         """
             Push the message relating to google cloud messaging server
 
-            @param title: The title for notification
-            @param message: The message to be sent to GCM server
-            @param api_key: The API key for GCM server
-            @param registration_ids: The list of id that will be notified
-            @param channel_id: The specific channel_id to use for GCM push
+            Args:
+                title: The title for notification
+                message: The message to be sent to GCM server
+                api_key: The API key for GCM server
+                registration_ids: The list of id that will be notified
+                channel_id: The specific channel_id to use for GCM push
         """
 
         if not title or not uri or not message or not len(registration_ids):
@@ -1054,8 +1080,11 @@ class S3Msg(object):
             Sanitize the email sender string to prevent MIME-encoding
             of the from-address (RFC2047)
 
-            @param: the sender-string
-            @returns: the sanitized sender-string
+            Args:
+                sender: the sender-string
+
+            Returns:
+                The sanitized sender-string
         """
 
         if not sender:
@@ -1103,15 +1132,17 @@ class S3Msg(object):
         """
             Function to create an OpenGeoSMS
 
-            @param: location_id - reference to record in gis_location table
-            @param: code - the type of OpenGeoSMS:
-                S = Sahana
-                SI = Incident Report
-                ST = Task Dispatch
-            @param: map: "google" or "osm"
-            @param: text - the rest of the message
+            Args:
+                location_id: reference to record in gis_location table
+                code: the type of OpenGeoSMS:
+                        S = Sahana
+                        SI = Incident Report
+                        ST = Task Dispatch
+                map: "google" or "osm"
+                text: the rest of the message
 
-            Returns the formatted OpenGeoSMS or None if it can't find
+            Returns:
+                The formatted OpenGeoSMS or None if it can't find
                 an appropriate location
         """
 
@@ -1126,7 +1157,7 @@ class S3Msg(object):
                                     table.lon,
                                     #table.path,
                                     #table.parent,
-                                    limitby = (0, 1)
+                                    limitby = (0, 1),
                                     ).first()
         if not location:
             return text
@@ -1152,9 +1183,13 @@ class S3Msg(object):
     @staticmethod
     def parse_opengeosms(message):
         """
-           Function to parse an OpenGeoSMS
-           @param: message - Inbound message to be parsed for OpenGeoSMS.
-           Returns the lat, lon, code and text contained in the message.
+            Function to parse an OpenGeoSMS
+
+            Args:
+                message: Inbound message to be parsed for OpenGeoSMS.
+
+            Returns:
+                The lat, lon, code and text contained in the message.
         """
 
         lat = ""
@@ -1526,7 +1561,8 @@ class S3Msg(object):
             - falls back to @mention (leaves less characters for the message).
             Breaks long text to chunks if needed.
 
-            @ToDo: Option to Send via Tropo
+            TODO:
+                Option to Send via Tropo
         """
 
         # Initialize Twitter API
@@ -1720,10 +1756,11 @@ class S3Msg(object):
             This is a simple mailbox polling script for the Messaging Module.
             It is normally called from the scheduler.
 
-            @ToDo: If there is a need to collect from non-compliant mailers
+            TODO:
+                If there is a need to collect from non-compliant mailers
                    then suggest using the robust Fetchmail to collect & store
                    in a more compliant mailer!
-            @ToDo: If delete_from_server is false, we don't want to download the
+                If delete_from_server is false, we don't want to download the
                    same messages repeatedly.  Perhaps record time of fetch runs
                    (or use info from the scheduler_run table), compare w/ message
                    timestamp, as a filter. That may not be completely accurate,
@@ -2713,23 +2750,24 @@ class S3Compose(S3CRUD):
         """
             API entry point
 
-            @param r: the S3Request instance
-            @param attr: controller attributes for the request
+            Args:
+                r: the S3Request instance
+                attr: controller attributes for the request
         """
 
         if r.http in ("GET", "POST"):
-            output = self.compose(r, **attr)
+            return self.compose(r, **attr)
         else:
             r.error(405, current.ERROR.BAD_METHOD)
-        return output
 
     # -------------------------------------------------------------------------
     def compose(self, r, **attr):
         """
             Generate a form to send a message
 
-            @param r: the S3Request instance
-            @param attr: controller attributes for the request
+            Args:
+                r: the S3Request instance
+                attr: controller attributes for the request
         """
 
         T = current.T
@@ -2782,11 +2820,11 @@ class S3Compose(S3CRUD):
 
         # Complete the page
         if r.representation == "html":
-            title = self.crud_string(self.tablename, "title_compose")
+            title = get_crud_string(self.tablename, "title_compose")
             if not title:
                 title = T("Send Message")
 
-            # subtitle = self.crud_string(self.tablename, "subtitle_compose")
+            # subtitle = get_crud_string(self.tablename, "subtitle_compose")
             # if not subtitle:
                 # subtitle = ""
 
@@ -2883,17 +2921,18 @@ class S3Compose(S3CRUD):
         mtable.inbound.writable = False
 
         resource = self.resource
+        get_config = resource.get_config
 
         recipient_type = self.recipient_type # from msg.compose()
         if not recipient_type and resource:
             # See if we have defined a custom recipient type for this table
             # pr_person or pr_group
-            recipient_type = self._config("msg_recipient_type", None)
+            recipient_type = get_config("msg_recipient_type", None)
 
         contact_method = self.contact_method # from msg.compose()
         if not contact_method and resource:
             # See if we have defined a custom default contact method for this table
-            contact_method = self._config("msg_contact_method", "EMAIL")
+            contact_method = get_config("msg_contact_method", "EMAIL")
 
         otable.contact_method.default = contact_method
 
@@ -2945,7 +2984,8 @@ class S3Compose(S3CRUD):
 
             if len(recipients) == 1:
                 recipient = recipients[0]
-                represent = s3db.pr_PersonEntityRepresent(show_label = False)(recipient)
+                from s3db.pr import pr_PersonEntityRepresent
+                represent = pr_PersonEntityRepresent(show_label = False)(recipient)
                 # Restrict message options to those available for the entity
                 petable = s3db.pr_pentity
                 entity_type = db(petable.pe_id == recipient).select(petable.instance_type,
@@ -3012,8 +3052,8 @@ class S3Compose(S3CRUD):
                 # - permission sets (inc realms) should only be applied to the instances, not the super-entity
                 pe_field.widget = S3PentityAutocompleteWidget()
 
-            pe_field.comment = DIV(_class="tooltip",
-                                   _title="%s|%s" % \
+            pe_field.comment = DIV(_class = "tooltip",
+                                   _title = "%s|%s" % \
                 (T("Recipients"),
                  T("Please enter the first few letters of the Person/Group for the autocomplete.")))
 
@@ -3024,17 +3064,20 @@ class S3Compose(S3CRUD):
                           resource = s3resource("msg_message"),
                           onvalidation = self._compose_onvalidation,
                           message = "Message Sent",
-                          format = "html")
+                          format = "html",
+                          )
 
         outboxform = sqlform(request = request,
                              resource = s3resource("msg_outbox"),
                              message = "Message Sent",
-                             format = "html")
+                             format = "html",
+                             )
 
         mailform = sqlform(request = request,
                            resource = s3resource("msg_email"),
                            message = "Message Sent",
-                           format = "html")
+                           format = "html",
+                           )
 
         # Shortcuts
         lcustom = logform.custom

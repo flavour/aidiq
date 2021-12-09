@@ -338,7 +338,7 @@ def config(settings):
 
         ctable.json_dump = s3_fieldmethod("json_dump",
                                           comment_as_json,
-                                          # over-ride the default represent of s3_unicode to prevent HTML being rendered too early
+                                          # over-ride the default represent of s3_str to prevent HTML being rendered too early
                                           #represent = lambda v: v,
                                           )
 
@@ -1659,7 +1659,7 @@ S3.redraw_fns.push('tagit')''' % (T("Add tags here…"),
 
         from gluon import IS_EMPTY_OR, IS_IN_SET, SPAN
 
-        from s3 import S3Represent
+        from s3 import S3Represent, s3_options_represent
 
         s3db = current.s3db
 
@@ -1683,7 +1683,7 @@ S3.redraw_fns.push('tagit')''' % (T("Add tags here…"),
 
         f = table.status
         f.requires = IS_EMPTY_OR(IS_IN_SET(need_status_opts, zero = None))
-        f.represent = S3Represent(options = need_status_opts)
+        f.represent = s3_options_represent(need_status_opts)
 
         f = table.coarse_location_id
         f.label = T("Division")
@@ -1885,12 +1885,12 @@ S3.redraw_fns.push('tagit')''' % (T("Add tags here…"),
             if r.interactive and r.method == "summary":
 
                 from gluon import A, DIV
-                from s3 import s3_str#, S3CRUD
+                from s3 import s3_str#, s3_action_buttons
 
                 auth = current.auth
 
                 # Normal Action Buttons
-                #S3CRUD.action_buttons(r)
+                #s3_action_buttons(r)
                 # Custom Action Buttons
                 deletable = current.db(auth.s3_accessible_query("delete", "need_line")).select(s3db.need_line.id)
                 restrict_d = [str(row.id) for row in deletable]
@@ -2422,7 +2422,7 @@ S3.redraw_fns.push('tagit')''' % (T("Add tags here…"),
             #
             #    table.quantity_delivered_w_location = s3_fieldmethod("quantity_delivered_w_location",
             #                                                         quantity_delivered_w_location,
-            #                                                         # over-ride the default represent of s3_unicode to prevent HTML being rendered too early
+            #                                                         # over-ride the default represent of s3_str to prevent HTML being rendered too early
             #                                                         #represent = lambda v: v,
             #                                                         )
             #    list_fields.insert(9, (T("Items Delivered"), "quantity_delivered_w_location"))
@@ -2453,9 +2453,9 @@ S3.redraw_fns.push('tagit')''' % (T("Add tags here…"),
             if r.interactive and r.method == "summary":
                 from gluon import A, DIV
                 from s3 import s3_str
-                #from s3 import S3CRUD, s3_str
+                #from s3 import s3_action_buttons, s3_str
                 # Normal Action Buttons
-                #S3CRUD.action_buttons(r)
+                #s3_action_buttons(r)
                 # Custom Action Buttons
                 auth = current.auth
                 deletable = current.db(auth.s3_accessible_query("delete", "need_response_line")).select(table.id)
@@ -2505,9 +2505,11 @@ class NeedResponseLineReportRepresent(S3ReportRepresent):
         """
             Represent record_ids (custom)
 
-            @param record_ids: need_response_line record IDs
+            Args:
+                record_ids: need_response_line record IDs
 
-            @returns: a JSON-serializable dict {recordID: representation}
+            Returns:
+                JSON-serializable dict {recordID: representation}
         """
 
         # Represent the location IDs

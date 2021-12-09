@@ -498,7 +498,7 @@ class MemberModel(S3Model):
             else:
                 return OVERDUE
 
-        return current.messages["NONE"]
+        return NONE
 
     # ---------------------------------------------------------------------
     @staticmethod
@@ -592,7 +592,7 @@ class MemberProgrammeModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 def member_rheader(r, tabs=None):

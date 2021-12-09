@@ -134,6 +134,7 @@ def person():
                     case_id.readable = case_id.writable = False
                 else:
                     # Configure case selector
+                    from s3 import IS_ONE_OF
                     case_id.requires = IS_ONE_OF(db(query), "dvr_case.id",
                                                  case_id.represent,
                                                  )
@@ -325,7 +326,7 @@ def person():
 
             elif r.component_name == "evaluation":
 
-                from s3 import S3SQLInlineComponent
+                from s3 import S3SQLCustomForm, S3SQLInlineComponent
 
                 crud_fields = [#"person_id",
                                #"case_id",
@@ -366,7 +367,7 @@ def person():
                             )
 
                 cappend("comments")
-                crud_form = s3base.S3SQLCustomForm(*crud_fields)
+                crud_form = S3SQLCustomForm(*crud_fields)
 
                 s3db.configure("dvr_evaluation",
                                crud_form = crud_form,
@@ -529,6 +530,7 @@ def document():
             # Multiple doc_ids => default to case, make selectable
             field.default = doc_ids[0]
             field.readable = field.writable = True
+            from s3 import IS_ONE_OF
             field.requires = IS_ONE_OF(db, "doc_entity.doc_id",
                                        field.represent,
                                        filterby = "doc_id",
@@ -581,6 +583,7 @@ def group_membership():
                     # Single group ID?
                     group_id = tuple(group_ids)[0] if len(group_ids) == 1 else None
                 elif r.http == "POST":
+                    from s3 import s3_fullname
                     name = s3_fullname(record_id)
                     group_id = gtable.insert(name = name,
                                              group_type = 7,
@@ -864,6 +867,7 @@ def response_type():
     """ Response Types: RESTful CRUD Controller """
 
     def prep(r):
+        from s3 import IS_ONE_OF
         field = r.table.parent
         field.requires = IS_EMPTY_OR(IS_ONE_OF(db, "%s.id" % r.tablename,
                                                field.represent,
@@ -894,6 +898,7 @@ def response_action():
         dbset = db((ptable.id == ctable.person_id) & \
                    (ctable.archived == False) & \
                    (ctable.deleted == False))
+        from s3 import IS_ONE_OF
         field = table.person_id
         field.requires = IS_ONE_OF(dbset, "pr_person.id",
                                    field.represent,
@@ -984,6 +989,7 @@ def termination_type():
             # Limit the selection to root services (case activity
             # threads are usually per root service type, and all
             # sub-categories should use a common exit type taxonomy)
+            from s3 import IS_ONE_OF
             field = r.table.service_id
             query = (db.org_service.parent == None)
             field.requires = IS_EMPTY_OR(IS_ONE_OF(db(query),
@@ -1000,6 +1006,7 @@ def vulnerability_type():
     """ Vulnerability Types: RESTful CRUD Controller """
 
     def prep(r):
+        from s3 import IS_ONE_OF
         field = r.table.parent
         field.requires = IS_EMPTY_OR(IS_ONE_OF(db, "%s.id" % r.tablename,
                                                field.represent,
@@ -1044,14 +1051,13 @@ def allowance():
 
             # Provide some meaningful details of the failing
             # person record to facilitate correction of the source:
-            from s3 import s3_unicode
             person_details = []
             append = person_details.append
             data = item.data
             for f in ("pe_label", "last_name", "first_name", "date_of_birth"):
                 value = data.get(f)
                 if value:
-                    append(s3_unicode(value))
+                    append(s3_str(value))
             error = "Person not found: %s" % ", ".join(person_details)
             item.error = error
             item.element.set(current.xml.ATTRIBUTE["error"], error)
@@ -1188,7 +1194,7 @@ def need():
 
         tablename = "dvr_need"
 
-        from s3 import S3Represent
+        from s3 import IS_ONE_OF, S3Represent
         represent = S3Represent(lookup = tablename,
                                 hierarchy = True,
                                 translate = True,
@@ -1292,7 +1298,7 @@ def evaluation():
         - unused
     """
 
-    S3SQLInlineComponent = s3base.S3SQLInlineComponent
+    from s3 import S3SQLCustomForm, S3SQLInlineComponent
 
     crud_fields = ["person_id",
                    "case_id",
@@ -1333,7 +1339,7 @@ def evaluation():
                 )
 
     cappend("comments")
-    crud_form = s3base.S3SQLCustomForm(*crud_fields)
+    crud_form = S3SQLCustomForm(*crud_fields)
 
     s3db.configure("dvr_evaluation",
                    crud_form = crud_form,

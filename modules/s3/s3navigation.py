@@ -47,7 +47,7 @@ from gluon.storage import Storage
 from .s3utils import s3_str
 
 # =============================================================================
-class S3NavigationItem(object):
+class S3NavigationItem:
     """
         Base class and API for navigation items.
 
@@ -113,40 +113,33 @@ class S3NavigationItem(object):
                  ltr = False,
                  **attributes):
         """
-            Constructor
-
-            @param label: the label
-
-            @param c: the controller
-            @param f: the function
-            @param args: the arguments list
-            @param vars: the variables Storage
-            @param extension: the request extension
-            @param a: the application (defaults to current.request.application)
-            @param r: the request to default to
-
-            @param m: the URL method (will be appended to args)
-            @param p: the method to check authorization for
-                      (will not be appended to args)
-            @param t: the table concerned by this request
-                      (overrides c_f for auth)
-
-            @param url: a URL to use instead of building one manually
-                        - e.g. for external websites or mailto: links
-
-            @param tags: list of tags for this item
-            @param parent: the parent item
-
-            @param translate: translate the label
-            @param layout: the layout
-            @param check: a condition or list of conditions to automatically
-                          enable/disable this item
-            @param restrict: restrict to roles (role UID or list of role UIDs)
-            @param link: item has its own URL
-            @param mandatory: item is always active
-            @param ltr: item is always rendered LTR
-
-            @param attributes: attributes to use in layout
+            Args:
+                label: the label
+                c: the controller
+                f: the function
+                args: the arguments list
+                vars: the variables Storage
+                extension: the request extension
+                a: the application (defaults to current.request.application)
+                r: the request to default to
+                m: the URL method (will be appended to args)
+                p: the method to check authorization for
+                   (will not be appended to args)
+                t: the table concerned by this request
+                   (overrides c_f for auth)
+                url: a URL to use instead of building one manually
+                     - e.g. for external websites or mailto: links
+                tags: list of tags for this item
+                parent: the parent item
+                translate: translate the label
+                layout: the layout
+                check: a condition or list of conditions to automatically
+                       enable/disable this item
+                restrict: restrict to roles (role UID or list of role UIDs)
+                link: item has its own URL
+                mandatory: item is always active
+                ltr: item is always rendered LTR
+                attributes: attributes to use in layout
         """
 
         # Label
@@ -275,8 +268,11 @@ class S3NavigationItem(object):
             Check whether the current theme has a custom layout for this
             class, and if so, store it in current.layouts
 
-            @param: the name of the custom layout
-            @return: the layout or None if not present
+            Args:
+                name: the name of the custom layout
+
+            Returns:
+                The layout or None if not present
         """
 
         if hasattr(current, "layouts"):
@@ -373,7 +369,8 @@ class S3NavigationItem(object):
             entirely, i.e. no further checks will be run and the renderer
             will never be called.
 
-            @param request: the request object (defaults to current.request)
+            Args:
+                request: the request object (defaults to current.request)
         """
 
         # Deactivate the item if its target controller is deactivated
@@ -459,7 +456,8 @@ class S3NavigationItem(object):
             it would be really neccessary to perform this check more than
             once, then it should be easy to implement a reset_flags method.
 
-            @param request: the request object, defaults to current.request
+            Args:
+                request: the request object, defaults to current.request
         """
 
         if self.selected is not None:
@@ -517,7 +515,8 @@ class S3NavigationItem(object):
         """
             Find all items within the tree with the specified tag
 
-            @param tag: the tag
+            Args:
+                tag: the tag
         """
 
         items = []
@@ -534,8 +533,9 @@ class S3NavigationItem(object):
         """
             Enable items
 
-            @param tag: enable all items in the subtree with this tag
-                        (no tag enables only this item)
+            Args:
+                tag: enable all items in the subtree with this tag
+                     (no tag enables only this item)
         """
 
         if tag is not None:
@@ -551,8 +551,9 @@ class S3NavigationItem(object):
         """
             Disable items
 
-            @param tag: disable all items in the subtree with this tag
-                        (no tag disables only this item)
+            Args:
+                tag: disable all items in the subtree with this tag
+                     (no tag disables only this item)
         """
 
         if tag is not None:
@@ -572,7 +573,8 @@ class S3NavigationItem(object):
             Propagates the selection up the path to the root item (including
             the root item)
 
-            @param tag: a string
+            Args:
+                tag: a string
         """
 
         selected = None
@@ -586,7 +588,7 @@ class S3NavigationItem(object):
         else:
             for item in self.components:
                 if not selected:
-                    selected = item.select(tag=tag)
+                    selected = item.select(tag = tag)
                 else:
                     item.deselect_all()
             if not selected and tag in self.tags:
@@ -608,9 +610,10 @@ class S3NavigationItem(object):
         """
             Alter the renderer for a tagged subset of items in the subtree.
 
-            @param layout: the layout (renderer)
-            @param recursive: set this layout recursively for the subtree
-            @param tag: set this layout only for items with this tag
+            Args:
+                layout: the layout (renderer)
+                recursive: set this layout recursively for the subtree
+                tag: set this layout only for items with this tag
         """
 
         if layout is not None:
@@ -632,7 +635,8 @@ class S3NavigationItem(object):
             to the same attribute in the parent item if not set in
             this instance, used to inherit attributes to components
 
-            @param name: the attribute name
+            Args:
+                name: the attribute name
         """
 
         if name in self.__dict__:
@@ -653,18 +657,21 @@ class S3NavigationItem(object):
         """
             Match this item against request (uses GET vars)
 
-            @param request: the request object (defaults to current.request)
+            Args:
+                request: the request object (defaults to current.request)
 
-            @return: the match level (integer):
-                        0=no match
-                        1=controller
-                        2=controller+function
-                        3=controller+function+args
-                        4=controller+function+args+vars
+            Returns:
+                The match level (integer):
+                    0 = no match
+                    1 = controller
+                    2 = controller + function
+                    3 = controller + function + args
+                    4 = controller + function + args + vars
 
-            @note: currently ignores numerical arguments in the request,
-                   which is though subject to change (in order to support
-                   numerical arguments in the item)
+            Note:
+                Currently ignores numerical arguments in the request,
+                which is though subject to change (in order to support
+                numerical arguments in the item)
         """
 
         level = 0
@@ -781,7 +788,8 @@ class S3NavigationItem(object):
         """
             Get the matching branch item for request
 
-            @param request: the request object (defaults to current.request)
+            Args:
+                request: the request object (defaults to current.request)
         """
 
         if request is None:
@@ -799,7 +807,8 @@ class S3NavigationItem(object):
             Find the best match for request within the subtree, recursive
             helper method for branch().
 
-            @param request: the request object
+            Args:
+                request: the request object
         """
 
         items = self.get_all(enabled=True)
@@ -841,8 +850,9 @@ class S3NavigationItem(object):
         """
             Return the target URL for this item, doesn't check permissions
 
-            @param extension: override the format extension
-            @param kwargs: override URL query vars
+            Args:
+                extension: override the format extension
+                kwargs: override URL query vars
         """
 
         if not self.link:
@@ -877,8 +887,9 @@ class S3NavigationItem(object):
             Return the target URL for this item if accessible by the
             current user, otherwise False
 
-            @param extension: override the format extension
-            @param kwargs: override URL query vars
+            Args:
+                extension: override the format extension
+                kwargs: override URL query vars
         """
 
         aURL = current.auth.permission.accessible_url
@@ -913,11 +924,13 @@ class S3NavigationItem(object):
         """
             Append the format extension to the last argument
 
-            @param f: the function
-            @param args: argument list
-            @param ext: the format extension
+            Args:
+                f: the function
+                args: argument list
+                ext: the format extension
 
-            @return: tuple (f, args)
+            Returns:
+                tuple (f, args)
         """
 
         if not ext or ext == "html":
@@ -934,7 +947,8 @@ class S3NavigationItem(object):
         """
             Perform the checks and render this item.
 
-            @param request: the request object (defaults to current.request)
+            Args:
+                request: the request object (defaults to current.request)
         """
 
         renderer = self.renderer
@@ -1008,8 +1022,9 @@ class S3NavigationItem(object):
         """
             Set a parent for this item, base method for tree construction
 
-            @param p: the parent
-            @param i: the list index where to insert the item
+            Args:
+                p: the parent
+                i: the list index where to insert the item
         """
 
         if p is None:
@@ -1025,14 +1040,14 @@ class S3NavigationItem(object):
         else:
             p.components.append(self)
         self.parent = p
-        return
 
     # -------------------------------------------------------------------------
     def append(self, item=None):
         """
             Append a component
 
-            @param item: the component
+            Args:
+                item: the component
         """
 
         if item is not None:
@@ -1048,8 +1063,9 @@ class S3NavigationItem(object):
         """
             Insert a component item at position i
 
-            @param i: the index position
-            @param item: the component item
+            Args:
+                i: the index position
+                item: the component item
         """
 
         if item is not None:
@@ -1061,7 +1077,8 @@ class S3NavigationItem(object):
         """
             Extend this item with a list of components
 
-            @param items: list of component items
+            Args:
+                items: list of component items
         """
 
         if items:
@@ -1074,7 +1091,8 @@ class S3NavigationItem(object):
         """
             Convenience shortcut for extend
 
-            @param components: list of components
+            Args:
+                components: list of components
         """
 
         self.extend(components)
@@ -1085,7 +1103,8 @@ class S3NavigationItem(object):
         """
             Append component items to this item
 
-            @param items: the items to append
+            Args:
+                items: the items to append
         """
 
         if isinstance(items, (list, tuple)):
@@ -1101,7 +1120,8 @@ class S3NavigationItem(object):
         """
             Get the component item at position i
 
-            @param i: the index of the component item
+            Args:
+                i: the index of the component item
         """
 
         return self.components.__getitem__(i)
@@ -1111,8 +1131,9 @@ class S3NavigationItem(object):
         """
             Overwrite the component item at position i with item
 
-            @param i: the index within the component list
-            @param item: the item
+            Args:
+                i: the index within the component list
+                item: the item
         """
 
         self.components.__setitem__(i, item)
@@ -1122,7 +1143,8 @@ class S3NavigationItem(object):
         """
             Return the component at index i and remove it from the list
 
-            @param i: the component index
+            Args:
+                i: the component index
         """
 
         return self.components.pop(i)
@@ -1150,7 +1172,7 @@ class S3NavigationItem(object):
         if sub:
             path.extend(sub)
         if self.parent:
-            return self.parent.path(sub=path)
+            return self.parent.path(sub = path)
         else:
             return path
 
@@ -1159,7 +1181,8 @@ class S3NavigationItem(object):
         """
             Get all components with these flags
 
-            @param flags: dictionary of flags
+            Args:
+                flags: dictionary of flags
         """
 
         items = []
@@ -1174,7 +1197,8 @@ class S3NavigationItem(object):
         """
             Get the first component item with these flags
 
-            @param flags: dictionary of flags
+            Args:
+                flags: dictionary of flags
         """
 
         for item in self.components:
@@ -1188,7 +1212,8 @@ class S3NavigationItem(object):
         """
             Get the first component item with these flags
 
-            @param flags: dictionary of flags
+            Args:
+                flags: dictionary of flags
         """
 
         components = list(self.components)
@@ -1226,7 +1251,8 @@ class S3NavigationItem(object):
         """
             Get the index of a component item within the component list
 
-            @param item: the item
+            Args:
+                @param item: the item
         """
 
         return self.components.index(item)
@@ -1249,7 +1275,8 @@ class S3NavigationItem(object):
             Check whether this is the first item within the parent's
             components list with these flags
 
-            @param flags: dictionary of flags
+            Args:
+                flags: dictionary of flags
         """
 
         if not flags:
@@ -1269,7 +1296,8 @@ class S3NavigationItem(object):
             Check whether this is the last item within the parent's
             components list with these flags
 
-            @param flags: dictionary of flags
+            Args:
+                flags: dictionary of flags
         """
 
         if not flags:
@@ -1314,7 +1342,8 @@ class S3NavigationItem(object):
             Get the previous item in the parent's component list with these
             flags
 
-            @param flags: dictionary of flags
+            Args:
+                flags: dictionary of flags
         """
 
         preceding = self.preceding()
@@ -1330,7 +1359,8 @@ class S3NavigationItem(object):
         """
             Get the next item in the parent's component list with these flags
 
-            @param flags: dictionary of flags
+            Args:
+                flags: dictionary of flags
         """
 
         following = self.following()
@@ -1345,8 +1375,8 @@ def s3_rheader_resource(r):
     """
         Identify the tablename and record ID for the rheader
 
-        @param r: the current S3Request
-
+        Args:
+            r: the current S3Request
     """
 
     get_vars = r.get_vars
@@ -1371,25 +1401,25 @@ def s3_rheader_tabs(r, tabs=None):
     """
         Constructs a DIV of component links for a S3RESTRequest
 
-        @param tabs: the tabs as list of tuples (title, component_name, vars),
-                     where vars is optional
+        Args:
+            tabs: the tabs as list of tuples (title, component_name, vars),
+                  where vars is optional
     """
 
     rheader_tabs = S3ComponentTabs(tabs)
     return rheader_tabs.render(r)
 
 # =============================================================================
-class S3ComponentTabs(object):
+class S3ComponentTabs:
     """ Class representing a row of component tabs """
 
     def __init__(self, tabs=None):
         """
-            Constructor
-
-            @param tabs: the tabs configuration as list of names or tuples
-                         (label, component or method or function/)
-                         (label, component or method or function/, vars)
-                         (label, component, vars, method)
+            Args:
+                tabs: the tabs configuration as list of names or tuples
+                      (label, component or method or function/)
+                      (label, component or method or function/, vars)
+                      (label, component, vars, method)
         """
 
         if not tabs:
@@ -1402,7 +1432,8 @@ class S3ComponentTabs(object):
         """
             Render the tabs row
 
-            @param r: the S3Request
+            Args:
+                r: the S3Request
         """
 
         rheader_tabs = []
@@ -1526,7 +1557,8 @@ class S3ComponentTabs(object):
         """
             Add dynamic tabs
 
-            @param master: the name of the master table
+            Args:
+                master: the name of the master table
         """
 
         T = current.T
@@ -1586,17 +1618,16 @@ class S3ComponentTabs(object):
                     tabs.insert(position, tab)
 
 # =============================================================================
-class S3ComponentTab(object):
+class S3ComponentTab:
     """ Class representing a single Component Tab """
 
     def __init__(self, tab):
         """
-            Constructor
-
-            @param tab: the component tab configuration as tuple:
-                        (label, component or method or function/)
-                        (label, component or method, vars)
-                        (label, component, vars, method)
+            Args:
+                tab: the component tab configuration as tuple:
+                     (label, component or method or function/)
+                     (label, component or method, vars)
+                     (label, component, vars, method)
         """
 
         # @todo: use component hook label/plural as fallback for title
@@ -1640,7 +1671,8 @@ class S3ComponentTab(object):
         """
             Check whether the this tab is active
 
-            @param r: the S3Request
+            Args:
+                r: the S3Request
         """
 
         s3db = current.s3db
@@ -1693,7 +1725,8 @@ class S3ComponentTab(object):
             Check permissions for component tabs (in order to deactivate
             tabs the user is not permitted to access)
 
-            @param hook: the component hook
+            Args:
+                hook: the component hook
         """
 
         READ = "read"
@@ -1715,7 +1748,8 @@ class S3ComponentTab(object):
             Check whether the request GET vars match the GET vars in
             the URL of this tab
 
-            @param r: the S3Request
+            Args:
+                r: the S3Request
         """
 
         if self.vars is None:
@@ -1741,7 +1775,8 @@ class S3ScriptItem(S3NavigationItem):
                  **attributes
                  ):
         """
-            @param script: script to inject into jquery_ready when rendered
+            Args:
+                script: script to inject into jquery_ready when rendered
         """
 
         super(S3ScriptItem, self).__init__(attributes)
@@ -1767,17 +1802,16 @@ class S3ScriptItem(S3NavigationItem):
         return ""
 
 # =============================================================================
-class S3ResourceHeader(object):
+class S3ResourceHeader:
     """ Simple Generic Resource Header for tabbed component views """
 
     def __init__(self, fields=None, tabs=None, title=None):
         """
-            Constructor
-
-            @param fields: the fields to display, list of lists of
-                           fieldnames, Field instances or callables
-            @param tabs: the tabs
-            @param title: the title fieldname, Field or callable
+            Args:
+                fields: the fields to display, list of lists of
+                        fieldnames, Field instances or callables
+                tabs: the tabs
+                title: the title fieldname, Field or callable
 
             Fields are specified in order rows->cols, i.e. if written
             like:
@@ -1834,16 +1868,17 @@ class S3ResourceHeader(object):
         """
             Return the HTML representation of this rheader
 
-            @param r: the S3Request instance to render the header for
-            @param tabs: the tabs (overrides the original tabs definition)
-            @param table: override r.table
-            @param record: override r.record
-            @param actions: any action items for the view
-            @param as_div: True: will return the rheader_fields and the
-                           rheader_tabs together as a DIV
-                           False will return the rheader_fields and the
-                           rheader_tabs as a tuple
-                           (rheader_fields, rheader_tabs)
+            Args:
+                r: the S3Request instance to render the header for
+                tabs: the tabs (overrides the original tabs definition)
+                table: override r.table
+                record: override r.record
+                actions: any action items for the view
+                as_div: True: will return the rheader_fields and the
+                              rheader_tabs together as a DIV
+                        False: will return the rheader_fields and the
+                               rheader_tabs as a tuple
+                               (rheader_fields, rheader_tabs)
         """
 
         if table is None:
@@ -1918,11 +1953,13 @@ class S3ResourceHeader(object):
         """
             Render an rheader field
 
-            @param table: the table
-            @param record: the record
-            @param col: the column spec (field name or tuple (label, fieldname))
+            Args:
+                table: the table
+                record: the record
+                col: the column spec (field name or tuple (label, fieldname))
 
-            @returns: tuple (label, value)
+            Returns:
+                tuple (label, value)
         """
 
         field = None

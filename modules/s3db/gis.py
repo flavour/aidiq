@@ -30,9 +30,11 @@
 __all__ = ("LocationModel",
            "LocationNameModel",
            "LocationTagModel",
-           "LocationGroupModel",
+           #"LocationGroupModel",
            "LocationHierarchyModel",
+           "LocationRouteModel",
            "GISConfigModel",
+           "GISMenuModel",
            "LayerEntityModel",
            "LayerFeatureModel",
            "LayerMapModel",
@@ -53,7 +55,6 @@ __all__ = ("LocationModel",
 import json
 import os
 
-from collections import OrderedDict
 from io import BytesIO
 from uuid import uuid4
 
@@ -108,7 +109,6 @@ class LocationModel(S3Model):
         db = current.db
         messages = current.messages
         settings = current.deployment_settings
-        NONE = messages["NONE"]
 
         # Shortcuts
         #define_table = self.define_table
@@ -163,7 +163,7 @@ class LocationModel(S3Model):
             Field("gis_feature_type", "integer", notnull=True,
                   default = 1,
                   label = T("Feature Type"),
-                  represent = S3Represent(options = gis_feature_type_opts),
+                  represent = s3_options_represent(gis_feature_type_opts),
                   requires = IS_IN_SET(gis_feature_type_opts,
                                        zero = None),
                   ),
@@ -452,7 +452,7 @@ class LocationModel(S3Model):
         """ FK representation """
 
         if not code:
-            return current.messages["NONE"]
+            return NONE
 
         return current.gis.get_country(code, key_type="code") or \
                current.messages.UNKNOWN_OPT
@@ -731,23 +731,25 @@ class LocationModel(S3Model):
     @staticmethod
     def gis_location_duplicate(item):
         """
-          This callback will be called when importing location records it will look
-          to see if the record being imported is a duplicate.
+            This callback will be called when importing location records it will look
+            to see if the record being imported is a duplicate.
 
-          @param item: An S3ImportItem object which includes all the details
-                       of the record being imported
+            Args:
+                item: An S3ImportItem object which includes all the details
+                      of the record being imported
 
-          If the record is a duplicate then it will set the item method to update
+            If the record is a duplicate then it will set the item method to update
 
-          Rules for finding a duplicate:
-           - If there is no level, then deduplicate based on the address
-           - Look for a record with the same name, ignoring case
-           - If no match, also check name_l10n
-           - If parent exists in the import, the same parent
-           - If start_date exists in the import, the same start_date
-           - If end_date exists in the import, the same end_date
+            Rules for finding a duplicate:
+            - If there is no level, then deduplicate based on the address
+            - Look for a record with the same name, ignoring case
+            - If no match, also check name_l10n
+            - If parent exists in the import, the same parent
+            - If start_date exists in the import, the same start_date
+            - If end_date exists in the import, the same end_date
 
-            @ToDo: Check soundex? (only good in English)
+            TODO:
+                Check soundex? (only good in English)
                    http://eden.sahanafoundation.org/ticket/481
                    - make a deployment_setting for relevant function?
         """
@@ -848,7 +850,7 @@ class LocationModel(S3Model):
             # PostgreSQL LOWER() on Windows doesn't convert it, although this seems to be a locale issue:
             # http://stackoverflow.com/questions/18507589/the-lower-function-on-international-characters-in-postgresql
             # Works fine on Debian servers if the locale is a .UTF-8 before the Postgres cluster is created
-            query = (table.name.lower() == s3_unicode(name).lower().encode("utf8")) & \
+            query = (table.name.lower() == s3_str(name).lower().encode("utf8")) & \
                     (table.level == level)
         else :
             query = (table.name.lower() == name.lower()) & \
@@ -910,7 +912,7 @@ class LocationModel(S3Model):
     @staticmethod
     def gis_level_represent(level):
         if not level:
-            return current.messages["NONE"]
+            return NONE
         elif level == "L0":
             return current.messages.COUNTRY
         else:
@@ -943,8 +945,9 @@ class LocationModel(S3Model):
             JSON search method for S3LocationAutocompleteWidget
             - adds hierarchy support
 
-            @param r: the S3Request
-            @param attr: request attributes
+            Args:
+                r: the S3Request
+                attr: request attributes
         """
 
         output = None
@@ -975,7 +978,7 @@ class LocationModel(S3Model):
 
         # We want to do case-insensitive searches
         # (default anyway on MySQL/SQLite, but not PostgreSQL)
-        value = s3_unicode(value).lower().strip()
+        value = s3_str(value).lower().strip()
 
         search_l10n = None
         translate = None
@@ -1314,7 +1317,7 @@ class LocationNameModel(S3Model):
                   )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class LocationTagModel(S3Model):
@@ -1369,7 +1372,7 @@ class LocationTagModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class LocationGroupModel(S3Model):
@@ -1425,7 +1428,7 @@ class LocationGroupModel(S3Model):
                      *s3_meta_fields())
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class LocationHierarchyModel(S3Model):
@@ -1508,8 +1511,8 @@ class LocationHierarchyModel(S3Model):
             msg_record_created = T("Location Hierarchy added"),
             msg_record_modified = T("Location Hierarchy updated"),
             msg_record_deleted = T("Location Hierarchy deleted"),
-            msg_list_empty = T("No Location Hierarchies currently defined")
-        )
+            msg_list_empty = T("No Location Hierarchies currently defined"),
+            )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("location_id",)),
@@ -1517,7 +1520,7 @@ class LocationHierarchyModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1543,6 +1546,124 @@ class LocationHierarchyModel(S3Model):
                     form.errors[gap] = hierarchy_gap
 
 # =============================================================================
+class LocationRouteModel(S3Model):
+    """
+        Routes model
+        - collection of WayPoints
+
+        e.g. for Evacuation Routes (could then link it to a specific Hazard, or Risk)
+
+        @ToDo: Redraw Route location if a WayPoint is added/removed/reordered
+        @ToDo: Set WayPoints to posn=0 if a new Route is drawn
+        @ToDo: Custom Method to draw LineString with WayPoints visible & snap to them
+        @ToDo: GPX Import/Export
+    """
+
+    names = ("gis_route",
+             "gis_route_id",
+             "gis_waypoint",
+             )
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+
+        location_id = self.gis_location_id
+
+        crud_strings = current.response.s3.crud_strings
+        define_table = self.define_table
+
+        # ---------------------------------------------------------------------
+        # Location Groups
+        #
+        tablename = "gis_route"
+        define_table(tablename,
+                     Field("name",
+                           label = T("Name"),
+                           ),
+                     # LineString for the overall Route
+                     location_id(empty = False,
+                                 ondelete = "CASCADE",
+                                 widget = S3LocationSelector(lines = True,
+                                                             points = False,
+                                                             ),
+                                 ),
+                     # @ToDo: Field for uploaded GPX file?
+                     s3_comments(),
+                     *s3_meta_fields())
+
+        self.add_components(tablename,
+                            gis_waypoint = "route_id",
+                            )
+
+        crud_strings[tablename] = Storage(
+            label_create = T("Create Route"),
+            title_display = T("Route"),
+            title_list = T("Routes"),
+            title_update = T("Edit Route"),
+            label_list_button = T("List Routes"),
+            label_delete_button = T("Delete Route"),
+            msg_record_created = T("Route added"),
+            msg_record_modified = T("Route updated"),
+            msg_record_deleted = T("Route deleted"),
+            msg_list_empty = T("No Routes currently defined"),
+            )
+
+        represent = S3Represent(lookup = tablename)
+
+        route_id = S3ReusableField("route_id", "reference %s" % tablename,
+                                   label = T("Route"),
+                                   ondelete = "CASCADE",
+                                   represent = represent,
+                                   requires = IS_EMPTY_OR(
+                                                IS_ONE_OF(db, "%s.id" % tablename,
+                                                          represent,
+                                                          sort = True
+                                                          )),
+                                   sortby = "name",
+                                   )
+
+        # ---------------------------------------------------------------------
+        # Location WayPoint
+        #
+        tablename = "gis_waypoint"
+        define_table(tablename,
+                     # Optional link to a Route
+                     Field("route_id", "reference gis_route",
+                           label = T("Route"),
+                           ondelete = "CASCADE",
+                           ),
+                     # None => Not active in the Route
+                     Field("posn", "integer",
+                           label = T("Position"),
+                           ),
+                     location_id(empty = False,
+                                 label = T("WayPoint"),
+                                 ondelete = "CASCADE",
+                                 ),
+                     # @ToDo: Field for uploaded GPX file?
+                     s3_comments(),
+                     *s3_meta_fields())
+
+        crud_strings[tablename] = Storage(
+            label_create = T("Create WayPoint"),
+            title_display = T("WayPoint"),
+            title_list = T("WayPoints"),
+            title_update = T("Edit WayPoint"),
+            label_list_button = T("List WayPoints"),
+            label_delete_button = T("Delete WayPoint"),
+            msg_record_created = T("WayPoint added"),
+            msg_record_modified = T("WayPoint updated"),
+            msg_record_deleted = T("WayPoint deleted"),
+            msg_list_empty = T("No WayPoints currently defined"),
+            )
+
+        # Pass names back to global scope (s3.*)
+        return {"gis_route_id": route_id,
+                }
+
+# =============================================================================
 class GISConfigModel(S3Model):
     """
         GIS Config model: Web Map Context
@@ -1555,7 +1676,7 @@ class GISConfigModel(S3Model):
     """
 
     names = ("gis_config",
-             "gis_menu",
+             #"gis_config_osm",
              "gis_marker",
              "gis_projection",
              "gis_config_id",
@@ -1578,7 +1699,6 @@ class GISConfigModel(S3Model):
         configure = self.configure
         crud_strings = current.response.s3.crud_strings
         define_table = self.define_table
-        super_link = self.super_link
 
         # =====================================================================
         # GIS Markers (Icons)
@@ -1637,7 +1757,8 @@ class GISConfigModel(S3Model):
             msg_record_created = T("Marker added"),
             msg_record_modified = T("Marker updated"),
             msg_record_deleted = T("Marker deleted"),
-            msg_list_empty = T("No Markers currently available"))
+            msg_list_empty = T("No Markers currently available"),
+            )
 
         # Reusable field to include in other table definitions
         # @ToDo: Widget to include icons in dropdown: http://jqueryui.com/selectmenu/#custom_render
@@ -1652,7 +1773,7 @@ class GISConfigModel(S3Model):
                                                           zero = T("Use default"),
                                                           )),
                                     sortby = "name",
-                                    widget = S3SelectWidget(icons=self.gis_marker_options),
+                                    widget = S3SelectWidget(icons = self.gis_marker_options),
                                     comment=S3PopupLink(c = "gis",
                                                         f = "marker",
                                                         #vars = {"child": "marker_id",
@@ -1741,10 +1862,11 @@ class GISConfigModel(S3Model):
             msg_record_created = T("Projection added"),
             msg_record_modified = T("Projection updated"),
             msg_record_deleted = T("Projection deleted"),
-            msg_list_empty = T("No Projections currently defined"))
+            msg_list_empty = T("No Projections currently defined"),
+            )
 
         # Reusable field to include in other table definitions
-        represent = S3Represent(lookup=tablename)
+        represent = S3Represent(lookup = tablename)
         projection_id = S3ReusableField("projection_id", "reference %s" % tablename,
                                         sortby="name",
                                         requires = IS_EMPTY_OR(
@@ -1753,15 +1875,15 @@ class GISConfigModel(S3Model):
                                                               )),
                                         represent = represent,
                                         label = T("Projection"),
-                                        comment=S3PopupLink(c = "gis",
-                                                            f = "projection",
-                                                            label = ADD_PROJECTION,
-                                                            title = T("Projection"),
-                                                            tooltip = "%s|%s|%s" % (T("The system supports 2 projections by default:"),
-                                                                                    T("Spherical Mercator (900913) is needed to use OpenStreetMap/Google/Bing base layers."),
-                                                                                    T("WGS84 (EPSG 4236) is required for many WMS servers."),
-                                                                                    ),
-                                                            ),
+                                        comment = S3PopupLink(c = "gis",
+                                                              f = "projection",
+                                                              label = ADD_PROJECTION,
+                                                              title = T("Projection"),
+                                                              tooltip = "%s|%s|%s" % (T("The system supports 2 projections by default:"),
+                                                                                      T("Spherical Mercator (900913) is needed to use OpenStreetMap/Google/Bing base layers."),
+                                                                                      T("WGS84 (EPSG 4236) is required for many WMS servers."),
+                                                                                      ),
+                                                              ),
                                         ondelete = "RESTRICT",
                                         )
 
@@ -1800,7 +1922,7 @@ class GISConfigModel(S3Model):
                      Field("name"),
 
                      # pe_id for Personal/OU configs
-                     super_link("pe_id", "pr_pentity"),
+                     self.super_link("pe_id", "pr_pentity"),
                      # Gets populated onvalidation
                      Field("pe_type", "integer",
                            requires = IS_EMPTY_OR(IS_IN_SET(pe_types)),
@@ -1879,6 +2001,26 @@ class GISConfigModel(S3Model):
                            writable = False,
                            ),
 
+                     # Old functionality to support editing OSM data inside Eden, using Potlatch
+                     #Field("osm_oauth_consumer_key",
+                     #      label = T("OpenStreetMap OAuth Consumer Key"),
+                     #      comment = DIV(_class = "stickytip",
+                     #                    _title = "%s|%s|%s" % (T("OpenStreetMap OAuth Consumer Key"),
+                     #                                           T("In order to be able to edit OpenStreetMap data from within %(name_short)s, you need to register for an account on the OpenStreetMap server.") % \
+                     #                                               {"name_short": settings.get_system_name_short()},
+                     #                                           T("Go to %(url)s, sign up & then register your application. You can put any URL in & you only need to select the 'modify the map' permission.") % \
+                     #                                               {"url": A("http://www.openstreetmap.org",
+                     #                                                         _href = "http://www.openstreetmap.org",
+                     #                                                         _target = "blank",
+                     #                                                         ),
+                     #                                                },
+                     #                                           ),
+                     #                    ),
+                     #      ),
+                     #Field("osm_oauth_consumer_secret",
+                     #      label = T("OpenStreetMap OAuth Consumer Secret"),
+                     #      ),
+
                      Field("image", "upload",
                            autodelete = False,
                            custom_retrieve = gis_marker_retrieve,
@@ -1940,8 +2082,8 @@ class GISConfigModel(S3Model):
             msg_record_created = T("Map Profile added"),
             msg_record_modified = T("Map Profile updated"),
             msg_record_deleted = T("Map Profile deleted"),
-            msg_list_empty = T("No Map Profiles currently defined")
-        )
+            msg_list_empty = T("No Map Profiles currently defined"),
+            )
 
         configure(tablename,
                   create_next = URL(c="gis", f="config",
@@ -1977,40 +2119,9 @@ class GISConfigModel(S3Model):
                       deletable = False,
                       )
 
-        # =====================================================================
-        # GIS Menu Entries
-        #
-        # Entries in here decide whether a GIS menu appears for a user & which
-        # entries are included within it.
-        #
-        # If the pe_id field is blank then it applies to everyone
-        #
-        # Initially we just check the Person's
-        # @ToDo: Check for OUs too
-
-        tablename = "gis_menu"
-        define_table(tablename,
-                     config_id(empty = False),
-                     # Component, not instance
-                     super_link("pe_id", "pr_pentity"),
-                     *s3_meta_fields())
-
-        # Initially will be populated only when a Personal config is created
-        # CRUD Strings
-        # crud_strings[tablename] = Storage(
-            # label_create = T("Add Menu Entry"),
-            # title_display = T("Menu Entry Details"),
-            # title_list = T("Menu Entries"),
-            # title_update = T("Edit Menu Entry"),
-            # label_list_button = T("List Menu Entries"),
-            # label_delete_button = T("Delete Menu Entry"),
-            # msg_record_created = T("Menu Entry added"),
-            # msg_record_modified = T("Menu Entry updated"),
-            # msg_record_deleted = T("Menu Entry deleted"),
-            # msg_list_empty = T("No Menu Entries currently defined"))
-
         # Pass names back to global scope (s3.*)
         return {"gis_config_id": config_id,
+                #"gis_config_osm": self.gis_config_osm,
                 "gis_marker_id": marker_id,
                 "gis_projection_id": projection_id,
                 }
@@ -2098,9 +2209,9 @@ class GISConfigModel(S3Model):
                         (table.id != config_id)
                 db(query).update(pe_default = False)
             # Add to GIS Menu
-            db.gis_menu.update_or_insert(config_id = config_id,
-                                         pe_id = pe_id,
-                                         )
+            current.s3db.gis_menu.update_or_insert(config_id = config_id,
+                                                   pe_id = pe_id,
+                                                   )
         else:
             config = current.response.s3.gis.config
             if config and config.id == config_id:
@@ -2143,6 +2254,23 @@ class GISConfigModel(S3Model):
         s3 = current.response.s3
         if s3.gis.config and s3.gis.config.id == row.id:
             s3.gis.config = None
+
+    # -------------------------------------------------------------------------
+    #@staticmethod
+    #def gis_config_osm(pe_id):
+    #    """
+    #        Gets the OSM-related options for a pe_id
+    #    """
+
+    #    table = current.s3db.gis_config
+    #    record = current.db(table.pe_id == pe_id).select(table.osm_oauth_consumer_key,
+    #                                                     table.osm_oauth_consumer_secret,
+    #                                                     limitby = (0, 1)
+    #                                                     ).first()
+    #    if record:
+    #        return record.osm_oauth_consumer_key, record.osm_oauth_consumer_secret
+    #    else:
+    #        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2301,7 +2429,9 @@ class gis_MarkerRepresent(S3Represent):
     def represent_row(self, row):
         """
             Represent a Row
-            @param row: The Row
+
+            Args:
+                row: The Row
         """
         represent = DIV(IMG(_src = URL(c="static", f="img",
                                        args = ["markers", row.image],
@@ -2309,6 +2439,50 @@ class gis_MarkerRepresent(S3Represent):
                             _height = 40,
                             ))
         return represent
+
+# =============================================================================
+class GISMenuModel(S3Model):
+
+    names = ("gis_menu",
+             )
+
+    def model(self):
+
+        # =====================================================================
+        # GIS Menu Entries
+        #
+        # Entries in here decide whether a GIS menu appears for a user & which
+        # entries are included within it.
+        #
+        # If the pe_id field is blank then it applies to everyone
+        #
+        # Initially we just check the Person's
+        # @ToDo: Check for OUs too
+
+        tablename = "gis_menu"
+        self.define_table(tablename,
+                          self.gis_config_id(empty = False),
+                          # Component, not instance
+                          self.super_link("pe_id", "pr_pentity"),
+                          *s3_meta_fields())
+
+        # Initially will be populated only when a Personal config is created
+        # CRUD Strings
+        # current.response.s3.crud_strings[tablename] = Storage(
+            # label_create = T("Add Menu Entry"),
+            # title_display = T("Menu Entry Details"),
+            # title_list = T("Menu Entries"),
+            # title_update = T("Edit Menu Entry"),
+            # label_list_button = T("List Menu Entries"),
+            # label_delete_button = T("Delete Menu Entry"),
+            # msg_record_created = T("Menu Entry added"),
+            # msg_record_modified = T("Menu Entry updated"),
+            # msg_record_deleted = T("Menu Entry deleted"),
+            # msg_list_empty = T("No Menu Entries currently defined"),
+            # )
+
+        # Pass names back to global scope (s3.*)
+        return None
 
 # ==============================================================================
 class LayerEntityModel(S3Model):
@@ -2381,7 +2555,7 @@ class LayerEntityModel(S3Model):
             msg_record_created = T("Layer added"),
             msg_record_modified = T("Layer updated"),
             msg_record_deleted = T("Layer deleted"),
-            msg_list_empty = T("No Layers currently defined")
+            msg_list_empty = T("No Layers currently defined"),
             )
 
         # Components
@@ -2459,7 +2633,7 @@ class LayerEntityModel(S3Model):
             msg_record_created = T("Profile Configured"),
             msg_record_modified = T("Profile Configuration updated"),
             msg_record_deleted = T("Profile Configuration removed"),
-            msg_list_empty = T("No Profiles currently have Configurations for this Layer")
+            msg_list_empty = T("No Profiles currently have Configurations for this Layer"),
             )
 
         self.configure(tablename,
@@ -2608,12 +2782,12 @@ class LayerEntityModel(S3Model):
             msg_record_created = T("Map Style added"),
             msg_record_modified = T("Map Style updated"),
             msg_record_deleted = T("Map Style deleted"),
-            msg_list_empty = T("No Map Styles currently defined")
-        )
+            msg_list_empty = T("No Map Styles currently defined"),
+            )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class LayerFeatureModel(S3Model):
@@ -2649,6 +2823,8 @@ class LayerFeatureModel(S3Model):
                                                                     ),
                                               ),
                                 ),
+                          # @ToDo: 'function' is a SQL-reserved word in several databases
+                          #        - rename as 'function_name'
                           Field("function",
                                 label = T("Function"),
                                 requires = IS_NOT_EMPTY(),
@@ -2772,7 +2948,8 @@ class LayerFeatureModel(S3Model):
             msg_record_created = T("Feature Layer added"),
             msg_record_modified = T("Feature Layer updated"),
             msg_record_deleted = T("Feature Layer deleted"),
-            msg_list_empty = T("No Feature Layers currently defined"))
+            msg_list_empty = T("No Feature Layers currently defined"),
+            )
 
         self.configure(tablename,
                        deduplicate = self.gis_layer_feature_deduplicate,
@@ -2791,7 +2968,7 @@ class LayerFeatureModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2889,7 +3066,6 @@ class LayerMapModel(S3Model):
         MAX_FILENAME_LENGTH = current.MAX_FILENAME_LENGTH
 
         messages = current.messages
-        NONE  = messages["NONE"]
         TRANSPARENT = T("Transparent?")
         BASE_LAYER = T("Base Layer?")
         LOCATION = T("Location")
@@ -2939,30 +3115,6 @@ class LayerMapModel(S3Model):
                            ),
                      gis_opacity()(),
                      *s3_meta_fields())
-
-        # ---------------------------------------------------------------------
-        # GPS Waypoints
-        #tablename = "gis_waypoint"
-        #define_table(tablename,
-        #             Field("name", length=128, notnull=True,
-        #                   label = T("Name"),
-        #                   ),
-        #             Field("description", length=128,
-        #                   label = DESCRIPTION,
-        #                   ),
-        #             Field("category", length=128,
-        #                   label = T("Category"),
-        #                   ),
-        #             location_id(),
-        #             *s3_meta_fields())
-
-        # ---------------------------------------------------------------------
-        # GPS Tracks (stored as 1 record per point)
-        #tablename = "gis_trackpoint"
-        #define_table(tablename,
-        #             location_id(),
-        #             #track_id(),        # link to the uploaded file?
-        #             *s3_meta_fields())
 
         # ---------------------------------------------------------------------
         # ArcGIS REST
@@ -3043,7 +3195,7 @@ class LayerMapModel(S3Model):
                      desc_field()(),
                      Field("type", length=32,
                            label = TYPE,
-                           represent = S3Represent(options = bing_layer_types),
+                           represent = s3_options_represent(bing_layer_types),
                            requires = IS_IN_SET(bing_layer_types),
                            ),
                      s3_role_required(),       # Single Role
@@ -3200,7 +3352,7 @@ class LayerMapModel(S3Model):
                      desc_field()(),
                      Field("type", length=16,
                            label = TYPE,
-                           represent = S3Represent(options = google_layer_types),
+                           represent = s3_options_represent(google_layer_types),
                            requires = IS_IN_SET(google_layer_types),
                            ),
                      s3_role_required(),       # Single Role
@@ -3479,7 +3631,7 @@ class LayerMapModel(S3Model):
                            ),
                      Field("gis_feature_type", "integer",
                            label = T("Feature Type"),
-                           represent = S3Represent(options = gis_feature_type_opts),
+                           represent = s3_options_represent(gis_feature_type_opts),
                            requires = IS_EMPTY_OR(
                                         IS_IN_SET(gis_feature_type_opts,
                                                   zero = None)),
@@ -3919,7 +4071,7 @@ class LayerMapModel(S3Model):
                      *s3_meta_fields())
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -3998,7 +4150,7 @@ class LayerMapModel(S3Model):
                                      ),
                          )
         else:
-            return current.messages["NONE"]
+            return NONE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -4067,7 +4219,7 @@ class LayerMapModel(S3Model):
                                      ),
                          )
         else:
-            return current.messages["NONE"]
+            return NONE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -4383,7 +4535,7 @@ class LayerThemeModel(S3Model):
                             gis_theme_data = "layer_theme_id",
                             )
 
-        represent = S3Represent(lookup=tablename)
+        represent = S3Represent(lookup = tablename)
         layer_theme_id = S3ReusableField("layer_theme_id", "reference %s" % tablename,
                                          label = "Theme Layer",
                                          ondelete = "CASCADE",
@@ -4429,8 +4581,8 @@ class LayerThemeModel(S3Model):
             msg_record_created = T("Data added to Theme Layer"),
             msg_record_modified = T("Theme Data updated"),
             msg_record_deleted = T("Theme Data deleted"),
-            msg_list_empty = T("No Data currently defined for this Theme Layer")
-        )
+            msg_list_empty = T("No Data currently defined for this Theme Layer"),
+            )
 
         # Pass names back to global scope (s3.*)
         return {"gis_layer_theme_id": layer_theme_id, # Used by gis/theme_data for csv_extra_fields
@@ -4551,7 +4703,8 @@ class PoIModel(S3Model):
             msg_record_created = T("PoI Type added"),
             msg_record_modified = T("PoI Type updated"),
             msg_record_deleted = T("PoI Type deleted"),
-            msg_list_empty = T("No PoI Types currently available"))
+            msg_list_empty = T("No PoI Types currently available"),
+            )
 
         # ---------------------------------------------------------------------
         # PoI
@@ -4593,9 +4746,10 @@ class PoIModel(S3Model):
             msg_record_created = T("Point of Interest added"),
             msg_record_modified = T("Point of Interest updated"),
             msg_record_deleted = T("Point of Interest deleted"),
-            msg_list_empty = T("No Points of Interest currently available"))
+            msg_list_empty = T("No Points of Interest currently available"),
+            )
 
-        #represent = S3Represent(lookup=tablename)
+        #represent = S3Represent(lookup = tablename)
         #poi_id = S3ReusableField("poi_id", "reference %s" % tablename,
         #                         label = T("Point of Interest"),
         #                         ondelete = "RESTRICT",
@@ -4817,7 +4971,7 @@ class PoIFeedModel(S3Model):
                           *s3_meta_fields())
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 def name_field():
@@ -4833,7 +4987,7 @@ def name_field():
 def desc_field():
     return S3ReusableField("description", "text",
                            label = current.T("Description"),
-                           represent = lambda v: v or current.messages["NONE"],
+                           represent = lambda v: v or NONE,
                            widget = s3_comments_widget,
                            )
 
@@ -4841,14 +4995,14 @@ def desc_field():
 def source_name_field():
     return S3ReusableField("source_name",
                            label = current.T("Source Name"),
-                           represent = lambda v: v or current.messages["NONE"],
+                           represent = lambda v: v or NONE,
                            )
 
 # =============================================================================
 def source_url_field():
     return S3ReusableField("source_url",
                            label = current.T("Source URL"),
-                           represent = lambda v: v or current.messages["NONE"],
+                           represent = lambda v: v or NONE,
                            requires = IS_EMPTY_OR(IS_URL(mode="generic")),
                            )
 
@@ -5045,10 +5199,12 @@ def gis_hierarchy_editable(level, location_id):
     """
         Returns the edit_<level> value from the parent country hierarchy.
 
-        Used by gis_location_onvalidation()
+        Args:
+            id: the id of the location or an ancestor - used to find
+                the ancestor country location.
 
-        @param id: the id of the location or an ancestor - used to find
-                   the ancestor country location.
+        Used by:
+            gis_location_onvalidation()
     """
 
     country = current.gis.get_parent_country(location_id)
@@ -5245,14 +5401,17 @@ def gis_location_filter(r):
                                        ).first()
                 code = tag.value
             location_filter = (FS(selector) == code)
+
         elif resource.name == "project":
             # Go via project_location link table
             selector = "location.location_id$%s" % row.level
             location_filter = (FS(selector) == row.name)
+
         else:
             # Normal case: resource with location_id
             selector = "%s.location_id$%s" % (resource.name, row.level)
             location_filter = (FS(selector) == row.name)
+
         resource.add_filter(location_filter)
 
 # =============================================================================
@@ -5304,9 +5463,10 @@ class gis_LocationRepresent(S3Represent):
         """
             Represent a (key, value) as hypertext link.
 
-            @param k: the key
-            @param v: the representation of the key
-            @param row: the row with this key (unused here)
+            Args:
+                k: the key
+                v: the representation of the key
+                row: the row with this key (unused here)
         """
 
         if k is None:
@@ -5382,7 +5542,8 @@ class gis_LocationRepresent(S3Represent):
             key and fields are not used, but are kept for API
             compatiblity reasons.
 
-            @param values: the gis_location IDs
+            Args:
+                values: the gis_location IDs
         """
 
         db = current.db
@@ -5497,7 +5658,8 @@ class gis_LocationRepresent(S3Represent):
             - assumes that Path & Lx have been populated correctly by
               gis.update_location_tree()
 
-            @param row: the gis_location Row
+            Args:
+                row: the gis_location Row
         """
 
         sep = self.sep
@@ -5657,7 +5819,7 @@ class gis_LocationRepresent(S3Represent):
                     else:
                         # Already inside a link with onclick-script
                         script = None
-                    represent = SPAN(s3_unicode(represent),
+                    represent = SPAN(s3_str(represent),
                                      ICON("map-marker",
                                           _title = self.lat_lon_represent(row),
                                           _onclick = script,
@@ -5677,7 +5839,7 @@ def gis_layer_represent(layer_id, row=None, show_link=True):
         s3db = current.s3db
         ltable = s3db.gis_layer_entity
     elif not layer_id:
-        return current.messages["NONE"]
+        return NONE
     else:
         db = current.db
         s3db = current.s3db

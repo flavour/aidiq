@@ -48,6 +48,7 @@ def series():
             _roles_permitted.readable = _roles_permitted.writable = False
             _roles_permitted.default = r.record.roles_permitted
             if r.record.richtext:
+                from s3 import s3_richtext_widget
                 table.body.represent = lambda body: XML(body)
                 table.body.widget = s3_richtext_widget
             else:
@@ -83,14 +84,17 @@ def blog():
 
     # Pre-process
     def prep(r):
-        s3db.configure(r.tablename, listadd=False)
+        s3db.configure(r.tablename,
+                       listadd = False,
+                       )
         return True
     s3.prep = prep
 
     # Post-process
     def postp(r, output):
         if r.record:
-            response.view = s3base.S3CRUD._view(r, "cms/blog.html")
+            from s3 import S3CRUD
+            response.view = S3CRUD._view(r, "cms/blog.html")
         return output
     s3.postp = postp
 
@@ -109,7 +113,8 @@ def post():
     # Custom Method to add Comments
     s3db.set_method("cms", "post",
                     method = "discuss",
-                    action = discuss)
+                    action = discuss,
+                    )
 
     def prep(r):
         if r.interactive:
@@ -170,7 +175,8 @@ def post():
                     table.date.readable = table.date.writable = False
                     table.expired.readable = table.expired.writable = False
                     # We always want the Rich Text widget here
-                    table.body.widget = s3base.s3_richtext_widget
+                    from s3 import s3_richtext_widget
+                    table.body.widget = s3_richtext_widget
                     resource = get_vars.get("resource", None)
                     if resource in ("about", "contact", "help", "index"):
 
@@ -243,15 +249,15 @@ def post():
                         if module in ("appadmin", "errors", "ocr"):
                             continue
                         modules[module] = _modules[module].get("name_nice")
+                    from s3 import IS_IN_SET_LAZY
                     s3db.cms_post_module.field.requires = \
                         IS_IN_SET_LAZY(lambda: sort_dict_by_values(modules))
 
         return True
     s3.prep = prep
 
-    output = s3_rest_controller(rheader = s3db.cms_rheader,
-                                )
-    return output
+    from s3db.cms import cms_rheader
+    return s3_rest_controller(rheader = cms_rheader)
 
 # -----------------------------------------------------------------------------
 def page():
@@ -285,14 +291,20 @@ def page():
     # Post-process
     def postp(r, output):
         if r.record and not r.transformable():
-            output = {"item": s3base.S3XMLContents(r.record.body).xml()}
+            from s3 import S3CRUD, S3XMLContents
+            output = {"item": S3XMLContents(r.record.body).xml()}
             current.menu.options = None
-            response.view = s3base.S3CRUD._view(r, "cms/page.html")
+            response.view = S3CRUD._view(r, "cms/page.html")
             if r.record.replies:
-                ckeditor = URL(c="static", f="ckeditor", args="ckeditor.js")
+                ckeditor = URL(c="static", f="ckeditor",
+                               args = "ckeditor.js",
+                               )
                 s3.scripts.append(ckeditor)
-                adapter = URL(c="static", f="ckeditor", args=["adapters",
-                                                              "jquery.js"])
+                adapter = URL(c="static", f="ckeditor",
+                              args = ["adapters",
+                                      "jquery.js",
+                                      ],
+                              )
                 s3.scripts.append(adapter)
 
                 # Toolbar options: http://docs.cksource.com/CKEditor_3.x/Developers_Guide/Toolbar
@@ -542,12 +554,13 @@ def newsfeed():
                 pass
                 # @ToDo: deployment_setting
                 #if not auth.s3_has_role("ADMIN"):
-                #    represent = S3Represent(lookup="cms_series",
-                #                            translate=settings.get_L10n_translate_cms_series())
-                #    field.requires = IS_ONE_OF(db,
-                #                               "cms_series.id",
+                #    from s3 import IS_ONE_OF, S3Represent
+                #    represent = S3Represent(lookup = "cms_series",
+                #                            translate = settings.get_L10n_translate_cms_series(),
+                #                            )
+                #    field.requires = IS_ONE_OF(db, "cms_series.id",
                 #                               represent,
-                #                               not_filterby="name",
+                #                               not_filterby = "name",
                 #                               not_filter_opts = ("Alert",),
                 #                               )
 
@@ -565,7 +578,7 @@ def newsfeed():
             field = table.body
             field.label = T("Description")
             # Plain text not Rich
-            from s3.s3widgets import s3_comments_widget
+            from s3 import s3_comments_widget
             field.widget = s3_comments_widget
             #table.comments.readable = table.comments.writable = False
 
@@ -719,7 +732,8 @@ def newsfeed():
             if r.method == "datalist" and r.representation != "dl":
                 # Hide side menu
                 current.menu.options = None
-                response.view = s3base.S3CRUD._view(r, "cms/newsfeed.html")
+                from s3 import S3CRUD
+                response.view = S3CRUD._view(r, "cms/newsfeed.html")
 
         return output
     s3.postp = postp
@@ -799,6 +813,7 @@ def comment_parse(comment, comments, post_id=None):
         if row:
             person = row.pr_person
             user = row[utable._tablename]
+            from s3 import s3_fullname
             username = s3_fullname(person)
             email = user.email.strip().lower()
             import hashlib
@@ -811,21 +826,29 @@ def comment_parse(comment, comments, post_id=None):
         post_id = comment.post_id
     else:
         header = author
-    thread = LI(DIV(s3base.s3_avatar_represent(comment.created_by),
+    from s3 import s3_avatar_represent
+    thread = LI(DIV(s3_avatar_represent(comment.created_by),
                     DIV(DIV(header,
-                            _class="comment-header"),
+                            _class = "comment-header",
+                            ),
                         DIV(XML(comment.body)),
-                        _class="comment-text"),
+                        _class = "comment-text",
+                        ),
                         DIV(DIV(comment.created_on,
-                                _class="comment-date"),
+                                _class = "comment-date",
+                                ),
                             DIV(A(T("Reply"),
-                                  _class="action-btn"),
-                                _onclick="comment_reply(%i);" % comment.id,
-                                _class="comment-reply"),
-                            _class="fright"),
-                    _id="comment-%i" % comment.id,
-                    _post_id=post_id,
-                    _class="comment-box"))
+                                  _class = "action-btn",
+                                  ),
+                                _onclick = "comment_reply(%i);" % comment.id,
+                                _class = "comment-reply",
+                                ),
+                            _class = "fright",
+                            ),
+                    _id = "comment-%i" % comment.id,
+                    _post_id = post_id,
+                    _class = "comment-box",
+                    ))
 
     # Add the children of this thread
     children = UL(_class="children")
@@ -921,17 +944,17 @@ def posts():
     table = s3db.cms_post
 
     # List of Posts in this Series
-    query = (table.series_id == series_id)
-    posts = db(query).select(table.name,
-                             table.body,
-                             table.avatar,
-                             table.created_by,
-                             table.created_on,
-                             limitby = (0, recent)
-                             )
+    posts = db(table.series_id == series_id).select(table.name,
+                                                    table.body,
+                                                    table.avatar,
+                                                    table.created_by,
+                                                    table.created_on,
+                                                    limitby = (0, recent),
+                                                    )
 
-    output = UL(_id="comments")
+    output = UL(_id = "comments")
     import hashlib
+    from s3 import s3_fullname
     for post in posts:
         author = B(T("Anonymous"))
         if post.created_by:
@@ -946,7 +969,7 @@ def posts():
                                    ptable.middle_name,
                                    ptable.last_name,
                                    left = left,
-                                   limitby = (0, 1)
+                                   limitby = (0, 1),
                                    ).first()
             if row:
                 person = row.pr_person
@@ -955,10 +978,14 @@ def posts():
                 email = user.email.strip().lower()
                 hash = hashlib.md5(email.encode("utf-8")).hexdigest()
                 url = "http://www.gravatar.com/%s" % hash
-                author = B(A(username, _href=url, _target="top"))
+                author = B(A(username,
+                             _href = url,
+                             _target = "top",
+                             ))
         header = H4(post.name)
         if post.avatar:
-            avatar = s3base.s3_avatar_represent(post.created_by)
+            from s3 import s3_avatar_represent
+            avatar = s3_avatar_represent(post.created_by)
         else:
             avatar = ""
         row = LI(DIV(avatar,

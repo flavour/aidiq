@@ -1,16 +1,23 @@
 # -*- coding: utf-8 -*-
 
 import datetime
+import json
 from collections import OrderedDict
 
 from gluon import current, IS_IN_SET, URL
 from gluon.storage import Storage
 
-from s3 import S3Method, S3Represent
+from s3 import S3Method, S3Represent, SEPARATORS#, NONE
 
-from .controllers import deploy_index, inv_dashboard
+from .controllers import deploy_index, inv_Dashboard
 
+# Organisation Type
 RED_CROSS = "Red Cross / Red Crescent"
+
+# Names of Orgs with specific settings
+HNRC = "Honduran Red Cross"
+PARC = "Red Cross Society of Panama"
+#PYRC = "Paraguayan Red Cross"
 
 def config(settings):
     """
@@ -47,14 +54,25 @@ def config(settings):
     #
     settings.base.theme = "RMS"
 
-    # Uncomment to disable responsive behavior of datatables
-    #settings.ui.datatables_responsive = False
-
     # Uncomment to show a default cancel button in standalone create/update forms
     settings.ui.default_cancel_button = True
-
     # Limit Export Formats
-    settings.ui.export_formats = ("xls","pdf")
+    settings.ui.export_formats = ("xls",
+                                  "pdf",
+                                  )
+
+    def datatables_responsive(default):
+        """ Responsive behavior of datatables (lazy setting) """
+
+        table = current.s3db.s3dt_user_options
+        options = current.db(table.user_id == current.auth.user.id).select(table.unresponsive_tables,
+                                                                           limitby = (0, 1),
+                                                                           ).first()
+        if options:
+            return not options.unresponsive_tables
+        else:
+            return default
+    settings.ui.datatables_responsive = datatables_responsive
 
     # @todo: configure custom icons
     #settings.ui.custom_icons = {
@@ -116,6 +134,7 @@ def config(settings):
                          "hrm_job_title",
                          "hrm_course",
                          "hrm_programme",
+                         "inv_package",
                          "member_membership_type",
                          "vol_award",
                          ):
@@ -129,19 +148,63 @@ def config(settings):
         use_user_root_organisation = False
 
         if tablename in ("inv_req",
+                         "inv_req_item",
                          "inv_track_item",
                          #"inv_send", # Only need to have site_id, to_site_id will manage via Recv, if-necessary
                          #"inv_recv", # Only need to have site_id, from_site_id will manage via Send, if-necessary
                          ):
             if tablename == "inv_req":
-                # Need a pr_realm with multiple inheritance
-                record_id = row["id"]
-                realm_name = "REQ_%s" % record_id
+                req_id = row["id"]
+                req_site_id = row["site_id"]
                 ritable = s3db.inv_req_item
-                query = (ritable.req_id == record_id) & \
-                        (ritable.deleted == False)
-                request_items = db(query).select(ritable.site_id)
-                site_ids = set([ri.site_id for ri in request_items] + [row["site_id"]])
+                req_items = db(ritable.req_id == req_id).select(ritable.site_id)
+                site_ids = set([ri.site_id for ri in req_items if ri.site_id != None] + [req_site_id])
+                if len(site_ids) == 1:
+                    # Can just use the Site's realm
+                    from s3db.pr import pr_get_pe_id
+                    return pr_get_pe_id("org_site", req_site_id)
+                elif len(site_ids) == 2:
+                    # Need a pr_realm with dual inheritance
+                    # - this can be shared with all other records shared between these 2 sites
+                    for site_id in site_ids:
+                        if site_id != req_site_id:
+                            ri_site_id = site_id
+                            break
+                    if req_site_id < ri_site_id:
+                        realm_name = "2SITES_%s_%s" % (req_site_id, ri_site_id)
+                    else:
+                        realm_name = "2SITES_%s_%s" % (ri_site_id, req_site_id)
+                else:
+                    # Need a unique pr_realm with multiple inheritance
+                    realm_name = "REQ_%s" % req_id
+
+            elif tablename == "inv_req_item":
+                req_id = row.get("req_id")
+                if not req_id:
+                    ritable = s3db.inv_req_item
+                    req_item = db(ritable.id == row["id"]).select(ritable.req_id,
+                                                                  limitby = (0, 1),
+                                                                  ).first()
+                    req_id = req_item.req_id
+                rtable = s3db.inv_req
+                req = db(rtable.id == req_id).select(rtable.site_id,
+                                                     limitby = (0, 1),
+                                                     ).first()
+                req_site_id = req.site_id
+                ri_site_id = row["site_id"]
+                if not ri_site_id or (ri_site_id == req_site_id):
+                    # Use the realm of the Req's site
+                    from s3db.pr import pr_get_pe_id
+                    return pr_get_pe_id("org_site", req_site_id)
+
+                # Need a pr_realm with dual inheritance
+                # - this can be shared with all other records shared between these 2 sites
+                site_ids = (req_site_id, ri_site_id)
+                if req_site_id < ri_site_id:
+                    realm_name = "2SITES_%s_%s" % (req_site_id, ri_site_id)
+                else:
+                    realm_name = "2SITES_%s_%s" % (ri_site_id, req_site_id)
+
             elif tablename == "inv_track_item":
                 # Inherit from inv_send &/or inv_recv
                 record = db(table.id == row["id"]).select(table.send_id,
@@ -152,14 +215,19 @@ def config(settings):
                 recv_id = record.recv_id
                 if send_id and recv_id:
                     # Need a pr_realm with dual inheritance
+                    # - this can be shared with all other records shared between these 2 sites
                     realm_name = "WB_%s" % send_id
                     send = db(stable.id == send_id).select(stable.site_id,
                                                            stable.to_site_id,
                                                            limitby = (0, 1),
                                                            ).first()
-                    site_ids = (send,site_id,
-                                send.to_site_id,
-                                )
+                    site_id = send.site_id
+                    to_site_id = send.to_site_id
+                    site_ids = (site_id, to_site_id)
+                    if site_id < to_site_id:
+                        realm_name = "2SITES_%s_%s" % (site_id, to_site_id)
+                    else:
+                        realm_name = "2SITES_%s_%s" % (to_site_id, site_id)
                 elif send_id:
                     # Inherit from the Send
                     stable = s3db.inv_send
@@ -174,6 +242,7 @@ def config(settings):
                                                            limitby = (0, 1),
                                                            ).first()
                     return recv.realm_entity
+
             #elif tablename == "inv_send":
             #    record_id = row["id"]
             #    realm_name = "WB_%s" % record_id
@@ -202,6 +271,8 @@ def config(settings):
                 realm_id = rtable.insert(name = realm_name)
                 realm = Storage(id = realm_id)
                 s3db.update_super(rtable, realm)
+            else:
+                realm_id = None
 
             realm_entity = realm.pe_id
 
@@ -224,31 +295,39 @@ def config(settings):
                 instances = db(itable.site_id.belongs(instance_types[instance_type])).select(itable.pe_id)
                 entities += [i.pe_id for i in instances]
 
-            # Get all current affiliations
-            rtable = s3db.pr_role
-            atable = s3db.pr_affiliation
-            query = (atable.deleted == False) & \
-                    (atable.pe_id.belongs(entities)) & \
-                    (rtable.deleted == False) & \
-                    (rtable.id == atable.role_id)
-            affiliations = db(query).select(rtable.pe_id,
-                                            rtable.role,
-                                            )
+            if realm_id:
+                # New realm doesn't need old affiliations removing
+                from s3db.pr import OU, \
+                                    pr_add_affiliation
+            elif realm_name.startswith("2SITES"):
+                # Existing 2 Sites Realm doesn't need affiliations modifying
+                return realm_entity
+            else:
+                # Get all current affiliations
+                rtable = s3db.pr_role
+                atable = s3db.pr_affiliation
+                query = (atable.deleted == False) & \
+                        (atable.pe_id.belongs(entities)) & \
+                        (rtable.deleted == False) & \
+                        (rtable.id == atable.role_id)
+                affiliations = db(query).select(rtable.pe_id,
+                                                rtable.role,
+                                                )
 
-            # Remove affiliations which are no longer needed
-            from s3db.pr import OU, \
-                                pr_add_affiliation, \
-                                pr_remove_affiliation
-            for a in affiliations:
-                pe_id = a.pe_id
-                role = a.role
-                if pe_id not in entities:
-                    pr_remove_affiliation(pe_id, realm_entity, role=role)
-                else:
-                    entities.remove(pe_id)
+                # Remove affiliations which are no longer needed
+                from s3db.pr import OU, \
+                                    pr_add_affiliation, \
+                                    pr_remove_affiliation
+                for a in affiliations:
+                    pe_id = a.pe_id
+                    role = a.role
+                    if pe_id not in entities:
+                        pr_remove_affiliation(pe_id, realm_entity, role=role)
+                    else:
+                        entities.remove(pe_id)
 
             # Add new affiliations
-            for e in entities:
+            for pe_id in entities:
                 pr_add_affiliation(pe_id, realm_entity, role="Parent", role_type=OU)
 
             return realm_entity
@@ -277,7 +356,7 @@ def config(settings):
                     (htable.person_id == table.person_id) & \
                     (htable.deleted != True)
             rows = db(query).select(htable.realm_entity,
-                                    limitby = (0, 2)
+                                    limitby = (0, 2),
                                     )
             if len(rows) == 1:
                 realm_entity = rows.first().realm_entity
@@ -326,7 +405,7 @@ def config(settings):
                                 "inv_send": SID,
                                 #"inv_track_item": "track_org_id",
                                 #"inv_req": "site_id",
-                                "inv_req_item": "req_id",
+                                #"inv_req_item": "req_id",
                                 #"po_household": "area_id",
                                 #"po_organisation_area": "area_id",
                                 }
@@ -436,9 +515,9 @@ def config(settings):
     #
     settings.L10n.languages = OrderedDict([
         ("en", "English"),
+        ("fr", "French"),
         ("pt-br", "Portuguese (Brazil)"),
         ("es", "Spanish"),
-        ("fr", "French"),
         ])
     # Default Language
     settings.L10n.default_language = "en"
@@ -462,9 +541,6 @@ def config(settings):
     settings.L10n.name_alt_gis_location = True
     # Uncomment this to Translate Organisation Names/Acronyms
     settings.L10n.translate_org_organisation = True
-
-    # Names of Orgs with specific settings
-    HNRC = "Honduran Red Cross"
 
     # -------------------------------------------------------------------------
     # Finance settings
@@ -731,7 +807,7 @@ def config(settings):
         #if root_org in (ARCS, IRCS):
         #    # Simple checkbox
         #    return True
-        #elif root_org in (CVTL, PMI, PRC):
+        #elif root_org in (CVTL, PMI, PYRC):
         #    # Use formula based on hrm_programme
         #    return vol_programme_active
         #elif root_org in (CRMADA, ):
@@ -799,7 +875,7 @@ def config(settings):
 
     # -------------------------------------------------------------------------
     # Inventory Management
-    settings.customise_inv_home = inv_dashboard() # Imported from controllers.py
+    settings.customise_inv_home = inv_Dashboard() # Imported from controllers.py
 
     # Hide Staff Management Tabs for Facilities in Inventory Module
     settings.inv.facility_manage_staff = False
@@ -810,7 +886,7 @@ def config(settings):
     # Uncomment if you need a simpler (but less accountable) process for managing stock levels
     #settings.inv.direct_stock_edits = True
     settings.inv.stock_count = False
-    settings.inv.item_status = {#0: current.messages["NONE"], # Not defined yet
+    settings.inv.item_status = {#0: NONE, # Not defined yet
                                 0: T("Good"),
                                 1: T("Damaged"),
                                 #1: T("Dump"),
@@ -818,7 +894,7 @@ def config(settings):
                                 #3: T("Reject"),
                                 #4: T("Surplus")
                                 }
-    settings.inv.recv_types = {#0: current.messages["NONE"], In Shipment Types
+    settings.inv.recv_types = {#0: NONE, In Shipment Types
                                #11: T("Internal Shipment"), In Shipment Types
                                32: T("Donation"),
                                34: T("Purchase"),
@@ -827,6 +903,8 @@ def config(settings):
                                }
     # Calculate Warehouse Free Capacity
     settings.inv.warehouse_free_capacity_calculated = True
+    settings.inv.req_project = True
+    settings.inv.req_reserve_items = True
     # Use structured Bins
     settings.inv.bin_site_layout = True
     settings.inv.recv_ref_writable = True
@@ -840,6 +918,7 @@ def config(settings):
     transport_opts = {"Air": T("Air"),
                       "Sea": T("Sea"),
                       "Road": T("Road"),
+                      "Rail": T("Rail"),
                       "Hand": T("Hand"),
                       }
 
@@ -863,6 +942,8 @@ def config(settings):
     settings.inv.req_recurring = False
     # Use Order Items
     settings.inv.req_order_item = True
+    # Requester doesn't need Update rights for the Site
+    settings.inv.requester_site_updateable = False
     # Use Workflow
     settings.inv.req_workflow = True
 
@@ -1073,13 +1154,15 @@ def config(settings):
             Function to configure an organisation_id field to be restricted to just
             NS/Branch
 
-            @param required: Field is mandatory
-            @param branches: Include Branches
-            @param updateable: Limit to Orgs which the user can update
-            @param limit_filter_opts: Also limit the Filter options
+            Args:
+                required: Field is mandatory
+                branches: Include Branches
+                updateable: Limit to Orgs which the user can update
+                limit_filter_opts: Also limit the Filter options
 
-            NB If limit_filter_opts=True, apply in customise_xx_controller inside prep,
-               after standard_prep is run
+            Note:
+                If limit_filter_opts=True, apply in customise_xx_controller inside prep,
+                after standard_prep is run
         """
 
         # Lookup organisation_type_id for Red Cross
@@ -1264,6 +1347,261 @@ def config(settings):
     #        return {}
 
     # -------------------------------------------------------------------------
+    def auth_add_role(user_id,
+                      group_id,
+                      for_pe = None,
+                      from_role_manager = True,
+                      ):
+        """
+            Automatically add subsidiary roles & set to appropriate entities
+        """
+
+        auth = current.auth
+        add_membership = auth.add_membership
+        system_roles = auth.get_system_roles()
+
+        if from_role_manager:
+            # Add the main Role
+            add_membership(group_id = group_id,
+                           user_id = user_id,
+                           )
+
+        # Is this the Admin role?
+        if group_id == system_roles.ADMIN:
+            # No Subsidiary Roles to add
+            return
+
+        db = current.db
+        gtable = db.auth_group
+
+        # Lookup the role
+        group = db(gtable.id == group_id).select(gtable.uuid,
+                                                 limitby = (0, 1),
+                                                 ).first()
+        role = group.uuid
+        if role in ("hn_user",
+                    "rms_user",
+                    "rc_logs_user",
+                    "rc_user",
+                    "logs_manager_national",
+                    "wh_operator_national",
+                    ):
+            # This is a Hidden role, so coming in advanced mode
+            # - don't do anything further
+            return
+
+        s3db = current.s3db
+
+        # Lookup the User Organisation
+        utable = db.auth_user
+        otable = s3db.org_organisation
+        query = (utable.id == user_id) & \
+                (otable.id == utable.organisation_id)
+        org = db(query).select(otable.id,
+                               otable.name,
+                               otable.pe_id,
+                               otable.root_organisation,
+                               limitby = (0, 1),
+                               ).first()
+        if not org:
+            # Default ADMIN in prepop: bail
+            return
+
+        # Lookup the RC Org Group
+        ogtable = s3db.org_group
+        org_group = db(ogtable.name == "RC").select(ogtable.pe_id,
+                                                    limitby = (0, 1),
+                                                    ).first()
+        rc_group_pe_id = org_group.pe_id
+
+        # Lookup the root entity
+        root_org = org.root_organisation
+        if root_org == org.id:
+            ns_level = True
+            ns = org
+        else:
+            ns_level = False
+            ns = db(otable.id == root_org).select(otable.name,
+                                                  otable.pe_id,
+                                                  limitby = (0, 1),
+                                                  ).first()
+        ns_entity = ns.pe_id
+
+        # Add to relevant NS User role
+        if ns.name == HNRC:
+            user_role = "hn_user"
+        else:
+            user_role = "rms_user"
+        roles = [user_role,
+                 "rc_user",
+                 ]
+
+        # Add to additional roles for Logs Users
+        if role == "logs_manager":
+            if ns_level:
+                roles.append("rc_logs_user")
+            else:
+                roles += ["rc_logs_user",
+                          "logs_manager_national",
+                          ]
+        elif role == "wh_operator":
+            roles += ["rc_logs_user",
+                      "wh_operator_national",
+                      ]
+
+        if len(roles) == 1:
+            query = (gtable.uuid == roles[0])
+        else:
+            query = (gtable.uuid.belongs(roles))
+
+        groups = db(query).select(gtable.id,
+                                  gtable.uuid,
+                                  )
+        for group in groups:
+            if group.uuid in ("rc_logs_user",
+                              "rc_user",
+                              ):
+                add_membership(group_id = group.id,
+                               user_id = user_id,
+                               entity = rc_group_pe_id,
+                               )
+            else:
+                add_membership(group_id = group.id,
+                               user_id = user_id,
+                               entity = ns_entity,
+                               )
+
+    settings.auth.add_role = auth_add_role
+
+    # -------------------------------------------------------------------------
+    def auth_remove_role(user_id, group_id, for_pe=None):
+        """
+            Automatically remove subsidiary roles
+        """
+
+        auth = current.auth
+        system_roles = auth.get_system_roles()
+        withdraw_role = auth.s3_withdraw_role
+
+        # Remove the main Role
+        withdraw_role(user_id, group_id)
+
+        # Is this the Admin role?
+        if group_id == system_roles.ADMIN:
+            # No Subsidiary Roles to remove
+            return
+
+        db = current.db
+        gtable = db.auth_group
+
+        logs_roles = ("logs_manager",
+                      "wh_operator",
+                      )
+
+        # Lookup the role
+        group = db(gtable.id == group_id).select(gtable.uuid,
+                                                 limitby = (0, 1),
+                                                 ).first()
+        role = group.uuid
+        if role not in logs_roles:
+            # Not a Logs role
+            # - don't do anything further
+            return
+
+        # Do they still have a Logs role?
+        mtable = db.auth_membership
+        query = (mtable.user_id == user_id) & \
+                (gtable.id == mtable.group_id) & \
+                (gtable.uuid.belongs(logs_roles))
+        memberships = db(query).select(mtable.id,
+                                       limitby = (0, 1),
+                                       ).first()
+        if not memberships:
+            # Withdraw the Logs RC role
+            group = db(gtable.uuid == "rc_logs_user").select(gtable.id,
+                                                       limitby = (0, 1),
+                                                       ).first()
+            withdraw_role(user_id, group.id, for_pe=[])  
+
+        # Lookup the User Organisation
+        utable = db.auth_user
+        otable = current.s3db.org_organisation
+        query = (utable.id == user_id) & \
+                (otable.id == utable.organisation_id)
+        org = db(query).select(otable.id,
+                               otable.pe_id,
+                               otable.root_organisation,
+                               limitby = (0, 1),
+                               ).first()
+        if not org:
+            # Default ADMIN in prepop: bail
+            return
+
+        # Lookup the root entity
+        root_org = org.root_organisation
+        if root_org == org.id:
+            if role == "logs_manager":
+                # No more subsidiary roles
+                return
+            ns = org
+        else:
+            ns = db(otable.id == root_org).select(otable.pe_id,
+                                                  limitby = (0, 1),
+                                                  ).first()
+        ns_entity = ns.pe_id
+
+        if role == "logs_manager":
+            ns_level = "logs_manager_national"
+        else:
+            # wh_operator
+            ns_level = "wh_operator_national"
+
+        group = db(gtable.uuid == ns_level).select(gtable.id,
+                                                   limitby = (0, 1),
+                                                   ).first()
+        withdraw_role(user_id, group.id, for_pe=ns_entity)
+
+    settings.auth.remove_role = auth_remove_role
+
+    # =========================================================================
+    def auth_membership_create_onaccept(form):
+        """
+            Automatically add subsidiary roles & set to appropriate entities
+        """
+
+        form_vars = form.vars
+
+        auth_add_role(form_vars.user_id,
+                      form_vars.group_id,
+                      for_pe = form_vars.pe_id,
+                      from_role_manager = False,
+                      )
+
+    # =========================================================================
+    def customise_auth_user_resource(r, tablename):
+
+        db = current.db
+        configure = current.s3db.configure
+
+        configure("auth_membership",
+                  create_onaccept = auth_membership_create_onaccept,
+                  )
+
+        table = db.auth_user
+        crud_fields = [f.name for f in table if (f.writable or f.readable) and not f.compute]
+        crud_fields.append((T("Tables have Scrollbar"), "user_options.unresponsive_tables"))
+
+        from s3 import S3SQLCustomForm
+        crud_form = S3SQLCustomForm(*crud_fields)
+
+        configure(tablename,
+                  crud_form = crud_form,
+                  dynamic_components = True,
+                  )
+
+    settings.customise_auth_user_resource = customise_auth_user_resource
+
+    # -------------------------------------------------------------------------
     def customise_auth_user_controller(**attr):
         """
             Customise admin/user() and default/user() controllers
@@ -1280,10 +1618,22 @@ def config(settings):
         table.first_name.label = T("Forenames")
         table.last_name.label = T("Father's Surname")
 
+        # What this does currently:
+        #(A) If the User Account creating the new account is associated with
+        #     the Panamanian RC then the Panama-specific mail is sent
+        #(B) If the current interface of the User creating the new account is
+        #    in Spanish then the Spanish mail is sent
+        #(C) Otherwise the English mail is sent
+        # What we really want (will require a little deeper customisation of Auth...pending budget):
+        #(A) If the User being created is associated with the Panamanian RC
+        #     then the Panama-specific mail is sent
+        #(B) If the User being created has their account is in Spanish then
+        #    the Spanish mail is sent
+        #(C) Otherwise the English mail is sent
         auth = current.auth
         messages = auth.messages
         messages.lock_keys = False
-        if auth.root_org_name() == "Red Cross Society of Panama":
+        if auth.root_org_name() == PARC:
             messages.welcome_email = \
 """Estimado, estimada,
 Le damos la más cordial bienvenida al Sistema de Gestión de Recursos (RMS).
@@ -1625,7 +1975,8 @@ RMS Support Team"""
     #    """
     #        Representation of Emergency Contacts (S3Represent label renderer)
 
-    #        @param row: the row
+    #        Args:
+    #           row: the row
     #    """
 
     #    items = [row["pr_contact_emergency.name"]]
@@ -2473,7 +2824,7 @@ Thank you"""
             current.auth.s3_assign_role(link.user_id, "RIT_MEMBER")
 
     # -------------------------------------------------------------------------
-    def hrm_training_postimport(import_info):
+    def hrm_training_onimport(import_info):
         """
             Create Users for Persons created
         """
@@ -2614,7 +2965,7 @@ Thank you"""
                     #               )
                     # Create User Accounts for those Persons without them
                     s3db.configure("hrm_training",
-                                   postimport = hrm_training_postimport,
+                                   onimport = hrm_training_onimport,
                                    )
 
             return True
@@ -2845,33 +3196,23 @@ Thank you"""
                                                       )
 
             # Logo
-            otable = db.org_organisation
-            org_id = record.organisation_id
-            org = db(otable.id == org_id).select(otable.name,
-                                                 otable.acronym, # Present for consistent cache key
-                                                 otable.logo,
-                                                 limitby = (0, 1),
-                                                 ).first()
-            #if settings.get_L10n_translate_org_organisation():
-            #org_name = org_represent(org_id)
-            #else:
-            #    org_name = org.name
-
-            logo = org.logo
-            if logo:
-                logo = org_organisation_logo(org)
-            elif settings.get_org_branches():
-                from s3db.org import org_root_organisation
-                root_org = current.cache.ram(
-                    # Common key with auth.root_org
-                    "root_org_%s" % org_id,
-                    lambda: org_root_organisation(org_id),
-                    time_expire = 120
-                    )
-                logo = org_organisation_logo(root_org)
+            logo = org_organisation_logo(record.organisation_id)
 
             # Read the report
-            report = db(rtable.training_event_id == r.id).select(limitby = (0, 1),
+            report = db(rtable.training_event_id == r.id).select(rtable.person_id,
+                                                                 rtable.job_title_id,
+                                                                 rtable.organisation_id,
+                                                                 rtable.date,
+                                                                 rtable.purpose,
+                                                                 rtable.objectives,
+                                                                 rtable.methodology,
+                                                                 rtable.actions,
+                                                                 rtable.participants,
+                                                                 rtable.results,
+                                                                 rtable.followup,
+                                                                 rtable.additional,
+                                                                 rtable.comments,
+                                                                 limitby = (0, 1),
                                                                  ).first()
 
             # Header
@@ -3148,12 +3489,36 @@ Thank you"""
     #settings.customise_inv_adj_resource = customise_inv_adj_resource
 
     # -------------------------------------------------------------------------
+    def customise_inv_kitting_resource(r, tablename):
+
+        s3db = current.s3db
+
+        def inv_kitting_onaccept(form):
+            # Trigger Stock Limit Alert creation/cancellation
+            site_id = int(form.vars.site_id)
+            wtable = s3db.inv_warehouse
+            warehouse = current.db(wtable.site_id == site_id).select(wtable.id,
+                                                                     wtable.name,
+                                                                     limitby = (0, 1),
+                                                                     ).first()
+            warehouse.site_id = site_id
+            stock_limit_alerts(warehouse)
+
+        s3db.add_custom_callback(tablename,
+                                 "onaccept",
+                                 inv_kitting_onaccept,
+                                 )
+
+    settings.customise_inv_kitting_resource = customise_inv_kitting_resource
+
+    # -------------------------------------------------------------------------
     def inv_pdf_header(r, title=None):
         """
             PDF header for Stock Reports
 
-            @param r: the S3Request
-            @param title: the report title
+            Args:
+                r: the S3Request
+                title: the report title
         """
 
         # Get organisation name and logo
@@ -3236,8 +3601,7 @@ Thank you"""
                             "title": T("Stock Position Report"),
                             "fields": [(T("Warehouse"), "site_id$name"),
                                        "item_id$item_category_id",
-                                       #"bin",
-                                       "layout_id",
+                                       "bin.layout_id",
                                        "item_id$name",
                                        "quantity",
                                        "pack_value",
@@ -3258,8 +3622,7 @@ Thank you"""
                             "title": T("Weight and Volume Report"),
                             "fields": [(T("Warehouse"), "site_id$name"),
                                        "item_id$item_category_id",
-                                       #"bin",
-                                       "layout_id",
+                                       "bin.layout_id",
                                        "item_id$name",
                                        "quantity",
                                        "item_id$weight",
@@ -3282,8 +3645,7 @@ Thank you"""
                             "title": T("Stock Movements Report"),
                             "fields": [(T("Warehouse"), "site_id$name"),
                                        "item_id$item_category_id",
-                                       #"bin",
-                                       "layout_id",
+                                       "bin.layout_id",
                                        "item_id$name",
                                        (T("Origin/Destination"), "sites"),
                                        (T("Documents"), "documents"),
@@ -3307,8 +3669,6 @@ Thank you"""
                             },
                          }
 
-        direct_stock_edits = settings.get_inv_direct_stock_edits()
-
         list_fields = [(T("Description"), "item_id"),
                        (T("Reference"), "item_id$code"),
                        (T("Owner"), "owner_org_id"),
@@ -3328,7 +3688,7 @@ Thank you"""
         if filter_widgets is not None:
             from s3 import S3OptionsFilter
             filter_widgets.insert(2, S3OptionsFilter("item_id",
-                                                     #label=T("Status"),
+                                                     #label = T("Status"),
                                                      hidden = True,
                                                      ))
 
@@ -3342,10 +3702,6 @@ Thank you"""
                                     }
 
         s3db.configure("inv_inv_item",
-                       create = direct_stock_edits,
-                       deletable = direct_stock_edits,
-                       editable = direct_stock_edits,
-                       listadd = direct_stock_edits,
                        grouped = stock_reports,
                        # Needed for Field.Methods
                        extra_fields = ["quantity",
@@ -3501,10 +3857,12 @@ Thank you"""
                                                             )
 
         f = table.transport_type
-        f.requires = IS_IN_SET(transport_opts)
-        f.represent = S3Represent(options = transport_opts)
+        requires = f.requires
+        if hasattr(requires, "other"):
+            f.requires = requires.other
 
-        from s3 import IS_ONE_OF, S3SQLCustomForm, S3SQLInlineLink
+        from s3 import S3SQLCustomForm, S3SQLInlineLink#, IS_ONE_OF
+
         crud_form = S3SQLCustomForm(S3SQLInlineLink("req",
                                                     field = "req_id",
                                                     label = T("Request Number"),
@@ -3523,6 +3881,9 @@ Thank you"""
                                     "sender_id",
                                     "recipient_id",
                                     "transport_type",
+                                    "transported_by",
+                                    "transport_ref",
+                                    "registration_no",
                                     "status",
                                     "grn_status",
                                     "cert_status",
@@ -3531,9 +3892,7 @@ Thank you"""
                                     )
 
         s3db.configure(tablename,
-                       addbtn = True,
                        crud_form = crud_form,
-                       listadd = False,
                        list_fields = ["recv_ref",
                                       (T("Request Number"), "recv_req.req_id"),
                                       "send_ref",
@@ -3550,9 +3909,10 @@ Thank you"""
                        )
 
         # Custom GRN
+        from .forms import inv_recv_form
         s3db.set_method("inv", "recv",
                         method = "form",
-                        action = PrintableShipmentForm,
+                        action = inv_recv_form,
                         )
 
     settings.customise_inv_recv_resource = customise_inv_recv_resource
@@ -3579,9 +3939,9 @@ Thank you"""
                                       "GRN": T("GRN"),
                                       "WB": T("Waybill"),
                                       }
-                #from s3 import S3Represent
+                from s3 import s3_options_represent
                 field.requires = IS_IN_SET(document_type_opts)
-                field.represent = S3Represent(options = document_type_opts)
+                field.represent = s3_options_represent(document_type_opts)
 
             elif r.get_vars.get("incoming"):
                 s3.crud_strings.inv_recv.title_list = T("Incoming Shipments")
@@ -3657,11 +4017,15 @@ Thank you"""
                     req_ids_to_delete.append(req_id)
 
         if req_ids_to_delete:
+            auth = current.auth
+            override_default = auth.override
+            auth.override = True
             ntable = s3db.auth_user_notification
             query = (ntable.type == "req_fulfil") & \
                     (ntable.record_id.belongs(req_ids_to_delete))
             resource = s3db.resource("auth_user_notification", filter = query)
             resource.delete()
+            auth.override = override_default
 
     # -------------------------------------------------------------------------
     def customise_inv_send_resource(r, tablename):
@@ -3675,11 +4039,14 @@ Thank you"""
         from .controllers import org_SiteRepresent
         table.to_site_id.requires.other.label = org_SiteRepresent()
 
-        f = table.transport_type
-        f.requires = IS_IN_SET(transport_opts)
-        f.represent = S3Represent(options = transport_opts)
-
         from s3 import S3SQLCustomForm, S3SQLInlineLink
+
+        f = table.transport_type
+        requires = f.requires
+        if hasattr(requires, "other"):
+            f.requires = requires.other
+
+        from s3db.inv import inv_send_postprocess
         crud_form = S3SQLCustomForm(S3SQLInlineLink("req",
                                                     field = "req_id",
                                                     label = T("Request Number"),
@@ -3694,21 +4061,21 @@ Thank you"""
                                     "transport_type",
                                     "transported_by",
                                     "transport_ref",
-                                    "driver_name",
-                                    "driver_phone",
-                                    "vehicle_plate_no",
+                                    "vehicle",
+                                    "registration_no",
+                                    #"driver_name",
+                                    #"driver_phone",
                                     # Will only appear in Update forms:
                                     "date",
-                                    "delivery_date",
+                                    "delivery_date", # Appears on Create form too
                                     "status",
                                     "filing_status",
                                     "comments",
+                                    postprocess = inv_send_postprocess,
                                     )
 
         s3db.configure(tablename,
-                       addbtn = True,
                        crud_form = crud_form,
-                       listadd = False,
                        list_fields = ["send_ref",
                                       #"req_ref",
                                       (T("Request Number"), "send_req.req_id"),
@@ -3721,7 +4088,7 @@ Thank you"""
                                       "status",
                                       #"driver_name",
                                       #"driver_phone",
-                                      #"vehicle_plate_no",
+                                      #"registration_no",
                                       #"time_out",
                                       #"comments",
                                       ],
@@ -3729,9 +4096,10 @@ Thank you"""
                        )
 
         # Custom Waybill
+        from .forms import inv_send_form
         s3db.set_method("inv", "send",
                         method = "form",
-                        action = PrintableShipmentForm,
+                        action = inv_send_form,
                         )
 
     settings.customise_inv_send_resource = customise_inv_send_resource
@@ -3754,13 +4122,31 @@ Thank you"""
                 s3.crud_strings["doc_document"].label_create = T("File Signed Document")
                 field = current.s3db.doc_document.name
                 field.label = T("Type")
-                document_type_opts = {"REQ": T("Requisition"),
+                document_type_opts = {"PL": T("Picking List"),
+                                      "REQ": T("Requisition"),
                                       "WB": T("Waybill"),
                                       }
                 #from gluon import IS_IN_SET
-                #from s3 import S3Represent
+                from s3 import s3_options_represent
                 field.requires = IS_IN_SET(document_type_opts)
-                field.represent = S3Represent(options = document_type_opts)
+                field.represent = s3_options_represent(document_type_opts)
+
+            elif r.get_vars.get("draft"):
+                s3.crud_strings.inv_recv.title_list = T("Outbound Shipments")
+                # Filter to just Shipments able to be Received
+                #    SHIP_STATUS_IN_PROCESS = 0
+                from s3 import s3_set_default_filter, S3OptionsFilter
+                s3_set_default_filter("~.status",
+                                      [0],
+                                      tablename = "inv_send")
+                filter_widgets = r.resource.get_config("filter_widgets")
+                filter_widgets.insert(1, S3OptionsFilter("status",
+                                                         label = T("Status"),
+                                                         cols = 3,
+                                                         #options = shipment_status,
+                                                         # Needs to be visible for default_filter to work
+                                                         #hidden = True,
+                                                         ))
 
             return result
         s3.prep = custom_prep
@@ -3829,10 +4215,14 @@ Thank you"""
                     alerts.append((item_id, stock, minimum_id))
             else:
                 # Remove any Minimum Alerts for this Item/Warehouse
+                auth = current.auth
+                override_default = auth.override
+                auth.override = True
                 resource = s3db.resource("auth_user_notification",
                                          filter = query,
                                          )
                 resource.delete()
+                auth.override = override_default
 
         if alerts:
             # Generate Alerts
@@ -3871,6 +4261,8 @@ Thank you"""
             subject_T = T("%(item)s replenishment needed in %(site)s Warehouse. %(quantity)s remaining")
             message_T = T("%(item)s replenishment needed in %(site)s Warehouse. %(quantity)s remaining. Please review at: %(url)s")
             alert_T = T("%(item)s replenishment needed in %(site)s Warehouse. %(quantity)s remaining")
+
+            warnings = []
 
             for alert in alerts:
                 item_id = alert[0]
@@ -3916,7 +4308,9 @@ Thank you"""
                                            "site": warehouse_name,
                                            "quantity": quantity,
                                            }
-                session.warning.append(alert)
+                warnings.append(alert)
+
+            session.warning = ", ".join(warnings)
 
     # -------------------------------------------------------------------------
     def on_free_capacity_update(warehouse):
@@ -4005,10 +4399,14 @@ Thank you"""
                 T.force(ui_language)
         else:
             # Remove any Capacity Alerts
+            auth = current.auth
+            override_default = auth.override
+            auth.override = True
             resource = s3db.resource("auth_user_notification",
                                      filter = query,
                                      )
             resource.delete()
+            auth.override = override_default
 
         # Trigger Stock Limit Alert creation/cancellation
         stock_limit_alerts(warehouse)
@@ -4036,6 +4434,18 @@ Thank you"""
             pass
 
     settings.customise_inv_warehouse_resource = customise_inv_warehouse_resource
+
+    # -------------------------------------------------------------------------
+    def customise_inv_warehouse_controller(**attr):
+
+        if current.auth.s3_has_role("ADMIN"):
+            # ADMIN is allowed to Edit Inventory bypassing the need to use Adjustments
+            # - seems wrong to me as Adjustments aren't that heavy, but has been requested
+            settings.inv.direct_stock_edits = True
+
+        return attr
+
+    settings.customise_inv_warehouse_controller = customise_inv_warehouse_controller
 
     # -------------------------------------------------------------------------
     def customise_org_facility_resource(r, tablename):
@@ -4284,13 +4694,6 @@ Thank you"""
                                     )
                                 # Add Region to list_fields
                                 list_fields.insert(-1, "organisation_region.region_id")
-                                # Region is required
-                                f = current.s3db.org_organisation_region.region_id
-                                f.requires = f.requires.other
-
-                            else:
-                                f = current.s3db.org_organisation_region.region_id
-                                f.readable = f.writable = False
 
                             if type_filter == "Supplier":
                                 # Show simple free-text contact field
@@ -4312,22 +4715,24 @@ Thank you"""
                         if r.interactive:
                             table.country.label = T("Country")
                             from s3 import S3SQLCustomForm, S3SQLInlineLink
-                            crud_form = S3SQLCustomForm(
-                                            "name",
-                                            "acronym",
-                                            S3SQLInlineLink("organisation_type",
-                                                            field = "organisation_type_id",
-                                                            label = type_label,
-                                                            multiple = False,
-                                                            ),
-                                            "organisation_region.region_id",
-                                            "country",
-                                            "contact",
-                                            "phone",
-                                            "website",
-                                            "logo",
-                                            "comments",
-                                            )
+
+                            crud_fields = ["name",
+                                           "acronym",
+                                           S3SQLInlineLink("organisation_type",
+                                                           field = "organisation_type_id",
+                                                           label = type_label,
+                                                           multiple = False,
+                                                           ),
+                                           "country",
+                                           "contact",
+                                           "phone",
+                                           "website",
+                                           "logo",
+                                           "comments",
+                                           ]
+                            if type_filter == RED_CROSS:
+                                crud_fields.insert(3, "organisation_region.region_id")
+                            crud_form = S3SQLCustomForm(*crud_fields)
                             resource.configure(crud_form = crud_form)
 
             return result
@@ -4381,8 +4786,8 @@ Thank you"""
     # -------------------------------------------------------------------------
     def customise_pr_address_resource(r, tablename):
 
-        #if current.auth.root_org_name() in ("Honduran Red Cross",
-        #                                    "Paraguayan Red Cross",
+        #if current.auth.root_org_name() in (HNRC,
+        #                                    PYRC,
         #                                    ):
             # Location Hierarchy loaded: Leave things as they are since we have the
         #   pass
@@ -4733,8 +5138,6 @@ Thank you"""
             #    dtable.allergies.writable = dtable.allergies.readable = True
             #    dtable.ethnicity.writable = dtable.ethnicity.readable = False
             #    dtable.other_details.writable = dtable.other_details.readable = False
-            #    import json
-            #    SEPARATORS = (",", ":")
             #    s3.jquery_ready.append('''S3.showHidden('%s',%s,'%s')''' % \
             #        ("allergic", json.dumps(["allergies"], separators=SEPARATORS), "pr_physical_description"))
 
@@ -5662,10 +6065,10 @@ Thank you"""
                 inv_req_approver_update_roles(form.record.person_id)
 
     # -------------------------------------------------------------------------
-    def inv_req_approver_ondelete(form):
+    def inv_req_approver_ondelete(row):
 
         # Update the req_approver roles for this person
-        inv_req_approver_update_roles(form.person_id)
+        inv_req_approver_update_roles(row.person_id)
 
     # -------------------------------------------------------------------------
     def customise_inv_req_approver_resource(r, tablename):
@@ -5783,10 +6186,12 @@ Thank you"""
                  (ptable.end_date > r.utcnow)) & \
                 (ptable.deleted == False)
         the_set = current.db(query)
-        s3db.inv_req_project.project_id.requires = IS_ONE_OF(the_set, "project_project.id",
-                                                             project_represent,
-                                                             sort = True,
-                                                             )
+        f = s3db.inv_req_project.project_id
+        f.represent = project_represent
+        f.requires = IS_ONE_OF(the_set, "project_project.id",
+                               project_represent,
+                               sort = True,
+                               )
 
     settings.customise_inv_req_project_resource = customise_inv_req_project_resource
 
@@ -5798,21 +6203,58 @@ Thank you"""
             - Can hardcode the component handling
         """
 
-        if form.record:
+        record = form.record
+        if record:
             # Update form
-            req_id = form.vars.id
+            form_vars = form.vars
+            req_id = form_vars.id
             db = current.db
-            table  = db.inv_req
-            if site_id not in record:
-                record = db(table.id == req_id).select(table.id,
-                                                       table.site_id,
-                                                       limitby = (0, 1),
-                                                       ).first()
-            if record.site_id != form.record.site_id:
-                realm_entity = current.auth.get_realm_entity(table, record)
-                db(table.id == req_id).update(realm_entity = realm_entity)
+            table = db.inv_req
+            site_id = form_vars.get("site_id")
+            if not site_id:
+                req = db(table.id == req_id).select(table.site_id,
+                                                    limitby = (0, 1),
+                                                    ).first()
+                site_id = req.site_id
+            if site_id != record.site_id:
+                get_realm_entity = current.auth.get_realm_entity
+                req_realm_entity = get_realm_entity(table, record)
+                db(table.id == req_id).update(realm_entity = req_realm_entity)
                 # Update Request Items
-                db(current.s3db.inv_req_item.req_id == req_id).update(realm_entity = realm_entity)
+                ritable = current.s3db.inv_req_item
+                req_items = db(ritable.req_id == req_id).select(ritable.id,
+                                                                ritable.site_id,
+                                                                )
+                site_ids = {}
+                for row in req_items:
+                    site_id = row.site_id
+                    if site_id in site_ids:
+                        site_ids[site_id].append(row.id)
+                    else:
+                        site_ids[site_id] = [row.id]
+                req_site_id = record.site_id
+                same_as_req = site_ids.get(None, []) + site_ids.get(req_site_id, [])
+                same_as_req_len = len(same_as_req)
+                if same_as_req_len:
+                    if same_as_req_len == 1:
+                        db(ritable.id == same_as_req[0]).update(realm_entity = req_realm_entity)
+                    else:
+                        db(ritable.id.belongs(same_as_req)).update(realm_entity = req_realm_entity)
+                    if None in site_ids:
+                        del site_ids[None]
+                    if req_site_id in site_ids:
+                        del site_ids[req_site_id]
+                for site_id in site_ids:
+                    req_item_ids = site_ids[site_id]
+                    req_item_id = req_item_ids[0]
+                    realm_entity = get_realm_entity(ritable, {"id": req_item_id,
+                                                              "site_id": site_id,
+                                                              "req_id": record.id,
+                                                              })
+                    if len(req_item_ids) == 1:
+                        db(ritable.id == req_item_id).update(realm_entity = realm_entity)
+                    else:
+                        db(ritable.id.belongs(req_item_ids)).update(realm_entity = realm_entity)
 
     # -------------------------------------------------------------------------
     def on_req_approve(req_id):
@@ -5826,8 +6268,12 @@ Thank you"""
                 (ntable.type == "req_approve") & \
                 (ntable.record_id == req_id)
 
+        auth = current.auth
+        override_default = auth.override
+        auth.override = True
         resource = s3db.resource("auth_user_notification", filter = query)
         resource.delete()
+        auth.override = override_default
 
     # -------------------------------------------------------------------------
     def on_req_approved(req_id, record, site_ids):
@@ -5991,6 +6437,11 @@ Thank you"""
         s3db = current.s3db
 
         table = s3db.inv_req
+
+        # Use Custom Represent for Sites
+        from .controllers import org_SiteRepresent
+        table.site_id.requires.label = org_SiteRepresent()
+
         f = table.req_ref
         f.represent = inv_ReqRefRepresent(show_link = True,
                                           pdf = True,
@@ -6024,6 +6475,7 @@ Thank you"""
             db = current.db
 
             # Link to Projects
+            # NB Whilst the requester can only select valid Project Codes for their NS, we do NOT use this as a filter for destination.
             ptable = s3db.project_project
             project_represent = S3Represent(lookup = "project_project",
                                             fields = ["code"],
@@ -6101,7 +6553,8 @@ Thank you"""
                 transport_type = components_get("transport_type")
                 f = transport_type.table.value
                 f.requires = IS_EMPTY_OR(IS_IN_SET(transport_opts))
-                f.represent = S3Represent(options = transport_opts)
+                from s3 import s3_options_represent
+                f.represent = s3_options_represent(transport_opts)
                 f.widget = S3GroupedOptionsWidget(options = transport_opts,
                                                   multiple = False,
                                                   cols = 4,
@@ -6110,8 +6563,6 @@ Thank you"""
                 insert_index = crud_fields.index("transport_req") + 1
                 crud_fields.insert(insert_index, ("", "transport_type.value"))
 
-                import json
-                SEPARATORS = (",", ":")
                 s3 = current.response.s3
                 s3.jquery_ready.append('''S3.showHidden('%s',%s,'%s')''' % \
                     ("transport_req", json.dumps(["sub_transport_type_value"], separators=SEPARATORS), "inv_req"))
@@ -6121,12 +6572,12 @@ Thank you"""
                            crud_form = crud_form,
                            )
 
-            set_method = s3db.set_method
             # Custom Request Form
-            set_method("inv", "req",
-                       method = "form",
-                       action = PrintableShipmentForm,
-                       )
+            from .forms import inv_req_form
+            s3db.set_method("inv", "req",
+                            method = "form",
+                            action = inv_req_form,
+                            )
 
         from s3 import S3OptionsFilter
         filter_widgets = [S3OptionsFilter("workflow_status",
@@ -6135,6 +6586,7 @@ Thank you"""
                           ]
 
         list_fields = ["req_ref",
+                       "req_project.project_id",
                        "date",
                        "site_id",
                        (T("Details"), "details"),
@@ -6179,7 +6631,11 @@ Thank you"""
                 if not result:
                     return False
 
-            if r.component_name == "req_item":
+            if not r.id:
+                current.s3db.inv_req_project.project_id.represent = S3Represent(lookup = "project_project",
+                                                                                fields = ["code"],
+                                                                                )
+            elif r.component_name == "req_item":
                 s3db = current.s3db
                 workflow_status = r.record.workflow_status
                 if workflow_status == 2: # Submitted for Approval
@@ -6198,7 +6654,7 @@ Thank you"""
                                                             )
                         if not approved:
                             # Allow User to Match
-                            settings.req.prompt_match = True
+                            settings.inv.req_prompt_match = True
                 elif workflow_status == 3: # Approved
                     show_site_and_po = True
                 else:
@@ -6231,6 +6687,7 @@ Thank you"""
                                    "site_id",
                                    (order_label, "order_item.id"),
                                    "quantity",
+                                   "quantity_reserved",
                                    "quantity_transit",
                                    "quantity_fulfil",
                                    ]
@@ -6249,18 +6706,35 @@ Thank you"""
             Update realm's affiliations if site_id changes
         """
 
-        if form.record:
+        record = form.record
+        if record:
             # Update form
             form_vars_get = form.vars.get
-            if form_vars_get("site_id") != form.record.site_id:
-                # Item has been Requested from a specific site so this needs to be affiliated to the realm
+            site_id = form_vars_get("site_id")
+            if site_id and site_id != record.site_id:
+                # Item has been Requested from a specific site
+                # Update the Request's Realm
+                req_id = form_vars_get("req_id")
                 db = current.db
                 table = db.inv_req
-                record = db(table.id == form_vars_get("req_id")).select(table.id,
-                                                                        table.site_id,
-                                                                        )
-                # Update affiliations
-                current.auth.get_realm_entity(table, record)
+                req = db(table.id == req_id).select(table.id,
+                                                    table.site_id,
+                                                    limitby = (0, 1),
+                                                    ).first()
+                get_realm_entity = current.auth.get_realm_entity
+                req_realm_entity = get_realm_entity(table, record)
+                db(table.id == req_id).update(realm_entity = req_realm_entity)
+                # Update Realm of the Request Item
+                if site_id == req.site_id:
+                    db(current.s3db.inv_req_item.id == form_vars_get("id")).update(realm_entity = req_realm_entity)
+                else:
+                    req_item_id = form_vars_get("id")
+                    ritable = current.s3db.inv_req_item
+                    realm_entity = get_realm_entity(ritable, {"id": req_item_id,
+                                                              "site_id": site_id,
+                                                              "req_id": req_id,
+                                                              })
+                    db(ritable.id == req_item_id).update(realm_entity = realm_entity)
 
     # -------------------------------------------------------------------------
     def customise_inv_req_item_resource(r, tablename):
@@ -6271,6 +6745,30 @@ Thank you"""
                                          )
 
     settings.customise_inv_req_item_resource = customise_inv_req_item_resource
+
+    # -------------------------------------------------------------------------
+    def customise_inv_stock_card_controller(**attr):
+
+        s3 = current.response.s3
+
+        # Custom postp
+        standard_postp = s3.postp
+        def custom_postp(r, output):
+
+            if r.representation == "pdf":
+                from .forms import stock_card
+                output = stock_card(r, **attr)
+            else:
+                # Call standard postp
+                if callable(standard_postp):
+                    output = standard_postp(r, output)
+
+            return output
+        s3.postp = custom_postp
+
+        return attr
+
+    settings.customise_inv_stock_card_controller = customise_inv_stock_card_controller
 
     # -------------------------------------------------------------------------
     def customise_supply_item_category_resource(r, tablename):
@@ -6313,643 +6811,5 @@ Thank you"""
             r.resource.configure(filter_widgets = None)
 
     settings.customise_supply_item_resource = customise_supply_item_resource
-
-# =============================================================================
-class PrintableShipmentForm(S3Method):
-    """ REST Method Handler for Printable Shipment Forms """
-
-    # -------------------------------------------------------------------------
-    def apply_method(self, r, **attr):
-        """
-            Entry point for REST interface.
-
-            @param r: the S3Request instance
-            @param attr: controller attributes
-
-            @note: always returns PDF, disregarding the requested format
-        """
-
-        output = {}
-        if r.http == "GET":
-            if r.id:
-                tablename = r.tablename
-                if tablename == "inv_req":
-                    output = self.request_form(r, **attr)
-                elif tablename == "inv_send":
-                    output = self.waybill(r, **attr)
-                elif tablename == "inv_recv":
-                    output = self.goods_received_note(r, **attr)
-                else:
-                    # Not supported
-                    r.error(405, current.ERROR.BAD_METHOD)
-            else:
-                # Record ID is required
-                r.error(400, current.ERROR.BAD_REQUEST)
-        else:
-            r.error(405, current.ERROR.BAD_METHOD)
-        return output
-
-    # -------------------------------------------------------------------------
-    def request_form(self, r, **attr):
-        """
-            Request Form
-
-            @param r: the S3Request instance
-            @param attr: controller attributes
-        """
-
-        T = current.T
-        s3db = current.s3db
-
-        # Master record (=inv_req)
-        resource = s3db.resource(r.tablename,
-                                 id = r.id,
-                                 components = ["req_item"],
-                                 )
-
-        # Columns and data for the form header
-        header_fields = ["req_ref",
-                         "date",
-                         "date_required",
-                         (T("Deliver to"), "site_id"),
-                         (T("Reason for Request"), "purpose"),
-                         "requester_id",
-                         "site_id$site_id:inv_warehouse.contact",
-                         "comments",
-                         ]
-
-        header_data = resource.select(header_fields,
-                                      start = 0,
-                                      limit = 1,
-                                      represent = True,
-                                      show_links = False,
-                                      raw_data = True,
-                                      )
-        if not header_data:
-            r.error(404, current.ERROR.BAD_RECORD)
-
-        # Generate PDF header
-        pdf_header = self.request_form_header(header_data)
-
-        # Filename from send_ref
-        header_row = header_data.rows[0]
-        pdf_filename = header_row["_row"]["inv_req.req_ref"]
-
-        # Component (=req_item)
-        component = resource.components["req_item"]
-        body_fields = ["item_id",
-                       "item_pack_id",
-                       "quantity",
-                       "comments",
-                       ]
-
-        # Aggregate methods and column names
-        aggregate = [("sum", "inv_req_item.quantity"),
-                     ]
-
-        # Generate the JSON data dict
-        json_data = self._json_data(component,
-                                    body_fields,
-                                    aggregate = aggregate,
-                                    )
-
-        # Generate the grouped items table
-        from s3 import S3GroupedItemsTable
-        output = S3GroupedItemsTable(component,
-                                     data = json_data,
-                                     totals_label = T("Total"),
-                                     title = T("Logistics Requisition"),
-                                     pdf_header = pdf_header,
-                                     pdf_footer = self.request_form_footer,
-                                     )
-
-        # ...and export it as PDF
-        return output.pdf(r, filename=pdf_filename)
-
-    # -------------------------------------------------------------------------
-    @classmethod
-    def request_form_header(cls, data):
-        """
-            Header for Request Forms
-
-            @param data: the S3ResourceData for the inv_req
-        """
-
-        row = data.rows[0]
-        labels = dict((rfield.colname, rfield.label) for rfield in data.rfields)
-        def row_(left, right):
-            return cls._header_row(left, right, row=row, labels=labels)
-
-        from gluon import DIV, H2, H4, TABLE, TD, TH, TR, P
-
-        T = current.T
-
-        # Get organisation name and logo
-        from .layouts import OM
-        name, logo = OM().render()
-
-        # The title
-        title = H2(T("Logistics Requisition"))
-
-        # Waybill details
-        dtable = TABLE(
-                    TR(TD(DIV(logo, H4(name)), _colspan = 2),
-                       TD(DIV(title), _colspan = 2),
-                       ),
-                    row_("inv_req.req_ref", None),
-                    row_("inv_req.date", "inv_req.date_required"),
-                    row_("inv_req.site_id", "inv_req.purpose"),
-                    row_("inv_req.requester_id", "inv_warehouse.contact"),
-                 )
-
-        # Waybill comments
-        ctable = TABLE(TR(TH(T("Comments"))),
-                       TR(TD(row["inv_req.comments"])),
-                       )
-
-        return DIV(dtable, P("&nbsp;"), ctable)
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def request_form_footer(r):
-        """
-            Footer for Request Forms
-
-            @param r: the S3Request
-        """
-
-        from gluon import TABLE, TD, TH, TR
-        from s3db.pr import pr_PersonRepresent
-        from s3db.inv import inv_req_approvers
-
-        T = current.T
-
-        header = TR(TH("&nbsp;"),
-                    TH(T("Name")),
-                    TH(T("Signature")),
-                    TH(T("Date")),
-                    )
-
-        record = r.record
-        requester = record.requester_id
-        approvers = inv_req_approvers(record.site_id)
-        person_ids = [requester] + list(approvers)
-
-        names = pr_PersonRepresent().bulk(person_ids)
-
-        signature_rows = [TR(TH(T("Requester")),
-                             TD(names[requester]),
-                             )]
-        append = signature_rows.append
-
-        for approver in approvers:
-            append(TR(TH(approvers[approver]["title"]),
-                      TD(names[approver]),
-                      ))
-
-        return TABLE(header,
-                     *signature_rows
-                     )
-
-    # -------------------------------------------------------------------------
-    def waybill(self, r, **attr):
-        """
-            Waybill
-
-            @param r: the S3Request instance
-            @param attr: controller attributes
-        """
-
-        T = current.T
-        s3db = current.s3db
-
-        # Component declarations to distinguish between the
-        # origin and destination warehouses
-        s3db.add_components("inv_send",
-                            inv_warehouse = ({"name": "origin",
-                                              "joinby": "site_id",
-                                              "pkey": "site_id",
-                                              "filterby": False,
-                                              "multiple": False,
-                                              },
-                                             {"name": "destination",
-                                              "joinby": "site_id",
-                                              "pkey": "to_site_id",
-                                              "filterby": False,
-                                              "multiple": False,
-                                              },
-                                             ),
-                            )
-
-        # Master record (=inv_send)
-        resource = s3db.resource(r.tablename,
-                                 id = r.id,
-                                 components = ["origin",
-                                               "destination",
-                                               "track_item",
-                                               ],
-                                 )
-
-        # Columns and data for the form header
-        header_fields = ["send_ref",
-                         # @ToDo: Will ned updating to use inv_send_req
-                         #"req_ref",
-                         "date",
-                         "delivery_date",
-                         (T("Origin"), "site_id"),
-                         (T("Destination"), "to_site_id"),
-                         "sender_id",
-                         "origin.contact",
-                         "recipient_id",
-                         "destination.contact",
-                         "transported_by",
-                         "transport_ref",
-                         (T("Delivery Address"), "destination.location_id"),
-                         "comments",
-                         ]
-
-        header_data = resource.select(header_fields,
-                                      start = 0,
-                                      limit = 1,
-                                      represent = True,
-                                      show_links = False,
-                                      raw_data = True,
-                                      )
-        if not header_data:
-            r.error(404, current.ERROR.BAD_RECORD)
-
-        # Generate PDF header
-        pdf_header = self.waybill_header(header_data)
-
-        # Filename from send_ref
-        header_row = header_data.rows[0]
-        pdf_filename = header_row["_row"]["inv_send.send_ref"]
-
-        # Component (=inv_track_item)
-        component = resource.components["track_item"]
-        body_fields = [#"bin",
-                       "layout_id",
-                       "item_id",
-                       "item_pack_id",
-                       "quantity",
-                       (T("Total Volume (m3)"), "total_volume"),
-                       (T("Total Weight (kg)"), "total_weight"),
-                       "supply_org_id",
-                       "inv_item_status",
-                       ]
-        # Any extra fields needed for virtual fields
-        component.configure(extra_fields = ["item_id$weight",
-                                            "item_id$volume",
-                                            ],
-                            )
-
-        # Aggregate methods and column names
-        aggregate = [("sum", "inv_track_item.quantity"),
-                     ("sum", "inv_track_item.total_volume"),
-                     ("sum", "inv_track_item.total_weight"),
-                     ]
-
-        # Generate the JSON data dict
-        json_data = self._json_data(component,
-                                    body_fields,
-                                    aggregate = aggregate,
-                                    )
-
-        # Generate the grouped items table
-        from s3 import S3GroupedItemsTable
-        output = S3GroupedItemsTable(component,
-                                     data = json_data,
-                                     totals_label = T("Total"),
-                                     title = T("Waybill"),
-                                     pdf_header = pdf_header,
-                                     pdf_footer = self.waybill_footer,
-                                     )
-
-        # ...and export it as PDF
-        return output.pdf(r, filename=pdf_filename)
-
-    # -------------------------------------------------------------------------
-    @classmethod
-    def waybill_header(cls, data):
-        """
-            Header for Waybills
-
-            @param data: the S3ResourceData for the inv_send
-        """
-
-        row = data.rows[0]
-        labels = dict((rfield.colname, rfield.label) for rfield in data.rfields)
-        def row_(left, right):
-            return cls._header_row(left, right, row=row, labels=labels)
-
-        from gluon import DIV, H2, H4, TABLE, TD, TH, TR, P
-
-        T = current.T
-
-        # Get organisation name and logo
-        from .layouts import OM
-        name, logo = OM().render()
-
-        # The title
-        title = H2(T("Waybill"))
-
-        # Waybill details
-        dtable = TABLE(
-                    TR(TD(DIV(logo, H4(name)), _colspan = 2),
-                       TD(DIV(title), _colspan = 2),
-                       ),
-                    # @ToDo: Will ned updating to use inv_send_req
-                    row_("inv_send.send_ref", None
-                         #"inv_send.req_ref",
-                         ),
-                    row_("inv_send.date", "inv_send.delivery_date"),
-                    row_("inv_send.site_id", "inv_send.to_site_id"),
-                    row_("inv_send.sender_id", "inv_send.recipient_id"),
-                    row_("inv_origin_warehouse.contact",
-                         "inv_destination_warehouse.contact",
-                         ),
-                    row_("inv_send.transported_by", "inv_send.transport_ref"),
-                    row_("inv_destination_warehouse.location_id", None),
-                 )
-
-        # Waybill comments
-        ctable = TABLE(TR(TH(T("Comments"))),
-                       TR(TD(row["inv_send.comments"])),
-                       )
-
-        return DIV(dtable, P("&nbsp;"), ctable)
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def waybill_footer(r):
-        """
-            Footer for Waybills
-
-            @param r: the S3Request
-        """
-
-        T = current.T
-        from gluon import TABLE, TD, TH, TR
-
-        return TABLE(TR(TH(T("Shipment")),
-                        TH(T("Date")),
-                        TH(T("Function")),
-                        TH(T("Name")),
-                        TH(T("Signature")),
-                        TH(T("Status")),
-                        ),
-                     TR(TD(T("Sent by"))),
-                     TR(TD(T("Transported by"))),
-                     TR(TH(T("Received by")),
-                        TH(T("Date")),
-                        TH(T("Function")),
-                        TH(T("Name")),
-                        TH(T("Signature")),
-                        TH(T("Status")),
-                        ),
-                     TR(TD("&nbsp;")),
-                     )
-
-    # -------------------------------------------------------------------------
-    def goods_received_note(self, r, **attr):
-        """
-            GRN (Goods Received Note)
-
-            @param r: the S3Request instance
-            @param attr: controller attributes
-        """
-
-        T = current.T
-        s3db = current.s3db
-
-        # Master record (=inv_recv)
-        resource = s3db.resource(r.tablename,
-                                 id = r.id,
-                                 components = ["track_item"],
-                                 )
-
-        # Columns and data for the form header
-        header_fields = ["eta",
-                         "date",
-                         (T("Origin"), "from_site_id"),
-                         (T("Destination"), "site_id"),
-                         "sender_id",
-                         "recipient_id",
-                         "send_ref",
-                         "recv_ref",
-                         "comments",
-                         ]
-
-        header_data = resource.select(header_fields,
-                                      start = 0,
-                                      limit = 1,
-                                      represent = True,
-                                      show_links = False,
-                                      raw_data = True,
-                                      )
-        if not header_data:
-            r.error(404, current.ERROR.BAD_RECORD)
-
-        # Generate PDF header
-        pdf_header = self.goods_received_note_header(header_data)
-
-        # Filename from send_ref
-        header_row = header_data.rows[0]
-        pdf_filename = header_row["_row"]["inv_recv.recv_ref"]
-
-        # Component (=inv_track_item)
-        component = resource.components["track_item"]
-        body_fields = [#"recv_bin",
-                       "recv_bin_id",
-                       "item_id",
-                       "item_pack_id",
-                       "recv_quantity",
-                       (T("Total Volume (m3)"), "total_recv_volume"),
-                       (T("Total Weight (kg)"), "total_recv_weight"),
-                       "supply_org_id",
-                       "inv_item_status",
-                       ]
-        # Any extra fields needed for virtual fields
-        component.configure(extra_fields = ["item_id$weight",
-                                            "item_id$volume",
-                                            ],
-                            )
-
-        # Aggregate methods and column names
-        aggregate = [("sum", "inv_track_item.recv_quantity"),
-                     ("sum", "inv_track_item.total_recv_volume"),
-                     ("sum", "inv_track_item.total_recv_weight"),
-                     ]
-
-        # Generate the JSON data dict
-        json_data = self._json_data(component,
-                                    body_fields,
-                                    aggregate = aggregate,
-                                    )
-
-        # Generate the grouped items table
-        from s3 import S3GroupedItemsTable
-        output = S3GroupedItemsTable(component,
-                                     data = json_data,
-                                     totals_label = T("Total"),
-                                     title = T("Goods Received Note"),
-                                     pdf_header = pdf_header,
-                                     pdf_footer = self.goods_received_note_footer,
-                                     )
-
-        # ...and export it as PDF
-        return output.pdf(r, filename=pdf_filename)
-
-    # -------------------------------------------------------------------------
-    @classmethod
-    def goods_received_note_header(cls, data):
-        """
-            Header for Goods Received Notes
-
-            @param data: the S3ResourceData for the inv_recv
-        """
-
-        row = data.rows[0]
-        labels = dict((rfield.colname, rfield.label) for rfield in data.rfields)
-        def row_(left, right):
-            return cls._header_row(left, right, row=row, labels=labels)
-
-        from gluon import DIV, H2, H4, TABLE, TD, TH, TR, P
-
-        T = current.T
-
-        # Get organisation name and logo
-        from .layouts import OM
-        name, logo = OM().render()
-
-        # The title
-        title = H2(T("Goods Received Note"))
-
-        # GRN details
-        dtable = TABLE(TR(TD(DIV(logo,
-                                 H4(name),
-                                 ),
-                             _colspan = 2,
-                             ),
-                          TD(DIV(title),
-                             _colspan = 2,
-                             ),
-                          ),
-                       row_("inv_recv.eta", "inv_recv.date"),
-                       row_("inv_recv.from_site_id", "inv_recv.site_id"),
-                       row_("inv_recv.sender_id", "inv_recv.recipient_id"),
-                       row_("inv_recv.send_ref", "inv_recv.recv_ref"),
-                       )
-
-        # GRN comments
-        ctable = TABLE(TR(TH(T("Comments"))),
-                       TR(TD(row["inv_recv.comments"])),
-                       )
-
-        return DIV(dtable, P("&nbsp;"), ctable)
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def goods_received_note_footer(r):
-        """
-            Footer for Goods Received Notes
-
-            @param r: the S3Request
-        """
-
-        T = current.T
-        from gluon import TABLE, TD, TH, TR
-
-        return TABLE(TR(TH(T("Delivered by")),
-                        TH(T("Date")),
-                        TH(T("Function")),
-                        TH(T("Name")),
-                        TH(T("Signature")),
-                        TH(T("Status")),
-                        ),
-                     TR(TD(T("&nbsp;"))),
-                     TR(TH(T("Received by")),
-                        TH(T("Date")),
-                        TH(T("Function")),
-                        TH(T("Name")),
-                        TH(T("Signature")),
-                        TH(T("Status")),
-                        ),
-                     TR(TD("&nbsp;")),
-                     )
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def _header_row(left, right, row=None, labels=None):
-        """
-            Helper function to generate a 2-column table row
-            for the PDF header
-
-            @param left: the column name for the left column
-            @param right: the column name for the right column,
-                          or None for an empty column
-            @param row: the S3ResourceData row
-            @param labels: dict of labels {colname: label}
-        """
-
-        from gluon import TD, TH, TR
-
-        if right:
-            header_row = TR(TH(labels[left]),
-                            TD(row[left]),
-                            TH(labels[right]),
-                            TD(row[right]),
-                            )
-        else:
-            header_row = TR(TH(labels[left]),
-                            TD(row[left],
-                               _colspan = 3,
-                               ),
-                            )
-        return header_row
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def _json_data(component, list_fields, aggregate=None):
-        """
-            Extract, group and aggregate the data for the form body
-
-            @param component: the component (S3Resource)
-            @param list_fields: the columns for the form body
-                                (list of field selectors)
-            @param aggregate: aggregation methods and fields,
-                              a list of tuples (method, column name)
-        """
-
-        # Extract the data
-        data = component.select(list_fields,
-                                limit = None,
-                                raw_data = True,
-                                represent = True,
-                                show_links = False,
-                                )
-
-        # Get the column names and labels
-        columns = []
-        append_column = columns.append
-        labels = {}
-        for rfield in data.rfields:
-            colname = rfield.colname
-            append_column(colname)
-            labels[colname] = rfield.label
-
-        # Group and aggregate the items
-        from s3 import S3GroupedItems
-        gi = S3GroupedItems(data.rows,
-                            aggregate = aggregate,
-                            )
-
-        # Convert into JSON-serializable dict for S3GroupedItemsTable
-        json_data = gi.json(fields = columns,
-                            labels = labels,
-                            as_dict = True,
-                            )
-
-        return json_data
 
 # END =========================================================================

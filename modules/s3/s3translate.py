@@ -28,7 +28,11 @@
 """
 
 import os
-import parser
+try:
+    import parser
+except ImportError:
+    # Python 3.10: parser is deprecated
+    import ast
 import pickle
 import token
 
@@ -67,7 +71,7 @@ from .s3fields import S3ReusableField
 """
 
 # =============================================================================
-class TranslateAPI(object):
+class TranslateAPI:
     """
         API class for the Translation module to get
         files, modules and strings individually
@@ -169,7 +173,7 @@ class TranslateAPI(object):
         return strings
 
 # =============================================================================
-class TranslateGetFiles(object):
+class TranslateGetFiles:
     """ Class to group files by modules """
 
     def __init__(self):
@@ -295,7 +299,7 @@ class TranslateGetFiles(object):
                     d["core"].append(curFile)
 
 # =============================================================================
-class TranslateParseFiles(object):
+class TranslateParseFiles:
     """
         Class to extract strings to translate from code files
     """
@@ -624,7 +628,7 @@ class TranslateParseFiles(object):
                             self.mflag = 0
 
 # =============================================================================
-class TranslateReadFiles(object):
+class TranslateReadFiles:
     """ Class to read code files """
 
     # ---------------------------------------------------------------------
@@ -632,9 +636,11 @@ class TranslateReadFiles(object):
     def findstr(fileName, spmod, modlist):
         """
             Using the methods in TranslateParseFiles to extract the strings
-            fileName -> the file to be used for extraction
-            spmod -> the required module
-            modlist -> a list of all modules in Eden
+
+            Args:
+                fileName: the file to be used for extraction
+                spmod: the required module
+                modlist: a list of all modules in Eden
         """
 
         try:
@@ -657,10 +663,20 @@ class TranslateReadFiles(object):
         try:
             st = parser.suite(fileContent)
         except:
-            return []
-
-        # Create a parse tree list for traversal
-        stList = parser.st2list(st, line_info=1)
+            try:
+                # Python 3.10
+                tree = ast.parse(fileContent)
+            except:
+                return []
+            else:
+                # Create a parse tree list for traversal
+                # NB This needs more work...this is not a drop-in replacement!
+                # https://docs.python.org/3.10/library/ast.html
+                # https://greentreesnakes.readthedocs.io/en/latest/index.html
+                stList = ast.walk(tree)
+        else:
+            # Create a parse tree list for traversal
+            stList = parser.st2list(st, line_info=1)
 
         P = TranslateParseFiles()
 
@@ -829,8 +845,6 @@ class TranslateReadFiles(object):
 
         from .s3import import S3BulkImporter
 
-
-
         # List of database strings
         database_strings = []
         dappend = database_strings.append
@@ -951,7 +965,7 @@ class TranslateReadFiles(object):
         return database_strings
 
 # =============================================================================
-class Strings(object):
+class Strings:
     """ Class to manipulate strings and their files """
 
     # ---------------------------------------------------------------------
@@ -1156,8 +1170,10 @@ class Strings(object):
     @staticmethod
     def read_w2p(fileName):
         """
-            Function to read a web2py language file and
-            return a list of translation string pairs
+            Function to read a web2py language file
+
+            Returns:
+                list of translation string pairs
         """
 
         data = read_dict(fileName)
@@ -1324,13 +1340,14 @@ class Strings(object):
         return output.read()
 
 # =============================================================================
-class Pootle(object):
+class Pootle:
     """
         Class to synchronise a Pootle server's translation with the local
         one
 
-        @ToDo: Before uploading file to Pootle, ensure all relevant
-               untranslated strings are present.
+        TODO:
+            Before uploading file to Pootle, ensure all relevant
+            untranslated strings are present.
     """
 
     # ---------------------------------------------------------------------
@@ -1409,7 +1426,8 @@ class Pootle(object):
         """
             Download a file from Pootle
 
-            @ToDo: Allow selection between different variants of language files
+            TODO:
+                Allow selection between different variants of language files
         """
 
         import requests
@@ -1559,7 +1577,7 @@ class Pootle(object):
             os.unlink(pofilename)
 
 # =============================================================================
-class TranslateReportStatus(object):
+class TranslateReportStatus:
     """
         Class to report the percentage of translated strings for
         each module for a given language.
@@ -1635,8 +1653,9 @@ class TranslateReportStatus(object):
             Update the translation percentages for all modules for a given
             language.
 
-            @ToDo: Generate fresh .py files with all relevant strings for this
-                    (since we don't store untranslated strings)
+            TODO:
+                Generate fresh .py files with all relevant strings for this
+                (since we don't store untranslated strings)
         """
 
         base_dir = current.request.folder
@@ -1693,7 +1712,8 @@ class TranslateReportStatus(object):
             Get the percentages of translated strings per module for
             the given language code.
 
-            @param lang_code: the language code
+            Args:
+                lang_code: the language code
         """
 
         pickle_file = os.path.join(current.request.folder,

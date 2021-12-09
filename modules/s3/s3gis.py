@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-""" GIS Module
+""" S3 GIS Module
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
     @requires: U{B{I{shapely}} <http://trac.gispython.org/lab/wiki/Shapely>}
@@ -27,11 +27,9 @@
     WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
     OTHER DEALINGS IN THE SOFTWARE.
-
-    @status: partially fixed for Py3, needs more work
 """
 
-__all__ = ("GIS",
+__all__ = ("S3GIS",
            "MAP2",
            "S3Map",
            "S3ExportPOI",
@@ -225,7 +223,7 @@ GPS_SYMBOLS = ("Airport",
                )
 
 # -----------------------------------------------------------------------------
-class GIS(object):
+class S3GIS:
     """
         GeoSpatial functions
     """
@@ -272,17 +270,19 @@ class GIS(object):
             Designed to be called asynchronously using:
                 current.s3task.run_async("download_kml", [record_id, filename])
 
-            @param record_id: id of the record in db.gis_layer_kml
-            @param filename: name to save the file as
-            @param session_id_name: name of the session
-            @param session_id: id of the session
+            Args:
+                record_id: id of the record in db.gis_layer_kml
+                filename: name to save the file as
+                session_id_name: name of the session
+                session_id: id of the session
 
-            @ToDo: Pass error messages to Result & have JavaScript listen for these
+            TODO:
+                Pass error messages to Result & have JavaScript listen for these
         """
 
         table = current.s3db.gis_layer_kml
         record = current.db(table.id == record_id).select(table.url,
-                                                          limitby = (0, 1)
+                                                          limitby = (0, 1),
                                                           ).first()
         url = record.url
 
@@ -303,7 +303,8 @@ class GIS(object):
                 if statinfo.st_size:
                     # Use cached version
                     #date = db(query).select(cachetable.modified_on,
-                    #                        limitby = (0, 1)).first().modified_on
+                    #                        limitby = (0, 1),
+                    #                        ).first().modified_on
                     #response.warning += "%s %s %s\n" % (url,
                     #                                    T("not accessible - using cached version from"),
                     #                                    str(date))
@@ -346,7 +347,8 @@ class GIS(object):
                 - unzip it if-required
                 - follow NetworkLinks recursively if-required
 
-            Returns a file object
+            Returns:
+                a file object
 
             Designed as a helper function for download_kml()
         """
@@ -490,10 +492,11 @@ class GIS(object):
             - used by S3LocationSelector
                       settings.get_gis_geocode_imported_addresses
 
-            @param address: street address
-            @param postcode: postcode
-            @param Lx_ids: list of ancestor IDs
-            @param geocoder: which geocoder service to use
+            Args:
+                address: street address
+                postcode: postcode
+                Lx_ids: list of ancestor IDs
+                geocoder: which geocoder service to use
         """
 
         try:
@@ -629,27 +632,27 @@ class GIS(object):
                         wkt = None
                         if L5 and Lx[L5]["gis_feature_type"] != 1:
                             wkt = db(table.id == L5).select(table.wkt,
-                                                            limitby = (0, 1)
+                                                            limitby = (0, 1),
                                                             ).first().wkt
                             used_Lx = L5
                         elif L4 and Lx[L4]["gis_feature_type"] != 1:
                             wkt = db(table.id == L4).select(table.wkt,
-                                                            limitby = (0, 1)
+                                                            limitby = (0, 1),
                                                             ).first().wkt
                             used_Lx = L4
                         elif L3 and Lx[L3]["gis_feature_type"] != 1:
                             wkt = db(table.id == L3).select(table.wkt,
-                                                            limitby = (0, 1)
+                                                            limitby = (0, 1),
                                                             ).first().wkt
                             used_Lx = L3
                         elif L2 and Lx[L2]["gis_feature_type"] != 1:
                             wkt = db(table.id == L2).select(table.wkt,
-                                                            limitby = (0, 1)
+                                                            limitby = (0, 1),
                                                             ).first().wkt
                             used_Lx = L2
                         elif L1 and Lx[L1]["gis_feature_type"] != 1:
                             wkt = db(table.id == L1).select(table.wkt,
-                                                            limitby = (0, 1)
+                                                            limitby = (0, 1),
                                                             ).first().wkt
                             used_Lx = L1
                         elif L0:
@@ -658,7 +661,7 @@ class GIS(object):
                                                                table.lat_min,
                                                                table.lon_max,
                                                                table.lat_max,
-                                                               limitby = (0, 1)
+                                                               limitby = (0, 1),
                                                                ).first()
                             if not L0_row.wkt.startswith("POI"): # Point
                                 wkt = L0_row.wkt
@@ -685,7 +688,7 @@ class GIS(object):
                                                                    table.lat_min,
                                                                    table.lon_max,
                                                                    table.lat_max,
-                                                                   limitby = (0, 1)
+                                                                   limitby = (0, 1),
                                                                    ).first()
                             if lat < L0_row["lat_max"] and \
                                lat > L0_row["lat_min"] and \
@@ -801,7 +804,8 @@ class GIS(object):
     def get_bounds(self,
                    features = None,
                    bbox_min_size = None,
-                   bbox_inset = None):
+                   bbox_inset = None,
+                   ):
         """
             Calculate the Bounds of a list of Point Features, suitable for
             setting map bounds. If no features are supplied, the current map
@@ -813,20 +817,27 @@ class GIS(object):
             Ensure a minimum size of bounding box, and that the points
             are inset from the border.
 
-            @param features: A list of point features
-            @param bbox_min_size: Minimum bounding box - gives a minimum width
-                   and height in degrees for the region shown.
-                   Without this, a map showing a single point would not show any
-                   extent around that point.
-            @param bbox_inset: Bounding box insets - adds a small amount of
-                   distance outside the points.
-                   Without this, the outermost points would be on the bounding
-                   box, and might not be visible.
-            @return: An appropriate map bounding box, as a dict:
-                   dict(lon_min=lon_min, lat_min=lat_min,
-                        lon_max=lon_max, lat_max=lat_max)
+            Args:
+                features: A list of point features
+                bbox_min_size: Minimum bounding box - gives a minimum width
+                               and height in degrees for the region shown.
+                               Without this, a map showing a single point would
+                               not show any extent around that point.
+                bbox_inset: Bounding box insets - adds a small amount of
+                            distance outside the points.
+                            Without this, the outermost points would be on the
+                            bounding box, and might not be visible.
 
-            @ToDo: Support Polygons (separate function?)
+            Returns:
+                An appropriate map bounding box, as a dict:
+                   {"lon_min": lon_min,
+                    "lat_min": lat_min,
+                    "lon_max": lon_max,
+                    "lat_max": lat_max,
+                    }
+
+            TODO:
+                Support Polygons (separate function?)
         """
 
         if features:
@@ -889,7 +900,7 @@ class GIS(object):
 
         else:
             # no features
-            config = GIS.get_config()
+            config = S3GIS.get_config()
             if config.lat_min is not None:
                 lat_min = config.lat_min
             else:
@@ -938,7 +949,7 @@ class GIS(object):
                        ]
 
         feature = db(table.id == location_id).select(*fields,
-                                                     limitby = (0, 1)
+                                                     limitby = (0, 1),
                                                      ).first()
         level = feature.level
         if not level:
@@ -950,7 +961,7 @@ class GIS(object):
             location_id = parent
             fields.remove(table.parent)
             feature = db(table.id == parent).select(*fields,
-                                                    limitby = (0, 1)
+                                                    limitby = (0, 1),
                                                     ).first()
             level = feature.level
 
@@ -1019,12 +1030,16 @@ class GIS(object):
             be correct. A set of candidate prepopulate data can be tested by
             importing after prepopulate is run.
 
-            @param parent: A location_id to provide bounds suitable
-                           for validating child locations
-            @return: bounding box and parent location name, as a list:
+            Args:
+                parent: A location_id to provide bounds suitable
+                        for validating child locations
+
+            Returns:
+                bounding box and parent location name, as a list:
                 [lat_min, lon_min, lat_max, lon_max, parent_name]
 
-            @ToDo: Support Polygons (separate function?)
+            TODO:
+                Support Polygons (separate function?)
         """
 
         table = current.s3db.gis_location
@@ -1062,9 +1077,9 @@ class GIS(object):
                 path = parent.path
             else:
                 # This will return None during prepopulate.
-                path = GIS.update_location_tree({"id": parent.id,
-                                                 "level": parent.level,
-                                                 })
+                path = S3GIS.update_location_tree({"id": parent.id,
+                                                   "level": parent.level,
+                                                   })
             if path:
                 path_list = [int(item) for item in path.split("/")]
                 rows = db(table.id.belongs(path_list)).select(table.level,
@@ -1097,7 +1112,7 @@ class GIS(object):
             return parent.lat_min, parent.lon_min, parent.lat_max, parent.lon_max, parent.name
 
         # No ancestor bounds available -- use the active gis_config.
-        config = GIS.get_config()
+        config = S3GIS.get_config()
         if config:
             return config.lat_min, config.lon_min, config.lat_max, config.lon_max, None
 
@@ -1118,7 +1133,7 @@ class GIS(object):
                                                     table.level,
                                                     table.path,
                                                     table.parent,
-                                                    limitby = (0, 1)
+                                                    limitby = (0, 1),
                                                     ).first()
 
         return feature
@@ -1135,10 +1150,14 @@ class GIS(object):
             greater efficiency:
             http://eden.sahanafoundation.org/wiki/HaitiGISToDo#HierarchicalTrees
 
-            @param: level - optionally filter by level
+            Args:
+                level: optionally filter by level
 
-            @return: Rows object containing IDs & Names
-                      Note: This does NOT include the parent location itself
+            Returns:
+                Rows object containing IDs & Names
+
+            Note:
+                This does NOT include the parent location itself
         """
 
         db = current.db
@@ -1188,13 +1207,13 @@ class GIS(object):
         """
 
         if not feature or "path" not in feature or "parent" not in feature:
-            feature = GIS._lookup_parent_path(feature_id)
+            feature = S3GIS._lookup_parent_path(feature_id)
 
         if feature and (feature.path or feature.parent):
             if feature.path:
                 path = feature.path
             else:
-                path = GIS.update_location_tree(feature)
+                path = S3GIS.update_location_tree(feature)
 
             if path:
                 path_list = [int(item) for item in path.split("/")]
@@ -1360,7 +1379,7 @@ class GIS(object):
                       "pr_address",
                       "cr_shelter",
                       "asset_asset",
-                      #"hms_hospital",
+                      #"med_hospital",
                       ]
 
             for tablename in tables:
@@ -1388,11 +1407,14 @@ class GIS(object):
             gis_projection record have the same names as the fields in their
             tables and can be accessed as response.s3.gis.<fieldname>.
 
-            Returns the id of the config it actually used, if any.
+            Args:
+                config_id. use '0' to set the SITE_DEFAULT
 
-            @param: config_id. use '0' to set the SITE_DEFAULT
+            Returns:
+                The id of the config it actually used, if any.
 
-            @ToDo: Merge configs for Event
+            TODO:
+                Merge configs for Event
         """
 
         _gis = current.response.s3.gis
@@ -1449,7 +1471,7 @@ class GIS(object):
             # Should we merge it?
             row = db(ctable.id == config_id).select(ctable.merge,
                                                     ctable.uuid,
-                                                    limitby= (0, 1)
+                                                    limitby= (0, 1),
                                                     ).first()
             if row:
                 if row.merge and row.uuid != "SITE_DEFAULT":
@@ -1459,15 +1481,15 @@ class GIS(object):
                             (ctable.uuid == "SITE_DEFAULT")
                     rows = db(query).select(*fields,
                                             left = left,
+                                            limitby = (0, 2),
                                             # We want SITE_DEFAULT to be last here (after urn:xxx)
                                             orderby = ~ctable.uuid,
-                                            limitby = (0, 2)
                                             )
                 else:
                     # Just use this config
                     row = db(ctable.id == config_id).select(*fields,
                                                             left = left,
-                                                            limitby = (0, 1)
+                                                            limitby = (0, 1),
                                                             ).first()
 
             else:
@@ -1478,7 +1500,7 @@ class GIS(object):
             # Use site default
             row = db(ctable.uuid == "SITE_DEFAULT").select(*fields,
                                                            left = left,
-                                                           limitby = (0, 1)
+                                                           limitby = (0, 1),
                                                            ).first()
             if not row:
                 # No configs found at all
@@ -1500,7 +1522,7 @@ class GIS(object):
                         # (Will take lower-priority than Personal)
                         otable = s3db.org_organisation
                         org = db(otable.id == user.organisation_id).select(otable.pe_id,
-                                                                           limitby = (0, 1)
+                                                                           limitby = (0, 1),
                                                                            ).first()
                         try:
                             pes.append(org.pe_id)
@@ -1523,7 +1545,7 @@ class GIS(object):
                         # (Will take lower-priority than Site/Org/Personal)
                         ogtable = s3db.org_group
                         ogroup = db(ogtable.id == user.org_group_id).select(ogtable.pe_id,
-                                                                            limitby = (0, 1)
+                                                                            limitby = (0, 1),
                                                                             ).first()
                         pes = list(pes)
                         try:
@@ -1541,10 +1563,9 @@ class GIS(object):
                     # Order by pe_type (defined in gis_config)
                     # @ToDo: Sort orgs from the hierarchy?
                     # (Currently we just have branch > non-branch in pe_type)
-                    rows = db(query).select(*fields,
-                                            left = left,
-                                            orderby = ctable.pe_type
-                                            )
+                    rows = db(query).select(left = left,
+                                            orderby = ctable.pe_type,
+                                            *fields)
                     if len(rows) == 1:
                         row = rows.first()
 
@@ -1586,10 +1607,9 @@ class GIS(object):
 
         if not row:
             # No personal config or not logged in. Use site default.
-            row = db(ctable.uuid == "SITE_DEFAULT").select(*fields,
-                                                           left = left,
-                                                           limitby = (0, 1)
-                                                           ).first()
+            row = db(ctable.uuid == "SITE_DEFAULT").select(left = left,
+                                                           limitby = (0, 1),
+                                                           *fields).first()
 
             if not row:
                 # No configs found at all
@@ -1621,7 +1641,8 @@ class GIS(object):
         """
             Returns the current GIS config structure.
 
-            @ToDo: Config() class
+            TODO:
+                Config() class
         """
 
         _gis = current.response.s3.gis
@@ -1629,9 +1650,9 @@ class GIS(object):
         if not _gis.config:
             # Ask set_config to put the appropriate config in response.
             if current.session.s3.gis_config_id:
-                GIS.set_config(current.session.s3.gis_config_id)
+                S3GIS.set_config(current.session.s3.gis_config_id)
             else:
-                GIS.set_config()
+                S3GIS.set_config()
 
         return _gis.config
 
@@ -1640,11 +1661,13 @@ class GIS(object):
         """
             Returns the location hierarchy and it's labels
 
-            @param: level - a specific level for which to lookup the label
-            @param: location - the location_id to lookup the location for
-                               currently only the actual location is supported
-                               @ToDo: Do a search of parents to allow this
-                                      lookup for any location
+            Args:
+                level: a specific level for which to lookup the label
+                location: the location_id to lookup the location for
+                          currently only the actual location is supported
+
+            TODO:
+                Do a search of parents to allow this lookup for any location
         """
 
         _levels = self.hierarchy_levels
@@ -1679,7 +1702,7 @@ class GIS(object):
 
         query = (table.uuid == "SITE_DEFAULT")
         if not location:
-            config = GIS.get_config()
+            config = S3GIS.get_config()
             location = config.region_location_id
         if location:
             # Try the Region, but ensure we have the fallback available in a single query
@@ -1730,7 +1753,8 @@ class GIS(object):
         """
             Returns the strict hierarchy value from the current config.
 
-            @param: location - the location_id of the record to check
+            Args:
+                location: the location_id of the record to check
         """
 
         s3db = current.s3db
@@ -1891,14 +1915,17 @@ class GIS(object):
         """
             Returns the parent country for a given record
 
-            @param: location: the location or id to search for
-            @param: key_type: whether to return an id or code
+            Args:
+                location: the location or id to search for
+                key_type: whether to return an id or code
 
-            @ToDo: Optimise to not use try/except
+            TODO:
+                Optimise to not use try/except
         """
 
         if not location:
             return None
+
         db = current.db
         s3db = current.s3db
 
@@ -1910,8 +1937,9 @@ class GIS(object):
             location = db(table.id == location).select(table.id,
                                                        table.path,
                                                        table.level,
+                                                       cache = s3db.cache,
                                                        limitby = (0, 1),
-                                                       cache=s3db.cache).first()
+                                                       ).first()
         except:
             # location is passed as record
             pass
@@ -1924,14 +1952,16 @@ class GIS(object):
                 query = (ttable.tag == "ISO2") & \
                         (ttable.location_id == location.id)
                 tag = db(query).select(ttable.value,
-                                       limitby = (0, 1)).first()
+                                       limitby = (0, 1),
+                                       ).first()
                 try:
                     return tag.value
                 except:
                     return None
         else:
             parents = self.get_parents(location.id,
-                                       feature=location)
+                                       feature = location,
+                                       )
             if parents:
                 for row in parents:
                     if row.level == "L0":
@@ -1942,7 +1972,8 @@ class GIS(object):
                             query = (ttable.tag == "ISO2") & \
                                     (ttable.location_id == row.id)
                             tag = db(query).select(ttable.value,
-                                                   limitby = (0, 1)).first()
+                                                   limitby = (0, 1),
+                                                   ).first()
                             try:
                                 return tag.value
                             except:
@@ -1954,10 +1985,11 @@ class GIS(object):
         """
             Returns the default country for the active gis_config
 
-            @param: key_type: whether to return an id or code
+            Args:
+                key_type: whether to return an id or code
         """
 
-        config = GIS.get_config()
+        config = S3GIS.get_config()
 
         if config.default_location_id:
             return self.get_parent_country(config.default_location_id,
@@ -1973,7 +2005,9 @@ class GIS(object):
             gis_location table
 
             Currently unused.
-            @ToDo: Optimise to not use try/except
+
+            TODO:
+                Optimise to not use try/except
         """
 
         from shapely.errors import ReadingError
@@ -1999,7 +2033,7 @@ class GIS(object):
                                                               locations.lon_max,
                                                               locations.lat_min,
                                                               locations.lat_max,
-                                                              limitby = (0, 1)
+                                                              limitby = (0, 1),
                                                               ).first()
             if location:
                 wkt = location.wkt
@@ -2044,7 +2078,7 @@ class GIS(object):
         features = db(query).select(locations.wkt,
                                     locations.lat,
                                     locations.lon,
-                                    table.ALL
+                                    table.ALL,
                                     )
         output = Rows()
         # @ToDo: provide option to use PostGIS/Spatialite
@@ -2131,11 +2165,12 @@ class GIS(object):
 
             Note the order of the parameters.
 
-            @return a dict containing the bounds with keys min_lon, max_lon,
-            min_lat, max_lat
+            Returns:
+                a dict containing the bounds with keys min_lon, max_lon,
+                min_lat, max_lat
 
             See:
-            http://janmatuschek.de/LatitudeLongitudeBoundingCoordinates
+                http://janmatuschek.de/LatitudeLongitudeBoundingCoordinates
         """
 
         import math
@@ -2349,8 +2384,9 @@ class GIS(object):
 
             used by display_feature() in gis controller
 
-            @param feature_id: the feature ID
-            @param filter: Filter out results based on deployment_settings
+            Args:
+                feature_id: the feature ID
+                filter: Filter out results based on deployment_settings
         """
 
         db = current.db
@@ -2360,7 +2396,7 @@ class GIS(object):
                                                     table.lon,
                                                     table.parent,
                                                     table.path,
-                                                    limitby = (0, 1)
+                                                    limitby = (0, 1),
                                                     ).first()
 
         # Zero is an allowed value, hence explicit test for None.
@@ -2394,9 +2430,10 @@ class GIS(object):
                       ):
         """
             Returns the locations for an XML export
-            - used by GIS.get_location_data() and S3PivotTable.geojson()
+            - used by S3GIS.get_location_data() and S3PivotTable.geojson()
 
-            @ToDo: Support multiple locations for a single resource
+            TODO:
+                Support multiple locations for a single resource
                    (e.g. a Project working in multiple Communities)
         """
 
@@ -2451,7 +2488,7 @@ class GIS(object):
             rows = db(query).select(table.id,
                                     gtable.wkt,
                                     )
-            simplify = GIS.simplify
+            simplify = S3GIS.simplify
             if geojson:
                 # Simplify the polygon to reduce download size
                 if join:
@@ -2521,11 +2558,13 @@ class GIS(object):
             e.g. Exports in KML, GeoRSS or GPX format
 
             Called by S3ResourceTree
-            @param: resource - S3Resource instance (required)
-            @param: attr_fields - list of attr_fields to use instead of reading
-                                  from get_vars or looking up in gis_layer_feature
-            @param: count - total number of features
-                           (can actually be more if features have multiple locations)
+
+            Args:
+                resource: S3Resource instance (required)
+                attr_fields: list of attr_fields to use instead of reading
+                             from get_vars or looking up in gis_layer_feature
+                count: total number of features
+                       (can actually be more if features have multiple locations)
         """
 
         tablename = resource.tablename
@@ -2551,11 +2590,11 @@ class GIS(object):
             if len(tablename) > 19 and \
                tablename.startswith("gis_layer_shapefile"):
                 # GIS Shapefile Layer
-                location_data = GIS.get_shapefile_geojson(resource) or {}
+                location_data = S3GIS.get_shapefile_geojson(resource) or {}
                 return location_data
             elif tablename == "gis_theme_data":
                 # GIS Theme Layer
-                location_data = GIS.get_theme_geojson(resource) or {}
+                location_data = S3GIS.get_theme_geojson(resource) or {}
                 return location_data
             else:
                 # e.g. GIS Feature Layer
@@ -2592,7 +2631,7 @@ class GIS(object):
                                                            ftable.individual,
                                                            ftable.points,
                                                            ftable.trackable,
-                                                           limitby = (0, 1)
+                                                           limitby = (0, 1),
                                                            ).first()
 
         else:
@@ -2731,7 +2770,7 @@ class GIS(object):
                 #    duration = "{:.2f}".format(duration.total_seconds())
                 #    if layer_id:
                 #        layer_name = db(ftable.id == layer_id).select(ftable.name,
-                #                                                      limitby = (0, 1)
+                #                                                      limitby = (0, 1),
                 #                                                      ).first().name
                 #    else:
                 #        layer_name = "Unknown"
@@ -2751,14 +2790,14 @@ class GIS(object):
                 else:
                     # No configuration found so use default marker for all
                     c, f = tablename.split("_", 1)
-                    m = GIS.get_marker(c, f)
+                    m = S3GIS.get_marker(c, f)
 
                 markers[tablename] = m
 
             if individual:
                 # Add a per-feature Style
                 # Optionally restrict to a specific Config?
-                #config = GIS.get_config()
+                #config = S3GIS.get_config()
                 stable = s3db.gis_style
                 query = (stable.deleted == False) & \
                         (stable.layer_id == layer_id) & \
@@ -2783,7 +2822,7 @@ class GIS(object):
             else:
                 # No configuration found so use default marker for all
                 c, f = tablename.split("_", 1)
-                markers = GIS.get_marker(c, f)
+                markers = S3GIS.get_marker(c, f)
 
             markers[tablename] = markers
 
@@ -2866,10 +2905,10 @@ class GIS(object):
                     return None
 
             if geojson and not points:
-                geojsons[tablename] = GIS.get_locations(table, query, join, geojson)
+                geojsons[tablename] = S3GIS.get_locations(table, query, join, geojson)
             # @ToDo: Support Polygons in KML, GPX & GeoRSS
             #else:
-            #    wkts[tablename] = GIS.get_locations(table, query, join, geojson)
+            #    wkts[tablename] = S3GIS.get_locations(table, query, join, geojson)
             else:
                 # Points
                 rows = db(query).select(table.id,
@@ -2914,9 +2953,9 @@ class GIS(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def get_marker(controller=None,
-                   function=None,
-                   filter=None,
+    def get_marker(controller = None,
+                   function = None,
+                   filter = None,
                    ):
         """
             Returns a Marker dict
@@ -2932,7 +2971,7 @@ class GIS(object):
             ftable = s3db.gis_layer_feature
             stable = s3db.gis_style
             mtable = s3db.gis_marker
-            config = GIS.get_config()
+            config = S3GIS.get_config()
             query = (ftable.controller == controller) & \
                     (ftable.function == function) & \
                     (ftable.aggregate == False)
@@ -2983,8 +3022,8 @@ class GIS(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def get_style(layer_id=None,
-                  aggregate=None,
+    def get_style(layer_id = None,
+                  aggregate = None,
                   ):
         """
             Returns a Style dict
@@ -3008,7 +3047,7 @@ class GIS(object):
         """
             Save a Screenshot of a saved map
 
-            @requires:
+            Requires:
                 PhantomJS http://phantomjs.org
                 Selenium https://pypi.python.org/pypi/selenium
         """
@@ -3031,11 +3070,13 @@ class GIS(object):
             try:
                 os.mkdir(cachepath)
             except OSError as os_error:
-                error = "GIS: JPEG files cannot be saved: %s %s" % \
+                error = "S3GIS: JPEG files cannot be saved: %s %s" % \
                                   (cachepath, os_error)
                 current.log.error(error)
                 current.session.error = error
-                redirect(URL(c="gis", f="index", vars={"config": config_id}))
+                redirect(URL(c="gis", f="index",
+                             vars = {"config": config_id},
+                             ))
 
         # Copy the current working directory to revert back to later
         cwd = os.getcwd()
@@ -3044,7 +3085,7 @@ class GIS(object):
 
         #driver = webdriver.PhantomJS()
         # Disable Proxy for Win32 Network Latency issue
-        driver = WebDriver(service_args=["--proxy-type=none"])
+        driver = WebDriver(service_args = ["--proxy-type=none"])
 
         # Change back for other parts
         os.chdir(cwd)
@@ -3063,7 +3104,8 @@ class GIS(object):
         # Load the homepage
         # (Cookie needs to be set on same domain as it takes effect)
         base_url = "%s/%s" % (settings.get_base_public_url(),
-                              request.application)
+                              request.application,
+                              )
         driver.get(base_url)
 
         response = current.response
@@ -3079,7 +3121,8 @@ class GIS(object):
 
         # Load the map
         url = "%s/gis/map_viewing_client?print=1&config=%s" % (base_url,
-                                                               config_id)
+                                                               config_id,
+                                                               )
         driver.get(url)
 
         # Wait for map to load (including it's layers)
@@ -3145,7 +3188,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             ctable = current.s3db.gis_config
             the_set = current.db(ctable.id == config_id)
             config = the_set.select(ctable.temp,
-                                    limitby = (0, 1)
+                                    limitby = (0, 1),
                                     ).first()
             try:
                 if config.temp:
@@ -3165,8 +3208,9 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
             Called by S3ResourceTree
 
-            @ToDo: Vary simplification level & precision by Zoom level
-                   - store this in the style?
+            TODO:
+                Vary simplification level & precision by Zoom level
+                - store this in the style?
         """
 
         db = current.db
@@ -3203,7 +3247,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         else:
             _fields = [table[f] for f in fields]
             rows = db(query).select(*_fields)
-            simplify = GIS.simplify
+            simplify = S3GIS.simplify
             for row in rows:
                 # Simplify the polygon to reduce download size
                 geojson = simplify(row.wkt, tolerance=tolerance,
@@ -3235,8 +3279,9 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
             Called by S3ResourceTree
 
-            @ToDo: Vary precision by Lx
-                   - store this (& tolerance map) in the style?
+            TODO:
+                Vary precision by Lx
+                - store this (& tolerance map) in the style?
         """
 
         s3db = current.s3db
@@ -3260,7 +3305,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                         gtable.level,
                                         gtable.wkt,
                                         )
-        simplify = GIS.simplify
+        simplify = S3GIS.simplify
         tolerance = {"L0": 0.01,
                      "L1": 0.005,
                      "L2": 0.00125,
@@ -3349,7 +3394,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             # WKT not included by default in feature, so retrieve this now
             table = current.s3db.gis_location
             wkt = current.db(table.id == feature.id).select(table.wkt,
-                                                            limitby = (0, 1)
+                                                            limitby = (0, 1),
                                                             ).first().wkt
 
         try:
@@ -3402,11 +3447,15 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             Export admin areas to /static/cache for use by interactive web-mapping services
             - designed for use by the Vulnerability Mapping
 
-            @param countries: list of ISO2 country codes
-            @param levels: list of which Lx levels to export
-            @param format: Only GeoJSON supported for now (may add KML &/or OSM later)
-            @param simplify: tolerance for the simplification algorithm. False to disable simplification
-            @param precision: number of decimal points to include in the coordinates
+            Args:
+                countries: list of ISO2 country codes
+                levels: list of which Lx levels to export
+                format: Only GeoJSON supported for now (may add KML &/or OSM later)
+                simplify: tolerance for the simplification algorithm. False to disable simplification
+                precision: number of decimal points to include in the coordinates
+
+            TODO:
+                Lookup in Errors in Bulk at the end
         """
 
         db = current.db
@@ -3439,7 +3488,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             spatial = False
             field = table.wkt
             if simplify:
-                _simplify = GIS.simplify
+                _simplify = S3GIS.simplify
             else:
                 from shapely.wkt import loads as wkt_loads
                 from ..geojson import dumps
@@ -3479,10 +3528,11 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                         geojson = _simplify(wkt,
                                             tolerance = simplify,
                                             precision = _decimals,
-                                            output = "geojson")
+                                            output = "geojson",
+                                            )
                     else:
                         name = db(table.id == id).select(table.name,
-                                                         limitby = (0, 1)
+                                                         limitby = (0, 1),
                                                          ).first().name
                         sys.stderr.write("No WKT: L0 %s %s\n" % (name, id))
                         continue
@@ -3550,10 +3600,11 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                             geojson = _simplify(wkt,
                                                 tolerance = simplify,
                                                 precision = precision,
-                                                output = "geojson")
+                                                output = "geojson",
+                                                )
                         else:
                             name = db(table.id == id).select(table.name,
-                                                             limitby = (0, 1)
+                                                             limitby = (0, 1),
                                                              ).first().name
                             sys.stderr.write("No WKT: L1 %s %s\n" % (name, id))
                             continue
@@ -3613,10 +3664,11 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                 geojson = _simplify(wkt,
                                                     tolerance = simplify,
                                                     precision = precision,
-                                                    output = "geojson")
+                                                    output = "geojson",
+                                                    )
                             else:
                                 name = db(table.id == id).select(table.name,
-                                                                 limitby = (0, 1)
+                                                                 limitby = (0, 1),
                                                                  ).first().name
                                 sys.stderr.write("No WKT: L2 %s %s\n" % (name, id))
                                 continue
@@ -3667,7 +3719,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                         features = []
                         append = features.append
                         rows = db(query).select(ifield,
-                                                field)
+                                                field,
+                                                )
                         for row in rows:
                             if spatial:
                                 id = row["gis_location"].id
@@ -3679,10 +3732,11 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                     geojson = _simplify(wkt,
                                                         tolerance = simplify,
                                                         precision = precision,
-                                                        output = "geojson")
+                                                        output = "geojson",
+                                                        )
                                 else:
                                     name = db(table.id == id).select(table.name,
-                                                                     limitby = (0, 1)
+                                                                     limitby = (0, 1),
                                                                      ).first().name
                                     sys.stderr.write("No WKT: L3 %s %s\n" % (name, id))
                                     continue
@@ -3748,10 +3802,11 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                         geojson = _simplify(wkt,
                                                             tolerance = simplify,
                                                             precision = precision,
-                                                            output = "geojson")
+                                                            output = "geojson",
+                                                            )
                                     else:
                                         name = db(table.id == id).select(table.name,
-                                                                         limitby = (0, 1)
+                                                                         limitby = (0, 1),
                                                                          ).first().name
                                         sys.stderr.write("No WKT: L4 %s %s\n" % (name, id))
                                         continue
@@ -3786,14 +3841,15 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                            levels = ["L0", "L1", "L2"]
                           ):
         """
-           Import Admin Boundaries into the Locations table
+            Import Admin Boundaries into the Locations table
 
-           @param source - Source to get the data from.
-                           Currently only GADM is supported: http://gadm.org
-           @param countries - List of ISO2 countrycodes to download data for
-                              defaults to all countries
-           @param levels - Which levels of the hierarchy to import.
-                           defaults to all 3 supported levels
+            Args:
+                source: Source to get the data from.
+                        - currently only GADM is supported: http://gadm.org
+                countries: List of ISO2 countrycodes to download data for
+                           - defaults to all countries
+                levels: Which levels of the hierarchy to import.
+                        - defaults to all 3 supported levels
         """
 
         if source == "gadmv1":
@@ -3830,21 +3886,19 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
         else:
             current.log.warning("Only GADM is currently supported")
-            return
-
-        return
 
     # -------------------------------------------------------------------------
     @staticmethod
     def import_gadm1_L0(ogr, countries=[]):
         """
-           Import L0 Admin Boundaries into the Locations table from GADMv1
-           - designed to be called from import_admin_areas()
-           - assumes that basic prepop has been done, so that no new records need to be created
+            Import L0 Admin Boundaries into the Locations table from GADMv1
+            - designed to be called from import_admin_areas()
+            - assumes that basic prepop has been done, so that no new records need to be created
 
-           @param ogr - The OGR Python module
-           @param countries - List of ISO2 countrycodes to download data for
-                              defaults to all countries
+            Args:
+                ogr: The OGR Python module
+                countries: List of ISO2 countrycodes to download data for
+                           - defaults to all countries
         """
 
         db = current.db
@@ -3957,16 +4011,20 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     #area = feat.GetField("Shape_Area")
                     try:
                         id = db(query).select(table.id,
-                                              limitby = (0, 1)).first().id
+                                              limitby = (0, 1),
+                                              ).first().id
                         query = (table.id == id)
-                        db(query).update(gis_feature_type=gis_feature_type,
-                                         wkt=wkt)
+                        db(query).update(gis_feature_type = gis_feature_type,
+                                         wkt = wkt,
+                                         )
                         ttable.insert(location_id = id,
                                       tag = "ISO3",
-                                      value = code2)
+                                      value = code2,
+                                      )
                         #ttable.insert(location_id = location_id,
                         #              tag = "area",
-                        #              value = area)
+                        #              value = area,
+                        #              )
                     except db._adapter.driver.OperationalError:
                         current.log.error(sys.exc_info()[1])
 
@@ -3981,8 +4039,6 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         # Revert back to the working directory as before.
         os.chdir(cwd)
 
-        return
-
     # -------------------------------------------------------------------------
     def import_gadm1(self, ogr, level="L1", countries=[]):
         """
@@ -3990,10 +4046,11 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             - designed to be called from import_admin_areas()
             - assumes a fresh database with just Countries imported
 
-            @param ogr - The OGR Python module
-            @param level - "L1" or "L2"
-            @param countries - List of ISO2 countrycodes to download data for
-                               defaults to all countries
+            Args:
+                ogr: The OGR Python module
+                level: "L1" or "L2"
+                countries: List of ISO2 countrycodes to download data for
+                           - defaults to all countries
         """
 
         if level == "L1":
@@ -4255,8 +4312,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     (ttable.value == parentCode)
             parent = db(query).select(table.id,
                                       ttable.value,
-                                      limitby = (0, 1),
                                       cache = cache,
+                                      limitby = (0, 1),
                                       ).first()
             if not parent:
                 # Skip locations for which we don't have a valid parent
@@ -4358,8 +4415,6 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         # Revert back to the working directory as before.
         os.chdir(cwd)
 
-        return
-
     # -------------------------------------------------------------------------
     @staticmethod
     def import_gadm2(ogr, level="L0", countries=[]):
@@ -4368,12 +4423,14 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             - designed to be called from import_admin_areas()
             - assumes that basic prepop has been done, so that no new L0 records need to be created
 
-            @param ogr - The OGR Python module
-            @param level - The OGR Python module
-            @param countries - List of ISO2 countrycodes to download data for
-                               defaults to all countries
+            Args:
+                ogr: The OGR Python module
+                level: The OGR Python module
+                countries: List of ISO2 countrycodes to download data for
+                           - defaults to all countries
 
-            @ToDo: Complete this
+            TODO:
+                Complete this
                 - not currently possible to get all data from the 1 file easily
                 - no ISO2
                 - needs updating for gis_location_tag model
@@ -4501,10 +4558,11 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     #area = feat.GetField("Shape_Area")
                     try:
                         ## FIXME
-                        db(query).update(gis_feature_type=gis_feature_type,
-                                         wkt=wkt)
-                                         #code2=code2,
-                                         #area=area
+                        db(query).update(gis_feature_type = gis_feature_type,
+                                         wkt = wkt,
+                                         #code2 = code2,
+                                         #area = area,
+                                         )
                     except db._adapter.driver.OperationalError as exception:
                         current.log.error(exception)
 
@@ -4519,15 +4577,14 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         # Revert back to the working directory as before.
         os.chdir(old_working_directory)
 
-        return
-
     # -------------------------------------------------------------------------
     def import_geonames(self, country, level=None):
         """
             Import Locations from the Geonames database
 
-            @param country: the 2-letter country code
-            @param level: the ADM level to import
+            Args:
+                country: the 2-letter country code
+                level: the ADM level to import
 
             Designed to be run from the CLI
             Levels should be imported sequentially.
@@ -4733,7 +4790,6 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 continue
 
         current.log.debug("All done!")
-        return
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -4795,25 +4851,29 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
         """
             Update GIS Locations' Materialized path, Lx locations, Lat/Lon & the_geom
 
-            @param feature: a feature dict to update the tree for
-            - if not provided then update the whole tree
-            @param all_locations: passed to recursive calls to indicate that this
-            is an update of the whole tree. Used to avoid repeated attempts to
-            update hierarchy locations with missing data (e.g. lacking some
-            ancestor level).
-            @param propagating: passed to recursive calls to indicate that this
-            is a propagation update. Used to avoid repeated attempts to
-            update hierarchy locations with missing data (e.g. lacking some
-            ancestor level).
+            Args:
+                feature: a feature dict to update the tree for
+                         - if not provided then update the whole tree
+                all_locations: passed to recursive calls to indicate that this
+                               is an update of the whole tree.
+                               Used to avoid repeated attempts to update
+                               hierarchy locations with missing data
+                               (e.g. lacking some ancestor level).
+                propagating: passed to recursive calls to indicate that this is
+                             a propagation update.
+                             Used to avoid repeated attempts to update hierarchy
+                             locations with missing data
+                             (e.g. lacking some ancestor level).
 
-            returns the path of the feature
+            Returns:
+                The path of the feature
 
             Called onaccept for locations (async, where-possible)
         """
 
         # During prepopulate, for efficiency, we don't update the location
         # tree, but rather leave that til after prepopulate is complete.
-        if GIS.disable_update_location_tree:
+        if S3GIS.disable_update_location_tree:
             return None
 
         db = current.db
@@ -4821,8 +4881,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             table = db.gis_location
         except:
             table = current.s3db.gis_location
-        update_location_tree = GIS.update_location_tree
-        wkt_centroid = GIS.wkt_centroid
+        update_location_tree = S3GIS.update_location_tree
+        wkt_centroid = S3GIS.wkt_centroid
 
         fields = (table.id,
                   table.name,
@@ -4885,7 +4945,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             """
                 Propagate Lat/Lon down to any Features which inherit from this one
 
-                @param parent: gis_location id of parent
+                Args:
+                    parent: gis_location id of parent
             """
 
             # No need to filter out deleted since the parent FK is None for these records
@@ -4898,7 +4959,6 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 except RuntimeError:
                     current.log.error("Cannot propagate inherited latlon to child %s of location ID %s: too much recursion" % \
                         (row.id, parent))
-
 
         if not feature:
             # We are updating all locations.
@@ -4926,7 +4986,6 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                         update_location_tree(feature)  # all_locations is False here
             # All Done!
             return
-
 
         # Single Feature
         id = str(feature["id"]) if "id" in feature else None
@@ -4964,7 +5023,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                     table.lon,
                                                     table.wkt,
                                                     table.L0,
-                                                    limitby = (0, 1)).first()
+                                                    limitby = (0, 1),
+                                                    ).first()
                 name = feature.name
                 path = feature.path
                 lat = feature.lat
@@ -5000,7 +5060,6 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
             return path
 
-
         fixup_required = False
 
         # L1
@@ -5022,7 +5081,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                     table.wkt,
                                                     table.L0,
                                                     table.L1,
-                                                    limitby = (0, 1)).first()
+                                                    limitby = (0, 1),
+                                                    ).first()
                 inherited = feature.inherited
                 name = feature.name
                 parent = feature.parent
@@ -5038,7 +5098,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 _L0 = db(table.id == parent).select(table.name,
                                                     table.lat,
                                                     table.lon,
-                                                    limitby = (0, 1)).first()
+                                                    limitby = (0, 1),
+                                                    ).first()
                 L0_name = _L0.name
                 L0_lat = _L0.lat
                 L0_lon = _L0.lon
@@ -5083,7 +5144,6 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
             return _path
 
-
         # L2
         L2 = feature_get("L2", False)
         if level == "L2":
@@ -5102,7 +5162,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                     table.L0,
                                                     table.L1,
                                                     table.L2,
-                                                    limitby = (0, 1)).first()
+                                                    limitby = (0, 1),
+                                                    ).first()
                 inherited = feature.inherited
                 name = feature.name
                 parent = feature.parent
@@ -5120,15 +5181,16 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                    table.parent,
                                                    table.lat,
                                                    table.lon,
-                                                   limitby = (0, 1)).first()
+                                                   limitby = (0, 1),
+                                                   ).first()
                 if Lx.level == "L1":
                     L1_name = Lx.name
                     _parent = Lx.parent
                     if _parent:
                         _path = "%s/%s/%s" % (_parent, parent, id)
                         L0_name = db(table.id == _parent).select(table.name,
+                                                                 cache = current.s3db.cache,
                                                                  limitby = (0, 1),
-                                                                 cache=current.s3db.cache
                                                                  ).first().name
                     else:
                         _path = "%s/%s" % (parent, id)
@@ -5187,7 +5249,6 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
             return _path
 
-
         # L3
         L3 = feature_get("L3", False)
         if level == "L3":
@@ -5207,7 +5268,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                     table.L1,
                                                     table.L2,
                                                     table.L3,
-                                                    limitby = (0, 1)).first()
+                                                    limitby = (0, 1),
+                                                    ).first()
                 inherited = feature.inherited
                 name = feature.name
                 parent = feature.parent
@@ -5230,7 +5292,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                    table.lon,
                                                    table.L0,
                                                    table.L1,
-                                                   limitby = (0, 1)).first()
+                                                   limitby = (0, 1),
+                                                   ).first()
                 if Lx.level == "L2":
                     L0_name = Lx.L0
                     L1_name = Lx.L1
@@ -5248,7 +5311,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                            table.L1,
                                                            table.lat,
                                                            table.lon,
-                                                           limitby = (0, 1)
+                                                           limitby = (0, 1),
                                                            ).first()
                         L0_name = Lx.L0
                         L1_name = Lx.L1
@@ -5268,7 +5331,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                         Lx = db(table.id == parent).select(table.L0,
                                                            table.lat,
                                                            table.lon,
-                                                           limitby = (0, 1)
+                                                           limitby = (0, 1),
                                                            ).first()
                         L0_name = Lx.L0
                 elif Lx.level == "L0":
@@ -5327,7 +5390,6 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
             return _path
 
-
         # L4
         L4 = feature_get("L4", False)
         if level == "L4":
@@ -5348,7 +5410,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                     table.L2,
                                                     table.L3,
                                                     table.L4,
-                                                    limitby = (0, 1)).first()
+                                                    limitby = (0, 1),
+                                                    ).first()
                 inherited = feature.inherited
                 name = feature.name
                 parent = feature.parent
@@ -5373,7 +5436,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                    table.L0,
                                                    table.L1,
                                                    table.L2,
-                                                   limitby = (0, 1)).first()
+                                                   limitby = (0, 1),
+                                                   ).first()
                 if Lx.level == "L3":
                     L0_name = Lx.L0
                     L1_name = Lx.L1
@@ -5393,7 +5457,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                            table.L2,
                                                            table.lat,
                                                            table.lon,
-                                                           limitby = (0, 1)
+                                                           limitby = (0, 1),
                                                            ).first()
                         L0_name = Lx.L0
                         L1_name = Lx.L1
@@ -5416,7 +5480,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                            table.L1,
                                                            table.lat,
                                                            table.lon,
-                                                           limitby = (0, 1)
+                                                           limitby = (0, 1),
                                                            ).first()
                         L0_name = Lx.L0
                         L1_name = Lx.L1
@@ -5437,7 +5501,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                         Lx = db(table.id == parent).select(table.L0,
                                                            table.lat,
                                                            table.lon,
-                                                           limitby = (0, 1)
+                                                           limitby = (0, 1),
                                                            ).first()
                         L0_name = Lx.L0
                 elif Lx.level == "L0":
@@ -5498,7 +5562,6 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
             return _path
 
-
         # L5
         L5 = feature_get("L5", False)
         if level == "L5":
@@ -5520,7 +5583,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                     table.L3,
                                                     table.L4,
                                                     table.L5,
-                                                    limitby = (0, 1)).first()
+                                                    limitby = (0, 1),
+                                                    ).first()
                 inherited = feature.inherited
                 name = feature.name
                 parent = feature.parent
@@ -5547,7 +5611,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                    table.L1,
                                                    table.L2,
                                                    table.L3,
-                                                   limitby = (0, 1)).first()
+                                                   limitby = (0, 1),
+                                                   ).first()
                 if Lx.level == "L4":
                     L0_name = Lx.L0
                     L1_name = Lx.L1
@@ -5569,7 +5634,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                            table.L3,
                                                            table.lat,
                                                            table.lon,
-                                                           limitby = (0, 1)
+                                                           limitby = (0, 1),
                                                            ).first()
                         L0_name = Lx.L0
                         L1_name = Lx.L1
@@ -5595,7 +5660,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                            table.L2,
                                                            table.lat,
                                                            table.lon,
-                                                           limitby = (0, 1)
+                                                           limitby = (0, 1),
                                                            ).first()
                         L0_name = Lx.L0
                         L1_name = Lx.L1
@@ -5619,7 +5684,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                            table.L1,
                                                            table.lat,
                                                            table.lon,
-                                                           limitby = (0, 1)
+                                                           limitby = (0, 1),
                                                            ).first()
                         L0_name = Lx.L0
                         L1_name = Lx.L1
@@ -5641,7 +5706,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                         Lx = db(table.id == parent).select(table.L0,
                                                            table.lat,
                                                            table.lon,
-                                                           limitby = (0, 1)
+                                                           limitby = (0, 1),
                                                            ).first()
                         L0_name = Lx.L0
                 elif Lx.level == "L0":
@@ -5704,7 +5769,6 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
 
             return _path
 
-
         # Specific Location
         # - or unspecified (which we should avoid happening as inefficient)
         if inherited is None or level is False or name is False or parent is False or path is False or \
@@ -5726,7 +5790,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                 table.L3,
                                                 table.L4,
                                                 table.L5,
-                                                limitby = (0, 1)
+                                                limitby = (0, 1),
                                                 ).first()
             inherited = feature.inherited
             level = feature.level
@@ -5763,7 +5827,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                table.L2,
                                                table.L3,
                                                table.L4,
-                                               limitby = (0, 1)).first()
+                                               limitby = (0, 1),
+                                               ).first()
             if Lx.level == "L5":
                 L0_name = Lx.L0
                 L1_name = Lx.L1
@@ -5787,7 +5852,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                        table.L4,
                                                        table.lat,
                                                        table.lon,
-                                                       limitby = (0, 1)
+                                                       limitby = (0, 1),
                                                        ).first()
                     L0_name = Lx.L0
                     L1_name = Lx.L1
@@ -5815,7 +5880,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                        table.L3,
                                                        table.lat,
                                                        table.lon,
-                                                       limitby = (0, 1)
+                                                       limitby = (0, 1),
                                                        ).first()
                     L0_name = Lx.L0
                     L1_name = Lx.L1
@@ -5840,7 +5905,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                        table.L2,
                                                        table.lat,
                                                        table.lon,
-                                                       limitby = (0, 1)
+                                                       limitby = (0, 1),
                                                        ).first()
                     L0_name = Lx.L0
                     L1_name = Lx.L1
@@ -5862,7 +5927,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                                        table.L1,
                                                        table.lat,
                                                        table.lon,
-                                                       limitby = (0, 1)
+                                                       limitby = (0, 1),
                                                        ).first()
                     L0_name = Lx.L0
                     L1_name = Lx.L1
@@ -5881,7 +5946,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     Lx = db(table.id == parent).select(table.L0,
                                                        table.lat,
                                                        table.lon,
-                                                       limitby = (0, 1)
+                                                       limitby = (0, 1),
                                                        ).first()
                     L0_name = Lx.L0
             elif Lx.level == "L0":
@@ -5967,7 +6032,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 form_vars.wkt = "POINT (%(lon)s %(lat)s)" % form_vars
                 radius = form_vars.get("radius", None)
                 if radius:
-                    bbox = GIS.get_bounds_from_radius(lat, lon, radius)
+                    bbox = S3GIS.get_bounds_from_radius(lat, lon, radius)
                     form_vars.lat_min = bbox["lat_min"]
                     form_vars.lon_min = bbox["lon_min"]
                     form_vars.lat_max = bbox["lat_max"]
@@ -6097,7 +6162,8 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
     @staticmethod
     def query_features_by_bbox(lon_min, lat_min, lon_max, lat_max):
         """
-            Returns a query of all Locations inside the given bounding box
+            Returns:
+                A query of all Locations inside the given bounding box
         """
 
         table = current.s3db.gis_location
@@ -6111,23 +6177,28 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
     @staticmethod
     def get_features_by_bbox(lon_min, lat_min, lon_max, lat_max):
         """
-            Returns Rows of Locations whose shape intersects the given bbox.
+            Returns:
+                Rows of Locations whose shape intersects the given bbox.
         """
 
         query = current.gis.query_features_by_bbox(lon_min,
                                                    lat_min,
                                                    lon_max,
-                                                   lat_max)
+                                                   lat_max,
+                                                   )
         return current.db(query).select()
 
     # -------------------------------------------------------------------------
     @staticmethod
     def get_features_by_shape(shape):
         """
-            Returns Rows of locations which intersect the given shape.
+            Returns:
+                Rows of locations which intersect the given shape.
 
             Relies on Shapely for wkt parsing and intersection.
-            @ToDo: provide an option to use PostGIS/Spatialite
+
+            TODO:
+                Provide an option to use PostGIS/Spatialite
         """
 
         from shapely.errors import ReadingError
@@ -6157,10 +6228,13 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
     @staticmethod
     def get_features_by_latlon(lat, lon):
         """
-            Returns a generator of locations whose shape intersects the given LatLon.
+            Returns:
+                A generator of locations whose shape intersects the given LatLon.
 
             Relies on Shapely.
-            @todo: provide an option to use PostGIS/Spatialite
+
+            TODO:
+                Provide an option to use PostGIS/Spatialite
         """
 
         from shapely.geometry import point
@@ -6171,10 +6245,13 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
     @staticmethod
     def get_features_by_feature(feature):
         """
-            Returns all Locations whose geometry intersects the given feature.
+            Returns:
+                All Locations whose geometry intersects the given feature.
 
             Relies on Shapely.
-            @ToDo: provide an option to use PostGIS/Spatialite
+
+            TODO:
+                Provide an option to use PostGIS/Spatialite
         """
 
         from shapely.wkt import loads as wkt_loads
@@ -6225,32 +6302,36 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                                       }
 
         # Anything left, we assume is a Point, so set the bounds to be the same
-        db(no_bounds).update(lon_min=table.lon,
-                             lat_min=table.lat,
-                             lon_max=table.lon,
-                             lat_max=table.lat)
+        db(no_bounds).update(lon_min = table.lon,
+                             lat_min = table.lat,
+                             lon_max = table.lon,
+                             lat_max = table.lat,
+                             )
 
     # -------------------------------------------------------------------------
     @staticmethod
     def simplify(wkt,
-                 tolerance=None,
-                 preserve_topology=True,
-                 output="wkt",
-                 precision=None
+                 tolerance = None,
+                 preserve_topology = True,
+                 output = "wkt",
+                 precision = None
                  ):
         """
             Simplify a complex Polygon using the Douglas-Peucker algorithm
-            - NB This uses Python, better performance will be gained by doing
-                 this direct from the database if you are using PostGIS:
-            ST_Simplify() is available as
-            db(query).select(table.the_geom.st_simplify(tolerance).st_astext().with_alias('wkt')).first().wkt
-            db(query).select(table.the_geom.st_simplify(tolerance).st_asgeojson().with_alias('geojson')).first().geojson
 
-            @param wkt: the WKT string to be simplified (usually coming from a gis_location record)
-            @param tolerance: how aggressive a simplification to perform
-            @param preserve_topology: whether the simplified geometry should be maintained
-            @param output: whether to output as WKT or GeoJSON format
-            @param precision: the number of decimal places to include in the output
+            Args:
+                wkt: the WKT string to be simplified (usually coming from a gis_location record)
+                tolerance: how aggressive a simplification to perform
+                preserve_topology: whether the simplified geometry should be maintained
+                output: whether to output as WKT or GeoJSON format
+                precision: the number of decimal places to include in the output
+
+            Note:
+                This uses Python, better performance will be gained by doing
+                this direct from the database if you are using PostGIS:
+                ST_Simplify() is available as
+                db(query).select(table.the_geom.st_simplify(tolerance).st_astext().with_alias('wkt')).first().wkt
+                db(query).select(table.the_geom.st_simplify(tolerance).st_asgeojson().with_alias('geojson')).first().geojson
         """
 
         from shapely.geometry import Point, LineString, Polygon, MultiPolygon
@@ -6385,93 +6466,94 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
             Normally called in the controller as: map = gis.show_map()
             In the view, put: {{=XML(map)}}
 
-            @param id: ID to uniquely identify this map if there are several on a page
-            @param height: Height of viewport (if not provided then the default deployment setting is used)
-            @param width: Width of viewport (if not provided then the default deployment setting is used)
-            @param bbox: default Bounding Box of viewport (if not provided then the Lat/Lon/Zoom are used) (Dict):
-                {"lon_min" : float,
-                 "lat_min" : float,
-                 "lon_max" : float,
-                 "lat_max" : float,
-                 }
-            @param lat: default Latitude of viewport (if not provided then the default setting from the Map Service Catalogue is used)
-            @param lon: default Longitude of viewport (if not provided then the default setting from the Map Service Catalogue is used)
-            @param zoom: default Zoom level of viewport (if not provided then the default setting from the Map Service Catalogue is used)
-            @param projection: EPSG code for the Projection to use (if not provided then the default setting from the Map Service Catalogue is used)
-            @param add_feature: Whether to include a DrawFeature control to allow adding a marker to the map
-            @param add_feature_active: Whether the DrawFeature control should be active by default
-            @param add_polygon: Whether to include a DrawFeature control to allow drawing a polygon over the map
-            @param add_polygon_active: Whether the DrawFeature control should be active by default
-            @param add_circle: Whether to include a DrawFeature control to allow drawing a circle over the map
-            @param add_circle_active: Whether the DrawFeature control should be active by default
-            @param features: Simple Features to overlay on Map (no control over appearance & not interactive)
-                [wkt]
-            @param feature_queries: Feature Queries to overlay onto the map & their options (List of Dicts):
-                [{"name"   : T("MyLabel"), # A string: the label for the layer
-                  "query"  : query,        # A gluon.sql.Rows of gis_locations, which can be from a simple query or a Join.
-                                           # Extra fields can be added for 'popup_url', 'popup_label' & either
-                                           # 'marker' (url/height/width) or 'shape' (with optional 'colour' & 'size')
-                  "active" : True,         # Is the feed displayed upon load or needs ticking to load afterwards?
-                  "marker" : None,         # Optional: A per-Layer marker query or marker_id for the icon used to display the feature
-                  "opacity" : 1,           # Optional
-                  "cluster_attribute",     # Optional
-                  "cluster_distance",      # Optional
-                  "cluster_threshold"      # Optional
-                  }]
-            @param feature_resources: REST URLs for (filtered) resources to overlay onto the map & their options (List of Dicts):
-                [{"name"      : T("MyLabel"), # A string: the label for the layer
-                  "id"        : "search",     # A string: the id for the layer (for manipulation by JavaScript)
-                  "active"    : True,         # Is the feed displayed upon load or needs ticking to load afterwards?
-                  EITHER:
-                  "layer_id"  : 1,            # An integer: the layer_id to load (optional alternative to specifying URL/tablename/marker)
-                  "filter"    : "filter",     # A string: an optional URL filter which *replaces* any in the layer
-                  OR:
-                  "tablename" : "module_resource", # A string: the tablename (used to determine whether to locate via location_id or site_id)
-                  "url"       : "/eden/module/resource.geojson?filter", # A URL to load the resource
+            Args:
+                id: ID to uniquely identify this map if there are several on a page
+                height: Height of viewport (if not provided then the default deployment setting is used)
+                width: Width of viewport (if not provided then the default deployment setting is used)
+                bbox: default Bounding Box of viewport (if not provided then the Lat/Lon/Zoom are used) (Dict):
+                        {"lon_min" : float,
+                         "lat_min" : float,
+                         "lon_max" : float,
+                         "lat_max" : float,
+                         }
+                lat: default Latitude of viewport (if not provided then the default setting from the Map Service Catalogue is used)
+                lon: default Longitude of viewport (if not provided then the default setting from the Map Service Catalogue is used)
+                zoom: default Zoom level of viewport (if not provided then the default setting from the Map Service Catalogue is used)
+                projection: EPSG code for the Projection to use (if not provided then the default setting from the Map Service Catalogue is used)
+                add_feature: Whether to include a DrawFeature control to allow adding a marker to the map
+                add_feature_active: Whether the DrawFeature control should be active by default
+                add_polygon: Whether to include a DrawFeature control to allow drawing a polygon over the map
+                add_polygon_active: Whether the DrawFeature control should be active by default
+                add_circle: Whether to include a DrawFeature control to allow drawing a circle over the map
+                add_circle_active: Whether the DrawFeature control should be active by default
+                features: Simple Features to overlay on Map (no control over appearance & not interactive)
+                            [wkt]
+                feature_queries: Feature Queries to overlay onto the map & their options (List of Dicts):
+                                    [{"name"   : T("MyLabel"), # A string: the label for the layer
+                                      "query"  : query,        # A gluon.sql.Rows of gis_locations, which can be from a simple query or a Join.
+                                                               # Extra fields can be added for 'popup_url', 'popup_label' & either
+                                                               # 'marker' (url/height/width) or 'shape' (with optional 'colour' & 'size')
+                                      "active" : True,         # Is the feed displayed upon load or needs ticking to load afterwards?
+                                      "marker" : None,         # Optional: A per-Layer marker query or marker_id for the icon used to display the feature
+                                      "opacity" : 1,           # Optional
+                                      "cluster_attribute",     # Optional
+                                      "cluster_distance",      # Optional
+                                      "cluster_threshold"      # Optional
+                                      }]
+                feature_resources: REST URLs for (filtered) resources to overlay onto the map & their options (List of Dicts):
+                                    [{"name"      : T("MyLabel"), # A string: the label for the layer
+                                      "id"        : "search",     # A string: the id for the layer (for manipulation by JavaScript)
+                                      "active"    : True,         # Is the feed displayed upon load or needs ticking to load afterwards?
+                                      EITHER:
+                                      "layer_id"  : 1,            # An integer: the layer_id to load (optional alternative to specifying URL/tablename/marker)
+                                      "filter"    : "filter",     # A string: an optional URL filter which *replaces* any in the layer
+                                      OR:
+                                      "tablename" : "module_resource", # A string: the tablename (used to determine whether to locate via location_id or site_id)
+                                      "url"       : "/eden/module/resource.geojson?filter", # A URL to load the resource
 
-                  "marker"    : None,         # Optional: A per-Layer marker dict for the icon used to display the feature (overrides layer_id if-set)
-                  "opacity"   : 1,            # Optional (overrides layer_id if-set)
-                  "cluster_attribute",        # Optional (overrides layer_id if-set)
-                  "cluster_distance",         # Optional (overrides layer_id if-set)
-                  "cluster_threshold",        # Optional (overrides layer_id if-set)
-                  "dir",                      # Optional (overrides layer_id if-set)
-                  "style",                    # Optional (overrides layer_id if-set)
-                  }]
-            @param wms_browser: WMS Server's GetCapabilities & options (dict)
-                {"name": T("MyLabel"),     # Name for the Folder in LayerTree
-                 "url": string             # URL of GetCapabilities
-                 }
-            @param catalogue_layers: Show all the enabled Layers from the GIS Catalogue
-                                     Defaults to False: Just show the default Base layer
-            @param legend: True: Show the GeoExt Legend panel, False: No Panel, "float": New floating Legend Panel
-            @param toolbar: Show the Icon Toolbar of Controls
-            @param area: Show the Area tool on the Toolbar
-            @param color_picker: Show the Color Picker tool on the Toolbar (used for S3LocationSelector...pick up in postprocess)
-                                 If a style is provided then this is used as the default style
-            @param nav: Show the Navigation controls on the Toolbar
-            @param save: Show the Save tool on the Toolbar
-            @param search: Show the Geonames search box (requires a username to be configured)
-            @param mouse_position: Show the current coordinates in the bottom-right of the map. 3 Options: 'normal', 'mgrs', False (defaults to checking deployment_settings, which defaults to 'normal')
-            @param overview: Show the Overview Map (defaults to checking deployment_settings, which defaults to True)
-            @param permalink: Show the Permalink control (defaults to checking deployment_settings, which defaults to True)
-            @param scaleline: Show the ScaleLine control (defaults to checking deployment_settings, which defaults to True)
-            @param zoomcontrol: Show the Zoom control (defaults to checking deployment_settings, which defaults to True)
-            @param mgrs: Use the MGRS Control to select PDFs
-                {"name": string,           # Name for the Control
-                 "url": string             # URL of PDF server
-                 }
-                @ToDo: Also add MGRS Search support: http://gxp.opengeo.org/master/examples/mgrs.html
-            @param window: Have viewport pop out of page into a resizable window
-            @param window_hide: Have the window hidden by default, ready to appear (e.g. on clicking a button)
-            @param closable: In Window mode, whether the window is closable or not
-            @param collapsed: Start the Tools panel (West region) collapsed
-            @param callback: Code to run once the Map JavaScript has loaded
-            @param plugins: an iterable of objects which support the following methods:
+                                      "marker"    : None,         # Optional: A per-Layer marker dict for the icon used to display the feature (overrides layer_id if-set)
+                                      "opacity"   : 1,            # Optional (overrides layer_id if-set)
+                                      "cluster_attribute",        # Optional (overrides layer_id if-set)
+                                      "cluster_distance",         # Optional (overrides layer_id if-set)
+                                      "cluster_threshold",        # Optional (overrides layer_id if-set)
+                                      "dir",                      # Optional (overrides layer_id if-set)
+                                      "style",                    # Optional (overrides layer_id if-set)
+                                      }]
+                wms_browser: WMS Server's GetCapabilities & options (dict)
+                                {"name": T("MyLabel"),     # Name for the Folder in LayerTree
+                                 "url": string             # URL of GetCapabilities
+                                 }
+                catalogue_layers: Show all the enabled Layers from the GIS Catalogue
+                                  - defaults to False: Just show the default Base layer
+                legend: True: Show the GeoExt Legend panel, False: No Panel, "float": New floating Legend Panel
+                toolbar: Show the Icon Toolbar of Controls
+                area: Show the Area tool on the Toolbar
+                color_picker: Show the Color Picker tool on the Toolbar (used for S3LocationSelector...pick up in postprocess)
+                              If a style is provided then this is used as the default style
+                nav: Show the Navigation controls on the Toolbar
+                save: Show the Save tool on the Toolbar
+                search: Show the Geonames search box (requires a username to be configured)
+                mouse_position: Show the current coordinates in the bottom-right of the map. 3 Options: 'normal', 'mgrs', False (defaults to checking deployment_settings, which defaults to 'normal')
+                overview: Show the Overview Map (defaults to checking deployment_settings, which defaults to True)
+                permalink: Show the Permalink control (defaults to checking deployment_settings, which defaults to True)
+                scaleline: Show the ScaleLine control (defaults to checking deployment_settings, which defaults to True)
+                zoomcontrol: Show the Zoom control (defaults to checking deployment_settings, which defaults to True)
+                mgrs: Use the MGRS Control to select PDFs
+                        {"name": string,           # Name for the Control
+                         "url": string             # URL of PDF server
+                         }
+                    TODO:
+                        Also add MGRS Search support: http://gxp.opengeo.org/master/examples/mgrs.html
+                window: Have viewport pop out of page into a resizable window
+                window_hide: Have the window hidden by default, ready to appear (e.g. on clicking a button)
+                closable: In Window mode, whether the window is closable or not
+                collapsed: Start the Tools panel (West region) collapsed
+                callback: Code to run once the Map JavaScript has loaded
+                plugins: an iterable of objects which support the following methods:
                                 .extend_gis_map(map)
                             Client-side portion suppoprts the following methods:
                                 .addToMapWindow(items)
                                 .setup(map)
-
         """
 
         return MAP(id = id,
@@ -6585,7 +6667,7 @@ class MAP(DIV):
         auth = current.auth
 
         # Read configuration
-        config = GIS.get_config()
+        config = S3GIS.get_config()
         if not config:
             # No prepop - Bail
             if auth.s3_has_permission("create", "gis_hierarchy"):
@@ -6920,12 +7002,12 @@ class MAP(DIV):
                     options["config_id"] = config.id
 
             # OSM Authoring
-            pe_id = auth.user.pe_id if auth.s3_logged_in() else None
-            if pe_id and s3db.auth_user_options_get_osm(pe_id):
-                # Presence of label turns feature on in s3.gis.js
-                # @ToDo: Provide explicit option to support multiple maps in a page with different options
-                i18n["gis_potlatch"] = T("Edit the OpenStreetMap data for this area")
-                i18n["gis_osm_zoom_closer"] = T("Zoom in closer to Edit OpenStreetMap layer")
+            #pe_id = auth.user.pe_id if auth.s3_logged_in() else None
+            #if pe_id and s3db.gis_config_osm(pe_id):
+            #    # Presence of label turns feature on in s3.gis.js
+            #    # @ToDo: Provide explicit option to support multiple maps in a page with different options
+            #    i18n["gis_potlatch"] = T("Edit the OpenStreetMap data for this area")
+            #    i18n["gis_osm_zoom_closer"] = T("Zoom in closer to Edit OpenStreetMap layer")
 
             # MGRS PDF Browser
             mgrs = opts_get("mgrs", None)
@@ -7175,8 +7257,8 @@ class MAP(DIV):
                     (ctable.uuid == "SITE_DEFAULT") & \
                     (ltable.base == True) & \
                     (ltable.enabled == True)
-            layers = db(query).select(*fields,
-                                      limitby = (0, 1))
+            layers = db(query).select(limitby = (0, 1),
+                                      *fields)
             if not layers:
                 # Just show EmptyLayer
                 layer_types = [LayerEmpty]
@@ -7437,7 +7519,7 @@ class MAP2(DIV):
         """
 
         # Read Map Config
-        config = GIS.get_config()
+        config = S3GIS.get_config()
         if not config:
             # No prepop => Bail
             return None
@@ -7663,8 +7745,7 @@ class MAP2(DIV):
                                   left = left,
                                   limitby = limitby,
                                   orderby = orderby,
-                                  *fields
-                                  )
+                                  *fields)
         if not layers:
             # Use Site Default base layer
             # (Base layer doesn't need a style)
@@ -7673,9 +7754,8 @@ class MAP2(DIV):
                     (ctable.uuid == "SITE_DEFAULT") & \
                     (ltable.base == True) & \
                     (ltable.enabled == True)
-            layers = db(query).select(*fields,
-                                      limitby = (0, 1)
-                                      )
+            layers = db(query).select(limitby = (0, 1)
+                                      *fields)
             if not layers:
                 # Just show EmptyLayer
                 layer_types = [LayerEmpty]
@@ -7809,12 +7889,9 @@ class MAP2(DIV):
 def addFeatures(features):
     """
         Add Simple Features to the Draft layer
-        - used by S3LocationSelectorWidget
-
-        @todo: obsolete?
     """
 
-    simplify = GIS.simplify
+    simplify = S3GIS.simplify
     _f = []
     append = _f.append
     for feature in features:
@@ -7920,7 +7997,8 @@ def addFeatureQueries(feature_queries):
         url = "%s.geojson?feature_query.name=%s&feature_query.created_by=%s" % \
                 (URL(c="gis", f="feature_query"),
                  cname,
-                 created_by)
+                 created_by,
+                 )
         _layer["url"] = url
 
         if "active" in layer and not layer["active"]:
@@ -7934,8 +8012,8 @@ def addFeatureQueries(feature_queries):
                 marker = db(mtable.id == marker).select(mtable.image,
                                                         mtable.height,
                                                         mtable.width,
+                                                        cache = cache,
                                                         limitby = (0, 1),
-                                                        cache=cache
                                                         ).first()
             if marker:
                 # @ToDo: Single option as Marker.as_json_dict()
@@ -7973,7 +8051,7 @@ def addFeatureResources(feature_resources):
     # Better to do a separate query
     #mtable = s3db.gis_marker
     stable = db.gis_style
-    config = GIS.get_config()
+    config = S3GIS.get_config()
     config_id = config.id
     postgres = current.deployment_settings.get_database_type() == "postgres"
 
@@ -8036,9 +8114,9 @@ def addFeatureResources(feature_resources):
                                    stable.cluster_distance,
                                    stable.cluster_threshold,
                                    stable.style,
-                                   left=left,
+                                   left = left,
                                    limitby = (0, 1),
-                                   orderby=orderby,
+                                   orderby = orderby,
                                    ).first()
             _dir = layer.get("dir", row["gis_layer_config.dir"])
             # Better to do a separate query
@@ -8119,7 +8197,8 @@ def addFeatureResources(feature_resources):
                     popup_label = row["popup_label"]
                     if popup_label:
                         popup_format = "{%s} (%s)" % (popup_fields[0],
-                                                      current.T(popup_label))
+                                                      current.T(popup_label),
+                                                      )
                     else:
                         popup_format = "%s" % popup_fields[0]
                     for f in popup_fields[1:]:
@@ -8207,7 +8286,7 @@ def addFeatureResources(feature_resources):
     return layers_feature_resource
 
 # =============================================================================
-class Layer(object):
+class Layer:
     """
         Abstract base class for Layers from Catalogue
     """
@@ -8378,7 +8457,7 @@ class Layer(object):
             return '''S3.gis.%s=%s\n''' % (self.dictname, result)
 
     # -------------------------------------------------------------------------
-    class SubLayer(object):
+    class SubLayer:
         def __init__(self, record, openlayers):
             # Ensure all attributes available (even if Null)
             self.__dict__.update(record)
@@ -8992,7 +9071,7 @@ class LayerKML(Layer):
             try:
                 os.mkdir(cachepath)
             except OSError as os_error:
-                current.log.error("GIS: KML layers cannot be cached: %s %s" % \
+                current.log.error("S3GIS: KML layers cannot be cached: %s %s" % \
                                   (cachepath, os_error))
                 cacheable = False
             else:
@@ -9086,9 +9165,10 @@ class LayerOSM(Layer):
     """
         OpenStreetMap Layers from Catalogue
 
-        @ToDo: Provide a catalogue of standard layers which are fully-defined
-               in static & can just have name over-ridden, as well as
-               fully-custom layers.
+        TODO:
+            Provide a catalogue of standard layers which are fully-defined
+            in static & can just have name over-ridden, as well as
+            fully-custom layers.
     """
 
     tablename = "gis_layer_openstreetmap"
@@ -9444,23 +9524,26 @@ class LayerXYZ(Layer):
             return output
 
 # =============================================================================
-class Marker(object):
+class Marker:
     """
         Represents a Map Marker
 
-        @ToDo: Support Markers in Themes
+        TODO:
+            Support Markers in Themes
     """
 
     def __init__(self,
-                 marker=None,
-                 marker_id=None,
-                 layer_id=None,
-                 tablename=None):
+                 marker = None,
+                 marker_id = None,
+                 layer_id = None,
+                 tablename = None,
+                 ):
         """
-            @param marker: Storage object with image/height/width (looked-up in bulk)
-            @param marker_id: id of record in gis_marker
-            @param layer_id: layer_id to lookup marker in gis_style (unused)
-            @param tablename: used to identify whether to provide a default marker as fallback
+            Args:
+                marker: Storage object with image/height/width (looked-up in bulk)
+                marker_id: id of record in gis_marker
+                layer_id: layer_id to lookup marker in gis_style (unused)
+                tablename: used to identify whether to provide a default marker as fallback
         """
 
         no_default = False
@@ -9479,7 +9562,7 @@ class Marker(object):
                                                            ).first()
             elif layer_id:
                 # Check if we have a Marker defined for this Layer
-                config = GIS.get_config()
+                config = S3GIS.get_config()
                 stable = s3db.gis_style
                 query = (stable.layer_id == layer_id) & \
                         ((stable.config_id == config.id) | \
@@ -9489,7 +9572,8 @@ class Marker(object):
                 marker = db(query).select(mtable.image,
                                           mtable.height,
                                           mtable.width,
-                                          limitby = (0, 1)).first()
+                                          limitby = (0, 1),
+                                          ).first()
 
         if not marker:
             # Check to see if we're a Polygon/LineString
@@ -9518,7 +9602,7 @@ class Marker(object):
         else:
             # Default Marker
             if not config:
-                config = GIS.get_config()
+                config = S3GIS.get_config()
             self.image = config.marker_image
             self.height = config.marker_height
             self.width = config.marker_width
@@ -9575,7 +9659,7 @@ class Marker(object):
         return marker
 
 # =============================================================================
-class Projection(object):
+class Projection:
     """
         Represents a Map Projection
     """
@@ -9592,13 +9676,13 @@ class Projection(object):
                                                   ).first()
         else:
             # Default projection
-            config = GIS.get_config()
+            config = S3GIS.get_config()
             projection = Storage(epsg = config.epsg)
 
         self.epsg = projection.epsg
 
 # =============================================================================
-class Style(object):
+class Style:
     """
         Represents a Map Style
     """
@@ -9626,7 +9710,7 @@ class Style(object):
             limitby = (0, 1)
 
         elif layer_id:
-            config = GIS.get_config()
+            config = S3GIS.get_config()
             # @ToDo: if record_id:
             query = (table.layer_id == layer_id) & \
                     (table.record_id == None) & \
@@ -9640,7 +9724,7 @@ class Style(object):
         else:
             # Default style for this config
             # - falling back to Default config
-            config = GIS.get_config()
+            config = S3GIS.get_config()
             ctable = db.gis_config
             query = (table.config_id == ctable.id) & \
                     ((ctable.id == config.id) | \
@@ -9680,7 +9764,7 @@ class Style(object):
                 ftable = s3db.gis_layer_feature
                 layer = db(ftable.layer_id == layer_id).select(ftable.controller,
                                                                ftable.function,
-                                                               limitby = (0, 1)
+                                                               limitby = (0, 1),
                                                                ).first()
                 if layer:
                     style.url_format = "%s/{id}.plain" % \
@@ -9690,9 +9774,6 @@ class Style(object):
 
     # -------------------------------------------------------------------------
     def as_dict(self):
-        """
-
-        """
 
         # Not JSON-serializable
         #return self.style
@@ -9740,30 +9821,31 @@ class S3Map(S3Method):
             Entry point to apply map method to S3Requests
             - produces a full page with S3FilterWidgets above a Map
 
-            @param r: the S3Request instance
-            @param attr: controller attributes for the request
+            Args:
+                r: the S3Request instance
+                attr: controller attributes for the request
 
-            @return: output object to send to the view
+            Returns:
+                output object to send to the view
         """
-
-        output = None
 
         if r.http == "GET":
             representation = r.representation
             if representation == "html":
                 output = self.page(r, **attr)
+            else:
+                r.error(415, current.ERROR.BAD_FORMAT)
         else:
             r.error(405, current.ERROR.BAD_METHOD)
-
-        return output
 
     # -------------------------------------------------------------------------
     def page(self, r, **attr):
         """
             Map page
 
-            @param r: the S3Request instance
-            @param attr: controller attributes for the request
+            Args:
+                r: the S3Request instance
+                attr: controller attributes for the request
         """
 
         output = {}
@@ -9839,12 +9921,13 @@ class S3Map(S3Method):
             Render a Map widget suitable for use in an S3Filter-based page
             such as S3Summary
 
-            @param r: the S3Request
-            @param method: the widget method
-            @param widget_id: the widget ID
-            @param callback: None by default in case DIV is hidden
-            @param visible: whether the widget is initially visible
-            @param attr: controller attributes
+            Args:
+                r: the S3Request
+                method: the widget method
+                widget_id: the widget ID
+                callback: None by default in case DIV is hidden
+                visible: whether the widget is initially visible
+                attr: controller attributes
         """
 
         if not widget_id:
@@ -9879,7 +9962,10 @@ class S3Map(S3Method):
             layer_id = lookup_layer(prefix, name)
 
         # This URL is ignored if we have a layer_id:
-        url = URL(extension="geojson", args=None, vars=r.get_vars)
+        url = URL(extension = "geojson",
+                  args = None,
+                  vars = r.get_vars,
+                  )
 
         # Retain any custom filter parameters for the layer lookup
         custom_params = {k: v for k, v in r.get_vars.items() if k[:2] == "$$"}
@@ -9938,14 +10024,10 @@ class S3ExportPOI(S3Method):
             @param attr: controller options for this request
         """
 
-        output = {}
-
         if r.http == "GET":
-            output = self.export(r, **attr)
+            return self.export(r, **attr)
         else:
             r.error(405, current.ERROR.BAD_METHOD)
-
-        return output
 
     # -------------------------------------------------------------------------
     def export(self, r, **attr):
@@ -9953,25 +10035,21 @@ class S3ExportPOI(S3Method):
             Export POI resources.
 
             URL options:
-
-                - "resources"   list of tablenames to export records from
-
-                - "msince"      datetime in ISO format, "auto" to use the
-                                feed's last update
-
-                - "update_feed" 0 to skip the update of the feed's last
-                                update datetime, useful for trial exports
+                resources: list of tablenames to export records from
+                msince: datetime in ISO format, "auto" to use the
+                        feed's last update
+                update_feed: 0 to skip the update of the feed's last
+                             update datetime, useful for trial exports
 
             Supported formats:
+                .xml    S3XML
+                .osm    OSM XML Format
+                .kml    Google KML
+                (other formats can be requested, but may give unexpected results)
 
-                .xml            S3XML
-                .osm            OSM XML Format
-                .kml            Google KML
-
-            (other formats can be requested, but may give unexpected results)
-
-            @param r: the S3Request
-            @param attr: controller options for this request
+            Args:
+                r: the S3Request
+                attr: controller options for this request
         """
 
         # Determine request Lx
@@ -10011,8 +10089,9 @@ class S3ExportPOI(S3Method):
 
         # Export a combined tree
         tree = self.export_combined_tree(tables,
-                                         msince=msince,
-                                         update_feed=update_feed)
+                                         msince = msince,
+                                         update_feed = update_feed,
+                                         )
 
         xml = current.xml
 
@@ -10033,9 +10112,10 @@ class S3ExportPOI(S3Method):
         # Find XSLT stylesheet and transform
         stylesheet = r.stylesheet()
         if tree and stylesheet is not None:
-            args = Storage(domain=xml.domain,
-                           base_url=s3.base_url,
-                           utcnow=s3_format_datetime())
+            args = Storage(domain = xml.domain,
+                           base_url = s3.base_url,
+                           utcnow = s3_format_datetime(),
+                           )
             tree = xml.transform(tree, stylesheet, **args)
         if tree:
             if as_json:
@@ -10051,10 +10131,11 @@ class S3ExportPOI(S3Method):
             Export a combined tree of all records in tables, which
             are in Lx, and have been updated since msince.
 
-            @param tables: list of table names
-            @param msince: minimum modified_on datetime, "auto" for
-                           automatic from feed data, None to turn it off
-            @param update_feed: update the last_update datetime in the feed
+            Args:
+                tables: list of table names
+                msince: minimum modified_on datetime, "auto" for
+                        automatic from feed data, None to turn it off
+                update_feed: update the last_update datetime in the feed
         """
 
         db = current.db
@@ -10139,10 +10220,9 @@ class S3ImportPOI(S3Method):
     @staticmethod
     def apply_method(r, **attr):
         """
-            Apply method.
-
-            @param r: the S3Request
-            @param attr: controller options for this request
+            Args:
+                r: the S3Request
+                attr: controller options for this request
         """
 
         if r.representation == "html":
@@ -10235,12 +10315,12 @@ class S3ImportPOI(S3Method):
                         gtable = s3db.gis_location
                         record = current.db(gtable.id == form_vars.location_id).select(gtable.name,
                                                                                        gtable.wkt,
-                                                                                       limitby = (0, 1)
+                                                                                       limitby = (0, 1),
                                                                                        ).first()
                         if record.wkt is None:
                             form.errors["location_id"] = T("Location needs to have WKT!")
                             return output
-                    error = GIS.create_poly(record)
+                    error = S3GIS.create_poly(record)
                     if error:
                         current.session.error = error
                         redirect(URL(args=r.id))
@@ -10303,8 +10383,10 @@ class S3ImportPOI(S3Method):
                         # Module disabled
                         continue
                     resource = define_resource(tablename)
-                    s3xml = xml.transform(tree, stylesheet_path=stylesheet,
-                                          name=resource.name)
+                    s3xml = xml.transform(tree,
+                                          stylesheet_path = stylesheet,
+                                          name = resource.name,
+                                          )
                     try:
                         resource.import_xml(s3xml,
                                             ignore_errors=ignore_errors)

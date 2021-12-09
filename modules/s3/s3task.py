@@ -50,11 +50,12 @@ from gluon import current, IS_EMPTY_OR, IS_INT_IN_RANGE
 from gluon.storage import Storage
 
 from .s3datetime import S3DateTime
+from .s3utils import NONE
 from .s3validators import IS_UTC_DATETIME
 from .s3widgets import S3CalendarWidget, S3TimeIntervalWidget
 
 # -----------------------------------------------------------------------------
-class S3Task(object):
+class S3Task:
     """ Asynchronous Task Execution """
 
     TASK_TABLENAME = "scheduler_task"
@@ -91,16 +92,16 @@ class S3Task(object):
             Configure the task table for interactive CRUD,
             setting defaults, widgets and hiding unnecessary fields
 
-            @param task: the task name (will use a UUID if omitted)
-            @param function: the function name (won't hide if omitted)
-            @param args: the function position arguments
-            @param vars: the function named arguments
-            @param period: the default period for tasks
-            @param status_writable: make status and next run time editable
+            Args:
+                task: the task name (will use a UUID if omitted)
+                function: the function name (won't hide if omitted)
+                args: the function position arguments
+                vars: the function named arguments
+                period: the default period for tasks
+                status_writable: make status and next run time editable
         """
 
         T = current.T
-        NONE = current.messages["NONE"]
         UNLIMITED = T("unlimited")
 
         tablename = self.TASK_TABLENAME
@@ -141,14 +142,14 @@ class S3Task(object):
             field.readable = field.writable = False
 
         # Args and vars
+        field = table.args
         if isinstance(args, list):
-            field = table.args
             field.default = json.dumps(args)
             field.readable = field.writable = False
         else:
             field.default = "[]"
+        field = table.vars
         if isinstance(vars, dict):
-            field = table.vars
             field.default = json.dumps(vars)
             field.readable = field.writable = False
         else:
@@ -233,7 +234,8 @@ class S3Task(object):
                 msg_record_modified = T("Job updated"),
                 msg_record_deleted = T("Job deleted"),
                 msg_list_empty = T("No jobs configured yet"),
-                msg_no_match = T("No jobs configured"))
+                msg_no_match = T("No jobs configured"),
+                )
 
     # -------------------------------------------------------------------------
     # API Function run within the main flow of the application
@@ -243,12 +245,13 @@ class S3Task(object):
             Wrapper to call an asynchronous task.
             - run from the main request
 
-            @param task: The function which should be run
-                         - async if a worker is alive
-            @param args: The list of unnamed args to send to the function
-            @param vars: The list of named vars to send to the function
-            @param timeout: The length of time available for the task to complete
-                            - default 300s (5 mins)
+            Args:
+                task: The function which should be run
+                      - async if a worker is alive
+                args: The list of unnamed args to send to the function
+                vars: The list of named vars to send to the function
+                timeout: The length of time available for the task to complete
+                         - default 300s (5 mins)
         """
 
         if args is None:
@@ -320,22 +323,23 @@ class S3Task(object):
         """
             Schedule a task in web2py Scheduler
 
-            @param task: name of the function/task to be scheduled
-            @param args: args to be passed to the scheduled task
-            @param vars: vars to be passed to the scheduled task
-            @param function_name: function name (if different from task name)
-            @param start_time: start_time for the scheduled task
-            @param next_run_time: next_run_time for the the scheduled task
-            @param stop_time: stop_time for the the scheduled task
-            @param repeats: number of times the task to be repeated (0=unlimited)
-            @param retry_failed: number of times the task to be retried (-1=unlimited)
-            @param period: time period between two consecutive runs (seconds)
-            @param timeout: set timeout for a running task
-            @param enabled: enabled flag for the scheduled task
-            @param group_name: group_name for the scheduled task
-            @param ignore_duplicate: disable or enable duplicate checking
-            @param sync_output: sync output every n seconds (0 = disable sync)
-            @param user_id: Add the user_id to task vars if logged in
+            Args:
+                task: name of the function/task to be scheduled
+                args: args to be passed to the scheduled task
+                vars: vars to be passed to the scheduled task
+                function_name: function name (if different from task name)
+                start_time: start_time for the scheduled task
+                next_run_time: next_run_time for the the scheduled task
+                stop_time: stop_time for the the scheduled task
+                repeats: number of times the task to be repeated (0=unlimited)
+                retry_failed: number of times the task to be retried (-1=unlimited)
+                period: time period between two consecutive runs (seconds)
+                timeout: set timeout for a running task
+                enabled: enabled flag for the scheduled task
+                group_name: group_name for the scheduled task
+                ignore_duplicate: disable or enable duplicate checking
+                sync_output: sync output every n seconds (0 = disable sync)
+                user_id: Add the user_id to task vars if logged in
         """
 
         if args is None:
@@ -417,9 +421,10 @@ class S3Task(object):
             Checks if given task already exists in the Scheduler and both coincide
             with their execution time
 
-            @param task: name of the task function
-            @param args: the job position arguments (list)
-            @param vars: the job named arguments (dict)
+            Args:
+                task: name of the task function
+                args: the job position arguments (list)
+                vars: the job named arguments (dict)
         """
 
         db = current.db
@@ -441,11 +446,13 @@ class S3Task(object):
     @staticmethod
     def _is_alive():
         """
-            Returns True if there is at least 1 active worker to run scheduled tasks
-            - run from the main request
+            Returns:
+                True if there is at least 1 active worker to run scheduled tasks
+                - run from the main request
 
-            NB Can't run this 1/request at the beginning since the tables
-               only get defined in zz_last
+            Note:
+                Can't run this 1/request at the beginning since the tables
+                only get defined in zz_last
         """
 
         #if self.scheduler:
@@ -460,10 +467,9 @@ class S3Task(object):
         offset = datetime.timedelta(minutes = 1)
 
         query = (table.last_heartbeat > (now - offset))
-        cache = current.response.s3.cache
         worker_alive = db(query).select(table.id,
+                                        cache = current.s3db.cache,
                                         limitby = (0, 1),
-                                        cache = cache,
                                         ).first()
 
         return True if worker_alive else False
@@ -474,13 +480,15 @@ class S3Task(object):
         """
             Reset the status of a task to QUEUED after FAILED
 
-            @param task_id: the task record ID
+            Args:
+                task_id: the task record ID
         """
 
         db = current.db
         ttable = db.scheduler_task
 
-        query = (ttable.id == task_id) & (ttable.status == "FAILED")
+        query = (ttable.id == task_id) & \
+                (ttable.status == "FAILED")
         task = db(query).select(ttable.id,
                                 limitby = (0, 1)
                                 ).first()
@@ -496,8 +504,9 @@ class S3Task(object):
             Activate the authentication passed from the caller to this new request
             - run from within the task
 
-            NB This is so simple that we don't normally run via this API
-               - this is just kept as an example of what needs to happen within the task
+            Note:
+                This is so simple that we don't normally run via this API
+                - this is just kept as an example of what needs to happen within the task
         """
 
         current.auth.s3_impersonate(user_id)

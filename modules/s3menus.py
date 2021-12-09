@@ -303,7 +303,8 @@ class S3MainMenu(object):
         """ GIS Config Menu """
 
         settings = current.deployment_settings
-        if not settings.get_gis_menu():
+        label = settings.get_gis_menu()
+        if not label:
             return None
 
         T = current.T
@@ -332,9 +333,9 @@ class S3MainMenu(object):
                     if settings.has_module("event"):
                         # See if this config is associated with an Incident
                         table = s3db.event_config
-                        query = (table.config_id == config)
-                        incident = db(query).select(table.incident_id,
-                                                    limitby=(0, 1)).first()
+                        incident = db(table.config_id == config).select(table.incident_id,
+                                                                        limitby = (0, 1),
+                                                                        ).first()
                         if incident:
                             s3.incident = incident.incident_id
                         else:
@@ -352,35 +353,40 @@ class S3MainMenu(object):
             # @ToDo: Search for OUs too (API call)
             query |= (table.pe_id == auth.user.pe_id)
         query &= (table.config_id == ctable.id)
-        configs = db(query).select(ctable.id, ctable.name, cache=cache)
+        configs = db(query).select(ctable.id,
+                                   ctable.name,
+                                   cache = cache,
+                                   )
 
-        gis_menu = MM(settings.get_gis_menu(),
-                      c=request.controller,
-                      f=request.function,
+        gis_menu = MM(label,
+                      c = request.controller,
+                      f = request.function,
                       **attr)
         args = request.args
         if len(configs):
             # Use short names for the site and personal configs else they'll wrap.
             # Provide checkboxes to select between pages
-            gis_menu(
-                    MM({"name": T("Default"),
-                        "id": "gis_menu_id_0",
-                        # @ToDo: Show when default item is selected without having
-                        # to do a DB query to read the value
-                        #"value": _config is 0,
-                        "request_type": "load"
-                       }, args=args, vars={"_config": 0}
-                    )
-                )
+            gis_menu(MM({"name": T("Default"),
+                         "id": "gis_menu_id_0",
+                         # @ToDo: Show when default item is selected without having
+                         # to do a DB query to read the value
+                         #"value": _config is 0,
+                         "request_type": "load"
+                         },
+                         args = args,
+                         vars = {"_config": 0},
+                        )
+                     )
             for config in configs:
-                gis_menu(
-                    MM({"name": config.name,
-                        "id": "gis_menu_id_%s" % config.id,
-                        "value": _config == config.id,
-                        "request_type": "load"
-                       }, args=args, vars={"_config": config.id}
-                    )
-                )
+                gis_menu(MM({"name": config.name,
+                             "id": "gis_menu_id_%s" % config.id,
+                             "value": _config == config.id,
+                             "request_type": "load"
+                             },
+                             args = args,
+                             vars = {"_config": config.id},
+                            )
+                         )
         return gis_menu
 
     # -------------------------------------------------------------------------
@@ -603,9 +609,10 @@ class S3OptionsMenu(object):
 
         ADMIN = current.auth.get_system_roles().ADMIN
 
-        s3db = current.s3db
-        labels = s3db.br_terminology()
-        crud_strings = s3db.br_crud_strings("pr_person")
+        from s3db.br import br_crud_strings, br_terminology
+
+        labels = br_terminology()
+        crud_strings = br_crud_strings("pr_person")
 
         settings = current.deployment_settings
         use_activities = settings.get_br_case_activities()
@@ -854,12 +861,13 @@ class S3OptionsMenu(object):
                     M("Dead Bodies", f="body")(
                         M("Add", m="create"),
                         M("List unidentified",
-                          vars={"identification.status": "None"}),
+                          vars = {"identification.status": "None"},
+                          ),
                         M("Report by Age/Gender", m="report",
-                          vars={"rows": "age_group",
-                                "cols": "gender",
-                                "fact": "count(pe_label)",
-                                },
+                          vars = {"rows": "age_group",
+                                  "cols": "gender",
+                                  "fact": "count(pe_label)",
+                                  },
                           ),
                     ),
                     M("Missing Persons", f="person")(
@@ -1081,12 +1089,12 @@ class S3OptionsMenu(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def hms():
-        """ HMS / Hospital Status Assessment and Request Management """
+    def med():
+        """ MED / Hospital Status Assessment and Request Management """
 
         #s3 = current.response.s3
 
-        return M(c="hms")(
+        return M(c="med")(
                     M("Hospitals", f="hospital")(
                         M("Create", m="create"),
                         M("Map", m="map"),
@@ -1094,7 +1102,7 @@ class S3OptionsMenu(object):
                         M("Import", m="import", p="create"),
                         #SEP(),
                         #M("Show Map", c="gis", f="map_viewing_client",
-                          #vars={"kml_feed" : "%s/hms/hospital.kml" %
+                          #vars={"kml_feed" : "%s/med/hospital.kml" %
                                 #s3.base_url, "kml_name" : "Hospitals_"})
                     )
                 )
@@ -1269,15 +1277,15 @@ class S3OptionsMenu(object):
                     M("Reports", f="inv_item")(
                         M("Warehouse Stock", f="inv_item", m="report"),
                         M("Expiration Report", c="inv", f="track_item",
-                          vars={"report": "exp"}),
+                          vars = {"report": "exp"}),
                         M("Monetization Report", c="inv", f="inv_item",
-                          vars={"report": "mon"}),
+                          vars = {"report": "mon"}),
                         M("Utilization Report", c="inv", f="track_item",
-                          vars={"report": "util"}),
+                          vars = {"report": "util"}),
                         M("Summary of Incoming Supplies", c="inv", f="track_item",
-                          vars={"report": "inc"}),
+                          vars = {"report": "inc"}),
                         M("Summary of Releases", c="inv", f="track_item",
-                          vars={"report": "rel"}),
+                          vars = {"report": "rel"}),
                     ),
                     M("Requests", f="requisition", m="summary")(
                         M("Create", m="create"),

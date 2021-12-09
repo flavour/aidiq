@@ -191,12 +191,11 @@ def define_map(height = None,
 
             # Prepare JSON data structure
             pois = []
-            s3_unicode = s3base.s3_unicode
             for res in poi_resources:
                 poi = {"c": res["c"],
                        "f": res["f"],
-                       "l": s3_unicode(res["label"]),
-                       #"t": s3_unicode(res["tooltip"]),
+                       "l": s3_str(res["label"]),
+                       #"t": s3_str(res["tooltip"]),
                        "i": layers_lookup.get(res["layer"], None),
                        "t": res.get("type", "point"),
                        }
@@ -638,6 +637,7 @@ def location():
             # @ToDo: Don't allow users to add locked Lx levels unless they are MAP_ADMIN
             # @ToDo: Dynamic filtering based on selected level (taking into account strict or not)
             level_keys.pop()
+            from s3 import IS_ONE_OF
             table.parent.requires = IS_ONE_OF(db, "gis_location.id",
                                               s3db.gis_location_represent,
                                               filterby = "level",
@@ -658,13 +658,16 @@ def location():
         # We've been called from the Location Selector widget
         table.addr_street.readable = table.addr_street.writable = False
 
+    from s3 import IS_IN_SET_LAZY, S3ReusableField
     country = S3ReusableField("country", "string", length=2,
                               label = COUNTRY,
                               requires = IS_EMPTY_OR(IS_IN_SET_LAZY(
                                     lambda: gis.get_countries(key_type="code"),
-                                    zero = SELECT_LOCATION)),
+                                    zero = SELECT_LOCATION,
+                                    )),
                               represent = lambda code: \
-                                    gis.get_country(code, key_type="code") or UNKNOWN_OPT)
+                                    gis.get_country(code, key_type="code") or UNKNOWN_OPT,
+                              )
 
     from s3db.gis import gis_rheader
     output = s3_rest_controller(# CSV column headers, so no T()
@@ -707,7 +710,8 @@ def ldata():
     except:
         raise HTTP(400)
 
-    s3base.s3_keep_messages()
+    from s3 import s3_keep_messages
+    s3_keep_messages()
     response.headers["Content-Type"] = "application/json"
 
     if len(req_args) > 1:
@@ -1015,6 +1019,8 @@ def config_default(r, **attr):
     """
         Set a Config to be the default
             designed to be a custom method called by an action button
+
+        @ToDo: Use POST not GET
     """
 
     config_id = r.id
@@ -1166,16 +1172,16 @@ def config():
                             (FS("config.uuid") != "SITE_DEFAULT")
                     r.resource.add_filter(query)
                     list_fields.append("pe_default")
-                    CREATED_BY = T("Created By")
                     field = r.table.pe_id
-                    field.label = CREATED_BY
-                    field.represent = s3db.pr_PersonEntityRepresent(show_label = False,
-                                                                    show_type = False,
-                                                                    show_link = True,
-                                                                    )
+                    field.label = T("Created By")
+                    from s3db.pr import pr_PersonEntityRepresent
+                    field.represent = pr_PersonEntityRepresent(show_label = False,
+                                                               show_type = False,
+                                                               show_link = True,
+                                                               )
                     if auth.is_logged_in():
                         settings.search.filter_manager = False
-                        from s3.s3filter import S3OptionsFilter
+                        from s3 import S3OptionsFilter, S3SQLCustomForm
                         filter_widgets = [
                             S3OptionsFilter("pe_id",
                                             label = "",
@@ -1203,22 +1209,16 @@ def config():
                                   #"wmsbrowser_url",
                                   #"wmsbrowser_name",
                                   ]
-                        osm_table = s3db.gis_layer_openstreetmap
-                        openstreetmap = db(osm_table.deleted == False).select(osm_table.id,
-                                                                              limitby = (0, 1),
-                                                                              )
-                        if openstreetmap:
-                            # OpenStreetMap config
-                            s3db.add_components("gis_config",
-                                                auth_user_options = {"joinby": "pe_id",
-                                                                     "pkey": "pe_id",
-                                                                     "multiple": False,
-                                                                     },
-                                               )
-                            fields += ["user_options.osm_oauth_consumer_key",
-                                       "user_options.osm_oauth_consumer_secret",
-                                       ]
-                        crud_form = s3base.S3SQLCustomForm(*fields)
+                        #osm_table = s3db.gis_layer_openstreetmap
+                        #openstreetmap = db(osm_table.deleted == False).select(osm_table.id,
+                        #                                                      limitby = (0, 1),
+                        #                                                      )
+                        #if openstreetmap:
+                        #    # OpenStreetMap config
+                        #    fields += ["osm_oauth_consumer_key",
+                        #               "osm_oauth_consumer_secret",
+                        #               ]
+                        crud_form = S3SQLCustomForm(*fields)
                     else:
                         crud_form = None
                     s3db.configure("gis_config",
@@ -1237,7 +1237,7 @@ def config():
                     msg_record_created = LAYER_ADDED,
                     msg_record_modified = LAYER_UPDATED,
                     msg_list_empty = T("No Layers currently configured in this Profile"),
-                )
+                    )
                 table =  s3db.gis_layer_entity
                 ltable = s3db.gis_layer_config
                 if r.method == "update":
@@ -1411,6 +1411,8 @@ def enable_layer(r, **attr):
         Enable a Layer
             designed to be a custom method called by an action button
         @ToDo: Make this call an API function which can then also be used by CLI scripts (like msg_channel_enable)
+
+        @ToDo: Use POST not GET
     """
 
     if r.component_name != "layer_entity":
@@ -1430,6 +1432,8 @@ def disable_layer(r, **attr):
         Disable a Layer
             designed to be a custom method called by an action button in config/layer_entity
         @ToDo: Make this call an API function which can then also be used by CLI scripts (like msg_channel_disable)
+
+        @ToDo: Use POST not GET
     """
 
     if r.component_name != "layer_entity":
@@ -1494,7 +1498,7 @@ def projection():
 def style():
     """ RESTful CRUD controller """
 
-    from s3 import S3Represent
+    from s3 import IS_ONE_OF, S3Represent
 
     field = s3db.gis_style.layer_id
     field.readable = field.writable = True
@@ -1506,9 +1510,38 @@ def style():
 
     return s3_rest_controller()
 
+# =============================================================================
+def route():
+    """ RESTful CRUD controller for Routes """
+
+    def rheader(r):
+        if r.representation != "html":
+            # RHeaders only used in interactive views
+            return None
+        record = r.record
+        if record is None:
+            # List or Create form: rheader makes no sense here
+            return None
+
+        tabs = [(T("Route Details"), None),
+                (T("WayPoints"), "waypoint"),
+                ]
+        from s3 import s3_rheader_tabs
+        rheader_tabs = s3_rheader_tabs(r, tabs)
+
+        rheader = DIV(TABLE(TR(TH("%s: " % r.table.name.label),
+                               record.name,
+                               ),
+                            ),
+                      rheader_tabs,
+                      )
+        return rheader
+
+    return s3_rest_controller(rheader = rheader)
+
 # -----------------------------------------------------------------------------
 def waypoint():
-    """ RESTful CRUD controller for GPS Waypoints """
+    """ RESTful CRUD controller for Waypoints """
 
     return s3_rest_controller()
 
@@ -1519,19 +1552,8 @@ def waypoint_upload():
         Temporary: Likely to be refactored into the main waypoint controller
     """
 
+    # Uses custom view
     return {}
-
-# -----------------------------------------------------------------------------
-def trackpoint():
-    """ RESTful CRUD controller for GPS Track points """
-
-    return s3_rest_controller()
-
-# -----------------------------------------------------------------------------
-def track():
-    """ RESTful CRUD controller for GPS Tracks (uploaded as files) """
-
-    return s3_rest_controller()
 
 # =============================================================================
 def inject_enable(output):
@@ -3002,16 +3024,16 @@ def poi():
                 table.location_id.label = ""
                 table.created_by.readable = True
                 table.created_on.readable = True
-                table.created_on.represent = lambda d: \
-                    s3base.S3DateTime.date_represent(d)
+                from s3 import S3DateTime
+                table.created_on.represent = lambda d: S3DateTime.date_represent(d)
 
             elif r.representation == "plain":
                 # Map Popup
                 table = r.table
                 table.created_by.readable = True
                 table.created_on.readable = True
-                table.created_on.represent = lambda d: \
-                    s3base.S3DateTime.date_represent(d)
+                from s3 import S3DateTime
+                table.created_on.represent = lambda d: S3DateTime.date_represent(d)
                 # @ToDo: Allow multiple PoI layers
                 ftable = s3db.gis_layer_feature
                 layer = db(ftable.name == "PoIs").select(ftable.layer_id,
@@ -3871,58 +3893,66 @@ def maps():
 # =============================================================================
 def potlatch2():
     """
-        Custom View for the Potlatch2 OpenStreetMap editor
+        Custom View for the old Potlatch2 OpenStreetMap editor
         http://wiki.openstreetmap.org/wiki/Potlatch_2
+
+        @ToDo: Update this to use iD instead
+               https://wiki.openstreetmap.org/wiki/ID
     """
 
-    config = gis.get_config()
-    pe_id = auth.s3_user_pe_id(auth.user.id) if auth.s3_logged_in() else None
-    opt = s3db.auth_user_options_get_osm(auth.user.pe_id) if pe_id else None
-    if opt:
-        osm_oauth_consumer_key, osm_oauth_consumer_secret = opt
-        gpx_url = None
-        if "gpx_id" in request.vars:
-            # Pass in a GPX Track
-            # @ToDo: Set the viewport based on the Track, if one is specified
-            table = s3db.gis_layer_track
-            query = (table.id == request.vars.gpx_id)
-            track = db(query).select(table.track,
-                                     limitby = (0, 1),
-                                     ).first()
-            if track:
-                gpx_url = "%s/%s" % (URL(c="default", f="download"),
-                                     track.track)
+    user = auth.user if auth.s3_logged_in() else None
+    if not user:
+        session.warning = T("To edit OpenStreetMap, you need to be logged-in")
+        redirect(URL(c="gis", f="index",
+                     ))
 
-        if "lat" in request.vars:
-            lat = request.vars.lat
-            lon = request.vars.lon
-        else:
-            lat = config.lat
-            lon = config.lon
-
-        if "zoom" in request.vars:
-            zoom = request.vars.zoom
-        else:
-            # This isn't good as it makes for too large an area to edit
-            #zoom = config.zoom
-            zoom = 14
-
-        site_name = settings.get_system_name_short()
-
-        return {"lat": lat,
-                "lon": lon,
-                "zoom": zoom,
-                "gpx_url": gpx_url,
-                "site_name": site_name,
-                "key": osm_oauth_consumer_key,
-                "secret": osm_oauth_consumer_secret,
-                }
-
-    else:
+    pe_id = auth.s3_user_pe_id(user.id)
+    opt = s3db.gis_config_osm(user.pe_id) if pe_id else None
+    if not opt:
         session.warning = T("To edit OpenStreetMap, you need to edit the OpenStreetMap settings in your Map Config")
         redirect(URL(c="pr", f="person",
                      args = ["config"],
                      ))
+
+    config = gis.get_config()
+    osm_oauth_consumer_key, osm_oauth_consumer_secret = opt
+    gpx_url = None
+    if "gpx_id" in request.vars:
+        # Pass in a GPX Track
+        # @ToDo: Set the viewport based on the Track, if one is specified
+        table = s3db.gis_layer_track
+        query = (table.id == request.vars.gpx_id)
+        track = db(query).select(table.track,
+                                 limitby = (0, 1),
+                                 ).first()
+        if track:
+            gpx_url = "%s/%s" % (URL(c="default", f="download"),
+                                 track.track)
+
+    if "lat" in request.vars:
+        lat = request.vars.lat
+        lon = request.vars.lon
+    else:
+        lat = config.lat
+        lon = config.lon
+
+    if "zoom" in request.vars:
+        zoom = request.vars.zoom
+    else:
+        # This isn't good as it makes for too large an area to edit
+        #zoom = config.zoom
+        zoom = 14
+
+    site_name = settings.get_system_name_short()
+
+    return {"lat": lat,
+            "lon": lon,
+            "zoom": zoom,
+            "gpx_url": gpx_url,
+            "site_name": site_name,
+            "key": osm_oauth_consumer_key,
+            "secret": osm_oauth_consumer_secret,
+            }
 
 # =============================================================================
 def proxy():

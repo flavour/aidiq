@@ -366,6 +366,7 @@ def config(settings):
     PMI = "Indonesian Red Cross Society (Palang Merah Indonesia)"
     PRC = "Philippine Red Cross"
     VNRC = "Viet Nam Red Cross"
+    YRCS = "Yemen Red Crescent Society"
 
     # -------------------------------------------------------------------------
     def airegex(default):
@@ -426,6 +427,8 @@ def config(settings):
             currencies["PHP"] = "Philippine Pesos"
         elif root_org == VNRC:
             currencies["VND"] = "Vietnamese Dong"
+        elif root_org == YRCS:
+            currencies["YER"] = "Yemeni Rial"
         else:
             currencies["GBP"] = "Great British Pounds"
             currencies["CAD"] = "Canadian Dollars"
@@ -457,6 +460,8 @@ def config(settings):
             default = "PHP"
         elif root_org == VNRC:
             default = "VND"
+        elif root_org == YRCS:
+            default = "YER"
         #else:
             #default = "USD"
         return default
@@ -468,7 +473,7 @@ def config(settings):
         """ NS-specific selection of whether to support BiDi in PDF output """
 
         root_org = current.auth.root_org_name()
-        if root_org in (ARCS, IRCS):
+        if root_org in (ARCS, IRCS, YRCS):
             default = True
         return default
 
@@ -479,7 +484,7 @@ def config(settings):
         """ NS-specific selection of which font to use in PDF output """
 
         root_org = current.auth.root_org_name()
-        if root_org in (ARCS, IRCS):
+        if root_org in (ARCS, IRCS, YRCS):
             # Use Unifont even in English since there is data stored with non-English characters
             default = ["unifont", "unifont"]
         return default
@@ -491,7 +496,7 @@ def config(settings):
         """ NS-specific selection of whether to show Postcode """
 
         root_org = current.auth.root_org_name()
-        if root_org in (ARCS, IRCS, VNRC):
+        if root_org in (ARCS, IRCS, VNRC, YRCS):
             default = False
         return default
 
@@ -930,14 +935,16 @@ def config(settings):
             Function to configure an organisation_id field to be restricted to just
             NS/Branch
 
-            @param required: Field is mandatory
-            @param branches: Include Branches
-            @param updateable: Limit to Orgs which the user can update
-            @param limit_filter_opts: Also limit the Filter options
-            @param hierarchy: Use the hierarchy widget (unsuitable for use in Inline Components)
+            Args:
+                required: Field is mandatory
+                branches: Include Branches
+                updateable: Limit to Orgs which the user can update
+                limit_filter_opts: Also limit the Filter options
+                hierarchy: Use the hierarchy widget (unsuitable for use in Inline Components)
 
-            NB If limit_filter_opts=True, apply in customise_xx_controller inside prep,
-               after standard_prep is run
+            Note:
+                If limit_filter_opts=True, apply in customise_xx_controller inside prep,
+                after standard_prep is run
         """
 
         # Lookup organisation_type_id for Red Cross
@@ -1968,7 +1975,8 @@ def config(settings):
         """
             Check whether a Survey has been Approved/Rejected & notify OM if not
 
-            @param target_id: Target record_id
+            Args:
+                target_id: Target record_id
         """
 
         #from gluon import URL
@@ -2072,7 +2080,8 @@ def config(settings):
         """
             Notify EO & MFP that a Survey Report is ready
 
-            @param target_id: Target record_id
+            Args:
+                target_id: Target record_id
         """
 
         from gluon import URL
@@ -2336,9 +2345,9 @@ def config(settings):
 
         #    if r.interactive and r.component_name == "response":
         #        from gluon import URL
-        #        from s3 import S3CRUD
+        #        from s3 import s3_action_buttons
         #        open_url = URL(f="respnse", args = ["[id]", "answer"])
-        #        S3CRUD.action_buttons(r, read_url=open_url, update_url=open_url)
+        #        s3_action_buttons(r, read_url=open_url, update_url=open_url)
 
         #    return output
         #s3.postp = custom_postp
@@ -2692,8 +2701,9 @@ def config(settings):
         """
             Notify Event Organiser (EO) that they should consider sending out a Survey
 
-            @param training_event_id: (Training) Event record_id
-            @param survey_type: Survey Type (3 month or 6 month currently)
+            Args:
+                training_event_id: (Training) Event record_id
+                survey_type: Survey Type (3 month or 6 month currently)
         """
 
         try:
@@ -3316,7 +3326,9 @@ def config(settings):
 
         # Restrict Location to just Countries
         field = s3db.deploy_mission.location_id
-        field.represent = S3Represent(lookup="gis_location", translate=True)
+        field.represent = S3Represent(lookup = "gis_location",
+                                      translate = True,
+                                      )
 
         has_role = current.auth.s3_has_role
         if has_role("AP_RDRT_ADMIN") and not has_role("ADMIN"):
@@ -3375,7 +3387,9 @@ def config(settings):
         COUNTRY = messages.COUNTRY
         field = table.location_id
         field.label = COUNTRY
-        field.represent = S3Represent(lookup="gis_location", translate=True)
+        field.represent = S3Represent(lookup = "gis_location",
+                                      translate = True,
+                                      )
         countries = _countries_for_region()
         if countries:
             # Limit to just this region's countries
@@ -3383,14 +3397,15 @@ def config(settings):
                                        field.represent,
                                        filterby = "id",
                                        filter_opts = countries,
-                                       sort=True)
+                                       sort = True,
+                                       )
             # Filter to just the user's region
             # (we filter on organisation_id now)
             #s3.filter = (field.belongs(countries))
         else:
             # Allow all countries
             field.requires = s3db.gis_country_requires
-        field.widget = S3MultiSelectWidget(multiple=False)
+        field.widget = S3MultiSelectWidget(multiple = False)
 
         rtable = s3db.deploy_response
         rtable.human_resource_id.label = MEMBER
@@ -3593,6 +3608,14 @@ def config(settings):
 
             # Hide Street Address
             current.s3db.event_incident_report.location_id.widget = S3LocationSelector()
+        elif root_org == YRCS:
+            from gluon import XML
+            from s3 import s3_richtext_widget
+            table = current.s3db.event_incident_report
+            table.description.widget = s3_richtext_widget
+            table.description.represent = XML
+            table.needs.widget = s3_richtext_widget
+            table.needs.represent = XML
 
     settings.customise_event_incident_report_resource = customise_event_incident_report_resource
 
@@ -3792,10 +3815,13 @@ def config(settings):
                                                        filterby = "id",
                                                        filter_opts = filter_opts,
                                                        orderby = "org_organisation.name",
-                                                       sort = True)
+                                                       sort = True,
+                                                       )
             f = table.comments
             f.comment = None
-            country_represent = S3Represent(lookup="gis_location", translate=True)
+            country_represent = S3Represent(lookup = "gis_location",
+                                            translate = True,
+                                            )
             f = table.location_id
             f.default = None
             f.represent = country_represent
@@ -3803,7 +3829,8 @@ def config(settings):
                                                country_represent,
                                                filterby = "level",
                                                filter_opts = ["L0"],
-                                               sort=True))
+                                               sort = True,
+                                               ))
             f.widget = None
             #f.widget = S3MultiSelectWidget(multiple=False)
             table.responsibilities.widget = s3_comments_widget
@@ -3869,7 +3896,7 @@ def config(settings):
         has_permission = current.auth.s3_has_permission
         table = r.table
 
-        from s3 import s3_unicode
+        from s3 import s3_str
         from gluon.html import A, DIV, H2, LABEL, P, SPAN, URL
         SUBMIT = T("Save")
         EDIT = T("Click to edit")
@@ -3877,7 +3904,7 @@ def config(settings):
         # Job title, if present
         job_title_id = record.job_title_id
         if job_title_id:
-            comments = SPAN(s3_unicode(table.job_title_id.represent(job_title_id)))
+            comments = SPAN(s3_str(table.job_title_id.represent(job_title_id)))
         else:
             comments = SPAN()
 
@@ -4015,7 +4042,8 @@ def config(settings):
         """
             Representation of Emergency Contacts (S3Represent label renderer)
 
-            @param row: the row
+            Args:
+                row: the row
         """
 
         name = row["pr_contact_emergency.name"] or current.messages["NONE"]
@@ -4157,8 +4185,9 @@ def config(settings):
                 field = current.s3db.vol_details.volunteer_type
                 field.readable = field.writable = True
                 from gluon.validators import IS_EMPTY_OR, IS_IN_SET
+                from s3 import s3_options_represent
                 field.requires = IS_EMPTY_OR(IS_IN_SET(types))
-                field.represent = S3Represent(options=types)
+                field.represent = s3_options_represent(types)
 
         elif controller == "hrm":
             if root_org == IRCS:
@@ -4214,11 +4243,12 @@ def config(settings):
         """
             dataList item renderer for 'Other Information' on the Surge Member Profile
 
-            @param list_id: the HTML ID of the list
-            @param item_id: the HTML ID of the item
-            @param resource: the S3Resource to render
-            @param rfields: the S3ResourceFields to render
-            @param record: the record as dict
+            Args:
+                list_id: the HTML ID of the list
+                item_id: the HTML ID of the item
+                resource: the S3Resource to render
+                rfields: the S3ResourceFields to render
+                record: the record as dict
         """
 
         raw = record._row
@@ -4907,10 +4937,14 @@ def config(settings):
                     from s3 import S3OptionsFilter
 
                     # Add gender filter
-                    gender_opts = dict(s3db.pr_gender_opts)
-                    del gender_opts[1]
+                    gender_opts = s3db.pr_gender_opts
+                    if 1 in gender_opts:
+                        gender_options = dict(gender_opts)
+                        del gender_options[1]
+                    else:
+                        gender_options = gender_opts
                     append_filter(S3OptionsFilter("person_id$gender",
-                                                  options = gender_opts,
+                                                  options = gender_options,
                                                   cols = 3,
                                                   hidden = True,
                                                   ))
@@ -6344,7 +6378,7 @@ def config(settings):
                                               "status",
                                               #"driver_name",
                                               #"driver_phone",
-                                              #"vehicle_plate_no",
+                                              #"registration_no",
                                               #"time_out",
                                               "comments",
                                               ],
@@ -7012,6 +7046,37 @@ def config(settings):
         return attr
 
     settings.customise_org_organisation_controller = customise_org_organisation_controller
+
+    # -------------------------------------------------------------------------
+    def customise_org_region_controller(**attr):
+
+        s3 = current.response.s3
+
+        # Custom prep
+        standard_prep = s3.prep
+        def custom_prep(r):
+            # Call standard prep
+            if callable(standard_prep):
+                result = standard_prep(r)
+            else:
+                result = True
+
+            if r.representation == "popup":
+
+                if settings.get_org_regions_hierarchical():
+
+                    # Zone is required when creating new regions from popup
+                    field = r.table.parent
+                    requires = field.requires
+                    if hasattr(requires, "other"):
+                        field.requires = requires.other
+
+            return True
+        s3.prep = custom_prep
+
+        return attr
+
+    settings.customise_org_region_controller = customise_org_region_controller
 
     # -------------------------------------------------------------------------
     def customise_pr_contact_resource(r, tablename):
@@ -8404,8 +8469,9 @@ def config(settings):
             Inject JS for progressive revelation of household form,
             to be called from prep
 
-            @param r: the S3Request
-            @param record: the household record
+            Args:
+                r: the S3Request
+                record: the household record
         """
 
         if r.interactive:
@@ -9069,9 +9135,10 @@ class hrm_CourseRepresent(S3Represent):
         self.organisation_id = organisation_id
 
         super(hrm_CourseRepresent,
-              self).__init__(lookup="hrm_course",
-                             #none="",
-                             translate=True)
+              self).__init__(lookup = "hrm_course",
+                             #none = "",
+                             translate = True,
+                             )
 
     # -------------------------------------------------------------------------
     def lookup_rows(self, key, values, fields=None):
@@ -9079,9 +9146,10 @@ class hrm_CourseRepresent(S3Represent):
             Lookup all rows referenced by values.
             (in foreign key representations)
 
-            @param key: the key Field
-            @param values: the values
-            @param fields: the fields to retrieve
+            Args:
+                key: the key Field
+                values: the values
+                fields: the fields to retrieve
         """
 
         table = self.table

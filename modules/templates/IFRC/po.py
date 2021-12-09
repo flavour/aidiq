@@ -210,7 +210,8 @@ class OutreachAreaModel(S3Model):
         """
             Update affiliations for an area
 
-            @param record: the area record
+            Args:
+                record: the area record
         """
 
         ROLE = "Areas"
@@ -562,22 +563,22 @@ class OutreachHouseholdModel(S3Model):
                      household_id(),
                      Field("dwelling_type",
                            label = T("Type of Dwelling"),
-                           represent = S3Represent(options=dwelling_type),
+                           represent = s3_options_represent(dwelling_type),
                            requires = IS_EMPTY_OR(IS_IN_SET(dwelling_type)),
                            ),
                      Field("type_of_use",
                            label = T("Type of Use"),
-                           represent = S3Represent(options=type_of_use),
+                           represent = s3_options_represent(type_of_use),
                            requires = IS_EMPTY_OR(IS_IN_SET(type_of_use)),
                            ),
                      Field("repair_status",
                            label = T("Stage of Repair"),
-                           represent = S3Represent(options=repair_status),
+                           represent = s3_options_represent(repair_status),
                            requires = IS_EMPTY_OR(IS_IN_SET(repair_status)),
                            ),
                      Field("sticker",
                            label = T("Sticker"),
-                           represent = S3Represent(options=sticker_opts),
+                           represent = s3_options_represent(sticker_opts),
                            requires = IS_EMPTY_OR(IS_IN_SET(sticker_opts)),
                            ),
                      s3_comments(),
@@ -624,7 +625,7 @@ class OutreachHouseholdModel(S3Model):
                   )
 
         # Reusable Field
-        represent = S3Represent(lookup=tablename)
+        represent = S3Represent(lookup = tablename)
         emotional_need_id = S3ReusableField("emotional_need_id", "reference %s" % tablename,
                                             label = T("Emotional Need"),
                                             ondelete = "CASCADE",
@@ -675,7 +676,7 @@ class OutreachHouseholdModel(S3Model):
                   )
 
         # Reusable Field
-        represent = S3Represent(lookup=tablename)
+        represent = S3Represent(lookup = tablename)
         practical_need_id = S3ReusableField("practical_need_id", "reference %s" % tablename,
                                             label = T("Practical Need"),
                                             ondelete = "CASCADE",
@@ -751,7 +752,7 @@ class OutreachHouseholdModel(S3Model):
                            ),
                      Field("evaluation",
                            label = T("Evaluation"),
-                           represent = S3Represent(options=evaluation),
+                           represent = s3_options_represent(evaluation),
                            requires = IS_EMPTY_OR(IS_IN_SET(evaluation)),
                            ),
                      s3_comments(),
@@ -961,14 +962,14 @@ class po_HouseholdRepresent(S3Represent):
 
     def __init__(self, show_link=True):
         """
-            Constructor
-
-            @param show_link: whether to add a URL to representations
+            Args:
+                show_link: whether to add a URL to representations
         """
 
-        super(po_HouseholdRepresent, self).__init__(
-                                        lookup = "po_household",
-                                        show_link = show_link)
+        super(po_HouseholdRepresent,
+              self).__init__(lookup = "po_household",
+                             show_link = show_link,
+                             )
 
         self.location_represent = \
                 current.s3db.gis_LocationRepresent(address_only=True,
@@ -980,9 +981,10 @@ class po_HouseholdRepresent(S3Represent):
         """
             Custom rows lookup
 
-            @param key: the key Field
-            @param values: the values
-            @param fields: unused (retained for API compatibility)
+            Args:
+                key: the key Field
+                values: the values
+                fields: unused (retained for API compatibility)
         """
 
         table = self.table
@@ -1011,7 +1013,8 @@ class po_HouseholdRepresent(S3Represent):
         """
             Represent a row
 
-            @param row: the Row
+            Args:
+                row: the Row
         """
 
         # Represent household as its address
@@ -1086,7 +1089,9 @@ def po_organisation_onaccept(form):
            agencies in the household referrals dropdown
         2. Create a po_referral_organisation record onaccept of
            an org_organisation to link it to this module.
-        @param form: the form
+
+        Args:
+            form: the form
     """
 
     try:

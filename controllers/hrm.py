@@ -36,7 +36,8 @@ def human_resource():
         Used for Summary view, Imports and S3AddPersonWidget
     """
 
-    return s3db.hrm_human_resource_controller()
+    from s3db.hrm import hrm_human_resource_controller
+    return hrm_human_resource_controller()
 
 # -----------------------------------------------------------------------------
 def staff():
@@ -150,10 +151,11 @@ def staff():
                     table.status.writable = table.status.readable = False
 
                     # Assume staff only between 16-81
-                    dob = s3db.pr_person.date_of_birth
-                    dob.widget = S3CalendarWidget(past_months = 972,
-                                                  future_months = -192,
-                                                  )
+                    from s3 import S3CalendarWidget
+                    s3db.pr_person.date_of_birth.widget = \
+                        S3CalendarWidget(past_months = 972,
+                                         future_months = -192,
+                                         )
 
         return True
     s3.prep = prep
@@ -193,7 +195,8 @@ def person():
         - includes components relevant to HRM
     """
 
-    return s3db.hrm_person_controller()
+    from s3db.hrm import hrm_person_controller
+    return hrm_person_controller()
 
 # -----------------------------------------------------------------------------
 def trainee():
@@ -202,7 +205,8 @@ def trainee():
         - used by RMS to be able to filter to 'External Trainees'
     """
 
-    return s3db.hrm_human_resource_controller()
+    from s3db.hrm import hrm_human_resource_controller
+    return hrm_human_resource_controller()
 
 # -----------------------------------------------------------------------------
 def trainee_person():
@@ -211,7 +215,8 @@ def trainee_person():
         - used by RMS to be able to configure for 'External Trainees'
     """
 
-    return s3db.hrm_person_controller()
+    from s3db.hrm import hrm_person_controller
+    return hrm_person_controller()
 
 # -----------------------------------------------------------------------------
 def profile():
@@ -273,18 +278,19 @@ def profile():
                 table.missing.readable = table.missing.writable = False
                 table.age_group.readable = table.age_group.writable = False
                 # Assume volunteers only between 12-81
-                dob = table.date_of_birth
-                dob.widget = S3CalendarWidget(past_months = 972,
-                                              future_months = -144,
-                                              )
+                from s3 import S3CalendarWidget
+                table.date_of_birth.widget = S3CalendarWidget(past_months = 972,
+                                                              future_months = -144,
+                                                              )
                 return True
         else:
             # Disable non-interactive & import
             return False
     s3.prep = prep
 
+    from s3db.hrm import hrm_rheader
     return s3_rest_controller("pr", "person",
-                              rheader = s3db.hrm_rheader,
+                              rheader = hrm_rheader,
                               )
 
 # -----------------------------------------------------------------------------
@@ -334,7 +340,8 @@ def group():
         - uses the group table from PR
     """
 
-    return s3db.hrm_group_controller()
+    from s3db.hrm import hrm_group_controller
+    return hrm_group_controller()
 
 # -----------------------------------------------------------------------------
 def group_membership():
@@ -461,7 +468,8 @@ def course():
     if not auth.s3_has_role("ADMIN") and not s3.filter:
         s3.filter = auth.filter_by_root_org(s3db.hrm_course)
 
-    return s3_rest_controller(rheader = s3db.hrm_rheader,
+    from s3db.hrm import hrm_rheader
+    return s3_rest_controller(rheader = hrm_rheader,
                               )
 
 # -----------------------------------------------------------------------------
@@ -478,7 +486,8 @@ def certificate():
        not auth.s3_has_role("ADMIN"):
         s3.filter = auth.filter_by_root_org(s3db.hrm_certificate)
 
-    return s3_rest_controller(rheader = s3db.hrm_rheader,
+    from s3db.hrm import hrm_rheader
+    return s3_rest_controller(rheader = hrm_rheader,
                               )
 
 # -----------------------------------------------------------------------------
@@ -502,7 +511,8 @@ def certification():
        not auth.s3_has_role("ADMIN"):
         s3.filter = auth.filter_by_root_org(s3db.hrm_certificate)
 
-    return s3_rest_controller(rheader = s3db.hrm_rheader,
+    from s3db.hrm import hrm_rheader
+    return s3_rest_controller(rheader = hrm_rheader,
                               )
 
 # -----------------------------------------------------------------------------
@@ -550,7 +560,8 @@ def facility():
                                      args = ["[id]", "read"]),
                    )
 
-    return s3db.org_facility_controller()
+    from s3db.org import org_facility_controller
+    return org_facility_controller()
 
 # -----------------------------------------------------------------------------
 def training_center():
@@ -599,34 +610,42 @@ def training_center():
                    create_onaccept = create_onaccept,
                    )
 
-    return s3db.org_organisation_controller()
+    from s3db.org import org_organisation_controller
+    return org_organisation_controller()
 
 # -----------------------------------------------------------------------------
 def training():
     """ Training Controller - used for Importing/Searching for Participants """
 
     s3.filter = FS("person_id$human_resource.type") == 1
-    return s3db.hrm_training_controller()
+
+    from s3db.hrm import hrm_training_controller
+    return hrm_training_controller()
 
 # -----------------------------------------------------------------------------
 def training_event():
     """ Training Events Controller """
 
-    return s3db.hrm_training_event_controller()
+    from s3db.hrm import hrm_training_event_controller
+    return hrm_training_event_controller()
 
 # -----------------------------------------------------------------------------
 def credential():
     """ Credentials Controller """
 
     s3.filter = FS("person_id$human_resource.type") == 1
-    return s3db.hrm_credential_controller()
+
+    from s3db.hrm import hrm_credential_controller
+    return hrm_credential_controller()
 
 # -----------------------------------------------------------------------------
 def experience():
     """ Experience Controller """
 
     s3.filter = FS("person_id$human_resource.type") == 1
-    return s3db.hrm_experience_controller()
+
+    from s3db.hrm import hrm_experience_controller
+    return hrm_experience_controller()
 
 # -----------------------------------------------------------------------------
 def competency():
@@ -638,10 +657,12 @@ def competency():
 
     s3.filter = FS("person_id$human_resource.type") == 1
 
-    field = s3db.hrm_competency.person_id
-    field.widget = S3PersonAutocompleteWidget(ajax_filter = "~.human_resource.type=1")
+    from s3 import S3PersonAutocompleteWidget
+    s3db.hrm_competency.person_id.widget = \
+        S3PersonAutocompleteWidget(ajax_filter = "~.human_resource.type=1")
 
-    return s3db.hrm_competency_controller()
+    from s3db.hrm import hrm_competency_controller
+    return hrm_competency_controller()
 
 # =============================================================================
 def skill_competencies():
@@ -707,6 +728,7 @@ def staff_for_site():
                                 orderby=ptable.first_name)
         result = []
         append = result.append
+        from s3 import s3_fullname
         for row in rows:
             append({"id"   : row.id,
                     "name" : s3_fullname(row)
@@ -827,6 +849,7 @@ def shift():
 
     return s3_rest_controller()
 
+# -----------------------------------------------------------------------------
 def shift_template():
     """ Shift Templates Controller """
 
@@ -870,6 +893,7 @@ def delegation():
 def compose():
     """ Send message to people/teams """
 
-    return s3db.hrm_compose()
+    from s3db.hrm import hrm_compose
+    return hrm_compose()
 
 # END =========================================================================

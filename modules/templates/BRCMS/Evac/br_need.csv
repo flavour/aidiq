@@ -1,4 +1,6 @@
-Type,Comments
-Money,
-Logistics,
-Visa / Refugee Application,
+uuid,Type,Comments
+FLIGHTS,Flights,Flight Manifests
+LEGAL,Legal,Visa / Refugee Status
+LOGISTICS,Logistics,"Money, Supplies, Local Transport"
+MEDICAL,Medical,"Doctors, Hospitals, Telehealth"
+SECURITY,Security,

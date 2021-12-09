@@ -187,7 +187,7 @@
                 var columns = '';
 
                 // Render the items
-                for (var i=0, len=items.length; i<len; i++) {
+                for (var i = 0, len = items.length; i < len; i++) {
                     columns += '<td>' + items[i] + '</td>';
                 }
 
@@ -739,22 +739,7 @@
             }
 
             // Construct the URL
-            var c = data.controller,
-                f = data['function'],
-                resource = data.resource,
-                component = data.component,
-                url = S3.Ap.concat('/' + c + '/' + f + '/validate.json'),
-                concat;
-
-            if (null !== resource && typeof resource != 'undefined') {
-                url += '?resource=' + resource;
-                concat = '&';
-            } else {
-                concat = '?';
-            }
-            if (null !== component && typeof component != 'undefined') {
-                url += concat + 'component=' + component;
-            }
+            var url = S3.Ap.concat('/' + data.controller + '/' + data.function + '/validate.json?resource=' + data.resource + '&component=' + data.component);
 
             // Request validation of the row
             // @ToDo: Skip read-only fields (especially Virtual)
@@ -1097,6 +1082,9 @@
             // Enable the add-row
             this._enableAddRow();
             this._showHeaders();
+
+            // Fire Event for external scripts to listen to
+            $(this.element).trigger('editCancelled', rowindex);
         },
 
         /**
@@ -1351,6 +1339,8 @@
         /**
          * Update row
          *
+         * - Saves the Row currently being Edited
+         *
          * @param {string|number} rowindex - the row index
          */
         _updateRow: function(rowindex) {
@@ -1533,6 +1523,89 @@
 
             // Fire Event for external scripts to listen to
             $(this.element).trigger('rowRemoved', oldRow);
+
+            return true;
+        },
+
+        /**
+         * Remove all rows
+         *
+         * - called by s3.inv_send_item.js
+         */
+        removeRows: function() {
+
+            var data = this._deserialize(),
+                formname = this.formname,
+                row,
+                rows = data.data;
+
+            for (var i = 0, len = rows.length; i < len; i++) {
+                row = rows[i];
+                row._delete = true;
+
+                // Remove the read-row for this item
+                $('#read-row-' + formname + '-' + i).remove();
+
+                // Remove all uploads for this item
+                $('input[name^="' + 'upload_' + formname + '_"][name$="_' + i + '"]').remove();
+
+                // Fire Event for external scripts to listen to
+                $(this.element).trigger('rowRemoved', row);
+            }
+
+            var edit_row = $('#edit-row-' + formname);
+            if (edit_row.hasClass('required')) {
+                // No more rows present - set the add row as required
+                $('#add-row-' + formname).addClass('required');
+                edit_row.removeClass('required');
+                // Ensure we validate this if not changed
+                this._catchSubmit();
+            }
+
+            // Update the real_input JSON with deletion of these rows
+            this._serialize();
+
+            this._showHeaders();
+
+            return true;
+        },
+
+        /**
+         * Update all read rows with a callback function
+         *
+         * - called by s3.inv_item.js
+         */
+        updateRows: function(callback) {
+
+            var data = this._deserialize(),
+                formName = this.formname,
+                items = [],
+                fields = data.fields,
+                fieldsLength = fields.length,
+                fieldName,
+                row,
+                rows = data.data;
+
+            for (var i = 0, len = rows.length; i < len; i++) {
+                row = rows[i];
+
+                // Modify the data according to the callback
+                callback(row);
+
+                row._changed = true; // mark as changed
+
+                // Render the new data
+                items = [];
+                for (var j = 0; j < fieldsLength; j++) {
+                    fieldName = fields[j].name;
+                    // Store text representation for the read-row
+                    items.push(row[fieldName].text);
+                }
+                this._renderReadRow(formName, i, items);
+            }
+
+            // Update the real_input JSON with the new data
+            this._serialize();
 
             return true;
         },

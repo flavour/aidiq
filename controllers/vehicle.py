@@ -44,6 +44,8 @@ def vehicle():
                    deletable = False,
                    )
 
+    from s3 import S3CheckInMethod, S3CheckOutMethod
+
     set_method = s3db.set_method
 
     set_method("asset", "asset",
@@ -53,12 +55,12 @@ def vehicle():
 
     set_method("asset", "asset",
                method = "check-in",
-               action = s3base.S3CheckInMethod(),
+               action = S3CheckInMethod(),
                )
 
     set_method("asset", "asset",
                method = "check-out",
-               action = s3base.S3CheckOutMethod(),
+               action = S3CheckOutMethod(),
                )
 
     # Type is Vehicle
@@ -114,7 +116,8 @@ def vehicle():
         msg_record_created = T("Vehicle added"),
         msg_record_modified = T("Vehicle updated"),
         msg_record_deleted = T("Vehicle deleted"),
-        msg_list_empty = T("No Vehicles currently registered"))
+        msg_list_empty = T("No Vehicles currently registered"),
+        )
 
     # @ToDo: Tweak the search comment
 
@@ -140,6 +143,7 @@ def item():
     # Limit the Categories to just those with vehicles in
     # - make category mandatory so that filter works
     field = s3db.supply_item.item_category_id
+    from s3 import IS_ONE_OF
     field.requires = IS_ONE_OF(db, "supply_item_category.id",
                                s3db.supply_item_category_represent,
                                sort = True,

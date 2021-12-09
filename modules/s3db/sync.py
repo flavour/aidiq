@@ -34,9 +34,10 @@ __all__ = ("SyncConfigModel",
            "SyncLogModel",
            "SyncRepositoryModel",
            "SyncDatasetModel",
-           "sync_rheader",
+           "sync_dataset_code_requires",
+           "sync_job_reset",
            "sync_now",
-           "sync_job_reset"
+           "sync_rheader",
            )
 
 from gluon import *
@@ -45,6 +46,16 @@ from gluon.storage import Storage
 from s3dal import Row
 from ..s3 import *
 from s3layouts import S3PopupLink
+
+# ---------------------------------------------------------------------
+# Common requirements for data set codes
+#
+sync_dataset_code_requires = [IS_NOT_EMPTY(),
+                              IS_LENGTH(64),
+                              IS_MATCH(r"^[A-Za-z][A-Za-z0-9_\-\.]*$",
+                                       error_message = "Code must start with a letter, and only contain ASCII letters, digits, . (dot), _ (underscore), or - (dash).",
+                                       ),
+                              ]
 
 # =============================================================================
 class SyncConfigModel(S3Model):
@@ -110,7 +121,7 @@ class SyncConfigModel(S3Model):
         # ---------------------------------------------------------------------
         # Return global names to s3.*
         #
-        return {}
+        return None
 
 # =============================================================================
 class SyncStatusModel(S3Model):
@@ -145,7 +156,7 @@ class SyncStatusModel(S3Model):
         # ---------------------------------------------------------------------
         # Return global names to s3.*
         #
-        return {}
+        return None
 
 # =============================================================================
 class SyncRepositoryModel(S3Model):
@@ -210,7 +221,7 @@ class SyncRepositoryModel(S3Model):
                      Field("apitype",
                            default = "eden",
                            label = T("Repository Type"),
-                           represent = S3Represent(options=sync_repository_types),
+                           represent = s3_options_represent(sync_repository_types),
                            requires = IS_IN_SET(sync_repository_types,
                                                 sort = True,
                                                 ),
@@ -218,7 +229,7 @@ class SyncRepositoryModel(S3Model):
                      Field("backend",
                            default = "eden",
                            label = T("Data Format"),
-                           represent = S3Represent(options=sync_backend_types),
+                           represent = s3_options_represent(sync_backend_types),
                            requires = IS_IN_SET(sync_backend_types),
                            comment = DIV(_class = "tooltip",
                                          _title = "%s|%s" % (
@@ -582,16 +593,6 @@ class SyncDatasetModel(S3Model):
         configure = self.configure
 
         # ---------------------------------------------------------------------
-        # Common requirements for data set codes
-        #
-        code_requires = [IS_NOT_EMPTY(),
-                         IS_LENGTH(64),
-                         IS_MATCH(r"^[A-Za-z][A-Za-z0-9_\-\.]*$",
-                                  error_message = "Code must start with a letter, and only contain ASCII letters, digits, . (dot), _ (underscore), or - (dash).",
-                                  ),
-                         ]
-
-        # ---------------------------------------------------------------------
         # Public Data Set (=a collection of sync_tasks)
         #
         tablename = "sync_dataset"
@@ -603,7 +604,7 @@ class SyncDatasetModel(S3Model):
                                              ),
                      Field("code", length=64,
                            label = T("Code"),
-                           requires = code_requires,
+                           requires = sync_dataset_code_requires,
                            ),
                      Field("name",
                            label = T("Name"),
@@ -665,10 +666,12 @@ class SyncDatasetModel(S3Model):
            msg_record_modified = T("Data Set updated"),
            msg_record_deleted = T("Data Set deleted"),
            msg_list_empty = T("No Public Data Sets currently registered"),
-        )
+           )
 
         # Reusable field
-        represent = S3Represent(lookup=tablename, show_link=True)
+        represent = S3Represent(lookup = tablename,
+                                show_link = True,
+                                )
         dataset_id = S3ReusableField("dataset_id", "reference %s" % tablename,
                                      label = T("Data Set"),
                                      represent = represent,
@@ -726,7 +729,6 @@ class SyncDatasetModel(S3Model):
         # Pass names back to global scope (s3.*)
         #
         return {"sync_dataset_id": dataset_id,
-                "sync_dataset_code_requires": code_requires,
                 }
 
     # -------------------------------------------------------------------------
@@ -832,9 +834,11 @@ class SyncDatasetModel(S3Model):
         """
             File representation
 
-            @param filename: the stored file name (field value)
+            Args:
+                filename: the stored file name (field value)
 
-            @return: a link to download the file
+            Returns:
+                A (link to download the file)
         """
 
         if filename:
@@ -852,7 +856,7 @@ class SyncDatasetModel(S3Model):
                                    ),
                          )
         else:
-            return current.messages["NONE"]
+            return NONE
 
 # =============================================================================
 class SyncLogModel(S3Model):
@@ -916,7 +920,7 @@ class SyncLogModel(S3Model):
         # ---------------------------------------------------------------------
         # Return global names to s3.*
         #
-        return {}
+        return None
 
 # =============================================================================
 class SyncTaskModel(S3Model):
@@ -930,10 +934,6 @@ class SyncTaskModel(S3Model):
         T = current.T
         db = current.db
         s3 = current.response.s3
-
-        messages = current.messages
-        UNKNOWN_OPT = messages.UNKNOWN_OPT
-        NONE = messages["NONE"]
 
         crud_strings = s3.crud_strings
         define_table = self.define_table
@@ -976,8 +976,7 @@ class SyncTaskModel(S3Model):
             sync_policies.THIS: T("never update")
         }
 
-        sync_policy_represent = lambda opt: \
-                                opt and sync_policy.get(opt, UNKNOWN_OPT) or NONE
+        sync_policy_represent = s3_options_represent(sync_policy)
 
         tablename = "sync_task"
         define_table(tablename,
@@ -1161,7 +1160,8 @@ class SyncTaskModel(S3Model):
             msg_record_created = T("Resource configured"),
             msg_record_modified = T("Resource configuration updated"),
             msg_record_deleted = T("Resource configuration deleted"),
-            msg_list_empty = T("No resources configured yet"))
+            msg_list_empty = T("No resources configured yet"),
+            )
 
         # Resource Configuration
         configure(tablename,
@@ -1218,7 +1218,7 @@ class SyncTaskModel(S3Model):
         # ---------------------------------------------------------------------
         # Return global names to s3.*
         #
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1357,7 +1357,7 @@ class SyncScheduleModel(S3Model):
         # ---------------------------------------------------------------------
         # Return global names to s3.*
         #
-        return {}
+        return None
 
 # =============================================================================
 def sync_rheader(r, tabs=None):
@@ -1459,15 +1459,16 @@ def sync_job_reset(r, **attr):
                 S3Task.reset(job_id)
                 current.session.confirmation = current.T("Job reactivated")
     r.component_id = None
-    redirect(r.url(method=""))
+    redirect(r.url(method = ""))
 
 # =============================================================================
 def sync_now(r, **attr):
     """
         Manual synchronization of a repository
 
-        @param r: the S3Request
-        @param attr: controller options for the request
+        Args:
+            r: the S3Request
+            attr: controller options for the request
     """
 
     T = current.T
@@ -1542,10 +1543,12 @@ class sync_CreateArchive(S3Method):
         """
             Entry point for REST controller
 
-            @param r: the S3Request
-            @param attr: controller parameters
+            Args:
+                r: the S3Request
+                attr: controller parameters
 
-            @todo: perform archive creation async?
+            TODO:
+                Perform archive creation async?
         """
 
         T = current.T
@@ -1583,10 +1586,12 @@ class sync_CreateArchive(S3Method):
         """
             Simple UI form to trigger POST method
 
-            @param r: the S3Request embedding the form
-            @param row: the data set Row
+            Args:
+                r: the S3Request embedding the form
+                row: the data set Row
 
-            @todo: if archive is currently being built (async),
+            TODO:
+                If archive is currently being built (async),
                    then hide the button (provide a message instead?)
         """
 

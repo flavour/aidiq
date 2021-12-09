@@ -30,7 +30,8 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["S3Chart"]
+__all__ = ("S3Chart",
+           )
 
 from io import StringIO
 
@@ -54,8 +55,9 @@ class S3Chart(object):
         """
             Create the base Figure object
 
-            @param: height x100px
-            @param: width x100px
+            Args:
+                height: x100px
+                width: x100px
         """
         try:
             # Causes deadlocking issues

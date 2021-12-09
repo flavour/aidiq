@@ -160,7 +160,6 @@ def facility_type():
 def office():
     """ RESTful CRUD controller """
 
-    # Defined in the Model for use from Multiple Controllers for unified menus
     from s3db.org import org_office_controller
     return org_office_controller()
 
@@ -226,20 +225,6 @@ def organisation_list_represent(l):
 def region():
     """ RESTful CRUD controller """
 
-    def prep(r):
-        if r.representation == "popup":
-
-            if settings.get_org_regions_hierarchical():
-
-                # Zone is required when creating new regions from popup
-                field = r.table.parent
-                requires = field.requires
-                if hasattr(requires, "other"):
-                    field.requires = requires.other
-
-        return True
-    s3.prep = prep
-
     return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
@@ -254,12 +239,6 @@ def sector():
 
         return True
     s3.prep = prep
-
-    return s3_rest_controller()
-
-# -----------------------------------------------------------------------------
-def subsector():
-    """ RESTful CRUD controller """
 
     return s3_rest_controller()
 
@@ -281,12 +260,29 @@ def site():
             if r.id:
                 # Redirect to the instance controller
                 (prefix, resourcename, id) = s3db.get_instance(db.org_site, r.id)
-                args = r.args
-                args[0] = id
-                redirect(URL(c=prefix, f=resourcename,
-                             args = args,
-                             vars = r.get_vars,
-                             ))
+                # If we have a controller defined in s3db then we can Forward without a Redirect
+                # Use Web2Py's Custom Importer rather than importlib.import_module
+                parent = __import__("s3db", fromlist=["s3db"])
+                module = parent.__dict__[prefix]
+                controller = "%s_%s_controller" % (prefix, resourcename)
+                names = module.__all__
+                if controller in names:
+                    s3models = module.__dict__
+                    function = s3models[controller]
+                    request.controller = prefix
+                    request.function = resourcename
+                    request.args[0] = str(id)
+                    return function()
+                else:
+                    # Revert to a Redirect
+                    args = r.args
+                    args[0] = id
+                    redirect(URL(c = prefix,
+                                 f = resourcename,
+                                 args = args,
+                                 vars = r.get_vars,
+                                 ))
+
             else:
                 # Not supported
                 return False
@@ -372,8 +368,7 @@ def mailing_list():
 
     # define the list_fields
     list_fields = s3db.configure(tablename,
-                                 list_fields = ["id",
-                                                "name",
+                                 list_fields = ["name",
                                                 "description",
                                                 ])
     # Components
@@ -398,34 +393,6 @@ def mailing_list():
     return s3_rest_controller("pr", "group",
                               rheader = rheader,
                               )
-
-# -----------------------------------------------------------------------------
-def donor():
-    """ RESTful CRUD controller """
-
-    tablename = "org_donor"
-    table = s3db[tablename]
-
-    tablename = "org_donor"
-    s3.crud_strings[tablename] = Storage(
-        label_create = ADD_DONOR,
-        title_display = T("Donor Details"),
-        title_list = T("Donors Report"),
-        title_update = T("Edit Donor"),
-        label_list_button = T("List Donors"),
-        label_delete_button = T("Delete Donor"),
-        msg_record_created = T("Donor added"),
-        msg_record_modified = T("Donor updated"),
-        msg_record_deleted = T("Donor deleted"),
-        msg_list_empty = T("No Donors currently registered"),
-        )
-
-    s3db.configure(tablename,
-                   listadd = False,
-                   )
-
-    output = s3_rest_controller()
-    return output
 
 # -----------------------------------------------------------------------------
 #def organisation_location():

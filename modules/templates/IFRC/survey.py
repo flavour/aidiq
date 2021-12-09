@@ -683,8 +683,9 @@ def survey_build_template_summary(template_id):
     """
         Returns a table of details of a particular template
 
-        @param template_id: ID corresponding to the template for which
-                            the summary is to be built
+        Args:
+            template_id: ID corresponding to the template for which
+                         the summary is to be built
     """
 
     from s3.s3data import S3DataTable
@@ -753,15 +754,14 @@ def survey_build_template_summary(template_id):
     s3.no_formats = True
 
     s3.dataTableID = None
-    attr = S3DataTable.getConfigData()
-    form = S3DataTable.htmlConfig(table,
-                                  "template_summary",
-                                  [[0, 'asc']], # order by
-                                  "", # the filter string
-                                  None, # the rfields
-                                  dt_action_col = -1,
-                                  **attr
-                                  )
+    attr = getDataTablesConfig()
+    form = S3DataTable.html_config(table,
+                                   "template_summary",
+                                   [[0, 'asc']], # order by
+                                   "", # the filter string
+                                   None, # the rfields
+                                   dt_action_col = -1,
+                                   **attr)
     return form
 
 # =============================================================================
@@ -1137,8 +1137,9 @@ def survey_get_series_questions_of_type(question_list, qtype):
     """
         Get questions of a particular question type
 
-        @param question_list: List of questions
-        @param qtype: Questions of this type to be returned
+        Args:
+            question_list: List of questions
+            qtype: Questions of this type to be returned
     """
 
     if isinstance(qtype, (list, tuple)):
@@ -1202,9 +1203,10 @@ def survey_updateMetaData(record, qtype, metadata):
         Function to update the metadata of a question
         corresponding to the record
 
-        @param record: The record for the question to be updated
-        @param qtype: Question Type
-        @param metadata: The metadata to be updated with
+        Args:
+            record: The record for the question to be updated
+            qtype: Question Type
+            metadata: The metadata to be updated with
     """
 
     metatable = current.s3db.survey_question_metadata
@@ -2388,16 +2390,19 @@ def buildSeriesSummary(series_id, posn_offset):
     # Turn multi-select on
     s3.dataTableBulkActions = [current.T("Display Selected Questions")]
 
-    attr = S3DataTable.getConfigData()
-    form = S3DataTable.htmlConfig(table,
-                                  "series_summary",
-                                  [[0, 'asc']], # order by
-                                  "", # the filter string
-                                  None, # the rfields
-                                  **attr
-                                  )
-    series = INPUT(_type="hidden", _id="selectSeriesID", _name="series",
-                   _value="%s" % series_id)
+    attr = getDataTablesConfig()
+    form = S3DataTable.html_config(table,
+                                   "series_summary",
+                                   [[0, 'asc']], # order by
+                                   "", # the filter string
+                                   None, # the rfields
+                                   **attr)
+
+    series = INPUT(_type = "hidden",
+                   _id = "selectSeriesID",
+                   _name = "series",
+                   _value = "%s" % series_id,
+                   )
     form.append(series)
     return form
 
@@ -2945,15 +2950,13 @@ def buildTableFromCompletedList(data_source):
     # Turn off server side pagination
     current.response.s3.no_sspag = True
 
-    attr = S3DataTable.getConfigData()
-    form = S3DataTable.htmlConfig(table,
-                                  "completed_list",
-                                  [[0, 'asc']], # order by
-                                  "", # the filter string
-                                  None, # the rfields
-                                  **attr
-                                  )
-    return form
+    attr = getDataTablesConfig()
+    return S3DataTable.html_config(table,
+                                   "completed_list",
+                                   [[0, 'asc']], # order by
+                                   "", # the filter string
+                                   None, # the rfields
+                                   **attr)
 
 # =============================================================================
 def buildCompletedList(series_id, question_id_list):
@@ -2966,8 +2969,9 @@ def buildCompletedList(series_id, question_id_list):
         2) The seconds row is the type of each column
         3) The remaining rows are the data
 
-        @param series_id: The id of the series
-        @param question_id_list: The list of questions to display
+        Args:
+            series_id: The id of the series
+            question_id_list: The list of questions to display
     """
 
     db = current.db
@@ -3238,8 +3242,9 @@ class survey_TranslateDownload(S3Method):
         """
             Entry point for REST API
 
-            @param r: the S3Request
-            @param attr: controller arguments
+            Args:
+                r: the S3Request
+                attr: controller arguments
         """
 
         if r.representation != "xls":
@@ -3314,10 +3319,10 @@ class survey_TranslateDownload(S3Method):
 
         for text in original_list:
             row += 1
-            original = s3_unicode(text)
+            original = s3_str(text)
             sheet.write(row, 0, original)
             if (original in strings):
-                sheet.write(row, 1, s3_unicode(strings[original]))
+                sheet.write(row, 1, s3_str(strings[original]))
 
         book.save(output)
 
@@ -3341,8 +3346,9 @@ class survey_ExportResponses(S3Method):
         """
             Entry point for REST API
 
-            @param r: the S3Request
-            @param attr: controller arguments
+            Args:
+                r: the S3Request
+                attr: controller arguments
         """
 
         if r.representation != "xls":
@@ -3386,17 +3392,17 @@ class survey_ExportResponses(S3Method):
                     sheets[sheet_name] = book.add_sheet(sheet_name)
                     cols[sheet_name] = 0
         else:
-            sheet = book.add_sheet(s3_unicode(T("Responses")))
+            sheet = book.add_sheet(s3_str(T("Responses")))
         for qstn in question_list:
             if section_break:
                 sheet_name = qstn["section"].split(" ")[0]
                 sheet = sheets[sheet_name]
                 col = cols[sheet_name]
             row = 0
-            sheet.write(row, col, s3_unicode(qstn["code"]))
+            sheet.write(row, col, s3_str(qstn["code"]))
             row += 1
             widget_obj = s3db.survey_getWidgetFromQuestion(qstn["qstn_id"])
-            sheet.write(row, col, s3_unicode(widget_obj.fullName()))
+            sheet.write(row, col, s3_str(widget_obj.fullName()))
             # For each question get the response
             all_responses = s3db.survey_getAllAnswersForQuestionInSeries(qstn["qstn_id"],
                                                                          series_id)
@@ -3409,7 +3415,7 @@ class survey_ExportResponses(S3Method):
                     complete_row[complete_id] = next_row
                     row = next_row
                     next_row += 1
-                sheet.write(row, col, s3_unicode(value))
+                sheet.write(row, col, s3_str(value))
             col += 1
             if section_break:
                 cols[sheet_name] += 1
@@ -4961,12 +4967,13 @@ class S3QuestionTypeAbstractWidget(FormWidget):
             The basic details will be written to Cell objects that can be
             added to a row in a table object.
 
-            @param ss: StyleSheet object
-            @param langDict: Dictionary of languages
-            @param full_name: Question name(label)
-            @param paragraph: Add paragraph from S3QuestionTypeTextWidget
-            @param para_list: List of paragraphs from S3QuestionTypeOptionWidget
-            @param question_name: Name of question from S3QuestionTypeGridWidget
+            Args:
+                ss: StyleSheet object
+                langDict: Dictionary of languages
+                full_name: Question name(label)
+                paragraph: Add paragraph from S3QuestionTypeTextWidget
+                para_list: List of paragraphs from S3QuestionTypeOptionWidget
+                question_name: Name of question from S3QuestionTypeGridWidget
         """
         from gluon.contrib.pyrtf.Elements import Paragraph, Cell, B
         from gluon.contrib.pyrtf.PropertySets import BorderPS, FramePS
@@ -5008,8 +5015,9 @@ class S3QuestionTypeAbstractWidget(FormWidget):
         """
             Wrapper function for _writeToRTF
 
-            @param ss: StyleSheet object
-            @param langDict: Dictionary of languages
+            Args:
+                ss: StyleSheet object
+                langDict: Dictionary of languages
         """
         full_name = self.fullName()
         return self._writeToRTF(ss, langDict, full_name)
@@ -5103,8 +5111,9 @@ class S3QuestionTypeTextWidget(S3QuestionTypeAbstractWidget):
             The basic details will be written to Cell objects that can be
             added to a row in a table object.
 
-            @param ss: StyleSheet object
-            @param langDict: Dictionary of languages
+            Args:
+                ss: StyleSheet object
+                langDict: Dictionary of languages
         """
         from gluon.contrib.pyrtf.Elements import Paragraph
         paragraph = Paragraph(ss.ParagraphStyles.Normal)
@@ -5579,8 +5588,9 @@ class S3QuestionTypeOptionWidget(S3QuestionTypeAbstractWidget):
             The basic details will be written to Cell objects that can be
             added to a row in a table object.
 
-            @param ss: StyleSheet object
-            @param langDict: Dictionary of languages
+            Args:
+                ss: StyleSheet object
+                langDict: Dictionary of languages
         """
         para_list = self.getList()
         full_name = self.fullName()
@@ -6116,8 +6126,9 @@ class S3QuestionTypeGridWidget(S3QuestionTypeAbstractWidget):
             This will just display the grid name, following this will be the
             grid child objects.
 
-            @param ss: StyleSheet object
-            @param langDict: Dictionary of languages
+            Args:
+                ss: StyleSheet object
+                langDict: Dictionary of languages
         """
         question_name = self.question.name
         full_name = self.fullName()
@@ -6299,8 +6310,9 @@ class S3QuestionTypeGridChildWidget(S3QuestionTypeAbstractWidget):
             The basic details will be written to Cell objects that can be
             added to a row in a table object.
 
-            @param ss: StyleSheet object
-            @param langDict: Dictionary of languages
+            Args:
+                ss: StyleSheet object
+                langDict: Dictionary of languages
         """
         return self.realWidget().writeQuestionToRTF(ss, langDict)
 
@@ -7447,6 +7459,82 @@ class S3GridChildAnalysis(S3AbstractAnalysis):
 # =============================================================================
 # Utilities
 #
+def getDataTablesConfig():
+    """
+        Method to extract the DataTables configuration data from S3 globals and
+        store them as an attr variable.
+
+        Args:
+            attr: dictionary of attributes which can be passed in
+
+        Keywod Args:
+            dt_pageLength: The default number of records that will be shown
+            dt_pagination: Enable pagination
+            dt_pagingType: type of pagination, one of:
+                                simple
+                                simple_numbers
+                                full
+                                full_numbers (default)
+                           http://datatables.net/reference/option/pagingType
+            dt_searching: Enable or disable filtering of data.
+            dt_group: The colum that is used to group the data
+            dt_ajax_url: The URL to be used for the Ajax call
+            dt_action_col: The column where the action buttons will be placed
+            dt_bulk_actions: list of labels for the bulk actions.
+            dt_bulk_col: The column in which the checkboxes will appear,
+                         by default it will be the column immediately
+                         before the first data item
+            dt_bulk_selected: A list of selected items
+            #dt_row_actions: a list of actions (each is a dict)
+            dt_styles: dictionary of styles to be applied to a list of ids
+                       for example:
+                       {"warning" : [1,3,6,7,9],
+                        "alert" : [2,10,13]}
+
+        Returns:
+            dict of attributes which can be passed into S3DataTable.html()
+    """
+
+    s3 = current.response.s3
+
+    attr = Storage()
+    if s3.datatable_ajax_source:
+        attr.dt_ajax_url = s3.datatable_ajax_source
+    # Defaults in S3DataTable.html_config() anyway:
+    #if s3.actions:
+    #    attr.dt_row_actions = s3.actions
+    if s3.dataTableBulkActions:
+        attr.dt_bulk_actions = s3.dataTableBulkActions
+    if s3.dataTable_pageLength:
+        attr.dt_pageLength = s3.dataTable_pageLength
+    attr.dt_pagination = "false" if s3.no_sspag else "true"
+    # Nothing using currently
+    #if s3.dataTable_pagingType:
+    #    attr.dt_pagingType = s3.dataTable_pagingType
+    # Nothing using currently
+    # Was used only by inv/inv_item
+    #if s3.dataTable_group:
+    #    attr.dt_group = s3.dataTable_group
+    # Nothing using currently
+    # - and not worth enabling as not used by standard CRUD
+    #if s3.dataTable_NoSearch:
+    #    attr.dt_searching = not s3.dataTable_NoSearch
+    if s3.dataTable_dom:
+        attr.dt_dom = s3.dataTable_dom
+    if s3.dataTableDisplay:
+        attr.dt_display = s3.dataTableDisplay
+    if s3.dataTableStyleDisabled or s3.dataTableStyleWarning or s3.dataTableStyleAlert:
+        attr.dt_styles = {}
+        if s3.dataTableStyleDisabled:
+            attr.dt_styles["dtdisable"] = s3.dataTableStyleDisabled
+        if s3.dataTableStyleWarning:
+            attr.dt_styles["dtwarning"] = s3.dataTableStyleWarning
+        if s3.dataTableStyleAlert:
+            attr.dt_styles["dtalert"] = s3.dataTableStyleAlert
+
+    return attr
+
+# -----------------------------------------------------------------------------
 def json2py(jsonstr):
     """
         Utility function to convert a string in json to a python structure
@@ -7488,8 +7576,6 @@ def json2list(jsonstr):
 def survey_T(phrase, langDict):
     """
         Function to translate a phrase using the dictionary passed in
-
-        @todo: parameter description
     """
 
     if phrase in langDict and langDict[phrase] != "":

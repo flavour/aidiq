@@ -313,7 +313,11 @@
         reload: function(ajaxURL) {
             // Load the data
             var self = this;
-            ajaxURL += '?widget_id=' + $(this.element).attr('id');
+            if (ajaxURL.includes('?')) {
+                ajaxURL += '&widget_id=' + $(this.element).attr('id');
+            } else {
+                ajaxURL += '?widget_id=' + $(this.element).attr('id');
+            }
 
             // Remove old JSTree
             this.tree.jstree('destroy');
@@ -653,7 +657,8 @@
         },
 
         /**
-         * Check particular nodes (used by setCurrentFilters)
+         * Check particular nodes
+         * - used by setCurrentFilters, s3.inv_req_item.js and s3.inv_send_item.js
          *
          * @param {Array} values - the record IDs of the nodes to select
          */
@@ -693,6 +698,52 @@
             }
             this._isBulk = false;
             this._updateSelectedNodes();
+        },
+
+        /**
+         * Show just particular nodes
+         * - used by s3.inv_req_item.js
+         *
+         * @param {Array} values - the record IDs of the nodes to select
+         * @param {Boolean} uncheck - whether to uncheck all nodes
+         */
+        show: function(values, uncheck) {
+
+            var inst = jQuery.jstree.reference($(this.tree)),
+                node,
+                treeID = this.treeID;
+
+            this._isBulk = true;
+            if (uncheck) {
+                inst.uncheck_all();
+            }
+            inst.hide_all();
+            if (values) {
+                var showAncestors = function(nodeID, callback) {
+                    var parent = inst.get_parent(nodeID);
+                    if (parent != '#') {
+                        showAncestors(parent, callback);
+                        inst.show_node(parent);
+                    } else if (callback) {
+                        callback();
+                    }
+                };
+                values.forEach(function(index) {
+                    var node = inst.get_node(treeID + '-' + index);
+                    if (node) {
+                        // must show all ancestors to make sure
+                        // there is a DOM node for show_node (otherwise
+                        // nothing gets shown)
+                        showAncestors(node, function() {
+                            inst.show_node(node);
+                        });
+                    }
+                });
+            }
+            this._isBulk = false;
+            if (uncheck) {
+                this._updateSelectedNodes();
+            }
         },
 
         /**
@@ -802,7 +853,8 @@
          */
         addNode: function(parent, id, title, check) {
 
-            var tree = this.tree,
+            var manual,
+                tree = this.tree,
                 treeID = this.treeID,
                 nodeID = treeID + '-' + id,
                 inst = jQuery.jstree.reference(tree);
@@ -813,12 +865,14 @@
 
                 // Get parent node
                 if (parent) {
-                    parentNode = $('#' + treeID + '-' + parent + '_anchor');
+                    var parentNode = $('#' + treeID + '-' + parent + '_anchor');
                     if (!parentNode.length) {
-                        parentNode = '#';
+                        // parentNode not yet in the tree, so need to open it's parent
+                        //tree.jstree('open_all', '#'); // Would be better if we knew which root node to open, but we don't, so need to open all
+                        tree.jstree('open_all');
+                        parentNode = $('#' + treeID + '-' + parent + '_anchor');
                     }
                 }
-
                 // Insert the node
                 tree.jstree('create_node', parentNode, {
                     id: nodeID,
@@ -829,8 +883,8 @@
                     }
                 }, "last");
 
-                // Update the parent relationship and open the parent node
                 if (parent) {
+                    // Update the parent relationship and open the parent node
                     parentNode.attr({rel: 'parent'});
                     tree.jstree('open_node', parentNode);
                 }
@@ -840,6 +894,7 @@
                 $('#' + treeID).append(node);
                 this.refresh();
             }
+
             if (check) {
                 tree.jstree('check_node', $('#' + nodeID));
             }

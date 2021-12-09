@@ -33,12 +33,14 @@ def person():
     """ Case File: RESTful CRUD Controller """
 
     # Set the default case status
-    s3db.br_case_default_status()
+    from s3db.br import br_case_default_status, br_terminology, br_person_anonymize
+    br_case_default_status()
 
+    from s3db.pr import pr_Contacts
     # Set contacts-method for tab
     s3db.set_method("pr", "person",
                     method = "contacts",
-                    action = s3db.pr_Contacts,
+                    action = pr_Contacts,
                     )
 
     # ID Card Export
@@ -56,7 +58,7 @@ def person():
         resource = r.resource
         resource.add_filter(FS("case.id") != None)
 
-        labels = s3db.br_terminology()
+        labels = br_terminology()
         CASES = labels.CASES
 
         human_resource_id = auth.s3_logged_in_human_resource()
@@ -92,13 +94,13 @@ def person():
                 queries.append(FS("case.status_id$is_closed") == True)
                 CASES = labels.CLOSED
                 insertable = False
-                status_filter_opts = lambda: get_status_filter_opts(closed=True)
+                status_filter_opts = lambda: get_status_filter_opts(closed = True)
             elif closed == "0":
                 # Only open cases
                 queries.append((FS("case.status_id$is_closed") == False) | \
                                (FS("case.status_id$is_closed") == None))
                 CASES = CURRENT
-                status_filter_opts = lambda: get_status_filter_opts(closed=False)
+                status_filter_opts = lambda: get_status_filter_opts(closed = False)
             else:
                 status_filter_opts = get_status_filter_opts
 
@@ -130,7 +132,7 @@ def person():
                         )
 
         # Update resource configuration for perspective
-        resource.configure(anonymize = s3db.br_person_anonymize(),
+        resource.configure(anonymize = br_person_anonymize(),
                            deletable = False,
                            insertable = insertable,
                            )
@@ -140,7 +142,7 @@ def person():
             if r.representation == "card":
                 # Configure ID card layout
                 resource.configure(pdf_card_layout = id_card_layout,
-                                   #pdf_card_pagesize="A4",
+                                   #pdf_card_pagesize = "A4",
                                    )
 
             if not r.id and not r.component:
@@ -148,35 +150,184 @@ def person():
                 export_formats = list(settings.get_ui_export_formats())
                 export_formats.append(("card", "fa fa-id-card", T("Export ID Cards")))
                 settings.ui.export_formats = export_formats
-                s3.formats["card"] = r.url(method="")
+                s3.formats["card"] = r.url(method = "")
 
-        if not r.component:
+        if r.component:
+            component_name = r.component_name
+
+            if component_name == "case_activity":
+
+                atable = r.component.table
+
+                assistance_inline = settings.get_br_manage_assistance() and \
+                                    settings.get_br_assistance_inline()
+                mtable =  s3db.br_assistance_measure
+
+                # Default status
+                if settings.get_br_case_activity_status():
+                    from s3db.br import br_case_activity_default_status
+                    br_case_activity_default_status()
+
+                # Default human_resource_id
+                if human_resource_id:
+
+                    # Activities
+                    if settings.get_br_case_activity_manager():
+                        atable.human_resource_id.default = human_resource_id
+
+                    # Inline updates
+                    if settings.get_br_case_activity_updates():
+                        utable = s3db.br_case_activity_update
+                        utable.human_resource_id.default = human_resource_id
+
+                    # Inline assistance measures
+                    if assistance_inline:
+                        mtable.human_resource_id.default = human_resource_id
+
+                root_org = None
+                org_specific_needs = settings.get_br_case_activity_need() and \
+                                     settings.get_br_needs_org_specific()
+                if org_specific_needs:
+                    from s3db.br import br_case_root_org
+                    root_org = br_case_root_org(r.id)
+                    if not root_org:
+                        root_org = auth.root_org()
+
+                # Limit selectable need types to the case root org
+                if org_specific_needs and root_org:
+                    from s3 import IS_ONE_OF
+                    field = atable.need_id
+                    field.requires = IS_EMPTY_OR(
+                                        IS_ONE_OF(db, "br_need.id",
+                                                  field.represent,
+                                                  filterby = "organisation_id",
+                                                  filter_opts = (root_org,),
+                                                  ))
+
+                # Configure inline assistance measures
+                if assistance_inline:
+                    if record:
+                        mtable.person_id.default = record.id
+                    if settings.get_br_assistance_themes() and root_org:
+                        # Limit selectable themes to the case root org
+                        field = mtable.theme_ids
+                        from s3 import IS_ONE_OF
+                        from s3db.br import br_org_assistance_themes
+                        dbset = br_org_assistance_themes(root_org)
+                        field.requires = IS_EMPTY_OR(IS_ONE_OF(dbset, "br_assistance_theme.id",
+                                                               field.represent,
+                                                               multiple = True,
+                                                               ))
+                    from s3db.br import br_assistance_default_status
+                    br_assistance_default_status()
+
+            elif component_name == "assistance_measure":
+
+                mtable = r.component.table
+                ltable = s3db.br_assistance_measure_theme
+
+                # Default status
+                s3db.br_assistance_default_status()
+
+                # Default human_resource_id
+                if human_resource_id and settings.get_br_assistance_manager():
+                    mtable.human_resource_id.default = human_resource_id
+
+                # Filter case_activity_id selector to current case
+                field = mtable.case_activity_id
+                if record and field.writable:
+                    requires = field.requires
+                    if isinstance(requires, IS_EMPTY_OR):
+                        requires = requires.other
+                    requires.set_filter(filterby = "person_id",
+                                        filter_opts = (record.id,))
+
+                # Represent for br_assistance_measure_theme.id
+                details_per_theme = settings.get_br_assistance_details_per_theme()
+                if details_per_theme:
+                    from s3db.br import br_AssistanceMeasureThemeRepresent
+                    ltable.id.represent = br_AssistanceMeasureThemeRepresent(paragraph = True,
+                                                                             details = True,
+                                                                             )
+
+                # Filter theme_id selectors to case root org
+                from s3db.br import br_case_root_org
+                root_org = br_case_root_org(r.id)
+                if not root_org:
+                    root_org = auth.root_org()
+                if root_org:
+                    from s3 import IS_ONE_OF
+                    from s3db.br import br_org_assistance_themes
+                    dbset = br_org_assistance_themes(root_org)
+                    field = mtable.theme_ids
+                    field.requires = IS_EMPTY_OR(IS_ONE_OF(dbset, "br_assistance_theme.id",
+                                                           field.represent,
+                                                           multiple = True,
+                                                           ))
+                    field = ltable.theme_id
+                    field.requires = IS_EMPTY_OR(IS_ONE_OF(dbset, "br_assistance_theme.id",
+                                                           field.represent,
+                                                           ))
+
+                # Allow organizer to set an end_date
+                if r.method == "organize" and \
+                   settings.get_br_assistance_measures_use_time():
+                    field = mtable.end_date
+                    field.writable = True
+
+            elif component_name == "br_note":
+
+                # Represent the note author by their name (rather than email)
+                from s3db.auth import auth_UserRepresent
+                ntable = r.component.table
+                ntable.modified_by.represent = auth_UserRepresent(show_email = False,
+                                                                  show_link = False,
+                                                                  )
+
+            elif component_name == "image":
+                if r.method == "create":
+                    # Coming from the rheader...simplify UI
+                    table = s3db.pr_image
+                    f = table.profile
+                    f.default = True
+                    f.readable = f.writable = False
+                    table.image.comment = None
+                    table.type.readable = table.type.writable = False
+                    table.url.readable = table.url.writable = False
+                    table.description.readable = table.description.writable = False
+        else:
+            # No component
 
             # Module-specific field and form configuration
-            from s3 import S3SQLInlineComponent
+            from s3 import S3SQLCustomForm, S3SQLInlineComponent
 
             # Adapt fields to module context
+            from s3db.br import br_case_read_orgs
             table = resource.table
             ctable = s3db.br_case
-            multiple_orgs = s3db.br_case_read_orgs()[0]
+            multiple_orgs = br_case_read_orgs()[0]
 
             # Configure pe_label
             field = table.pe_label
             field.label = T("ID")
             field.comment = None
 
-            # Make gender mandatory, remove "unknown"
             field = table.gender
             field.default = None
-            options = dict(s3db.pr_gender_opts)
-            del options[1] # Remove "unknown"
-            field.requires = IS_PERSON_GENDER(options, sort=True)
+            gender_opts = s3db.pr_gender_opts
+            if 1 in gender_opts:
+                # Make gender mandatory, remove "unknown"
+                options = dict(gender_opts)
+                del options[1] # Remove "unknown"
+                from s3 import IS_PERSON_GENDER
+                field.requires = IS_PERSON_GENDER(options, sort=True)
 
             # Configure case.organisation_id
             field = ctable.organisation_id
             field.comment = None
             if not field.default:
-                default_org, selectable = s3db.br_case_default_org()
+                from s3db.br import br_case_default_org
+                default_org, selectable = br_case_default_org()
                 if default_org and settings.get_br_case_hide_default_org():
                     field.writable = selectable
                     field.readable = selectable or multiple_orgs
@@ -276,13 +427,14 @@ def person():
                 list_fields.insert(-2, "case.organisation_id")
 
             # Insert name fields in name-format order
+            from s3 import StringTemplateParser
             NAMES = ("first_name", "middle_name", "last_name")
-            keys = s3base.StringTemplateParser.keys(settings.get_pr_name_format())
+            keys = StringTemplateParser.keys(settings.get_pr_name_format())
             name_fields = [fn for fn in keys if fn in NAMES]
             crud_fields[5:5] = name_fields
             list_fields[1:1] = name_fields
 
-            resource.configure(crud_form = s3base.S3SQLCustomForm(*crud_fields),
+            resource.configure(crud_form = S3SQLCustomForm(*crud_fields),
                                list_fields = list_fields,
                                )
 
@@ -320,128 +472,11 @@ def person():
                 resource.configure(filter_widgets = filter_widgets)
 
             # Autocomplete search-method
+            from s3db.pr import pr_PersonSearchAutocomplete
             s3db.set_method("pr", "person",
                             method = "search_ac",
-                            action = s3db.pr_PersonSearchAutocomplete(name_fields),
+                            action = pr_PersonSearchAutocomplete(name_fields),
                             )
-
-        elif r.component_name == "case_activity":
-
-            atable = r.component.table
-
-            assistance_inline = settings.get_br_manage_assistance() and \
-                                settings.get_br_assistance_inline()
-            mtable =  s3db.br_assistance_measure
-
-            # Default status
-            if settings.get_br_case_activity_status():
-                s3db.br_case_activity_default_status()
-
-            # Default human_resource_id
-            if human_resource_id:
-
-                # Activities
-                if settings.get_br_case_activity_manager():
-                    atable.human_resource_id.default = human_resource_id
-
-                # Inline updates
-                if settings.get_br_case_activity_updates():
-                    utable = s3db.br_case_activity_update
-                    utable.human_resource_id.default = human_resource_id
-
-                # Inline assistance measures
-                if assistance_inline:
-                    mtable.human_resource_id.default = human_resource_id
-
-            root_org = None
-            org_specific_needs = settings.get_br_case_activity_need() and \
-                                 settings.get_br_needs_org_specific()
-            if org_specific_needs:
-                root_org = s3db.br_case_root_org(r.id)
-                if not root_org:
-                    root_org = auth.root_org()
-
-            # Limit selectable need types to the case root org
-            if org_specific_needs and root_org:
-                field = atable.need_id
-                field.requires = IS_EMPTY_OR(
-                                    IS_ONE_OF(db, "br_need.id",
-                                              field.represent,
-                                              filterby = "organisation_id",
-                                              filter_opts = (root_org,),
-                                              ))
-
-            # Configure inline assistance measures
-            if assistance_inline:
-                if record:
-                    mtable.person_id.default = record.id
-                if settings.get_br_assistance_themes() and root_org:
-                    # Limit selectable themes to the case root org
-                    field = mtable.theme_ids
-                    dbset = s3db.br_org_assistance_themes(root_org)
-                    field.requires = IS_EMPTY_OR(IS_ONE_OF(dbset, "br_assistance_theme.id",
-                                                           field.represent,
-                                                           multiple = True,
-                                                           ))
-                s3db.br_assistance_default_status()
-
-        elif r.component_name == "assistance_measure":
-
-            mtable = r.component.table
-            ltable = s3db.br_assistance_measure_theme
-
-            # Default status
-            s3db.br_assistance_default_status()
-
-            # Default human_resource_id
-            if human_resource_id and settings.get_br_assistance_manager():
-                mtable.human_resource_id.default = human_resource_id
-
-            # Filter case_activity_id selector to current case
-            field = mtable.case_activity_id
-            if record and field.writable:
-                requires = field.requires
-                if isinstance(requires, IS_EMPTY_OR):
-                    requires = requires.other
-                requires.set_filter(filterby = "person_id",
-                                    filter_opts = (record.id,))
-
-            # Represent for br_assistance_measure_theme.id
-            details_per_theme = settings.get_br_assistance_details_per_theme()
-            if details_per_theme:
-                ltable.id.represent = s3db.br_AssistanceMeasureThemeRepresent(
-                                            paragraph = True,
-                                            details = True,
-                                            )
-
-            # Filter theme_id selectors to case root org
-            root_org = s3db.br_case_root_org(r.id)
-            if not root_org:
-                root_org = auth.root_org()
-            if root_org:
-                dbset = s3db.br_org_assistance_themes(root_org)
-                field = mtable.theme_ids
-                field.requires = IS_EMPTY_OR(IS_ONE_OF(dbset, "br_assistance_theme.id",
-                                                       field.represent,
-                                                       multiple = True,
-                                                       ))
-                field = ltable.theme_id
-                field.requires = IS_EMPTY_OR(IS_ONE_OF(dbset, "br_assistance_theme.id",
-                                                       field.represent,
-                                                       ))
-
-            # Allow organizer to set an end_date
-            if r.method == "organize" and \
-               settings.get_br_assistance_measures_use_time():
-                field = mtable.end_date
-                field.writable = True
-
-        elif r.component_name == "br_note":
-
-            # Represent the note author by their name (rather than email)
-            ntable = r.component.table
-            ntable.modified_by.represent = s3db.auth_UserRepresent(show_email = False,
-                                                                   show_link = False)
 
         return True
     s3.prep = prep
@@ -458,7 +493,9 @@ def person():
 
             # Anonymize-button
             from s3 import S3AnonymizeWidget
-            anonymize = S3AnonymizeWidget.widget(r, _class="action-btn anonymize-btn")
+            anonymize = S3AnonymizeWidget.widget(r,
+                                                 _class = "action-btn anonymize-btn",
+                                                 )
 
             # ID-Card button
             if id_card_export:
@@ -480,10 +517,10 @@ def person():
         return output
     s3.postp = postp
 
-    output = s3_rest_controller("pr", "person",
-                                rheader = s3db.br_rheader,
-                                )
-    return output
+    from s3db.br import br_rheader
+    return s3_rest_controller("pr", "person",
+                              rheader = br_rheader,
+                              )
 
 # -----------------------------------------------------------------------------
 def person_search():
@@ -503,15 +540,17 @@ def person_search():
         r.resource.add_filter(query)
 
         # Auto-detect name parts from current name format
+        from s3 import StringTemplateParser
         NAMES = ("first_name", "middle_name", "last_name")
-        keys = s3base.StringTemplateParser.keys(settings.get_pr_name_format())
+        keys = StringTemplateParser.keys(settings.get_pr_name_format())
         name_fields = [fn for fn in keys if fn in NAMES]
 
         # Autocomplete search-method including pe_label
+        from s3db.pr import pr_PersonSearchAutocomplete
         search_fields = tuple(name_fields) + ("pe_label",)
         s3db.set_method("pr", "person",
                         method = "search_ac",
-                        action = s3db.pr_PersonSearchAutocomplete(search_fields),
+                        action = pr_PersonSearchAutocomplete(search_fields),
                         )
         return True
     s3.prep = prep
@@ -540,9 +579,10 @@ def group_membership():
             if vtablename == "pr_person":
 
                 # Set contacts-method to retain the tab
+                from s3db.pr import pr_Contacts
                 s3db.set_method("pr", "person",
                                 method = "contacts",
-                                action = s3db.pr_Contacts,
+                                action = pr_Contacts,
                                 )
 
                 # Get all group_ids with this person_id
@@ -552,7 +592,7 @@ def group_membership():
                         (gtable.group_type == 7) & \
                         (table.deleted != True)
                 rows = db(query).select(table.group_id,
-                                        join=join,
+                                        join = join,
                                         )
                 group_ids = set(row.group_id for row in rows)
                 # Hide the link for this person (to prevent changes/deletion)
@@ -560,6 +600,7 @@ def group_membership():
                     # Single group ID?
                     group_id = tuple(group_ids)[0] if len(group_ids) == 1 else None
                 elif r.http == "POST":
+                    from s3 import s3_fullname
                     name = s3_fullname(record_id)
                     group_id = gtable.insert(name = name,
                                              group_type = 7,
@@ -575,9 +616,10 @@ def group_membership():
                 group_ids = set()
 
             # Add-Person widget to use BR controller and expose pe_label
-            from s3 import S3AddPersonWidget
+            from s3 import IS_ONE_OF, S3AddPersonWidget
+            from s3db.pr import pr_PersonRepresent
             field = table.person_id
-            field.represent = s3db.pr_PersonRepresent(show_link=True)
+            field.represent = pr_PersonRepresent(show_link = True)
             field.widget = S3AddPersonWidget(controller = "br",
                                              pe_label = True,
                                              )
@@ -587,10 +629,10 @@ def group_membership():
             field = table.role_id
             field.readable = field.writable = True
             field.label = ROLE
-            field.comment = DIV(_class="tooltip",
-                                _title="%s|%s" % (T("Role"),
-                                                  T("The role of the person within the family"),
-                                                  ))
+            field.comment = DIV(_class = "tooltip",
+                                _title = "%s|%s" % (ROLE,
+                                                    T("The role of the person within the family"),
+                                                    ))
             field.requires = IS_EMPTY_OR(
                                 IS_ONE_OF(db, "pr_group_member_role.id",
                                           field.represent,
@@ -651,7 +693,7 @@ def group_membership():
                 msg_record_created = T("Family Member added"),
                 msg_record_modified = T("Family Member updated"),
                 msg_record_deleted = T("Family Member removed"),
-                msg_list_empty = T("No Family Members currently registered")
+                msg_list_empty = T("No Family Members currently registered"),
                 )
 
         # Do not allow update of person_id
@@ -668,8 +710,9 @@ def group_membership():
     settings.pr.request_home_phone = False
     settings.hrm.email_required = False
 
+    from s3db.br import br_rheader
     return s3_rest_controller("pr", "group_membership",
-                              rheader = s3db.br_rheader,
+                              rheader = br_rheader,
                               )
 
 # -----------------------------------------------------------------------------
@@ -704,9 +747,10 @@ def document():
                 r.unauthorised()
 
             # Set contacts-method to retain the tab
+            from s3db.pr import pr_Contacts
             s3db.set_method("pr", "person",
                             method = "contacts",
-                            action = s3db.pr_Contacts,
+                            action = pr_Contacts,
                             )
 
             include_activity_docs = settings.get_br_case_include_activity_docs()
@@ -795,8 +839,9 @@ def document():
         if include_activity_docs or include_group_docs:
 
             # Make doc_id readable and visible in table
+            from s3db.br import br_DocEntityRepresent
             field = table.doc_id
-            field.represent = s3db.br_DocEntityRepresent()
+            field.represent = br_DocEntityRepresent()
             field.label = T("Attachment of")
             field.readable = True
             list_fields.insert(1, (T("Attachment of"), "doc_id"))
@@ -817,6 +862,7 @@ def document():
         else:
             # Multiple doc_ids => default to case, make selectable
             field.readable = field.writable = True
+            from s3 import IS_ONE_OF
             field.requires = IS_ONE_OF(db, "doc_entity.doc_id",
                                        field.represent,
                                        filterby = "doc_id",
@@ -829,8 +875,9 @@ def document():
         return True
     s3.prep = prep
 
+    from s3db.br import br_rheader
     return s3_rest_controller("doc", "document",
-                              rheader = s3db.br_rheader,
+                              rheader = br_rheader,
                               )
 
 # =============================================================================
@@ -839,20 +886,14 @@ def document():
 def case_activity():
     """ Case Activities: RESTful CRUD controller """
 
-    def prep(r):
+    def prep(r, can_see_cases=True):
 
         resource = r.resource
         table = resource.table
 
-        labels = s3db.br_terminology()
+        from s3db.br import br_terminology
+        labels = br_terminology()
         human_resource_id = auth.s3_logged_in_human_resource()
-
-        # Filter for valid+open cases
-        query = (FS("person_id$case.id") != None) & \
-                (FS("person_id$case.invalid") == False) & \
-                (FS("person_id$case.status_id$is_closed") == False)
-
-        resource.add_filter(query)
 
         if not r.record:
 
@@ -884,7 +925,8 @@ def case_activity():
 
             # Default status
             if case_activity_status:
-                s3db.br_case_activity_default_status()
+                from s3db.br import br_case_activity_default_status
+                br_case_activity_default_status()
 
             # Filter widgets
             from s3 import S3DateFilter, \
@@ -913,13 +955,12 @@ def case_activity():
 
             if case_activity_status:
                 stable = s3db.br_case_activity_status
-                query = (stable.deleted == False)
-                rows = db(query).select(stable.id,
-                                        stable.name,
-                                        stable.is_closed,
-                                        cache = s3db.cache,
-                                        orderby = stable.workflow_position,
-                                        )
+                rows = db(stable.deleted == False).select(stable.id,
+                                                          stable.name,
+                                                          stable.is_closed,
+                                                          cache = s3db.cache,
+                                                          orderby = stable.workflow_position,
+                                                          )
                 status_filter_options = OrderedDict((row.id, T(row.name)) for row in rows)
                 status_filter_defaults = [row.id for row in rows if not row.is_closed]
                 filter_widgets.append(S3OptionsFilter("status_id",
@@ -950,14 +991,13 @@ def case_activity():
                                                       hidden = True,
                                                       header = True,
                                                       options = lambda: \
-                                                                s3_get_filter_opts(
-                                                                  "br_need",
-                                                                  org_filter = org_specific_needs,
-                                                                  translate = True,
-                                                                  ),
+                                                                s3_get_filter_opts("br_need",
+                                                                                   org_filter = org_specific_needs,
+                                                                                   translate = True,
+                                                                                   ),
                                                       ))
 
-            resource.configure(filter_widgets=filter_widgets)
+            resource.configure(filter_widgets = filter_widgets)
 
             # Report options
             if r.method == "report":
@@ -992,7 +1032,30 @@ def case_activity():
                                  "totals": True,
                                  },
                     }
-                resource.configure(report_options=report_options)
+                resource.configure(report_options = report_options)
+
+        # Filter for valid+open cases
+        if can_see_cases:
+            # Can use a normal Resource Query
+            query = (FS("person_id$case.id") != None) & \
+                    (FS("person_id$case.invalid") == False) & \
+                    (FS("person_id$case.status_id$is_closed") == False)
+        else:
+            # Activity Reader cannot see Case
+            # => Need to perform a DAL Query
+            rows = resource.select(fields = ("id", "person_id")).rows
+            activities = {row["br_case_activity.person_id"]: row["br_case_activity.id"] for row in rows}
+            ctable = s3db.br_case
+            cstable = s3db.br_case_status
+            query = (ctable.person_id.belongs(activities)) & \
+                    (ctable.invalid == False) & \
+                    (ctable.status_id == cstable.id) & \
+                    (cstable.is_closed == False)
+            cases = db(query).select(ctable.person_id)
+            activity_ids = [activities[row.person_id] for row in cases]
+            query = (FS("id").belongs(activity_ids))
+
+        resource.add_filter(query)
 
         # Set default for human_resource_ids
         if human_resource_id:
@@ -1002,9 +1065,10 @@ def case_activity():
             utable.human_resource_id.default = human_resource_id
 
         # Represent person_id as link to case file
+        from s3db.pr import pr_PersonRepresent
         field = table.person_id
         field.label = labels.CASE
-        field.represent = s3db.pr_PersonRepresent(show_link=True)
+        field.represent = pr_PersonRepresent(show_link = True)
 
         # Add case data to list fields
         list_fields = resource.get_config("list_fields")
@@ -1117,7 +1181,7 @@ def activities():
                                                                   ),
                                                       ))
 
-            resource.configure(filter_widgets=filter_widgets)
+            resource.configure(filter_widgets = filter_widgets)
 
         # Make read-only
         resource.configure(insertable = False,
@@ -1250,6 +1314,7 @@ def assistance_measure():
                 if not root_org:
                     root_org = auth.root_org()
                 if root_org:
+                    from s3 import IS_ONE_OF
                     dbset = s3db.br_org_assistance_themes(root_org)
                     field = table.theme_ids
                     field.requires = IS_EMPTY_OR(IS_ONE_OF(dbset, "br_assistance_theme.id",

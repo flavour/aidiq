@@ -41,7 +41,7 @@ class S3MainMenu(default.S3MainMenu):
                 MM("Disaster Assessments", c="dc", f="index"),
                 MM("Human Resources", c="hrm", f="staff"),
                 MM("Infrastructure", c="transport", f="index"),
-                MM("Population", c="stats", f="demographic_data"),
+                MM("Population", c="stats", f="demographic_data", m="summary"),
                 MM("Item Management", c="asset", f="index"),
                 ),
                MM("DRR", link=False)(
@@ -125,19 +125,19 @@ class S3OptionsMenu(default.S3OptionsMenu):
 
         return M()(M("Initial Disaster Assessment (IDA)", c="dc", f="target",
                      vars = {"~.template_id$name": "Initial Disaster Assessment (IDA)"})(
-                       M("Create", m="create",
+                       M("Create", f="respnse", m="create",
                          vars = {"~.template_id$name": "Initial Disaster Assessment (IDA)"}),
                        #M("Import", m="import", p="create"),
                        ),
                    M("Preliminary Damage and Needs Assessment (PDNA)", c="dc", f="target",
                      vars = {"~.template_id$name": "Preliminary Damage and Needs Assessment (PDNA)"})(
-                       M("Create", m="create",
+                       M("Create", f="respnse", m="create",
                          vars = {"~.template_id$name": "Preliminary Damage and Needs Assessment (PDNA)"}),
                        #M("Import", m="import", p="create"),
                        ),
                    M("Detailed Damage Assessment", c="dc", f="target",
                      vars = {"~.template_id$name": "Detailed Damage Assessment"})(
-                       M("Create", m="create",
+                       M("Create", f="respnse", m="create",
                          vars = {"~.template_id$name": "Detailed Damage Assessment"}),
                        #M("Import", m="import", p="create"),
                        ),
@@ -224,7 +224,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                        M("Create", m="create"),
                        #M("Import", m="import", p="create"),
                        ),
-                   M("Health Facilities", c="hms", f="hospital", m="summary")(
+                   M("Health Facilities", c="med", f="hospital", m="summary")(
                        M("Create", m="create"),
                        #M("Import", m="import", p="create"),
                        ),
@@ -246,7 +246,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
         return self.transport()
 
     # -------------------------------------------------------------------------
-    def hms(self):
+    def med(self):
         """ Hospitals menu """
 
         return self.transport()

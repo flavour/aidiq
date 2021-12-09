@@ -39,7 +39,7 @@ from gluon.storage import Storage
 from .s3crud import S3CRUD
 from .s3report import S3Report
 from .s3query import FS
-from .s3utils import s3_str
+from .s3utils import get_crud_string, s3_str
 from .s3widgets import ICON
 
 # =============================================================================
@@ -49,10 +49,9 @@ class S3Profile(S3CRUD):
 
         Configure widgets using s3db.configure(tablename, profile_widgets=[])
 
-        @ToDo: Make more configurable:
-           * Currently uses internal widgets rather than S3Method widgets
-
-        @todo:
+        TODO:
+            - Make more configurable:
+                * Currently uses internal widgets rather than S3Method widgets
             - unify datalist and datatable methods with the superclass
               methods (requires re-design of the superclass methods)
             - allow as default handler for interactive single-record-no-method
@@ -64,15 +63,15 @@ class S3Profile(S3CRUD):
         """
             API entry point
 
-            @param r: the S3Request instance
-            @param attr: controller attributes for the request
+            Args:
+                r: the S3Request instance
+                attr: controller attributes for the request
         """
 
         if r.http in ("GET", "POST", "DELETE"):
             if r.record:
                 # Initialize CRUD form
-                self.settings = current.response.s3.crud
-                self.sqlform = sqlform = self._config("crud_form")
+                self.sqlform = sqlform = self.resource.get_config("crud_form")
                 if not sqlform:
                     from .s3forms import S3SQLDefaultForm
                     self.sqlform = S3SQLDefaultForm()
@@ -83,7 +82,7 @@ class S3Profile(S3CRUD):
 
             elif r.representation not in ("dl", "aadata"):
                 # Redirect to the List View
-                redirect(r.url(method=""))
+                redirect(r.url(method = ""))
 
             else:
                 # No point redirecting
@@ -96,12 +95,13 @@ class S3Profile(S3CRUD):
         """
             Generate a Profile page
 
-            @param r: the S3Request instance
-            @param attr: controller attributes for the request
+            Args:
+                r: the S3Request instance
+                attr: controller attributes for the request
         """
 
         tablename = self.tablename
-        get_config = current.s3db.get_config
+        get_config = self.resource.get_config
 
         header = get_config(tablename, "profile_header")
 
@@ -111,7 +111,7 @@ class S3Profile(S3CRUD):
             # Profile page not configured:
             if r.representation not in ("dl", "aadata"):
                 # Redirect to the Read View
-                redirect(r.url(method="read"))
+                redirect(r.url(method = "read"))
             else:
                 # No point redirecting
                 r.error(405, current.ERROR.BAD_METHOD)
@@ -175,13 +175,13 @@ class S3Profile(S3CRUD):
             update = get_config(tablename, "profile_update")
             if update:
                 editable = get_config(tablename, "editable", True)
-                authorised = self._permitted(method="update")
+                authorised = self._permitted("update")
                 if authorised and editable:
-                    show = self.crud_string(tablename, "title_update")
+                    show = get_crud_string(tablename, "title_update")
                     hide = current.T("Hide Form")
                     form = self.update(r, **attr)["form"]
                 else:
-                    show = self.crud_string(tablename, "title_display")
+                    show = get_crud_string(tablename, "title_display")
                     hide = current.T("Hide Details")
                     form = self.read(r, **attr)["item"]
 
@@ -199,8 +199,12 @@ class S3Profile(S3CRUD):
                                         "off": hide,
                                         },
                                 ),
-                           ICON("down", _style=style_show),
-                           ICON("up", _style=style_hide),
+                           ICON("down",
+                                _style = style_show,
+                                ),
+                           ICON("up",
+                                _style = style_hide,
+                                ),
                            data = {"hidden": hidden},
                            _class = "form-toggle action-lnk",
                            )
@@ -281,8 +285,9 @@ class S3Profile(S3CRUD):
         """
             Resolve a context filter
 
-            @param context: the context (as a string)
-            @param id: the record_id
+            Args:
+                context: the context (as a string)
+                id: the record_id
         """
 
         record_id = r.id
@@ -325,11 +330,13 @@ class S3Profile(S3CRUD):
         """
             Generate a Comments widget
 
-            @param r: the S3Request instance
-            @param widget: the widget definition as dict
-            @param attr: controller attributes for the request
+            Args:
+                r: the S3Request instance
+                widget: the widget definition as dict
+                attr: controller attributes for the request
 
-            @ToDo: Configurable to use either Disqus or internal Comments
+            TODO:
+                Configurable to use either Disqus or internal Comments
         """
 
         label = widget.get("label", "")
@@ -363,9 +370,10 @@ class S3Profile(S3CRUD):
         """
             Generate a Custom widget
 
-            @param r: the S3Request instance
-            @param widget: the widget definition as dict
-            @param attr: controller attributes for the request
+            Args:
+                r: the S3Request instance
+                widget: the widget definition as dict
+                attr: controller attributes for the request
         """
 
         label = widget.get("label", "")
@@ -399,9 +407,10 @@ class S3Profile(S3CRUD):
         """
             Generate a data list
 
-            @param r: the S3Request instance
-            @param widget: the widget definition as dict
-            @param attr: controller attributes for the request
+            Args:
+                r: the S3Request instance
+                widget: the widget definition as dict
+                attr: controller attributes for the request
         """
 
         T = current.T
@@ -416,14 +425,14 @@ class S3Profile(S3CRUD):
         # 1st choice: Widget
         # 2nd choice: get_config
         # 3rd choice: Default
-        config = resource.get_config
+        get_config = current.s3db.get_config
         list_fields = widget_get("list_fields",
-                                 config("list_fields", None))
+                                 get_config(tablename, "list_fields", None))
         list_layout = widget_get("list_layout",
-                                 config("list_layout", None))
+                                 get_config(tablename, "list_layout", None))
         orderby = widget_get("orderby",
-                             config("list_orderby",
-                                    config("orderby",
+                             get_config(tablename, "list_orderby",
+                                    get_config(tablename, "orderby",
                                            ~resource.table.created_on)))
 
         widget_filter = widget_get("filter")
@@ -476,14 +485,14 @@ class S3Profile(S3CRUD):
                                               layout = list_layout,
                                               )
         # Render the list
-        ajaxurl = r.url(vars={"update": widget["index"]},
-                        representation="dl")
+        ajaxurl = r.url(vars = {"update": widget["index"]},
+                        representation = "dl",
+                        )
         data = datalist.html(ajaxurl = ajaxurl,
                              pagesize = pagesize,
                              empty = P(ICON("folder-open-alt"),
                                        BR(),
-                                       self.crud_string(tablename,
-                                                        "msg_no_match"),
+                                       get_crud_string(tablename, "msg_no_match"),
                                        _class = "empty_card-holder"
                                        ),
                              )
@@ -538,7 +547,8 @@ class S3Profile(S3CRUD):
                                           list_id,
                                           resource,
                                           context,
-                                          numrows)
+                                          numrows,
+                                          )
 
         _class = self._lookup_class(r, widget)
 
@@ -562,11 +572,13 @@ class S3Profile(S3CRUD):
         """
             Generate a data table.
 
-            @param r: the S3Request instance
-            @param widget: the widget definition as dict
-            @param attr: controller attributes for the request
+            Args:
+                r: the S3Request instance
+                widget: the widget definition as dict
+                attr: controller attributes for the request
 
-            @todo: fix export formats
+            TODO:
+                Fix export formats
         """
 
         widget_get = widget.get
@@ -632,10 +644,7 @@ class S3Profile(S3CRUD):
             s3 = current.response.s3
 
             # How many records per page?
-            if s3.dataTable_pageLength:
-                display_length = s3.dataTable_pageLength
-            else:
-                display_length = widget_get("pagesize", 10)
+            display_length = widget_get("pagesize", current.deployment_settings.get_ui_datatables_pagelength())
             dtargs["dt_lengthMenu"] = [[10, 25, 50, -1],
                                        [10, 25, 50, s3_str(current.T("All"))]
                                        ]
@@ -643,7 +652,7 @@ class S3Profile(S3CRUD):
             # ORDERBY fallbacks: widget->resource->default
             orderby = widget_get("orderby")
             if not orderby:
-                orderby = resource.get_config("orderby")
+                orderby = current.s3db.get_config(tablename, "orderby")
             if not orderby:
                 orderby = default_orderby()
 
@@ -666,11 +675,9 @@ class S3Profile(S3CRUD):
             displayrows = totalrows
 
             if dt.empty:
-                empty_str = self.crud_string(tablename,
-                                             "msg_list_empty")
+                empty_str = get_crud_string(tablename, "msg_list_empty")
             else:
-                empty_str = self.crud_string(tablename,
-                                             "msg_no_match")
+                empty_str = get_crud_string(tablename, "msg_no_match")
             empty = DIV(empty_str, _class="empty")
 
             dtargs["dt_searching"] = widget_get("dt_searching", "true")
@@ -679,10 +686,13 @@ class S3Profile(S3CRUD):
             dtargs["dt_pageLength"] = display_length
             # @todo: fix base URL (make configurable?) to fix export options
             s3.no_formats = True
-            dtargs["dt_base_url"] = r.url(method="", vars={})
+            dtargs["dt_base_url"] = r.url(method = "",
+                                          vars = {},
+                                          )
             get_vars.update(update = widget["index"])
-            dtargs["dt_ajax_url"] = r.url(vars=get_vars,
-                                          representation="aadata")
+            dtargs["dt_ajax_url"] = r.url(vars = get_vars,
+                                          representation = "aadata",
+                                          )
             actions = widget_get("actions")
             if callable(actions):
                 actions = actions(r, list_id)
@@ -698,7 +708,10 @@ class S3Profile(S3CRUD):
                 empty.update(_style = "display:none")
             else:
                 datatable.update(_style = "display:none")
-            contents = DIV(datatable, empty, _class="dt-contents")
+            contents = DIV(datatable,
+                           empty,
+                           _class = "dt-contents",
+                           )
 
             # Link for create-popup
             create_popup = self._create_popup(r,
@@ -706,7 +719,8 @@ class S3Profile(S3CRUD):
                                               list_id,
                                               resource,
                                               context,
-                                              totalrows)
+                                              totalrows,
+                                              )
 
             # Card holder label and icon
             label = widget_get("label", "")
@@ -715,7 +729,7 @@ class S3Profile(S3CRUD):
             if label:
                 label = current.T(label)
             else:
-                label = self.crud_string(tablename, "title_list")
+                label = get_crud_string(tablename, "title_list")
             icon = widget_get("icon", "")
             if icon:
                 icon = ICON(icon)
@@ -746,7 +760,7 @@ class S3Profile(S3CRUD):
             if not orderby:
                 orderby = widget_get("orderby")
             if not orderby:
-                orderby = resource.get_config("orderby")
+                orderby = current.s3db.get_config(tablename, "orderby")
             if not orderby:
                 orderby = default_orderby()
 
@@ -799,9 +813,10 @@ class S3Profile(S3CRUD):
         """
             Generate a Form widget
 
-            @param r: the S3Request instance
-            @param widget: the widget definition as dict
-            @param attr: controller attributes for the request
+            Args:
+                r: the S3Request instance
+                widget: the widget definition as dict
+                attr: controller attributes for the request
         """
 
         widget_get = widget.get
@@ -824,7 +839,10 @@ class S3Profile(S3CRUD):
         if widget_filter:
             resource.add_filter(widget_filter)
 
-        record = resource.select(["id"], limit=1, as_rows=True).first()
+        record = resource.select(["id"],
+                                 limit = 1,
+                                 as_rows = True,
+                                 ).first()
         if record:
             record_id = record.id
         else:
@@ -835,14 +853,15 @@ class S3Profile(S3CRUD):
         else:
             readonly = not current.auth.s3_has_permission("create", tablename)
 
+        get_config = current.s3db.get_config
+
         sqlform = widget.get("sqlform", None)
         if not sqlform:
-            sqlform = resource.get_config("crud_form")
+            sqlform = get_config(tablename, "crud_form")
         if not sqlform:
             from .s3forms import S3SQLDefaultForm
             sqlform = S3SQLDefaultForm()
 
-        get_config = current.s3db.get_config
         if record_id:
             # Update form
             onvalidation = get_config(tablename, "create_onvalidation") or \
@@ -884,9 +903,10 @@ class S3Profile(S3CRUD):
         """
             Generate a Map widget
 
-            @param r: the S3Request instance
-            @param widget: the widget as a tuple: (label, type, icon)
-            @param attr: controller attributes for the request
+            Args:
+                r: the S3Request instance
+                widget: the widget as a tuple: (label, type, icon)
+                attr: controller attributes for the request
         """
 
         T = current.T
@@ -977,7 +997,9 @@ class S3Profile(S3CRUD):
                 if not map_url:
                     # Build one
                     c, f = tablename.split("_", 1)
-                    map_url = URL(c=c, f=f, extension="geojson")
+                    map_url = URL(c=c, f=f,
+                                  extension = "geojson",
+                                  )
                     resource = s3dbresource(tablename)
                     first = True
                     if context:
@@ -1000,7 +1022,7 @@ class S3Profile(S3CRUD):
             fappend(layer)
 
         # Additional layers, e.g. for primary resource
-        profile_layers = s3db.get_config(r.tablename, "profile_layers")
+        profile_layers = s3db.get_config(tablename, "profile_layers")
         if profile_layers:
             for layer in profile_layers:
                 fappend(layer)
@@ -1052,9 +1074,10 @@ class S3Profile(S3CRUD):
         """
             Generate a Report widget
 
-            @param r: the S3Request instance
-            @param widget: the widget as a tuple: (label, type, icon)
-            @param attr: controller attributes for the request
+            Args:
+                r: the S3Request instance
+                widget: the widget as a tuple: (label, type, icon)
+                attr: controller attributes for the request
         """
 
         widget_get = widget.get
@@ -1108,9 +1131,10 @@ class S3Profile(S3CRUD):
         """
             Generate an Organizer widget
 
-            @param r: the S3Request instance
-            @param widget: the widget configuration (a dict)
-            @param attr: controller attributes for the request
+            Args:
+                r: the S3Request instance
+                widget: the widget configuration (a dict)
+                attr: controller attributes for the request
         """
 
         from .s3organizer import S3Organizer, S3OrganizerWidget
@@ -1144,6 +1168,8 @@ class S3Profile(S3CRUD):
                        _class = _class,
                        )
 
+        s3db = current.s3db
+
         # Construct Ajax URL from base URL
         parsed = base_url.split("?")
         parsed[0] += "/organize.json"
@@ -1151,7 +1177,7 @@ class S3Profile(S3CRUD):
 
         # Get the target resource (customised+filtered)
         tablename = widget_get("tablename", None)
-        resource = current.s3db.resource(tablename)
+        resource = s3db.resource(tablename)
         r.customise_resource(tablename)
 
         # Parse the resource organizer config
@@ -1164,19 +1190,19 @@ class S3Profile(S3CRUD):
         start = config["start"]
         end = config["end"]
 
-        get_config = resource.get_config
+        get_config = s3db.get_config
         resource_config = {
             "ajaxURL": ajax_url,
             "useTime": config.get("use_time"),
             "baseURL": base_url,
-            "labelCreate": s3_str(self.crud_string(tablename, "label_create")),
-            "insertable": get_config("insertable", True) and \
+            "labelCreate": s3_str(get_crud_string(tablename, "label_create")),
+            "insertable": get_config(tablename, "insertable", True) and \
                           permitted("create", table),
-            "editable": get_config("editable", True) and \
+            "editable": get_config(tablename, "editable", True) and \
                         permitted("update", table),
             "startEditable": start.field and start.field.writable,
             "durationEditable": end and end.field and end.field.writable,
-            "deletable": get_config("deletable", True) and \
+            "deletable": get_config(tablename, "deletable", True) and \
                          permitted("delete", table),
             "start": start.selector if start else None,
             "end": end.selector if end else None,
@@ -1246,8 +1272,9 @@ class S3Profile(S3CRUD):
         """
             Provide the column-width class for the widgets
 
-            @param r: the S3Request
-            @param widget: the widget config (dict)
+            Args:
+                r: the S3Request
+                widget: the widget config (dict)
         """
 
         page_cols = current.s3db.get_config(r.tablename, "profile_cols")
@@ -1271,12 +1298,13 @@ class S3Profile(S3CRUD):
             Render an action link for a create-popup (used in data lists
             and data tables).
 
-            @param r: the S3Request instance
-            @param widget: the widget definition as dict
-            @param list_id: the list ID
-            @param resource: the target resource
-            @param context: the context filter
-            @param numrows: the total number of rows in the list/table
+            Args:
+                r: the S3Request instance
+                widget: the widget definition as dict
+                list_id: the list ID
+                resource: the target resource
+                context: the context filter
+                numrows: the total number of rows in the list/table
         """
 
         create = ""
@@ -1346,7 +1374,7 @@ class S3Profile(S3CRUD):
             if label_create:
                 label_create = current.T(label_create)
             else:
-                label_create = S3CRUD.crud_string(tablename, "label_create")
+                label_create = get_crud_string(tablename, "label_create")
 
             # Popup URL
             component = widget_get("create_component", None)

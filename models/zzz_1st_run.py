@@ -269,7 +269,8 @@ if len(pop_list) > 0:
     info("\nPlease be patient whilst the database is populated...")
 
     # Create the bulk Importer object
-    bi = s3base.S3BulkImporter()
+    from s3 import S3BulkImporter
+    bi = S3BulkImporter()
 
     # Register handlers
     s3.import_feed = bi.import_feed
@@ -379,21 +380,24 @@ if len(pop_list) > 0:
         # Populate disease_stats_aggregate (disabled during prepop)
         # - needs to be done after locations
         start = datetime.datetime.now()
-        s3db.disease_stats_rebuild_all_aggregates()
+        from s3db.disease import disease_stats_rebuild_all_aggregates
+        disease_stats_rebuild_all_aggregates()
         duration("Disease Statistics data aggregation completed", start)
 
     if has_module("stats"):
         # Populate stats_demographic_aggregate (disabled during prepop)
         # - needs to be done after locations
         start = datetime.datetime.now()
-        s3db.stats_demographic_rebuild_all_aggregates()
+        from s3db.stats import stats_demographic_rebuild_all_aggregates
+        stats_demographic_rebuild_all_aggregates()
         duration("Demographic Data aggregation completed", start)
 
     if has_module("vulnerability"):
         # Populate vulnerability_aggregate (disabled during prepop)
         # - needs to be done after locations
         start = datetime.datetime.now()
-        s3db.vulnerability_rebuild_all_aggregates()
+        from s3db.vulnerability import vulnerability_rebuild_all_aggregates
+        vulnerability_rebuild_all_aggregates()
         duration("Vulnerability data aggregation completed", start)
 
     duration("\nPre-populate complete", grandTotalStart)

@@ -16,6 +16,11 @@ def index():
     return {"module_name": module_name}
 
 # =============================================================================
+def card_config():
+
+    return s3_rest_controller()
+
+# =============================================================================
 def document():
     """ RESTful CRUD controller """
 
@@ -34,9 +39,7 @@ def document():
         return True
     s3.prep = prep
 
-    output = s3_rest_controller(rheader = document_rheader,
-                                )
-    return output
+    return s3_rest_controller(rheader = document_rheader)
 
 # -----------------------------------------------------------------------------
 def document_rheader(r):
@@ -94,7 +97,8 @@ def document_tabs(r):
                 },
                 ]
     tabs = [(T("Details"), None)]
-    crud_string = s3base.S3CRUD.crud_string
+    from s3 import S3CRUD
+    crud_string = S3CRUD.crud_string
     for tab_opt in tab_opts:
         tablename = tab_opt["tablename"]
         if tablename in db and document_id in db[tablename]:
@@ -131,8 +135,7 @@ def image():
         return True
     s3.prep = prep
 
-    output = s3_rest_controller()
-    return output
+    return s3_rest_controller()
 
 # =============================================================================
 def bulk_upload():
@@ -145,7 +148,7 @@ def bulk_upload():
     """
 
     s3.stylesheets.append("plugins/fileuploader.css")
-    return dict()
+    return {}
 
 def upload_bulk():
     """
@@ -198,7 +201,7 @@ def upload_bulk():
         onaccept = s3db.get_config(tablename, "create_onaccept",
                    s3db.get_config(tablename, "onaccept"))
         from gluon.tools import callback
-        callback(onaccept, form, tablename=tablename)
+        callback(onaccept, form) # , tablename=tablename (if we ever define callbacks as a dict with tablename)
     else:
         error_msg = ""
         for error in form.errors:
@@ -213,18 +216,31 @@ def ck_upload():
     """
         Controller to handle uploads to CKEditor
 
-        Based on https://github.com/timrichardson/web2py_ckeditor4
+        https://ckeditor.com/docs/ckeditor4/latest/guide/dev_file_upload.html
+
+        Originally based on https://github.com/timrichardson/web2py_ckeditor4
     """
 
-    upload = request.vars.upload
+    # Assumed by presence of post_vars
+    #if request.method != "POST":
+    #    raise HTTP(405, "Only POST supported.")
+
+    post_vars = request.post_vars
+
+    upload = post_vars.upload
 
     if upload is None:
         raise HTTP(401, "Missing required upload.")
 
     if not hasattr(upload, "file"):
-        raise HTTP(401, "Upload is not proper type.")
+        raise HTTP(401, "Upload is not a file")
 
-    path = os.path.join(request.folder, "uploads")
+    if post_vars.get("ckCsrfToken") != request.cookies["ckCsrfToken"].value:
+        raise HTTP(401, "CSRF failure")
+
+    os_path = os.path
+
+    path = os_path.join(request.folder, "uploads")
 
     # Load Model
     table = s3db.doc_ckeditor
@@ -243,11 +259,11 @@ def ck_upload():
     #if self.settings.uploadfs:
     #    length = self.settings.uploadfs.getsize(new_filename)
     #else:
-    length = os.path.getsize(os.path.join(path, new_filename))
+    length = os_path.getsize(os_path.join(path, new_filename))
 
     mime_type = upload.headers["content-type"]
 
-    title = os.path.splitext(old_filename)[0]
+    title = os_path.splitext(old_filename)[0]
 
     result = table.validate_and_insert(title = title,
                                        filename = old_filename,
@@ -256,42 +272,47 @@ def ck_upload():
                                        mime_type = mime_type,
                                        )
 
-    if result.id:
-        text = ""
-    else:
-        text = result.errors
+    url = URL(c = "default",
+              f = "download",
+              args = [new_filename],
+              )
 
-    url = URL(c="default", f="download",
-              args = [new_filename])
+    output = {"uploaded": 1,
+              "fileName": old_filename,
+              "url": url,
+              }
+    if not result.id:
+        output["errors"] = {"message": result.errors,
+                            }
 
-    return {"text": text,
-            "cknum": request.vars.CKEditorFuncNum,
-            "url": url,
-            }
+    from s3 import SEPARATORS
+    response.headers["Content-Type"] = "application/json"
+    return json.dumps(output, separators=SEPARATORS)
 
 # -----------------------------------------------------------------------------
 def ck_browse():
     """
-        Controller to handle uploads to CKEditor
+        Controller to view files uploaded to CKEditor by this User
+
+        https://ckeditor.com/docs/ckeditor4/latest/guide/dev_file_browser_api.html
     """
 
     table = s3db.doc_ckeditor
-    #browse_filter = {}
-    set = db(table.id > 0)
-    #for key, val in browse_filter.items():
-    #    if value[0] == "<":
-    #        set = set(table[key] < value[1:])
-    #    elif value[0] == ">":
-    #        set = set(table[key] > value[1:])
-    #    elif value[0] == "!":
-    #        set = set(table[key] != value[1:])
-    #    else:
-    #        set = set(table[key] == value)
 
-    rows = set.select(orderby = table.title)
+    if auth.s3_has_role("ADMIN"):
+        query = (table.deleted == False)
+    else:
+        # @ToDo: More detailed permissions?
+        query = (table.owned_by_user == auth.user.id)
+
+    rows = db(query).select(table.title,
+                            table.filename,
+                            table.upload,
+                            orderby = table.title,
+                            )
 
     return {"rows": rows,
-            "cknum": request.vars.CKEditorFuncNum,
+            "ckfuncnum": get_vars.CKEditorFuncNum,
             }
 
 # -----------------------------------------------------------------------------
@@ -305,19 +326,16 @@ def ck_delete():
     except:
         raise HTTP(401, "Required argument filename missing.")
 
-    table = s3db.doc_ckeditor
-    db(table.upload == filename).delete()
-
-    # Delete the file from storage
-    #if self.settings.uploadfs:
-    #    self.settings.uploadfs.remove(filename)
-    #else:
-    filepath = os.path.join(request.folder, "uploads", filename)
-    os.unlink(filepath)
-
-# -----------------------------------------------------------------------------
-def card_config():
-
-    return s3_rest_controller()
+    if auth.s3_has_role("ADMIN"):
+        db(s3db.doc_ckeditor.upload == filename).delete()
+    else:
+        table = s3db.doc_ckeditor
+        record = db(table.upload == filename).select(table.id,
+                                                     table.owned_by_user,
+                                                     limitby = (0, 1),
+                                                     ).first()
+        if record and \
+           record.owned_by_user == auth.user.id:
+            db(table.id == record.id).delete()
 
 # END =========================================================================

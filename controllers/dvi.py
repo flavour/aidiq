@@ -8,8 +8,9 @@ if not settings.has_module(c):
 # -----------------------------------------------------------------------------
 def s3_menu_postp():
     # @todo: rewrite this for new framework
+    from s3 import s3_get_last_record_id
     menu_selected = []
-    body_id = s3base.s3_get_last_record_id("dvi_body")
+    body_id = s3_get_last_record_id("dvi_body")
     if body_id:
         body = s3db.dvi_body
         query = (body.id == body_id)
@@ -26,7 +27,7 @@ def s3_menu_postp():
                 ["%s: %s" % (T("Body"), label),
                  False, URL(f="body", args=[record.id])]
             )
-    person_id = s3base.s3_get_last_record_id("pr_person")
+    person_id = s3_get_last_record_id("pr_person")
     if person_id:
         person = s3db.pr_person
         query = (person.id == person_id)
@@ -90,8 +91,7 @@ def recreq():
         return True
     s3.prep = prep
 
-    output = s3_rest_controller()
-    return output
+    return s3_rest_controller()
 
 # -----------------------------------------------------------------------------
 def morgue():
@@ -101,29 +101,22 @@ def morgue():
                    (T("Bodies"), "body"),
                    ]
 
+    from s3 import S3ResourceHeader
     rheader = S3ResourceHeader([[(T("Morgue"), "name")]
-                                ], tabs=morgue_tabs)
+                                ],
+                               tabs = morgue_tabs,
+                               )
 
     # Pre-processor
     def prep(r):
-        # Location Filter
-        from s3db.gis import gis_location_filter
-        gis_location_filter(r)
-
-        if r.interactive and r.id and not r.component:
-            field = r.table.obsolete
-            field.readable = field.writable = True
-
-        elif r.component_name == "layout" and \
-             r.method != "hierarchy":
-            from s3db.org import org_site_layout_config
-            org_site_layout_config(r.record.site_id)
+        # Function to call for all Site Instance Types
+        from s3db.org import org_site_prep
+        org_site_prep(r)
 
         return True
     s3.prep = prep
 
-    output = s3_rest_controller(rheader=rheader)
-    return output
+    return s3_rest_controller(rheader = rheader)
 
 # -----------------------------------------------------------------------------
 def body():
@@ -145,11 +138,13 @@ def body():
                 (T("Identification"), "identification"),
                 ]
 
+    from s3 import S3ResourceHeader
     rheader = S3ResourceHeader([[(T("ID Tag Number"), "pe_label")],
                                 ["gender"],
                                 ["age_group"],
                                 ],
-                                tabs=dvi_tabs)
+                               tabs = dvi_tabs,
+                               )
 
     return s3_rest_controller(rheader=rheader)
 
@@ -226,12 +221,11 @@ def person():
 
     rheader = lambda r: s3db.pr_rheader(r, tabs=mpr_tabs)
 
-    output = s3_rest_controller("pr", "person",
-                                main = "first_name",
-                                extra = "last_name",
-                                rheader = rheader,
-                                )
-    return output
+    return s3_rest_controller("pr", "person",
+                              main = "first_name",
+                              extra = "last_name",
+                              rheader = rheader,
+                              )
 
 # -------------------------------------------------------------------------
 def dvi_match_query(body_id):
@@ -290,6 +284,6 @@ def tooltip():
     formfield = request.vars.get("formfield", None)
     if formfield:
         response.view = "pr/ajaxtips/%s.html" % formfield
-    return dict()
+    return {}
 
 # END =========================================================================

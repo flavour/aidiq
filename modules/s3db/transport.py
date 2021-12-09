@@ -28,6 +28,9 @@
 """
 
 __all__ = ("TransportModel",
+           "TransportAirplaneModel",
+           "TransportBorderModel",
+           "TransportFlightModel",
            "transport_rheader",
            )
 
@@ -44,11 +47,9 @@ class TransportModel(S3Model):
     """
 
     names = ("transport_airport",
+             "transport_airport_id",
              "transport_heliport",
              "transport_seaport",
-             "transport_border_crossing",
-             "transport_border_crossing_country",
-             "transport_border_control_point",
              "transport_bridge",
              )
 
@@ -194,24 +195,24 @@ class TransportModel(S3Model):
                      Field("runway_surface",
                            default = "U",
                            label = T("Runway Surface"),
-                           represent = S3Represent(options = runway_surface_opts),
+                           represent = s3_options_represent(runway_surface_opts),
                            requires = IS_IN_SET(runway_surface_opts),
                            ),
                      Field("aircraft_max_size",
                            label = T("Aircraft Maximum Size"),
-                           represent = S3Represent(options = aircraft_size_opts),
+                           represent = s3_options_represent(aircraft_size_opts),
                            requires = IS_EMPTY_OR(
                                         IS_IN_SET(aircraft_size_opts)
                                         ),
                            ),
                      Field("humanitarian_use", "integer",
                            label = T("Humanitarian Use"),
-                           represent = S3Represent(options = humanitarian_use_opts),
+                           represent = s3_options_represent(humanitarian_use_opts),
                            requires = IS_EMPTY_OR(
                                         IS_IN_SET(humanitarian_use_opts)
                                         ),
                            ),
-                     organisation_id(),
+                     organisation_id(default = None),
                      Field("restrictions", "text",
                            label = T("Restrictions"),
                            # Enable in Templates as-required
@@ -240,9 +241,11 @@ class TransportModel(S3Model):
                            ),
                      Field("security_desc", "text",
                            label = T("Security Description"),
-                           comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Security Description"),
-                                                           T("Description of perimeter fencing, security guards, security lighting."))),
+                           comment = DIV(_class = "tooltip",
+                                         _title = "%s|%s" % (T("Security Description"),
+                                                             T("Description of perimeter fencing, security guards, security lighting."),
+                                                             ),
+                                         ),
                            # Enable in Templates as-required
                            readable = False,
                            writable = False,
@@ -256,7 +259,7 @@ class TransportModel(S3Model):
                            ),
                      Field("storage_type", "integer",
                            label = T("Storage Type"),
-                           represent = S3Represent(options = storage_types),
+                           represent = s3_options_represent(storage_types),
                            requires = IS_EMPTY_OR(
                                         IS_IN_SET(storage_types)
                                         ),
@@ -274,7 +277,7 @@ class TransportModel(S3Model):
                      Field("capacity", "integer",
                            default = 1,
                            label = T("Parking/Tarmac Space Units"),
-                           represent = S3Represent(options = airport_capacity_opts),
+                           represent = s3_options_represent(airport_capacity_opts),
                            requires = IS_EMPTY_OR(
                                         IS_IN_SET(airport_capacity_opts)
                                         ),
@@ -297,7 +300,7 @@ class TransportModel(S3Model):
                      Field("obsolete", "boolean",
                            default = False,
                            label = T("Obsolete"),
-                           represent = S3Represent(options=obsolete_options),
+                           represent = s3_options_represent(obsolete_options),
                            readable = False,
                            writable = False,
                            ),
@@ -305,8 +308,9 @@ class TransportModel(S3Model):
                      *s3_meta_fields())
 
         # CRUD strings
+        CREATE_AIRPORT = T("Create Airport")
         crud_strings[tablename] = Storage(
-            label_create = T("Create Airport"),
+            label_create = CREATE_AIRPORT,
             title_display = T("Airport Details"),
             title_list = T("Airports"),
             title_update = T("Edit Airport"),
@@ -316,7 +320,8 @@ class TransportModel(S3Model):
             msg_record_created = T("Airport added"),
             msg_record_modified = T("Airport updated"),
             msg_record_deleted = T("Airport deleted"),
-            msg_list_empty = T("No Airports currently registered"))
+            msg_list_empty = T("No Airports currently registered"),
+            )
 
         configure(tablename,
                   list_fields = ["name",
@@ -334,6 +339,22 @@ class TransportModel(S3Model):
                   #super_entity = ("doc_entity", "pr_pentity", "org_site"),
                   super_entity = "org_site",
                   )
+
+        # Reusable field
+        represent = S3Represent(lookup = tablename)
+        airport_id = S3ReusableField("airport_id", "reference %s" % tablename,
+                                     label = T("Airport"),
+                                     ondelete = "SET NULL",
+                                     represent = represent,
+                                     requires = IS_ONE_OF(db, "%s.id" % tablename,
+                                                          represent,
+                                                          ),
+                                     sortby = "name",
+                                     comment = S3PopupLink(c = "transport",
+                                                           f = "airport",
+                                                           tooltip = CREATE_AIRPORT,
+                                                           ),
+                                     )
 
         # ---------------------------------------------------------------------
         # Heliports
@@ -370,7 +391,7 @@ class TransportModel(S3Model):
                      Field("obsolete", "boolean",
                            default = False,
                            label = T("Obsolete"),
-                           represent = S3Represent(options = obsolete_options),
+                           represent = s3_options_represent(obsolete_options),
                            readable = False,
                            writable = False,
                            ),
@@ -389,7 +410,8 @@ class TransportModel(S3Model):
             msg_record_created = T("Heliport added"),
             msg_record_modified = T("Heliport updated"),
             msg_record_deleted = T("Heliport deleted"),
-            msg_list_empty = T("No Heliports currently registered"))
+            msg_list_empty = T("No Heliports currently registered"),
+            )
 
         configure(tablename,
                   #onaccept = self.transport_heliport_onaccept,
@@ -439,7 +461,7 @@ class TransportModel(S3Model):
                      Field("ownership_type", "integer",
                            default = 1,
                            label = T("Ownership"),
-                           represent = S3Represent(options = ownership_opts),
+                           represent = s3_options_represent(ownership_opts),
                            requires = IS_IN_SET(ownership_opts, zero=None),
                            ),
                      Field("max_height", "double",
@@ -448,7 +470,7 @@ class TransportModel(S3Model):
                      Field("max_height_units", "integer",
                            default = 1,
                            label = T("Units"),
-                           represent = S3Represent(options = unit_opts),
+                           represent = s3_options_represent(unit_opts),
                            requires = IS_IN_SET(unit_opts, zero=None),
                            ),
                      Field("roll_on_off", "boolean",
@@ -462,7 +484,7 @@ class TransportModel(S3Model):
                      Field("cargo_pier_depth_units", "integer",
                            default = 1,
                            label = T("Units"),
-                           represent = S3Represent(options = unit_opts),
+                           represent = s3_options_represent(unit_opts),
                            requires = IS_IN_SET(unit_opts, zero=None),
                            ),
                      Field("oil_terminal_depth", "double",
@@ -471,7 +493,7 @@ class TransportModel(S3Model):
                      Field("oil_terminal_depth_units", "integer",
                            default = 1,
                            label = T("Units"),
-                           represent = S3Represent(options = unit_opts),
+                           represent = s3_options_represent(unit_opts),
                            requires = IS_IN_SET(unit_opts, zero=None),
                            ),
                      Field("dry_dock", "boolean",
@@ -485,7 +507,7 @@ class TransportModel(S3Model):
                      Field("vessel_max_length_units", "integer",
                            default = 1,
                            label = T("Units"),
-                           represent = S3Represent(options = unit_opts),
+                           represent = s3_options_represent(unit_opts),
                            requires = IS_IN_SET(unit_opts, zero=None),
                            ),
                      Field("repairs", "text",
@@ -530,7 +552,7 @@ class TransportModel(S3Model):
                      Field("high_tide_depth_units", "integer",
                            default = 1,
                            label = T("Units"),
-                           represent = S3Represent(options = unit_opts),
+                           represent = s3_options_represent(unit_opts),
                            requires = IS_IN_SET(unit_opts, zero=None),
                            ),
                      Field("low_tide_depth", "double",
@@ -539,7 +561,7 @@ class TransportModel(S3Model):
                      Field("low_tide_depth_units", "integer",
                            default = 1,
                            label = T("Units"),
-                           represent = S3Represent(options = unit_opts),
+                           represent = s3_options_represent(unit_opts),
                            requires = IS_IN_SET(unit_opts, zero=None),
                            ),
                      Field("flood_depth", "double",
@@ -548,7 +570,7 @@ class TransportModel(S3Model):
                      Field("flood_depth_units", "integer",
                            default = 1,
                            label = T("Units"),
-                           represent = S3Represent(options = unit_opts),
+                           represent = s3_options_represent(unit_opts),
                            requires = IS_IN_SET(unit_opts, zero=None),
                            ),
                      organisation_id(),
@@ -556,7 +578,7 @@ class TransportModel(S3Model):
                      Field("obsolete", "boolean",
                            default = False,
                            label = T("Obsolete"),
-                           represent = S3Represent(options=obsolete_options),
+                           represent = s3_options_represent(obsolete_options),
                            ),
                      s3_comments(),
                      *s3_meta_fields())
@@ -573,13 +595,233 @@ class TransportModel(S3Model):
             msg_record_created = T("Seaport added"),
             msg_record_modified = T("Seaport updated"),
             msg_record_deleted = T("Seaport deleted"),
-            msg_list_empty = T("No Seaports currently registered"))
+            msg_list_empty = T("No Seaports currently registered"),
+            )
 
         configure(tablename,
                   #onaccept = self.transport_seaport_onaccept,
                   #super_entity = ("doc_entity", "pr_pentity", "org_site"),
                   super_entity = "org_site",
                   )
+
+        # ---------------------------------------------------------------------
+        # Bridges
+        #
+        bridge_types = {1: T("Bailey Bridge"),
+                        2: T("Bailey Suspension"),
+                        3: T("Composite"),
+                        4: T("Langer Arch"),
+                        5: T("Multi-call box culvert"),
+                        6: T("Prestressed Concrete"),
+                        7: T("RCC Slab"),
+                        8: T("RCC T-Beam/T-Grider/Box Grider"),
+                        9: T("Steel Truss"),
+                        10: T("Wooden Bridge"),
+                        }
+
+        tablename = "transport_bridge"
+        define_table(tablename,
+                     #super_link("doc_id", "doc_entity"),
+                     super_link("site_id", "org_site"),
+                     Field("name", notnull=True,
+                           length = 64, # Mayon Compatibility
+                           label = T("Name"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(64),
+                                       ],
+                           ),
+                     #organisation_id(),
+                     location_id(),
+                     Field("type", "integer",
+                           label = T("Type"),
+                           represent = s3_options_represent(bridge_types),
+                           requires = IS_EMPTY_OR(
+                                        IS_IN_SET(bridge_types, zero=None),
+                                        )
+                           ),
+                     Field("span", "double",
+                           label = T("Span (m)"),
+                           ),
+                     Field("width", "double",
+                           label = T("Width (m)"),
+                           ),
+                     Field("year", "integer",
+                           label = T("Year of Construction"),
+                           requires = IS_EMPTY_OR(
+                                        IS_INT_IN_RANGE(-850, current.request.now.year + 1)
+                                        ),
+                           ),
+                     Field("cost", "double",
+                           label = T("Cost of Construction"),
+                           ),
+                     s3_currency(),
+                     Field("load_capacity", "double",
+                           label = T("Load Capacity (tons)"),
+                           ),
+                     Field("cond",
+                           label = T("Condition"),
+                           ),
+                     Field("obsolete", "boolean",
+                           default = False,
+                           label = T("Obsolete"),
+                           represent = s3_options_represent(obsolete_options),
+                           readable = False,
+                           writable = False,
+                           ),
+                     s3_comments(),
+                     *s3_meta_fields())
+
+        # CRUD strings
+        crud_strings[tablename] = Storage(
+           label_create = T("Create Bridge"),
+           title_display = T("Bridges"),
+           title_list = T("Bridges"),
+           title_update = T("Edit Bridge"),
+           title_upload = T("Import Bridges"),
+           label_list_button = T("List Bridges"),
+           label_delete_button = T("Delete Bridge"),
+           msg_record_created = T("Bridge added"),
+           msg_record_modified = T("Bridge updated"),
+           msg_record_deleted = T("Bridge deleted"),
+           msg_list_empty = T("No Bridges currently registered"),
+           )
+
+        configure(tablename,
+                  super_entity = (#"doc_entity",
+                                  "org_site",
+                                  #"pr_pentity",
+                                  ),
+                  )
+
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        #
+        return {"transport_airport_id": airport_id,
+                }
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def transport_airport_onaccept(form):
+        """
+            Update Affiliation, record ownership and component ownership
+        """
+
+        # If made into a pe_id:
+        #current.s3db.org_update_affiliations("transport_airport", form.vars)
+        return
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def transport_heliport_onaccept(form):
+        """
+            Update Affiliation, record ownership and component ownership
+        """
+
+        # If made into a pe_id:
+        #current.s3db.org_update_affiliations("transport_heliport", form.vars)
+        return
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def transport_seaport_onaccept(form):
+        """
+            Update Affiliation, record ownership and component ownership
+        """
+
+        # If made into a pe_id:
+        #current.s3db.org_update_affiliations("transport_seaport", form.vars)
+        return
+
+# =============================================================================
+class TransportAirplaneModel(S3Model):
+    """
+        Airplanes
+    """
+
+    names = ("transport_airplane",
+             "transport_airplane_id",
+             )
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+
+        # ---------------------------------------------------------------------
+        # Airplanes
+        #
+        tablename = "transport_airplane"
+        self.define_table(tablename,
+                          Field("name",
+                                label = T("Name"),
+                                ),
+                          Field("capacity", "integer",
+                                label = T("Capacity"),
+                                ),
+                          *s3_meta_fields())
+
+        # CRUD Strings
+        CREATE_AIRPLANE = T("Create Airplane")
+        current.response.s3.crud_strings[tablename] = Storage(
+            label_create = CREATE_AIRPLANE,
+            title_display = T("Airplane Details"),
+            title_list = T("Airplanes"),
+            title_update = T("Edit Airplane"),
+            label_list_button = T("List Airplanes"),
+            msg_record_created = T("Airplane information added"),
+            msg_record_modified = T("Airplane information updated"),
+            msg_record_deleted = T("Airplane information deleted"),
+            msg_list_empty = T("No Airplanes currently defined"),
+            )
+
+        # Reusable field
+        represent = S3Represent(lookup = tablename)
+        airplane_id = S3ReusableField("airplane_id", "reference %s" % tablename,
+                                      label = T("Airplane"),
+                                      ondelete = "SET NULL",
+                                      represent = represent,
+                                      requires = IS_EMPTY_OR(
+                                                    IS_ONE_OF(db, "%s.id" % tablename,
+                                                              represent,
+                                                              ),
+                                                    ),
+                                      sortby = "name",
+                                      comment = S3PopupLink(c = "transport",
+                                                            f = "airplane",
+                                                            tooltip = CREATE_AIRPLANE,
+                                                            ),
+                                      )
+
+
+        # ---------------------------------------------------------------------
+        # Return global names to s3db
+        #
+        return {"transport_airplane_id": airplane_id,
+                }
+
+# =============================================================================
+class TransportBorderModel(S3Model):
+    """
+        http://eden.sahanafoundation.org/wiki/BluePrint/Transport
+    """
+
+    names = ("transport_border_crossing",
+             "transport_border_crossing_country",
+             "transport_border_control_point",
+             )
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+
+        configure = self.configure
+        crud_strings = current.response.s3.crud_strings
+        define_table = self.define_table
+        super_link = self.super_link
+
+        location_id = self.gis_location_id
+        organisation_id = self.org_organisation_id
 
         # ---------------------------------------------------------------------
         # Border Crossings
@@ -598,17 +840,16 @@ class TransportModel(S3Model):
                                        IS_LENGTH(64),
                                        ],
                            ),
-                     location_id(
-                        widget = S3LocationSelector(levels = [],
-                                                    show_address = False,
-                                                    show_postcode = False,
-                                                    show_latlon = True,
-                                                    show_map = True,
-                                                    ),
-                     ),
+                     location_id(widget = S3LocationSelector(levels = [],
+                                                             show_address = False,
+                                                             show_postcode = False,
+                                                             show_latlon = True,
+                                                             show_map = True,
+                                                             ),
+                                 ),
                      Field("status",
                            default = "OPEN",
-                           represent = S3Represent(options = dict(border_crossing_status)),
+                           represent = s3_options_represent(dict(border_crossing_status)),
                            requires = IS_IN_SET(border_crossing_status,
                                                 zero = None,
                                                 sort = False,
@@ -635,7 +876,8 @@ class TransportModel(S3Model):
             msg_record_created = T("Border Crossing added"),
             msg_record_modified = T("Border Crossing updated"),
             msg_record_deleted = T("Border Crossing deleted"),
-            msg_list_empty = T("No Border Crossings currently registered"))
+            msg_list_empty = T("No Border Crossings currently registered"),
+            )
 
         # CRUD Form
         crud_form = S3SQLCustomForm("name",
@@ -753,124 +995,123 @@ class TransportModel(S3Model):
                   )
 
         # ---------------------------------------------------------------------
-        # Bridges
-        #
-        bridge_types = {1: T("Bailey Bridge"),
-                        2: T("Bailey Suspension"),
-                        3: T("Composite"),
-                        4: T("Langer Arch"),
-                        5: T("Multi-call box culvert"),
-                        6: T("Prestressed Concrete"),
-                        7: T("RCC Slab"),
-                        8: T("RCC T-Beam/T-Grider/Box Grider"),
-                        9: T("Steel Truss"),
-                        10: T("Wooden Bridge"),
-                        }
-
-        tablename = "transport_bridge"
-        define_table(tablename,
-                     #super_link("doc_id", "doc_entity"),
-                     super_link("site_id", "org_site"),
-                     Field("name", notnull=True,
-                           length = 64, # Mayon Compatibility
-                           label = T("Name"),
-                           requires = [IS_NOT_EMPTY(),
-                                       IS_LENGTH(64),
-                                       ],
-                           ),
-                     #organisation_id(),
-                     location_id(),
-                     Field("type", "integer",
-                           label = T("Type"),
-                           represent = S3Represent(options = bridge_types),
-                           requires = IS_EMPTY_OR(
-                                        IS_IN_SET(bridge_types, zero=None),
-                                        )
-                           ),
-                     Field("span", "double",
-                           label = T("Span (m)"),
-                           ),
-                     Field("width", "double",
-                           label = T("Width (m)"),
-                           ),
-                     Field("year", "integer",
-                           label = T("Year of Construction"),
-                           requires = IS_EMPTY_OR(
-                                        IS_INT_IN_RANGE(-850, current.request.now.year + 1)
-                                        ),
-                           ),
-                     Field("cost", "double",
-                           label = T("Cost of Construction"),
-                           ),
-                     s3_currency(),
-                     Field("load_capacity", "double",
-                           label = T("Load Capacity (tons)"),
-                           ),
-                     Field("cond",
-                           label = T("Condition"),
-                           ),
-                     s3_comments(),
-                     *s3_meta_fields())
-
-        # CRUD strings
-        crud_strings[tablename] = Storage(
-           label_create = T("Create Bridge"),
-           title_display = T("Bridges"),
-           title_list = T("Bridges"),
-           title_update = T("Edit Bridge"),
-           title_upload = T("Import Bridges"),
-           label_list_button = T("List Bridges"),
-           label_delete_button = T("Delete Bridge"),
-           msg_record_created = T("Bridge added"),
-           msg_record_modified = T("Bridge updated"),
-           msg_record_deleted = T("Bridge deleted"),
-           msg_list_empty = T("No Bridges currently registered"),
-           )
-
-        configure(tablename,
-                  super_entity = (#"doc_entity",
-                                  "org_site",
-                                  #"pr_pentity",
-                                  ),
-                  )
-
-        # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def transport_airport_onaccept(form):
-        """
-            Update Affiliation, record ownership and component ownership
-        """
+# =============================================================================
+class TransportFlightModel(S3Model):
+    """
+        Flights
 
-        # If made into a pe_id:
-        #current.s3db.org_update_affiliations("transport_airport", form.vars)
-        return
+        @ToDo: Capacity
+    """
 
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def transport_heliport_onaccept(form):
-        """
-            Update Affiliation, record ownership and component ownership
-        """
+    names = ("transport_flight",
+             "transport_flight_id",
+             "transport_flight_manifest",
+             )
 
-        # If made into a pe_id:
-        #current.s3db.org_update_affiliations("transport_heliport", form.vars)
-        return
+    def model(self):
 
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def transport_seaport_onaccept(form):
-        """
-            Update Affiliation, record ownership and component ownership
-        """
+        T = current.T
+        db = current.db
 
-        # If made into a pe_id:
-        #current.s3db.org_update_affiliations("transport_seaport", form.vars)
-        return
+        airport_id = self.transport_airport_id
+
+        crud_strings = current.response.s3.crud_strings
+        define_table = self.define_table
+
+        CREATE_AIRPORT = crud_strings.transport_airport.label_create
+
+        # ---------------------------------------------------------------------
+        # Flights
+        #
+        tablename = "transport_flight"
+        define_table(tablename,
+                     Field("name",
+                           label = T("Name"),
+                           ),
+                     s3_datetime(),
+                     airport_id("from_airport",
+                                label = T("From"),
+                                comment = S3PopupLink(c = "transport",
+                                                      f = "airport",
+                                                      tooltip = CREATE_AIRPORT,
+                                                      vars = {"parent": "flight",
+                                                              "child": "from_airport",
+                                                              },
+                                                      ),
+                                ),
+                     airport_id("to_airport",
+                                label = T("To"),
+                                comment = S3PopupLink(c = "transport",
+                                                      f = "airport",
+                                                      tooltip = CREATE_AIRPORT,
+                                                      vars = {"parent": "flight",
+                                                              "child": "to_airport",
+                                                              },
+                                                      ),
+                                ),
+                     self.transport_airplane_id(),
+                     # @ToDo: Capacity Remaining
+                     *s3_meta_fields())
+
+        # CRUD Strings
+        crud_strings[tablename] = Storage(
+            label_create = T("Create Flight"),
+            title_display = T("Flight Details"),
+            title_list = T("Flights"),
+            title_update = T("Edit Flight"),
+            label_list_button = T("List Flights"),
+            msg_record_created = T("Flight added"),
+            msg_record_modified = T("Flight updated"),
+            msg_record_deleted = T("Flight deleted"),
+            msg_list_empty = T("No Flights currently registered"),
+            )
+
+        self.add_components(tablename,
+                            transport_flight_manifest = {"name": "manifest",
+                                                         "joinby": "flight_id",
+                                                         },
+                            )
+
+        represent = S3Represent(lookup = tablename)
+
+        flight_id = S3ReusableField("flight_id", "reference %s" % tablename,
+                                    label = T("Flight"),
+                                    ondelete = "SET NULL",
+                                    represent = represent,
+                                    requires = IS_EMPTY_OR(
+                                                IS_ONE_OF(db, "%s.id" % tablename,
+                                                          represent,
+                                                          sort = True
+                                                          )),
+                                    sortby = "name",
+                                    )
+
+        # ---------------------------------------------------------------------
+        # Manifest
+        #
+        tablename = "transport_flight_manifest"
+        define_table(tablename,
+                     Field("flight_id", "reference transport_flight",
+                           ondelete = "CASCADE",
+                           ),
+                     self.pr_person_id(label = T("Passenger"),
+                                       ),
+                     Field("confirmed", "boolean",
+                           default = False,
+                           label = T("Confirmed?"),
+                           represent = s3_yes_no_represent,
+                           ),
+                     *s3_meta_fields())
+
+        # ---------------------------------------------------------------------
+        # Return global names to s3db
+        #
+        return {"transport_flight_id": flight_id,
+                }
 
 # =============================================================================
 class transport_BorderCrossingRepresent(S3Represent):
@@ -878,9 +1119,8 @@ class transport_BorderCrossingRepresent(S3Represent):
 
     def __init__(self, show_link=False):
         """
-            Constructor
-
-            @param show_link: render as link to the border crossing
+            Args:
+                show_link: render as link to the border crossing
         """
 
         super(transport_BorderCrossingRepresent, self).__init__(
@@ -893,7 +1133,8 @@ class transport_BorderCrossingRepresent(S3Represent):
         """
             Represent a row
 
-            @param row: the Row
+            Args:
+                row: the Row
         """
 
         if hasattr(row, "transport_border_crossing"):
@@ -912,9 +1153,10 @@ class transport_BorderCrossingRepresent(S3Represent):
         """
             Custom rows lookup
 
-            @param key: the key Field
-            @param values: the values
-            @param fields: unused (retained for API compatibility)
+            Args:
+                key: the key Field
+                values: the values
+                fields: unused (retained for API compatibility)
         """
 
         s3db = current.s3db
@@ -974,8 +1216,19 @@ def transport_rheader(r, tabs=None):
 
         T = current.T
 
-        if tablename == "transport_border_crossing":
+        if tablename == "transport_flight":
+            if not tabs:
+                tabs = [(T("Details"), None),
+                        (T("Manifest"), "manifest"),
+                        ]
 
+            rheader_fields = [["name"],
+                              ["from_airport"],
+                              ["to_airport"],
+                              ["date"],
+                              ]
+
+        elif tablename == "transport_border_crossing":
             if not tabs:
                 tabs = [(T("Details"), None),
                         (T("Control Points"), "border_control_point"),
@@ -986,7 +1239,6 @@ def transport_rheader(r, tabs=None):
                               ]
 
         elif tablename == "transport_bridge":
-
             if not tabs:
                 tabs = [(T("Details"), None),
                         ]

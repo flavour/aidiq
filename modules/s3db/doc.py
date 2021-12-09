@@ -27,12 +27,14 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ("DocumentLibrary",
+__all__ = ("DocumentEntityModel",
+           "DocumentLibrary",
            "DocumentTagModel",
            "CKEditorModel",
            "DataCardModel",
            "doc_image_represent",
            "doc_document_list_layout",
+           "doc_filetype",
            )
 
 import os
@@ -46,10 +48,37 @@ from gluon.storage import Storage
 from ..s3 import *
 
 # =============================================================================
-class DocumentLibrary(S3Model):
+class DocumentEntityModel(S3Model):
 
     names = ("doc_entity",
-             "doc_document",
+             )
+
+    def model(self):
+
+        # ---------------------------------------------------------------------
+        # Document-referencing entities
+        #
+        instance_types = {} # This can be an empty list as doc_entity is never exposed to end-users
+
+        tablename = "doc_entity"
+        self.super_entity(tablename, "doc_id", instance_types)
+
+        # Components
+        doc_id = "doc_id"
+        self.add_components(tablename,
+                            doc_document = doc_id,
+                            doc_image = doc_id,
+                            )
+
+        # ---------------------------------------------------------------------
+        # Pass model-global names to response.s3
+        #
+        return None
+
+# =============================================================================
+class DocumentLibrary(S3Model):
+
+    names = ("doc_document",
              "doc_document_id",
              "doc_image",
              )
@@ -67,10 +96,7 @@ class DocumentLibrary(S3Model):
         location_id = self.gis_location_id
         organisation_id = self.org_organisation_id
 
-        NONE = current.messages["NONE"]
-
         # Shortcuts
-        add_components = self.add_components
         configure = self.configure
         crud_strings = s3.crud_strings
         define_table = self.define_table
@@ -78,29 +104,14 @@ class DocumentLibrary(S3Model):
         super_link = self.super_link
 
         # ---------------------------------------------------------------------
-        # Document-referencing entities
-        #
-        instance_types = {} # This can be an empty list as doc_entity is never exposed to end-users
-
-        tablename = "doc_entity"
-        self.super_entity(tablename, "doc_id", instance_types)
-
-        # Components
-        doc_id = "doc_id"
-        add_components(tablename,
-                       doc_document = doc_id,
-                       doc_image = doc_id,
-                       )
-
-        # ---------------------------------------------------------------------
         # Documents
         #
         tablename = "doc_document"
         define_table(tablename,
                      # Instance
-                     self.stats_source_superlink(),
+                     super_link("source_id", "stats_source"),
                      # Component not instance
-                     super_link(doc_id, "doc_entity"),
+                     super_link("doc_id", "doc_entity"),
                      # @ToDo: Remove since Site Instances are doc entities?
                      super_link("site_id", "org_site"),
                      Field("file", "upload",
@@ -138,7 +149,8 @@ class DocumentLibrary(S3Model):
                         readable = False,
                         writable = False,
                         comment = person_comment(T("Author"),
-                                                 T("The Author of this Document (optional)"))
+                                                 T("The Author of this Document (optional)"),
+                                                 )
                         ),
                      organisation_id(# Enable when-required
                                      readable = False,
@@ -174,8 +186,8 @@ class DocumentLibrary(S3Model):
             msg_record_created = T("Document added"),
             msg_record_modified = T("Document updated"),
             msg_record_deleted = T("Document deleted"),
-            msg_list_empty = T("No Documents found")
-        )
+            msg_list_empty = T("No Documents found"),
+            )
 
         # Filter Widgets
         # - define in-template if-required
@@ -217,10 +229,10 @@ class DocumentLibrary(S3Model):
                                                            ),
                                       )
 
-        add_components(tablename,
-                       doc_document_tag = document_id,
-                       msg_attachment = document_id,
-                       )
+        self.add_components(tablename,
+                            doc_document_tag = document_id,
+                            msg_attachment = document_id,
+                            )
 
         # ---------------------------------------------------------------------
         # Images
@@ -238,7 +250,7 @@ class DocumentLibrary(S3Model):
         tablename = "doc_image"
         define_table(tablename,
                      # Component not instance
-                     super_link(doc_id, "doc_entity"),
+                     super_link("doc_id", "doc_entity"),
                      super_link("pe_id", "pr_pentity"), # @ToDo: Remove & make Persons doc entities instead?
                      super_link("site_id", "org_site"), # @ToDo: Remove since Site Instances are doc entities?
                      Field("file", "upload",
@@ -274,7 +286,7 @@ class DocumentLibrary(S3Model):
                      Field("type", "integer",
                            default = 1,
                            label = T("Image Type"),
-                           represent = S3Represent(options = doc_image_type_opts),
+                           represent = s3_options_represent(doc_image_type_opts),
                            requires = IS_IN_SET(doc_image_type_opts,
                                                 zero = None),
                            ),
@@ -303,7 +315,8 @@ class DocumentLibrary(S3Model):
             msg_record_created = T("Photo added"),
             msg_record_modified = T("Photo updated"),
             msg_record_deleted = T("Photo deleted"),
-            msg_list_empty = T("No Photos found"))
+            msg_list_empty = T("No Photos found"),
+            )
 
         # Resource Configuration
         configure(tablename,
@@ -330,9 +343,11 @@ class DocumentLibrary(S3Model):
         """
             File representation
 
-            @param filename: the stored file name (field value)
+            Args:
+                filename: the stored file name (field value)
 
-            @return: a link to download the file
+            Returns:
+                A (link to download the file)
         """
 
         if filename:
@@ -349,7 +364,7 @@ class DocumentLibrary(S3Model):
                                      )
                          )
         else:
-            return current.messages["NONE"]
+            return NONE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -609,18 +624,19 @@ class DocumentTagModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 def doc_image_represent(filename):
     """
         Represent an image as a clickable thumbnail
 
-        @param filename: name of the image file
+        Args:
+            filename: name of the image file
     """
 
     if not filename:
-        return current.messages["NONE"]
+        return NONE
 
     div = DIV(A(IMG(_src = URL(c="default", f="download",
                                args = filename,
@@ -654,14 +670,18 @@ def doc_document_list_layout(list_id, item_id, resource, rfields, record):
     """
         Default dataList item renderer for Documents, e.g. on the HRM Profile
 
-        NB The CSS classes here refer to static/themes/bootstrap/cards.css & newsfeed.css
-        - so this CSS either needs moving to core or else this needs modifying for default CSS
+        Args:
+            list_id: the HTML ID of the list
+            item_id: the HTML ID of the item
+            resource: the S3Resource to render
+            rfields: the S3ResourceFields to render
+            record: the record as dict
 
-        @param list_id: the HTML ID of the list
-        @param item_id: the HTML ID of the item
-        @param resource: the S3Resource to render
-        @param rfields: the S3ResourceFields to render
-        @param record: the record as dict
+        Note:
+            The CSS classes here refer to static/themes/bootstrap/cards.css &
+            newsfeed.css
+            - so this CSS either needs moving to core or else this needs
+              modifying for default CSS
     """
 
     record_id = record["doc_document.id"]
@@ -679,7 +699,7 @@ def doc_document_list_layout(list_id, item_id, resource, rfields, record):
             # file name from the stored file name
             origname = current.s3db.doc_document.file.retrieve(filename)[0]
         except (IOError, TypeError):
-            origname = current.messages["NONE"]
+            origname = NONE
         doc_url = URL(c="default", f="download",
                       args = [filename],
                       )
@@ -711,11 +731,11 @@ def doc_document_list_layout(list_id, item_id, resource, rfields, record):
     table = current.s3db.doc_document
     if permit("update", table, record_id=record_id):
         edit_btn = A(ICON("edit"),
-                     _href=URL(c="doc", f="document",
-                               args = [record_id, "update.popup"],
-                               vars = {"refresh": list_id,
-                                       "record": record_id,
-                                       }),
+                     _href = URL(c="doc", f="document",
+                                 args = [record_id, "update.popup"],
+                                 vars = {"refresh": list_id,
+                                         "record": record_id,
+                                         }),
                      _class = "s3_modal",
                      _title = current.T("Edit Document"),
                      )
@@ -765,9 +785,10 @@ class doc_DocumentRepresent(S3Represent):
         """
             Represent a (key, value) as hypertext link.
 
-            @param k: the key (doc_document.id)
-            @param v: the representation of the key
-            @param row: the row with this key
+            Args:
+                k: the key (doc_document.id)
+                v: the representation of the key
+                row: the row with this key
         """
 
         if row:
@@ -794,7 +815,6 @@ class CKEditorModel(S3Model):
     """
 
     names = ("doc_ckeditor",
-             "doc_filetype",
              )
 
     def model(self):
@@ -816,48 +836,50 @@ class CKEditorModel(S3Model):
                                             IS_LENGTH(maxsize = 10485760, # 10 Mb
                                                       minsize = 0),
                                             ],
+                                autodelete = True,
                                 ),
                           *s3_meta_fields())
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {"doc_filetype": self.doc_filetype,
-                }
+        return None
 
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def doc_filetype(filename):
-        """
-            Takes a filename and returns a category based on the file type.
-            Categories: word, excel, powerpoint, flash, pdf, image, video, audio, archive, other.
-        """
+# =============================================================================
+def doc_filetype(filename):
+    """
+        Takes a filename and returns a category based on the file type.
+        Categories: word, excel, powerpoint, flash, pdf, image, video, audio, archive, other.
 
-        ftype = "other"
+        Used by:
+            ck_browse.html
+    """
 
-        parts = os.path.splitext(filename)
-        if len(parts) > 1:
-            ext = parts[1][1:].lower()
-            if ext in ("png", "jpg", "jpeg", "gif"):
-                ftype = "image"
-            elif ext in ("avi", "mp4", "m4v", "ogv", "wmv", "mpg", "mpeg"):
-                ftype = "video"
-            elif ext in ("mp3", "m4a", "wav", "ogg", "aiff"):
-                ftype = "audio"
-            elif ext in ("zip", "7z", "tar", "gz", "tgz", "bz2", "rar"):
-                ftype = "archive"
-            elif ext in ("doc", "docx", "dot", "dotx", "rtf"):
-                ftype = "word"
-            elif ext in ("xls", "xlsx", "xlt", "xltx", "csv"):
-                ftype = "excel"
-            elif ext in ("ppt", "pptx"):
-                ftype = "powerpoint"
-            elif ext in ("flv", "swf"):
-                ftype = "flash"
-            elif ext == "pdf":
-                ftype = "pdf"
+    ftype = "other"
 
-        return ftype
+    parts = os.path.splitext(filename)
+    if len(parts) > 1:
+        ext = parts[1][1:].lower()
+        if ext in ("png", "jpg", "jpeg", "gif"):
+            ftype = "image"
+        elif ext in ("avi", "mp4", "m4v", "ogv", "wmv", "mpg", "mpeg"):
+            ftype = "video"
+        elif ext in ("mp3", "m4a", "wav", "ogg", "aiff"):
+            ftype = "audio"
+        elif ext in ("zip", "7z", "tar", "gz", "tgz", "bz2", "rar"):
+            ftype = "archive"
+        elif ext in ("doc", "docx", "dot", "dotx", "rtf"):
+            ftype = "word"
+        elif ext in ("xls", "xlsx", "xlt", "xltx", "csv"):
+            ftype = "excel"
+        elif ext in ("ppt", "pptx"):
+            ftype = "powerpoint"
+        #elif ext in ("flv", "swf"):
+        #    ftype = "flash"
+        elif ext == "pdf":
+            ftype = "pdf"
+
+    return ftype
 
 # =============================================================================
 class DataCardModel(S3Model):
@@ -903,7 +925,7 @@ class DataCardModel(S3Model):
                                                      sort = True,
                                                      zero = None,
                                                      ),
-                                represent = S3Represent(options = card_types),
+                                represent = s3_options_represent(card_types),
                                 ),
                           # Card Feature Configurations:
                           Field("authority_statement", "text",
@@ -983,9 +1005,10 @@ class DataCardModel(S3Model):
         """
             Make sure each card type can be defined only once per org
 
-            @param record_id: the current doc_card_config record ID
-                              (when currently editing a record)
-            @param organisation_id: the organisation record ID
+            Args:
+                record_id: the current doc_card_config record ID
+                           (when currently editing a record)
+                organisation_id: the organisation record ID
         """
 
         s3db = current.s3db

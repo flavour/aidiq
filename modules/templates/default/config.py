@@ -159,7 +159,7 @@ def config(settings):
                                                       "label": "Shelters",
                                                       "description": "Shelters",
                                                       },
-                                                     {"module": "hms",
+                                                     {"module": "med",
                                                       "label": "Hospitals",
                                                       "description": "Hospitals",
                                                       },
@@ -430,7 +430,7 @@ def config(settings):
     #settings.gis.poi_create_resources = None
     #settings.gis.poi_create_resources = [{"c":"event", "f":"incident_report", "table": "gis_poi", "label": T("Add Incident Report") ,"tooltip": T("Add Incident Report"), "layer":"Incident Reports", "location": "popup"}]
     # PoIs to export in KML/OSM feeds from Admin locations
-    #settings.gis.poi_export_resources = ["cr_shelter", "hms_hospital", "org_office"]
+    #settings.gis.poi_export_resources = ["cr_shelter", "med_hospital", "org_office"]
     # Uncomment to show the Print control:
     # http://eden.sahanafoundation.org/wiki/UserGuidelines/Admin/MapPrinting
     #settings.gis.print_button = True
@@ -1039,7 +1039,7 @@ def config(settings):
     #settings.inv.req_status_writable = False
     #settings.inv.req_item_quantities_writable = True
     #settings.inv.req_show_quantity_transit = False
-    #settings.inv.multiple_req_items = False
+    #settings.inv.req_multiple_items = False
     #settings.inv.req_prompt_match = False
     #settings.inv.req_ask_purpose = False
     # Uncomment to disable the Commit step in the workflow & simply move direct to Ship
@@ -1326,7 +1326,7 @@ def config(settings):
         #   #description = "Data collection tool",
         #   module_type = 5
         #)),
-        #("hms", Storage(
+        #("med", Storage(
         #    name_nice = T("Hospitals"),
         #    #description = "Helps to monitor status of hospitals",
         #    module_type = 10

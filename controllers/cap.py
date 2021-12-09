@@ -343,7 +343,7 @@ def alert():
                                         ),
                         ]
                     s3.crud_strings["cap_alert"].title_list = T("Alerts Hub")
-                    s3base.S3CRUD.action_buttons(r, deletable=False)
+                    s3_action_buttons(r, deletable = False)
                     profile_button = {"url": URL(args = ["[id]", "profile"]),
                                       "_class": "action-btn",
                                       "_target": "_blank",
@@ -394,7 +394,7 @@ def alert():
                             url = URL(c="cap", f="alert",
                                       args = ["[id]"],
                                       )
-                            s3base.S3CRUD.action_buttons(r, update_url=url, read_url=url)
+                            s3_action_buttons(r, update_url=url, read_url=url)
                         elif not r.get_vars:
                             # Filter those alerts having at least info and area segment
                             s3.filter = ((FS("info.id") != None) & (FS("area.id") != None)) & \
@@ -548,7 +548,8 @@ def alert():
                                   "bbox": bbox,
                                   }
 
-                    widget = s3db.cap_AlertProfileWidget
+                    from s3db.cap import cap_AlertProfileWidget
+                    widget = cap_AlertProfileWidget
                     component = widget.component
 
                     @widget(None)
@@ -740,12 +741,12 @@ def alert():
                             translate = False
                         if translate:
                             # Represent each row with local name if available
-                            from s3 import S3Represent
+                            from s3 import s3_options_represent
                             atable = s3db.cap_area
                             cap_area_options = cap_AreaRowOptionsBuilder(r.id,
                                                                          caller = r.method,
                                                                          )
-                            atable.name.represent = S3Represent(options = cap_area_options)
+                            atable.name.represent = s3_options_represent(cap_area_options)
 
                 elif r.method != "import" and not get_vars.get("_next"):
                     s3.crud.submit_style = "hide"
@@ -756,6 +757,7 @@ def alert():
 
             elif r.component_name == "info":
                 # Filter the language options
+                from s3 import IS_ISO639_2_LANGUAGE_CODE
                 itable.language.requires = IS_ISO639_2_LANGUAGE_CODE(zero = None,
                                                                      translate = True,
                                                                      select = settings.get_cap_languages(),
@@ -838,9 +840,9 @@ def alert():
                         translate = False
                     if translate:
                         # Represent each row with local name if available
-                        from s3 import S3Represent
+                        from s3 import s3_options_represent
                         cap_area_options = cap_AreaRowOptionsBuilder(r.id)
-                        atable.name.represent = S3Represent(options = cap_area_options)
+                        atable.name.represent = s3_options_represent(cap_area_options)
 
                 if record.approved_by is not None:
                     # Once approved, don't allow area segment to edit
@@ -971,7 +973,8 @@ def alert():
                 rows = db(itable.alert_id == lastid).select(itable.id)
 
                 rtable = s3db.cap_resource
-                r_unwanted_fields = set(s3base.s3_all_meta_field_names())
+                from s3 import s3_all_meta_field_names
+                r_unwanted_fields = set(s3_all_meta_field_names())
                 rfields = [rtable[f] for f in rtable.fields
                            if f not in r_unwanted_fields]
                 rows_ = db(rtable.alert_id == alert.template_id).select(*rfields)
@@ -1469,6 +1472,7 @@ def notify_approver():
                                                                     ).first()
             if group_row:
                 user_pe_id = auth.s3_user_pe_id
+                from s3 import s3_fullname
                 full_name = s3_fullname(pe_id=user_pe_id(row.created_by), truncate=False)
                 user_ids = auth.s3_group_members(group_row.id) # List of user_ids
                 pe_ids = [] # List of pe_ids

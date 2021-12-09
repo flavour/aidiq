@@ -6,8 +6,8 @@ from os import path
 from gluon import *
 from gluon.storage import Storage
 
-from s3 import ICON, IS_FLOAT_AMOUNT, s3_str, \
-               S3CustomController, S3Report, S3Request, S3Represent
+from s3 import ICON, IS_FLOAT_AMOUNT, NONE, s3_str, \
+               S3CustomController, S3Report, s3_request, S3Represent
 
 from s3db.inv import SHIP_DOC_PENDING, SHIP_DOC_COMPLETE, \
                      SHIP_STATUS_SENT, SHIP_STATUS_RECEIVED, SHIP_STATUS_RETURNING
@@ -25,7 +25,9 @@ def auth_formstyle(form, fields, *args, **kwargs):
     def render_row(row_id, label, widget, comment, hidden=False):
 
         if hasattr(widget, "element"):
-            submit = widget.element("input", _type="submit")
+            submit = widget.element("input",
+                                    _type = "submit",
+                                    )
             if submit:
                 submit.add_class("small primary button")
             elif label:
@@ -392,6 +394,7 @@ def inv_operators_for_sites(site_ids):
                                                   )
 
     use_admin = []
+    from s3db.pr import pr_get_ancestors
 
     for site_id in sites:
 
@@ -399,8 +402,8 @@ def inv_operators_for_sites(site_ids):
         pe_id = site["pe_id"]
 
         # Find the relevant wh_operator/logs_manager
-        entities = s3db.pr_get_ancestors(pe_id)
-        entities.append(pe_id)
+        entities = pr_get_ancestors(pe_id)
+        entities.append(str(pe_id))
 
         query = (gtable.uuid.belongs(("wh_operator",
                                       "logs_manager",
@@ -416,7 +419,7 @@ def inv_operators_for_sites(site_ids):
                                      )
         operators = list(operators)
         for row in wh_operators_default_realm:
-            if row["pr_role.pe_id"] in entities:
+            if str(row["pr_role.pe_id"]) in entities:
                 operators.append(row)
 
         if operators:
@@ -441,7 +444,7 @@ def inv_operators_for_sites(site_ids):
     return sites
 
 # =============================================================================
-class inv_dashboard(S3CustomController):
+class inv_Dashboard(S3CustomController):
     """
         Dashboard for Warehouse Management module
         - used as homepage
@@ -455,7 +458,7 @@ class inv_dashboard(S3CustomController):
         user = current.auth.user
         user_id = user.id
 
-        # Huuricane Season lasts from 1/6 to 30/11
+        # Hurricane Season lasts from 1/6 to 30/11
         now = current.request.utcnow
         if 5 < now.month < 12:
             SEASON = T("this Season")
@@ -656,6 +659,7 @@ class inv_dashboard(S3CustomController):
         transport_opts = {"Air": ICON("plane"),
                           "Sea": ICON("ship"),
                           "Road": ICON("truck"),
+                          "Rail": ICON("train"),
                           "Hand": ICON("hand-grab"),
                           }
         transport_opts_get = transport_opts.get
@@ -745,12 +749,10 @@ class inv_dashboard(S3CustomController):
 
         # Alerts
         table = s3db.auth_user_notification
-        query = (table.user_id == user_id) & \
-                (table.deleted == False)
-        rows = db(query).select(table.name,
-                                table.url,
-                                orderby = ~table.created_on,
-                                )
+        rows = db(table.user_id == user_id).select(table.name,
+                                                   table.url,
+                                                   orderby = ~table.created_on,
+                                                   )
         alert_rows = []
         for row in rows:
             alert_rows.append(DIV(A(DIV(ICON("bell-o"),
@@ -768,7 +770,7 @@ class inv_dashboard(S3CustomController):
 
         # Capacity
         # Define the Pivot Table
-        r = S3Request("inv", "inv_item")
+        r = s3_request("inv", "inv_item")
         r.customise_resource()
         resource = s3db.resource("inv_inv_item")
         report = S3Report()
@@ -824,8 +826,12 @@ class inv_dashboard(S3CustomController):
         stockpile_weight = 0
         stockpile_volume = 0
         for row in rows:
-            stockpile_weight += row["inv_inv_item.total_weight"]()
-            stockpile_volume += row["inv_inv_item.total_volume"]()
+            weight = row["inv_inv_item.total_weight"]()
+            if weight != NONE:
+                stockpile_weight += weight
+            volume = row["inv_inv_item.total_volume"]()
+            if volume != NONE:
+                stockpile_volume += volume
 
         fields = ["id",
                   "track_item.total_weight",
@@ -937,12 +943,14 @@ class org_SiteRepresent(S3Represent):
         """
             Represent multiple values as dict {value: representation}
 
-            @param values: list of values
-            @param rows: the referenced rows (if values are foreign keys)
-            @param show_link: render each representation as link
-            @param include_blank: Also include a blank value
+            Args:
+                values: list of values
+                rows: the referenced rows (if values are foreign keys)
+                show_link: render each representation as link
+                include_blank: Also include a blank value
 
-            @return: a dict {value: representation}
+            Returns:
+                dict {value: representation}
         """
 
         show_link = show_link and self.show_link
@@ -982,7 +990,8 @@ class org_SiteRepresent(S3Represent):
             Parameters key and fields are not used, but are kept for API
             compatibility reasons.
 
-            @param values: the site IDs
+            Args:
+                values: the site IDs
         """
 
         db = current.db
@@ -1095,9 +1104,10 @@ class org_SiteRepresent(S3Represent):
         """
             Represent a (key, value) as hypertext link.
 
-            @param k: the key (site_id)
-            @param v: the representation of the key
-            @param row: the row with this key
+            Args:
+                k: the key (site_id)
+                v: the representation of the key
+                row: the row with this key
         """
 
         if row:
@@ -1121,7 +1131,8 @@ class org_SiteRepresent(S3Represent):
         """
             Represent a single Row
 
-            @param row: the org_site Row
+            Args:
+                row: the org_site Row
         """
 
         name = row["org_site.name"]

@@ -50,7 +50,7 @@ from s3.s3parser import S3Parsing
 from s3.s3utils import soundex
 
 # =============================================================================
-class S3Parser(object):
+class S3Parser:
     """
        Message Parsing Template
     """
@@ -427,8 +427,8 @@ class S3Parser(object):
         result = []
 
         #  Hospital Search [example: get name hospital facility status ]
-        table = s3db.hms_hospital
-        stable = s3db.hms_status
+        table = s3db.med_hospital
+        stable = s3db.med_hospital_status
         query = (table.deleted == False) & \
                 (current.auth.s3_accessible_query("read", table))
         rows = db(query).select(table.id,

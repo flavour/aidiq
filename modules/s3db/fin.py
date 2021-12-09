@@ -27,7 +27,9 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ("FinExpensesModel",
+__all__ = ("FinBankModel",
+           "FinBrokerModel",
+           "FinExpensesModel",
            "FinVoucherModel",
            "FinPaymentServiceModel",
            "FinProductModel",
@@ -46,6 +48,287 @@ from ..s3 import *
 from s3layouts import S3PopupLink
 
 # =============================================================================
+class FinBankModel(S3Model):
+
+    names = ("fin_bank_service",
+             "fin_bank",
+             "fin_bank_service_bank",
+             )
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+
+        crud_strings = current.response.s3.crud_strings
+        define_table = self.define_table
+
+        # ---------------------------------------------------------------------
+        # Bank Services
+        # e.g. Wire, Monegram, Western Union
+        #
+        tablename = "fin_bank_service"
+        define_table(tablename,
+                     Field("name", notnull=True, unique=True,
+                           length=64,
+                           label = T("Name"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(64),
+                                       ]
+                           ),
+                     s3_comments(),
+                     *s3_meta_fields())
+
+        # CRUD strings
+        ADD_BANK_SERVICE = T("Create Bank Service")
+        crud_strings[tablename] = Storage(
+           label_create = ADD_BANK_SERVICE,
+           title_display = T("Bank Service Details"),
+           title_list = T("Bank Services"),
+           title_update = T("Edit Bank Service"),
+           label_list_button = T("List Bank Services"),
+           label_delete_button = T("Delete Bank Service"),
+           msg_record_created = T("Bank Service added"),
+           msg_record_modified = T("Bank Service updated"),
+           msg_record_deleted = T("Bank Service deleted"),
+           msg_list_empty = T("No Bank Services currently registered"),
+           )
+
+        represent = S3Represent(lookup = tablename,
+                                translate = True,
+                                )
+
+        service_id = S3ReusableField("service_id", "reference %s" % tablename,
+                                     label = T("Bank Service"),
+                                     ondelete = "SET NULL",
+                                     represent = represent,
+                                     requires = IS_EMPTY_OR(
+                                                    IS_ONE_OF(db, "%s.id" % tablename,
+                                                              represent,
+                                                              sort = True
+                                                              )),
+                                     sortby = "name",
+                                     comment = S3PopupLink(c = "fin",
+                                                           f = "bank_service",
+                                                           label = ADD_BANK_SERVICE,
+                                                           title = T("Bank Service"),
+                                                           ),
+                                     )
+
+        # ---------------------------------------------------------------------
+        # Banks
+        # -  a financial establishment where customers can, among other services,
+        #    deposit and withdraw money, take loans, make investments and transfer funds.
+        #    This definition encompasses banks, credit unions, building societies,
+        #    and other similar establishments.
+        # https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dbank
+        #
+        tablename = "fin_bank"
+        define_table(tablename,
+                     #super_link("doc_id", "doc_entity"),
+                     #super_link("pe_id", "pr_pentity"),
+                     self.super_link("site_id", "org_site"),
+                     Field("name", notnull=True,
+                           length=64, # Mayon compatibility
+                           label = T("Name"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(64),
+                                       ]
+                           ),
+                     #Field("code", length=10, # Mayon compatibility
+                     #      #notnull=True, unique=True,
+                     #      # @ToDo: code_requires
+                     #      label = T("Code"),
+                     #      requires = IS_LENGTH(120),
+                     #      ),
+                     #self.org_organisation_id(requires = self.org_organisation_requires(updateable = True),
+                     #                         ),
+                     Field("operational", "boolean",
+                           default = True,
+                           label = T("Operational"),
+                           represent = s3_yes_no_represent,
+                           comment = T("e.g. Has Cash available"),
+                           ),
+                     self.gis_location_id(),
+                     Field("opening_times",
+                           label = T("Opening Times"),
+                           represent = lambda v: v or NONE,
+                           ),
+                     Field("phone",
+                           label = T("Phone"),
+                           requires = IS_EMPTY_OR(IS_PHONE_NUMBER_MULTI()),
+                           ),
+                     Field("email",
+                           label = T("Email"),
+                           requires = IS_EMPTY_OR(IS_EMAIL()),
+                           ),
+                      Field("website",
+                          label = T("Website"),
+                           represent = s3_url_represent,
+                           requires = IS_EMPTY_OR(IS_URL()),
+                           ),
+                     Field("obsolete", "boolean",
+                           default = False,
+                           label = T("Obsolete"),
+                           represent = lambda opt: current.messages.OBSOLETE if opt else NONE,
+                           ),
+                     s3_comments(),
+                     *s3_meta_fields())
+
+        # CRUD Strings
+        crud_strings[tablename] = Storage(
+            label_create = T("Create Bank"),
+            title_display = T("Bank Details"),
+            title_list = T("Banks"),
+            title_update = T("Edit Bank"),
+            title_map = T("Map of Banks"),
+            label_list_button = T("List Banks"),
+            label_delete_button = T("Delete Bank"),
+            msg_record_created = T("Bank added"),
+            msg_record_modified = T("Bank updated"),
+            msg_record_deleted = T("Bank deleted"),
+            msg_list_empty = T("No Banks currently registered"),
+            )
+
+        crud_form = S3SQLCustomForm("name",
+                                    "operational",
+                                    S3SQLInlineLink("bank_service",
+                                                    label = T("Service"),
+                                                    field = "service_id",
+                                                    ),
+                                    "location_id",
+                                    "phone",
+                                    "email",
+                                    "website",
+                                    "obsolete",
+                                    "comments",
+                                    )
+
+        # Resource configuration
+        self.configure(tablename,
+                       crud_form = crud_form,
+                       deduplicate = S3Duplicate(primary = ("name",),
+                                                 ),
+                       # If made a PE ID
+                       #onaccept = fin_bank_onaccept,
+                       super_entity = (#"doc_entity",
+                                       "org_site",
+                                       #"pr_pentity",
+                                       ),
+                       )
+
+        self.add_components(tablename,
+                            fin_bank_service = {"link": "fin_bank_service_bank",
+                                                "joinby": "bank_id",
+                                                "key": "service_id",
+                                                "actuate": "hide",
+                                                }
+                            )
+
+        # ---------------------------------------------------------------------
+        # Bank Service <> Bank link table
+        #
+        tablename = "fin_bank_service_bank"
+        define_table(tablename,
+                     Field("bank_id", "reference fin_bank",
+                           ondelete = "CASCADE",
+                           ),
+                     service_id(empty = False,
+                                ondelete = "CASCADE",
+                                ),
+                     *s3_meta_fields())
+
+        # ---------------------------------------------------------------------
+        # Return global names to s3db
+        #
+        return None
+
+    # -------------------------------------------------------------------------
+    #@staticmethod
+    #def fin_bank_onaccept(form):
+    #    """
+    #        Update Affiliation, record ownership and component ownership
+    #    """
+
+    #    current.s3db.org_update_affiliations("fin_bank", form.vars)
+
+# =============================================================================
+class FinBrokerModel(S3Model):
+    """ Model for Brokers """
+
+    names = ("fin_broker",
+             "fin_broker_id",
+             )
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+
+        # -------------------------------------------------------------------------
+        # Brokers
+        # - private individuals who pass funds between parties
+        # e.g. Hawaladars: https://en.wikipedia.org/wiki/Hawala
+        #
+        tablename = "fin_broker"
+        self.define_table(tablename,
+                          Field("name", notnull=True,
+                                requires = IS_NOT_EMPTY(),
+                                ),
+                          Field("operational", "boolean",
+                                default = True,
+                                label = T("Operational"),
+                                represent = s3_yes_no_represent,
+                                comment = T("e.g. Has Cash available"),
+                                ),
+                          self.gis_location_id(),
+                          Field("phone",
+                                label = T("Phone"),
+                                requires = IS_EMPTY_OR(IS_PHONE_NUMBER_MULTI()),
+                                ),
+                          Field("email",
+                                label = T("Email"),
+                                requires = IS_EMPTY_OR(IS_EMAIL()),
+                                ),
+                          s3_comments(),
+                          *s3_meta_fields(),
+                          )
+
+        current.response.s3.crud_strings[tablename] = Storage(
+            label_create = T("Add Broker"),
+            title_display = T("Broker Details"),
+            title_list = T("Brokers"),
+            title_update = T("Edit Broker"),
+            title_upload = T("Import Brokers"),
+            label_list_button = T("List Expenses"),
+            label_delete_button = T("Delete Broker"),
+            msg_record_created = T("Broker added"),
+            msg_record_modified = T("Broker updated"),
+            msg_record_deleted = T("Broker removed"),
+            msg_list_empty = T("No Brokers currently registered"),
+            )
+
+        represent = S3Represent(lookup = tablename)
+
+        broker_id = S3ReusableField("broker_id", "reference %s" % tablename,
+                                    label = T("Broker"),
+                                    ondelete = "SET NULL",
+                                    represent = represent,
+                                    requires = IS_EMPTY_OR(
+                                                IS_ONE_OF(db, "%s.id" % tablename,
+                                                          represent,
+                                                          sort = True
+                                                          )),
+                                    sortby = "name",
+                                    )
+
+        # ---------------------------------------------------------------------
+        # Return global names to s3.*
+        #
+        return {"fin_broker_id": broker_id,
+                }
+
+# =============================================================================
 class FinExpensesModel(S3Model):
     """ Model for Expenses """
 
@@ -56,6 +339,7 @@ class FinExpensesModel(S3Model):
     def model(self):
 
         T = current.T
+        db = current.db
 
         # -------------------------------------------------------------------------
         # Expenses
@@ -93,7 +377,7 @@ class FinExpensesModel(S3Model):
             msg_record_created = T("Expense added"),
             msg_record_modified = T("Expense updated"),
             msg_record_deleted = T("Expense removed"),
-            msg_list_empty = T("No Expenses currently registered")
+            msg_list_empty = T("No Expenses currently registered"),
             )
 
         crud_form = S3SQLCustomForm("name",
@@ -129,10 +413,10 @@ class FinExpensesModel(S3Model):
                                      ondelete = "CASCADE",
                                      represent = represent,
                                      requires = IS_EMPTY_OR(
-                                                IS_ONE_OF(current.db, "fin_expense.id",
+                                                IS_ONE_OF(db, "%s.id" % tablename,
                                                           represent,
-                                                          orderby="fin_expense.name",
-                                                          sort=True,
+                                                          orderby = "fin_expense.name",
+                                                          sort = True,
                                                           )),
                                      sortby = "name",
                                      )
@@ -140,7 +424,7 @@ class FinExpensesModel(S3Model):
         # ---------------------------------------------------------------------
         # Return global names to s3.*
         #
-        return {"fin_expense_id": expense_id,
+        return {"fin_expense_id": expense_id, # Used by Events
                 }
 
     # -------------------------------------------------------------------------
@@ -177,8 +461,6 @@ class FinVoucherModel(S3Model):
 
         define_table = self.define_table
         crud_strings = s3.crud_strings
-
-        NONE = current.messages["NONE"]
 
         # Representation of bearer/provider
         pe_represent = self.pr_PersonEntityRepresent(show_label = False,
@@ -233,7 +515,7 @@ class FinVoucherModel(S3Model):
                      Field("status",
                            label = T("Status"),
                            default = "ACTIVE",
-                           represent = S3Represent(options = dict(program_status)),
+                           represent = s3_options_represent(dict(program_status)),
                            requires = IS_IN_SET(program_status,
                                                 zero = None,
                                                 sort = False,
@@ -253,10 +535,10 @@ class FinVoucherModel(S3Model):
                      # Compensation Details:
                      Field("unit",
                            label = T("Unit of Service"),
-                           comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Unit of Service"),
-                                                           T('Unit to determine the service quantity (e.g. "Meals")'),
-                                                           ),
+                           comment = DIV(_class = "tooltip",
+                                         _title = "%s|%s" % (T("Unit of Service"),
+                                                             T('Unit to determine the service quantity (e.g. "Meals")'),
+                                                             ),
                                          ),
                            ),
                      Field("price_per_unit", "float",
@@ -333,7 +615,7 @@ class FinVoucherModel(S3Model):
             msg_record_modified = T("Program updated"),
             msg_record_deleted = T("Program deleted"),
             msg_list_empty = T("No Programs currently registered"),
-        )
+            )
 
         # Reusable Field
         represent = S3Represent(lookup = tablename)
@@ -371,10 +653,10 @@ class FinVoucherModel(S3Model):
                              ),
                      Field("status",
                            default = "SCHEDULED",
+                           represent = s3_options_represent(status_repr),
                            requires = IS_IN_SET(billing_status,
                                                 zero = None,
                                                 ),
-                           represent = S3Represent(options=status_repr),
                            writable = False, # Only writable while scheduled
                            ),
                      Field("vouchers_total", "integer",
@@ -462,7 +744,7 @@ class FinVoucherModel(S3Model):
             msg_record_modified = T("Billing updated"),
             msg_record_deleted = T("Billing deleted"),
             msg_list_empty = T("No Billings currently registered"),
-        )
+            )
 
         # -------------------------------------------------------------------------
         # Voucher invoice
@@ -523,10 +805,10 @@ class FinVoucherModel(S3Model):
                      Field("refno",
                            label = T("Ref.No."),
                            represent = lambda v, row=None: v if v else "-",
-                           comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Ref.No."),
-                                                           T("Internal identifier to track the payment (optional), e.g. payment order number"),
-                                                           ),
+                           comment = DIV(_class = "tooltip",
+                                         _title = "%s|%s" % (T("Ref.No."),
+                                                             T("Internal identifier to track the payment (optional), e.g. payment order number"),
+                                                             ),
                                          ),
                            ),
                      self.hrm_human_resource_id(
@@ -559,8 +841,8 @@ class FinVoucherModel(S3Model):
                            ),
                      Field("account_number",
                            label = T("Account Number (IBAN)"),
-                           requires = IS_IBAN(),
                            represent = IS_IBAN.represent,
+                           requires = IS_IBAN(),
                            writable = False,
                            ),
                      Field("bank_name",
@@ -578,11 +860,10 @@ class FinVoucherModel(S3Model):
                      Field("status",
                            default = "NEW",
                            label = T("Status"),
+                           represent = s3_options_represent(dict(invoice_status)),
                            requires = IS_IN_SET(invoice_status,
                                                 zero = None,
                                                 ),
-                           represent = S3Represent(options=dict(invoice_status),
-                                                   ),
                            writable = False,
                            ),
                      Field("reason", "text",
@@ -659,7 +940,7 @@ class FinVoucherModel(S3Model):
             msg_record_modified = T("Invoice updated"),
             msg_record_deleted = T("Invoice deleted"),
             msg_list_empty = T("No Invoices currently registered"),
-        )
+            )
 
         # Reusable field
         represent = fin_VoucherInvoiceRepresent()
@@ -691,8 +972,8 @@ class FinVoucherModel(S3Model):
 
         tablename = "fin_voucher_claim"
         define_table(tablename,
-                     program_id(writable=False),
-                     billing_id(writable=False),
+                     program_id(writable = False),
+                     billing_id(writable = False),
                      Field("pe_id", "reference pr_pentity",
                            label = T("Provider##fin"),
                            represent = pe_represent,
@@ -712,10 +993,10 @@ class FinVoucherModel(S3Model):
                      Field("refno",
                            label = T("Ref.No."),
                            represent = lambda v, row=None: v if v else "-",
-                           comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Ref.No."),
-                                                           T("A reference number for bookkeeping purposes (optional, for your own use)"),
-                                                           ),
+                           comment = DIV(_class = "tooltip",
+                                         _title = "%s|%s" % (T("Ref.No."),
+                                                             T("A reference number for bookkeeping purposes (optional, for your own use)"),
+                                                             ),
                                          ),
                            ),
 
@@ -769,11 +1050,10 @@ class FinVoucherModel(S3Model):
                      Field("status",
                            default = "NEW",
                            label = T("Status"),
+                           represent = s3_options_represent(dict(status_repr)),
                            requires = IS_IN_SET(claim_status,
                                                 zero = None,
                                                 ),
-                           represent = S3Represent(options=dict(status_repr),
-                                                   ),
                            writable = False,
                            ),
 
@@ -825,10 +1105,12 @@ class FinVoucherModel(S3Model):
             msg_record_modified = T("Compensation Claim updated"),
             msg_record_deleted = T("Compensation Claim deleted"),
             msg_list_empty = T("No Compensation Claims currently registered"),
-        )
+            )
 
         # Reusable field
-        represent = S3Represent(lookup=tablename, fields=["refno", "date"])
+        represent = S3Represent(lookup = tablename,
+                                fields = ["refno", "date"],
+                                )
         claim_id = S3ReusableField("claim_id", "reference %s" % tablename,
                                    label = T("Compensation Claim"),
                                    represent = represent,
@@ -845,7 +1127,7 @@ class FinVoucherModel(S3Model):
         #
         tablename = "fin_voucher_eligibility_type"
         define_table(tablename,
-                     program_id(empty=False),
+                     program_id(empty = False),
                      Field("name",
                            label = T("Type of Eligibility"),
                            requires = IS_NOT_EMPTY(),
@@ -880,9 +1162,11 @@ class FinVoucherModel(S3Model):
             msg_record_modified = T("Eligibility Type updated"),
             msg_record_deleted = T("Eligibility Type deleted"),
             msg_list_empty = T("No Eligibility Types currently defined"),
-        )
+            )
 
-        represent = S3Represent(lookup = tablename, translate = True)
+        represent = S3Represent(lookup = tablename,
+                                translate = True,
+                                )
         eligibility_type_id = S3ReusableField("eligibility_type_id", "reference %s" % tablename,
                                               label = T("Type of Eligibility"),
                                               ondelete = "RESTRICT",
@@ -918,17 +1202,17 @@ class FinVoucherModel(S3Model):
                            writable = False,
                            ),
                      s3_date("bearer_dob",
+                             empty = not bearer_dob,
                              future = 0,
                              label = T("Beneficiary Date of Birth"),
                              readable = bearer_dob,
                              writable = bearer_dob,
-                             empty = not bearer_dob,
                              ),
                      Field("bearer_pin",
                            label = T("PIN"),
+                           requires = [IS_NOT_EMPTY(), IS_LENGTH(maxsize=10, minsize=4)] if bearer_pin else None,
                            readable = bearer_pin,
                            writable = bearer_pin,
-                           requires = [IS_NOT_EMPTY(), IS_LENGTH(maxsize=10, minsize=4)] if bearer_pin else None,
                            ),
                      Field("initial_credit", "integer",
                            label = T("Initial Credit##fin"),
@@ -937,8 +1221,8 @@ class FinVoucherModel(S3Model):
                            writable = False,
                            ),
                      Field("credit_spent", "integer",
-                           label = T("Credit Redeemed"),
                            default = 0,
+                           label = T("Credit Redeemed"),
                            writable = False,
                            ),
                      Field("single_debit", "boolean",
@@ -948,8 +1232,8 @@ class FinVoucherModel(S3Model):
                            writable = False,
                            ),
                      Field("balance", "integer",
-                           label = T("Credit##fin"),
                            default = 0,
+                           label = T("Credit##fin"),
                            writable = False,
                            ),
                      s3_date(label = T("Issued On"),
@@ -989,7 +1273,7 @@ class FinVoucherModel(S3Model):
             msg_record_modified = T("Voucher updated"),
             msg_record_deleted = T("Voucher deleted"),
             msg_list_empty = T("No Vouchers currently registered"),
-        )
+            )
 
         # Reusable field
         voucher_id = S3ReusableField("voucher_id", "reference %s" % tablename,
@@ -1018,21 +1302,21 @@ class FinVoucherModel(S3Model):
                            ),
                      Field("signature", length=64,
                            label = T("Voucher ID"),
-                           requires = IS_ONE_OF(db, "fin_voucher.signature"),
                            represent = lambda v, row=None: v if v else "-",
+                           requires = IS_ONE_OF(db, "fin_voucher.signature"),
                            widget = S3QRInput(),
                            ),
                      s3_date("bearer_dob",
+                             empty = not bearer_dob,
                              label = T("Beneficiary Date of Birth"),
                              readable = bearer_dob,
                              writable = bearer_dob,
-                             empty = not bearer_dob,
                              ),
                      Field("bearer_pin",
                            label = T("PIN"),
+                           requires = IS_NOT_EMPTY() if bearer_pin else None,
                            readable = bearer_pin,
                            writable = bearer_pin,
-                           requires = IS_NOT_EMPTY() if bearer_pin else None,
                            ),
                      s3_date(default = "now",
                              label = T("Date Effected"),
@@ -1045,13 +1329,13 @@ class FinVoucherModel(S3Model):
                            writable = False,
                            ),
                      Field("balance", "integer",
-                           label = T("Balance##fin"),
                            default = 0,
+                           label = T("Balance##fin"),
                            writable = False,
                            ),
                      Field("cancelled", "boolean",
-                           label = T("Cancelled##fin"),
                            default = False,
+                           label = T("Cancelled##fin"),
                            represent = s3_yes_no_represent,
                            writable = False,
                            ),
@@ -1099,7 +1383,7 @@ class FinVoucherModel(S3Model):
             msg_record_modified = T("Accepted Voucher updated"),
             msg_record_deleted = T("Accepted Voucher deleted"),
             msg_list_empty = T("No Accepted Vouchers currently registered"),
-        )
+            )
 
         # Reusable field
         debit_id = S3ReusableField("debit_id", "reference %s" % tablename,
@@ -1128,10 +1412,10 @@ class FinVoucherModel(S3Model):
         tablename = "fin_voucher_transaction"
         define_table(tablename,
                      program_id(empty = False),
-                     s3_datetime(default="now"),
+                     s3_datetime(default = "now"),
                      Field("type",
                            label = T("Type"),
-                           represent = S3Represent(options=transaction_types),
+                           represent = s3_options_represent(transaction_types),
                            requires = IS_IN_SET(transaction_types),
                            ),
                      Field("credit", "integer",
@@ -1188,7 +1472,7 @@ class FinVoucherModel(S3Model):
             msg_record_modified = T("Transaction updated"),
             msg_record_deleted = T("Transaction deleted"),
             msg_list_empty = T("No Transactions currently registered"),
-        )
+            )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
@@ -1218,7 +1502,6 @@ class FinVoucherModel(S3Model):
         T = current.T
 
         db = current.db
-        s3db = current.s3db
 
         form_vars = form.vars
         if "id" in form_vars:
@@ -1228,17 +1511,16 @@ class FinVoucherModel(S3Model):
         else:
             record_id = None
 
-        table = s3db.fin_voucher_billing
+        table = current.s3db.fin_voucher_billing
 
         # Get the existing record
         if record_id:
-            query = (table.id == record_id)
-            record = db(query).select(table.id,
-                                      table.program_id,
-                                      table.date,
-                                      table.status,
-                                      limitby=(0, 1),
-                                      ).first()
+            record = db(table.id == record_id).select(table.id,
+                                                      table.program_id,
+                                                      table.date,
+                                                      table.status,
+                                                      limitby = (0, 1),
+                                                      ).first()
         else:
             record = None
 
@@ -1281,7 +1563,9 @@ class FinVoucherModel(S3Model):
                     query &= (table.status == "SCHEDULED") & \
                              (table.date == date) & \
                              (table.deleted == False)
-                    row = db(query).select(table.id, limitby = (0, 1)).first()
+                    row = db(query).select(table.id,
+                                           limitby = (0, 1),
+                                           ).first()
                     if row:
                         form.errors.date = T("Billing already scheduled for that date")
 
@@ -1307,13 +1591,12 @@ class FinVoucherModel(S3Model):
 
         # Get the record
         table = s3db.fin_voucher_billing
-        query = (table.id == record_id)
-        billing = db(query).select(table.id,
-                                   table.date,
-                                   table.status,
-                                   table.task_id,
-                                   limitby = (0, 1),
-                                   ).first()
+        billing = db(table.id == record_id).select(table.id,
+                                                   table.date,
+                                                   table.status,
+                                                   table.task_id,
+                                                   limitby = (0, 1),
+                                                   ).first()
 
         if not billing:
             return
@@ -1322,13 +1605,12 @@ class FinVoucherModel(S3Model):
         ttable = s3db.scheduler_task
         task_id = billing.task_id
         if task_id:
-            query = (ttable.id == task_id)
-            task = db(query).select(ttable.id,
-                                    ttable.status,
-                                    ttable.start_time,
-                                    ttable.next_run_time,
-                                    limitby = (0, 1),
-                                    ).first()
+            task = db(ttable.id == task_id).select(ttable.id,
+                                                   ttable.status,
+                                                   ttable.start_time,
+                                                   ttable.next_run_time,
+                                                   limitby = (0, 1),
+                                                   ).first()
         else:
             task = None
 
@@ -1339,7 +1621,7 @@ class FinVoucherModel(S3Model):
             if start < now:
                 # Earliest start time 30 seconds in the future
                 # => to leave a grace period to manually abort the process
-                start = now + datetime.timedelta(seconds=30)
+                start = now + datetime.timedelta(seconds = 30)
 
             if task:
                 # Make sure task starts at the right time
@@ -1396,20 +1678,16 @@ class FinVoucherModel(S3Model):
         else:
             record_id = None
 
-        db = current.db
-        s3db = current.s3db
-
-        table = s3db.fin_voucher_claim
+        table = current.s3db.fin_voucher_claim
         if record_id:
             # Get the record
-            query = (table.id == record_id)
-            record = db(query).select(table.id,
-                                      table.status,
-                                      table.invoice_id,
-                                      table.account_holder,
-                                      table.account_number,
-                                      limitby = (0, 1),
-                                      ).first()
+            record = current.db(table.id == record_id).select(table.id,
+                                                              table.status,
+                                                              table.invoice_id,
+                                                              table.account_holder,
+                                                              table.account_number,
+                                                              limitby = (0, 1),
+                                                              ).first()
         else:
             record = None
 
@@ -1471,18 +1749,14 @@ class FinVoucherModel(S3Model):
         else:
             return
 
-        db = current.db
-        s3db = current.s3db
-
-        table = s3db.fin_voucher_claim
-        query = (table.id == record_id)
-        record = db(query).select(table.id,
-                                  table.billing_id,
-                                  table.status,
-                                  table.invoice_id,
-                                  table.comments,
-                                  limitby = (0, 1),
-                                  ).first()
+        table = current.s3db.fin_voucher_claim
+        record = current.db(table.id == record_id).select(table.id,
+                                                          table.billing_id,
+                                                          table.status,
+                                                          table.invoice_id,
+                                                          table.comments,
+                                                          limitby = (0, 1),
+                                                          ).first()
         if not record:
             return
 
@@ -1659,10 +1933,9 @@ class FinVoucherModel(S3Model):
               matches the program and is permissible for the issuer
         """
 
+        T = current.T
         db = current.db
         s3db = current.s3db
-
-        T = current.T
         settings = current.deployment_settings
 
         table = s3db.fin_voucher
@@ -1740,7 +2013,8 @@ class FinVoucherModel(S3Model):
             - generate voucher signature
             - set expiration date
 
-            @param form: the FORM
+            Args:
+                form: the FORM
         """
 
         # Get record ID
@@ -1753,13 +2027,12 @@ class FinVoucherModel(S3Model):
             return
 
         table = current.s3db.fin_voucher
-        query = (table.id == record_id)
-        voucher = current.db(query).select(table.id,
-                                           table.uuid,
-                                           table.program_id,
-                                           table.initial_credit,
-                                           limitby = (0, 1),
-                                           ).first()
+        voucher = current.db(table.id == record_id).select(table.id,
+                                                           table.uuid,
+                                                           table.program_id,
+                                                           table.initial_credit,
+                                                           limitby = (0, 1),
+                                                           ).first()
 
         if not voucher:
             return
@@ -1773,7 +2046,7 @@ class FinVoucherModel(S3Model):
             validity_period = pdata.validity_period
             if validity_period:
                 now = current.request.utcnow
-                update["valid_until"] = (now + datetime.timedelta(days=validity_period)).date()
+                update["valid_until"] = (now + datetime.timedelta(days = validity_period)).date()
 
         # Set default initial credit from program
         if voucher.initial_credit is None:
@@ -1806,7 +2079,7 @@ class FinVoucherModel(S3Model):
             else:
                 return T("Redeemed##fin")
         else:
-            return current.messages["NONE"]
+            return NONE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1918,7 +2191,8 @@ class FinVoucherModel(S3Model):
             Onaccept of debit:
             - transfer credit (redeem)
 
-            @param form: the FORM
+            Args:
+                form: the FORM
         """
 
         # Get record ID
@@ -1935,12 +2209,11 @@ class FinVoucherModel(S3Model):
 
         # Look up the debit
         table = s3db.fin_voucher_debit
-        query = (table.id == record_id)
-        debit = db(query).select(table.id,
-                                 table.signature,
-                                 table.quantity,
-                                 limitby = (0, 1),
-                                 ).first()
+        debit = db(table.id == record_id).select(table.id,
+                                                 table.signature,
+                                                 table.quantity,
+                                                 limitby = (0, 1),
+                                                 ).first()
         if not debit:
             return
 
@@ -1984,7 +2257,7 @@ class FinVoucherModel(S3Model):
             else:
                 return T("Compensated##fin")
         else:
-            return current.messages["NONE"]
+            return NONE
 
 # =============================================================================
 class FinPaymentServiceModel(S3Model):
@@ -2011,14 +2284,14 @@ class FinPaymentServiceModel(S3Model):
                      Field("name",
                            requires = IS_NOT_EMPTY(),
                            ),
-                     self.org_organisation_id(empty=False),
+                     self.org_organisation_id(empty = False),
                      Field("api_type",
                            default = "PAYPAL",
                            label = T("API Type"),
+                           represent = s3_options_represent(api_types),
                            requires = IS_IN_SET(api_types,
                                                 zero = None,
                                                 ),
-                           represent = S3Represent(options = api_types),
                            ),
                      Field("base_url",
                            label = T("Base URL"),
@@ -2072,7 +2345,7 @@ class FinPaymentServiceModel(S3Model):
             msg_record_created = T("Payment Service added"),
             msg_record_modified = T("Payment Service updated"),
             msg_record_deleted = T("Payment Service removed"),
-            msg_list_empty = T("No Payment Services currently registered")
+            msg_list_empty = T("No Payment Services currently registered"),
             )
 
         # Components
@@ -2084,7 +2357,9 @@ class FinPaymentServiceModel(S3Model):
                             )
 
         # TODO Implement represent using API type + org name
-        represent = S3Represent(lookup=tablename, show_link=True)
+        represent = S3Represent(lookup = tablename,
+                                show_link = True,
+                                )
         service_id = S3ReusableField("service_id", "reference %s" % tablename,
                                      label = T("Payment Service"),
                                      ondelete = "RESTRICT",
@@ -2106,8 +2381,7 @@ class FinPaymentServiceModel(S3Model):
                      service_id(empty = False,
                                 ondelete = "CASCADE",
                                 ),
-                     s3_datetime(default="now",
-                                 ),
+                     s3_datetime(default = "now"),
                      Field("action"),
                      Field("result"),
                      Field("reason", "text"),
@@ -2213,10 +2487,12 @@ class FinProductModel(S3Model):
             msg_record_modified = T("Product updated"),
             msg_record_deleted = T("Product deleted"),
             msg_list_empty = T("No Products currently registered"),
-        )
+            )
 
         # Reusable field
-        represent = S3Represent(lookup=tablename, show_link=True)
+        represent = S3Represent(lookup = tablename,
+                                show_link = True,
+                                )
         product_id = S3ReusableField("product_id", "reference %s" % tablename,
                                      label = T("Product"),
                                      represent = represent,
@@ -2236,14 +2512,12 @@ class FinProductModel(S3Model):
         #
         tablename = "fin_product_service"
         define_table(tablename,
-                     product_id(
-                         empty = False,
-                         ondelete = "CASCADE",
-                         ),
-                     self.fin_service_id(
-                         empty = False,
-                         ondelete = "CASCADE",
-                         ),
+                     product_id(empty = False,
+                                ondelete = "CASCADE",
+                                ),
+                     self.fin_service_id(empty = False,
+                                         ondelete = "CASCADE",
+                                         ),
                      Field("is_registered", "boolean",
                            default = False,
                            readable = False,
@@ -2407,12 +2681,12 @@ class FinSubscriptionModel(S3Model):
                            requires = IS_INT_IN_RANGE(1, 365),
                            ),
                      Field("fixed", "boolean",
-                           label = T("Fixed-term"),
                            default = False,
-                           comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Fixed-term"),
-                                                           T("Subscription plan has a fixed total number of cycles"),
-                                                           ),
+                           label = T("Fixed-term"),
+                           comment = DIV(_class = "tooltip",
+                                         _title = "%s|%s" % (T("Fixed-term"),
+                                                             T("Subscription plan has a fixed total number of cycles"),
+                                                             ),
                                          ),
                            ),
                      # TODO show only if fixed is checked
@@ -2422,17 +2696,17 @@ class FinSubscriptionModel(S3Model):
                            ),
                      Field("price", "double",
                            label = T("Price"),
+                           represent = price_represent,
                            requires = IS_FLOAT_AMOUNT(minimum = 0.01,
                                                       ),
-                           represent = price_represent,
                            ),
                      s3_currency(),
                      Field("status",
                            default = "ACTIVE",
+                           represent = s3_options_represent(plan_statuses),
                            requires = IS_IN_SET(plan_statuses,
                                                 zero = None,
                                                 ),
-                           represent = S3Represent(options = plan_statuses),
                            ),
                      s3_comments(),
                      *s3_meta_fields())
@@ -2473,7 +2747,7 @@ class FinSubscriptionModel(S3Model):
             )
 
         # Reusable field
-        represent = fin_SubscriptionPlanRepresent(show_link=True)
+        represent = fin_SubscriptionPlanRepresent(show_link = True)
         plan_id = S3ReusableField("plan_id", "reference %s" % tablename,
                                   label = T("Plan"),
                                   represent = represent,
@@ -2577,20 +2851,20 @@ class FinSubscriptionModel(S3Model):
                                  ),
                      Field("status",
                            default = "NEW",
+                           represent = s3_options_represent(subscription_statuses),
                            requires = IS_IN_SET(subscription_statuses,
                                                 zero = None,
                                                 ),
-                           represent = S3Represent(options = subscription_statuses),
                            writable = False,
                            ),
                      s3_datetime("status_date",
-                                 label = T("Status verified on"),
                                  default = "now",
+                                 label = T("Status verified on"),
                                  writable = False,
                                  ),
                      Field("deliverable", "boolean",
-                           label = T("Deliverable"),
                            default = False,
+                           label = T("Deliverable"),
                            writable = False,
                            ),
                      Field("balance", "double",
@@ -2656,14 +2930,7 @@ class FinSubscriptionModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
-        """ Safe defaults for names in case the module is disabled """
-
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2788,22 +3055,21 @@ class fin_VoucherInvoiceRepresent(S3Represent):
 
     def __init__(self, show_link=False, show_reason=True):
         """
-            Constructor
-
-            @param show_link: show representation as clickable link
-            @param show_reason: if invoice was rejected, include the
-                                reason for rejection
+            Args:
+                show_link: show representation as clickable link
+                show_reason: if invoice was rejected, include the
+                             reason for rejection
         """
 
-        super(fin_VoucherInvoiceRepresent, self).__init__(
-                                                lookup = "fin_voucher_invoice",
-                                                fields = ["invoice_no",
-                                                          "date",
-                                                          "status",
-                                                          "reason",
-                                                          ],
-                                                show_link = show_link,
-                                                )
+        super(fin_VoucherInvoiceRepresent,
+              self).__init__(lookup = "fin_voucher_invoice",
+                             fields = ["invoice_no",
+                                       "date",
+                                       "status",
+                                       "reason",
+                                       ],
+                             show_link = show_link,
+                             )
 
         self.show_reason = show_reason
 
@@ -2812,7 +3078,8 @@ class fin_VoucherInvoiceRepresent(S3Represent):
         """
             Represent a row
 
-            @param row: the Row
+            Args:
+                row: the Row
         """
 
         if hasattr(row, "fin_voucher_invoice"):
@@ -2827,18 +3094,19 @@ class fin_VoucherInvoiceRepresent(S3Represent):
         status = invoice.status
         status_repr = current.s3db.fin_voucher_invoice_status
 
-        repr_str = "%s %s [%s] - %s" % (
-                        T("No."),
-                        table.invoice_no.represent(invoice.invoice_no),
-                        table.date.represent(invoice.date),
-                        status_repr.get(status, self.default),
-                        )
+        repr_str = "%s %s [%s] - %s" % (T("No."),
+                                        table.invoice_no.represent(invoice.invoice_no),
+                                        table.date.represent(invoice.date),
+                                        status_repr.get(status, self.default),
+                                        )
 
         if status == "REJECTED" and self.show_reason:
             reason = invoice.reason
             if reason:
                 repr_str = DIV(repr_str,
-                               P(reason, _class="status-reason"),
+                               P(reason,
+                                 _class = "status-reason",
+                                 ),
                                )
         return repr_str
 
@@ -2848,24 +3116,24 @@ class fin_SubscriptionPlanRepresent(S3Represent):
 
     def __init__(self, show_link=False):
         """
-            Constructor
-
-            @param show_link: show representation as clickable link
+            Args:
+                show_link: show representation as clickable link
         """
 
-        super(fin_SubscriptionPlanRepresent, self).__init__(
-                                                lookup = "fin_subscription_plan",
-                                                show_link = show_link,
-                                                )
+        super(fin_SubscriptionPlanRepresent,
+              self).__init__(lookup = "fin_subscription_plan",
+                             show_link = show_link,
+                             )
 
     # -------------------------------------------------------------------------
     def lookup_rows(self, key, values, fields=None):
         """
             Custom rows lookup
 
-            @param key: the key Field
-            @param values: the values
-            @param fields: unused (retained for API compatibility)
+            Args:
+                key: the key Field
+                values: the values
+                fields: unused (retained for API compatibility)
         """
 
         table = self.table
@@ -2894,7 +3162,8 @@ class fin_SubscriptionPlanRepresent(S3Represent):
         """
             Represent a row
 
-            @param row: the Row
+            Args:
+                row: the Row
         """
 
         try:
@@ -2921,7 +3190,7 @@ def fin_rheader(r, tabs=None):
 
     tablename, record = s3_rheader_resource(r)
     if tablename != r.tablename:
-        resource = current.s3db.resource(tablename, id=record.id)
+        resource = current.s3db.resource(tablename, id = record.id)
     else:
         resource = r.resource
 
@@ -3022,16 +3291,15 @@ def fin_rheader(r, tabs=None):
     return rheader
 
 # =============================================================================
-class fin_VoucherProgram(object):
+class fin_VoucherProgram:
     """
         Helper to record transactions in voucher programs
     """
 
     def __init__(self, program_id):
         """
-            Constructor
-
-            @param program_id: the voucher program ID
+            Args:
+                program_id: the voucher program ID
         """
 
         self.program_id = program_id
@@ -3043,7 +3311,8 @@ class fin_VoucherProgram(object):
         """
             The program record (lazy property)
 
-            @returns: the program record (Row)
+            Returns:
+                Row (program record)
         """
 
         program = self._program
@@ -3076,11 +3345,13 @@ class fin_VoucherProgram(object):
         """
             Transfer credit from the program to the voucher
 
-            @param voucher_id: the new voucher
-            @param credit: the initial credit to transfer to the voucher
+            Args:
+                voucher_id: the new voucher
+                credit: the initial credit to transfer to the voucher
 
-            @returns: the number of credit transferred to the voucher,
-                      or None on failure
+            Returns:
+                The number of credit transferred to the voucher,
+                or None on failure
         """
 
         program = self.program
@@ -3139,10 +3410,12 @@ class fin_VoucherProgram(object):
             Charge back the remaining balance of a voucher to the program,
             thereby voiding the voucher
 
-            @param voucher_id: the voucher ID
+            Args:
+                voucher_id: the voucher ID
 
-            @returns: the number of credits charged back to the program,
-                      or None on failure
+            Returns:
+                The number of credits charged back to the program,
+                or None on failure
         """
 
         program = self.program
@@ -3197,11 +3470,13 @@ class fin_VoucherProgram(object):
                 2) return credit from the voucher to the program's credit
                    account
 
-            @param voucher_id: the voucher ID
-            @param debit_id: the debit ID
-            @param credit: the credit to transfer (default 1)
+            Args:
+                voucher_id: the voucher ID
+                debit_id: the debit ID
+                credit: the credit to transfer (default 1)
 
-            @returns: the credit deducted from the voucher
+            Returns:
+                The credit deducted from the voucher
         """
 
         program = self.program
@@ -3289,20 +3564,22 @@ class fin_VoucherProgram(object):
             adjusts the program's credit/compensation balances accordingly,
             also reverses any voiding of single-debit vouchers
 
-            @param debit_id: the debit ID
-            @param reason: the reason for cancellation (required)
+            Args:
+                debit_id: the debit ID
+                reason: the reason for cancellation (required)
 
-            @returns: tuple (credits, error)
-                      - the number of credits returned, or None on failure
-                      - the failure reason
+            Returns:
+                tuple (credits, error)
+                    - the number of credits returned, or None on failure
+                    - the failure reason
 
-            NB Cancelling a debit is only possible while the debit is not
-               part of any other transactions, and has not yet been included
-               in a billing or compensated
-
-            NB Implementations should ensure that debits can only be cancelled
-               by the organisation that originally created them (i.e. the provider
-               who has accepted the voucher), so as to not breach trust
+            Note:
+                Cancelling a debit is only possible while the debit is not
+                    part of any other transactions, and has not yet been included
+                    in a billing or compensated
+                Implementations should ensure that debits can only be cancelled
+                    by the organisation that originally created them (i.e. the provider
+                    who has accepted the voucher), so as to not breach trust
         """
 
         program = self.program
@@ -3407,10 +3684,13 @@ class fin_VoucherProgram(object):
         """
             Verify if a debit can still be cancelled
 
-            @param debit_id: the debit ID
-            @returns: tuple (debit, error)
-                      - the debit record if cancellable
-                      - otherwise None, and the reason why not
+            Args:
+                debit_id: the debit ID
+
+            Returns:
+                tuple (debit, error)
+                    - the debit record if cancellable
+                    - otherwise None, and the reason why not
         """
 
         program = self.program
@@ -3461,10 +3741,12 @@ class fin_VoucherProgram(object):
             Compensate a debit (transfer credit back to the program), usually
             when the provider is compensated for the service rendered
 
-            @param debit_id: the debit ID
-            @param credit: the number of credits compensated
+            Args:
+                debit_id: the debit ID
+                credit: the number of credits compensated
 
-            @returns: the number of credits transferred, None on failure
+            Returns:
+                The number of credits transferred, None on failure
         """
 
         program = self.program
@@ -3516,9 +3798,11 @@ class fin_VoucherProgram(object):
         """
             Verify integrity of a transaction (=check the vhash)
 
-            @param transaction_id: the transaction record ID
+            Args:
+                transaction_id: the transaction record ID
 
-            @returns: True|False whether the transaction is intact
+            Returns:
+                True|False whether the transaction is intact
         """
 
         db = current.db
@@ -3568,11 +3852,14 @@ class fin_VoucherProgram(object):
             - verify all transactions
             - verify all balances, vouchers and debits
 
-            @param correct: correct any incorrect balances
+            Args:
+                correct: correct any incorrect balances
 
-            @returns: audit report
+            Returns:
+                audit report
 
-            TODO: implement
+            TODO:
+                implement
         """
 
         return True
@@ -3583,11 +3870,13 @@ class fin_VoucherProgram(object):
             Get the earliest possible billing date for the program
               - must be after any active or completed billing processes
 
-            @param billing_id: the billing ID
-            @param configure: a Field to configure accordingly
-                              (typically fin_voucher_billing.date itself)
+            Args:
+                billing_id: the billing ID
+                configure: a Field to configure accordingly
+                           (typically fin_voucher_billing.date itself)
 
-            @returns: the earliest possible billing date
+            Returns:
+                The earliest possible billing date
         """
 
         program = self.program
@@ -3609,13 +3898,13 @@ class fin_VoucherProgram(object):
                                orderby = ~btable.date,
                                ).first()
 
-        earliest = row.date + datetime.timedelta(days=1) if row else None
+        earliest = row.date + datetime.timedelta(days = 1) if row else None
 
         if earliest and configure:
             default = configure.default
             configure.default = max(earliest, default) if default else earliest
-            configure.requires = IS_EMPTY_OR(IS_UTC_DATE(minimum=earliest))
-            configure.widget = S3CalendarWidget(minimum=earliest)
+            configure.requires = IS_EMPTY_OR(IS_UTC_DATE(minimum = earliest))
+            configure.widget = S3CalendarWidget(minimum = earliest)
 
         return earliest
 
@@ -3624,10 +3913,12 @@ class fin_VoucherProgram(object):
         """
             Generate a verification hash (vhash) for the transaction
 
-            @param transaction: the transaction data
-            @param ohash: the hash of the preceding transaction
+            Args:
+                transaction: the transaction data
+                ohash: the hash of the preceding transaction
 
-            @returns: the hash as string
+            Returns:
+                The hash as string
         """
 
         # Generate signature from transaction data
@@ -3653,9 +3944,11 @@ class fin_VoucherProgram(object):
         """
             Record a transaction under this program
 
-            @param data: the transaction details
+            Args:
+                data: the transaction details
 
-            @returns: True|False for success or failure
+            Returns:
+                True|False for success or failure
         """
 
         program = self.program
@@ -3671,14 +3964,15 @@ class fin_VoucherProgram(object):
             # Invalid - total change must always be 0
             return False
 
+        s3db = current.s3db
+
         # Get last preceding transaction in this program
-        table = current.s3db.fin_voucher_transaction
-        query = (table.program_id == program.id)
-        row = current.db(query).select(table.uuid,
-                                       table.vhash,
-                                       limitby = (0, 1),
-                                       orderby = ~(table.created_on)
-                                       ).first()
+        table = s3db.fin_voucher_transaction
+        row = current.db(table.program_id == program.id).select(table.uuid,
+                                                                table.vhash,
+                                                                limitby = (0, 1),
+                                                                orderby = ~(table.created_on),
+                                                                ).first()
         if row:
             ouuid = row.uuid
             ohash = row.vhash
@@ -3702,8 +3996,6 @@ class fin_VoucherProgram(object):
         transaction["vhash"] = self._hash(transaction, ohash)
         transaction["program_id"] = program.id
 
-        s3db = current.s3db
-
         # Write the transaction
         table = s3db.fin_voucher_transaction
         transaction["id"] = table.insert(**transaction)
@@ -3715,7 +4007,7 @@ class fin_VoucherProgram(object):
         return True
 
 # =============================================================================
-class fin_VoucherBilling(object):
+class fin_VoucherBilling:
     """
         Helper to facilitate the billing process for a voucher program
     """
@@ -3735,9 +4027,8 @@ class fin_VoucherBilling(object):
 
     def __init__(self, billing_id):
         """
-            Constructor
-
-            @param billing_id: the billing record ID
+            Args:
+                billing_id: the billing record ID
         """
 
         self.billing_id = billing_id
@@ -3751,9 +4042,11 @@ class fin_VoucherBilling(object):
         """
             Get the billing record (lazy property)
 
-            @returns: Row
+            Returns:
+                Row
 
-            @raises: ValueError if the billing reference is invalid
+            Raises:
+                ValueError if the billing reference is invalid
         """
 
         billing = self._record
@@ -3779,9 +4072,11 @@ class fin_VoucherBilling(object):
         """
             Get the voucher program for this billing process (lazy property)
 
-            @returns: fin_VoucherProgram
+            Returns:
+                fin_VoucherProgram
 
-            @raises: ValueError if the program reference is invalid
+            Raises:
+                ValueError if the program reference is invalid
         """
 
         program = self._program
@@ -3798,7 +4093,8 @@ class fin_VoucherBilling(object):
         """
             Verify all relevant debits, fix any incorrect balances
 
-            @returns: number of invalid transactions
+            Returns:
+                Number of invalid transactions
         """
 
         db = current.db
@@ -3872,9 +4168,11 @@ class fin_VoucherBilling(object):
             Generate claims for compensation for any unprocessed debits
             under this billing process
 
-            @returns: number of claims generated, None on error
+            Returns:
+                Number of claims generated, None on error
 
-            @raises: ValueError if the action is invalid
+            Raises:
+                ValueError if the action is invalid
         """
 
         # Activate the billing process
@@ -3994,7 +4292,7 @@ class fin_VoucherBilling(object):
         # If no claims have been generated, conclude the billing
         # right away (as there will be no later trigger)
         if total_claims == 0:
-            self.check_complete(claims_complete=True)
+            self.check_complete(claims_complete = True)
 
         return total_claims
 
@@ -4004,9 +4302,11 @@ class fin_VoucherBilling(object):
         """
             Generate an invoice for a claim
 
-            @param claim_id: the claim record ID
+            Args:
+                claim_id: the claim record ID
 
-            @returns: tuple (invoice_id, error)
+            Returns:
+                tuple (invoice_id, error)
         """
 
         db = current.db
@@ -4024,7 +4324,8 @@ class fin_VoucherBilling(object):
                  [ctable.bank_name, ctable.bank_address]
         query = (ctable.id == claim_id) & \
                 (ctable.deleted == False)
-        claim = db(query).select(limitby=(0, 1), *fields).first()
+        claim = db(query).select(limitby = (0, 1),
+                                 *fields).first()
 
         # Verify claim status
         if not claim:
@@ -4065,7 +4366,10 @@ class fin_VoucherBilling(object):
 
         # Customise invoice resource
         from s3 import S3Request
-        r = S3Request("fin", "voucher_invoice", args=[], get_vars={})
+        r = S3Request("fin", "voucher_invoice",
+                      args = [],
+                      get_vars = {},
+                      )
         r.customise_resource("fin_voucher_invoice")
 
         # Generate invoice
@@ -4105,11 +4409,10 @@ class fin_VoucherBilling(object):
         row = db(query).select(quantity_total).first()
 
         btable = s3db.fin_voucher_billing
-        query = (btable.id == invoice.billing_id)
-        db(query).update(quantity_invoiced = row[quantity_total],
-                         modified_by = btable.modified_by,
-                         modified_on = btable.modified_on,
-                         )
+        db(btable.id == invoice.billing_id).update(quantity_invoiced = row[quantity_total],
+                                                   modified_by = btable.modified_by,
+                                                   modified_on = btable.modified_on,
+                                                   )
 
         return invoice_id, None
 
@@ -4119,9 +4422,11 @@ class fin_VoucherBilling(object):
         """
             Check the integrity of an invoice/claim pair (=check the hashes)
 
-            @param invoice_id: the invoice ID
+            Args:
+                invoice_id: the invoice ID
 
-            @returns: True|False
+            Returns:
+                True|False
         """
 
         db = current.db
@@ -4135,7 +4440,8 @@ class fin_VoucherBilling(object):
         fields += [itable[fn] for fn in invoice_fields]
         query = (itable.id == invoice_id) & \
                 (itable.deleted == False)
-        invoice = db(query).select(limitby=(0, 1), *fields).first()
+        invoice = db(query).select(limitby = (0, 1),
+                                   *fields).first()
         if not invoice:
             return False
 
@@ -4180,7 +4486,8 @@ class fin_VoucherBilling(object):
         fields += [itable[fn] for fn in invoice_fields]
         query = (itable.id == invoice_id) & \
                 (itable.deleted == False)
-        invoice = db(query).select(limitby=(0, 1), *fields).first()
+        invoice = db(query).select(limitby = (0, 1),
+                                   *fields).first()
 
         # Verify that the invoice is status=PAID
         if not invoice:
@@ -4248,15 +4555,17 @@ class fin_VoucherBilling(object):
         row = db(query).select(quantity_total).first()
 
         btable = s3db.fin_voucher_billing
-        query = (btable.id == invoice.billing_id)
-        db(query).update(quantity_compensated = row[quantity_total],
-                         modified_by = btable.modified_by,
-                         modified_on = btable.modified_on,
-                         )
+        db(btable.id == invoice.billing_id).update(quantity_compensated = row[quantity_total],
+                                                   modified_by = btable.modified_by,
+                                                   modified_on = btable.modified_on,
+                                                   )
 
         # Customise invoice resource
         from s3 import S3Request
-        r = S3Request("fin", "voucher_invoice", args=[], get_vars={})
+        r = S3Request("fin", "voucher_invoice",
+                      args = [],
+                      get_vars = {},
+                      )
         r.customise_resource("fin_voucher_invoice")
 
         # Trigger onsettled-callback for invoice
@@ -4264,7 +4573,7 @@ class fin_VoucherBilling(object):
         if callable(cb):
             from gluon.tools import callback
             try:
-                callback(cb, invoice, tablename="fin_voucher_invoice")
+                callback(cb, invoice) # , tablename="fin_voucher_invoice" (if we ever define callbacks as a dict with tablename)
             except Exception:
                 import sys
                 error = sys.exc_info()[1]
@@ -4282,9 +4591,11 @@ class fin_VoucherBilling(object):
             Check whether this billing process is complete (+update status
             if so)
 
-            @param claims_complete: confirm that claim generation is complete
+            Args:
+                claims_complete: confirm that claim generation is complete
 
-            @returns: True|False
+            Returns:
+                True|False
         """
 
         db = current.db
@@ -4295,11 +4606,15 @@ class fin_VoucherBilling(object):
         ctable = s3db.fin_voucher_claim
         query = (ctable.billing_id == billing.id) & \
                 (ctable.deleted == False)
-        existing = db(query).select(ctable.id, limitby=(0, 1)).first()
+        existing = db(query).select(ctable.id,
+                                    limitby = (0, 1),
+                                    ).first()
         if existing:
             # Check if there are any unpaid claims
             query &= (ctable.status != "PAID")
-            pending = db(query).select(ctable.id, limitby=(0, 1)).first()
+            pending = db(query).select(ctable.id,
+                                       limitby = (0, 1),
+                                       ).first()
         else:
             # No claims generated yet?
             pending = not claims_complete
@@ -4320,7 +4635,8 @@ class fin_VoucherBilling(object):
             Check if this billing process has generated any claims
             or invoices
 
-            @returns: True|False
+            Returns:
+                True|False
         """
 
         db = current.db
@@ -4332,14 +4648,18 @@ class fin_VoucherBilling(object):
         ctable = s3db.fin_voucher_claim
         query = (ctable.billing_id == billing.id) & \
                 (ctable.deleted == False)
-        if db(query).select(ctable.id, limitby=(0, 1)).first():
+        if db(query).select(ctable.id,
+                            limitby = (0, 1),
+                            ).first():
             return True
 
         # Check for existing invoices
         itable = s3db.fin_voucher_invoice
         query = (itable.billing_id == billing.id) & \
                 (itable.deleted == False)
-        if db(query).select(itable.id, limitby=(0, 1)).first():
+        if db(query).select(itable.id,
+                            limitby = (0, 1),
+                            ).first():
             return True
 
         return False
@@ -4350,11 +4670,13 @@ class fin_VoucherBilling(object):
         """
             Generate a verification hash (vhash)
 
-            @param uuid: the uuid of the reference record
-            @param date: the date of the reference record
-            @param data: the data to hash
+            Args:
+                uuid: the uuid of the reference record
+                date: the date of the reference record
+                data: the data to hash
 
-            @returns: the hash as string
+            Returns:
+                The hash as string
         """
 
         data = {"data": data,
@@ -4376,10 +4698,12 @@ class fin_VoucherBilling(object):
                 - allocate all relevant debits of the program to the billing
                 - set the process status to "in progress"
 
-            @returns: the billing record (Row)
+            Returns:
+                The billing record (Row)
 
-            @raises: ValueError if the billing reference is invalid,
-                     or when the billing process is already closed
+            Raises:
+                ValueError if the billing reference is invalid,
+                or when the billing process is already closed
         """
 
         billing = self.billing
@@ -4423,9 +4747,11 @@ class fin_VoucherBilling(object):
                 - release all debits allocated to this process
                 - set the process status to "aborted" and record reason
 
-            @param reason: the reason to abort the process
+            Args:
+                reason: the reason to abort the process
 
-            @raises: ValueError if the billing reference is invalid,
+            Raises:
+                ValueError if the billing reference is invalid,
                      or when the billing process is already closed
         """
 
@@ -4462,33 +4788,30 @@ class fin_VoucherCancelDebit(S3Method):
         """
             Entry point for REST API
 
-            @param r: the S3Request instance
-            @param attr: controller attributes
+            Args:
+                r: the S3Request instance
+                attr: controller attributes
         """
 
-        resource = r.resource
-        if resource.tablename != "fin_voucher_debit" or not r.record:
+        if r.resource.tablename != "fin_voucher_debit" or not r.record:
             r.error(400, current.ERROR.BAD_RESOURCE)
 
-        output = {}
         if r.http in ("GET", "POST"):
             if r.interactive:
-                output = self.cancel(r, **attr)
+                return self.cancel(r, **attr)
             else:
                 r.error(415, current.ERROR.BAD_FORMAT)
         else:
             r.error(405, current.ERROR.BAD_METHOD)
-
-        current.response.view = self._view(r, "delete.html")
-        return output
 
     # -------------------------------------------------------------------------
     def cancel(self, r, **attr):
         """
             Cancel a voucher debit
 
-            @param r: the S3Request instance
-            @param attr: controller attributes
+            Args:
+                r: the S3Request instance
+                attr: controller attributes
         """
 
         # User must be permitted to update the debit
@@ -4511,13 +4834,15 @@ class fin_VoucherCancelDebit(S3Method):
         error = program.cancellable(debit.id)[1]
         if error:
             r.error(400, T("Voucher acceptance cannot be cancelled"),
-                    next = r.url(id=r.id, method=""),
+                    next = r.url(id = r.id,
+                                 method = "",
+                                 ),
                     )
 
         # Form fields and mark-required
         formfields = [Field("reason",
                             label = T("Reason for Cancellation##fin"),
-                            requires = IS_NOT_EMPTY(error_message=T("Reason must be specified")),
+                            requires = IS_NOT_EMPTY(error_message = T("Reason must be specified")),
                             ),
                       Field("do_cancel", "boolean",
                             label = T("Cancel this voucher acceptance"),
@@ -4531,7 +4856,9 @@ class fin_VoucherCancelDebit(S3Method):
 
         # Form buttons
         CANCEL = T("Cancel Voucher Acceptance")
-        buttons = [INPUT(_type="submit", _value=CANCEL)]
+        buttons = [INPUT(_type = "submit",
+                         _value = CANCEL,
+                         )]
 
         # Construct the form
         response.form_label_separator = ""
@@ -4570,7 +4897,11 @@ class fin_VoucherCancelDebit(S3Method):
                 response.confirmation = T("Cancellation successful")
 
             # Redirect to the debit
-            self.next = r.url(id=r.id, method="")
+            self.next = r.url(id = r.id,
+                              method = "",
+                              )
+
+        response.view = self._view(r, "delete.html")
 
         return {"title": self.crud_string("fin_voucher_debit",
                                           "title_display",
@@ -4583,10 +4914,12 @@ def fin_voucher_eligibility_types(program_ids, organisation_ids=None):
     """
         Look up permissible eligibility types for programs
 
-        @param program_ids: voucher program IDs
-        @param organisation_ids: issuer organisation IDs
+        Args:
+            program_ids: voucher program IDs
+            organisation_ids: issuer organisation IDs
 
-        @returns: dict {program_id: [eligibility_type_ids]}
+        Returns:
+            dict {program_id: [eligibility_type_ids]}
     """
 
     db = current.db
@@ -4637,17 +4970,19 @@ def fin_voucher_permitted_programs(mode = "issuer",
         Get a list of programs and organisations the current user
         is permitted to issue/accept vouchers for
 
-        @param mode: the permission to look for ('issuer'|'provider')
-        @param partners_only: organisations must also be project partners
-                              for the project under which a voucher program
-                              runs, in order to issue/accept vouchers under
-                              that program
-        @param c: override request.controller to look up for a
-                  different controller context
-        @param f: override request.function to look up for a
-                  different controller context
+        Args:
+            mode: the permission to look for ('issuer'|'provider')
+            partners_only: organisations must also be project partners
+                           for the project under which a voucher program
+                           runs, in order to issue/accept vouchers under
+                           that program
+            c: override request.controller to look up for a
+               different controller context
+            f: override request.function to look up for a
+               different controller context
 
-        @returns: tuple of lists (program_ids, org_ids, pe_ids)
+        Returns:
+            tuple of lists (program_ids, org_ids, pe_ids)
     """
 
     s3db = current.s3db
@@ -4718,8 +5053,11 @@ def fin_voucher_start_billing(billing_id=None):
         Scheduler task to start a billing process, to be scheduled
         via s3db_task
 
-        @param billing_id: the billing ID
-        @returns: success message
+        Args:
+            billing_id: the billing ID
+
+        Returns:
+            success message
     """
 
     if not billing_id:
@@ -4736,10 +5074,12 @@ def fin_voucher_settle_invoice(invoice_id=None, ptoken=None, user_id=None):
         Scheduler task to settle an invoice, to be scheduled
         via s3db_task
 
-        @param invoice_id: the invoice ID
-        @param ptoken: the processing authorization token
+        Args:
+            invoice_id: the invoice ID
+            ptoken: the processing authorization token
 
-        @returns: success message
+        Returns:
+            success message
     """
 
     auth = current.auth

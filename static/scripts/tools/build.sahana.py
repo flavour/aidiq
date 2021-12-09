@@ -465,16 +465,22 @@ def do_js(minimize,
                      "gis.latlon",
                      "gis.loader",
                      "gis.pois",
-                     #"inv_adj_item",
+                     "inv_adj_item",
+                     "inv_adj_rheader",
+                     "inv_commit",
                      "inv_item",
                      "inv_package",
                      "inv_recv",
                      "inv_recv_item",
-                     "inv_recv_multisite",
+                     "inv_recv_rheader",
+                     "inv_recv_sent_item",
                      "inv_req_item",
+                     "inv_req_item_inv_item",
+                     "inv_req_rheader",
                      "inv_send",
                      "inv_send_item",
                      "inv_send_package_item",
+                     "inv_send_rheader",
                      "msg",
                      "popup",
                      "register_validation",
@@ -513,17 +519,15 @@ def do_js(minimize,
     # Build JS for OL6 maps
     #
     cwd = os.getcwd()
-    # Assume ol-rollup at same level as eden
-    # https://github.com/openlayers/ol-rollup
-    # format: 'es'
-    rollup_dir = os.path.join("..", "..", "..", "..", "ol-rollup")
+    rollup_dir = os.path.join("..", "..", "..", "private", "ol-rollup")
     try:
         os.chdir(rollup_dir)
     except FileNotFoundError:
         info("Unable to build olgm as ol-rollup not found")
     else:
-        os.system("npm run-script build")
-        output_dir = os.path.join("..", request.application, "static", "scripts", "gis")
+        os.system("npm install")
+        os.system("npm run-script build-olgm")
+        output_dir = os.path.join("..", "..", "static", "scripts", "gis")
         move_to("olgm.min.js", output_dir)
     finally:
         # Restore CWD
@@ -778,15 +782,12 @@ def do_template(minimize, warnings):
             move_to(outputFilename, "../../themes/UCCE/js")
 
         cwd = os.getcwd()
-        # Assume ol5-rollup at same level as eden
-        rollup_dir = os.path.join("..", "..", "..", "..", "ol5-rollup")
+        rollup_dir = os.path.join("..", "..", "..", "private", "ol-rollup")
         os.chdir(rollup_dir)
-        os.system("npm run-script build")
-        # npm install -g terser
-        os.system("terser ol5.js -c --source-map -o ol5.min.js")
-        theme_dir = os.path.join("..", request.application, "static", "themes", "UCCE", "JS")
-        move_to("ol5.min.js", theme_dir)
-        #move_to("ol5.min.js.map", theme_dir)
+        os.system("npm install")
+        os.system("npm run-script build-dc_editor")
+        theme_dir = os.path.join("..", "..", "static", "themes", "UCCE", "JS")
+        move_to("ol.dc_editor.min.js", theme_dir)
         os.chdir(theme_dir)
         info("Compressing s3.ui.template.js")
         os.system("terser s3.ui.template.js -c  -o s3.ui.template.min.js")

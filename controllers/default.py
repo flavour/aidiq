@@ -135,7 +135,7 @@ def index():
     #    SHELTERS = ""
     #facility_box = HM("Facilities", _id="facility_box")(
     #    HM("Facilities", c="org", f="facility"),
-    #    HM("Hospitals", c="hms", f="hospital"),
+    #    HM("Hospitals", c="med", f="hospital"),
     #    HM("Offices", c="org", f="office"),
     #    HM(SHELTERS, c="cr", f="shelter"),
     #    HM("Warehouses", c="inv", f="warehouse"),
@@ -865,32 +865,34 @@ def organisation():
         limit = 4 * limit
 
     data = resource.select(list_fields,
-                           start=display_start,
-                           limit=limit,
-                           orderby=orderby,
-                           count=True,
-                           represent=True)
-    filteredrows = data["numrows"]
-    rfields = data["rfields"]
-    data = data["rows"]
+                           start = display_start,
+                           limit = limit,
+                           orderby = orderby,
+                           count = True,
+                           represent = True,
+                           )
 
-    dt = S3DataTable(rfields, data)
-    dt.defaultActionButtons(resource)
-    s3.no_formats = True
+    from s3 import S3DataTable
+    dt = S3DataTable(data["rfields"], data["rows"])
 
     if representation == "html":
+        from s3 import s3_request
+        r = s3_request("org", "organisation")
+        s3_action_buttons(r)
+        s3.no_formats = True
         items = dt.html(totalrows,
                         totalrows,
                         "org_dt",
-                        dt_ajax_url=URL(c="default",
-                                        f="organisation",
-                                        extension="aadata",
-                                        vars={"id": "org_dt"},
-                                        ),
-                        dt_pageLength=display_length,
-                        dt_pagination="true",
+                        dt_ajax_url = URL(c = "default",
+                                          f = "organisation",
+                                          extension = "aadata",
+                                          vars = {"id": "org_dt"},
+                                          ),
+                        dt_pageLength = display_length,
+                        dt_pagination = "true",
                         )
     elif representation == "aadata":
+        filteredrows = data["numrows"]
         draw = get_vars.get("draw")
         if draw:
             draw = int(draw)
@@ -930,7 +932,7 @@ def page():
                            ctable.body,
                            join = join,
                            cache = s3db.cache,
-                           limitby = (0, 1)
+                           limitby = (0, 1),
                            ).first()
     try:
         title = row.title
@@ -992,7 +994,9 @@ def person():
             # => redirect to login, then return here
             redirect(URL(f = "user",
                          args = ["login"],
-                         vars = {"_next": URL(f="person", args=request_args)},
+                         vars = {"_next": URL(f = "person",
+                                              args = request_args,
+                                              )},
                          ))
         request.args = [person_id]
 
@@ -1001,12 +1005,13 @@ def person():
         query = (table.person_id == person_id) & \
                 (table.deleted == False)
         hr = db(query).select(table.id,
-                              limitby = (0, 1)
+                              limitby = (0, 1),
                               )
         if hr:
             # Use the HRM controller/rheader
             request.get_vars["profile"] = 1
-            return s3db.hrm_person_controller()
+            from s3db.hrm import hrm_person_controller
+            return hrm_person_controller()
 
     # Use the PR controller/rheader
 
@@ -1044,12 +1049,15 @@ def person():
 
     set_method("pr", "person",
                method = "user_profile",
-               action = auth_profile_method)
+               action = auth_profile_method,
+               )
 
     # Custom Method for Contacts
+    from s3db.pr import pr_Contacts
     set_method("pr", "person",
                method = "contacts",
-               action = s3db.pr_Contacts)
+               action = pr_Contacts,
+               )
 
     #if settings.has_module("asset"):
     #    # Assets as component of people
@@ -1113,22 +1121,17 @@ def person():
                                    #"wmsbrowser_url",
                                    #"wmsbrowser_name",
                                    ]
-                    osm_table = s3db.gis_layer_openstreetmap
-                    openstreetmap = db(osm_table.deleted == False).select(osm_table.id,
-                                                                          limitby = (0, 1)
-                                                                          )
-                    if openstreetmap:
-                        # OpenStreetMap config
-                        s3db.add_components("gis_config",
-                                            auth_user_options = {"joinby": "pe_id",
-                                                                 "pkey": "pe_id",
-                                                                 "multiple": False,
-                                                                 },
-                                           )
-                        crud_fields += ["user_options.osm_oauth_consumer_key",
-                                        "user_options.osm_oauth_consumer_secret",
-                                        ]
-                    crud_form = s3base.S3SQLCustomForm(*crud_fields)
+                    #osm_table = s3db.gis_layer_openstreetmap
+                    #openstreetmap = db(osm_table.deleted == False).select(osm_table.id,
+                    #                                                      limitby = (0, 1)
+                    #                                                      )
+                    #if openstreetmap:
+                    #    # OpenStreetMap config
+                    #    crud_fields += ["osm_oauth_consumer_key",
+                    #                    "osm_oauth_consumer_secret",
+                    #                    ]
+                    from s3 import S3SQLCustomForm
+                    crud_form = S3SQLCustomForm(*crud_fields)
                     list_fields = ["name",
                                    "pe_default",
                                    ]
@@ -1143,10 +1146,10 @@ def person():
                 table.age_group.readable = False
                 table.age_group.writable = False
                 # Assume volunteers only between 12-81
-                dob = table.date_of_birth
-                dob.widget = S3CalendarWidget(past_months = 972,
-                                              future_months = -144,
-                                              )
+                from s3 import S3CalendarWidget
+                table.date_of_birth.widget = S3CalendarWidget(past_months = 972,
+                                                              future_months = -144,
+                                                              )
             return True
         else:
             # Disable non-interactive & import
@@ -1259,9 +1262,10 @@ def person():
             (T("My Maps"), "config"),
             ]
 
+    from s3db.pr import pr_rheader
     return s3_rest_controller("pr", "person",
                               rheader = lambda r, tabs=tabs: \
-                                                s3db.pr_rheader(r, tabs=tabs))
+                                pr_rheader(r, tabs=tabs))
 
 # -----------------------------------------------------------------------------
 def privacy():

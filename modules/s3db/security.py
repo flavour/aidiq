@@ -27,7 +27,8 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ("SecurityLevelModel",
+__all__ = ("SecurityCheckpointsModel",
+           "SecurityLevelModel",
            "SecuritySeizedItemsModel",
            "SecurityStaffModel",
            "SecurityZonesModel",
@@ -37,6 +38,71 @@ from gluon import *
 from gluon.storage import Storage
 from ..s3 import *
 from s3layouts import S3PopupLink
+
+# =============================================================================
+class SecurityCheckpointsModel(S3Model):
+    """ Model for Security Checkpoints """
+
+    names = ("security_checkpoint",
+             "security_checkpoint_id",
+             )
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+
+        # -----------------------------------------------------------
+        # Security Checkpoints
+        #
+        tablename = "security_checkpoint"
+        self.define_table(tablename,
+                          Field("name",
+                                label = T("Name"),
+                                ),
+                          self.gis_location_id(),
+                          s3_comments(),
+                          Field("active", "boolean",
+                                default = True,
+                                label = T("Active"),
+                                represent = s3_yes_no_represent,
+                                ),
+                          *s3_meta_fields())
+
+        # CRUD strings
+        current.response.s3.crud_strings[tablename] = Storage(
+            label_create = T("Create Checkpoint"),
+            title_display = T("Checkpoint Details"),
+            title_list = T("Checkpoints"),
+            title_update = T("Edit Checkpoint"),
+            title_upload = T("Import Checkpoints"),
+            label_list_button = T("List Checkpoints"),
+            label_delete_button = T("Delete Checkpoint"),
+            msg_record_created = T("Checkpoint added"),
+            msg_record_modified = T("Checkpoint updated"),
+            msg_record_deleted = T("Checkpoint deleted"),
+            msg_list_empty = T("No Checkpoints currently registered"),
+            )
+
+        represent = S3Represent(lookup = tablename)
+
+        checkpoint_id = S3ReusableField("checkpoint_id", "reference %s" % tablename,
+                                        label = T("Checkpoint"),
+                                        ondelete = "RESTRICT",
+                                        represent = represent,
+                                        requires = IS_EMPTY_OR(
+                                                    IS_ONE_OF(db, "%s.id" % tablename,
+                                                              represent,
+                                                              sort = True
+                                                              )),
+                                        sortby = "name",
+                                        )
+
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        #
+        return {"security_checkpoint_id": checkpoint_id,
+                }
 
 # =============================================================================
 class SecurityLevelModel(S3Model):
@@ -55,7 +121,6 @@ class SecurityLevelModel(S3Model):
         # http://ictemergency.wfp.org/c/document_library/get_file?uuid=c025cb98-2297-4208-bcc6-76ba02719c02&groupId=10844
         # http://geonode.wfp.org/layers/geonode:wld_bnd_securitylevel_wfp
         #
-
         level_opts = {1: T("Minimal"),
                       2: T("Low"),
                       3: T("Moderate"),
@@ -63,7 +128,7 @@ class SecurityLevelModel(S3Model):
                       5: T("High"),
                       6: T("Extreme"),
                       }
-        level_represent = S3Represent(options = level_opts)
+        level_represent = s3_options_represent(level_opts)
 
         tablename = "security_level"
         self.define_table(tablename,
@@ -124,7 +189,7 @@ class SecurityLevelModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class SecuritySeizedItemsModel(S3Model):
@@ -132,6 +197,8 @@ class SecuritySeizedItemsModel(S3Model):
         Model for the tracking of seized items (e.g. in connection
         with security procedures at shelters, borders or transport
         hubs)
+
+        Used by DRK
     """
 
     names = ("security_seized_item_type",
@@ -179,7 +246,7 @@ class SecuritySeizedItemsModel(S3Model):
             msg_record_modified = T("Item Type updated"),
             msg_record_deleted = T("Item Type deleted"),
             msg_list_empty = T("No Item Types currently defined"),
-        )
+            )
 
         # Reusable field
         represent = S3Represent(lookup = tablename,
@@ -222,7 +289,7 @@ class SecuritySeizedItemsModel(S3Model):
             msg_record_modified = T("Depository updated"),
             msg_record_deleted = T("Depository deleted"),
             msg_list_empty = T("No Depositories currently registered"),
-        )
+            )
 
         # Reusable field
         represent = S3Represent(lookup = tablename)
@@ -279,7 +346,7 @@ class SecuritySeizedItemsModel(S3Model):
                      # Status
                      Field("status",
                            default = "DEP",
-                           represent = S3Represent(options = seized_item_status),
+                           represent = s3_options_represent(seized_item_status),
                            requires = IS_IN_SET(seized_item_status,
                                                 zero = None),
                            ),
@@ -371,7 +438,7 @@ class SecuritySeizedItemsModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {"security_seized_item_status_opts": seized_item_status,
+        return {#"security_seized_item_status_opts": seized_item_status, # Was used by DRK
                 }
 
     # -------------------------------------------------------------------------
@@ -379,7 +446,7 @@ class SecuritySeizedItemsModel(S3Model):
     def defaults():
         """ Safe defaults for names in case the module is disabled """
 
-        return {"security_seized_item_status_opts": {},
+        return {#"security_seized_item_status_opts": {},
                 }
 
     # -------------------------------------------------------------------------
@@ -527,7 +594,7 @@ class SecurityStaffModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
     # -----------------------------------------------------------------------------
     @staticmethod
@@ -552,7 +619,7 @@ class SecurityStaffModel(S3Model):
             try:
                 opt = int(opt)
             except (ValueError, TypeError):
-                return current.messages["NONE"]
+                return NONE
             else:
                 opts = [opt]
                 vals = str(names.get(opt)["name"])
@@ -661,15 +728,15 @@ class SecurityZonesModel(S3Model):
             msg_list_empty = T("No Zones currently registered"),
             )
 
-        zone_represent = S3Represent(lookup = tablename)
+        represent = S3Represent(lookup = tablename)
 
         zone_id = S3ReusableField("zone_id", "reference %s" % tablename,
                                   label = T("Zone"),
                                   ondelete = "RESTRICT",
-                                  represent = zone_represent,
+                                  represent = represent,
                                   requires = IS_EMPTY_OR(
-                                                IS_ONE_OF(db, "security_zone.id",
-                                                          zone_represent,
+                                                IS_ONE_OF(db, "%s.id" % tablename,
+                                                          represent,
                                                           sort = True
                                                           )),
                                   sortby = "name",

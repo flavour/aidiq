@@ -159,7 +159,7 @@ class ChannelModel(S3Model):
                      Field("status",
                            #label = T("Status"),
                            #represent = s3_yes_no_represent,
-                           represent = lambda v: v or current.messages["NONE"],
+                           represent = lambda v: v or NONE,
                            ),
                      *s3_meta_fields())
 
@@ -227,6 +227,7 @@ def msg_channel_enable_interactive(r, **attr):
         - Schedule a Poll for new messages
 
         S3Method for interactive requests
+        @ToDo: Use POST not GET
     """
 
     tablename = r.tablename
@@ -288,6 +289,7 @@ def msg_channel_disable_interactive(r, **attr):
         - Remove schedule for Polling for new messages
 
         S3Method for interactive requests
+        @ToDo: Use POST not GET
     """
 
     tablename = r.tablename
@@ -468,7 +470,7 @@ class MessageModel(S3Model):
                                          notnull = True,
                                          default = 1,
                                          label = T("Status"),
-                                         represent = S3Represent(options = MSG_STATUS_OPTS),
+                                         represent = s3_options_represent(MSG_STATUS_OPTS),
                                          requires = IS_IN_SET(MSG_STATUS_OPTS,
                                                               zero = None),
                                          )
@@ -486,7 +488,7 @@ class MessageModel(S3Model):
                           Field("contact_method", length=32,
                                 default = "EMAIL",
                                 label = T("Contact Method"),
-                                represent = S3Represent(options = MSG_CONTACT_OPTS),
+                                represent = s3_options_represent(MSG_CONTACT_OPTS),
                                 requires = IS_IN_SET(MSG_CONTACT_OPTS,
                                                      zero = None),
                                 ),
@@ -551,7 +553,7 @@ class MessageAttachmentModel(S3Model):
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class MessageContactModel(S3Model):
@@ -607,14 +609,14 @@ class MessageContactModel(S3Model):
                           #Field("priority", "integer",
                           #      default = 1,
                           #      label = T("Priority"),
-                          #      represent = S3Represent(options = priority_opts),
+                          #      represent = s3_options_represent(priority_opts),
                           #      requires = IS_IN_SET(priority_opts,
                           #                           zero = None),
                           #      ),
                           #Field("status", "integer",
                           #      default = 3,
                           #      label = T("Status"),
-                          #      represent = S3Represent(options = status_opts),
+                          #      represent = s3_options_represent(status_opts),
                           #      requires = IS_IN_SET(status_opts,
                           #                           zero = None),
                           #      ),
@@ -647,7 +649,7 @@ class MessageContactModel(S3Model):
             msg_list_empty = T("No Contacts currently registered"))
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
 # =============================================================================
 class MessageTagModel(S3Model):
@@ -691,7 +693,7 @@ class MessageTagModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class EmailModel(ChannelModel):
@@ -825,7 +827,7 @@ class EmailModel(ChannelModel):
                             )
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
 # =============================================================================
 class FacebookModel(ChannelModel):
@@ -1042,7 +1044,7 @@ class MCommonsModel(ChannelModel):
                    action = msg_channel_poll)
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
 # =============================================================================
 class GCMModel(ChannelModel):
@@ -1104,7 +1106,7 @@ class GCMModel(ChannelModel):
         #           action = msg_channel_poll)
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1230,7 +1232,7 @@ class ParsingModel(S3Model):
                      *s3_meta_fields())
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
     # -----------------------------------------------------------------------------
     @staticmethod
@@ -1587,7 +1589,7 @@ class RSSModel(ChannelModel):
                        )
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
 # =============================================================================
 class SMSModel(S3Model):
@@ -1654,7 +1656,7 @@ class SMSModel(S3Model):
                        )
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
 # =============================================================================
 class SMSOutboundModel(S3Model):
@@ -1829,7 +1831,7 @@ class SMSOutboundModel(S3Model):
                   )
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
 # =============================================================================
 class TropoModel(S3Model):
@@ -1896,7 +1898,7 @@ class TropoModel(S3Model):
                      )
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
 # =============================================================================
 class TwilioModel(ChannelModel):
@@ -1978,7 +1980,7 @@ class TwilioModel(ChannelModel):
                      *s3_meta_fields())
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
 # =============================================================================
 class TwitterModel(S3Model):
@@ -2117,7 +2119,7 @@ class TwitterModel(S3Model):
                   )
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2127,7 +2129,7 @@ class TwitterModel(S3Model):
         """
 
         if not nickname:
-            return current.messages["NONE"]
+            return NONE
 
         db = current.db
         s3db = current.s3db
@@ -2349,7 +2351,7 @@ class TwitterSearchModel(ChannelModel):
                   )
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
     # -----------------------------------------------------------------------------
     @staticmethod
@@ -2506,7 +2508,7 @@ class XFormsModel(S3Model):
                           )
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
 # =============================================================================
 class BaseStationModel(S3Model):
@@ -2556,6 +2558,13 @@ class BaseStationModel(S3Model):
                                  #widget=S3OrganisationAutocompleteWidget(default_from_profile=True),
                                  ),
                           self.gis_location_id(),
+                          Field("obsolete", "boolean",
+                                default = False,
+                                label = T("Obsolete"),
+                                represent = lambda opt: current.messages.OBSOLETE if opt else NONE,
+                                readable = False,
+                                writable = False,
+                                ),
                           s3_comments(),
                           *s3_meta_fields())
 
@@ -2572,7 +2581,8 @@ class BaseStationModel(S3Model):
             msg_record_created = T("Base Station added"),
             msg_record_modified = T("Base Station updated"),
             msg_record_deleted = T("Base Station deleted"),
-            msg_list_empty = T("No Base Stations currently registered"))
+            msg_list_empty = T("No Base Stations currently registered"),
+            )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(),
@@ -2582,6 +2592,6 @@ class BaseStationModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # END =========================================================================

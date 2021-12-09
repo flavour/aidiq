@@ -87,7 +87,6 @@ __all__ = ("ProjectModel",
 import datetime
 import json
 
-from collections import OrderedDict
 from io import BytesIO
 
 from gluon import *
@@ -97,9 +96,6 @@ from ..s3 import *
 from s3layouts import S3PopupLink
 
 from .req import req_timeframe
-
-# Compact JSON encoding
-SEPARATORS = (",", ":")
 
 # Which options for the Status for a Task count as the task being 'Active'
 project_task_active_statuses = [2,
@@ -776,7 +772,7 @@ class ProjectModel(S3Model):
         if hasattr(row, "id"):
             project_id = row["id"]
         else:
-            return current.messages["NONE"]
+            return NONE
 
         table = current.s3db.project_indicator_data
         query = (table.deleted != True) & \
@@ -805,7 +801,6 @@ class ProjectModel(S3Model):
             # Can't divide by Zero
             return 0
 
-        NONE = current.messages["NONE"]
         percentages = 0
         for indicator_id in indicators:
             percentage = indicators[indicator_id]["percentage"]
@@ -833,7 +828,7 @@ class ProjectModel(S3Model):
                 (table.project_id == project_id)
         sum_field = table.amount.sum()
         return current.db(query).select(sum_field).first()[sum_field] or \
-               current.messages["NONE"]
+               NONE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1742,8 +1737,6 @@ class ProjectActivityTypeModel(S3Model):
         T = current.T
         db = current.db
 
-        NONE = current.messages["NONE"]
-
         crud_strings = current.response.s3.crud_strings
         define_table = self.define_table
 
@@ -1778,7 +1771,9 @@ class ProjectActivityTypeModel(S3Model):
         )
 
         # Reusable Fields
-        represent = S3Represent(lookup=tablename, translate=True)
+        represent = S3Represent(lookup = tablename,
+                                translate = True,
+                                )
         activity_type_id = S3ReusableField("activity_type_id", "reference %s" % tablename,
                                            label = T("Activity Type"),
                                            ondelete = "SET NULL",
@@ -1925,7 +1920,7 @@ class ProjectActivityPersonModel(S3Model):
                                 ),
                           Field("relationship",
                                 label = T("Relationship"),
-                                represent = lambda v: v or current.messages["NONE"],
+                                represent = lambda v: v or NONE,
                                 comment = T("If not the Head of Household"),
                                 ),
                           # @ToDo: Option to draw this easily (mobile-only)
@@ -1942,7 +1937,7 @@ class ProjectActivityPersonModel(S3Model):
                           *s3_meta_fields())
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectActivityOrganisationModel(S3Model):
@@ -1959,8 +1954,6 @@ class ProjectActivityOrganisationModel(S3Model):
     def model(self):
 
         T = current.T
-
-        NONE = current.messages["NONE"]
 
         # ---------------------------------------------------------------------
         # Activities <> Organisations - Link table
@@ -2009,7 +2002,7 @@ class ProjectActivityOrganisationModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectActivityOrganisationGroupModel(S3Model):
@@ -2049,7 +2042,7 @@ class ProjectActivityOrganisationGroupModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectActivityDemographicsModel(S3Model):
@@ -2115,7 +2108,7 @@ class ProjectActivityDemographicsModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectActivityItemModel(S3Model):
@@ -2178,7 +2171,7 @@ $.filterOptionsS3({
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectActivitySectorModel(S3Model):
@@ -2216,7 +2209,7 @@ class ProjectActivitySectorModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectActivityTagModel(S3Model):
@@ -2259,7 +2252,7 @@ class ProjectActivityTagModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectAnnualBudgetModel(S3Model):
@@ -2335,7 +2328,7 @@ class ProjectAnnualBudgetModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectBeneficiaryModel(S3Model):
@@ -2355,14 +2348,12 @@ class ProjectBeneficiaryModel(S3Model):
         if not current.deployment_settings.has_module("stats"):
             current.log.warning("Project Beneficiary Model needs Stats module enabling")
             #return self.defaults()
-            return {}
+            return None
 
         T = current.T
         db = current.db
         s3 = current.response.s3
         settings = current.deployment_settings
-
-        NONE = current.messages["NONE"]
 
         configure = self.configure
         crud_strings = s3.crud_strings
@@ -2706,7 +2697,7 @@ class ProjectBeneficiaryModel(S3Model):
                   )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2719,7 +2710,7 @@ class ProjectBeneficiaryModel(S3Model):
         if row:
             return row.type
         if not record_id:
-            return current.messages["NONE"]
+            return NONE
 
         db = current.db
         table = db.project_beneficiary
@@ -2782,7 +2773,7 @@ class ProjectCampaignModel(S3Model):
         if not current.deployment_settings.has_module("stats"):
             # Campaigns Model needs Stats module enabling
             #return self.defaults()
-            return {}
+            return None
 
         T = current.T
         db = current.db
@@ -2827,7 +2818,7 @@ class ProjectCampaignModel(S3Model):
         )
 
         # Reusable Field
-        represent = S3Represent(lookup=tablename)
+        represent = S3Represent(lookup = tablename)
         campaign_id = S3ReusableField("campaign_id", "reference %s" % tablename,
                                       sortby = "name",
                                       requires = IS_EMPTY_OR(
@@ -2884,11 +2875,11 @@ class ProjectCampaignModel(S3Model):
             msg_record_created = T("Campaign Message Added"),
             msg_record_modified = T("Campaign Message Updated"),
             msg_record_deleted = T("Campaign Message Deleted"),
-            msg_list_empty = T("No Campaign Messages Found")
-        )
+            msg_list_empty = T("No Campaign Messages Found"),
+            )
 
         # Reusable Field
-        represent = S3Represent(lookup=tablename)
+        represent = S3Represent(lookup = tablename)
         message_id = S3ReusableField("campaign_message_id", "reference %s" % tablename,
                                      sortby = "name",
                                      requires = IS_EMPTY_OR(
@@ -2960,7 +2951,7 @@ class ProjectCampaignModel(S3Model):
         #             super_link("parameter_id", "stats_parameter",
         #                        label = T("Keyword"),
         #                        instance_types = ("project_campaign_keyword",),
-        #                        represent = S3Represent(lookup="stats_parameter"),
+        #                        represent = S3Represent(lookup = "stats_parameter"),
         #                        readable = True,
         #                        writable = True,
         #                        empty = False,
@@ -3002,7 +2993,7 @@ class ProjectCampaignModel(S3Model):
                      super_link("parameter_id", "stats_parameter",
                                 label = T("Keyword"),
                                 instance_types = ("project_campaign_keyword",),
-                                represent = S3Represent(lookup="stats_parameter"),
+                                represent = S3Represent(lookup = "stats_parameter"),
                                 readable = True,
                                 writable = True,
                                 empty = False,
@@ -3044,7 +3035,7 @@ class ProjectCampaignModel(S3Model):
         )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectFrameworkModel(S3Model):
@@ -3086,7 +3077,7 @@ class ProjectFrameworkModel(S3Model):
                                   ),
                       Field("time_frame",
                             label = T("Time Frame"),
-                            represent = lambda v: v or messages.NONE,
+                            represent = lambda v: v or NONE,
                             ),
                       *s3_meta_fields())
 
@@ -3149,7 +3140,7 @@ class ProjectFrameworkModel(S3Model):
                                       ]
                        )
 
-        represent = S3Represent(lookup=tablename)
+        represent = S3Represent(lookup = tablename)
         framework_id = S3ReusableField("framework_id", "reference %s" % tablename,
                                        label = ORGANISATION,
                                        ondelete = "CASCADE",
@@ -3188,7 +3179,7 @@ class ProjectFrameworkModel(S3Model):
         )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectHazardModel(S3Model):
@@ -3208,7 +3199,6 @@ class ProjectHazardModel(S3Model):
 
         crud_strings = current.response.s3.crud_strings
         define_table = self.define_table
-        NONE = current.messages["NONE"]
 
         # ---------------------------------------------------------------------
         # Hazard
@@ -3242,7 +3232,9 @@ class ProjectHazardModel(S3Model):
             msg_list_empty = T("No Hazards currently registered"))
 
         # Reusable Field
-        represent = S3Represent(lookup=tablename, translate=True)
+        represent = S3Represent(lookup = tablename,
+                                translate = True,
+                                )
         hazard_id = S3ReusableField("hazard_id", "reference %s" % tablename,
                                     sortby = "name",
                                     label = T("Hazards"),
@@ -3362,7 +3354,7 @@ class ProjectHRModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -3404,14 +3396,12 @@ class ProjectIndicatorModel(S3Model):
         if not current.deployment_settings.has_module("stats"):
             current.log.warning("Project Indicator Model needs Stats module enabling")
             #return self.defaults()
-            return {}
+            return None
 
         T = current.T
         db = current.db
         s3 = current.response.s3
         settings = current.deployment_settings
-
-        NONE = current.messages["NONE"]
 
         configure = self.configure
         crud_strings = s3.crud_strings
@@ -3474,8 +3464,8 @@ class ProjectIndicatorModel(S3Model):
                                 empty = False,
                                 instance_types = ("project_indicator",),
                                 label = T("Indicator"),
-                                represent = S3Represent(lookup="stats_parameter",
-                                                        translate=True,
+                                represent = S3Represent(lookup = "stats_parameter",
+                                                        translate = True,
                                                         ),
                                 readable = True,
                                 writable = True,
@@ -3652,7 +3642,7 @@ class ProjectIndicatorModel(S3Model):
                   )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectL10nModel(S3Model):
@@ -3678,7 +3668,7 @@ class ProjectL10nModel(S3Model):
                           *s3_meta_fields())
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectLocationModel(S3Model):
@@ -4130,7 +4120,7 @@ class ProjectMasterKeyModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class ProjectOrganisationModel(S3Model):
@@ -4146,7 +4136,6 @@ class ProjectOrganisationModel(S3Model):
         settings = current.deployment_settings
 
         messages = current.messages
-        NONE = messages["NONE"]
 
         # ---------------------------------------------------------------------
         # Project Organisations
@@ -4167,9 +4156,9 @@ class ProjectOrganisationModel(S3Model):
                           ),
                           self.org_organisation_id(
                                 requires = self.org_organisation_requires(
-                                                required=True,
+                                                required = True,
                                                 # Need to be able to add Partners/Donors not just Lead org
-                                                #updateable=True,
+                                                #updateable = True,
                                                 ),
                                 widget = None,
                                 comment = S3PopupLink(c = "org",
@@ -4248,7 +4237,7 @@ class ProjectOrganisationModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -4333,21 +4322,15 @@ class ProjectOrganisationModel(S3Model):
 
         db = current.db
         potable = db.project_organisation
-        ptable = db.project_project
-        query = (potable.id == row.get("id"))
-        deleted_row = db(query).select(potable.deleted_fk,
-                                       potable.role,
-                                       limitby = (0, 1),
-                                       ).first()
+        deleted_row = db(potable.id == row.id).select(potable.role,
+                                                      limitby = (0, 1),
+                                                      ).first()
 
         if str(deleted_row.role) == \
            str(current.deployment_settings.get_project_organisation_lead_role()):
-            # Get the project_id
-            deleted_fk = json.loads(deleted_row.deleted_fk)
-            project_id = deleted_fk["project_id"]
 
             # Set the project organisation_id to NULL (using None)
-            db(ptable.id == project_id).update(organisation_id = None)
+            db(db.project_project.id == row.project_id).update(organisation_id = None)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -4414,8 +4397,6 @@ class ProjectPlanningModel(S3Model):
         T = current.T
         db = current.db
         settings = current.deployment_settings
-
-        NONE = current.messages["NONE"]
 
         add_components = self.add_components
         configure = self.configure
@@ -4532,7 +4513,9 @@ class ProjectPlanningModel(S3Model):
                   )
 
         # Reusable Field
-        goal_represent = S3Represent(lookup=tablename, fields=("code", "name"))
+        goal_represent = S3Represent(lookup = tablename,
+                                     fields = ("code", "name"),
+                                     )
         goal_id = S3ReusableField("goal_id", "reference %s" % tablename,
                                   label = T("Goal"),
                                   ondelete = ondelete,
@@ -4651,7 +4634,9 @@ class ProjectPlanningModel(S3Model):
                   )
 
         # Reusable Field
-        outcome_represent = S3Represent(lookup=tablename, fields=("code", "name"))
+        outcome_represent = S3Represent(lookup = tablename,
+                                        fields = ("code", "name"),
+                                        )
         outcome_id = S3ReusableField("outcome_id", "reference %s" % tablename,
                                      label = T("Outcome"),
                                      ondelete = ondelete,
@@ -4788,7 +4773,9 @@ class ProjectPlanningModel(S3Model):
                   )
 
         # Reusable Field
-        output_represent = S3Represent(lookup=tablename, fields=("code", "name"))
+        output_represent = S3Represent(lookup = tablename,
+                                       fields = ("code", "name"),
+                                       )
         output_id = S3ReusableField("output_id", "reference %s" % tablename,
                                     label = T("Output"),
                                     ondelete = ondelete,
@@ -4951,7 +4938,9 @@ class ProjectPlanningModel(S3Model):
         # Reusable Field
         # @ToDo: deployment_setting as to whether to show hierarchy or not
         #        (HNRC add the hierarchy manually in codes, so no need for them)
-        indicator_represent = S3Represent(lookup=tablename, fields=("code", "name"))
+        indicator_represent = S3Represent(lookup = tablename,
+                                          fields = ("code", "name"),
+                                          )
         indicator_id = S3ReusableField("indicator_id", "reference %s" % tablename,
                                        label = T("Indicator"),
                                        ondelete = ondelete,
@@ -5808,20 +5797,14 @@ class ProjectPlanningModel(S3Model):
         db = current.db
         s3db = current.s3db
         table = s3db.project_indicator_data
-        record_id = row.get("id")
+        record_id = row.id
+        indicator_id = row.indicator_id
 
         # Read the Indicator Data record
-        record = db(table.id == record_id).select(table.deleted_fk,
-                                                  table.start_date,
+        record = db(table.id == record_id).select(table.start_date,
                                                   table.end_date,
                                                   limitby = (0, 1),
                                                   ).first()
-        try:
-            fks = json.loads(record.deleted_fk)
-            indicator_id = fks["indicator_id"]
-        except:
-            current.log.error("Cannot find Project Indicator Data record (no record for this ID), so cannot update start_date or statuses")
-            return
         start_date = record.start_date
         end_date = record.end_date
 
@@ -6131,29 +6114,24 @@ class ProjectPlanningModel(S3Model):
             Update Project Status at all levels
         """
 
-        db = current.db
-        s3db = current.s3db
-        table = s3db.project_activity_data
-        record_id = row.get("id")
-
-        # Read the Activity Data record
-        record = db(table.id == record_id).select(table.deleted_fk,
-                                                  table.start_date,
-                                                  table.end_date,
-                                                  limitby = (0, 1),
-                                                  ).first()
-        try:
-            fks = json.loads(record.deleted_fk)
-            indicator_activity_id = fks["indicator_activity_id"]
-        except:
-            current.log.error("Cannot find Project Activity Data record (no record for this ID), so cannot update start_date or statuses")
-            return
+        indicator_activity_id = row.indicator_activity_id
 
         if not indicator_activity_id:
             # SHARE
             return
 
         # RMS HNRC
+        db = current.db
+        s3db = current.s3db
+        table = s3db.project_activity_data
+        record_id = row.id
+
+        # Read the Activity Data record
+        record = db(table.id == record_id).select(table.start_date,
+                                                  table.end_date,
+                                                  limitby = (0, 1),
+                                                  ).first()
+
         start_date = record.start_date
         end_date = record.end_date
 
@@ -6210,7 +6188,7 @@ class ProjectPlanningModel(S3Model):
             planned = row.target_value
             if planned is None:
                 # Ignored
-                return current.messages["NONE"]
+                return NONE
         else:
             planned = None
 
@@ -6218,7 +6196,7 @@ class ProjectPlanningModel(S3Model):
             actual = row.value
             if actual is None:
                 # Ignored
-                return current.messages["NONE"]
+                return NONE
         else:
             actual = None
 
@@ -6237,7 +6215,7 @@ class ProjectPlanningModel(S3Model):
             if planned == 0.0:
                 if actual == 0.0:
                     # Ignored
-                    return current.messages["NONE"]
+                    return NONE
                 else:
                     # Treat as complete
                     return project_status_represent(100.0)
@@ -6246,7 +6224,7 @@ class ProjectPlanningModel(S3Model):
             return project_status_represent(percentage)
 
         # Ignored
-        return current.messages["NONE"]
+        return NONE
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -6262,7 +6240,7 @@ class ProjectPlanningModel(S3Model):
             planned = row.target_value
             if planned is None:
                 # Ignored
-                return current.messages["NONE"]
+                return NONE
         else:
             planned = None
 
@@ -6270,7 +6248,7 @@ class ProjectPlanningModel(S3Model):
             actual = row.value
             if actual is None:
                 # Ignored
-                return current.messages["NONE"]
+                return NONE
         else:
             actual = None
 
@@ -6289,7 +6267,7 @@ class ProjectPlanningModel(S3Model):
             if planned == 0.0:
                 if actual == 0.0:
                     # Ignored
-                    return current.messages["NONE"]
+                    return NONE
                 else:
                     # Treat as complete
                     return project_status_represent(100.0)
@@ -6298,7 +6276,7 @@ class ProjectPlanningModel(S3Model):
             return project_status_represent(percentage)
 
         # Ignored
-        return current.messages["NONE"]
+        return NONE
 
 # =============================================================================
 def project_indicator_data_onaccept(form, status=True):
@@ -6386,9 +6364,11 @@ def project_planning_status_update(project_id):
             project_outcome (weightings may have changed)
             project_goal (weightings may have changed)
 
-        @param project_id: the ID of the project record to update
+        Args:
+            project_id: the ID of the project record to update
 
-        @ToDo: Handle deployment_settings for which levels are exposed
+        TODO:
+            Handle deployment_settings for which levels are exposed
     """
 
     db = current.db
@@ -7174,8 +7154,9 @@ class project_SummaryReport(S3Method):
         """
             Entry point for REST API
 
-            @param r: the S3Request
-            @param attr: controller arguments
+            Args:
+                r: the S3Request
+                attr: controller arguments
         """
 
         if r.name == "project":
@@ -7194,13 +7175,12 @@ class project_SummaryReport(S3Method):
         """
             Extract the Data
 
-            @ToDo: Read the filters from the HTML view
+            TODO:
+                Read the filters from the HTML view
         """
 
         db = current.db
         s3db = current.s3db
-
-        #NONE = current.messages["NONE"]
 
         status_from_activities = current.deployment_settings.get_project_status_from_activities()
 
@@ -8386,8 +8366,6 @@ class project_SummaryReport(S3Method):
         db = current.db
         s3db = current.s3db
 
-        NONE = current.messages["NONE"]
-
         status_from_activities = current.deployment_settings.get_project_status_from_activities()
 
         # Extract Data
@@ -8518,7 +8496,8 @@ class project_SummaryReport(S3Method):
         report_title = s3_str(T("Project Summary Report"))
         filename = "%s_%s.pdf" % (report_title, s3_str(project_title))
 
-        header = DIV(s3db.org_organisation_logo(organisation_id),
+        from .org import org_organisation_logo
+        header = DIV(org_organisation_logo(organisation_id),
                      date_represent(r.utcnow),
                      # @ToDo: This is overflowing
                      )
@@ -8731,9 +8710,10 @@ class project_IndicatorSummaryReport(S3Method):
     """
         Display a Summary of the Indicator Statuses for the Project
 
-       @ToDo: PDF representation (CRMADA want)
-       @ToDo: Should we aggregate entries in the same Month?
-       @ToDo: Handle deployments which miss a step
+        TODO:
+            PDF representation (CRMADA want)
+            Should we aggregate entries in the same Month?
+            Handle deployments which miss a step
     """
 
     # -------------------------------------------------------------------------
@@ -8741,8 +8721,9 @@ class project_IndicatorSummaryReport(S3Method):
         """
             Entry point for REST API
 
-            @param r: the S3Request
-            @param attr: controller arguments
+            Args:
+                r: the S3Request
+                attr: controller arguments
         """
 
         if r.name == "project":
@@ -8773,8 +8754,6 @@ class project_IndicatorSummaryReport(S3Method):
 
         db = current.db
         s3db = current.s3db
-
-        NONE = current.messages["NONE"]
 
         project_id = r.id
 
@@ -8940,7 +8919,6 @@ class project_IndicatorSummaryReport(S3Method):
         T = current.T
         s3db = current.s3db
         response = current.response
-        NONE = current.messages["NONE"]
 
         record = r.record
 
@@ -9150,7 +9128,6 @@ class project_IndicatorSummaryReport(S3Method):
             redirect("/%s/project/project/%s" % (r.application, r.id))
 
         s3db = current.s3db
-        NONE = current.messages["NONE"]
 
         record = r.record
 
@@ -9887,8 +9864,6 @@ class ProjectProgrammeModel(S3Model):
         T = current.T
         db = current.db
 
-        NONE = current.messages["NONE"]
-
         budgets = current.deployment_settings.get_project_programme_budget()
 
         # ---------------------------------------------------------------------
@@ -9934,10 +9909,12 @@ class ProjectProgrammeModel(S3Model):
             msg_record_created = T("Program created"),
             msg_record_modified = T("Program updated"),
             msg_record_deleted = T("Program deleted"),
-            msg_list_empty = T("No Programs found")
-        )
+            msg_list_empty = T("No Programs found"),
+            )
 
-        represent = S3Represent(lookup=tablename, translate=True)
+        represent = S3Represent(lookup = tablename,
+                                translate = True,
+                                )
         programme_id = S3ReusableField("programme_id", "reference %s" % tablename,
                                        label = T("Program"),
                                        ondelete = "CASCADE",
@@ -10010,7 +9987,7 @@ class ProjectProgrammeProjectModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class ProjectSectorModel(S3Model):
@@ -10053,7 +10030,7 @@ class ProjectSectorModel(S3Model):
         )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectStatusModel(S3Model):
@@ -10097,11 +10074,14 @@ class ProjectStatusModel(S3Model):
             msg_record_created = T("Status added"),
             msg_record_modified = T("Status updated"),
             msg_record_deleted = T("Status deleted"),
-            msg_list_empty = T("No Statuses currently defined"))
+            msg_list_empty = T("No Statuses currently defined"),
+            )
 
         # Reusable Field
-        represent = S3Represent(lookup=tablename, translate=True)
-                                #none = T("Unknown"))
+        represent = S3Represent(lookup = tablename,
+                                translate = True,
+                                #none = T("Unknown"),
+                                )
         status_id = S3ReusableField("status_id", "reference %s" % tablename,
                                     comment = S3PopupLink(title = ADD_STATUS,
                                                           c = "project",
@@ -10176,10 +10156,11 @@ class ProjectStrategyModel(S3Model):
             msg_record_created = T("Strategy added"),
             msg_record_modified = T("Strategy updated"),
             msg_record_deleted = T("Strategy deleted"),
-            msg_list_empty = T("No Strategies currently registered"))
+            msg_list_empty = T("No Strategies currently registered"),
+            )
 
         # Reusable Field
-        represent = S3Represent(lookup=tablename)
+        represent = S3Represent(lookup = tablename)
         strategy_id = S3ReusableField("strategy_id", "reference %s" % tablename,
                                       comment = S3PopupLink(title = ADD_STRATEGY,
                                                             c = "project",
@@ -10249,7 +10230,7 @@ class ProjectTagModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectThemeModel(S3Model):
@@ -10275,8 +10256,6 @@ class ProjectThemeModel(S3Model):
         crud_strings = current.response.s3.crud_strings
         define_table = self.define_table
         theme_percentages = current.deployment_settings.get_project_theme_percentages()
-
-        NONE = current.messages["NONE"]
 
         # ---------------------------------------------------------------------
         # Themes
@@ -10310,10 +10289,13 @@ class ProjectThemeModel(S3Model):
             msg_record_created = T("Theme added"),
             msg_record_modified = T("Theme updated"),
             msg_record_deleted = T("Theme deleted"),
-            msg_list_empty = T("No Themes currently registered"))
+            msg_list_empty = T("No Themes currently registered"),
+            )
 
         # Reusable Field
-        represent = S3Represent(lookup=tablename, translate=True)
+        represent = S3Represent(lookup = tablename,
+                                translate = True,
+                                )
         theme_id = S3ReusableField("theme_id", "reference %s" % tablename,
                                    label = T("Theme"),
                                    ondelete = "CASCADE",
@@ -10570,8 +10552,9 @@ class ProjectDRRModel(S3Model):
                           self.project_project_id(empty=False),
                           Field("hfa", "list:integer",
                                 label = T("HFA Priorities"),
-                                represent = S3Represent(options=options,
-                                                        multiple=True),
+                                represent = S3Represent(options = options,
+                                                        multiple = True,
+                                                        ),
                                 requires = IS_EMPTY_OR(IS_IN_SET(
                                             options,
                                             multiple = True)),
@@ -10583,7 +10566,7 @@ class ProjectDRRModel(S3Model):
                           *s3_meta_fields())
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -10591,15 +10574,15 @@ class ProjectDRRModel(S3Model):
         """ Option representation """
 
         if not opt:
-            return current.messages["NONE"]
+            return NONE
         if isinstance(opt, int):
             opts = [opt]
         elif not isinstance(opt, (list, tuple)):
-            return current.messages["NONE"]
+            return NONE
         else:
             opts = opt
         if opts[0] is None:
-            return current.messages["NONE"]
+            return NONE
         vals = ["HFA %s" % o for o in opts]
         return ", ".join(vals)
 
@@ -10616,8 +10599,6 @@ class ProjectDRRPPModel(S3Model):
 
         T = current.T
         db = current.db
-
-        NONE = current.messages["NONE"]
 
         local_currencies = list(current.deployment_settings.get_fin_currencies().keys())
         try:
@@ -10714,11 +10695,12 @@ class ProjectDRRPPModel(S3Model):
                                 ),
                           Field("L1", "list:integer",
                                 label = T("Cook Islands"),
-                                represent = S3Represent(lookup="gis_location",
-                                                        multiple=True),
+                                represent = S3Represent(lookup = "gis_location",
+                                                        multiple = True,
+                                                        ),
                                 requires = IS_EMPTY_OR(
                                             IS_ONE_OF(db, "gis_location.id",
-                                                      S3Represent(lookup="gis_location"),
+                                                      S3Represent(lookup = "gis_location"),
                                                       filterby = "L0",
                                                       filter_opts = ("Cook Islands",),
                                                       not_filterby = "name",
@@ -10758,7 +10740,7 @@ class ProjectDRRPPModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -10818,11 +10800,11 @@ class ProjectDRRPPModel(S3Model):
             opt = [opt]
         if isinstance(opt, (list, tuple)):
             if not opt or opt[0] is None:
-                return current.messages["NONE"]
+                return NONE
             else:
                 return ", ".join(["%s %s" % (prefix, o) for o in opt])
         else:
-            return current.messages["NONE"]
+            return NONE
 
 # =============================================================================
 class ProjectTargetModel(S3Model):
@@ -10861,11 +10843,11 @@ class ProjectTargetModel(S3Model):
             msg_record_created = T("Data Collection Target added to Project"),
             msg_record_modified = T("Data Collection Target updated"),
             msg_record_deleted = T("Data Collection Target removed from Project"),
-            msg_list_empty = T("No Data Collection Targets found for this Project")
-        )
+            msg_list_empty = T("No Data Collection Targets found for this Project"),
+            )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectTaskModel(S3Model):
@@ -10898,10 +10880,6 @@ class ProjectTaskModel(S3Model):
         settings = current.deployment_settings
 
         project_id = self.project_project_id
-
-        messages = current.messages
-        NONE = messages["NONE"]
-        UNKNOWN_OPT = messages.UNKNOWN_OPT
 
         add_components = self.add_components
         configure = self.configure
@@ -11032,7 +11010,7 @@ class ProjectTaskModel(S3Model):
                      Field("priority", "integer",
                            default = 3,
                            label = T("Priority"),
-                           represent = S3Represent(options = project_task_priority_opts),
+                           represent = s3_options_represent(project_task_priority_opts),
                            requires = IS_IN_SET(project_task_priority_opts,
                                                 zero = None),
                            ),
@@ -11062,7 +11040,7 @@ class ProjectTaskModel(S3Model):
                            #widget = S3PersonAutocompleteWidget(field = "pe_id"),
                            #comment = DIV(_class = "tooltip",
                            #              _title = "%s|%s" % (T("Assigned to"),
-                           #                                  messages.AUTOCOMPLETE_HELP,
+                           #                                  current.messages.AUTOCOMPLETE_HELP,
                            #                                  ),
                            #              ),
                            ),
@@ -11098,7 +11076,7 @@ class ProjectTaskModel(S3Model):
                      Field("status", "integer",
                            default = 2,
                            label = T("Status"),
-                           represent = S3Represent(options = project_task_status_opts),
+                           represent = s3_options_represent(project_task_status_opts),
                            requires = IS_IN_SET(project_task_status_opts,
                                                 zero = None),
                            readable = staff,
@@ -12032,7 +12010,8 @@ class ProjectTaskModel(S3Model):
 
         # Resolve shelter inspection flags linked to this task
         if current.deployment_settings.get_cr_shelter_inspection_tasks():
-            s3db.cr_resolve_shelter_flags(task_id)
+            from s3db.cr import cr_resolve_shelter_flags
+            cr_resolve_shelter_flags(task_id)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -12273,7 +12252,7 @@ class ProjectTaskForumModel(S3Model):
         #    msg_list_empty = T("No Tasks currently shared"))
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectTaskHRMModel(S3Model):
@@ -12322,7 +12301,7 @@ class ProjectTaskHRMModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class ProjectTaskTagModel(S3Model):
@@ -12364,7 +12343,7 @@ class ProjectTaskTagModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 class ProjectWindowModel(S3Model):
@@ -12399,7 +12378,7 @@ class ProjectWindowModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 def multi_theme_percentage_represent(record_id):
@@ -12409,7 +12388,7 @@ def multi_theme_percentage_represent(record_id):
     """
 
     if not record_id:
-        return current.messages["NONE"]
+        return NONE
 
     s3db = current.s3db
     table = s3db.project_theme_percentage
@@ -12477,7 +12456,8 @@ class project_LocationRepresent(S3Represent):
             key and fields are not used, but are kept for API
             compatiblity reasons.
 
-            @param values: the project_location IDs
+            Args:
+                values: the project_location IDs
         """
 
         db = current.db
@@ -12520,7 +12500,8 @@ class project_LocationRepresent(S3Represent):
         """
             Represent a single Row
 
-            @param row: the joined Row
+            Args:
+                row: the joined Row
         """
 
         community = self.community
@@ -12668,14 +12649,15 @@ class project_TaskRepresent(S3Represent):
                  show_project = False,
                  project_first = True):
         """
-            Constructor
-
-            @param show_link: render representation as link to the task
-            @param show_project: show the project name in the representation
-            @param project_first: show the project name before the task name
+            Args:
+                show_link: render representation as link to the task
+                show_project: show the project name in the representation
+                project_first: show the project name before the task name
         """
 
-        task_url = URL(c="project", f="task", args=["[id]"])
+        task_url = URL(c="project", f="task",
+                       args = ["[id]"],
+                       )
 
         super(project_TaskRepresent, self).__init__(lookup = "project_task",
                                                     show_link = show_link,
@@ -12693,9 +12675,10 @@ class project_TaskRepresent(S3Represent):
         """
             Custom rows lookup
 
-            @param key: the key Field
-            @param values: the values
-            @param fields: unused (retained for API compatibility)
+            Args:
+                key: the key Field
+                values: the values
+                fields: unused (retained for API compatibility)
         """
 
         s3db = current.s3db
@@ -12732,7 +12715,8 @@ class project_TaskRepresent(S3Represent):
         """
             Represent a row
 
-            @param row: the Row
+            Args:
+                row: the Row
         """
 
         output = row["project_task.name"]
@@ -12795,7 +12779,8 @@ class project_ActivityRepresent(S3Represent):
             key and fields are not used, but are kept for API
             compatibility reasons.
 
-            @param values: the activity IDs
+            Args:
+                values: the activity IDs
         """
 
         s3db = current.s3db
@@ -12826,7 +12811,8 @@ class project_ActivityRepresent(S3Represent):
         """
             Represent a single Row
 
-            @param row: the project_activity Row
+            Args:
+                row: the project_activity Row
         """
 
         if self.code:
@@ -12887,7 +12873,7 @@ def project_activity_year_options():
     return years
 
 # =============================================================================
-class ProjectThemeVirtualFields(object):
+class ProjectThemeVirtualFields:
     """
         Virtual fields for the project table
 
@@ -12915,7 +12901,7 @@ class ProjectThemeVirtualFields(object):
                                           )
 
         if not themes:
-            return current.messages["NONE"]
+            return NONE
 
         represent = ""
         for theme in themes:
@@ -12942,15 +12928,16 @@ def project_time_day(row):
 
         Requires "date" to be in the additional report_fields
 
-        @param row: the Row
+        Args:
+            row: the Row
     """
 
     try:
         thisdate = row["project_time.date"]
     except AttributeError:
-        return current.messages["NONE"]
+        return NONE
     if not thisdate:
-        return current.messages["NONE"]
+        return NONE
 
     #now = current.request.utcnow
     #week = datetime.timedelta(days=7)
@@ -12969,15 +12956,16 @@ def project_time_week(row):
 
         Requires "date" to be in the additional report_fields
 
-        @param row: the Row
+        Args:
+            row: the Row
     """
 
     try:
         thisdate = row["project_time.date"]
     except AttributeError:
-        return current.messages["NONE"]
+        return NONE
     if not thisdate:
-        return current.messages["NONE"]
+        return NONE
 
     day = thisdate.date()
     monday = day - datetime.timedelta(days=day.weekday())
@@ -12990,9 +12978,13 @@ def project_ckeditor():
 
     s3 = current.response.s3
 
-    ckeditor = URL(c="static", f="ckeditor", args="ckeditor.js")
+    ckeditor = URL(c="static", f="ckeditor",
+                   args = "ckeditor.js",
+                   )
     s3.scripts.append(ckeditor)
-    adapter = URL(c="static", f="ckeditor", args=["adapters", "jquery.js"])
+    adapter = URL(c="static", f="ckeditor",
+                  args = ["adapters", "jquery.js"],
+                  )
     s3.scripts.append(adapter)
 
     # Toolbar options: http://docs.cksource.com/CKEditor_3.x/Developers_Guide/Toolbar
@@ -13333,7 +13325,8 @@ class project_IndicatorActivityRepresent(S3Represent):
             the activity. Parameters key and fields are not used, but are kept
             for API compatibility reasons.
 
-            @param values: the indicator_activity IDs
+            Args:
+                values: the indicator_activity IDs
         """
 
         s3db = current.s3db
@@ -13366,7 +13359,8 @@ class project_IndicatorActivityRepresent(S3Represent):
         """
             Represent a single Row
 
-            @param row: the project_indicator_activity Row
+            Args:
+                row: the project_indicator_activity Row
         """
 
         name = row["project_activity.name"]
@@ -13392,12 +13386,14 @@ def project_task_controller():
         crud_strings = s3.crud_strings[tablename]
 
         if r.record:
-            if r.interactive:
+            if r.interactive and \
+               current.deployment_settings.get_project_task_comments():
                 # Put the Comments in the RFooter
                 project_ckeditor()
                 s3.rfooter = LOAD("project", "comments.load",
                                   args = [r.id],
-                                  ajax = True)
+                                  ajax = True,
+                                  )
 
         if r.method == "datalist":
             # Set list_fields for renderer (project_task_list_layout)
@@ -13544,7 +13540,7 @@ def project_task_controller():
             if not r.component and r.method != "import":
                 # Maintain vars: why?
                 update_url = URL(args=["[id]"], vars=get_vars)
-                S3CRUD.action_buttons(r, update_url=update_url)
+                s3_action_buttons(r, update_url=update_url)
         return output
     s3.postp = postp
 
@@ -13564,8 +13560,9 @@ def project_theme_help_fields(options):
     """
         Provide the tooltips for the Theme filter
 
-        @param options: the options to generate tooltips for, from
-                        S3GroupedOptionsWidget: list of tuples (key, represent)
+        Args:
+            options: the options to generate tooltips for, from
+                     S3GroupedOptionsWidget: list of tuples (key, represent)
     """
 
     table = current.s3db.project_theme
@@ -13584,8 +13581,9 @@ def project_hazard_help_fields(options):
     """
         Provide the tooltips for the Hazard filter
 
-        @param options: the options to generate tooltips for, from
-                        S3GroupedOptionsWidget: list of tuples (key, represent)
+        Args:
+            options: the options to generate tooltips for, from
+                     S3GroupedOptionsWidget: list of tuples (key, represent)
     """
 
     table = current.s3db.project_hazard
@@ -13676,7 +13674,8 @@ def project_project_filters(org_label):
     """
         Filter widgets for project_project
 
-        @param org_label: the label to use for organisation_id
+        Args:
+            org_label: the label to use for organisation_id
     """
 
     T = current.T
@@ -13755,7 +13754,7 @@ def project_project_filters(org_label):
     if mode_drr and settings.get_project_hfa():
         hfa_opts = project_hfa_opts()
         options = dict((key, "HFA %s" % key) for key in hfa_opts)
-        #options[None] = current.messages["NONE"] # to search NO HFA
+        #options[None] = NONE # to search NO HFA
         append_filter(
             S3OptionsFilter("drr.hfa",
                             label = T("HFA"),
@@ -13805,11 +13804,12 @@ def project_project_list_layout(list_id, item_id, resource, rfields, record,
     """
         Default dataList item renderer for Projects on Profile pages
 
-        @param list_id: the HTML ID of the list
-        @param item_id: the HTML ID of the item
-        @param resource: the S3Resource to render
-        @param rfields: the S3ResourceFields to render
-        @param record: the record as dict
+        Args:
+            list_id: the HTML ID of the list
+            item_id: the HTML ID of the item
+            resource: the S3Resource to render
+            rfields: the S3ResourceFields to render
+            record: the record as dict
     """
 
     raw = record._row
@@ -13922,11 +13922,12 @@ def project_activity_list_layout(list_id, item_id, resource, rfields, record,
     """
         Default dataList item renderer for Incidents on Profile pages
 
-        @param list_id: the HTML ID of the list
-        @param item_id: the HTML ID of the item
-        @param resource: the S3Resource to render
-        @param rfields: the S3ResourceFields to render
-        @param record: the record as dict
+        Args:
+            list_id: the HTML ID of the list
+            item_id: the HTML ID of the item
+            resource: the S3Resource to render
+            rfields: the S3ResourceFields to render
+            record: the record as dict
     """
 
     raw = record._row
@@ -14045,11 +14046,12 @@ def project_task_list_layout(list_id, item_id, resource, rfields, record,
     """
         Default dataList item renderer for Tasks on Profile pages
 
-        @param list_id: the HTML ID of the list
-        @param item_id: the HTML ID of the item
-        @param resource: the S3Resource to render
-        @param rfields: the S3ResourceFields to render
-        @param record: the record as dict
+        Args:
+            list_id: the HTML ID of the list
+            item_id: the HTML ID of the item
+            resource: the S3Resource to render
+            rfields: the S3ResourceFields to render
+            record: the record as dict
     """
 
     raw = record._row
@@ -14217,11 +14219,12 @@ class project_Details(S3Method):
 
     def __init__(self, form=None):
         """
-            Constructor
-
-            @param form: widget config to inject at the top of the page,
-                         or a callable to produce such a widget config
+            Args:
+                form: widget config to inject at the top of the page,
+                      or a callable to produce such a widget config
         """
+
+        super(project_Details, self).__init__()
 
         self.form = form
 
@@ -14230,8 +14233,9 @@ class project_Details(S3Method):
         """
             Entry point for REST API
 
-            @param r: the S3Request
-            @param attr: controller arguments
+            Args:
+                r: the S3Request
+                attr: controller arguments
         """
 
         if r.name == "project" and \

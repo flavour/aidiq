@@ -267,8 +267,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
         return self.hrm()
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def inv():
+    def inv(self):
         """ INV / Inventory """
 
         if current.request.function == "req_approver":
@@ -292,7 +291,8 @@ class S3OptionsMenu(default.S3OptionsMenu):
                             #M("Receive a new shipment", f="recv", m="create"),
                             M("Receive a new shipment", f="recv",
                                                         vars = {"incoming": 1}),
-                            M("Send a new shipment", f="send", m="create"),
+                            M("Send a new shipment", f="send",
+                                                     vars = {"draft": 1}),
                         ),
                         M("Purchases", f="order_item",
                           restrict=["ORG_ADMIN",
@@ -320,6 +320,12 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         ),
                         M("Reports", link=False)(
                             M("Inventory", f="inv_item", m="summary"),
+                            M("Donor Report", f="inv_item", m="report",
+                              vars = {"rows": "item_id",
+                                      "cols": "supply_org_id",
+                                      "fact": "sum(quantity)",
+                                      },
+                              ),
                             M("Stock Movements", f="inv_item", m="grouped",
                               vars = {"report": "movements"},
                               ),

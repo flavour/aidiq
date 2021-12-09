@@ -22,7 +22,7 @@ def index_alt():
     """
 
     # Just redirect to the list of Events
-    s3_redirect_default(URL(f="event"))
+    s3_redirect_default(URL(f = "event"))
 
 # -----------------------------------------------------------------------------
 def create():
@@ -206,7 +206,8 @@ def incident():
                     f.default = r.record.event_id
                     f.readable = f.writable = False
                     # DateTime
-                    datetime_represent = s3base.S3DateTime.datetime_represent
+                    from s3 import IS_UTC_DATETIME, S3DateTime, S3CalendarWidget
+                    datetime_represent = S3DateTime.datetime_represent
                     for f in (ltable.start_date, ltable.end_date):
                         f.requires = IS_EMPTY_OR(IS_UTC_DATETIME())
                         f.represent = lambda dt: datetime_represent(dt, utc=True)
@@ -240,12 +241,13 @@ def incident():
                     #s3_action_buttons(r, update_url=update_url)
                     s3_action_buttons(r)
                     if "msg" in settings.modules:
-                        s3base.S3CRUD.action_button(url = URL(f = "compose",
-                                                              vars = {"hrm_id": "[id]"}
-                                                              ),
-                                                    _class = "action-btn send",
-                                                    label = s3_str(T("Send Notification")),
-                                                    )
+                        from s3 import s3_action_button
+                        s3_action_button(url = URL(f = "compose",
+                                                   vars = {"hrm_id": "[id]"}
+                                                   ),
+                                         _class = "action-btn send",
+                                         label = s3_str(T("Send Notification")),
+                                         )
         return output
     s3.postp = postp
 
@@ -352,7 +354,8 @@ def scenario():
         RESTful CRUD controller
     """
 
-    return s3_rest_controller(rheader = s3db.event_rheader)
+    from s3db.event import event_rheader
+    return s3_rest_controller(rheader = event_rheader)
 
 # -----------------------------------------------------------------------------
 def sitrep():
@@ -384,7 +387,7 @@ def sitrep():
                 components = {dtablename: {"name": "answer",
                                            "joinby": "sitrep_id",
                                            "multiple": False,
-                                           }
+                                           },
                               }
                 s3db.add_components("event_sitrep", **components)
 

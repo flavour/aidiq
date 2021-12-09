@@ -20,7 +20,9 @@ def index_alt():
     """
 
     # Just redirect to the list of Members
-    s3_redirect_default(URL(f="membership", args=["summary"]))
+    s3_redirect_default(URL(f = "membership",
+                            args = ["summary"],
+                            ))
 
 # =============================================================================
 def membership_type():
@@ -31,8 +33,7 @@ def membership_type():
     if not auth.s3_has_role("ADMIN"):
         s3.filter = auth.filter_by_root_org(s3db.member_membership_type)
 
-    output = s3_rest_controller()
-    return output
+    return s3_rest_controller()
 
 # =============================================================================
 def membership():
@@ -56,6 +57,7 @@ def membership():
                 redirect(URL(f="person", vars=vars))
 
             # Assume members under 120
+            from s3 import S3CalendarWidget
             s3db.pr_person.date_of_birth.widget = \
                                         S3CalendarWidget(past_months=1440)
 
@@ -70,12 +72,14 @@ def membership():
                            ] + list_fields
 
             s3db.configure("member_membership",
-                           list_fields = list_fields)
+                           list_fields = list_fields,
+                           )
 
         return True
     s3.prep = prep
 
-    return s3_rest_controller(rheader = s3db.member_rheader)
+    from s3db.member import member_rheader
+    return s3_rest_controller(rheader = member_rheader)
 
 # =============================================================================
 def person():
@@ -92,8 +96,7 @@ def person():
                    deletable = False,
                    )
 
-    s3.crud_strings[tablename].update(
-            title_upload = T("Import Members"))
+    s3.crud_strings[tablename].title_upload = T("Import Members")
 
     s3db.configure("member_membership",
                    delete_next = URL("member", "membership"),
@@ -101,49 +104,51 @@ def person():
 
     # Custom Method for Contacts
     set_method = s3db.set_method
+    from s3db.pr import pr_Contacts
     set_method("pr", "person",
                method = "contacts",
-               action = s3db.pr_Contacts)
+               action = pr_Contacts,
+               )
 
     # Custom Method for CV
+    from s3db.hrm import hrm_CV
     set_method("pr", "person",
                method = "cv",
                # @ToDo: Allow Members to have a CV without enabling HRM?
-               action = s3db.hrm_CV)
+               action = hrm_CV,
+               )
 
     # Import pre-process
-    def import_prep(data):
+    def import_prep(tree):
         """
             Deletes all Member records of the organisation/branch
             before processing a new data import
         """
-        if s3.import_replace:
-            resource, tree = data
-            if tree is not None:
-                xml = current.xml
-                tag = xml.TAG
-                att = xml.ATTRIBUTE
+        if s3.import_replace and tree is not None:
+            xml = current.xml
+            tag = xml.TAG
+            att = xml.ATTRIBUTE
 
-                root = tree.getroot()
-                expr = "/%s/%s[@%s='org_organisation']/%s[@%s='name']" % \
-                       (tag.root, tag.resource, att.name, tag.data, att.field)
-                orgs = root.xpath(expr)
-                for org in orgs:
-                    org_name = org.get("value", None) or org.text
-                    if org_name:
-                        try:
-                            org_name = json.loads(xml.xml_decode(org_name))
-                        except:
-                            pass
-                    if org_name:
-                        mtable = s3db.member_membership
-                        otable = s3db.org_organisation
-                        query = (otable.name == org_name) & \
-                                (mtable.organisation_id == otable.id)
-                        resource = s3db.resource("member_membership", filter=query)
-                        # Use cascade=True so that the deletion gets
-                        # rolled back if the import fails:
-                        resource.delete(format="xml", cascade=True)
+            root = tree.getroot()
+            expr = "/%s/%s[@%s='org_organisation']/%s[@%s='name']" % \
+                   (tag.root, tag.resource, att.name, tag.data, att.field)
+            orgs = root.xpath(expr)
+            for org in orgs:
+                org_name = org.get("value", None) or org.text
+                if org_name:
+                    try:
+                        org_name = json.loads(xml.xml_decode(org_name))
+                    except:
+                        pass
+                if org_name:
+                    mtable = s3db.member_membership
+                    otable = s3db.org_organisation
+                    query = (otable.name == org_name) & \
+                            (mtable.organisation_id == otable.id)
+                    resource = s3db.resource("member_membership", filter=query)
+                    # Use cascade=True so that the deletion gets
+                    # rolled back if the import fails:
+                    resource.delete(format="xml", cascade=True)
 
     s3.import_prep = import_prep
 
@@ -167,6 +172,7 @@ def person():
             if r.method not in ("import", "search_ac", "validate"):
                 if not r.component:
                     # Assume members under 120
+                    from s3 import S3CalendarWidget
                     s3db.pr_person.date_of_birth.widget = \
                                         S3CalendarWidget(past_months=1440)
                 resource = r.resource
@@ -193,9 +199,9 @@ def person():
                 # Provide correct list-button (non-native controller)
                 buttons = output["buttons"]
                 if "list_btn" in buttons:
-                    crud_button = r.resource.crud.crud_button
+                    from s3 import crud_button
                     buttons["list_btn"] = crud_button(None,
-                                                      tablename="member_membership",
+                                                      tablename = "member_membership",
                                                       name = "label_list_button",
                                                       _href = URL(c="member", f="membership"),
                                                       _id = "list-btn",
@@ -203,10 +209,10 @@ def person():
         return output
     s3.postp = postp
 
-    output = s3_rest_controller("pr", "person",
-                                replace_option = T("Remove existing data before import"),
-                                rheader = s3db.member_rheader,
-                                )
-    return output
+    from s3db.member import member_rheader
+    return s3_rest_controller("pr", "person",
+                              replace_option = T("Remove existing data before import"),
+                              rheader = member_rheader,
+                              )
 
 # END =========================================================================

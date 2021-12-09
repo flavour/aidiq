@@ -38,7 +38,7 @@ from urllib.error import HTTPError, URLError
 from gluon import current
 
 # =============================================================================
-class S3Parser(object):
+class S3Parser:
     """ Message Parsing Template """
 
     # -------------------------------------------------------------------------
@@ -268,12 +268,12 @@ class S3Parser(object):
         msg = None
 
         if tree:
-            AlertImporter = s3db.cap_ImportAlert
-            error, msg = AlertImporter.import_cap(tree,
-                                                  version = version,
-                                                  url = url,
-                                                  ignore_errors = True,
-                                                  )
+            from s3db.cap import cap_ImportAlert
+            error, msg = cap_ImportAlert.import_cap(tree,
+                                                    version = version,
+                                                    url = url,
+                                                    ignore_errors = True,
+                                                    )
 
         if error:
             current.log.error(error)
@@ -304,7 +304,7 @@ class S3Parser(object):
         db = current.db
         s3db = current.s3db
 
-        AlertImporter = s3db.cap_ImportAlert
+        from s3db.cap import cap_ImportAlert as AlertImporter
 
         # Get the URLs for all <link>s in this entry which are marked as cap+xml
         ltable = s3db.msg_rss_link

@@ -392,9 +392,11 @@ def config(settings):
             Provide context information for a masterkey (populates session
             in mobile app when linking to this masterkey)
 
-            @param masterkey: the auth_masterkey Row
+            Args:
+                masterkey: the auth_masterkey Row
 
-            @returns: a JSON-serializable dict with the context data
+            Returns:
+                JSON-serializable dict with the context data
         """
 
         db = current.db
@@ -452,7 +454,7 @@ def config(settings):
     def customise_dc_question_resource(r, tablename):
 
         from gluon import IS_IN_SET
-        from s3 import S3Represent, S3SQLCustomForm
+        from s3 import s3_options_represent, S3SQLCustomForm
 
         crud_form = S3SQLCustomForm((T("Type"), "field_type"),
                                     (T("Question"), "name"),
@@ -470,7 +472,7 @@ def config(settings):
 
         s3db = current.s3db
         table = s3db.dc_question
-        table.field_type.represent = S3Represent(options=type_opts)
+        table.field_type.represent = Ss3_options_represent(type_opts)
         table.field_type.requires = IS_IN_SET(type_opts)
         table.require_not_empty.comment = None
 
@@ -577,27 +579,33 @@ def config(settings):
         db(s3db.s3_table.id == template.table_id).update(**new_vars)
 
     # -------------------------------------------------------------------------
-    def dc_target_ondelete(form):
+    def dc_target_ondelete(row):
         """
             Delete the associated Template
         """
 
-        db = current.db
-        s3db = current.s3db
+        if hasattr(row, "template_id"):
+            template_id = row.template_id
+        else:
+            # Read from deleted_fk
+            record_id = row.id
 
-        target_id = form.id
+            # Load record
+            db = current.db
+            table = db.dc_target
+            record = db(table.id == record_id).select(table.deleted_fk,
+                                                      limitby = (0, 1),
+                                                      ).first()
 
-        table = s3db.dc_target
-        record = db(table.id == target_id).select(table.deleted_fk,
-                                                  limitby = (0, 1),
-                                                  ).first()
-        if record:
             import json
-            deleted_fks = json.loads(record.deleted_fk)
-            template_id = deleted_fks.get("template_id")
-            resource = s3db.resource("dc_template",
-                                     filter=(s3db.dc_template.id == template_id))
-            resource.delete()
+            deleted_fk = json.loads(record.deleted_fk)
+            template_id = deleted_fk.get("template_id")
+
+        if template_id:
+            resource = current.s3db.resource("dc_template",
+                                             id = template_id,
+                                             )
+            resource.delete(cascade = True)
 
     # -------------------------------------------------------------------------
     def customise_dc_target_resource(r, tablename):
@@ -1018,7 +1026,7 @@ def config(settings):
                                               )
 
     # -------------------------------------------------------------------------
-    def project_project_ondelete(form):
+    def project_project_ondelete(row):
         """
             Delete the associated Targets & Templates
         """
@@ -1028,11 +1036,12 @@ def config(settings):
         db = current.db
         s3db = current.s3db
 
-        project_id = form.id
+        project_id = row.id
         target_ids = []
         template_ids = []
 
-
+        # @ToDo: Do this in ondelete_cascade instead
+        #        - tbhis isn't scalable
         ltable = s3db.project_project_target
         rows = db(ltable.deleted == True).select(ltable.deleted_fk)
         for row in rows:
@@ -1050,11 +1059,13 @@ def config(settings):
             template_ids.append(target.template_id)
 
         resource = s3db.resource("dc_template",
-                                 filter=(s3db.dc_template.id.belongs(template_ids)))
+                                 filter = (s3db.dc_template.id.belongs(template_ids)),
+                                 )
         resource.delete()
         # ondelete CASCADE will clear these:
         #resource = s3db.resource("dc_target",
-        #                         filter=(s3db.dc_target.id.belongs(target_ids)))
+        #                         filter = (s3db.dc_target.id.belongs(target_ids)),
+        #                         )
         #resource.delete()
 
     # -------------------------------------------------------------------------

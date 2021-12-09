@@ -68,7 +68,6 @@ from .s3validators import IS_ISO639_2_LANGUAGE_CODE
 
 # =============================================================================
 class AuthS3(Auth):
-
     """
         S3 extensions of the gluon.tools.Auth class
 
@@ -151,7 +150,6 @@ class AuthS3(Auth):
                               )
 
     def __init__(self):
-
         """ Initialise parent class & make any necessary modifications """
 
         Auth.__init__(self, current.db)
@@ -222,9 +220,11 @@ Thank you"""
                                # Not commonly used, so can be added in template if-required:
                                #"dvi_morgue": T("Morgue"),
                                "edu_school": T("School"),
+                               "fin_bank": T("Bank"),
                                "fire_station": T("Fire Station"),
-                               "hms_hospital": T("Hospital"),
                                "inv_warehouse": T("Warehouse"),
+                               "med_hospital": T("Hospital"),
+                               "med_pharmacy": T("Pharmacy"),
                                "msg_basestation": T("Cell Tower"),
                                "org_facility": T("Facility"), # @ToDo: Use deployment setting for label
                                "org_office": T("Office"),
@@ -244,10 +244,10 @@ Thank you"""
     # -------------------------------------------------------------------------
     def define_tables(self, migrate=True, fake_migrate=False):
         """
-            to be called unless tables are defined manually
+            Define auth tables, to be called unless tables are defined
+            manually
 
-            usages::
-
+            Examples:
                 # defines all needed tables and table files
                 # UUID + "_auth_user.table", ...
                 auth.define_tables()
@@ -343,69 +343,72 @@ Thank you"""
         gname = settings.table_group_name
         if not gtable:
             define_table(gname,
-                # Group unique ID, must be notnull+unique:
-                Field("uuid", length=64, notnull=True, unique=True,
-                      readable=False, writable=False),
-                # Group does not appear in the Role Manager:
-                # (can neither assign, nor modify, nor delete)
-                Field("hidden", "boolean",
-                      readable=False, writable=False,
-                      default=False),
-                # Group cannot be modified in the Role Manager:
-                # (can assign, but neither modify nor delete)
-                Field("system", "boolean",
-                      readable=False, writable=False,
-                      default=False),
-                # Group cannot be deleted in the Role Manager:
-                # (can assign and modify, but not delete)
-                Field("protected", "boolean",
-                      readable=False, writable=False,
-                      default=False),
-                # Role name:
-                Field("role", length=255, unique=True,
-                      default="",
-                      requires = IS_NOT_IN_DB(db, "%s.role" % gname),
-                      label = messages.label_role,
-                      ),
-                Field("description", "text",
-                      label = messages.label_description,
-                      ),
-                # Additional meta fields required for sync:
-                S3MetaFields.created_on(),
-                S3MetaFields.modified_on(),
-                S3MetaFields.deleted(),
-                #S3MetaFields.deleted_fk(),
-                #S3MetaFields.deleted_rb(),
-                migrate = migrate,
-                fake_migrate = fake_migrate,
-                )
+                         # Group unique ID, must be notnull+unique:
+                         Field("uuid", length=64, notnull=True, unique=True,
+                               readable=False, writable=False),
+                         # Group does not appear in the Role Manager (except in Advanced mode):
+                         # (can neither assign, nor modify, nor delete)
+                         Field("hidden", "boolean",
+                               readable=False, writable=False,
+                               default=False),
+                         # Group cannot be modified in the Role Manager:
+                         # (can assign, but neither modify nor delete)
+                         Field("system", "boolean",
+                               readable=False, writable=False,
+                               default=False),
+                         # Group cannot be deleted in the Role Manager:
+                         # (can assign and modify, but not delete)
+                         Field("protected", "boolean",
+                               readable=False, writable=False,
+                               default=False),
+                         # Role name:
+                         Field("role", length=255, unique=True,
+                               default="",
+                               requires = IS_NOT_IN_DB(db, "%s.role" % gname),
+                               label = messages.label_role,
+                               ),
+                         Field("description", "text",
+                               label = messages.label_description,
+                               ),
+                         # Additional meta fields required for sync:
+                         S3MetaFields.created_on(),
+                         S3MetaFields.modified_on(),
+                         S3MetaFields.deleted(),
+                         #S3MetaFields.deleted_fk(),
+                         #S3MetaFields.deleted_rb(),
+                         migrate = migrate,
+                         fake_migrate = fake_migrate,
+                         )
             gtable = settings.table_group = db[gname]
 
         # Group membership table (user<->role)
         if not settings.table_membership:
-            define_table(
-                settings.table_membership_name,
-                Field("user_id", utable,
-                      requires = IS_IN_DB(db, "%s.id" % uname,
-                                          "%(id)s: %(first_name)s %(last_name)s"),
-                      label = messages.label_user_id,
-                      ),
-                Field("group_id", gtable,
-                      requires = IS_IN_DB(db, "%s.id" % gname,
-                                          "%(id)s: %(role)s"),
-                      represent = S3Represent(lookup=gname, fields=["role"]),
-                      label = messages.label_group_id,
-                      ),
-                # Realm
-                Field("pe_id", "integer"),
-                migrate = migrate,
-                fake_migrate = fake_migrate,
-                *S3MetaFields.sync_meta_fields())
+            define_table(settings.table_membership_name,
+                         Field("user_id", utable,
+                               requires = IS_IN_DB(db, "%s.id" % uname,
+                                                   "%(id)s: %(first_name)s %(last_name)s"),
+                               label = messages.label_user_id,
+                               ),
+                         Field("group_id", gtable,
+                               requires = IS_IN_DB(db, "%s.id" % gname,
+                                                   "%(id)s: %(role)s"),
+                               represent = S3Represent(lookup = gname,
+                                                       fields = ["role"],
+                                                       ),
+                               label = messages.label_group_id,
+                               ),
+                         # Realm
+                         Field("pe_id", "integer"),
+                         migrate = migrate,
+                         fake_migrate = fake_migrate,
+                         *S3MetaFields.sync_meta_fields()
+                         )
             settings.table_membership = db[settings.table_membership_name]
 
         # Define Eden permission table
         self.permission.define_table(migrate = migrate,
-                                     fake_migrate = fake_migrate)
+                                     fake_migrate = fake_migrate,
+                                     )
 
         #security_policy = deployment_settings.get_security_policy()
         #if security_policy not in (1, 2, 3, 4, 5, 6, 7, 8) and \
@@ -439,35 +442,35 @@ Thank you"""
         # - date of most recent login is the most useful thing recorded, which we already record in the main auth_user table
         if not settings.table_event:
             request = current.request
-            define_table(
-                settings.table_event_name,
-                Field("time_stamp", "datetime",
-                      default = request.utcnow,
-                      #label = messages.label_time_stamp
-                      ),
-                Field("client_ip",
-                      default = request.client,
-                      #label=messages.label_client_ip
-                      ),
-                Field("user_id", utable,
-                      default = None,
-                      requires = IS_IN_DB(db, "%s.id" % uname,
-                                          "%(id)s: %(first_name)s %(last_name)s"),
-                      #label=messages.label_user_id
-                      ),
-                Field("origin", length=512,
-                      default = "auth",
-                      #label = messages.label_origin,
-                      requires = IS_NOT_EMPTY(),
-                      ),
-                Field("description", "text",
-                      default = "",
-                      #label = messages.label_description,
-                      requires = IS_NOT_EMPTY(),
-                      ),
-                migrate = migrate,
-                fake_migrate = fake_migrate,
-                *S3MetaFields.sync_meta_fields())
+            define_table(settings.table_event_name,
+                         Field("time_stamp", "datetime",
+                               default = request.utcnow,
+                               #label = messages.label_time_stamp
+                               ),
+                         Field("client_ip",
+                               default = request.client,
+                               #label=messages.label_client_ip
+                               ),
+                         Field("user_id", utable,
+                               default = None,
+                               requires = IS_IN_DB(db, "%s.id" % uname,
+                                                   "%(id)s: %(first_name)s %(last_name)s"),
+                               #label=messages.label_user_id
+                               ),
+                         Field("origin", length=512,
+                               default = "auth",
+                               #label = messages.label_origin,
+                               requires = IS_NOT_EMPTY(),
+                               ),
+                         Field("description", "text",
+                               default = "",
+                               #label = messages.label_description,
+                               requires = IS_NOT_EMPTY(),
+                               ),
+                         migrate = migrate,
+                         fake_migrate = fake_migrate,
+                         *S3MetaFields.sync_meta_fields()
+                         )
             settings.table_event = db[settings.table_event_name]
 
     # -------------------------------------------------------------------------
@@ -549,7 +552,8 @@ Thank you"""
         """
             Overrides Web2Py's login() to use custom flash styles & utcnow
 
-            @return: a login form
+            Returns:
+                a login form
         """
 
         T = current.T
@@ -883,7 +887,8 @@ Thank you"""
                         log = DEFAULT,
                         ):
         """
-            Returns a form that lets the user change password
+            Returns:
+                a form that lets the user change password
         """
 
         if not self.is_logged_in():
@@ -966,8 +971,9 @@ Thank you"""
                        log = DEFAULT,
                        ):
         """
-            Returns a form to reset the user password, overrides web2py's
-            version of the method to not swallow the _next var.
+            Returns:
+                a form to reset the user password, overrides web2py's
+                version of the method to not swallow the _next var.
         """
 
         table_user = self.table_user()
@@ -1058,10 +1064,11 @@ Thank you"""
             Returns a form to reset the user password, overrides web2py's
             version of the method to apply Eden formstyles.
 
-            @param next: URL to redirect to after successful form submission
-            @param onvalidation: callback to validate password reset form
-            @param onaccept: callback to post-process password reset request
-            @param log: event description for the log (string)
+            Args:
+                next: URL to redirect to after successful form submission
+                onvalidation: callback to validate password reset form
+                onaccept: callback to post-process password reset request
+                log: event description for the log (string)
         """
 
         messages = self.messages
@@ -1234,12 +1241,13 @@ Thank you"""
             - user has been added by ADMIN and shall give consent upon login
             - ...
 
-            NB: this form cannot meaningfully prevent the user from simply
+            Note:
+                This form cannot meaningfully prevent the user from simply
                 bypassing the question and navigating away. To prevent the
                 user from accessing functionality for which consent is
                 mandatory, the respective controllers must check for consent
                 using auth_Consent.has_consented, and refuse if not given
-                (though they can still redirect to this form where useful)
+                (though they can still redirect to this form where useful).
         """
 
         T = current.T
@@ -1256,6 +1264,8 @@ Thank you"""
                 next_url = next_url()
         if not next_url:
             next_url = URL(c = "default", f = "index")
+
+        session.s3.pending_consent = False
 
         # Requires login
         if not self.s3_logged_in():
@@ -1280,9 +1290,10 @@ Thank you"""
             redirect(next_url)
         else:
             response.warning = T("Consent required")
+            session.s3.pending_consent = True
 
-         # Instantiate Consent Tracker
-        consent = current.s3db.auth_Consent(processing_types=pending_consent)
+        # Instantiate Consent Tracker
+        consent = current.s3db.auth_Consent(processing_types = pending_consent)
 
         # Form fields
         formfields = [Field("consent",
@@ -1324,6 +1335,7 @@ Thank you"""
                         ):
 
             consent.track(person_id, form.vars.get("consent"))
+            session.s3.pending_consent = False
             session.confirmation = T("Consent registered")
             redirect(next_url)
 
@@ -1353,7 +1365,8 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
                 - Lookup Domains/Organisations to check for Whitelists
                   &/or custom Approver
 
-            @return: a registration form
+            Returns:
+                a registration form
         """
 
         T = current.T
@@ -1632,7 +1645,8 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
              Overrides Web2Py's email_reset_password() to modify the message
              structure
 
-             @param user: the auth_user record (Row)
+            Args:
+                user: the auth_user record (Row)
         """
 
         mailer = self.settings.mailer
@@ -1662,8 +1676,16 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
                        ):
         """
             Gives user_id membership of group_id or role
-            if user is None than user_id is that of current logged in user
-            S3: extended to support Entities
+                - extended to support Entities
+
+            Args:
+                group_id: the auth_group ID
+                user_id: the auth_user ID (defaults to logged-in user)
+                role: role name (alternative to group_id)
+                entity: the person entity to assign the membership for
+
+            Returns:
+                the membership record ID
         """
 
         group_id = group_id or self.id_group(role)
@@ -1698,10 +1720,7 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
                      log = DEFAULT,
                      ):
         """
-            action user to verify the registration email, XXXXXXXXXXXXXXXX
-
-            .. method:: Auth.verify_email([next=DEFAULT [, onvalidation=DEFAULT
-                [, log=DEFAULT]]])
+            Action when user clicks the link in the verification email
         """
 
         settings = self.settings
@@ -1745,10 +1764,7 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
                 log = DEFAULT,
                 ):
         """
-            returns a form that lets the user change his/her profile
-
-            .. method:: Auth.profile([next=DEFAULT [, onvalidation=DEFAULT
-                [, onaccept=DEFAULT [, log=DEFAULT]]]])
+            Returns a form that lets the user change his/her profile
 
             Patched for S3 to use s3_mark_required
         """
@@ -1837,7 +1853,8 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
         """
             Common auth_UserRepresent instance for meta-fields (lazy property)
 
-            @returns: S3Represent instance
+            Returns:
+                S3Represent instance
         """
 
         represent = self._user_represent
@@ -1861,10 +1878,11 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
     # -------------------------------------------------------------------------
     def configure_user_fields(self, pe_ids=None):
         """
-            Configure User Fields - for registration & user administration
+            Configure User Fields - for registration, user administration & profile
 
-            pe_ids: an optional list of pe_ids for the Org Filter
-                    i.e. org_admin coming from admin.py/user()
+            Args:
+                pe_ids: an optional list of pe_ids for the Org Filter
+                        i.e. org_admin coming from admin.py/user()
         """
 
         from .s3validators import IS_ONE_OF
@@ -1902,11 +1920,12 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
         if userfield != "email":
             utable[userfield].requires = \
                 IS_NOT_IN_DB(db, "%s.%s" % (utable._tablename,
-                                            userfield))
+                                            userfield,
+                                            ))
 
         email = utable.email
         email.label = T("Email") #messages.label_email
-        email.requires = [IS_EMAIL(error_message=messages.invalid_email),
+        email.requires = [IS_EMAIL(error_message = messages.invalid_email),
                           IS_LOWER(),
                           IS_NOT_IN_DB(db,
                                        "%s.email" % utable._tablename,
@@ -2114,13 +2133,14 @@ $.filterOptionsS3({
                                            )
 
     # -------------------------------------------------------------------------
-    def s3_import_prep(self, data):
+    def s3_import_prep(self, tree):
         """
-            Called when users are imported from CSV
-
-            Lookups Pseudo-reference Integer fields from Names
-            e.g.:
+            Looks up Pseudo-reference Integer fields from Names, e.g.:
             auth_membership.pe_id from org_organisation.name=<Org Name>
+                - called when users are imported from CSV
+
+            Args:
+                tree: the element tree of the import
         """
 
         db = current.db
@@ -2129,8 +2149,6 @@ $.filterOptionsS3({
         update_super = s3db.update_super
         otable = s3db.org_organisation
         btable = s3db.org_organisation_branch
-
-        tree = data[1]
 
         ORG_ADMIN = not self.s3_has_role("ADMIN")
         TRANSLATE = current.deployment_settings.get_L10n_translate_org_organisation()
@@ -2432,10 +2450,6 @@ $.filterOptionsS3({
             js_append('''S3.auth_registration_organisation_required=1''')
             js_append('''i18n.enter_your_organisation="%s"''' % T("Enter your organization"))
 
-        if settings.get_auth_terms_of_service():
-            js_append('''S3.auth_terms_of_service=1''')
-            js_append('''i18n.tos_required="%s"''' % T("You must agree to the Terms of Service"))
-
         if request.controller != "admin":
             if settings.get_auth_registration_organisation_hidden():
                 js_append('''S3.auth_registration_hide_organisation=1''')
@@ -2480,11 +2494,13 @@ $.filterOptionsS3({
     # -------------------------------------------------------------------------
     def s3_auth_user_register_onaccept(self, email, user_id):
         """
-            S3 framework function
-
             Allows customisation of the process for creating/updating users
-            - called by s3_approve_user when new users are created or approved
-            - (was called by 'profile' method for updates, but no longer)
+                - called by s3_approve_user when new users are created
+                  or approved
+
+            Args:
+                email: the user's email address
+                user_id: the auth_user ID
         """
 
         # Check for any custom functionality
@@ -2510,14 +2526,11 @@ $.filterOptionsS3({
     # -------------------------------------------------------------------------
     def s3_register_onaccept(self, form):
         """
-            S3 framework function
+            Sets session.auth.user for authorstamp, etc, and approves user
+            (to set registration groups, such as AUTHENTICATED, link to Person)
 
             Designed to be called when a user is created through:
                 - registration via OAuth, LDAP, etc
-
-            Does the following:
-                - Sets session.auth.user for authorstamp, etc
-                - Approves user (to set registration groups, such as AUTHENTICATED, link to Person)
         """
 
         user = form.vars
@@ -2528,17 +2541,11 @@ $.filterOptionsS3({
     @staticmethod
     def s3_user_register_onaccept(form):
         """
-            S3 framework function
+            Stores the user's email & profile image in auth_user_temp,
+            to be added to their person record when created on approval
 
             Designed to be called when a user is created through:
                 - registration
-
-            Does the following:
-                - Stores the user's email & profile image in auth_user_temp
-                  to be added to their person record when created on approval
-
-            @ToDo: If these fields are implemented with the InlineForms functionality,
-            this function may become redundant
         """
         temptable = current.s3db.auth_user_temp
 
@@ -2630,17 +2637,21 @@ Please go to %(url)s to approve this user."""
     # -------------------------------------------------------------------------
     def s3_verify_user(self, user):
         """"
+            Sends a message to the approver to notify them if a user needs
+            approval
+
             Designed to be called when a user is verified through:
                 - responding to their verification email
                 - if verification isn't required
 
-            Does the following:
-                - Sends a message to the approver to notify them if a user needs approval
-                - If deployment_settings.auth.always_notify_approver = True,
-                    send them notification regardless
-                - If approval isn't required - calls s3_approve_user
+            Returns:
+                boolean - if the user has been approved
 
-            @returns boolean - if the user has been approved
+            Notes:
+                                                                                         
+                - If deployment_settings.auth.always_notify_approver = True,
+                  send them notification regardless
+                - If approval isn't required - calls s3_approve_user
         """
 
         db = current.db
@@ -2763,7 +2774,7 @@ Please go to %(url)s to approve this user."""
     # -------------------------------------------------------------------------
     def s3_approve_user(self, user, password=None):
         """
-            S3 framework function
+            Adds user to the 'Authenticated' role, and any default roles
 
             Designed to be called when a user is created through:
                 - prepop
@@ -2772,13 +2783,9 @@ Please go to %(url)s to approve this user."""
                 - added by admin
                 - updated by admin
 
-            Does the following:
-                - Adds user to the 'Authenticated' role
-                - Adds any default roles for the user
-                - @ToDo: adds them to the Org_x Access role
-
-            @param user: the user Storage() or Row
-            @param password: optional password to include in a custom welcome_email
+            Args:
+                user: the user Storage() or Row
+                password: optional password to include in a custom welcome_email
         """
 
         user_id = user.id
@@ -2835,22 +2842,10 @@ Please go to %(url)s to approve this user."""
             query = (mtable.group_id == ORG_ADMIN) & \
                     (mtable.pe_id == entity)
             exists = db(query).select(mtable.id,
-                                      limitby=(0, 1))
+                                      limitby = (0, 1),
+                                      )
             if not exists:
                 add_membership(ORG_ADMIN, user_id, entity=entity)
-
-        if deployment_settings.has_module("delphi"):
-            # Add user as a participant of the default problem group
-            table = s3db.delphi_group
-            group = db(table.uuid == "DEFAULT").select(table.id,
-                                                       limitby = (0, 1),
-                                                       ).first()
-            if group:
-                table = s3db.delphi_membership
-                table.insert(group_id = group.id,
-                             user_id = user_id,
-                             status = 3,
-                             )
 
         self.s3_link_user(user)
 
@@ -2893,7 +2888,11 @@ Please go to %(url)s to approve this user."""
     # -------------------------------------------------------------------------
     def s3_link_user(self, user):
         """
-            S3 framework function
+            Links the user account to various tables:
+                - Creates (if not existing) User's Organisation and links User
+                - Creates (if not existing) User's Person Record and links User
+                - Creates (if not existing) User's Human Resource Record and links User
+                - Calls s3_link_to_member
 
             Designed to be called when a user is created & approved through:
                 - prepop
@@ -2902,14 +2901,8 @@ Please go to %(url)s to approve this user."""
                 - added by admin
                 - updated by admin
 
-            Does the following:
-                - Calls s3_link_to_organisation:
-                  Creates (if not existing) User's Organisation and links User
-                - Calls s3_link_to_person:
-                  Creates (if not existing) User's Person Record and links User
-                - Calls s3_link_to_human_resource:
-                  Creates (if not existing) User's Human Resource Record and links User
-                - Calls s3_link_to_member
+            Args:
+                user: the user account (auth_user record)
         """
 
         # Create/Update/Link to organisation,
@@ -2952,9 +2945,11 @@ Please go to %(url)s to approve this user."""
         """
             Links user accounts to person registry entries
 
-            @param user: the user record
-            @param organisation_id: the user's organisation_id
-                                    to get the person's realm_entity
+            Args:
+                user: the user record
+                organisation_id: the user's organisation_id
+                                 to get the person's realm_entity
+
 
             Policy for linking to pre-existing person records:
 
@@ -3022,9 +3017,9 @@ Please go to %(url)s to approve this user."""
         else:
             fields.append(ptable.last_name)
 
-        rows = db(query).select(*fields,
-                                distinct=True,
-                                left = left)
+        rows = db(query).select(distinct = True,
+                                left = left,
+                                *fields)
 
         person_ids = [] # Collect the person IDs
 
@@ -3270,7 +3265,8 @@ Please go to %(url)s to approve this user."""
         """
             Link a user account to an organisation
 
-            @param user: the user account record
+            Args:
+                user: the user account record
         """
 
         db = current.db
@@ -3350,8 +3346,9 @@ Please go to %(url)s to approve this user."""
         """
             Link a user account to an organisation group
 
-            @param user: the user account record
-            @param person_id: the person record ID associated with this user
+            Args:
+                user: the user account record
+                person_id: the person record ID associated with this user
         """
 
         db = current.db
@@ -3399,8 +3396,12 @@ Please go to %(url)s to approve this user."""
                                   hr_type,
                                   ):
         """
-            Take ownership of the HR records of the person record
-            @ToDo: Add user to the Org Access role.
+            Link the user to a human resource record and make them owner
+
+            Args:
+                user: the user record
+                person_id: the person ID linked to that user
+                hr_type: the human resource type (staff/volunteer)                              
         """
 
         db = current.db
@@ -3525,6 +3526,10 @@ Please go to %(url)s to approve this user."""
                           ):
         """
             Link to a member Record
+
+            Args:
+                user: the user record
+                person_id: the person ID linked to that user
         """
 
         db = current.db
@@ -3598,11 +3603,17 @@ Please go to %(url)s to approve this user."""
             Returns the Approver for a new Registration &
             the organisation_id field
 
-            @param: user - the user record (form.vars when done direct)
-            @ToDo: Support multiple approvers per Org - via Org Admin (or specific Role?)
-                   Split into separate functions to returning approver & finding users' org from auth_organisations
+            Args:
+                user - the user record (form.vars when done direct)
+            Returns:
+                approver, organisation_id
 
-            @returns approver, organisation_id - if approver = False, user is automatically approved by whitelist
+            Note:
+                If approver = False, user is automatically approved by whitelist.
+
+            TODO Support multiple approvers per Org - via Org Admin (or specific Role?)
+                 Split into separate functions to returning approver & finding users' org
+                 from auth_organisations
         """
 
         db = current.db
@@ -3658,12 +3669,13 @@ Please go to %(url)s to approve this user."""
     def s3_send_welcome_email(self, user, password=None):
         """
             Send a welcome mail to newly-registered users
-            - especially suitable for users from Facebook/Google who don't
-              verify their emails
+                - suitable e.g. for users from Facebook/Google who don't
+                  verify their emails
 
-            @param user: the user dict, must contain "email", and can
-                         contain "language" for translation of the message
-            @param password: optional password to include in a custom welcome_email
+            Args:
+                user: the user dict, must contain "email", and can
+                      contain "language" for translation of the message
+                password: optional password to include in a custom welcome_email
         """
 
         settings = current.deployment_settings
@@ -3736,12 +3748,13 @@ Please go to %(url)s to approve this user."""
         """
             Anonymise the password
 
-            Arguments just for API:
-            @param record_id: the auth_user record ID
-            @param field: the password Field
-            @param value: the password hash
+            Args:
+                record_id: the auth_user record ID
+                field: the password Field
+                value: the password hash
 
-            @return: the new random password hash
+            Returns:
+                the new random password hash
         """
 
         return self.s3_password()[1]
@@ -3751,12 +3764,13 @@ Please go to %(url)s to approve this user."""
         """
             Remove all roles
 
-            Arguments just for API:
-            @param record_id: the auth_user record ID
-            @param field: the id Field
-            @param value: the id
+            Args:
+                record_id: the auth_user record ID
+                field: the id Field
+                value: the id
 
-            @return: the record_id
+            Returns:
+                the record_id
         """
 
         roles = self.s3_get_roles(record_id)
@@ -3770,11 +3784,11 @@ Please go to %(url)s to approve this user."""
     def s3_impersonate(self, user_id):
         """
             S3 framework function
+                - designed to be used within tasks, which are run in a separate
+                  request & hence don't have access to current.auth
 
-            Designed to be used within tasks, which are run in a separate
-            request & hence don't have access to current.auth
-
-            @param user_id: auth.user.id or auth.user.email
+            Args:
+                user_id: auth.user.id or auth.user.email
         """
 
         settings = self.settings
@@ -3819,9 +3833,9 @@ Please go to %(url)s to approve this user."""
         """
             Master Key Authentication
 
-            @returns: None if master key authentication is disabled or
-                      wasn't attempted, otherwise True|False whether it
-                      succeeded
+            Returns:
+                None if master key authentication is disabled or wasn't
+                attempted, otherwise True|False whether it succeeded
         """
 
         success = None
@@ -4018,7 +4032,8 @@ Please go to %(url)s to approve this user."""
                                   system_roles.AUTHENTICATED,
                                   )
 
-                default_realm = s3db.pr_default_realms(self.user["pe_id"])
+                from s3db.pr import pr_default_realms
+                default_realm = pr_default_realms(self.user["pe_id"])
 
                 # Store the realms:
                 for row in rows:
@@ -4057,7 +4072,12 @@ Please go to %(url)s to approve this user."""
                                     append(entity)
 
                     # Lookup the subsidiaries of all realms and extensions
-                    descendants = s3db.pr_descendants(entities)
+                    from s3db.pr import pr_descendants
+                    if current.deployment_settings.get_auth_user_realms_include_persons():
+                        exclude_persons = False
+                    else:
+                        exclude_persons = True
+                    descendants = pr_descendants(entities, exclude_persons = exclude_persons)
 
                     # Add the subsidiaries to the realms
                     for group_id in realms:
@@ -4082,16 +4102,18 @@ Please go to %(url)s to approve this user."""
         """
             Back-end method to create roles with ACLs
 
-            @param role: display name for the role
-            @param description: description of the role (optional)
-            @param acls: list of initial ACLs to assign to this role
-            @param args: keyword arguments (see below)
-            @keyword name: a unique name for the role
-            @keyword hidden: hide this role completely from the RoleManager
-            @keyword system: role can be assigned, but neither modified nor
-                             deleted in the RoleManager
-            @keyword protected: role can be assigned and edited, but not
-                                deleted in the RoleManager
+            Args:
+               role: display name for the role
+               description: description of the role (optional)
+               acls: list of initial ACLs to assign to this role
+
+            Kwargs:
+               name: a unique name for the role
+               hidden: hide this role completely from the RoleManager
+               system: role can be assigned, but neither modified nor
+                       deleted in the RoleManager
+               protected: role can be assigned and edited, but not
+                          deleted in the RoleManager
         """
 
         table = self.settings.table_group
@@ -4144,10 +4166,12 @@ Please go to %(url)s to approve this user."""
         """
             Remove a role from the system.
 
-            @param role_id: the ID or UID of the role
+            Args:
+                role_id: the ID or UID of the role
 
-            @note: protected roles cannot be deleted with this function,
-                   need to reset the protected-flag first to override
+            Note:
+                Protected roles cannot be deleted with this function,
+                need to reset the protected-flag first to override.
         """
 
         db = current.db
@@ -4193,18 +4217,20 @@ Please go to %(url)s to approve this user."""
         """
             Assigns a role to a user (add the user to a user group)
 
-            @param user_id: the record ID of the user account
-            @param group_id: the record ID(s)/UID(s) of the group
-            @param for_pe: the person entity (pe_id) to restrict the group
-                           membership to, possible values:
+            Args:
+                user_id: the record ID of the user account
+                group_id: the record ID(s)/UID(s) of the group
+                for_pe: the person entity (pe_id) to restrict the group
+                        membership to, possible values:
 
                            - None: use default realm (entities the user is
                              affiliated with)
                            - 0: site-wide realm (no entity-restriction)
                            - X: restrict to records owned by entity X
 
-            @note: strings are assumed to be group UIDs
-            @note: for_pe will be ignored for ADMIN, ANONYMOUS and AUTHENTICATED
+            Notes:
+                - strings are assumed to be group UIDs
+                - for_pe will be ignored for ADMIN, ANONYMOUS and AUTHENTICATED
         """
 
         db = current.db
@@ -4269,17 +4295,19 @@ Please go to %(url)s to approve this user."""
         """
             Removes a role assignment from a user account
 
-            @param user_id: the record ID of the user account
-            @param group_id: the record ID(s)/UID(s) of the role
-            @param for_pe: only remove the group membership for this
-                           realm, possible values:
+            Args:
+                user_id: the record ID of the user account
+                group_id: the record ID(s)/UID(s) of the role
+                for_pe: only remove the group membership for this
+                        realm, possible values:
 
                            - None: only remove for the default realm
                            - 0: only remove for the site-wide realm
                            - X: only remove for entity X
                            - []: remove for any realms
 
-            @note: strings are assumed to be role UIDs
+            Note:
+                strings are assumed to be role UIDs
         """
 
         if not group_id:
@@ -4345,8 +4373,9 @@ Please go to %(url)s to approve this user."""
         """
             Lookup all roles which have been assigned to user for an entity
 
-            @param user_id: the user_id
-            @param for_pe: the entity (pe_id) or list of entities
+            Args:
+                user_id: the user_id
+                for_pe: the entity (pe_id) or list of entities
         """
 
         if not user_id:
@@ -4369,14 +4398,15 @@ Please go to %(url)s to approve this user."""
             Check whether the currently logged-in user has a certain role
             (auth_group membership).
 
-            @param role: the record ID or UID of the role
-            @param for_pe: check for this particular realm, possible values:
+            Args:
+                role: the record ID or UID of the role
+                for_pe: check for this particular realm, possible values:
 
                            - None: for any entity
                            - 0: site-wide
                            - X: for entity X
 
-            @param include_admin: ADMIN matches all Roles
+                include_admin: ADMIN matches all Roles
         """
 
         # Allow override
@@ -4441,12 +4471,13 @@ Please go to %(url)s to approve this user."""
             Check whether the currently logged-in user has at least one
             out of a set of roles (or all of them, with all=True)
 
-            @param roles: list|tuple|set of role IDs or UIDs
-            @param for_pe: check for this particular realm, possible values:
+            Args:
+                roles: list|tuple|set of role IDs or UIDs
+                for_pe: check for this particular realm, possible values:
                                None - for any entity
                                0 - site-wide
                                X - for entity X
-            @param all: check whether the user has all of the roles
+                all: check whether the user has all of the roles
         """
 
         # Override
@@ -4517,10 +4548,12 @@ Please go to %(url)s to approve this user."""
         """
             Get a list of members of a group
 
-            @param group_id: the group record ID
-            @param for_pe: show only group members for this PE
+            Args:
+                group_id: the group record ID
+                for_pe: show only group members for this PE
 
-            @return: a list of the user_ids for members of a group
+            Returns:
+                a list of the user_ids for members of a group
         """
 
         mtable = self.settings.table_membership
@@ -4550,8 +4583,9 @@ Please go to %(url)s to approve this user."""
         """
             Get the user_id for a person_id
 
-            @param person_id: the pr_person record ID, or a user email address
-            @param pe_id: the person entity ID, alternatively
+            Args:
+                person_id: the pr_person record ID, or a user email address
+                pe_id: the person entity ID, alternatively
         """
 
         result = None
@@ -4589,7 +4623,8 @@ Please go to %(url)s to approve this user."""
         """
             Get the person pe_id for a user ID
 
-            @param user_id: the user ID
+            Args:
+                user_id: the user ID
         """
 
         table = current.s3db.pr_person_user
@@ -4604,7 +4639,8 @@ Please go to %(url)s to approve this user."""
         """
             Get the list of person pe_id for list of user_ids
 
-            @param user_id: list of user IDs
+            Args:
+                user_id: list of user IDs
         """
 
         table = current.s3db.pr_person_user
@@ -4674,18 +4710,17 @@ Please go to %(url)s to approve this user."""
             in manner "method". Designed to be called from the RESTlike
             controller.
 
-            @param method: the access method as string, one of
-                           "create", "read", "update", "delete"
-            @param table: the table or tablename
-            @param record_id: the record ID (if any)
-            @param c: the controller name (overrides current.request)
-            @param f: the function name (overrides current.request)
+            Args:
+                method: the access method as string, one of
+                        "create", "read", "update", "delete"
+                table: the table or tablename
+                record_id: the record ID (if any)
+                c: the controller name (overrides current.request)
+                f: the function name (overrides current.request)
         """
 
         if self.override:
             return True
-
-        sr = self.get_system_roles()
 
         if not hasattr(table, "_tablename"):
             tablename = table
@@ -4719,13 +4754,13 @@ Please go to %(url)s to approve this user."""
                 authorised = self.s3_logged_in()
             else:
                 # Editor role required for Update/Delete.
+                sr = self.get_system_roles()
                 authorised = self.s3_has_role(sr.EDITOR)
                 if not authorised and self.user and "owned_by_user" in table:
                     # Creator of Record is allowed to Edit
-                    query = (table.id == record_id)
-                    record = current.db(query).select(table.owned_by_user,
-                                                      limitby = (0, 1),
-                                                      ).first()
+                    record = current.db(table.id == record_id).select(table.owned_by_user,
+                                                                      limitby = (0, 1),
+                                                                      ).first()
                     if record and self.user.id == record.owned_by_user:
                         authorised = True
 
@@ -4735,12 +4770,14 @@ Please go to %(url)s to approve this user."""
                                                         c = c,
                                                         f = f,
                                                         t = table,
-                                                        record = record_id)
+                                                        record = record_id,
+                                                        )
 
         # Web2py default policy
         else:
             if self.s3_logged_in():
                 # Administrators are always authorised
+                sr = self.get_system_roles()
                 if self.s3_has_role(sr.ADMIN):
                     authorised = True
                 else:
@@ -4752,6 +4789,94 @@ Please go to %(url)s to approve this user."""
                 authorised = False
 
         return authorised
+    # -------------------------------------------------------------------------
+    def s3_check_permission(self, user_id, method, table, record_id=None, c=None, f=None):
+        """
+            S3 framework function to define whether a user can access a record
+            in manner "method". Designed to be called from the CLI for test purposes.
+
+            Args:
+                user_id: the user to check permissions for
+                method: the access method as string, one of
+                        "create", "read", "update", "delete"
+                table: the table or tablename
+                record_id: the record ID (if any)
+                c: the controller name (overrides current.request)
+                f: the function name (overrides current.request)
+        """
+
+        if self.override:
+            return "Auth Override: Permission Granted"
+
+        if not hasattr(table, "_tablename"):
+            tablename = table
+            table = current.s3db.table(tablename, db_only=True)
+            if table is None:
+                return "Permission check on Table %s failed as couldn't load table. Module disabled?" % tablename
+
+        policy = current.deployment_settings.get_security_policy()
+
+        # Simple policy
+        if policy == 1:
+            # Anonymous users can Read.
+            if method == "read":
+                return "Policy 1: Read OK for Anonymous"
+            else:
+                # Authentication required for Create/Update/Delete.
+                if user:
+                    return "Policy 1: method OK for Authenticated"
+                else:
+                    return "Policy 1: method not OK for Anonymous"
+        # Editor policy
+        elif policy == 2:
+            # Anonymous users can Read.
+            if method == "read":
+                return "Policy 2: Read OK for Anonymous"
+            elif method == "create":
+                # Authentication required for Create.
+                if user:
+                    return "Policy 2: Create OK for Authenticated"
+                else:
+                    return "Policy 2: Create not OK for Anonymous"
+            elif record_id == 0 and method == "update":
+                if user:
+                    return "Policy 2: Authenticated users can update at least some records"
+                else:
+                    return "Policy 2: Update not OK for Anonymous"
+            else:
+                # Editor role required for Update/Delete.
+                db = current.db
+                sr = self.get_system_roles()
+                mtable = db.auth_membership
+                query = (mtable.user_id == user_id) & \
+                        (mtable.group_id == sr.EDITOR)
+                membership = db(query).select(mtable.id,
+                                              limitby = (0, 1),
+                                              ).first()
+                if membership:
+                    return "Policy 2: Editor role can %s" % method
+                if user and "owned_by_user" in table:
+                    # Creator of Record is allowed to Edit
+                    record = db(table.id == record_id).select(table.owned_by_user,
+                                                              limitby = (0, 1),
+                                                              ).first()
+                    if record and user_id == record.owned_by_user:
+                        return "Policy 2: Creator of Record is allowed to Edit"
+                return "Policy 2: Not Editor & not Owner, so cannot %s" % method
+
+        # Use S3Permission ACLs
+        elif policy in (3, 4, 5, 6, 7, 8):
+            authorised = self.permission.check_permission(user_id,
+                                                          method,
+                                                          c = c,
+                                                          f = f,
+                                                          t = table,
+                                                          record = record_id,
+                                                          )
+            if authorised:
+                return "Permission Granted"
+            else:
+                return "Permission NOT Granted"
 
     # -------------------------------------------------------------------------
     def s3_accessible_query(self, method, table, c=None, f=None):
@@ -4759,13 +4884,14 @@ Please go to %(url)s to approve this user."""
             Returns a query with all accessible records for the currently
             logged-in user
 
-            @param method: the access method as string, one of:
-                           "create", "read", "update" or "delete"
-            @param table: the table or table name
-            @param c: the controller name (overrides current.request)
-            @param f: the function name (overrides current.request)
+            Args:
+                method: the access method as string, one of:
+                        "create", "read", "update" or "delete"
+                table: the table or table name
+                c: the controller name (overrides current.request)
+                f: the function name (overrides current.request)
 
-            @note: This method does not work on GAE because it uses JOIN and IN
+            NB This method does not work on GAE because it uses JOIN and IN
         """
 
         if not hasattr(table, "_tablename"):
@@ -4773,8 +4899,6 @@ Please go to %(url)s to approve this user."""
 
         if self.override:
             return table.id > 0
-
-        sr = self.get_system_roles()
 
         policy = current.deployment_settings.get_security_policy()
 
@@ -4784,12 +4908,13 @@ Please go to %(url)s to approve this user."""
         elif policy == 2:
             # "editor" security policy: show all records
             return table.id > 0
-        elif policy in (3, 4, 5, 6, 7, 8):
+        elif policy in (3, 4, 5, 6, 7):
             # ACLs: use S3Permission method
             query = self.permission.accessible_query(method, table, c=c, f=f)
             return query
 
         # "Full" security policy
+        sr = self.get_system_roles()
         if self.s3_has_role(sr.ADMIN):
             # Administrators can see all data
             return table.id > 0
@@ -4891,8 +5016,9 @@ Please go to %(url)s to approve this user."""
         """
             Makes the current session owner of a record
 
-            @param table: the table or table name
-            @param record_id: the record ID
+            Args:
+                table: the table or table name
+                record_id: the record ID
         """
 
         if hasattr(table, "_tablename"):
@@ -4918,8 +5044,9 @@ Please go to %(url)s to approve this user."""
         """
             Checks whether the current session owns a record
 
-            @param table: the table or table name
-            @param record_id: the record ID
+            Args:
+                table: the table or table name
+                record_id: the record ID
         """
 
         session = current.session
@@ -4943,8 +5070,9 @@ Please go to %(url)s to approve this user."""
         """
             Removes session ownership for a record
 
-            @param table: the table or table name (default: all tables)
-            @param record_id: the record ID (default: all records)
+            Args:
+                table: the table or table name (default: all tables)
+                record_id: the record ID (default: all records)
         """
 
         session = current.session
@@ -4979,10 +5107,11 @@ Please go to %(url)s to approve this user."""
             Update ownership fields in a record (DRY helper method for
             s3_set_record_owner and set_realm_entity)
 
-            @param table: the table
-            @param record: the record or record ID
-            @param update: True to update realm_entity in all realm-components
-            @param fields: dict of {ownership_field:value}
+            Args:
+                table: the table
+                record: the record or record ID
+                update: True to update realm_entity in all realm-components
+                fields: dict of {ownership_field:value}
         """
 
         # Ownership fields
@@ -5053,29 +5182,32 @@ Please go to %(url)s to approve this user."""
         """
             Set the record owned_by_user, owned_by_group and realm_entity
             for a record (auto-detect values).
+                - to be called by CRUD and Importer during record creation.
 
-            To be called by CRUD and Importer during record creation.
+            Args:
+                table: the Table (or table name)
+                record: the record (or record ID)
+                force_update: True to update all fields regardless of
+                              the current value in the record, False
+                              to only update if current value is None
+                fields: override auto-detected values, see keywords
 
-            @param table: the Table (or table name)
-            @param record: the record (or record ID)
-            @param force_update: True to update all fields regardless of
-                                 the current value in the record, False
-                                 to only update if current value is None
-            @param fields: override auto-detected values, see keywords
-            @keyword owned_by_user: the auth_user ID of the owner user
-            @keyword owned_by_group: the auth_group ID of the owner group
-            @keyword realm_entity: the pe_id of the realm entity, or a tuple
-                                   (instance_type, instance_id) to lookup the
-                                   pe_id, e.g. ("org_organisation", 2)
+            Keyword Args:
+                owned_by_user: the auth_user ID of the owner user
+                owned_by_group: the auth_group ID of the owner group
+                realm_entity: the pe_id of the realm entity, or a tuple
+                              (instance_type, instance_id) to lookup the
+                              pe_id, e.g. ("org_organisation", 2)
 
-            @note: Only use with force_update for deliberate owner changes (i.e.
-                   with explicit owned_by_user/owned_by_group) - autodetected
-                   values can have undesirable side-effects. For mere realm
-                   updates use set_realm_entity instead.
+            Notes:
+                - only use with force_update for deliberate owner changes (i.e.
+                  with explicit owned_by_user/owned_by_group) - autodetected
+                  values can have undesirable side-effects. For mere realm
+                  updates use set_realm_entity instead.
 
-            @note: If used with force_update, this will also update the
-                   realm_entity in all configured realm_components, i.e.
-                   no separate call to set_realm_entity required.
+                - if used with force_update, this will also update the
+                  realm_entity in all configured realm_components, i.e.
+                  no separate call to set_realm_entity required.
         """
 
         s3db = current.s3db
@@ -5201,21 +5333,24 @@ Please go to %(url)s to approve this user."""
     def set_realm_entity(self, table, records, entity=0, force_update=False):
         """
             Update the realm entity for records, will also update the
-            realm in all configured realm-entities, see:
+            realm in all configured realm-entities
+                - to be called by CRUD and Importer during record update.
 
-            http://eden.sahanafoundation.org/wiki/S3AAA/OrgAuth#Realms1
-
-            To be called by CRUD and Importer during record update.
-
-            @param table: the Table (or tablename)
-            @param records: - a single record
+            Args:
+                table: the Table (or tablename)
+                records: the records to set the realm entity for
+                            - a single record
                             - a single record ID
                             - a list of records, or a Rows object
                             - a list of record IDs
                             - a query to find records in table
-            @param entity: - an entity ID
-                           - a tuple (table, instance_id)
-                           - 0 for default lookup
+                entity: the realm entity
+                            - an person entity ID
+                            - a tuple (table, instance_id)
+                            - 0 for default lookup
+
+            See:
+                http://eden.sahanafoundation.org/wiki/S3AAA/OrgAuth#Realms1
         """
 
         db = current.db
@@ -5317,9 +5452,10 @@ Please go to %(url)s to approve this user."""
         """
             Lookup the realm entity for a record
 
-            @param table: the Table
-            @param record: the record (as Row or dict)
-            @param entity: the entity (pe_id)
+            Args:
+                table: the Table
+                record: the record (as Row or dict)
+                entity: the entity (pe_id)
         """
 
         if "realm_entity" not in table:
@@ -5372,9 +5508,10 @@ Please go to %(url)s to approve this user."""
             Update the shared fields in data in all super-entity rows linked
             with this record.
 
-            @param table: the table
-            @param record: a record, record ID or a query
-            @param data: the field/value pairs to update
+            Args:
+                table: the table
+                record: a record, record ID or a query
+                data: the field/value pairs to update
         """
 
         db = current.db
@@ -5440,11 +5577,12 @@ Please go to %(url)s to approve this user."""
             prevents create & update of records in table & gives a
             warning if the user tries to.
 
-            @param table: the table or table name
-            @param error_msg: error message
-            @param redirect_on_error: whether to redirect on error
-            @param facility_type: restrict to this particular type of
-                                  facilities (a tablename)
+            Args:
+                table: the table or table name
+                error_msg: error message
+                redirect_on_error: whether to redirect on error
+                facility_type: restrict to this particular type of
+                               facilities (a tablename)
         """
 
         T = current.T
@@ -5483,7 +5621,7 @@ Please go to %(url)s to approve this user."""
         if "update" in args or "create" in args:
             if redirect_on_error:
                 # Trying to create or update
-                # If they do no have permission to any facilities
+                # If they do not have permission to any facilities
                 current.session.error = "%s %s" % (error_msg, HINT)
                 redirect(URL(c="default", f="index"))
         elif table is not None:
@@ -5508,9 +5646,10 @@ Please go to %(url)s to approve this user."""
             permission for, prevents create & update of a record in
             table & gives an warning if the user tries to.
 
-            @param table: the table or table name
-            @param error_msg: error message
-            @param redirect_on_error: whether to redirect on error
+            Args:
+                table: the table or table name
+                error_msg: error message
+                redirect_on_error: whether to redirect on error
         """
 
         T = current.T
@@ -5556,12 +5695,12 @@ Please go to %(url)s to approve this user."""
             return None
         if not current.deployment_settings.get_org_branches():
             return org_id
-        return current.cache.ram(
-                # Common key for all users of this org & vol_service_record() & hrm_training_event_realm_entity()
-                "root_org_%s" % org_id,
-                lambda: current.s3db.org_root_organisation(org_id),
-                time_expire=120
-                )
+        from s3db.org import org_root_organisation
+        # Common key for all users of this org & vol_service_record() & hrm_training_event_realm_entity()
+        return current.cache.ram("root_org_%s" % org_id,
+                                 lambda: org_root_organisation(org_id),
+                                 time_expire = 120,
+                                 )
 
     # -------------------------------------------------------------------------
     def root_org_name(self):
@@ -5609,7 +5748,7 @@ Please go to %(url)s to approve this user."""
             return (table.organisation_id == None)
 
 # =============================================================================
-class S3Permission(object):
+class S3Permission:
     """ S3 Class to handle permissions """
 
     TABLENAME = "s3_permission"
@@ -5625,53 +5764,42 @@ class S3Permission(object):
     ALL = CREATE | READ | UPDATE | DELETE | REVIEW | APPROVE | PUBLISH
     NONE = 0x0000 # must be 0!
 
-    PERMISSION_OPTS = OrderedDict([
-        [CREATE, "CREATE"],
-        [READ, "READ"],
-        [UPDATE, "UPDATE"],
-        [DELETE, "DELETE"],
-        [REVIEW, "REVIEW"],
-        [APPROVE, "APPROVE"],
-        #[PUBLISH, "PUBLISH"],   # currently unused
-    ])
+    PERMISSION_OPTS = OrderedDict((
+        (CREATE, "CREATE"),
+        (READ, "READ"),
+        (UPDATE, "UPDATE"),
+        (DELETE, "DELETE"),
+        (REVIEW, "REVIEW"),
+        (APPROVE, "APPROVE"),
+        #(PUBLISH, "PUBLISH"),   # currently unused
+    ))
 
-    # Method <-> required permission
-    METHODS = Storage({
-        "create": CREATE,
-        "read": READ,
-        "update": UPDATE,
-        "delete": DELETE,
-        "map": READ,
-        "report": READ,
-        #"search": READ,
-        "timeplot": READ,
-        "import": CREATE,
-        "review": REVIEW,
-        "approve": APPROVE,
-        "reject": APPROVE,
-        "publish": PUBLISH,
-    })
-
-    # Lambda expressions for ACL handling
-    required_acl = lambda self, methods: \
-                          reduce(lambda a, b: a | b,
-                                 [self.METHODS[m]
-                                  for m in methods if m in self.METHODS],
-                                 self.NONE)
-    most_permissive = lambda self, acl: \
-                             reduce(lambda x, y: (x[0]|y[0], x[1]|y[1]),
-                                    acl, (self.NONE, self.NONE))
-    most_restrictive = lambda self, acl: \
-                              reduce(lambda x, y: (x[0]&y[0], x[1]&y[1]),
-                                     acl, (self.ALL, self.ALL))
+    # URL Method <-> required permission
+    METHODS = {"create": CREATE,
+               "read": READ,
+               "update": UPDATE,
+               "delete": DELETE,
+               #"list": READ,
+               #"datatable": READ,
+               #"datalist": READ,
+               "map": READ,
+               "report": READ,
+               "timeplot": READ,
+               "import": CREATE,
+               "review": REVIEW,
+               "approve": APPROVE,
+               "reject": APPROVE,
+               "publish": PUBLISH,
+               }
 
     # -------------------------------------------------------------------------
     def __init__(self, auth, tablename=None):
         """
             Constructor, invoked by AuthS3.__init__
 
-            @param auth: the AuthS3 instance
-            @param tablename: the name for the permissions table
+            Args:
+                auth: the AuthS3 instance
+                tablename: the name for the permissions table (override)
         """
 
         db = current.db
@@ -5791,6 +5919,8 @@ class S3Permission(object):
             db.define_table(self.tablename,
                             Field("group_id", table_group),
                             Field("controller", length=64),
+                            # @ToDo: 'function' is a SQL-reserved word in several databases
+                            #        - rename as 'function_name'
                             Field("function", length=512),
                             Field("tablename", length=512),
                             Field("record", "integer"),
@@ -5833,6 +5963,37 @@ class S3Permission(object):
             db.executesql(sql % names)
 
     # -------------------------------------------------------------------------
+    # Permission rule handling
+    # -------------------------------------------------------------------------
+    @classmethod
+    def required_acl(cls, methods):
+
+        all_methods, none = cls.METHODS, cls.NONE
+
+        result = none
+        for method in methods:
+            result |= all_methods.get(method, none)
+        return result
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def most_permissive(cls, rules):
+
+        result = (cls.NONE, cls.NONE)
+        for rule in rules:
+            result = result[0] | rule[0], result[1] | rule[1]
+        return result
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def most_restrictive(cls, rules):
+
+        result = (cls.ALL, cls.ALL)
+        for rule in rules:
+            result = result[0] & rule[0], result[1] & rule[1]
+        return result
+
+    # -------------------------------------------------------------------------
     # ACL Management
     # -------------------------------------------------------------------------
     def update_acl(self, group,
@@ -5848,16 +6009,17 @@ class S3Permission(object):
         """
             Update an ACL
 
-            @param group: the ID or UID of the auth_group this ACL applies to
-            @param c: the controller
-            @param f: the function
-            @param t: the tablename
-            @param record: the record (as ID or Row with ID)
-            @param oacl: the ACL for the owners of the specified record(s)
-            @param uacl: the ACL for all other users
-            @param entity: restrict this ACL to the records owned by this
-                           entity (pe_id), specify "any" for any entity
-            @param delete: delete the ACL instead of updating it
+            Args:
+                group: the ID or UID of the auth_group this ACL applies to
+                c: the controller
+                f: the function
+                t: the tablename
+                record: the record (as ID or Row with ID)
+                oacl: the ACL for the owners of the specified record(s)
+                uacl: the ACL for all other users
+                entity: restrict this ACL to the records owned by this
+                        entity (pe_id), specify "any" for any entity
+                delete: delete the ACL instead of updating it
         """
 
         ANY = "any"
@@ -5955,13 +6117,15 @@ class S3Permission(object):
                    ):
         """
             Delete an ACL
-            @param group: the ID or UID of the auth_group this ACL applies to
-            @param c: the controller
-            @param f: the function
-            @param t: the tablename
-            @param record: the record (as ID or Row with ID)
-            @param entity: restrict this ACL to the records owned by this
-                           entity (pe_id), specify "any" for any entity
+
+            Args:
+                group: the ID or UID of the auth_group this ACL applies to
+                c: the controller
+                f: the function
+                t: the tablename
+                record: the record (as ID or Row with ID)
+                entity: restrict this ACL to the records owned by this
+                        entity (pe_id), specify "any" for any entity
         """
 
         return self.update_acl(group,
@@ -5981,14 +6145,17 @@ class S3Permission(object):
         """
             Get the entity/group/user owning a record
 
-            @param table: the table
-            @param record: the record ID (or the Row, if already loaded)
+            Args:
+                table: the table
+                record: the record ID (or the Row, if already loaded)
 
-            @note: if passing a Row, it must contain all available ownership
-                   fields (id, owned_by_user, owned_by_group, realm_entity),
-                   otherwise the record will be re-loaded by this function.
+            Returns:
+                tuple of (realm_entity, owner_group, owner_user)
 
-            @return: tuple of (realm_entity, owner_group, owner_user)
+            Note:
+                If passing a Row, it must contain all available ownership
+                fields (id, owned_by_user, owned_by_group, realm_entity),
+                otherwise the record will be re-loaded by this function.
         """
 
         realm_entity = None
@@ -6047,24 +6214,36 @@ class S3Permission(object):
         return (realm_entity, owner_group, owner_user)
 
     # -------------------------------------------------------------------------
-    def is_owner(self, table, record, owners=None, strict=False):
+    def is_owner(self,
+                 table,
+                 record,
+                 owners = None,
+                 strict = False,
+                 user_id = None,
+                 realms = None,
+                 ):
         """
             Check whether the current user owns the record
 
-            @param table: the table or tablename
-            @param record: the record ID (or the Row if already loaded)
-            @param owners: override the actual record owners by a tuple
-                           (realm_entity, owner_group, owner_user)
+            Args:
+                table: the table or tablename
+                record: the record ID (or the Row if already loaded)
+                owners: override the actual record owners by a tuple
+                        (realm_entity, owner_group, owner_user)
+                strict: 
+                user_id: User to check for (defaults to currently logged-in user if not provided)
+                realms: User to check for (defaults to currently logged-in user's if not provided)
 
-            @return: True if the current user owns the record, else False
+            Returns:
+                True if the current user owns the record, else False
         """
 
         auth = self.auth
-        user_id = None
         sr = auth.get_system_roles()
 
-        if auth.user is not None:
-            user_id = auth.user.id
+        user = auth.user
+        if user:
+            user_id = user.id
 
         session = current.session
         roles = [sr.ANONYMOUS]
@@ -6103,7 +6282,8 @@ class S3Permission(object):
 
         # OrgAuth: apply only group memberships within the realm
         if self.entity_realm and realm_entity:
-            realms = auth.user.realms
+            if not realms:
+                realms = user.realms
             roles = [sr.ANONYMOUS]
             append = roles.append
             for r in realms:
@@ -6125,13 +6305,15 @@ class S3Permission(object):
         """
             Returns a query to select the records in table owned by user
 
-            @param table: the table
-            @param user: the current auth.user (None for not authenticated)
-            @param use_realm: use realms
-            @param realm: limit owner access to these realms
-            @param no_realm: don't include these entities in role realms
-            @return: a web2py Query instance, or None if no query can be
-                      constructed
+            Args:
+                table: the table
+                user: the current auth.user (None for not authenticated)
+                use_realm: use realms
+                realm: limit owner access to these realms
+                no_realm: don't include these entities in role realms
+
+            Returns:
+                a web2py Query instance, or None if no query can be constructed
         """
 
         OUSR = "owned_by_user"
@@ -6172,7 +6354,6 @@ class S3Permission(object):
                         query = None
 
             if not self.strict_ownership:
-
                 # Any authenticated user owns all records with no owner
                 public = None
                 if OUSR in table.fields:
@@ -6237,10 +6418,12 @@ class S3Permission(object):
         """
             Returns a query to select the records owned by one of the entities.
 
-            @param table: the table
-            @param entities: list of entities
-            @return: a web2py Query instance, or None if no query can be
-                      constructed
+            Args:
+                table: the table
+                entities: list of entities
+
+            Returns:
+                a web2py Query instance, or None if no query can be constructed
         """
 
         OENT = "realm_entity"
@@ -6262,14 +6445,16 @@ class S3Permission(object):
             Returns a list of the realm entities which a user can access for
             the given table.
 
-            @param tablename: the tablename
-            @param method: the method
-            @param c: override request.controller to look up for
-                      a different controller context
-            @param f: override request.function to look up for
-                      a different controller context
+            Args:
+                tablename: the tablename
+                method: the method
+                c: override request.controller to look up for
+                   a different controller context
+                f: override request.function to look up for
+                   a different controller context
 
-            @return: a list of pe_ids or None (for no restriction)
+            Returns:
+                a list of pe_ids or None (for no restriction)
         """
 
         if not self.entity_realm:
@@ -6314,10 +6499,14 @@ class S3Permission(object):
         """
             Check whether a record has been approved or not
 
-            @param table: the table
-            @param record: the record or record ID
-            @param approved: True = check if approved,
-                             False = check if unapproved
+            Args:
+                table: the table
+                record: the record or record ID
+                approved: True = check if approved,
+                          False = check if unapproved
+
+            Returns:
+                boolean result of the check
         """
 
         if "approved_by" not in table.fields or \
@@ -6351,8 +6540,9 @@ class S3Permission(object):
         """
             Check whether a record has not been approved yet
 
-            @param table: the table
-            @param record: the record or record ID
+            Args:
+                table: the table
+                record: the record or record ID
         """
 
         return self.approved(table, record, approved=False)
@@ -6363,7 +6553,8 @@ class S3Permission(object):
         """
             Check whether record approval is required for a table
 
-            @param table: the table (or tablename)
+            Args:
+                table: the table (or tablename)
         """
 
         settings = current.deployment_settings
@@ -6393,9 +6584,10 @@ class S3Permission(object):
         """
             Set the default approver for new records in table
 
-            @param table: the table
-            @param force: whether to force approval for tables which
-                          require manual approval
+            Args:
+                table: the table
+                force: whether to force approval for tables which
+                       require manual approval
         """
 
         APPROVER = "approved_by"
@@ -6431,11 +6623,12 @@ class S3Permission(object):
         """
             Check permission to access a record with method
 
-            @param method: the access method (string)
-            @param c: the controller name (falls back to current request)
-            @param f: the function name (falls back to current request)
-            @param t: the table or tablename
-            @param record: the record or record ID (None for any record)
+            Args:
+                method: the access method (string)
+                c: the controller name (falls back to current request)
+                f: the function name (falls back to current request)
+                t: the table or tablename
+                record: the record or record ID (None for any record)
         """
 
         # Auth override, system roles and login
@@ -6510,7 +6703,7 @@ class S3Permission(object):
         # Do we need to check the owner role (i.e. table+record given)?
         if t is not None and record is not None:
             owners = self.get_owners(t, record)
-            is_owner = self.is_owner(t, record, owners=owners)
+            is_owner = self.is_owner(t, record, owners=owners, strict=self.strict_ownership)
             entity = owners[0]
         else:
             owners = []
@@ -6618,6 +6811,277 @@ class S3Permission(object):
         permission_cache[key] = permitted
 
         return permitted
+    # -------------------------------------------------------------------------
+    def check_permission(self, user_id, method, c=None, f=None, t=None, record=None):
+        """
+            Check permission to access a record with method for a user
+            - designed to be run from CLI for testing purposes
+
+            Args:
+                user_id: the auth_user.id to test
+                method: the access method (string)
+                c: the controller name (falls back to current request)
+                f: the function name (falls back to current request)
+                t: the table or tablename
+                record: the record or record ID (None for any record)
+        """
+
+        info = current.log.info
+
+        # Auth override, system roles and login
+        auth = self.auth
+        if auth.override:
+            info("==> auth.override")
+            info("*** GRANTED ***")
+            return True
+
+        # Multiple methods?
+        if isinstance(method, (list, tuple)):
+            for m in method:
+                if self.has_permission(m, c=c, f=f, t=t, record=record):
+                    return True
+            return False
+        else:
+            method = [method]
+
+        if record == 0:
+            record = None
+
+        info("check_permission(%s, '%s', c=%s, f=%s, t=%s, record=%s)" % (user_id,
+                                                                          "|".join(method),
+                                                                          c or current.request.controller,
+                                                                          f or current.request.function,
+                                                                          t,
+                                                                          record,
+                                                                          ))
+
+        sr = auth.get_system_roles()
+        logged_in = user_id is not None
+        self.check_settings()
+
+        # Required ACL
+        racl = self.required_acl(method)
+        info("==> required ACL: %04X" % racl)
+
+        # Get realms and delegations
+        if not logged_in:
+            realms = Storage({sr.ANONYMOUS:None})
+        else:
+            # Copy functionality from s3_set_roles
+            db = current.db
+            s3db = current.s3db
+
+            # Get all current auth_memberships of the user
+            mtable = auth.settings.table_membership
+            query = (mtable.deleted == False) & \
+                    (mtable.user_id == user_id) & \
+                    (mtable.group_id != None)
+            rows = db(query).select(mtable.group_id,
+                                    mtable.pe_id,
+                                    cacheable = True,
+                                    )
+            if not self.entity_realm:
+                # Group memberships have no realms (policy 5 and below)
+                realms = Storage([(row.group_id, None) for row in rows])
+            else:
+                # Group memberships are limited to realms (policy 6 and above)
+                realms = {}
+
+                # These roles can't be realm-restricted:
+                unrestrictable = (sr.ADMIN,
+                                  sr.ANONYMOUS,
+                                  sr.AUTHENTICATED,
+                                  )
+
+                ltable = s3db.pr_person_user
+                user = db(ltable.user_id == user_id).select(ltable.pe_id,
+                                                            limitby = (0, 1),
+                                                            ).first()
+                from s3db.pr import pr_default_realms
+                default_realm = pr_default_realms(user.pe_id)
+
+                # Store the realms:
+                for row in rows:
+                    group_id = row.group_id
+                    if group_id in realms and realms[group_id] is None:
+                        continue
+                    if group_id in unrestrictable:
+                        realms[group_id] = None
+                        continue
+                    if group_id not in realms:
+                        realms[group_id] = []
+                    realm = realms[group_id]
+                    pe_id = row.pe_id
+                    if pe_id is None:
+                        if default_realm:
+                            realm.extend([e for e in default_realm
+                                            if e not in realm])
+                        if not realm:
+                            del realms[group_id]
+                    elif pe_id == 0:
+                        # Site-wide
+                        realms[group_id] = None
+                    elif pe_id not in realm:
+                        realms[group_id].append(pe_id)
+
+                if self.entity_hierarchy:
+                    # Realms include subsidiaries of the realm entities
+
+                    # Get all entities in realms
+                    entities = []
+                    append = entities.append
+                    for realm in realms.values():
+                        if realm is not None:
+                            for entity in realm:
+                                if entity not in entities:
+                                    append(entity)
+
+                    # Lookup the subsidiaries of all realms and extensions
+                    from s3db.pr import pr_descendants
+                    if current.deployment_settings.get_auth_user_realms_include_persons():
+                        exclude_persons = False
+                    else:
+                        exclude_persons = True
+                    descendants = pr_descendants(entities, exclude_persons = exclude_persons)
+
+                    # Add the subsidiaries to the realms
+                    for group_id in realms:
+                        realm = realms[group_id]
+                        if realm is None:
+                            continue
+                        append = realm.append
+                        for entity in list(realm):
+                            if entity in descendants:
+                                for subsidiary in descendants[entity]:
+                                    if subsidiary not in realm:
+                                        append(subsidiary)
+
+        # Administrators have all permissions
+        if sr.ADMIN in realms:
+            info("==> user is ADMIN")
+            info("*** GRANTED ***")
+            return True
+
+        # Fall back to current request
+        c = c or self.controller
+        f = f or self.function
+
+        if not self.use_cacls:
+            info("==> simple authorization")
+            # Fall back to simple authorization
+            if logged_in:
+                info("*** GRANTED ***")
+                return True
+            else:
+                if self.page_restricted(c=c, f=f):
+                    permitted = racl == self.READ
+                else:
+                    info("==> unrestricted page")
+                    permitted = True
+                if permitted:
+                    info("*** GRANTED ***")
+                else:
+                    info("*** DENIED ***")
+                return permitted
+
+        # Do we need to check the owner role (i.e. table+record given)?
+        if t is not None and record is not None:
+            owners = self.get_owners(t, record)
+            is_owner = self.is_owner(t, record,
+                                     owners = owners,
+                                     user_id = user_id,
+                                     realms = realms,
+                                     )
+            entity = owners[0]
+        else:
+            owners = []
+            is_owner = True
+            entity = None
+
+        # Get the applicable ACLs
+        acls = self.applicable_acls(racl,
+                                    realms = realms,
+                                    c = c,
+                                    f = f,
+                                    t = t,
+                                    entity = entity
+                                    )
+
+        permitted = None
+        if acls is None:
+            info("==> no ACLs defined for this case")
+            permitted = True
+        elif not acls:
+            info("==> no applicable ACLs")
+            permitted = False
+        else:
+            if entity:
+                if entity in acls:
+                    uacl, oacl = acls[entity]
+                elif "ANY" in acls:
+                    uacl, oacl = acls["ANY"]
+                else:
+                    info("==> Owner entity outside realm")
+                    permitted = False
+            else:
+                uacl, oacl = self.most_permissive(acls.values())
+
+            info("==> uacl: %04X, oacl: %04X" % (uacl, oacl))
+
+            if permitted is None:
+                if uacl & racl == racl:
+                    permitted = True
+                elif oacl & racl == racl:
+                    if is_owner and record:
+                        info("==> User owns the record")
+                    elif record:
+                        info("==> User does not own the record")
+                    permitted = is_owner
+                else:
+                    permitted = False
+
+        if permitted is None:
+            raise self.error("Cannot determine permission.")
+
+        elif permitted and \
+             t is not None and record is not None and \
+             self.requires_approval(t):
+
+            # Approval possible for this table?
+            if not hasattr(t, "_tablename"):
+                table = current.s3db.table(t)
+                if not table:
+                    raise AttributeError("undefined table %s" % t)
+            else:
+                table = t
+            if "approved_by" in table.fields:
+
+                approval_methods = ("approve", "review", "reject")
+                access_approved = not all([m in approval_methods for m in method])
+                access_unapproved = any([m in method for m in approval_methods])
+
+                if access_unapproved:
+                    if not access_approved:
+                        permitted = self.unapproved(table, record)
+                        if not permitted:
+                            info("==> Record already approved")
+                else:
+                    permitted = self.approved(table, record) or \
+                                self.is_owner(table, record, owners, strict=True, user_id=user_id, realms=realms) or \
+                                self.check_permission(user_id, "review", t=table, record=record)
+                    if not permitted:
+                        info("==> Record not approved")
+                        info("==> is owner: %s" % is_owner)
+            else:
+                # Approval not possible for this table => no change
+                pass
+
+        if permitted:
+            info("*** GRANTED ***")
+        else:
+            info("*** DENIED ***")
+
+        return permitted
 
     # -------------------------------------------------------------------------
     def accessible_query(self, method, table, c=None, f=None, deny=True):
@@ -6625,10 +7089,11 @@ class S3Permission(object):
             Returns a query to select the accessible records for method
             in table.
 
-            @param method: the method as string or a list of methods (AND)
-            @param table: the database table or table name
-            @param c: controller name (falls back to current request)
-            @param f: function name (falls back to current request)
+            Args:
+                method: the method as string or a list of methods (AND)
+                table: the database table or table name
+                c: controller name (falls back to current request)
+                f: function name (falls back to current request)
         """
 
         # Get the table
@@ -6684,7 +7149,7 @@ class S3Permission(object):
         # Get realms and delegations
         user = auth.user
         if not logged_in:
-            realms = Storage({sr.ANONYMOUS:None})
+            realms = Storage({sr.ANONYMOUS: None})
         else:
             realms = user.realms
 
@@ -6846,18 +7311,19 @@ class S3Permission(object):
                        ):
         """
             Return a URL only if accessible by the user, otherwise False
-            - used for Navigation Items
+                - used for Navigation Items
 
-            @param c: the controller
-            @param f: the function
-            @param p: the permission (defaults to READ)
-            @param t: the tablename (defaults to <c>_<f>)
-            @param a: the application name
-            @param args: the URL arguments
-            @param vars: the URL variables
-            @param anchor: the anchor (#) of the URL
-            @param extension: the request format extension
-            @param env: the environment
+            Args:
+                c: the controller
+                f: the function
+                p: the permission (defaults to READ)
+                t: the tablename (defaults to <c>_<f>)
+                a: the application name
+                args: the URL arguments
+                vars: the URL variables
+                anchor: the anchor (#) of the URL
+                extension: the request format extension
+                env: the environment
         """
 
         if args is None:
@@ -6931,23 +7397,25 @@ class S3Permission(object):
                         c = None,
                         f = None,
                         t = None,
-                        entity = None
+                        entity = None,
                         ):
         """
             Find all applicable ACLs for the specified situation for
             the specified realms and delegations
 
-            @param racl: the required ACL
-            @param realms: the realms
-            @param delegations: the delegations
-            @param c: the controller name, falls back to current request
-            @param f: the function name, falls back to current request
-            @param t: the tablename
-            @param entity: the realm entity
+            Args:
+                racl: the required ACL
+                realms: the realms
+                delegations: the delegations
+                c: the controller name, falls back to current request
+                f: the function name, falls back to current request
+                t: the tablename
+                entity: the realm entity
 
-            @return: None for no ACLs defined (allow),
-                      [] for no ACLs applicable (deny),
-                      or list of applicable ACLs
+            Returns:
+                - None for no ACLs defined (allow), or
+                - [] for no ACLs applicable (deny), or
+                - list of applicable ACLs
         """
 
         if not self.use_cacls:
@@ -7166,8 +7634,9 @@ class S3Permission(object):
             Checks whether a page is restricted (=whether ACLs
             are to be applied)
 
-            @param c: controller name
-            @param f: function name
+            Args:
+                c: controller name
+                f: function name
         """
 
 
@@ -7187,7 +7656,8 @@ class S3Permission(object):
         """
             Check whether access to a table is restricted
 
-            @param t: the table name or Table
+            Args:
+                t: the table name or Table
         """
 
         s3 = current.response.s3
@@ -7246,10 +7716,11 @@ class S3Permission(object):
             Checks whether ownership can be required to access records in
             this table (this may not apply to every record in this table).
 
-            @param method: the method as string or a list of methods (AND)
-            @param table: the database table or table name
-            @param c: controller name (falls back to current request)
-            @param f: function name (falls back to current request)
+            Args:
+                method: the method as string or a list of methods (AND)
+                table: the database table or table name
+                c: controller name (falls back to current request)
+                f: function name (falls back to current request)
         """
 
         if not self.use_cacls:
@@ -7320,8 +7791,9 @@ class S3Permission(object):
             necessary in methods which change the status of the record
             (e.g. approval).
 
-            @param table: the table
-            @param record_id: the record ID
+            Args:
+                table: the table
+                record_id: the record ID
         """
 
         if table is None:
@@ -7344,7 +7816,7 @@ class S3Permission(object):
                     del permissions[key]
 
 # =============================================================================
-class S3Audit(object):
+class S3Audit:
     """ S3 Audit Trail Writer Class """
 
     def __init__(self,
@@ -7355,10 +7827,12 @@ class S3Audit(object):
         """
             Constructor
 
-            @param tablename: the name of the audit table
-            @param migrate: migration setting
+            Args:
+                tablename: the name of the audit table
+                migrate: migration setting
 
-            @note: this defines the audit table
+            Note:
+                This defines the audit table.
         """
 
         settings = current.deployment_settings
@@ -7405,13 +7879,14 @@ class S3Audit(object):
         """
             Audit
 
-            @param method: Method to log, one of
-                "create", "update", "read", "list" or "delete"
-            @param prefix: the module prefix of the resource
-            @param name: the name of the resource (without prefix)
-            @param form: the form
-            @param record: the record ID
-            @param representation: the representation format
+            Args:
+                method: Method to log, one of
+                        "create", "update", "read", "list" or "delete"
+                prefix: the module prefix of the resource
+                name: the name of the resource (without prefix)
+                form: the form
+                record: the record ID
+                representation: the representation format
         """
 
         table = self.table
@@ -7556,7 +8031,8 @@ class S3Audit(object):
             Provide a Human-readable representation of Audit records
             - currently unused
 
-            @param record: the record IDs
+            Args:
+                record: the record IDs
         """
 
         table = self.table
@@ -7696,7 +8172,7 @@ class S3EntityRoleManager(S3Method):
     ENTITY_TYPES = ["org_organisation",
                     "org_office",
                     "inv_warehouse",
-                    "hms_hospital",
+                    "med_hospital",
                     #"po_area",
                     "pr_group",
                     ]

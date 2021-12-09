@@ -38,7 +38,7 @@ from gluon import current
 from .s3codec import S3Codec
 
 # =============================================================================
-class S3Exporter(object):
+class S3Exporter:
     """
         Exporter toolkit
     """
@@ -48,11 +48,14 @@ class S3Exporter(object):
         """
             Export resource as CSV
 
-            @param resource: the resource to export
+            Args:
+                resource: the resource to export
 
-            @note: export does not include components!
+            Note:
+                Export does not include components!
 
-            @todo: implement audit
+            TODO:
+                Implement audit
         """
 
         request = current.request
@@ -70,30 +73,32 @@ class S3Exporter(object):
 
     # -------------------------------------------------------------------------
     def json(self, resource,
-             start=None,
-             limit=None,
-             fields=None,
-             orderby=None,
-             represent=False,
-             tooltip=None):
+             start = None,
+             limit = None,
+             fields = None,
+             orderby = None,
+             represent = False,
+             tooltip = None,
+             ):
         """
             Export a resource as JSON
 
-            @param resource: the resource to export from
-            @param start: index of the first record to export
-            @param limit: maximum number of records to export
-            @param fields: list of field selectors for fields to include in
-                           the export (None for all fields)
-            @param orderby: ORDERBY expression
-            @param represent: whether values should be represented
-            @param tooltip: additional tooltip field, either a field selector
-                            or an expression "f(k,v)" where f is a function
-                            name that can be looked up from s3db, and k,v are
-                            field selectors for the row, f will be called with
-                            a list of tuples (k,v) for each row and is expected
-                            to return a dict {k:tooltip} => used by
-                            filterOptionsS3 to extract onhover-tooltips for
-                            Ajax-update of options
+            Args:
+                resource: the resource to export from
+                start: index of the first record to export
+                limit: maximum number of records to export
+                fields: list of field selectors for fields to include in
+                        the export (None for all fields)
+                orderby: ORDERBY expression
+                represent: whether values should be represented
+                tooltip: additional tooltip field, either a field selector
+                         or an expression "f(k,v)" where f is a function
+                         name that can be looked up from s3db, and k,v are
+                         field selectors for the row, f will be called with
+                         a list of tuples (k,v) for each row and is expected
+                         to return a dict {k:tooltip} => used by
+                         filterOptionsS3 to extract onhover-tooltips for
+                         Ajax-update of options
         """
 
         if fields is None:
@@ -129,10 +134,11 @@ class S3Exporter(object):
 
         # Get the data
         _rows = resource.select(fields,
-                                start=start,
-                                limit=limit,
-                                orderby=orderby,
-                                represent=represent).rows
+                                start = start,
+                                limit = limit,
+                                orderby = orderby,
+                                represent = represent,
+                                ).rows
 
         # Simplify to plain fieldnames for fields in this table
         tn = "%s." % resource.tablename
@@ -181,10 +187,10 @@ class S3Exporter(object):
                     else:
                         # Add tooltips as "_tooltip" to the corresponding rows
                         if isinstance(tooltips, dict):
-                            from .s3utils import s3_unicode
+                            from .s3utils import s3_str
                             for k, v in tooltips.items():
                                 if k in items:
-                                    items[k]["_tooltip"] = s3_unicode(v)
+                                    items[k]["_tooltip"] = s3_str(v)
 
             else:
                 # Resolve the tooltip field name against the resource
@@ -196,14 +202,14 @@ class S3Exporter(object):
                 else:
                     # Extract the tooltip field from each row
                     # and add it as _tooltip
-                    from .s3utils import s3_unicode
+                    from .s3utils import s3_str
                     for row in rows:
                         try:
                             value = tooltip_rfield.extract(row)
                         except KeyError:
                             break
                         if value:
-                            row["_tooltip"] = s3_unicode(value)
+                            row["_tooltip"] = s3_str(value)
 
         # Return as JSON
         response = current.response
@@ -216,8 +222,8 @@ class S3Exporter(object):
     # -------------------------------------------------------------------------
     def pdf(self, *args, **kwargs):
 
-        codec = S3Codec.get_codec("pdf").encode
-        return codec(*args, **kwargs)
+        codec = S3Codec.get_codec("pdf")
+        return codec.encode(*args, **kwargs)
 
     # -------------------------------------------------------------------------
     def pdfcard(self, *args, **kwargs):
@@ -228,19 +234,19 @@ class S3Exporter(object):
     # -------------------------------------------------------------------------
     def shp(self, *args, **kwargs):
 
-        codec = S3Codec.get_codec("shp").encode
-        return codec(*args, **kwargs)
+        codec = S3Codec.get_codec("shp")
+        return codec.encode(*args, **kwargs)
 
     # -------------------------------------------------------------------------
     def svg(self, *args, **kwargs):
 
-        codec = S3Codec.get_codec("svg").encode
-        return codec(*args, **kwargs)
+        codec = S3Codec.get_codec("svg")
+        return codec.encode(*args, **kwargs)
 
     # -------------------------------------------------------------------------
     def xls(self, *args, **kwargs):
 
-        codec = S3Codec.get_codec("xls").encode
-        return codec(*args, **kwargs)
+        codec = S3Codec.get_codec("xls")
+        return codec.encode(*args, **kwargs)
 
 # End =========================================================================

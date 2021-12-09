@@ -76,7 +76,7 @@ def req_priority():
                            label = current.T("Priority"),
                            #@ToDo: Colour code the priority text - red, orange, green
                            #represent = req_priority_represent,
-                           represent = S3Represent(options = priority_opts),
+                           represent = s3_options_represent(priority_opts),
                            requires = IS_EMPTY_OR(
                                            IS_IN_SET(priority_opts)
                                            ),
@@ -100,7 +100,7 @@ def req_status():
     status_opts = req_status_opts()
     return S3ReusableField("req_status", "integer",
                            label = current.T("Request Status"),
-                           represent = S3Represent(options = status_opts),
+                           represent = s3_options_represent(status_opts),
                            requires = IS_EMPTY_OR(
                                         IS_IN_SET(status_opts,
                                                   zero = None,
@@ -124,7 +124,7 @@ def req_timeframe():
     return S3ReusableField("timeframe", "integer",
                            default = 3,
                            label = T("Timeframe"),
-                           represent = S3Represent(options = timeframe_opts),
+                           represent = s3_options_represent(timeframe_opts),
                            requires = IS_EMPTY_OR(
                                         IS_IN_SET(timeframe_opts,
                                                   zero = None,
@@ -315,7 +315,7 @@ class RequestNeedsContactModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class RequestNeedsItemsModel(S3Model):
@@ -418,7 +418,7 @@ $.filterOptionsS3({
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class RequestNeedsSkillsModel(S3Model):
@@ -494,7 +494,7 @@ class RequestNeedsSkillsModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class RequestNeedsOrganisationModel(S3Model):
@@ -541,7 +541,7 @@ class RequestNeedsOrganisationModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class RequestNeedsPersonModel(S3Model):
@@ -579,7 +579,7 @@ class RequestNeedsPersonModel(S3Model):
                           Field("status", "integer",
                                 default = 4, # Invited
                                 label = T("Status"),
-                                represent = S3Represent(options = status_opts),
+                                represent = s3_options_represent(status_opts),
                                 requires = IS_EMPTY_OR(
                                             IS_IN_SET(status_opts)
                                             ),
@@ -611,7 +611,7 @@ class RequestNeedsPersonModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class RequestNeedsSiteModel(S3Model):
@@ -656,7 +656,7 @@ class RequestNeedsSiteModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class RequestNeedsTagModel(S3Model):
@@ -708,7 +708,7 @@ class RequestNeedsTagModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
 # =============================================================================
 def req_rheader(r):

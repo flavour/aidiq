@@ -42,19 +42,37 @@ from gluon.languages import lazyT
 from s3dal import SQLCustomType
 from .s3datetime import S3DateTime
 from .s3navigation import S3ScriptItem
-from .s3utils import s3_str, S3MarkupStripper
+from .s3utils import NONE, s3_str, S3MarkupStripper
 from .s3validators import IS_ISO639_2_LANGUAGE_CODE, IS_ONE_OF, IS_UTC_DATE, IS_UTC_DATETIME
 from .s3widgets import S3CalendarWidget, S3DateWidget
+
+__all__ = ("s3_fieldmethod",
+           "S3ReusableField",
+           "S3Represent",
+           "S3RepresentLazy",
+           "S3MetaFields",
+           "s3_all_meta_field_names",
+           "s3_meta_fields",
+           "s3_comments",
+           "s3_currency",
+           "s3_date",
+           "s3_datetime",
+           "s3_time",
+           "s3_language",
+           "s3_role_required",
+           "s3_roles_permitted",
+           )
 
 # =============================================================================
 def s3_fieldmethod(name, f, represent=None, search_field=None):
     """
         Helper to attach a representation method to a Field.Method.
 
-        @param name: the field name
-        @param f: the field method
-        @param represent: the representation function
-        @param search_field: the field to use for searches
+        Args:
+            name: the field name
+            f: the field method
+            represent: the representation function
+            search_field: the field to use for searches
                - only used by datatable_filter currently
                - can only be a single field in the same table currently
     """
@@ -63,7 +81,7 @@ def s3_fieldmethod(name, f, represent=None, search_field=None):
         fieldmethod = Field.Method(name, f)
 
     else:
-        class Handler(object):
+        class Handler:
             def __init__(self, method, row):
                 self.method=method
                 self.row=row
@@ -84,7 +102,7 @@ def s3_fieldmethod(name, f, represent=None, search_field=None):
     return fieldmethod
 
 # =============================================================================
-class S3ReusableField(object):
+class S3ReusableField:
     """
         DRY Helper for reusable fields:
 
@@ -153,14 +171,18 @@ class S3ReusableField(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def dummy(fname="dummy_id", ftype="integer"):
+    def dummy(fname = "dummy_id",
+              ftype = "integer",
+              ):
         """
             Provide a dummy reusable field; for safe defaults in models
 
-            @param fname: the dummy field name
-            @param ftype: the dummy field type
+            Args:
+                fname: the dummy field name
+                ftype: the dummy field type
 
-            @returns: a lambda with the same signature as a reusable field
+            Returns:
+                A lambda with the same signature as a reusable field
         """
 
         return lambda name=fname, **attr: Field(name,
@@ -170,7 +192,7 @@ class S3ReusableField(object):
                                                 )
 
 # =============================================================================
-class S3Represent(object):
+class S3Represent:
     """
         Scalable universal field representation for option fields and
         foreign keys. Can be subclassed and tailored to the particular
@@ -204,27 +226,26 @@ class S3Represent(object):
                  field_sep = " "
                  ):
         """
-            Constructor
-
-            @param lookup: the name of the lookup table
-            @param key: the field name of the primary key of the lookup table,
-                        a field name
-            @param fields: the fields to extract from the lookup table, a list
-                           of field names
-            @param labels: string template or callable to represent rows from
-                           the lookup table, callables must return a string
-            @param options: dictionary of options to lookup the representation
-                            of a value, overrides lookup and key
-            @param multiple: web2py list-type (all values will be lists)
-            @param hierarchy: render a hierarchical representation, either
-                              True or a string template like "%s > %s"
-            @param translate: translate all representations (using T)
-            @param linkto: a URL (as string) to link representations to,
-                           with "[id]" as placeholder for the key
-            @param show_link: whether to add a URL to representations
-            @param default: default representation for unknown options
-            @param none: representation for empty fields (None or empty list)
-            @param field_sep: separator to use to join fields
+            Args:
+                lookup: the name of the lookup table
+                key: the field name of the primary key of the lookup table,
+                     a field name
+                fields: the fields to extract from the lookup table, a list
+                        of field names
+                labels: string template or callable to represent rows from
+                        the lookup table, callables must return a string
+                options: dictionary of options to lookup the representation
+                         of a value, overrides lookup and key
+                multiple: web2py list-type (all values will be lists)
+                hierarchy: render a hierarchical representation, either
+                           True or a string template like "%s > %s"
+                translate: translate all representations (using T)
+                linkto: a URL (as string) to link representations to,
+                        with "[id]" as placeholder for the key
+                show_link: whether to add a URL to representations
+                default: default representation for unknown options
+                none: representation for empty fields (None or empty list)
+                field_sep: separator to use to join fields
         """
 
         self.tablename = lookup
@@ -267,9 +288,10 @@ class S3Represent(object):
             Lookup all rows referenced by values.
             (in foreign key representations)
 
-            @param key: the key Field
-            @param values: the values
-            @param fields: the fields to retrieve
+            Args:
+                key: the key Field
+                values: the values
+                fields: the fields to retrieve
         """
 
         if fields is None:
@@ -290,11 +312,13 @@ class S3Represent(object):
             Represent the referenced row.
             (in foreign key representations)
 
-            @param row: the row
-            @param prefix: prefix for hierarchical representation
+            Args:
+                row: the row
+                prefix: prefix for hierarchical representation
 
-            @return: the representation of the Row, or None if there
-                     is an error in the Row
+            Returns:
+                The representation of the Row, or None if there
+                is an error in the Row
         """
 
         labels = self.labels
@@ -361,9 +385,10 @@ class S3Represent(object):
                 - In the base class, the linkto-parameter expects a URL (as
                   string) with "[id]" as placeholder for the key.
 
-            @param k: the key
-            @param v: the representation of the key
-            @param row: the row with this key (unused in the base class)
+            Args:
+                k: the key
+                v: the representation of the key
+                row: the row with this key (unused in the base class)
         """
 
         if self.linkto:
@@ -380,9 +405,10 @@ class S3Represent(object):
         """
             Represent a single value (standard entry point).
 
-            @param value: the value
-            @param row: the referenced row (if value is a foreign key)
-            @param show_link: render the representation as link
+            Args:
+                value: the value
+                row: the referenced row (if value is a foreign key)
+                show_link: render the representation as link
         """
 
         self._setup()
@@ -401,16 +427,18 @@ class S3Represent(object):
             value = row[self.key]
 
         # Lookup the representation
-        if value:
+        if value is not None:
             rows = [row] if row is not None else None
             items = self._lookup([value], rows=rows)
             if value in items:
                 k, v = value, items[value]
-                r = self.link(k, v, row=self.rows.get(k)) \
-                    if show_link else items[value]
+                if show_link:
+                    rep = self.link(k, v, row=self.rows.get(k))
+                else:
+                    rep = items[value]
             else:
-                r = self.default
-            return r
+                rep = self.default
+            return rep
         return self.none
 
     # -------------------------------------------------------------------------
@@ -418,9 +446,10 @@ class S3Represent(object):
         """
             Represent multiple values as a comma-separated list.
 
-            @param values: list of values
-            @param rows: the referenced rows (if values are foreign keys)
-            @param show_link: render each representation as link
+            Args:
+                values: list of values
+                rows: the referenced rows (if values are foreign keys)
+                show_link: render each representation as link
         """
 
         self._setup()
@@ -469,16 +498,19 @@ class S3Represent(object):
         """
             Represent multiple values as dict {value: representation}
 
-            @param values: list of values
-            @param rows: the rows
-            @param show_link: render each representation as link
+            Args:
+                values: list of values
+                rows: the rows
+                show_link: render each representation as link
 
-            @return: a dict {value: representation}
+            Returns:
+                A dict {value: representation}
 
-            @note: for list-types, the dict keys will be the individual
-                   values within all lists - and not the lists (simply
-                   because lists can not be dict keys). Thus, the caller
-                   would still have to construct the final string/HTML.
+            Note:
+                For list-types, the dict keys will be the individual
+                values within all lists - and not the lists (simply
+                because lists can not be dict keys). Thus, the caller
+                would still have to construct the final string/HTML.
         """
 
         self._setup()
@@ -529,10 +561,11 @@ class S3Represent(object):
             Helper method to render list-type representations from
             bulk()-results.
 
-            @param value: the list
-            @param labels: the labels as returned from bulk()
-            @param show_link: render references as links, should
-                              be the same as used with bulk()
+            Args:
+                value: the list
+                labels: the labels as returned from bulk()
+                show_link: render references as links, should
+                           be the same as used with bulk()
         """
 
         show_link = show_link and self.show_link
@@ -559,11 +592,10 @@ class S3Represent(object):
         self.queries = 0
 
         # Default representations
-        messages = current.messages
         if self.default is None:
-            self.default = s3_str(messages.UNKNOWN_OPT)
+            self.default = s3_str(current.messages.UNKNOWN_OPT)
         if self.none is None:
-            self.none = messages["NONE"]
+            self.none = NONE
 
         # Initialize theset
         if self.options is not None:
@@ -618,9 +650,10 @@ class S3Represent(object):
         """
             Lazy lookup values.
 
-            @param values: list of values to lookup
-            @param rows: rows referenced by values (if values are foreign keys)
-                         optional
+            Args:
+                values: list of values to lookup
+                rows: rows referenced by values (if values are foreign keys)
+                      optional
         """
 
         theset = self.theset
@@ -740,10 +773,11 @@ class S3Represent(object):
             Recursive helper method to represent value as path in
             a hierarchy.
 
-            @param value: the value
-            @param row: the row containing the value
-            @param rows: all rows from _loopup as dict
-            @param hierarchy: the S3Hierarchy instance
+            Args:
+                value: the value
+                row: the row containing the value
+                rows: all rows from _loopup as dict
+                hierarchy: the S3Hierarchy instance
         """
 
         theset = self.theset
@@ -769,7 +803,7 @@ class S3Represent(object):
         return result
 
 # =============================================================================
-class S3RepresentLazy(object):
+class S3RepresentLazy:
     """
         Lazy Representation of a field value, utilizes the bulk-feature
         of S3Represent-style representation methods
@@ -777,10 +811,9 @@ class S3RepresentLazy(object):
 
     def __init__(self, value, renderer):
         """
-            Constructor
-
-            @param value: the value
-            @param renderer: the renderer (S3Represent instance)
+            Args:
+                value: the value
+                renderer: the renderer (S3Represent instance)
         """
 
         self.value = value
@@ -847,9 +880,10 @@ class S3RepresentLazy(object):
         """
             Render as text or attribute of an XML element
 
-            @param element: the element
-            @param attributes: the attributes dict of the element
-            @param name: the attribute name
+            Args:
+                element: the element
+                attributes: the attributes dict of the element
+                name: the attribute name
         """
 
         # Render value
@@ -902,7 +936,7 @@ ALL_META_FIELD_NAMES = ("uuid",
                         )
 
 # -----------------------------------------------------------------------------
-class S3MetaFields(object):
+class S3MetaFields:
     """ Class to standardize meta-fields """
 
     # -------------------------------------------------------------------------
@@ -1111,7 +1145,8 @@ class S3MetaFields(object):
         """
             Standard meta fields for all tables
 
-            @return: tuple of Fields
+            Returns:
+                tuple of Fields
         """
 
         return (cls.uuid(),
@@ -1135,7 +1170,8 @@ class S3MetaFields(object):
         """
             Meta-fields required for sync
 
-            @return: tuple of Fields
+            Returns:
+                tuple of Fields
         """
 
         return (cls.uuid(),
@@ -1153,7 +1189,8 @@ class S3MetaFields(object):
         """
             Record ownership meta-fields
 
-            @return: tuple of Fields
+            Returns:
+                tuple of Fields
         """
 
         return (cls.owned_by_user(),
@@ -1167,7 +1204,8 @@ class S3MetaFields(object):
         """
             Timestamp meta-fields
 
-            @return: tuple of Fields
+            Returns:
+                tuple of Fields
         """
 
         return (cls.created_on(),
@@ -1180,7 +1218,8 @@ class S3MetaFields(object):
         """
             Get the user ID of the currently logged-in user
 
-            @return: auth_user ID
+            Returns:
+                auth_user ID
         """
 
         if current.auth.is_logged_in():
@@ -1195,7 +1234,8 @@ class S3MetaFields(object):
         """
             Representation method for auth_user IDs
 
-            @return: representation function
+            Returns:
+                representation function
         """
 
         return current.auth.user_represent
@@ -1205,7 +1245,8 @@ def s3_meta_fields():
     """
         Shortcut commonly used in table definitions: *s3_meta_fields()
 
-        @return: tuple of Field instances
+        Returns:
+            tuple of Field instances
     """
 
     return S3MetaFields.all_meta_fields()
@@ -1214,7 +1255,8 @@ def s3_all_meta_field_names():
     """
         Shortcut commonly used to include/exclude meta fields
 
-        @return: tuple of field names
+        Returns:
+            tuple of field names
     """
 
     return ALL_META_FIELD_NAMES
@@ -1294,7 +1336,7 @@ def s3_comments(name="comments", **attr):
     if "represent" not in attr:
         # Support HTML markup
         attr["represent"] = lambda comments: \
-            XML(comments) if comments else current.messages["NONE"]
+            XML(comments) if comments else NONE
     if "widget" not in attr:
         from .s3widgets import s3_comments_widget
         _placeholder = attr.pop("_placeholder", None)
@@ -1304,8 +1346,8 @@ def s3_comments(name="comments", **attr):
         else:
             attr["widget"] = s3_comments_widget
     if "comment" not in attr:
-        attr["comment"] = DIV(_class="tooltip",
-                              _title="%s|%s" % \
+        attr["comment"] = DIV(_class = "tooltip",
+                              _title = "%s|%s" % \
             (T("Comments"),
              T("Please use this field to record any additional information, including a history of the record if it is updated.")))
 
@@ -1328,7 +1370,7 @@ def s3_currency(name="currency", **attr):
     if "requires" not in attr:
         currency_opts = settings.get_fin_currencies()
         attr["requires"] = IS_IN_SET(list(currency_opts.keys()),
-                                     zero=None)
+                                     zero = None)
     if "writable" not in attr:
         attr["writable"] = settings.get_fin_currency_writable()
 
@@ -1339,21 +1381,23 @@ def s3_language(name="language", **attr):
     """
         Return a standard Language field
 
-        @param name: the Field name
-        @param attr: Field parameters, as well as keywords:
-            @keyword empty: allow the field to remain empty:
-                            None: accept empty, don't show empty-option (default)
-                            True: accept empty, show empty-option
-                            False: reject empty, don't show empty-option
-                            (keyword ignored if a "requires" is passed)
-            @keyword translate: translate the language names into
-                                current UI language (not recommended for
-                                selector to choose that UI language)
+        Args:
+            name: the Field name
+            attr: Field parameters, as well as keywords
 
-            @keyword select: which languages to show in the selector:
-                             - a dict of {lang_code: lang_name}
-                             - None to expose all languages
-                             - False (or omit) to use L10n_languages setting (default)
+        Keyword Args:
+            empty: allow the field to remain empty:
+                    None: accept empty, don't show empty-option (default)
+                    True: accept empty, show empty-option
+                    False: reject empty, don't show empty-option
+                    (keyword ignored if a "requires" is passed)
+            translate: translate the language names into current UI language
+                       (not recommended for selector to choose that UI language)
+
+            select: which languages to show in the selector:
+                     - a dict of {lang_code: lang_name}
+                     - None to expose all languages
+                     - False (or omit) to use L10n_languages setting (default)
     """
 
     if "label" not in attr:
@@ -1397,54 +1441,56 @@ def s3_date(name="date", **attr):
     """
         Return a standard date-field
 
-        @param name: the field name
+        Args:
+            name: the field name
 
-        @keyword default: the field default, can be specified as "now" for
-                          current date, or as Python date
-        @keyword past: number of selectable past months
-        @keyword future: number of selectable future months
-        @keyword widget: the form widget for the field, can be specified
-                         as "date" for S3DateWidget, "calendar" for
-                         S3CalendarWidget, or as a web2py FormWidget,
-                         defaults to "calendar"
-        @keyword calendar: the calendar to use for this widget, defaults
-                           to current.calendar
-        @keyword start_field: CSS selector for the start field for interval
-                              selection
-        @keyword default_interval: the default interval
-        @keyword default_explicit: whether the user must click the field
-                                   to set the default, or whether it will
-                                   automatically be set when the value for
-                                   start_field is set
-        @keyword set_min: CSS selector for another date/time widget to
-                          dynamically set the minimum selectable date/time to
-                          the value selected in this widget
-        @keyword set_max: CSS selector for another date/time widget to
-                          dynamically set the maximum selectable date/time to
-                          the value selected in this widget
-        @keyword month_selector: allow direct selection of month
+        Keyword Args:
+            default: the field default, can be specified as "now" for
+                     current date, or as Python date
+            past: number of selectable past months
+            future: number of selectable future months
+            widget: the form widget for the field, can be specified
+                    as "date" for S3DateWidget, "calendar" for
+                    S3CalendarWidget, or as a web2py FormWidget,
+                    defaults to "calendar"
+            calendar: the calendar to use for this widget, defaults
+                      to current.calendar
+            start_field: CSS selector for the start field for interval
+                         selection
+            default_interval: the default interval
+            default_explicit: whether the user must click the field
+                              to set the default, or whether it will
+                              automatically be set when the value for
+                              start_field is set
+            set_min: CSS selector for another date/time widget to
+                     dynamically set the minimum selectable date/time to
+                     the value selected in this widget
+            set_max: CSS selector for another date/time widget to
+                     dynamically set the maximum selectable date/time to
+                     the value selected in this widget
+            month_selector: allow direct selection of month
 
-        @note: other S3ReusableField keywords are also supported (in addition
-               to the above)
+        Note:
+            Other S3ReusableField keywords are also supported (in addition
+            to the above)
 
-        @note: calendar-option requires widget="calendar" (default), otherwise
-               Gregorian calendar is enforced for the field
-
-        @note: set_min/set_max only supported for widget="calendar" (default)
-
-        @note: interval options currently not supported by S3CalendarWidget,
+        Note:
+            calendar option requires widget="calendar" (default), otherwise
+                Gregorian calendar is enforced for the field
+            set_min/set_max only supported for widget="calendar" (default)
+            Interval options currently not supported by S3CalendarWidget,
                only available with widget="date"
-        @note: start_field and default_interval should be given together
-
-        @note: sets a default field label "Date" => use label-keyword to
+            start_field and default_interval should be given together
+            Sets a default field label "Date" => use label-keyword to
                override if necessary
-        @note: sets a default validator IS_UTC_DATE => use requires-keyword
+            Sets a default validator IS_UTC_DATE => use requires-keyword
                to override if necessary
-        @note: sets a default representation S3DateTime.date_represent => use
+            Sets a default representation S3DateTime.date_represent => use
                represent-keyword to override if necessary
 
-        @ToDo: Different default field name in case we need to start supporting
-               Oracle, where 'date' is a reserved word
+        TODO:
+            Different default field name in case we need to start supporting
+            Oracle, where 'date' is a reserved word
     """
 
     attributes = dict(attr)
@@ -1538,8 +1584,8 @@ def s3_date(name="date", **attr):
     if "represent" not in attributes:
         attributes["represent"] = lambda dt: \
                                   S3DateTime.date_represent(dt,
-                                                            utc=True,
-                                                            calendar=calendar,
+                                                            utc = True,
+                                                            calendar = calendar,
                                                             )
 
     # Validator
@@ -1554,9 +1600,9 @@ def s3_date(name="date", **attr):
                 minimum = now - relativedelta(months = past)
             if future is not None:
                 maximum = now + relativedelta(months = future)
-            requires = IS_UTC_DATE(calendar=calendar,
-                                   minimum=minimum,
-                                   maximum=maximum,
+            requires = IS_UTC_DATE(calendar = calendar,
+                                   minimum = minimum,
+                                   maximum = maximum,
                                    )
 
         empty = attributes.pop("empty", None)
@@ -1573,39 +1619,40 @@ def s3_datetime(name="date", **attr):
     """
         Return a standard datetime field
 
-        @param name: the field name
+        Args:
+            name: the field name
 
-        @keyword default: the field default, can be specified as "now" for
-                          current date/time, or as Python date
+        Keyword Args:
+            default: the field default, can be specified as "now" for
+                     current date/time, or as Python date
+            past: number of selectable past hours
+            future: number of selectable future hours
+            widget: form widget option, can be specified as "date"
+                    for date-only, or "datetime" for date+time (default),
+                    or as a web2py FormWidget
+            calendar: the calendar to use for this field, defaults
+                      to current.calendar
+            set_min: CSS selector for another date/time widget to
+                     dynamically set the minimum selectable date/time to
+                     the value selected in this widget
+            set_max: CSS selector for another date/time widget to
+                     dynamically set the maximum selectable date/time to
+                     the value selected in this widget
 
-        @keyword past: number of selectable past hours
-        @keyword future: number of selectable future hours
-
-        @keyword widget: form widget option, can be specified as "date"
-                         for date-only, or "datetime" for date+time (default),
-                         or as a web2py FormWidget
-        @keyword calendar: the calendar to use for this field, defaults
-                           to current.calendar
-        @keyword set_min: CSS selector for another date/time widget to
-                          dynamically set the minimum selectable date/time to
-                          the value selected in this widget
-        @keyword set_max: CSS selector for another date/time widget to
-                          dynamically set the maximum selectable date/time to
-                          the value selected in this widget
-
-        @note: other S3ReusableField keywords are also supported (in addition
+        Note:
+            Other S3ReusableField keywords are also supported (in addition
                to the above)
-
-        @note: sets a default field label "Date" => use label-keyword to
+            Sets a default field label "Date" => use label-keyword to
                override if necessary
-        @note: sets a default validator IS_UTC_DATE/IS_UTC_DATETIME => use
+            Sets a default validator IS_UTC_DATE/IS_UTC_DATETIME => use
                requires-keyword to override if necessary
-        @note: sets a default representation S3DateTime.date_represent or
+            Sets a default representation S3DateTime.date_represent or
                S3DateTime.datetime_represent respectively => use the
                represent-keyword to override if necessary
 
-        @ToDo: Different default field name in case we need to start supporting
-               Oracle, where 'date' is a reserved word
+        TODO:
+            Different default field name in case we need to start supporting
+            Oracle, where 'date' is a reserved word
     """
 
     attributes = dict(attr)
@@ -1635,7 +1682,9 @@ def s3_datetime(name="date", **attr):
                 years += 1
             month = divmod((current_month - months) + 12, 12)[1]
             year = now.year - years
-            return now.replace(month=month, year=year)
+            return now.replace(month = month,
+                               year = year,
+                               )
 
         earliest = limits.get("min")
         if not earliest:
@@ -1653,12 +1702,12 @@ def s3_datetime(name="date", **attr):
         if not earliest:
             past = limits.get("past")
             if past is not None:
-                earliest = now - datetime.timedelta(hours=past)
+                earliest = now - datetime.timedelta(hours = past)
         latest = limits.get("max")
         if not latest:
             future = limits.get("future")
             if future is not None:
-                latest = now + datetime.timedelta(hours=future)
+                latest = now + datetime.timedelta(hours = future)
 
     # Label
     if "label" not in attributes:
@@ -1728,9 +1777,11 @@ def s3_time(name="time_of_day", **attr):
     """
         Return a standard time field
 
-        @param name: the field name
+        Args:
+            name: the field name
 
-        @ToDo: Support minTime/maxTime options for fgtimepicker
+        TODO:
+            Support minTime/maxTime options for fgtimepicker
     """
 
     attributes = dict(attr)

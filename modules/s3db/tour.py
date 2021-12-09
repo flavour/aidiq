@@ -53,7 +53,6 @@ class GuidedTourModel(S3Model):
 
         T = current.T
         db = current.db
-        NONE = current.messages["NONE"]
         s3 = current.response.s3
 
         add_components = self.add_components
@@ -83,6 +82,8 @@ class GuidedTourModel(S3Model):
                      Field("controller",
                            represent=lambda v: v or NONE,
                            label=T("Controller tour is activated")),
+                     # @ToDo: 'function' is a SQL-reserved word in several databases
+                     #        - rename as 'function_name'
                      Field("function",
                            represent=lambda v: v or NONE,
                            label=T("Function tour is activated")),
@@ -141,6 +142,8 @@ class GuidedTourModel(S3Model):
                      Field("controller",
                            represent=lambda v: v or NONE,
                            label=T("Controller name")),
+                     # @ToDo: 'function' is a SQL-reserved word in several databases
+                     #        - rename as 'function_name'
                      Field("function",
                            represent=lambda v: v or NONE,
                            label=T("Function name")),

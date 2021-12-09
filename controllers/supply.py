@@ -42,6 +42,7 @@ def distribution_rheader(r):
             tabs = [(T("Edit Details"), None),
                     (T("Beneficiaries"), "person"),
                     ]
+            from s3 import s3_rheader_tabs
             rheader_tabs = s3_rheader_tabs(r, tabs)
 
             table = r.table
@@ -129,6 +130,7 @@ def item_category():
         if r.id:
             # Should not be able to set the Parent to this record
             # @ToDo: Also prevent setting to any of the categories of which this is an ancestor
+            from s3 import IS_ONE_OF
             from s3db.supply import supply_ItemCategoryRepresent
             the_set = db(table.id != r.id)
             table.parent_item_category_id.requires = IS_EMPTY_OR(
@@ -160,6 +162,36 @@ def item_pack():
                    )
 
     return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def item_packs():
+    """
+        Called by s3.inv_item.js to provide the pack options for a
+            particular Item
+
+        Access via the .json representation to avoid work rendering menus, etc
+    """
+
+    try:
+        item_id = request.args[0]
+    except:
+        raise HTTP(400, current.xml.json_message(False, 400, "No value provided!"))
+
+    ptable = s3db.supply_item_pack
+    rows = db(ptable.item_id == item_id).select(ptable.id,
+                                                ptable.name,
+                                                ptable.quantity,
+                                                )
+
+    # Simplify format
+    packs = [{"i": row.id,
+              "n": row.name,
+              "q": row.quantity,
+              } for row in rows]
+
+    SEPARATORS = (",", ":")
+    response.headers["Content-Type"] = "application/json"
+    return json.dumps(packs, separators=SEPARATORS)
 
 # -----------------------------------------------------------------------------
 def kit_item():

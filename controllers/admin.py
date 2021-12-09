@@ -36,6 +36,7 @@ def role():
         if r.representation not in ("html", "aadata", "csv", "json"):
             return False
 
+        from s3 import S3RoleManager
         # Configure REST methods
         methods = ("read",
                    "list",
@@ -48,7 +49,7 @@ def role():
                    "datalist",
                    "import",
                    )
-        r.set_handler(methods, s3base.S3RoleManager)
+        r.set_handler(methods, S3RoleManager)
         return True
     s3.prep = prep
 
@@ -113,7 +114,8 @@ def user():
         lappend("link_user_to")
         table.link_user_to.represent = lambda v: ", ".join([s3_str(link_user_to[opt]) for opt in v]) \
                                                  if v else current.messages["NONE"]
-    date_represent = s3base.S3DateTime.date_represent
+    from s3 import S3DateTime
+    date_represent = S3DateTime.date_represent
     table.created_on.represent = date_represent
     if UNAPPROVED:
         lappend((T("Registration"), "created_on"))
@@ -185,22 +187,27 @@ def user():
         redirect(URL(args=[]))
 
     # Custom Methods
+    from s3 import S3RoleManager
     set_method = s3db.set_method
     set_method("auth", "user",
                method = "roles",
-               action = s3base.S3RoleManager)   # s3roles.py
+               action = S3RoleManager,   # s3roles.py
+               )
 
     set_method("auth", "user",
                method = "disable",
-               action = disable_user)
+               action = disable_user,
+               )
 
     set_method("auth", "user",
                method = "approve",
-               action = approve_user)
+               action = approve_user,
+               )
 
     set_method("auth", "user",
                method = "link",
-               action = link_user)
+               action = link_user,
+               )
 
     if UNAPPROVED:
         title_list = T("Unapproved Users")
@@ -228,27 +235,27 @@ def user():
 
         rheader = DIV()
 
-        id = r.id
+        user_id = r.id
         registration_key = r.record.registration_key
         if not registration_key:
             btn = A(T("Disable"),
                     _class = "action-btn",
                     _title = "Disable User",
-                    _href = URL(args = [id, "disable"])
+                    _href = URL(args = [user_id, "disable"])
                     )
             rheader.append(btn)
             if settings.get_auth_show_link():
                 btn = A(T("Link"),
                         _class = "action-btn",
                         _title = "Link (or refresh link) between User, Person & HR Record",
-                        _href = URL(args = [id, "link"])
+                        _href = URL(args = [user_id, "link"])
                         )
                 rheader.append(btn)
         #elif registration_key == "pending":
         #    btn = A(T("Approve"),
         #            _class = "action-btn",
         #            _title = "Approve User",
-        #            _href = URL(args = [id, "approve"])
+        #            _href = URL(args = [user_id, "approve"])
         #            )
         #    rheader.append(btn)
         else:
@@ -256,13 +263,14 @@ def user():
             btn = A(T("Approve"),
                     _class = "action-btn",
                     _title = "Approve User",
-                    _href = URL(args = [id, "approve"])
+                    _href = URL(args = [user_id, "approve"]),
                     )
             rheader.append(btn)
 
         tabs = [(T("User Details"), None),
                 (T("Roles"), "roles")
                 ]
+        from s3 import s3_rheader_tabs
         rheader_tabs = s3_rheader_tabs(r, tabs)
         rheader.append(rheader_tabs)
 
@@ -294,7 +302,7 @@ def user():
 
         if r.method == "delete" and r.http == "GET":
             if r.id == session.auth.user.id: # we're trying to delete ourself
-                get_vars.update({"user.id":str(r.id)})
+                get_vars.update({"user.id": str(r.id)})
                 r.id = None
                 s3db.configure(r.tablename,
                                delete_next = URL(c="default", f="user/logout"),
@@ -395,7 +403,7 @@ def user():
             # @ToDo: Merge these with the code in s3aaa.py and use S3SQLCustomForm to implement
             form = output.get("form", None)
             if not form:
-                crud_button = s3base.S3CRUD.crud_button
+                from s3 import crud_button
                 if UNAPPROVED:
                     switch_view = crud_button(T("View All Users"),
                                               _href = URL(vars = {}),
@@ -418,7 +426,7 @@ def user():
                 return output
 
             # Assume formstyle callable
-            id = "auth_user_password_two__row"
+            row_id = "auth_user_password_two__row"
             label = "%s:" % T("Verify password")
             widget = INPUT(_name = "password_two",
                            _id = "password_two",
@@ -426,7 +434,7 @@ def user():
                            _disabled = "disabled",
                            )
             comment = ""
-            row = s3_formstyle(id, label, widget, comment, hidden=True)
+            row = s3_formstyle(row_id, label, widget, comment, hidden=True)
             if isinstance(row, tuple):
                 # Formstyle with separate row for label (e.g. default Eden formstyle)
                 tuple_rows = True
@@ -437,7 +445,7 @@ def user():
                 form[0].insert(4, row)
             # @ToDo: Ensure this reads existing values & creates/updates when saved
             #if settings.get_auth_registration_requests_mobile_phone():
-            #    id = "auth_user_mobile__row"
+            #    row_id = "auth_user_mobile__row"
             #    label = LABEL("%s:" % settings.get_ui_label_mobile_phone(),
             #                  _for="mobile",
             #                  )
@@ -446,7 +454,7 @@ def user():
             #                   _class="string",
             #                   )
             #    comment = ""
-            #    row = s3_formstyle(id, label, widget, comment)
+            #    row = s3_formstyle(row_id, label, widget, comment)
             #    if tuple_rows:
             #        form[0].insert(-8, row)
             #    else:
@@ -460,12 +468,11 @@ def user():
 
     s3.import_prep = auth.s3_import_prep
 
-    output = s3_rest_controller("auth", "user",
-                                csv_stylesheet = ("auth", "user.xsl"),
-                                csv_template = ("auth", "user"),
-                                rheader = rheader,
-                                )
-    return output
+    return s3_rest_controller("auth", "user",
+                              csv_stylesheet = ("auth", "user.xsl"),
+                              csv_template = ("auth", "user"),
+                              rheader = rheader,
+                              )
 
 # =============================================================================
 def group():
@@ -497,7 +504,10 @@ def group():
         msg_list_empty = T("No Roles defined"),
         )
 
-    s3db.configure(tablename, main="role")
+    s3db.configure(tablename,
+                   main = "role",
+                   )
+
     return s3_rest_controller("auth", "group")
 
 # -----------------------------------------------------------------------------
@@ -522,7 +532,7 @@ def organisation():
         msg_record_created = T("Organization Domain added"),
         msg_record_modified = T("Organization Domain updated"),
         msg_record_deleted = T("Organization Domain deleted"),
-        msg_list_empty = T("No Organization Domains currently registered")
+        msg_list_empty = T("No Organization Domains currently registered"),
         )
 
     return s3_rest_controller("auth", "organisation")
@@ -548,7 +558,8 @@ def audit():
     S3Audit().__init__()
 
     # Represent the user_id column
-    db.s3_audit.user_id.represent = s3db.auth_UserRepresent()
+    from s3db.auth import auth_UserRepresent
+    db.s3_audit.user_id.represent = auth_UserRepresent()
 
     return s3_rest_controller("s3", "audit")
 
@@ -583,7 +594,9 @@ def consent_option():
             # consent / consent assertion record
             for t in (ctable, atable):
                 query = (t.option_id == r.id) & (t.deleted == False)
-                row = db(query).select(t.id, limitby=(0, 1)).first()
+                row = db(query).select(t.id,
+                                       limitby = (0, 1),
+                                       ).first()
                 if row:
                     editable = False
                     break
@@ -649,7 +662,10 @@ def consent_question():
 
     person_id = auth.s3_logged_in_person()
     if not person_id:
-        redirect(URL(c="default", f="user", args=["login"], vars={"_next": URL()}))
+        redirect(URL(c="default", f="user",
+                     args = ["login"],
+                     vars = {"_next": URL()},
+                     ))
 
     output = {}
 
@@ -697,6 +713,8 @@ def acl():
         for testing purposes, not for production use!
     """
 
+    from s3 import IS_ACL, IS_ONE_OF, S3ACLWidget
+
     table = auth.permission.table
     tablename = table._tablename
     table.group_id.requires = IS_ONE_OF(db, "auth_group.id", "%(role)s")
@@ -734,8 +752,7 @@ def acl():
         next = request.vars._next
         s3db.configure(tablename, delete_next=next)
 
-    output = s3_rest_controller("s3", "permission")
-    return output
+    return s3_rest_controller("s3", "permission")
 
 # -----------------------------------------------------------------------------
 def acl_represent(acl, options):
@@ -773,8 +790,9 @@ def errors():
 
     func = lambda p: os.stat(apath("%s/errors/%s" % (appname, p), r=request)).st_mtime
     tickets = sorted(listdir(apath("%s/errors/" % appname, r=request), "^\w.*"),
-                     key=func,
-                     reverse=True)
+                     key = func,
+                     reverse = True,
+                     )
 
     return {"app": appname,
             "tickets": tickets,
@@ -787,7 +805,7 @@ def ticket():
 
     if len(request.args) != 2:
         session.error = T("Invalid ticket")
-        redirect(URL(r=request))
+        redirect(URL())
 
     app = request.args[0]
     ticket = request.args[1]
@@ -796,9 +814,10 @@ def ticket():
     e = RestrictedError()
     e.load(request, app, ticket)
 
+    from s3 import Traceback
     return {"app": app,
             "ticket": ticket,
-            "traceback": s3base.Traceback(e.traceback),
+            "traceback": Traceback(e.traceback),
             "code": e.code,
             "layer": e.layer,
             }
@@ -832,14 +851,13 @@ def portable():
                 last_build_exists = True
                 break
 
-    web2py_form = SQLFORM.factory(
-            Field("web2py_source",
-                  "upload",
-                  uploadfolder=uploadfolder,
-                  requires=IS_UPLOAD_FILENAME(extension="zip"),
-                ),
-            table_name="web2py_source",
-            )
+    web2py_form = SQLFORM.factory(Field("web2py_source",
+                                        "upload",
+                                        uploadfolder = uploadfolder,
+                                        requires = IS_UPLOAD_FILENAME(extension = "zip"),
+                                        ),
+                                  table_name = "web2py_source",
+                                  )
 
     if web2py_form.accepts(request.vars, keepvalues=True, session=None):
         # Make sure only one web2py source file exists
@@ -866,16 +884,18 @@ def portable():
     # completed.
 
     if web2py_source_exists:
-        generator_form = SQLFORM.factory(
-                Field("copy_database", "boolean"),
-                Field("copy_uploads", "boolean"),
-                )
+        generator_form = SQLFORM.factory(Field("copy_database", "boolean"),
+                                         Field("copy_uploads", "boolean"),
+                                         )
 
-        if generator_form.accepts(request.vars, keepvalues=True, session=None):
+        if generator_form.accepts(request.vars,
+                                  keepvalues = True,
+                                  session = None,
+                                  ):
             if web2py_source_exists:
-                create_portable_app(web2py_source=web2py_source,\
-                        copy_database = request.vars.copy_database,\
-                        copy_uploads = request.vars.copy_uploads)
+                create_portable_app(web2py_source = web2py_source,\
+                                    copy_database = request.vars.copy_database,\
+                                    copy_uploads = request.vars.copy_uploads)
             else:
                 session.error = T("Web2py executable zip file needs to be uploaded first to use this function.")
     else:
@@ -1192,12 +1212,16 @@ def translate():
             row = TR(TD("%s:" % T("Select language code")),
                      TD(lang_dropdown),
                      TD("%s:" % T("Or add a new language code")),
-                     TD(INPUT(_type="text", _name="new_code")),
+                     TD(INPUT(_type = "text",
+                              _name = "new_code",
+                              )),
                      )
             div.append(row)
             div.append(BR())
             div.append(BR())
-            div.append(INPUT(_type="submit", _value=T("Submit")))
+            div.append(INPUT(_type = "submit",
+                             _value = T("Submit"),
+                             ))
             form.append(div)
             # Add the custom form to the output
             output["form"] = form
@@ -1275,16 +1299,22 @@ def translate():
                     lang_dropdown.append(lang)
                 lang_col.append(lang_dropdown)
 
-                row = TR(TD("%s:" % T("Language Code")), TD(lang_col))
+                row = TR(TD("%s:" % T("Language Code")),
+                         TD(lang_col),
+                         )
                 div = DIV(row,
                           BR(),
                           )
-                row = TR(TD(INPUT(_type="checkbox", _name="update_master")),
+                row = TR(TD(INPUT(_type = "checkbox",
+                                  _name = "update_master",
+                                  )),
                          TD(T("Update Master file")))
                 div.append(row)
                 div.append(BR())
                 div.append(BR())
-                div.append(INPUT(_type="submit", _value=T("Submit")))
+                div.append(INPUT(_type = "submit",
+                                 _value = T("Submit"),
+                                 ))
                 form.append(div)
                 # Add the custom form to the output
                 output["title"] = T("Select the language file")
@@ -1293,9 +1323,13 @@ def translate():
         elif opt == "4":
             # Add strings manually
             div = DIV(T("Upload a text file containing new-line separated strings:"),
-                      INPUT(_type="file", _name="upload"),
+                      INPUT(_type = "file",
+                            _name = "upload",
+                            ),
                       BR(),
-                      INPUT(_type="submit", _value=T("Upload")),
+                      INPUT(_type = "submit",
+                            _value = T("Upload"),
+                            ),
                       )
             form.append(div)
 
@@ -1319,8 +1353,7 @@ def translate():
         return output
     s3.postp = postp
 
-    output = s3_rest_controller("translate", "language")
-    return output
+    return s3_rest_controller("translate", "language")
 
 # =============================================================================
 @auth.s3_requires_membership(1)
@@ -1348,12 +1381,14 @@ def task():
                                 editable = False,
                                 )
 
-        s3task.configure_tasktable_crud(task="", status_writable=True)
+        s3task.configure_tasktable_crud(task = "",
+                                        status_writable = True)
         return True
     s3.prep = prep
 
+    from s3db.s3 import s3_scheduler_rheader
     return s3_rest_controller("scheduler", "task",
-                              rheader = s3db.s3_scheduler_rheader,
+                              rheader = s3_scheduler_rheader,
                               )
 
 # =============================================================================
@@ -1380,7 +1415,9 @@ def result():
         try:
             filenames = os.listdir(path)
         except OSError:
-            links = UL(LI(T("No test results found"), _class="error"))
+            links = UL(LI(T("No test results found"),
+                          _class = "error",
+                          ))
         else:
             links = UL()
             for filename in filenames:
@@ -1409,12 +1446,10 @@ def result():
                       )
             links.append(link)
 
-    output = {"title": title,
-              "links": links,
-              "overview": overview,
-              }
-
-    return output
+    return {"title": title,
+            "links": links,
+            "overview": overview,
+            }
 
 # =============================================================================
 # Configurations

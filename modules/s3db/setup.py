@@ -200,7 +200,7 @@ class GandiDNSModel(DNSModel):
                        )
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
 # =============================================================================
 class GoDaddyDNSModel(DNSModel):
@@ -249,7 +249,7 @@ class GoDaddyDNSModel(DNSModel):
                        )
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
 # =============================================================================
 class CloudModel(S3Model):
@@ -384,7 +384,7 @@ class AWSCloudModel(CloudModel):
                            default = "eu-west-2", # Europe (London)
                            #label = T("Region"),
                            #requires = IS_IN_SET(aws_regions),
-                           #represent = S3Represent(options = aws_regions)
+                           #represent = s3_options_represent(aws_regions)
                            ),
                      Field("instance_type",
                            default = "t3.micro",
@@ -416,7 +416,7 @@ class AWSCloudModel(CloudModel):
                   )
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -590,7 +590,7 @@ class OpenStackCloudModel(CloudModel):
                            default = "RegionOne", # Varies by Deployment, this matches OSUOSL
                            #label = T("Region"),
                            #requires = IS_IN_SET(openstack_regions), # Varies by Deployment
-                           #represent = S3Represent(options = aws_regions)
+                           #represent = s3_options_represent(aws_regions)
                            ),
                      Field("availability_zone",
                            default = "nova", # Varies by Deployment, this matches OSUOSL
@@ -603,7 +603,7 @@ class OpenStackCloudModel(CloudModel):
                   )
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -827,7 +827,7 @@ class GoogleEmailModel(EmailProviderModel):
                   )
 
         # ---------------------------------------------------------------------
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1033,7 +1033,7 @@ class SetupDeploymentModel(S3Model):
                      Field("webserver_type", "integer",
                            default = 3,
                            label = T("Web Server"),
-                           represent = S3Represent(options = WEB_SERVERS),
+                           represent = s3_options_represent(WEB_SERVERS),
                            requires = IS_IN_SET(WEB_SERVERS),
                            comment = DIV(_class="tooltip",
                                          _title="%s|%s" % (T("Web Server"),
@@ -1044,7 +1044,7 @@ class SetupDeploymentModel(S3Model):
                      Field("db_type", "integer",
                            default = 2,
                            label = T("Database"),
-                           represent = S3Represent(options = DB_SERVERS),
+                           represent = s3_options_represent(DB_SERVERS),
                            requires = IS_IN_SET(DB_SERVERS),
                            writable = False,
                            comment = DIV(_class="tooltip",
@@ -1181,7 +1181,7 @@ class SetupDeploymentModel(S3Model):
                      Field("role", "integer",
                            default = 1,
                            label = T("Role"),
-                           represent = S3Represent(options = SERVER_ROLES),
+                           represent = s3_options_represent(SERVER_ROLES),
                            requires = IS_IN_SET(SERVER_ROLES),
                            writable = False,
                            comment = DIV(_class="tooltip",
@@ -1283,7 +1283,7 @@ class SetupDeploymentModel(S3Model):
         # @ToDo: Allow a Test instance to source Prod data from a different deployment
         #        - to allow it to be run on different hosts (or even different cloud)
         #
-        type_represent = S3Represent(options = INSTANCE_TYPES)
+        type_represent = s3_options_represent(INSTANCE_TYPES)
 
         tablename = "setup_instance"
         define_table(tablename,
@@ -1351,7 +1351,7 @@ class SetupDeploymentModel(S3Model):
                             A(opt,
                               _href = URL(c="appadmin", f="update",
                                           args = ["db", "scheduler_task", opt]),
-                              ) if opt else current.messages["NONE"],
+                              ) if opt else NONE,
                            writable = False,
                            ),
                      Field("log_file", "upload",
@@ -2448,7 +2448,7 @@ class SetupMonitorModel(S3Model):
                      Field("result", "text",
                            label = T("Result"),
                            represent = lambda v: v.split("\n")[0] if v else \
-                                                 current.messages["NONE"],
+                                                 NONE,
                            ),
                      s3_datetime(label = T("Last Checked"),
                                  writable = False,
@@ -2467,7 +2467,8 @@ class SetupMonitorModel(S3Model):
             msg_record_created = T("Task added"),
             msg_record_modified = T("Task updated"),
             msg_record_deleted = T("Task deleted"),
-            msg_list_empty = T("No Tasks currently registered"))
+            msg_list_empty = T("No Tasks currently registered"),
+            )
 
         crud_form = S3SQLCustomForm("server_id",
                                     "check_id",
@@ -2538,7 +2539,7 @@ class SetupMonitorModel(S3Model):
                      Field("result", "text",
                            label = T("Result"),
                            represent = lambda v: v.split("\n")[0] if v else \
-                                                 current.messages["NONE"],
+                                                 NONE,
                            ),
                      s3_comments(),
                      *s3_meta_fields()#,
@@ -2559,7 +2560,8 @@ class SetupMonitorModel(S3Model):
             #msg_record_created = T("Log Entry added"),
             msg_record_modified = T("Log Entry updated"),
             msg_record_deleted = T("Log Entry deleted"),
-            msg_list_empty = T("No Log Entries currently registered"))
+            msg_list_empty = T("No Log Entries currently registered"),
+            )
 
         configure(tablename,
                   # Logs inserted automatically
@@ -2594,7 +2596,7 @@ class SetupMonitorModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -5029,9 +5031,6 @@ class Storage2(Storage):
 class setup_DeploymentRepresent(S3Represent):
 
     def __init__(self):
-        """
-            Constructor
-        """
 
         super(setup_DeploymentRepresent, self).__init__(lookup = "setup_deployment",
                                                         )
@@ -5041,9 +5040,10 @@ class setup_DeploymentRepresent(S3Represent):
         """
             Custom look-up of rows
 
-            @param key: the key field
-            @param values: the values to look up
-            @param fields: unused (retained for API compatibility)
+            Args:
+                key: the key field
+                values: the values to look up
+                fields: unused (retained for API compatibility)
         """
 
         dtable = self.table
@@ -5069,7 +5069,8 @@ class setup_DeploymentRepresent(S3Represent):
         """
             Represent a row
 
-            @param row: the Row
+            Args:
+                row: the Row
         """
 
         if not hasattr(row, "setup_instance"):
@@ -5081,9 +5082,6 @@ class setup_DeploymentRepresent(S3Represent):
 class setup_MonitorTaskRepresent(S3Represent):
 
     def __init__(self):
-        """
-            Constructor
-        """
 
         super(setup_MonitorTaskRepresent, self).__init__(lookup = "setup_monitor_task",
                                                          )
@@ -5093,9 +5091,10 @@ class setup_MonitorTaskRepresent(S3Represent):
         """
             Custom look-up of rows
 
-            @param key: the key field
-            @param values: the values to look up
-            @param fields: unused (retained for API compatibility)
+            Args:
+                key: the key field
+                values: the values to look up
+                fields: unused (retained for API compatibility)
         """
 
         db = current.db
@@ -5128,7 +5127,8 @@ class setup_MonitorTaskRepresent(S3Represent):
         """
             Represent a row
 
-            @param row: the Row
+            Args:
+                row: the Row
         """
 
         #return "%s (%s): %s" % (row["setup_server.name"],

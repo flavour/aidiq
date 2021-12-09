@@ -20,6 +20,8 @@
 if not settings.has_module(c):
     raise HTTP(404, body="Module disabled: %s" % c)
 
+from s3 import S3ReusableField
+
 # -----------------------------------------------------------------------------
 # Define the Model
 # @ToDo: Move to modules/s3db/assess.py
@@ -41,16 +43,16 @@ assess_colour_opts = {
 
 def s3_assess_severity_represent(value):
     if value:
-        return IMG(_src="/%s/static/img/%s_circle_16px.png" %
+        return IMG(_src = "/%s/static/img/%s_circle_16px.png" %
                         (appname, assess_colour_opts[value]),
-                   _alt= value,
-                   _align="middle"
+                   _alt = value,
+                   _align = "middle"
                    )
     else:
         return NONE
 
 repr_select = lambda l: len(l.name) > 48 and "%s..." % l.name[:44] or l.name
-S3Represent = s3base.S3Represent
+from s3 import S3Represent
 
 add_components = s3db.add_components
 configure = s3db.configure
@@ -151,11 +153,12 @@ def assess_tables():
         if auth.has_membership(auth.id_group("'Administrator'")):
             return S3PopupLink(c="assess",
                                f="baseline_type",
-                               label=ADD_BASELINE_TYPE)
+                               label=ADD_BASELINE_TYPE,
+                               )
         else:
             return None
 
-    represent = S3Represent(tablename)
+    represent = S3Represent(lookup = tablename)
     baseline_type_id = S3ReusableField("baseline_type_id", "reference %s" % tablename,
                                        sortby="name",
                                        requires = IS_EMPTY_OR(IS_ONE_OF(db,
@@ -1867,7 +1870,7 @@ def impact_tables():
         else:
             return None
 
-    represent = S3Represent(tablename)
+    represent = S3Represent(lookup = tablename)
     impact_type_id = S3ReusableField("impact_type_id", "reference %s" % tablename,
                                      sortby="name",
                                      requires = IS_EMPTY_OR(
@@ -2045,7 +2048,8 @@ def rat():
         s3_action_buttons(r, deletable=False)
         # Redirect to update view to open tabs
         if r.representation == "html" and r.method == "create":
-            r.next = r.url(method="", id=s3base.s3_get_last_record_id("assess_rat"))
+            from s3 import s3_get_last_record_id
+            r.next = r.url(method="", id=s3_get_last_record_id("assess_rat"))
         return output
     response.s3.postp = postp
 
@@ -2083,6 +2087,7 @@ def rat_rheader(r, tabs=[]):
             report = r.record
             if report:
                 htable = db.hrm_human_resource
+                from s3 import s3_rheader_tabs
                 rheader_tabs = s3_rheader_tabs(r, tabs, paging=True)
                 location = report.location_id
                 if location:
@@ -2133,6 +2138,7 @@ def assess_rheader(r, tabs=[]):
 
     if r.representation == "html":
 
+        from s3 import s3_rheader_tabs
         rheader_tabs = s3_rheader_tabs(r, tabs)
         assess = r.record
         if assess:
@@ -2377,14 +2383,14 @@ def custom_assess(custom_assess_fields, location_id=None):
                                                                  value="")
 
         elif field[0] == "baseline":
-            label = S3Represent(lookup="assess_baseline_type")(field[1])
+            label = S3Represent(lookup = "assess_baseline_type")(field[1])
             label = "%s:" % T(label)
             widget = INPUT(_name = name,
                            _class = "double",
                            _type = "text")
 
         elif field[0] == "impact":
-            label = S3Represent(lookup="assess_impact_type")(field[1])
+            label = S3Represent(lookup = "assess_impact_type")(field[1])
             label = "%s:" % T(label)
             value_widget = INPUT(_name = name,
                                  _class = "double",

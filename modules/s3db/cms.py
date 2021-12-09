@@ -55,9 +55,6 @@ from gluon.storage import Storage
 from ..s3 import *
 from s3layouts import S3PopupLink
 
-# Compact JSON encoding
-SEPARATORS = (",", ":")
-
 # =============================================================================
 class CMSContentModel(S3Model):
     """
@@ -145,7 +142,9 @@ class CMSContentModel(S3Model):
 
         # Reusable field
         translate = settings.get_L10n_translate_cms_series()
-        represent = S3Represent(lookup=tablename, translate=translate)
+        represent = S3Represent(lookup = tablename,
+                                translate = translate,
+                                )
         series_id = S3ReusableField("series_id", "reference %s" % tablename,
                                     label = T("Type"), # Even if this isn't always the use-case
                                     ondelete = "CASCADE",
@@ -154,7 +153,8 @@ class CMSContentModel(S3Model):
                                     represent = represent,
                                     requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "cms_series.id",
-                                                          represent)),
+                                                          represent,
+                                                          )),
                                     )
 
         # Resource Configuration
@@ -199,8 +199,10 @@ class CMSContentModel(S3Model):
             msg_list_empty = T("No Statuses currently registered"))
 
         # Reusable Field
-        represent = S3Represent(lookup=tablename, translate=True)
-                                #none = T("Unknown"))
+        represent = S3Represent(lookup = tablename,
+                                translate = True,
+                                #none = T("Unknown"),
+                                )
         status_id = S3ReusableField("status_id", "reference %s" % tablename,
                         comment = S3PopupLink(title = ADD_STATUS,
                                               c = "cms",
@@ -212,7 +214,8 @@ class CMSContentModel(S3Model):
                         requires = IS_EMPTY_OR(
                                     IS_ONE_OF(db, "cms_status.id",
                                               represent,
-                                              sort=True)),
+                                              sort = True,
+                                              )),
                         sortby = "name",
                         )
 
@@ -321,10 +324,11 @@ class CMSContentModel(S3Model):
             msg_record_created = T("Post added"),
             msg_record_modified = T("Post updated"),
             msg_record_deleted = T("Post deleted"),
-            msg_list_empty = T("No posts currently available"))
+            msg_list_empty = T("No posts currently available"),
+            )
 
         # Reusable field
-        represent = S3Represent(lookup=tablename)
+        represent = S3Represent(lookup = tablename)
         post_id = S3ReusableField("post_id", "reference %s" % tablename,
                                   comment = S3PopupLink(c = "cms",
                                                         f = "post",
@@ -336,7 +340,8 @@ class CMSContentModel(S3Model):
                                   represent = represent,
                                   requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "cms_post.id",
-                                                          represent)),
+                                                          represent,
+                                                          )),
                                   sortby = "name",
                                   )
 
@@ -720,9 +725,11 @@ class CMSContentModel(S3Model):
             or online documentation):
                 - same name and series => same post
 
-            @param item: the import item
+            Args:
+                item: the import item
 
-            @todo: if no name present => use cms_post_module component
+            TODO:
+                If no name present => use cms_post_module component
                    to identify updates (also requires deduplication of
                    cms_post_module component)
         """
@@ -1103,7 +1110,7 @@ class CMSContentForumModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class CMSContentMapModel(S3Model):
@@ -1127,7 +1134,7 @@ class CMSContentMapModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class CMSContentOrgModel(S3Model):
@@ -1155,7 +1162,7 @@ class CMSContentOrgModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class CMSContentOrgGroupModel(S3Model):
@@ -1179,7 +1186,7 @@ class CMSContentOrgGroupModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class CMSContentTeamModel(S3Model):
@@ -1207,7 +1214,7 @@ class CMSContentTeamModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class CMSContentUserModel(S3Model):
@@ -1231,7 +1238,7 @@ class CMSContentUserModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 class CMSContentRoleModel(S3Model):
@@ -1272,7 +1279,7 @@ class CMSContentRoleModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 def cms_rheader(r, tabs=None):
@@ -1300,7 +1307,9 @@ def cms_rheader(r, tabs=None):
         rheader = DIV(TABLE(TR(TH("%s: " % table.name.label),
                                record.name
                                ),
-                            ), rheader_tabs)
+                            ),
+                      rheader_tabs,
+                      )
 
     elif resourcename == "post":
         # Tabs
@@ -1322,7 +1331,8 @@ def cms_index(module,
               resource = None,
               page_name = None,
               alt_function = None,
-              view = None):
+              view = None,
+              ):
     """
         Return a module index page retrieved from CMS
         - or run an alternate function if not found
@@ -1397,12 +1407,13 @@ def cms_index(module,
             from gluon.compileapp import build_environment, run_controller_in, run_view_in
             request = current.request
             environment = build_environment(request, response, current.session)
+            environment["c"] = module
             environment["settings"] = settings
             environment["s3db"] = current.s3db
             # Retain certain globals (extend as needed):
             g = globals()
             environment["s3base"] = g.get("s3base")
-            environment["s3_redirect_default"] = g.get("s3_redirect_default")
+            environment["s3_redirect_default"] = s3_redirect_default
             page = run_controller_in(request.controller, alt_function, environment)
             if isinstance(page, dict):
                 response._vars = page
@@ -1445,9 +1456,10 @@ def cms_documentation(r, default_page, default_url):
     """
         Render an online documentation page, to be called from prep
 
-        @param r: the S3Request
-        @param default_page: the default page name
-        @param default_url: the default URL if no contents found
+        Args:
+            r: the S3Request
+            default_page: the default page name
+            default_url: the default URL if no contents found
     """
 
     row = r.record
@@ -1493,10 +1505,12 @@ class S3CMS(S3Method):
             Entry point to apply cms method to S3Requests
             - produces a full page with a Richtext widget
 
-            @param r: the S3Request
-            @param attr: dictionary of parameters for the method handler
+            Args:
+                r: the S3Request
+                attr: dictionary of parameters for the method handler
 
-            @return: output object to send to the view
+            Returns:
+                output object to send to the view
         """
 
         # Not Implemented
@@ -1508,11 +1522,13 @@ class S3CMS(S3Method):
             Render a Rich Text widget suitable for use in a page such as
             S3Summary
 
-            @param method: the widget method
-            @param r: the S3Request
-            @param attr: controller attributes
+            Args:
+                method: the widget method
+                r: the S3Request
+                attr: controller attributes
 
-            @ToDo: Support comments
+            TODO:
+                Support comments
         """
 
         if not current.deployment_settings.has_module("cms"):
@@ -1534,12 +1550,13 @@ class S3CMS(S3Method):
         """
             Render resource-related CMS contents
 
-            @param module: the module prefix
-            @param resource: the resource name (without prefix)
-            @param record: the record ID (optional)
-            @param widget_id: the DOM node ID for the CMS widget
-            @param hide_if_empty: return an empty string when there is no
-                                  contents rather than a blank DIV
+            Args:
+                module: the module prefix
+                resource: the resource name (without prefix)
+                record: the record ID (optional)
+                widget_id: the DOM node ID for the CMS widget
+                hide_if_empty: return an empty string when there is no
+                               contents rather than a blank DIV
         """
 
         db = current.db
@@ -1725,11 +1742,12 @@ def cms_post_list_layout(list_id, item_id, resource, rfields, record):
         Default dataList item renderer for CMS Posts on the
         Home & News Feed pages.
 
-        @param list_id: the HTML ID of the list
-        @param item_id: the HTML ID of the item
-        @param resource: the S3Resource to render
-        @param rfields: the S3ResourceFields to render
-        @param record: the record as dict
+        Args:
+            list_id: the HTML ID of the list
+            item_id: the HTML ID of the item
+            resource: the S3Resource to render
+            rfields: the S3ResourceFields to render
+            record: the record as dict
     """
 
     record_id = record["cms_post.id"]
@@ -1738,7 +1756,6 @@ def cms_post_list_layout(list_id, item_id, resource, rfields, record):
     db = current.db
     s3db = current.s3db
     settings = current.deployment_settings
-    NONE = current.messages["NONE"]
 
     org_field = settings.get_cms_organisation()
     # Convert to the right format for this context
@@ -2192,12 +2209,13 @@ class cms_Calendar(S3Method):
     """
         Display Posts on a Calendar format
 
-       @ToDo: Customisable Date Range
-                - currently hardcoded to 1 day in past, today & 5 days ahead
-       @ToDo: Interactive version
-                - drag/drop entries
-                - edit entries
-       @ToDo: PDF/XLS representations
+        TODO:
+            Customisable Date Range
+            - currently hardcoded to 1 day in past, today & 5 days ahead
+            Interactive version
+            - drag/drop entries
+            - edit entries
+            PDF/XLS representations
     """
 
     # -------------------------------------------------------------------------
@@ -2205,8 +2223,9 @@ class cms_Calendar(S3Method):
         """
             Entry point for REST API
 
-            @param r: the S3Request
-            @param attr: controller arguments
+            Args:
+                r: the S3Request
+                attr: controller arguments
         """
 
         if r.name == "post":
@@ -2375,8 +2394,9 @@ class cms_TagList(S3Method):
         """
             Entry point for REST API
 
-            @param r: the S3Request
-            @param attr: controller arguments
+            Args:
+                r: the S3Request
+                attr: controller arguments
         """
 
         if r.representation == "json":

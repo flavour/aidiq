@@ -1303,7 +1303,7 @@ $('.copy-link').click(function(e){
                     from s3 import s3_fieldmethod
                     utable.consent = s3_fieldmethod("consent",
                                                     consent,
-                                                    # over-ride the default represent of s3_unicode to prevent HTML being rendered too early
+                                                    # over-ride the default represent of s3_str to prevent HTML being rendered too early
                                                     #represent = lambda v: v,
                                                     )
 
@@ -2771,11 +2771,13 @@ $('.copy-link').click(function(e){
                 gtable = s3db.gis_location
                 districts = db((gtable.level == "L3") & (gtable.L2 == "Cumbria")).select(gtable.id,
                                                                                          gtable.name,
-                                                                                         cache = s3db.cache)
+                                                                                         cache = s3db.cache,
+                                                                                         )
                 districts = {d.id:d.name for d in districts}
 
                 s3db.pr_group_membership.group_id.represent = S3Represent(lookup = "pr_group",
-                                                                          show_link = True)
+                                                                          show_link = True,
+                                                                          )
 
                 actions = [{"label": s3_str(T("Open")),
                             "url": URL(c = "pr",
@@ -2838,10 +2840,10 @@ $('.copy-link').click(function(e){
                not auth.s3_has_role("ORG_ADMIN"):
 
                 #from gluon import URL
-                from s3 import s3_str, S3CRUD
+                from s3 import s3_str, s3_action_buttons
 
                 # Normal Action Buttons
-                S3CRUD.action_buttons(r, deletable = False)
+                s3_action_buttons(r, deletable = False)
 
                 # Custom Action Buttons
                 table = s3db.hrm_training
@@ -2917,10 +2919,10 @@ $('.copy-link').click(function(e){
 
         from gluon import IS_EMAIL, IS_EMPTY_OR, IS_IN_SET, IS_URL, SQLFORM
 
-        from s3 import S3LocationFilter, S3OptionsFilter, S3Represent, \
+        from s3 import S3LocationFilter, S3OptionsFilter, \
                        S3SQLCustomForm, S3SQLInlineComponent, S3SQLInlineLink, \
                        S3TextFilter#, \
-                       #S3HierarchyWidget
+                       #S3Represent, S3HierarchyWidget
 
         s3db = current.s3db
 
@@ -3226,10 +3228,10 @@ $('.copy-link').click(function(e){
             if r.interactive and not r.component:
                 if ADMIN is True:
                     from gluon import URL
-                    from s3 import s3_str, S3CRUD
+                    from s3 import s3_str, s3_action_buttons
 
                     # Normal Action Buttons
-                    S3CRUD.action_buttons(r)
+                    s3_action_buttons(r)
 
                     # Custom Action Buttons
                     s3.actions += [{"label": s3_str(T("Message")),
@@ -3244,10 +3246,10 @@ $('.copy-link').click(function(e){
 
                 elif APPLY is True:
                     from gluon import URL
-                    from s3 import s3_str, S3CRUD
+                    from s3 import s3_str, s3_action_buttons
 
                     # Normal Action Buttons
-                    S3CRUD.action_buttons(r)
+                    s3_action_buttons(r)
 
                     # Custom Action Buttons
                     #otable = s3db.org_organisation
@@ -3592,7 +3594,7 @@ $('.copy-link').click(function(e){
             if r.component_name == "person":
                 # Include get_vars on Action Buttons to configure crud_form/crud_strings appropriately
                 from gluon import URL
-                from s3 import S3CRUD
+                from s3 import s3_action_buttons
 
                 read_url = URL(c="pr", f="person", args=["[id]", "read"],
                                vars = {"groups": 1})
@@ -3600,10 +3602,10 @@ $('.copy-link').click(function(e){
                 update_url = URL(c="pr", f="person", args=["[id]", "update"],
                                  vars = {"groups": 1})
 
-                S3CRUD.action_buttons(r,
-                                      read_url = read_url,
-                                      update_url = update_url,
-                                      )
+                s3_action_buttons(r,
+                                  read_url = read_url,
+                                  update_url = update_url,
+                                  )
 
             return output
         s3.postp = postp
@@ -4422,25 +4424,25 @@ $('.copy-link').click(function(e){
                                                                   },
                                                                  ),
                                                 )
-                            from s3 import S3Represent
+                            from s3 import s3_options_represent
                             yes_no_options = {"0": T("No"),
                                               "1": T("Yes"),
                                               }
                             components_get = s3db.resource("pr_person").components.get
                             workplace = components_get("workplace")
                             f = workplace.table.value
-                            f.represent = S3Represent(options = yes_no_options)
+                            f.represent = s3_options_represent(yes_no_options)
                             list_fields+= [(T("Workplace Volunteering Scheme"), "workplace.value"),
                                            (T("Employer"), "workplace_details.value"),
                                            ]
                             dbs = components_get("dbs")
                             f = dbs.table.value
-                            f.represent = S3Represent(options = yes_no_options)
+                            f.represent = s3_options_represent(yes_no_options)
                             list_fields.append((T("DBS"), "dbs.value"))
                             # Convictions
                             #convictions = components_get("convictions")
                             #f = convictions.table.value
-                            #f.represent = S3Represent(options = yes_no_options)
+                            #f.represent = s3_options_represent(yes_no_options)
                             #list_fields.append((T("Convictions"), "convictions.value"))
 
                     # Registration Date
@@ -4610,7 +4612,7 @@ $('.copy-link').click(function(e){
                 if not BR:
                     # Include get_vars on Action Buttons to configure crud_form/crud_strings appropriately
                     from gluon import URL
-                    from s3 import S3CRUD
+                    from s3 import s3_action_buttons
 
                     read_url = URL(c="pr", f="person",
                                    args = ["[id]", "read"],
@@ -4622,10 +4624,10 @@ $('.copy-link').click(function(e){
                                      vars = r.get_vars,
                                      )
 
-                    S3CRUD.action_buttons(r,
-                                          read_url = read_url,
-                                          update_url = update_url,
-                                          )
+                    s3_action_buttons(r,
+                                      read_url = read_url,
+                                      update_url = update_url,
+                                      )
 
             return output
         s3.postp = postp
@@ -4687,7 +4689,7 @@ $('.copy-link').click(function(e){
     def customise_pr_person_location_resource(r, tablename):
 
         from gluon import IS_EMPTY_OR, IS_IN_SET
-        from s3 import S3Represent
+        from s3 import s3_options_represent
 
         s3db = current.s3db
         gtable = s3db.gis_location
@@ -4697,7 +4699,7 @@ $('.copy-link').click(function(e){
         districts = {d.id:d.name for d in districts}
 
         f = s3db.pr_person_location.location_id
-        f.represent = S3Represent(options = districts)
+        f.represent = s3_options_represent(districts)
         f.requires = IS_EMPTY_OR(IS_IN_SET(districts))
         f.widget = None
 
@@ -6178,11 +6180,13 @@ $('.copy-link').click(function(e){
                 gtable = s3db.gis_location
                 districts = db((gtable.level == "L3") & (gtable.L2 == "Cumbria")).select(gtable.id,
                                                                                          gtable.name,
-                                                                                         cache = s3db.cache)
+                                                                                         cache = s3db.cache,
+                                                                                         )
                 districts = {d.id:d.name for d in districts}
 
                 s3db.pr_group_membership.group_id.represent = S3Represent(lookup = "pr_group",
-                                                                          show_link = True)
+                                                                          show_link = True,
+                                                                          )
 
                 actions = [{"label": s3_str(T("Open")),
                             "url": URL(c = "pr",
@@ -6241,10 +6245,10 @@ $('.copy-link').click(function(e){
                not auth.s3_has_role("ORG_ADMIN"):
 
                 from gluon import URL
-                from s3 import s3_str, S3CRUD
+                from s3 import s3_str, s3_action_buttons
 
                 # Normal Action Buttons
-                S3CRUD.action_buttons(r, deletable = False)
+                s3_action_buttons(r, deletable = False)
 
                 # Custom Action Buttons
                 table = s3db.req_need_person
@@ -6558,8 +6562,8 @@ $('.copy-link').click(function(e){
 
             if r.interactive:
                 #if not r.component:
-                from s3 import s3_str, S3CRUD
-                S3CRUD.action_buttons(r)
+                from s3 import s3_str, s3_action_buttons
+                s3_action_buttons(r)
                 s3.actions.append({"url": URL(c="project", f="task",
                                               args = "create",
                                               vars = {"person_item_id": "[id]"},

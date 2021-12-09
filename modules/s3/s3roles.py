@@ -39,7 +39,7 @@ from io import StringIO
 from gluon import current, URL, DIV, SPAN, SQLFORM, INPUT, A, LI, UL
 
 from s3dal import Field
-from .s3crud import S3CRUD
+from .s3crud import S3CRUD, crud_button, s3_action_button, s3_action_buttons
 from .s3rest import S3Method
 from .s3query import FS
 from .s3utils import s3_str, s3_mark_required
@@ -56,8 +56,9 @@ class S3RoleManager(S3Method):
         """
             Entry point for REST interface.
 
-            @param r: the S3Request instance
-            @param attr: controller attributes
+            Args:
+                r: the S3Request instance
+                attr: controller attributes
         """
 
         method = self.method
@@ -117,10 +118,12 @@ class S3RoleManager(S3Method):
         """
             List or export roles
 
-            @param r: the S3Request instance
-            @param attr: controller attributes
+            Args:
+                r: the S3Request instance
+                attr: controller attributes
 
-            NB this function must be restricted to ADMINs (in apply_method)
+            Note:
+                This function must be restricted to ADMINs (in apply_method)
         """
 
         # Check permission to read in this table
@@ -137,6 +140,7 @@ class S3RoleManager(S3Method):
         response = current.response
         s3 = response.s3
 
+        resource = self.resource
         get_vars = self.request.get_vars
 
         # List Config
@@ -149,9 +153,9 @@ class S3RoleManager(S3Method):
         default_orderby = "auth_group.role"
         s3.no_formats = True
 
-        # Exclude hidden roles
-        resource = self.resource
-        resource.add_filter(FS("hidden") == False)
+        if not get_vars.get("advanced"):
+            # Exclude hidden roles
+            resource.add_filter(FS("hidden") == False)
 
         if r.interactive:
 
@@ -160,7 +164,7 @@ class S3RoleManager(S3Method):
             current.session["_formkey[admin/rolelist]"] = formkey
 
             # Pagination
-            display_length = s3.dataTable_pageLength or 25
+            display_length = current.deployment_settings.get_ui_datatables_pagelength()
             start = None
             if s3.no_sspag:
                 dt_pagination = "false"
@@ -183,7 +187,9 @@ class S3RoleManager(S3Method):
                                 id = list_id,
                                 dt_pagination = dt_pagination,
                                 dt_pageLength = display_length,
-                                dt_base_url = r.url(method="", vars={}),
+                                dt_base_url = r.url(method = "",
+                                                    vars = {},
+                                                    ),
                                 dt_permalink = r.url(),
                                 dt_formkey = formkey,
                                 )
@@ -195,16 +201,15 @@ class S3RoleManager(S3Method):
             response.view = "admin/roles.html"
 
             # Page actions
-            crud_button = S3CRUD.crud_button
             page_actions = DIV(crud_button(T("Create Role"),
-                                           _href = r.url(method="create"),
+                                           _href = r.url(method = "create"),
                                            ),
                                # TODO activate when implemented
                                #crud_button(T("Import Roles"),
-                               #            _href = r.url(method="import"),
+                               #            _href = r.url(method = "import"),
                                #            ),
                                crud_button(T("Export Roles"),
-                                           _href = r.url(representation="csv"),
+                                           _href = r.url(representation = "csv"),
                                            ),
                                )
 
@@ -267,7 +272,8 @@ class S3RoleManager(S3Method):
         """
             Configure action buttons for role list
 
-            @param r: the S3Request
+            Args:
+                r: the S3Request
         """
 
         T = current.T
@@ -279,9 +285,9 @@ class S3RoleManager(S3Method):
         # Standard actions
         s3.actions = None
         s3.crud_labels.UPDATE = T("Edit")
-        S3CRUD.action_buttons(r, editable=True, deletable=False)
+        s3_action_buttons(r, editable=True, deletable=False)
 
-        action_button = S3CRUD.action_button
+        action_button = s3_action_button
 
         # Users
         label = T("Users")
@@ -336,7 +342,8 @@ class S3RoleManager(S3Method):
         """
             Create, read, update a role
 
-            NB this function must be restricted to ADMINs (in apply_method)
+            Note:
+                This function must be restricted to ADMINs (in apply_method)
         """
 
         T = current.T
@@ -487,9 +494,10 @@ class S3RoleManager(S3Method):
         """
             Show a hint if permissions cannot be edited due to security policy
 
-            @param field: the Field instance
-            @param value: the current field value (ignored)
-            @param attr: DOM attributes for the widget (ignored)
+            Args:
+                field: the Field instance
+                value: the current field value (ignored)
+                attr: DOM attributes for the widget (ignored)
         """
 
         T = current.T
@@ -512,9 +520,11 @@ class S3RoleManager(S3Method):
         """
             Extract the permission rules for a role
 
-            @param role: the role (Row)
+            Args:
+                role: the role (Row)
 
-            @returns: the permission rules as JSON string
+            Returns:
+                The permission rules as JSON string
         """
 
         permissions = current.auth.permission
@@ -563,10 +573,12 @@ class S3RoleManager(S3Method):
         """
             Create or update a role from a role form
 
-            @param role: the role (Row)
-            @param form: the form
+            Args:
+                role: the role (Row)
+                form: the form
 
-            @returns: tuple (role ID, confirmation message)
+            Returns:
+                tuple (role ID, confirmation message)
         """
 
         T = current.T
@@ -614,8 +626,9 @@ class S3RoleManager(S3Method):
         """
             Update the permission rules for a role
 
-            @param role_id: the role record ID (auth_group.id)
-            @param rules: the rules as JSON string
+            Args:
+                role_id: the role record ID (auth_group.id)
+                rules: the rules as JSON string
         """
 
         table = current.auth.permission.table
@@ -635,7 +648,7 @@ class S3RoleManager(S3Method):
                     continue
 
                 if rule_id and deleted:
-                    db(table.id == rule_id).update(deleted=True)
+                    db(table.id == rule_id).update(deleted = True)
 
                 else:
                     entity = rule[6]
@@ -672,7 +685,8 @@ class S3RoleManager(S3Method):
         """
             Duplicate an existing role
 
-            NB this function must be restricted to ADMINs (in apply_method)
+            Note:
+                This function must be restricted to ADMINs (in apply_method)
         """
 
         # CSRF Protection
@@ -746,7 +760,7 @@ class S3RoleManager(S3Method):
                               )
 
         message = current.T("New Role %(role)s created") % {"role": name}
-        return current.xml.json_message(message=message)
+        return current.xml.json_message(message = message)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -754,7 +768,8 @@ class S3RoleManager(S3Method):
         """
             Delete a role
 
-            NB this function must be restricted to ADMINs (in apply_method)
+            Note:
+                This function must be restricted to ADMINs (in apply_method)
         """
 
         # CSRF Protection
@@ -777,14 +792,15 @@ class S3RoleManager(S3Method):
 
         message = current.T("Role %(role)s deleted") % {"role": role.role}
 
-        return current.xml.json_message(message=message)
+        return current.xml.json_message(message = message)
 
     # -------------------------------------------------------------------------
     def assign_roles(self, r, **attr):
         """
             Assign/unassign roles to a user
 
-            NB this function is accessible for non-ADMINs (e.g. ORG_ADMIN)
+            Note:
+                This function is accessible for non-ADMINs (e.g. ORG_ADMIN)
         """
 
         auth = current.auth
@@ -837,7 +853,9 @@ class S3RoleManager(S3Method):
                 realm_types, realms = None, None
 
             # The Ajax URL for role updates
-            ajax_url = r.url(id="[id]", representation="json")
+            ajax_url = r.url(id = "[id]",
+                             representation = "json",
+                             )
 
             # The form field
             field = mtable.user_id
@@ -854,7 +872,9 @@ class S3RoleManager(S3Method):
             s3 = current.response.s3
             tablename = str(mtable)
             form = SQLFORM.factory(field,
-                                   record = {"id": None, "user_id": r.id},
+                                   record = {"id": None,
+                                             "user_id": r.id,
+                                             },
                                    showid = False,
                                    labels = {field.name: ""},
                                    formstyle = s3.crud.formstyle,
@@ -870,10 +890,11 @@ class S3RoleManager(S3Method):
 
             # Show a back-button since OrgAdmins have no other obvious
             # way to return to the list (no left menu)
-            crud_button = S3CRUD.crud_button
             output["list_btn"] = crud_button(T("Back to User List"),
                                              icon = "return",
-                                             _href = r.url(id="", method=""),
+                                             _href = r.url(id = "",
+                                                           method = "",
+                                                           ),
                                              )
 
             # View
@@ -920,7 +941,7 @@ class S3RoleManager(S3Method):
                     for group_id, pe_id in removed:
                         remove_role(user_id, group_id, for_pe=pe_id)
 
-                output = current.xml.json_message(options=options)
+                output = current.xml.json_message(options = options)
 
             else:
                 r.error(415, current.ERROR.BAD_FORMAT)
@@ -934,7 +955,8 @@ class S3RoleManager(S3Method):
         """
             Assign/unassign users to a role
 
-            NB this function could be accessible for non-ADMINs (e.g. ORG_ADMIN)
+            Note:
+                This function could be accessible for non-ADMINs (e.g. ORG_ADMIN)
         """
 
         auth = current.auth
@@ -999,7 +1021,9 @@ class S3RoleManager(S3Method):
             # Render form
             tablename = str(mtable)
             form = SQLFORM.factory(field,
-                                   record = {"id": None, "group_id": role.id},
+                                   record = {"id": None,
+                                             "group_id": role.id,
+                                             },
                                    showid = False,
                                    labels = {field.name: ""},
                                    formstyle = s3.crud.formstyle,
@@ -1015,12 +1039,14 @@ class S3RoleManager(S3Method):
 
             # Default RHeader and View
             if "rheader" not in attr:
-                return_btn = S3CRUD.crud_button("Back to Roles List",
-                                                icon = "return",
-                                                _href=r.url(id="", method=""),
-                                                )
+                return_btn = crud_button("Back to Roles List",
+                                         icon = "return",
+                                         _href = r.url(id = "",
+                                                       method = "",
+                                                       ),
+                                         )
                 output["rheader"] = DIV(return_btn,
-                                        _class="rheader",
+                                        _class = "rheader",
                                         )
 
             response = current.response
@@ -1068,7 +1094,7 @@ class S3RoleManager(S3Method):
                     for user_id, pe_id in removed:
                         remove_role(user_id, group_id, for_pe=pe_id)
 
-                output = current.xml.json_message(options=options)
+                output = current.xml.json_message(options = options)
 
             else:
                 r.error(415, current.ERROR.BAD_FORMAT)
@@ -1083,15 +1109,17 @@ class S3RoleManager(S3Method):
         """
             Get a dict of users the current user can assign to roles
 
-            @param role_id: the target role ID
+            Args:
+                role_id: the target role ID
 
-            @returns: a dict {user_id: {l:label,
-                                        t:title,
-                                        a:assignable,
-                                        r:removable,
-                                        u:unrestrictable,
-                                        }, ...}
-                      NB a, r and u attributes only added if non-default
+            Returns:
+                dict {user_id: {l:label,
+                                t:title,
+                                a:assignable,
+                                r:removable,
+                                u:unrestrictable,
+                                }, ...}
+                    NB a, r and u attributes only added if non-default
         """
 
         auth = current.auth
@@ -1150,12 +1178,13 @@ class S3RoleManager(S3Method):
         """
             Get a dict of roles the current user can manage
 
-            @returns: a dict {role_id: {l:label,
-                                        a:assignable,
-                                        r:removable,
-                                        u:unrestrictable,
-                                        }, ...},
-                      NB a, r and u attributes only added if non-default
+            Returns:
+                dict {role_id: {l:label,
+                                a:assignable,
+                                r:removable,
+                                u:unrestrictable,
+                                }, ...},
+                    NB a, r and u attributes only added if non-default
         """
 
         auth = current.auth
@@ -1173,8 +1202,9 @@ class S3RoleManager(S3Method):
             privileged_roles = {u:u for u in privileged_roles}
 
         table = auth.settings.table_group
-        query = (table.hidden == False) & \
-                (table.deleted == False)
+        query = (table.deleted == False)
+        if not current.request.get_vars.get("advanced"):
+            query &= (table.hidden == False)
         rows = current.db(query).select(table.id,
                                         table.uuid,
                                         table.role,
@@ -1219,9 +1249,10 @@ class S3RoleManager(S3Method):
         """
             Get a dict of realms managed by the current user
 
-            @returns: tuple (realm_types, realms):
-                        - realm_types = [(instance_type, label), ...]
-                        - realms = {pe_id: {l:label, t:type}, ...}
+            Returns:
+                tuple (realm_types, realms):
+                    - realm_types = [(instance_type, label), ...]
+                    - realms = {pe_id: {l:label, t:type}, ...}
         """
 
         T = current.T
@@ -1280,23 +1311,21 @@ class S3RoleManager(S3Method):
         """
             Interactive import of roles (auth_roles.csv format)
 
-            NB this function must be restricted to ADMINs (in apply_method)
+            Note:
+                This function must be restricted to ADMINs (in apply_method)
         """
 
         # TODO implement roles importer
 
         T = current.T
 
-        output = {}
-
-        # Title
-        output["title"] = T("Import Roles")
-
         # View
         response = current.response
         response.view = "admin/import_roles.html"
 
-        return output
+        # Title
+        return {"title": T("Import Roles"),
+                }
 
         # if GET:
         #   show an import form
@@ -1309,7 +1338,8 @@ class S3RoleManager(S3Method):
         """
             Export of roles (auth_roles.csv format)
 
-            NB this function must be restricted to ADMINs (in apply_method)
+            Note:
+                This function must be restricted to ADMINs (in apply_method)
         """
 
         output = S3RolesExport(r.resource).as_csv()
@@ -1327,15 +1357,12 @@ class S3RoleManager(S3Method):
         return output.read()
 
 # =============================================================================
-class S3PermissionWidget(object):
+class S3PermissionWidget:
     """
         Form widget to modify permissions of a role
     """
 
     def __init__(self, role_id=None):
-        """
-            Constructor
-        """
 
         sr = current.auth.get_system_roles()
 
@@ -1353,9 +1380,10 @@ class S3PermissionWidget(object):
         """
             Form builder entry point
 
-            @param field: the Field
-            @param value: the current (or default) value of the field
-            @param attributes: HTML attributes for the widget
+            Args:
+                field: the Field
+                value: the current (or default) value of the field
+                attributes: HTML attributes for the widget
         """
 
         T = current.T
@@ -1438,7 +1466,8 @@ class S3PermissionWidget(object):
         """
             Get a JSON-serializable dict of active modules
 
-            @returns: a dict {prefix: (name_nice, restricted)}
+            Returns:
+                dict {prefix: (name_nice, restricted)}
         """
 
         # Modules where access rules do not apply (or are hard-coded)
@@ -1462,7 +1491,8 @@ class S3PermissionWidget(object):
         """
             Get a JSON-serializable dict of active data models
 
-            @returns: a dict {prefix: {tablename: restricted}}
+            Returns:
+                dict {prefix: {tablename: restricted}}
         """
 
         # Get all table names
@@ -1509,7 +1539,8 @@ class S3PermissionWidget(object):
             Return all table names in the database; in separate function
             to allow caching because it requires to load all models once
 
-            @returns: db.tables
+            Returns:
+                db.tables
         """
 
         db = current.db
@@ -1532,7 +1563,8 @@ class S3PermissionWidget(object):
         """
             Get a JSON-serializable list of permissions
 
-            @returns: an ordered list of dicts:
+            Returns:
+                An ordered list of dicts:
                      [{l: label,
                        b: bit,
                        o: relevant for owned records,
@@ -1568,7 +1600,8 @@ class S3PermissionWidget(object):
             Get default permissions, i.e. those granted by roles the user
             has by default
 
-            @returns: a dict {tablename: (uACL, oACL)}
+            Returns:
+                dict {tablename: (uACL, oACL)}
         """
 
         permissions = current.auth.permission
@@ -1613,9 +1646,10 @@ class S3PermissionWidget(object):
         """
             Inject the necessary JavaScript for the widget
 
-            @param widget_id: the widget ID
-                              (=element ID of the person_id field)
-            @param options: JSON-serializable dict of widget options
+            Args:
+                widget_id: the widget ID
+                           (=element ID of the person_id field)
+                options: JSON-serializable dict of widget options
         """
 
         s3 = current.response.s3
@@ -1689,30 +1723,29 @@ class S3PermissionWidget(object):
         current.response.s3.js_global.append("\n".join(strings))
 
 # =============================================================================
-class S3RolesWidget(object):
+class S3RolesWidget:
     """
         Form widget to assign roles to users
     """
 
     def __init__(self,
-                 mode="roles",
-                 items=None,
-                 use_realms=False,
-                 realm_types=None,
-                 realms=None,
-                 ajax_url=None,
+                 mode = "roles",
+                 items = None,
+                 use_realms = False,
+                 realm_types = None,
+                 realms = None,
+                 ajax_url = None,
                  ):
         """
-            Constructor
-
-            @param mode: what to assign ("roles"|"users")
-            @param items: the assignable items (roles or users), dict,
-                          structure see get_managed_roles/get_managed_users
-            @param use_realms: boolean, whether to use realms
-            @param realm_types: the realm types and their labels, tuple,
-                                format see get_managed_realms
-            @param realms: the realms, dict, structure see get_managed_realms
-            @param ajax_url: the URL for Ajax modification of assignments
+            Args:
+                mode: what to assign ("roles"|"users")
+                items: the assignable items (roles or users), dict,
+                       structure see get_managed_roles/get_managed_users
+                use_realms: boolean, whether to use realms
+                realm_types: the realm types and their labels, tuple,
+                             format see get_managed_realms
+                realms: the realms, dict, structure see get_managed_realms
+                ajax_url: the URL for Ajax modification of assignments
         """
 
         self.mode = mode
@@ -1730,9 +1763,10 @@ class S3RolesWidget(object):
         """
             Form builder entry point
 
-            @param field: the Field
-            @param value: the current (or default) value of the field
-            @param attributes: HTML attributes for the widget
+            Args:
+                field: the Field
+                value: the current (or default) value of the field
+                attributes: HTML attributes for the widget
         """
 
         T = current.T
@@ -1799,9 +1833,11 @@ class S3RolesWidget(object):
         """
             Get the current assignments for the user/role
 
-            @param record_id: the user or role ID
+            Args:
+                record_id: the user or role ID
 
-            @returns: a list of tuples (roleID|userID, realmID)
+            Returns:
+                A list of tuples (roleID|userID, realmID)
         """
 
         auth = current.auth
@@ -1857,12 +1893,13 @@ class S3RolesWidget(object):
         """
             Inject the necessary JavaScript for the widget
 
-            @param widget_id: the widget ID
-                              (=element ID of the person_id field)
-            @param options: JSON-serializable dict of widget options
-            @param i18n: translations of screen messages rendered by
-                         the client-side script,
-                         a dict {messageKey: translation}
+            Args:
+                widget_id: the widget ID
+                           (=element ID of the person_id field)
+                options: JSON-serializable dict of widget options
+                i18n: translations of screen messages rendered by
+                      the client-side script,
+                      a dict {messageKey: translation}
         """
 
         s3 = current.response.s3
@@ -1900,7 +1937,8 @@ class S3RolesWidget(object):
             Inject translations for screen messages rendered by the
             client-side script
 
-            @param labels: dict of translations {messageKey: translation}
+            Args:
+                labels: dict of translations {messageKey: translation}
         """
 
         strings = ['''i18n.%s="%s"''' % (k, s3_str(v))
@@ -1908,17 +1946,16 @@ class S3RolesWidget(object):
         current.response.s3.js_global.append("\n".join(strings))
 
 # =============================================================================
-class S3RolesExport(object):
+class S3RolesExport:
     """
         Roles Exporter
     """
 
     def __init__(self, resource):
         """
-            Constructor
-
-            @param resource: the role resource (auth_group) with REST
-                             filters; or None to export all groups
+            Args:
+                resource: the role resource (auth_group) with REST
+                          filters; or None to export all groups
         """
 
         db = current.db
@@ -1992,7 +2029,7 @@ class S3RolesExport(object):
                 (otable.deleted == False)
         self.orgs = db(query).select(otable.pe_id,
                                      otable.name,
-                                     ).as_dict(key="pe_id")
+                                     ).as_dict(key = "pe_id")
 
     # -------------------------------------------------------------------------
     def as_csv(self):
@@ -2000,7 +2037,8 @@ class S3RolesExport(object):
             Export the current roles and permissions as CSV,
             suitable for prepop (see S3BulkImporter.import_role)
 
-            @returns: a StringIO containing the CSV
+            Returns:
+                StringIO containing the CSV
         """
 
         import csv
@@ -2097,9 +2135,10 @@ class S3RolesExport(object):
             Encodes a permission bitmap as string, using the permission
             labels from S3Permission.PERMISSION_OPTS
 
-            @param permissions: the permission bitmap
-            @param explicit_none: return "NONE" if no permission bit set
-                                  (otherwise returns None)
+            Args:
+                permissions: the permission bitmap
+                explicit_none: return "NONE" if no permission bit set
+                               (otherwise returns None)
         """
 
         if not permissions:

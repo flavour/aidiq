@@ -30,7 +30,8 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ["S3Parser"]
+__all__ = ("S3Parser",
+           )
 
 import os
 
@@ -46,7 +47,7 @@ from gluon.tools import fetch
 from s3.s3parser import S3Parsing
 
 # =============================================================================
-class S3Parser(object):
+class S3Parser:
     """
        Message Parsing Template.
     """

@@ -127,27 +127,27 @@ class S3Config(Storage):
                     }
 
     # PDF fonts for each language
-    # fontset format -> [normal-version, bold-version]
-    # defaults to ["Helvetica", "Helvetica-Bold"] if not-specified here
+    # - either a single string or a tuple of (normal-version, bold-version) #, italic-version)
+    # defaults to ("Helvetica", "Helvetica-Bold") #, "Helvetica-Oblique") if not-specified here
     # Requires installation of appropriate font - e.g. using import_font in tasks.cfg
     # Unifont can be downloaded from http://unifoundry.com/unifont/index.html
-    fonts = {"ar": ["unifont", "unifont"], # Note that this isn't an ideal font for Arabic as it doesn't support reshaping. We use arabic_reshaper to improve this.
-             #"dv": ["unifont", "unifont"],
-             "dz": ["unifont", "unifont"],
-             "km": ["unifont", "unifont"],
-             "ko": ["unifont", "unifont"],
-             "mn": ["unifont", "unifont"],
-             "my": ["unifont", "unifont"],
-             "ne": ["unifont", "unifont"],
-             "pl": ["unifont", "unifont"],
-             "prs": ["unifont", "unifont"],
-             "ps": ["unifont", "unifont"],
-             "th": ["unifont", "unifont"],
-             "tr": ["unifont", "unifont"],
-             "ur": ["unifont", "unifont"],
-             "vi": ["unifont", "unifont"],
-             "zh-cn": ["unifont", "unifont"],
-             "zh-tw": ["unifont", "unifont"],
+    fonts = {"ar": "unifont", # Note that this isn't an ideal font for Arabic as it doesn't support reshaping. We use arabic_reshaper to improve this.
+             #"dv": "unifont",
+             "dz": "unifont",
+             "km": "unifont",
+             "ko": "unifont",
+             "mn": "unifont",
+             "my": "unifont",
+             "ne": "unifont",
+             "pl": "unifont",
+             "prs": "unifont",
+             "ps": "unifont",
+             "th": "unifont",
+             "tr": "unifont",
+             "ur": "unifont",
+             "vi": "unifont",
+             "zh-cn": "unifont",
+             "zh-tw": "unifont",
              }
 
     # Can be over-ridden in the template as settings.L10n.languages_by_country
@@ -188,7 +188,6 @@ class S3Config(Storage):
         self.gis = Storage()
         # Allow templates to append rather than replace
         self.gis.countries = []
-        self.hms = Storage()
         self.hrm = Storage()
         self.inv = Storage()
         self.L10n = Storage()
@@ -196,6 +195,7 @@ class S3Config(Storage):
         self.L10n.languages = {"en": "English"}
         self.log = Storage()
         self.mail = Storage()
+        self.med = Storage()
         self.member = Storage()
         self.mobile = Storage()
         self.msg = Storage()
@@ -323,7 +323,8 @@ class S3Config(Storage):
 
             Configurations will be imported and executed in order of appearance
 
-            @param config: name of the config-module
+            Args:
+                config: name of the config-module
         """
 
         names = self.get_template()
@@ -959,6 +960,14 @@ class S3Config(Storage):
         """
         return self.auth.get("person_realm_member_org", False)
 
+    def get_auth_user_realms_include_persons(self):
+        """
+           Applies only to Hierarchical Realms (Policy 7)
+           By default the User's Realms list doesn't include person records (as there could be very large numbers)
+           If the deployment needs this then set this to True
+        """
+        return self.auth.get("user_realms_include_persons", False)
+
     def get_auth_entity_role_manager(self):
         """
             Activate Entity Role Manager (=embedded Role Manager Tab for OrgAdmins)
@@ -1176,40 +1185,6 @@ class S3Config(Storage):
               => modules/templates/<TMP>/formats/<ext>/<method>.xsl
         """
         return self.base.get("xml_formats")
-
-
-    def get_import_callback(self, tablename, callback):
-        """
-            Lookup callback to use for imports in the following order:
-                - custom [create, update]_onxxxx
-                - default [create, update]_onxxxx
-                - custom onxxxx
-                - default onxxxx
-            NB: Currently only onaccept is actually used
-        """
-
-        callbacks = self.base.get("import_callbacks", [])
-        if tablename in callbacks:
-            callbacks = callbacks[tablename]
-            if callback in callbacks:
-                return callbacks[callback]
-
-        get_config = current.s3db.get_config
-        default = get_config(tablename, callback)
-        if default:
-            return default
-
-        if callback[:2] != "on":
-            callback = callback[7:]
-
-            if callback in callbacks:
-                return callbacks[callback]
-
-            default = get_config(tablename, callback)
-            if default:
-                return default
-
-        return None
 
     # -------------------------------------------------------------------------
     # Logger settings
@@ -1711,7 +1686,15 @@ class S3Config(Storage):
             - KML & OpenStreetMap formats
         """
         return self.gis.get("poi_export_resources",
-                            ["cr_shelter", "hms_hospital", "org_office"])
+                            ["cr_shelter", "med_hospital", "org_office"])
+
+    def get_gis_popup_open_new_page(self):
+        """
+            Map Popups with an Open button should open on a new page/tab or replace this one.
+            We default to new page as the Map position won't be restored with a Back.
+            - this overrides default UX which says that Users normally prefer to stay in the same page/tab.
+        """
+        return self.gis.get("popup_open_new_page", True)
 
     def get_gis_postcode_selector(self):
         """
@@ -2120,7 +2103,7 @@ class S3Config(Storage):
 
         excluded_fields = self.pdf.get("excluded_fields")
         if excluded_fields is None:
-            excluded_fields = {"hms_hospital": ["hrm_human_resource",
+            excluded_fields = {"med_hospital": ["hrm_human_resource",
                                                 ],
                                "pr_group": ["pr_group_membership",
                                             ],
@@ -2220,6 +2203,13 @@ class S3Config(Storage):
 
         return self.ui.get("datatables_dom", "fril<'dataTable_table't>pi")
 
+    def get_ui_datatables_pagelength(self):
+        """
+            Default (minimum) pagelength for datatables
+        """
+
+        return self.ui.get("datatables_pagelength", 25)
+
     def get_ui_datatables_initComplete(self):
         """
             Callback for dataTables
@@ -2239,12 +2229,12 @@ class S3Config(Storage):
     def get_ui_datatables_responsive(self):
         """ Make data tables responsive (auto-collapsing columns when too wide) """
 
-        return self.ui.get("datatables_responsive", True)
+        return self.__lazy("ui", "datatables_responsive", True)
 
     def get_ui_datatables_double_scroll(self):
         """ Render double scroll bars (top+bottom) for non-responsive data tables """
 
-        return self.ui.get("datatables_double_scroll", False)
+        return self.ui.get("datatables_double_scroll", True)
 
     def get_ui_auto_open_update(self):
         """
@@ -3076,6 +3066,12 @@ class S3Config(Storage):
         """
         return self.br.get("case_family_tab", True)
 
+    def get_br_case_per_family_member(self):
+        """
+            Whether family members each have their own Case
+        """
+        return self.br.get("case_per_family_member", True)
+
     def get_br_service_contacts(self):
         """
             Enable case file tab to track service contacts
@@ -3808,6 +3804,12 @@ class S3Config(Storage):
         """
         return self.disease.get("treatment", False)
 
+    def get_disease_testing_report_by_demographic(self):
+        """
+            Testing report to be entered broken down by demographic
+        """
+        return self.disease.get("testing_report_by_demographic", False)
+
     # -------------------------------------------------------------------------
     # Doc Options
     #
@@ -4178,7 +4180,7 @@ class S3Config(Storage):
         """
             Whether to show the DC target tab for events
         """
-        return self.event.get("dc_target_tab", True)
+        return self.event.get("dc_target_tab", False)
 
     def get_event_dispatch_tab(self):
         """
@@ -4234,15 +4236,6 @@ class S3Config(Storage):
             Whether Fire Station code is unique
         """
         return self.fire.get("fire_station_unique", False)
-
-    # -------------------------------------------------------------------------
-    # Hospital Registry
-    #
-    def get_hms_track_ctc(self):
-        return self.hms.get("track_ctc", False)
-
-    def get_hms_activity_reports(self):
-        return self.hms.get("activity_reports", False)
 
     # -------------------------------------------------------------------------
     # Human Resource Management
@@ -4535,6 +4528,12 @@ class S3Config(Storage):
                 label = "Staff Record"
         return label
 
+    def get_hrm_roles_tab(self):
+        """
+            Whether or not to show the the Roles tab on HRM records which have an associated User Account
+        """
+        return self.hrm.get("roles_tab", False)
+
     def get_hrm_use_awards(self):
         """
             Whether Volunteers should use Awards
@@ -4774,11 +4773,32 @@ class S3Config(Storage):
         """
         return self.inv.get("facility_manage_staff", True)
 
+    def get_inv_itn_label(self):
+        """
+            Label for a field used to uniquely identify Items
+            - Item Source Tracking Number
+            - defaults to CTN (Commodity Tracking Number), which is the Red Cross term
+            - can also be called Serial Number or Lot Number
+            - set to None to disable the field
+        """
+        label = self.inv.get("itn_label", "CTN")
+        if label:
+            return current.T(label)
+        else:
+            return None
+
     def get_inv_minimums(self):
         """
             Manage Minimum Stock Levels
         """
         return self.inv.get("minimums", False)
+
+    def get_inv_send_add_items_of_shipment_type(self):
+        """
+            Whether to automatically add all Items of a Shipment Type to a Shipment
+            # eg. Items for Dump, Sale, Reject, Surplus
+        """
+        return self.inv.get("add_items_of_shipment_type", False)
 
     def get_inv_send_gift_certificate(self):
         """
@@ -4959,6 +4979,12 @@ class S3Config(Storage):
         """
         return self.inv.get("warehouse_code_unique", False)
 
+    def get_inv_wizards(self):
+        """
+            Whether to use Wizards for inv/send & inv/recv
+        """
+        return self.inv.get("wizards", True)
+
     # -------------------------------------------------------------------------
     # Inventory Requisitions Settings
     def get_inv_req_copyable(self):
@@ -4997,6 +5023,19 @@ class S3Config(Storage):
         """
         return self.inv.get("requester_to_site", False)
 
+    def get_inv_requester_site_updateable(self):
+        """
+            Whether the Requester has to have Update rights for the site making the Inventory Requisitions
+        """
+        return self.inv.get("requester_site_updateable", True)
+
+    def get_inv_req_filter_by_item_category(self):
+        """
+            Provide a Filter Widget to allow Requisitions to be filtered by Item Category
+            - which means maintaining a lookup list in the inv_req_item_category table
+        """
+        return self.inv.get("req_filter_by_item_category", False)
+
     def get_inv_req_date_writable(self):
         """ Whether Inventory Requisition Date should be manually editable """
         return self.inv.get("req_date_writable", True)
@@ -5009,18 +5048,18 @@ class S3Config(Storage):
         """ Whether Item Quantities should be manually editable """
         return self.inv.get("req_item_quantities_writable", False)
 
+    def get_inv_req_multiple_items(self):
+        """
+            Can an Inventory Requisitions have multiple line items?
+            - e.g. ICS says that each request should be just for items of a single Type
+        """
+        return self.inv.get("req_multiple_items", True)
+
     def get_inv_req_pack_values(self):
         """
             Do we show pack values in Inventory Requisitions?
         """
         return self.inv.get("req_pack_values", True)
-
-    def get_inv_multiple_req_items(self):
-        """
-            Can an Inventory Requisitions have multiple line items?
-            - e.g. ICS says that each request should be just for items of a single Type
-        """
-        return self.inv.get("multiple_req_items", True)
 
     def get_inv_req_show_quantity_transit(self):
         return self.inv.get("req_show_quantity_transit", True)
@@ -5037,11 +5076,17 @@ class S3Config(Storage):
         """
         return self.inv.get("req_match_tab", True)
 
+    def get_inv_req_project(self):
+        """
+            Whether Requests link to Projects
+        """
+        return self.inv.get("req_project", False)
+
     def get_inv_req_prompt_match(self):
         """
             Whether a Requester is prompted to match each line item in an Inventory Requisitions
         """
-        return self.req.get("req_prompt_match", True)
+        return self.inv.get("req_prompt_match", True)
 
     def get_inv_use_commit(self):
         """
@@ -5110,11 +5155,33 @@ class S3Config(Storage):
     def get_inv_req_order_item(self):
         return self.inv.get("req_order_item", False)
 
+    def get_inv_req_reserve_items(self):
+        """
+            Whether to Reserve Items in Inventory Requisitions
+            - allows a fulfilling warehouse to allocate stock before preparing a shipment
+        """
+        return self.inv.get("req_reserve_items", False)
+
     def get_inv_req_workflow(self):
         """
             Whether to use Workflow for Inventory Requisitions
         """
         return self.inv.get("req_workflow", False)
+
+    # -------------------------------------------------------------------------
+    # Medical
+    #
+    def get_med_activity_reports(self):
+        return self.med.get("activity_reports", False)
+
+    def get_med_have(self):
+        """
+            Whether to show HAVE-related fields
+        """
+        return self.med.get("have", False)
+
+    def get_med_track_ctc(self):
+        return self.med.get("track_ctc", False)
 
     # -------------------------------------------------------------------------
     # Members
@@ -5604,6 +5671,14 @@ class S3Config(Storage):
         """ Whether Date of Birth is Mandatory, including in the AddPersonWidget """
         return self.__lazy("pr", "dob_required", default=False)
 
+    def get_pr_request_gender(self):
+        """ Include Gender in the AddPersonWidget """
+        return self.__lazy("pr", "request_gender", default=True)
+
+    def get_pr_gender_required(self):
+        """ Whether Gender is Mandatory, including in the AddPersonWidget """
+        return self.__lazy("pr", "gender_required", default=False)
+
     def get_pr_request_email(self):
         """ Include Email in the AddPersonWidget """
         return self.__lazy("pr", "request_email", default=True)
@@ -5615,10 +5690,6 @@ class S3Config(Storage):
     def get_pr_request_grandfather_name(self):
         """ Include GrandFather Name in the AddPersonWidget """
         return self.__lazy("pr", "request_grandfather_name", default=False)
-
-    def get_pr_request_gender(self):
-        """ Include Gender in the AddPersonWidget """
-        return self.__lazy("pr", "request_gender", default=True)
 
     def get_pr_request_home_phone(self):
         """ Include Home Phone in the AddPersonWidget """
@@ -5984,6 +6055,12 @@ class S3Config(Storage):
         """
         return self.project.get("organisation_lead_role", 1)
 
+    def get_project_task_comments(self):
+        """
+            Whether to use comments on tasks
+        """
+        return self.project.get("task_comments", True)
+
     def get_project_task_status_opts(self):
         """
             The list of options for the Status of a Task.
@@ -6155,9 +6232,10 @@ class S3Config(Storage):
             Lazy pattern:
                 return self.__lazy(subset, key, default)
 
-            @param subset: the name of the subset of settings (typically the module)
-            @param key: the setting name
-            @param default: the default value
+            Args:
+                subset: the name of the subset of settings (typically the module)
+                key: the setting name
+                default: the default value
         """
 
         setting = self[subset].get(key, default)

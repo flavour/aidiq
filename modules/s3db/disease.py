@@ -36,6 +36,9 @@ __all__ = ("DiseaseDataModel",
            "ContactTracingModel",
            "DiseaseStatsModel",
            "disease_rheader",
+           "disease_stats_rebuild_all_aggregates",
+           "disease_stats_update_aggregates",
+           "disease_stats_update_location_aggregates",
            )
 
 import datetime
@@ -108,7 +111,7 @@ class DiseaseDataModel(S3Model):
                      s3_comments(),
                      *s3_meta_fields())
 
-        represent = S3Represent(lookup=tablename)
+        represent = S3Represent(lookup = tablename)
         disease_id = S3ReusableField("disease_id", "reference %s" % tablename,
                                      label = T("Disease"),
                                      represent = represent,
@@ -142,7 +145,8 @@ class DiseaseDataModel(S3Model):
             msg_record_created = T("Disease Information added"),
             msg_record_modified = T("Disease Information updated"),
             msg_record_deleted = T("Disease Information deleted"),
-            msg_list_empty = T("No Diseases currently registered"))
+            msg_list_empty = T("No Diseases currently registered"),
+            )
 
         # =====================================================================
         # Symptom Information
@@ -160,7 +164,7 @@ class DiseaseDataModel(S3Model):
                      *s3_meta_fields())
 
         # @todo: refine to include disease name?
-        represent = S3Represent(lookup=tablename)
+        represent = S3Represent(lookup = tablename)
         symptom_id = S3ReusableField("symptom_id", "reference %s" % tablename,
                                      label = T("Symptom"),
                                      represent = represent,
@@ -182,7 +186,8 @@ class DiseaseDataModel(S3Model):
             msg_record_created = T("Symptom Information added"),
             msg_record_modified = T("Symptom Information updated"),
             msg_record_deleted = T("Symptom Information deleted"),
-            msg_list_empty = T("No Symptom Information currently available"))
+            msg_list_empty = T("No Symptom Information currently available"),
+            )
 
         # ---------------------------------------------------------------------
         # Testing device registry
@@ -211,7 +216,7 @@ class DiseaseDataModel(S3Model):
                            requires = IS_IN_SET(device_classes,
                                                 zero = None,
                                                 ),
-                           represent = S3Represent(options=device_classes),
+                           represent = s3_options_represent(device_classes),
                            ),
                      Field("approved", "boolean",
                            default = True,
@@ -255,7 +260,7 @@ class DiseaseDataModel(S3Model):
             )
 
         # Reusable field
-        represent = S3Represent(lookup=tablename)
+        represent = S3Represent(lookup = tablename)
         device_id = S3ReusableField("device_id", "reference %s" % tablename,
                                     label = T("Testing Device"),
                                     represent = represent,
@@ -293,7 +298,8 @@ class DiseaseDataModel(S3Model):
         """
             Disease import update detection
 
-            @param item: the import item
+            Args:
+                item: the import item
         """
 
         data = item.data
@@ -361,22 +367,88 @@ class DiseaseMonitoringModel(S3Model):
     """ Data Model for Disease Monitoring """
 
     names = ("disease_testing_report",
+             "disease_demographic_id",
+             "disease_testing_report",
+             "disease_testing_demographic",
              )
 
     def model(self):
 
         T = current.T
 
-        #db = current.db
+        db = current.db
         s3 = current.response.s3
+        settings = current.deployment_settings             
 
-        define_table = self.define_table
+        configure = self.configure
         crud_strings = s3.crud_strings
+        define_table = self.define_table
+
+        # ---------------------------------------------------------------------
+        # Demographics for disease monitoring/reporting
+        # - e.g. age groups, vulnerable groups...
+        #
+        tablename = "disease_demographic"
+        define_table(tablename,
+                     Field("code", length=16, notnull=True, unique=True,
+                           label = T("Code"),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(16, minsize=1),
+                                       IS_NOT_ONE_OF(db,
+                                                     "%s.code" % tablename,
+                                                     ),
+                                       ],
+                           comment = DIV(_class = "tooltip",
+                                         _title = "%s|%s" % (T("Code"),
+                                                             T("A unique code for this demographic"),
+                                                             ),
+                                         ),
+                           ),
+                     Field("name",
+                           label = T("Name"),
+                           requires = IS_NOT_EMPTY(),
+                           ),
+                     Field("obsolete", "boolean",
+                           default = False,
+                           label = T("Obsolete"),
+                           represent = s3_yes_no_represent,
+                           ),
+                     s3_comments(),
+                     *s3_meta_fields())
+
+        # CRUD Strings
+        crud_strings[tablename] = Storage(
+            label_create = T("Add Demographic"),
+            title_display = T("Demographic Details"),
+            title_list = T("Demographics"),
+            title_update = T("Edit Demographic"),
+            label_list_button = T("List Demographics"),
+            label_delete_button = T("Delete Demographic"),
+            msg_record_created = T("Demographic added"),
+            msg_record_modified = T("Demographic updated"),
+            msg_record_deleted = T("Demographic deleted"),
+            msg_list_empty = T("No Demographics currently defined"),
+            )
+
+        # Reusable Field
+        represent = S3Represent(lookup=tablename)
+        demographic_id = S3ReusableField("demographic_id", "reference %s" % tablename,
+                                         label = T("Demographic"),
+                                         represent = represent,
+                                         requires = IS_EMPTY_OR(
+                                                        IS_ONE_OF(db, "%s.id" % tablename,
+                                                                  represent,
+                                                                  filterby = "obsolete",
+                                                                  filter_opts = (False,),
+                                                                  )),
+                                         sortby = "name",
+                                         )
 
         # ---------------------------------------------------------------------
         # Testing Site Daily Summary Report
         # - for spatial-temporal analysis of testing activity and results
         #
+        subtotals = settings.get_disease_testing_report_by_demographic()                                                      
         tablename = "disease_testing_report"
         define_table(tablename,
                      self.disease_disease_id(
@@ -385,7 +457,7 @@ class DiseaseMonitoringModel(S3Model):
                      self.super_link("site_id", "org_site",
                                      empty = False,
                                      instance_types = ("org_facility",
-                                                       "hms_hospital",
+                                                       "med_hospital",
                                                        ),
                                      label = T("Test Station"),
                                      represent = self.org_SiteRepresent(show_link = False,
@@ -402,13 +474,46 @@ class DiseaseMonitoringModel(S3Model):
                      Field("tests_total", "integer",
                            label = T("Total Number of Tests"),
                            requires = IS_INT_IN_RANGE(0),
+                           writable = not subtotals,
                            ),
                      Field("tests_positive", "integer",
                            label = T("Number of Positive Test Results"),
                            requires = IS_INT_IN_RANGE(0),
+                           writable = not subtotals,
                            ),
                      s3_comments(),
                      *s3_meta_fields())
+
+        # Components
+        self.add_components(tablename,
+                            disease_testing_demographic = "report_id",
+                            )
+
+        # CRUD Form
+        if subtotals:
+            crud_fields = ["disease_id",
+                           "site_id",
+                           "date",
+                           "tests_total",
+                           "tests_positive",
+                           S3SQLInlineComponent("testing_demographic",
+                                                label = T("Details"),
+                                                fields = ["demographic_id",
+                                                          "tests_total",
+                                                          "tests_positive",
+                                                          ],
+                                                ),
+                           "comments",
+                           ]
+        else:
+            crud_fields = ["disease_id",
+                           "site_id",
+                           "date",
+                           "tests_total",
+                           "tests_positive",
+                           "comments",
+                           ]
+        crud_form = S3SQLCustomForm(*crud_fields)
 
         # Filter Widgets
         filter_widgets = [S3TextFilter(["site_id$name", "comments"],
@@ -428,10 +533,10 @@ class DiseaseMonitoringModel(S3Model):
                        ]
 
         # Report options
-        facts = ((T("Number of Tests"), "sum(tests_total)"),
+        facts = [(T("Number of Tests"), "sum(tests_total)"),
                  (T("Number of Positive Test Results"), "sum(tests_positive)"),
                  (T("Number of Reports"), "count(id)"),
-                 )
+                 ]
         axes = ["site_id",
                 "site_id$location_id$L2",
                 "site_id$location_id$L3",
@@ -448,14 +553,25 @@ class DiseaseMonitoringModel(S3Model):
                          },
             }
 
+        timeplot_options = {
+            "fact": facts,
+            "timestamp": ((T("per interval"), "date,date"),
+                          (T("cumulative"), "date"),
+                          ),
+            "defaults": {"fact": facts[:2],
+                         "timestamp": "date,date",
+                         },
+            }
+
         # Table Configuration
-        self.configure(tablename,
-                       list_fields = list_fields,
-                       filter_widgets = filter_widgets,
-                       onvalidation = self.testing_report_onvalidation,
-                       orderby = "%s.date desc" % tablename,
-                       report_options = report_options,
-                       )
+        configure(tablename,
+                  list_fields = list_fields,
+                  filter_widgets = filter_widgets,
+                  onvalidation = self.testing_report_onvalidation,
+                  orderby = "%s.date desc" % tablename,
+                  report_options = report_options,
+                  timeplot_options = timeplot_options,
+                  )
 
         # CRUD Strings
         crud_strings[tablename] = Storage(
@@ -472,18 +588,101 @@ class DiseaseMonitoringModel(S3Model):
             )
 
         # ---------------------------------------------------------------------
+        # Testing activity data per demographic
+        # - component of testing reports
+        #
+        # TODO better represent (site+date)
+        report_represent = S3Represent(lookup = "disease_testing_report",
+                                       fields = ["date"],
+                                       )
+        tablename = "disease_testing_demographic"
+        define_table(tablename,
+                     Field("report_id", "reference disease_testing_report",
+                           label = T("Report"),
+                           represent = report_represent,
+                           requires = IS_ONE_OF(db, "disease_testing_report.id",
+                                                report_represent,
+                                                ),
+                           ),
+                     demographic_id(
+                         empty = False,
+                         label = T("Subject Group##med"),
+                         ondelete = "CASCADE",
+                         ),
+                     Field("tests_total", "integer",
+                           label = T("Total Number of Tests"),
+                           requires = IS_INT_IN_RANGE(0),
+                           ),
+                     Field("tests_positive", "integer",
+                           label = T("Number of Positive Test Results"),
+                           requires = IS_INT_IN_RANGE(0),
+                           ),
+                     s3_comments(),
+                     *s3_meta_fields())
+
+        # List fields
+        list_fields = ["report_id$site_id",
+                       "report_id$date",
+                       "demographic_id",
+                       "tests_total",
+                       "tests_positive",
+                       "report_id$comments",
+                       ]
+
+        # Filter Widgets
+        filter_widgets = [S3TextFilter(["report_id$site_id$name",
+                                        "report_id$comments",
+                                        ],
+                                       label = T("Search"),
+                                       ),
+                          S3DateFilter("report_id$date",
+                                       ),
+                          ]
+
+        # Report options
+        facts = ((T("Number of Tests"), "sum(tests_total)"),
+                 (T("Number of Positive Test Results"), "sum(tests_positive)"),
+                 (T("Number of Reports"), "count(report_id)"),
+                 )
+        axes = ["report_id$site_id",
+                "report_id$site_id$location_id$L2",
+                "report_id$site_id$location_id$L3",
+                "demographic_id",
+                "report_id$disease_id",
+                ]
+        report_options = {
+            "rows": axes,
+            "cols": axes,
+            "fact": facts,
+            "defaults": {"rows": axes[1],
+                         "cols": None,
+                         "fact": facts[0],
+                         "totals": True,
+                         },
+            }
+
+        configure(tablename,
+                  filter_widgets = filter_widgets,
+                  list_fields = list_fields,
+                  onvalidation = self.testing_demographic_onvalidation,
+                  onaccept = self.testing_demographic_onaccept,
+                  ondelete = self.testing_demographic_ondelete,
+                  report_options = report_options,
+                  )
+
+        # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return {"disease_demographic_id": demographic_id,
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
     def defaults():
         """ Safe defaults for names in case the module is disabled """
 
-        #dummy = S3ReusableField.dummy
-
-        return {}
+        return {"disease_demographic_id": S3ReusableField.dummy("demographic_id"),
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -551,6 +750,91 @@ class DiseaseMonitoringModel(S3Model):
             if positive > total:
                 form.errors["tests_positive"] = T("Number of positive results cannot be greater than number of tests")
 
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def testing_demographic_onvalidation(form):
+        """
+            Onvalidation of testing_demographic:
+            - check numbers for plausibility
+        """
+
+        T = current.T
+
+        form_vars = form.vars
+
+        # Validate numbers
+        total = form_vars.get("tests_total")
+        positive = form_vars.get("tests_positive")
+        if total is not None and positive is not None:
+            if positive > total:
+                form.errors["tests_positive"] = T("Number of positive results cannot be greater than number of tests")
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def update_report_from_demographics(report_id):
+
+        db = current.db
+        s3db = current.s3db
+
+        # Get totals for all demographics under this report
+        table = s3db.disease_testing_demographic
+        query = (table.report_id == report_id) & \
+                (table.deleted == False)
+        tests_total = table.tests_total.sum()
+        tests_positive = table.tests_positive.sum()
+        row = db(query).select(tests_total, tests_positive).first()
+
+        # Update the report
+        rtable = s3db.disease_testing_report
+        query = (rtable.id == report_id) & \
+                (rtable.deleted == False)
+        db(query).update(tests_total = row[tests_total],
+                         tests_positive = row[tests_positive],
+                         )
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def testing_demographic_onaccept(cls, form):
+        """
+            Onaccept of disease_testing_demographic:
+            - update the totals in the corresponding report
+        """
+
+        # Get record ID
+        form_vars = form.vars
+        if "id" in form_vars:
+            record_id = form_vars.id
+        elif hasattr(form, "record_id"):
+            record_id = form.record_id
+        else:
+            return
+
+        table = current.s3db.disease_testing_demographic
+
+        report_id = form_vars.get("report_id")
+        if not report_id:
+            record = current.db(table.id == record_id).select(table.report_id,
+                                                              limitby = (0, 1),
+                                                              ).first()
+            if record:
+                report_id = record.report_id
+
+        if report_id:
+            cls.update_report_from_demographics(report_id)
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def testing_demographic_ondelete(cls, row):
+        """
+            Ondelete of disease_testing_demographic:
+            - update the totals in the corresponding report
+        """
+
+        report_id = row.report_id
+
+        if report_id:
+            cls.update_report_from_demographics(report_id)
+
 # =============================================================================
 class DiseaseCertificateModel(S3Model):
     """
@@ -583,7 +867,7 @@ class DiseaseCertificateModel(S3Model):
         self.define_table(tablename,
                           self.disease_disease_id(),
                           Field("type",
-                                represent = S3Represent(options = hcert_types),
+                                represent = s3_options_represent(hcert_types),
                                 requires = IS_IN_SET(hcert_types),
                                 ),
                           Field("instance_id",
@@ -595,7 +879,7 @@ class DiseaseCertificateModel(S3Model):
                           Field("vhash", "text",
                                 ),
                           Field("status",
-                                represent = S3Represent(options = hcert_status),
+                                represent = s3_options_represent(hcert_status),
                                 requires = IS_IN_SET(hcert_status),
                                 ),
                           Field("errors", "text",
@@ -619,7 +903,7 @@ class DiseaseCertificateModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -628,7 +912,7 @@ class DiseaseCertificateModel(S3Model):
 
         #dummy = S3ReusableField.dummy
 
-        return {}
+        return None
 
 # =============================================================================
 class CaseTrackingModel(S3Model):
@@ -665,7 +949,7 @@ class CaseTrackingModel(S3Model):
                             "CONFIRMED-POS": T("Confirmed Positive"),
                             "CONFIRMED-NEG": T("Confirmed Negative"),
                             }
-        diagnosis_status_represent = S3Represent(options = diagnosis_status)
+        diagnosis_status_represent = s3_options_represent(diagnosis_status)
 
         # =====================================================================
         # Monitoring Levels
@@ -680,7 +964,7 @@ class CaseTrackingModel(S3Model):
                              # Follow-up after recovery:
                              "FOLLOW-UP": T("Post-Recovery Follow-Up"),
                              }
-        monitoring_level_represent = S3Represent(options = monitoring_levels)
+        monitoring_level_represent = s3_options_represent(monitoring_levels)
         # =====================================================================
         # Illness status
         #
@@ -691,7 +975,7 @@ class CaseTrackingModel(S3Model):
                           "DECEASED": T("Deceased, Clinical Signs Positive"),
                           "RECOVERED": T("Recovered"),
                           }
-        illness_status_represent = S3Represent(options = illness_status)
+        illness_status_represent = s3_options_represent(illness_status)
 
         # =====================================================================
         # Case
@@ -737,10 +1021,10 @@ class CaseTrackingModel(S3Model):
                            represent = s3_yes_no_represent,
                            readable = not use_treatment_notes,
                            writable = not use_treatment_notes,
-                           comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Hospitalized"),
-                                                           T("Whether the person is currently in hospital"),
-                                                           ),
+                           comment = DIV(_class = "tooltip",
+                                         _title = "%s|%s" % (T("Hospitalized"),
+                                                             T("Whether the person is currently in hospital"),
+                                                             ),
                                          ),
                            ),
                      Field("intensive_care", "boolean",
@@ -749,10 +1033,10 @@ class CaseTrackingModel(S3Model):
                            represent = s3_yes_no_represent,
                            readable = not use_treatment_notes,
                            writable = not use_treatment_notes,
-                           comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Intensive Care"),
-                                                           T("Whether the person is currently in intensive care"),
-                                                           ),
+                           comment = DIV(_class = "tooltip",
+                                         _title = "%s|%s" % (T("Intensive Care"),
+                                                             T("Whether the person is currently in intensive care"),
+                                                             ),
                                          ),
                            ),
 
@@ -843,8 +1127,6 @@ class CaseTrackingModel(S3Model):
                                     "comments",
                                     )
 
-
-
         # Reports
         report_fields = ["disease_id"]
         levels = current.gis.get_relevant_hierarchy_levels()
@@ -910,7 +1192,8 @@ class CaseTrackingModel(S3Model):
             msg_record_created = T("Case added"),
             msg_record_modified = T("Case updated"),
             msg_record_deleted = T("Case deleted"),
-            msg_list_empty = T("No Cases currently registered"))
+            msg_list_empty = T("No Cases currently registered"),
+            )
 
         # =====================================================================
         # Monitoring
@@ -968,7 +1251,8 @@ class CaseTrackingModel(S3Model):
             msg_record_created = T("Monitoring Update added"),
             msg_record_modified = T("Monitoring Update updated"),
             msg_record_deleted = T("Monitoring Update deleted"),
-            msg_list_empty = T("No Monitoring Information currently available"))
+            msg_list_empty = T("No Monitoring Information currently available"),
+            )
 
         # =====================================================================
         # Monitoring <=> Symptom
@@ -991,7 +1275,7 @@ class CaseTrackingModel(S3Model):
                      ("VACCINATED", T("Vaccinated")),
                      ("OTHER", T("Other")),
                      )
-        occasion_represent = S3Represent(options=dict(occasions))
+        occasion_represent = s3_options_represent(dict(occasions))
         tablename = "disease_case_treatment"
         define_table(tablename,
                      case_id(empty=False),
@@ -1057,7 +1341,7 @@ class CaseTrackingModel(S3Model):
                      # Optional link to test station
                      self.super_link("site_id", "org_site",
                                      instance_types = ("org_facility",
-                                                       "hms_hospital",
+                                                       "med_hospital",
                                                        ),
                                      label = T("Test Station"),
                                      ondelete = "SET NULL",
@@ -1078,7 +1362,7 @@ class CaseTrackingModel(S3Model):
                                  future = 0,
                                  ),
                      Field("probe_status",
-                           represent = S3Represent(options = probe_status),
+                           represent = s3_options_represent(probe_status),
                            requires = IS_IN_SET(probe_status),
                            default = "PENDING",
                            ),
@@ -1119,7 +1403,8 @@ class CaseTrackingModel(S3Model):
             msg_record_created = T("Diagnostic Test added"),
             msg_record_modified = T("Diagnostic Test updated"),
             msg_record_deleted = T("Diagnostic Test deleted"),
-            msg_list_empty = T("No Diagnostic Tests currently registered"))
+            msg_list_empty = T("No Diagnostic Tests currently registered"),
+            )
 
         # =====================================================================
 
@@ -1141,8 +1426,9 @@ class CaseTrackingModel(S3Model):
         """
             Find the case record for a person for a disease
 
-            @param person_id: the person record ID
-            @param disease_id: the disease record ID
+            Args:
+                person_id: the person record ID
+                disease_id: the disease record ID
         """
 
         ctable = current.s3db.disease_case
@@ -1186,7 +1472,8 @@ class CaseTrackingModel(S3Model):
         """
             Case import update detection
 
-            @param item: the import item
+            Args:
+                item: the import item
         """
 
         data = item.data
@@ -1345,7 +1632,6 @@ class CaseTrackingModel(S3Model):
 class disease_CaseRepresent(S3Represent):
 
     def __init__(self):
-        """ Constructor """
 
         super(disease_CaseRepresent, self).__init__(lookup = "disease_case")
 
@@ -1354,9 +1640,10 @@ class disease_CaseRepresent(S3Represent):
         """
             Custom rows lookup
 
-            @param key: the key Field
-            @param values: the values
-            @param fields: unused (retained for API compatibility)
+            Args:
+                key: the key Field
+                values: the values
+                fields: unused (retained for API compatibility)
         """
 
         s3db = current.s3db
@@ -1378,7 +1665,8 @@ class disease_CaseRepresent(S3Represent):
                                         dtable.acronym,
                                         ptable.first_name,
                                         ptable.last_name,
-                                        left = left)
+                                        left = left,
+                                        )
         self.queries += 1
         return rows
 
@@ -1387,7 +1675,8 @@ class disease_CaseRepresent(S3Represent):
         """
             Represent a row
 
-            @param row: the Row
+            Args:
+                row: the Row
         """
 
         try:
@@ -1471,13 +1760,15 @@ class ContactTracingModel(S3Model):
                            default = "OPEN",
                            label = T("Tracing Status"),
                            requires = IS_IN_SET(contact_tracing_status, zero=None),
-                           represent = S3Represent(options=contact_tracing_status),
+                           represent = s3_options_represent(contact_tracing_status),
                            ),
                      s3_comments(),
                      *s3_meta_fields())
 
         # @todo: implement specific S3Represent class
-        represent = S3Represent(lookup=tablename, fields=["case_id"])
+        represent = S3Represent(lookup = tablename,
+                                fields = ["case_id"],
+                                )
         tracing_id = S3ReusableField("tracing_id", "reference %s" % tablename,
                                      label = T("Tracing Record"),
                                      represent = represent,
@@ -1507,7 +1798,8 @@ class ContactTracingModel(S3Model):
             msg_record_created = T("Tracing Record added"),
             msg_record_modified = T("Tracing Record updated"),
             msg_record_deleted = T("Tracing Record deleted"),
-            msg_list_empty = T("No Contact Tracings currently registered"))
+            msg_list_empty = T("No Contact Tracings currently registered"),
+            )
 
         # =====================================================================
         # Protection
@@ -1517,7 +1809,7 @@ class ContactTracingModel(S3Model):
                             "PARTIAL": T("Partial"),
                             "FULL": T("Full"),
                             }
-        protection_level_represent = S3Represent(options = protection_level)
+        protection_level_represent = s3_options_represent(protection_level)
 
         # =====================================================================
         # Exposure Type
@@ -1526,7 +1818,7 @@ class ContactTracingModel(S3Model):
                          "DIRECT": T("Direct"),
                          "INDIRECT": T("Indirect"),
                          }
-        exposure_type_represent = S3Represent(options = exposure_type)
+        exposure_type_represent = s3_options_represent(exposure_type)
 
         # =====================================================================
         # Exposure Risk Level
@@ -1536,7 +1828,7 @@ class ContactTracingModel(S3Model):
                          "LOW": T("Low risk exposure"),
                          "HIGH": T("High risk exposure"),
                          }
-        exposure_risk_represent = S3Represent(options = exposure_risk)
+        exposure_risk_represent = s3_options_represent(exposure_risk)
 
         # =====================================================================
         # Exposure: when and how was a person exposed to the disease?
@@ -1613,13 +1905,13 @@ class ContactTracingModel(S3Model):
             msg_list_empty = T("No Exposure Information currently registered"))
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
     def defaults():
 
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1800,15 +2092,11 @@ class DiseaseStatsModel(S3Model):
     names = ("disease_statistic",
              "disease_stats_data",
              "disease_stats_aggregate",
-             "disease_stats_rebuild_all_aggregates",
-             "disease_stats_update_aggregates",
-             "disease_stats_update_location_aggregates",
              )
 
     def model(self):
 
         T = current.T
-        NONE = current.messages["NONE"]
 
         configure = self.configure
         crud_strings = current.response.s3.crud_strings
@@ -1818,7 +2106,8 @@ class DiseaseStatsModel(S3Model):
         location_id = self.gis_location_id
 
         stats_parameter_represent = S3Represent(lookup = "stats_parameter",
-                                                translate = True)
+                                                translate = True,
+                                                )
 
         # ---------------------------------------------------------------------
         # Disease Statistic Parameter
@@ -1851,7 +2140,8 @@ class DiseaseStatsModel(S3Model):
             msg_record_created = T("Statistic added"),
             msg_record_modified = T("Statistic updated"),
             msg_record_deleted = T("Statistic deleted"),
-            msg_list_empty = T("No statistics currently defined"))
+            msg_list_empty = T("No statistics currently defined"),
+            )
 
         configure(tablename,
                   deduplicate = S3Duplicate(),
@@ -1913,7 +2203,8 @@ class DiseaseStatsModel(S3Model):
             msg_record_created = T("Disease Data added"),
             msg_record_modified = T("Disease Data updated"),
             msg_record_deleted = T("Disease Data deleted"),
-            msg_list_empty = T("No disease data currently available"))
+            msg_list_empty = T("No disease data currently available"),
+            )
 
         levels = current.gis.get_relevant_hierarchy_levels()
 
@@ -1968,8 +2259,8 @@ class DiseaseStatsModel(S3Model):
                   # @ToDo: Wrapper function to call this for the record linked
                   # to the relevant place depending on whether approval is
                   # required or not. Disable when auth.override is True.
-                  #onaccept = self.disease_stats_update_aggregates,
-                  #onapprove = self.disease_stats_update_aggregates,
+                  #onaccept = disease_stats_update_aggregates,
+                  #onapprove = disease_stats_update_aggregates,
                   # @ToDo: deployment_setting
                   #requires_approval = True,
                   super_entity = "stats_data",
@@ -2002,7 +2293,7 @@ class DiseaseStatsModel(S3Model):
                                 empty = False,
                                 instance_types = ("disease_statistic",),
                                 label = T("Statistic"),
-                                represent = S3Represent(lookup="stats_parameter"),
+                                represent = S3Represent(lookup = "stats_parameter"),
                                 readable = True,
                                 writable = True,
                                 ),
@@ -2013,9 +2304,7 @@ class DiseaseStatsModel(S3Model):
                      Field("agg_type", "integer",
                            default = 1,
                            label = T("Aggregation Type"),
-                           represent = lambda opt: \
-                            aggregate_types.get(opt,
-                                                current.messages.UNKNOWN_OPT),
+                           represent = s3_options_represent(aggregate_types),
                            requires = IS_IN_SET(aggregate_types),
                            ),
                      s3_date("date",
@@ -2032,332 +2321,7 @@ class DiseaseStatsModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {"disease_stats_rebuild_all_aggregates": self.disease_stats_rebuild_all_aggregates,
-                "disease_stats_update_aggregates": self.disease_stats_update_aggregates,
-                "disease_stats_update_location_aggregates": self.disease_stats_update_location_aggregates,
-                }
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def disease_stats_rebuild_all_aggregates():
-        """
-            This will delete all the disease_stats_aggregate records and
-            then rebuild them by triggering off a request for each
-            disease_stats_data record.
-
-            This function is normally only run during prepop or postpop so we
-            don't need to worry about the aggregate data being unavailable for
-            any length of time
-        """
-
-        # Check to see whether an existing task is running and if it is then kill it
-        db = current.db
-        ttable = db.scheduler_task
-        rtable = db.scheduler_run
-        wtable = db.scheduler_worker
-        query = (ttable.task_name == "disease_stats_update_aggregates") & \
-                (rtable.task_id == ttable.id) & \
-                (rtable.status == "RUNNING")
-        rows = db(query).select(rtable.id,
-                                rtable.task_id,
-                                rtable.worker_name)
-        now = current.request.utcnow
-        for row in rows:
-            db(wtable.worker_name == row.worker_name).update(status="KILL")
-            db(rtable.id == row.id).update(stop_time=now,
-                                           status="STOPPED")
-            db(ttable.id == row.task_id).update(stop_time=now,
-                                                status="STOPPED")
-
-        # Delete the existing aggregates
-        current.s3db.disease_stats_aggregate.truncate()
-
-        # Read all the disease_stats_data records
-        dtable = db.disease_stats_data
-        query = (dtable.deleted != True)
-        # @ToDo: deployment_setting to make this just the approved records
-        #query &= (dtable.approved_by != None)
-        records = db(query).select(dtable.parameter_id,
-                                   dtable.date,
-                                   dtable.value,
-                                   dtable.location_id,
-                                   )
-
-        # Fire off a rebuild task
-        current.s3task.run_async("disease_stats_update_aggregates",
-                                 vars = {"records": records.json(),
-                                         "all": True,
-                                         },
-                                 timeout = 21600 # 6 hours
-                                 )
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def disease_stats_update_aggregates(records=None, all=False):
-        """
-            This will calculate the disease_stats_aggregates for the specified
-            records. Either all (when rebuild_all is invoked) or for the
-            individual parameter(s) at the specified location(s) when run
-            onaccept/onapprove.
-            @ToDo: onapprove/onaccept wrapper function.
-
-            This will get the raw data from disease_stats_data and generate
-            a disease_stats_aggregate record for the given time period.
-
-            The reason for doing this is so that all aggregated data can be
-            obtained from a single table. So when displaying data for a
-            particular location it will not be necessary to try the aggregate
-            table, and if it's not there then try the data table. Rather just
-            look at the aggregate table.
-
-            Once this has run then a complete set of aggregate records should
-            exists for this parameter_id and location for every time period from
-            the first data item until the current time period.
-
-            @ToDo: Add test cases to modules/unit_tests/s3db/disease.py
-         """
-
-        if not records:
-            return
-
-        # Test to see which date format we have based on how we were called
-        if isinstance(records, str):
-            from_json = True
-            from dateutil.parser import parse
-            records = json.loads(records)
-        elif isinstance(records[0]["date"],
-                        (datetime.date, datetime.datetime)):
-            from_json = False
-        else:
-            from_json = True
-            from dateutil.parser import parse
-
-        db = current.db
-        #s3db = current.s3db
-        atable = db.disease_stats_aggregate
-
-        if not all:
-            # Read the database to get all the relevant records
-            # @ToDo: Complete this
-            #dtable = s3db.disease_stats_data
-            return
-
-        # For each location/parameter pair, create a time-aggregate summing all
-        # the data so far
-
-        now = current.request.now
-
-        # Assemble raw data
-        earliest_period = now.date()
-        locations = {}
-        parameters = []
-        pappend = parameters.append
-        for record in records:
-            location_id = record["location_id"]
-            if location_id not in locations:
-                locations[location_id] = {}
-            parameter_id = record["parameter_id"]
-            if parameter_id not in parameters:
-                pappend(parameter_id)
-            if parameter_id not in locations[location_id]:
-                locations[location_id][parameter_id] = {}
-            if from_json:
-                date = parse(record["date"]) # produces a datetime
-                date = date.date()
-            else:
-                date = record["date"]
-            if date < earliest_period:
-                earliest_period = date
-            locations[location_id][parameter_id][date] = record["value"]
-
-        # Full range of dates
-        # 1 per day from the start of the data to the present day
-        from dateutil.rrule import rrule, DAILY
-        dates = rrule(DAILY, dtstart=earliest_period, until=now)
-        dates = [d.date() for d in dates]
-
-        # Add the sums
-        insert = atable.insert
-        lfield = atable.location_id
-        pfield = atable.parameter_id
-        dfield = atable.date
-        ifield = atable.id
-        _q = (atable.agg_type == 1)
-        for location_id in locations:
-            location = locations[location_id]
-            query = _q & (lfield == location_id)
-            for parameter_id in location:
-                parameter = location[parameter_id]
-                q = query & (pfield == parameter_id)
-                for d in dates:
-                    values = []
-                    vappend = values.append
-                    for date in parameter:
-                        if date <= d:
-                            vappend(parameter[date])
-                    values_sum = sum(values)
-                    exists = db(q & (dfield == d)).select(ifield,
-                                                          limitby=(0, 1))
-                    if exists:
-                        db(ifield == exists.first().id).update(sum = values_sum)
-                    else:
-                        insert(agg_type = 1, # Time
-                               location_id = location_id,
-                               parameter_id = parameter_id,
-                               date = d,
-                               sum = values_sum,
-                               )
-
-        # For each location/parameter pair, build a location-aggregate for all
-        # ancestors, by level (immediate parents first).
-        # Ensure that we don't duplicate builds
-        # Do this for all dates between the changed date and the current date
-
-        # Get all the ancestors
-        # Read all the Paths
-        # NB Currently we're assuming that all Paths have been built correctly
-        gtable = db.gis_location
-        ifield = gtable.id
-        location_ids = set(locations.keys())
-        paths = db(ifield.belongs(location_ids)).select(gtable.path)
-        paths = [p.path.split("/") for p in paths]
-        # Convert list of lists to flattened list & remove duplicates
-        import itertools
-        ancestors = tuple(itertools.chain.from_iterable(paths))
-        # Remove locations which we already have data for
-        ancestors = [a for a in ancestors if a not in location_ids]
-
-        # Get all the children for each ancestor (immediate children not descendants)
-        pfield = gtable.parent
-        query = (gtable.deleted == False) & \
-                (pfield.belongs(ancestors))
-        all_children = db(query).select(ifield, pfield)
-
-        # Read the levels
-        query = (gtable.id.belongs(ancestors)) & \
-                (gtable.level.belongs(("L4", "L3", "L2", "L1"))) # L0?
-        rows = db(query).select(gtable.id,
-                                gtable.level,
-                                # Build the lowest level first
-                                # FIXME this ordering makes no real sense when building async
-                                #       with multiple workers; in that case, the entire child
-                                #       cascade must happen synchronously inside each top-level
-                                #       build
-                                orderby = ~gtable.level,
-                                )
-
-        run_async = current.s3task.run_async
-        from gluon.serializers import json as jsons
-
-        dates = jsons(dates)
-        for row in rows:
-            location_id = row.id
-            children = [c.id for c in all_children if c.parent == location_id]
-            children = json.dumps(children)
-            for parameter_id in parameters:
-                run_async("disease_stats_update_location_aggregates",
-                          args = [location_id, children, parameter_id, dates],
-                          timeout = 1800 # 30m
-                          )
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def disease_stats_update_location_aggregates(location_id,
-                                                 children,
-                                                 parameter_id,
-                                                 dates,
-                                                 ):
-        """
-            Calculates the disease_stats_aggregate for a specific parameter at a
-            specific location over the range of dates.
-
-            @param location_id: location to aggregate at
-            @param children: locations to aggregate from
-            @param parameter_id: arameter to aggregate
-            @param dates: dates to aggregate for (as JSON string)
-        """
-
-        db = current.db
-        atable = current.s3db.disease_stats_aggregate
-        ifield = atable.id
-        lfield = atable.location_id
-        pfield = atable.parameter_id
-        dfield = atable.date
-
-        children = json.loads(children)
-
-        # Get the most recent disease_stats_aggregate record for all child locations
-        # - doesn't matter whether this is a time or location aggregate
-        query = (pfield == parameter_id) & \
-                (atable.deleted != True) & \
-                (lfield.belongs(children))
-        rows = db(query).select(atable.sum,
-                                dfield,
-                                lfield,
-                                orderby=(lfield, ~dfield),
-                                # groupby avoids duplicate records for the same
-                                # location, but is slightly slower than just
-                                # skipping the duplicates in the loop below
-                                #groupby=(lfield)
-                                )
-
-        if not rows:
-            return
-
-        # Lookup which records already exist
-        query = (lfield == location_id) & \
-                (pfield == parameter_id)
-        existing = db(query).select(ifield,
-                                    dfield,
-                                    )
-        exists = {}
-        for e in existing:
-            exists[e.date] = e.id
-
-        from dateutil.parser import parse
-        dates = json.loads(dates)
-        insert = atable.insert
-
-        for date in dates:
-            # Collect the values, skip duplicate records for the
-            # same location => use the most recent one, which is
-            # the first row for each location as per the orderby
-            # in the query above
-            date = parse(date) # produces a datetime
-            date = date.date()
-            last_location = None
-            values = []
-            vappend = values.append
-            for row in rows:
-                if date < row.date:
-                    # Skip
-                    continue
-                new_location_id = row.location_id
-                if new_location_id != last_location:
-                    last_location = new_location_id
-                    vappend(row.sum)
-
-            if values:
-                # Aggregate the values
-                values_sum = sum(values)
-            else:
-                values_sum = 0
-
-            # Add or update the aggregated values in the database
-            attr = {"agg_type": 2, # Location
-                    "sum": values_sum,
-                    }
-
-            # Do we already have a record?
-            if date in exists:
-                db(ifield == exists[date]).update(**attr)
-            else:
-                # Insert new
-                insert(parameter_id = parameter_id,
-                       location_id = location_id,
-                       date = date,
-                       **attr
-                       )
+        return None
 
 # =============================================================================
 def disease_rheader(r, tabs=None):
@@ -2467,5 +2431,328 @@ def disease_rheader(r, tabs=None):
             rheader = None
 
     return rheader
+
+# =============================================================================
+def disease_stats_rebuild_all_aggregates():
+    """
+        This will delete all the disease_stats_aggregate records and
+        then rebuild them by triggering off a request for each
+        disease_stats_data record.
+
+        This function is normally only run during prepop or postpop so we
+        don't need to worry about the aggregate data being unavailable for
+        any length of time
+    """
+
+    # Check to see whether an existing task is running and if it is then kill it
+    db = current.db
+    ttable = db.scheduler_task
+    rtable = db.scheduler_run
+    wtable = db.scheduler_worker
+    query = (ttable.task_name == "disease_stats_update_aggregates") & \
+            (rtable.task_id == ttable.id) & \
+            (rtable.status == "RUNNING")
+    rows = db(query).select(rtable.id,
+                            rtable.task_id,
+                            rtable.worker_name,
+                            )
+    now = current.request.utcnow
+    for row in rows:
+        db(wtable.worker_name == row.worker_name).update(status = "KILL")
+        db(rtable.id == row.id).update(stop_time = now,
+                                       status = "STOPPED",
+                                       )
+        db(ttable.id == row.task_id).update(stop_time = now,
+                                            status = "STOPPED",
+                                            )
+
+    # Delete the existing aggregates
+    current.s3db.disease_stats_aggregate.truncate()
+
+    # Read all the disease_stats_data records
+    dtable = db.disease_stats_data
+    query = (dtable.deleted != True)
+    # @ToDo: deployment_setting to make this just the approved records
+    #query &= (dtable.approved_by != None)
+    records = db(query).select(dtable.parameter_id,
+                               dtable.date,
+                               dtable.value,
+                               dtable.location_id,
+                               )
+
+    # Fire off a rebuild task
+    current.s3task.run_async("disease_stats_update_aggregates",
+                             vars = {"records": records.json(),
+                                     "all": True,
+                                     },
+                             timeout = 21600 # 6 hours
+                             )
+
+# =============================================================================
+def disease_stats_update_aggregates(records=None, all=False):
+    """
+        This will calculate the disease_stats_aggregates for the specified
+        records. Either all (when rebuild_all is invoked) or for the
+        individual parameter(s) at the specified location(s) when run
+        onaccept/onapprove.
+        @ToDo: onapprove/onaccept wrapper function.
+
+        This will get the raw data from disease_stats_data and generate
+        a disease_stats_aggregate record for the given time period.
+
+        The reason for doing this is so that all aggregated data can be
+        obtained from a single table. So when displaying data for a
+        particular location it will not be necessary to try the aggregate
+        table, and if it's not there then try the data table. Rather just
+        look at the aggregate table.
+
+        Once this has run then a complete set of aggregate records should
+        exists for this parameter_id and location for every time period from
+        the first data item until the current time period.
+
+        @ToDo: Add test cases to modules/unit_tests/s3db/disease.py
+     """
+
+    if not records:
+        return
+
+    # Test to see which date format we have based on how we were called
+    if isinstance(records, str):
+        from_json = True
+        from dateutil.parser import parse
+        records = json.loads(records)
+    elif isinstance(records[0]["date"],
+                    (datetime.date, datetime.datetime)):
+        from_json = False
+    else:
+        from_json = True
+        from dateutil.parser import parse
+
+    db = current.db
+    #s3db = current.s3db
+    atable = db.disease_stats_aggregate
+
+    if not all:
+        # Read the database to get all the relevant records
+        # @ToDo: Complete this
+        #dtable = s3db.disease_stats_data
+        return
+
+    # For each location/parameter pair, create a time-aggregate summing all
+    # the data so far
+
+    now = current.request.now
+
+    # Assemble raw data
+    earliest_period = now.date()
+    locations = {}
+    parameters = []
+    pappend = parameters.append
+    for record in records:
+        location_id = record["location_id"]
+        if location_id not in locations:
+            locations[location_id] = {}
+        parameter_id = record["parameter_id"]
+        if parameter_id not in parameters:
+            pappend(parameter_id)
+        if parameter_id not in locations[location_id]:
+            locations[location_id][parameter_id] = {}
+        if from_json:
+            date = parse(record["date"]) # produces a datetime
+            date = date.date()
+        else:
+            date = record["date"]
+        if date < earliest_period:
+            earliest_period = date
+        locations[location_id][parameter_id][date] = record["value"]
+
+    # Full range of dates
+    # 1 per day from the start of the data to the present day
+    from dateutil.rrule import rrule, DAILY
+    dates = rrule(DAILY, dtstart=earliest_period, until=now)
+    dates = [d.date() for d in dates]
+
+    # Add the sums
+    insert = atable.insert
+    lfield = atable.location_id
+    pfield = atable.parameter_id
+    dfield = atable.date
+    ifield = atable.id
+    _q = (atable.agg_type == 1)
+    for location_id in locations:
+        location = locations[location_id]
+        query = _q & (lfield == location_id)
+        for parameter_id in location:
+            parameter = location[parameter_id]
+            q = query & (pfield == parameter_id)
+            for d in dates:
+                values = []
+                vappend = values.append
+                for date in parameter:
+                    if date <= d:
+                        vappend(parameter[date])
+                values_sum = sum(values)
+                exists = db(q & (dfield == d)).select(ifield,
+                                                      limitby=(0, 1))
+                if exists:
+                    db(ifield == exists.first().id).update(sum = values_sum)
+                else:
+                    insert(agg_type = 1, # Time
+                           location_id = location_id,
+                           parameter_id = parameter_id,
+                           date = d,
+                           sum = values_sum,
+                           )
+
+    # For each location/parameter pair, build a location-aggregate for all
+    # ancestors, by level (immediate parents first).
+    # Ensure that we don't duplicate builds
+    # Do this for all dates between the changed date and the current date
+
+    # Get all the ancestors
+    # Read all the Paths
+    # NB Currently we're assuming that all Paths have been built correctly
+    gtable = db.gis_location
+    ifield = gtable.id
+    location_ids = set(locations.keys())
+    paths = db(ifield.belongs(location_ids)).select(gtable.path)
+    paths = [p.path.split("/") for p in paths]
+    # Convert list of lists to flattened list & remove duplicates
+    import itertools
+    ancestors = tuple(itertools.chain.from_iterable(paths))
+    # Remove locations which we already have data for
+    ancestors = [a for a in ancestors if a not in location_ids]
+
+    # Get all the children for each ancestor (immediate children not descendants)
+    pfield = gtable.parent
+    query = (gtable.deleted == False) & \
+            (pfield.belongs(ancestors))
+    all_children = db(query).select(ifield, pfield)
+
+    # Read the levels
+    query = (gtable.id.belongs(ancestors)) & \
+            (gtable.level.belongs(("L4", "L3", "L2", "L1"))) # L0?
+    rows = db(query).select(gtable.id,
+                            gtable.level,
+                            # Build the lowest level first
+                            # FIXME this ordering makes no real sense when building async
+                            #       with multiple workers; in that case, the entire child
+                            #       cascade must happen synchronously inside each top-level
+                            #       build
+                            orderby = ~gtable.level,
+                            )
+
+    run_async = current.s3task.run_async
+    from gluon.serializers import json as jsons
+
+    dates = jsons(dates)
+    for row in rows:
+        location_id = row.id
+        children = [c.id for c in all_children if c.parent == location_id]
+        children = json.dumps(children)
+        for parameter_id in parameters:
+            run_async("disease_stats_update_location_aggregates",
+                      args = [location_id, children, parameter_id, dates],
+                      timeout = 1800 # 30m
+                      )
+    
+# =============================================================================
+def disease_stats_update_location_aggregates(location_id,
+                                             children,
+                                             parameter_id,
+                                             dates,
+                                             ):
+    """
+        Calculates the disease_stats_aggregate for a specific parameter at a
+        specific location over the range of dates.
+
+        Args:
+            location_id: location to aggregate at
+            children: locations to aggregate from
+            parameter_id: arameter to aggregate
+            dates: dates to aggregate for (as JSON string)
+    """
+
+    db = current.db
+    atable = current.s3db.disease_stats_aggregate
+    ifield = atable.id
+    lfield = atable.location_id
+    pfield = atable.parameter_id
+    dfield = atable.date
+
+    children = json.loads(children)
+
+    # Get the most recent disease_stats_aggregate record for all child locations
+    # - doesn't matter whether this is a time or location aggregate
+    query = (pfield == parameter_id) & \
+            (atable.deleted != True) & \
+            (lfield.belongs(children))
+    rows = db(query).select(atable.sum,
+                            dfield,
+                            lfield,
+                            orderby = (lfield, ~dfield),
+                            # groupby avoids duplicate records for the same
+                            # location, but is slightly slower than just
+                            # skipping the duplicates in the loop below
+                            #groupby = (lfield)
+                            )
+
+    if not rows:
+        return
+
+    # Lookup which records already exist
+    query = (lfield == location_id) & \
+            (pfield == parameter_id)
+    existing = db(query).select(ifield,
+                                dfield,
+                                )
+    exists = {}
+    for e in existing:
+        exists[e.date] = e.id
+
+    from dateutil.parser import parse
+    dates = json.loads(dates)
+    insert = atable.insert
+
+    for date in dates:
+        # Collect the values, skip duplicate records for the
+        # same location => use the most recent one, which is
+        # the first row for each location as per the orderby
+        # in the query above
+        date = parse(date) # produces a datetime
+        date = date.date()
+        last_location = None
+        values = []
+        vappend = values.append
+        for row in rows:
+            if date < row.date:
+                # Skip
+                continue
+            new_location_id = row.location_id
+            if new_location_id != last_location:
+                last_location = new_location_id
+                vappend(row.sum)
+
+        if values:
+            # Aggregate the values
+            values_sum = sum(values)
+        else:
+            values_sum = 0
+
+        # Add or update the aggregated values in the database
+        attr = {"agg_type": 2, # Location
+                "sum": values_sum,
+                }
+
+        # Do we already have a record?
+        if date in exists:
+            db(ifield == exists[date]).update(**attr)
+        else:
+            # Insert new
+            insert(parameter_id = parameter_id,
+                   location_id = location_id,
+                   date = date,
+                   **attr
+                   )
 
 # END =========================================================================

@@ -44,10 +44,10 @@ from gluon.html import *
 from gluon.storage import Storage
 
 from s3dal import Expression, S3DAL
-from .s3utils import s3_orderby_fields, s3_str, s3_unicode, s3_set_extension
+from .s3utils import s3_orderby_fields, s3_str, s3_set_extension
 
 # =============================================================================
-class S3DataTable(object):
+class S3DataTable:
     """ Class representing a data table """
 
     # The dataTable id if no explicit value has been provided
@@ -66,15 +66,14 @@ class S3DataTable(object):
                  empty = False,
                  ):
         """
-            S3DataTable constructor
-
-            @param rfields: A list of S3Resourcefield
-            @param data: A list of Storages the key is of the form table.field
-                         The value is the data to be displayed in the dataTable
-            @param start: the first row to return from the data
-            @param limit: the (maximum) number of records to return
-            @param filterString: The string that was used in filtering the records
-            @param orderby: the DAL orderby construct
+            Args:
+                rfields: A list of S3Resourcefield
+                data: A list of Storages the key is of the form table.field
+                      The value is the data to be displayed in the dataTable
+                start: the first row to return from the data
+                limit: the (maximum) number of records to return
+                filterString: The string that was used in filtering the records
+                orderby: the DAL orderby construct
         """
 
         self.data = data
@@ -182,7 +181,7 @@ class S3DataTable(object):
                         skip(col_idx)
                         break
         else:
-            dt_ordering = [[1, "asc"]]
+            dt_ordering = [(1, "asc")]
 
         self.orderby = dt_ordering
 
@@ -192,21 +191,21 @@ class S3DataTable(object):
              filteredrows,
              id = None,
              draw = 1,
-             **attr
-             ):
+             **attr):
         """
             Method to render the dataTable into html
 
-            @param totalrows: The total rows in the unfiltered query.
-            @param filteredrows: The total rows in the filtered query.
-            @param id: The id of the table these need to be unique if more
-                       than one dataTable is to be rendered on the same page.
-                           If this is not passed in then a unique id will be
-                           generated. Regardless the id is stored in self.id
-                           so it can be easily accessed after rendering.
-            @param draw: An unaltered copy of draw sent from the client used
-                         by dataTables as a draw count.
-            @param attr: dictionary of attributes which can be passed in
+            Args:
+                totalrows: The total rows in the unfiltered query.
+                filteredrows: The total rows in the filtered query.
+                id: The id of the table these need to be unique if more
+                    than one dataTable is to be rendered on the same page.
+                    If this is not passed in then a unique id will be
+                    generated. Regardless the id is stored in self.id
+                    so it can be easily accessed after rendering.
+                draw: An unaltered copy of draw sent from the client used
+                      by dataTables as a draw count.
+                attr: dictionary of attributes which can be passed in
         """
 
         flist = self.colnames
@@ -222,12 +221,13 @@ class S3DataTable(object):
         bulkCol = attr_get("dt_bulk_col", 0)
         if bulkCol > len(flist):
             bulkCol = len(flist)
+
         action_col = attr_get("dt_action_col", 0)
         if action_col != 0:
             if action_col == -1 or action_col >= len(flist):
-                action_col = len(flist) -1
+                action_col = len(flist) - 1
                 attr["dt_action_col"] = action_col
-            flist = flist[1:action_col+1] + [flist[0]] + flist[action_col+1:]
+            flist = flist[1:action_col + 1] + [flist[0]] + flist[action_col + 1:]
 
         # Get the details for any bulk actions. If we have at least one bulk
         # action then a column will be added, either at the start or in the
@@ -241,7 +241,9 @@ class S3DataTable(object):
         if pagination:
             real_end = self.end
             self.end = self.start + 1
+
         table = self.table(id, flist, action_col)
+
         if pagination:
             self.end = real_end
             aadata = self.aadata(totalrows,
@@ -249,8 +251,8 @@ class S3DataTable(object):
                                  id,
                                  draw,
                                  flist,
-                                 action_col=action_col,
-                                 stringify=False,
+                                 action_col = action_col,
+                                 as_json = False,
                                  **attr)
             cache = {"cacheLower": self.start,
                      "cacheUpper": self.end if filteredrows > self.end else filteredrows,
@@ -259,14 +261,12 @@ class S3DataTable(object):
         else:
             cache = None
 
-        html = self.htmlConfig(table,
-                               id,
-                               self.orderby,
-                               self.rfields,
-                               cache,
-                               **attr
-                               )
-        return html
+        return self.html_config(table,
+                                id,
+                                self.orderby,
+                                self.rfields,
+                                cache,
+                                **attr)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -305,19 +305,18 @@ class S3DataTable(object):
              displayrows,
              id,
              draw,
-             stringify = True,
-             **attr
-             ):
+             **attr):
         """
             Method to render the data into a json object
 
-            @param totalrows: The total rows in the unfiltered query.
-            @param displayrows: The total rows in the filtered query.
-            @param id: The id of the table for which this ajax call will
-                       respond to.
-            @param draw: An unaltered copy of draw sent from the client used
-                          by dataTables as a draw count.
-            @param attr: dictionary of attributes which can be passed in
+            Args:
+                totalrows: The total rows in the unfiltered query.
+                displayrows: The total rows in the filtered query.
+                id: The id of the table for which this ajax call will
+                    respond to.
+                draw: An unaltered copy of draw sent from the client used
+                      by dataTables as a draw count.
+                attr: dictionary of attributes which can be passed in
                    dt_action_col: The column where the action buttons will be placed
                    dt_bulk_actions: list of labels for the bulk actions.
                    dt_bulk_col: The column in which the checkboxes will appear,
@@ -334,7 +333,8 @@ class S3DataTable(object):
         if action_col != 0:
             if action_col == -1 or action_col >= len(flist):
                 action_col = len(flist) - 1
-            flist = flist[1:action_col+1] + [flist[0]] + flist[action_col+1:]
+            flist = flist[1:action_col + 1] + [flist[0]] + flist[action_col + 1:]
+
         # Get the details for any bulk actions. If we have at least one bulk
         # action then a column will be added, either at the start or in the
         # column identified by dt_bulk_col
@@ -353,84 +353,11 @@ class S3DataTable(object):
                            draw,
                            flist,
                            action_col = action_col,
-                           stringify = stringify,
+                           #as_json = True,
                            **attr)
 
     # -------------------------------------------------------------------------
     # Extended API
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def getConfigData():
-        """
-            Method to extract the configuration data from S3 globals and
-            store them as an attr variable.
-            - used by Survey module
-
-            @return: dictionary of attributes which can be passed into html()
-
-            @param attr: dictionary of attributes which can be passed in
-                   dt_pageLength : The default number of records that will be shown
-                   dt_pagination: Enable pagination
-                   dt_pagingType: type of pagination, one of:
-                                        simple
-                                        simple_numbers
-                                        full
-                                        full_numbers (default)
-                                  http://datatables.net/reference/option/pagingType
-                   dt_searching: Enable or disable filtering of data.
-                   dt_group: The colum that is used to group the data
-                   dt_ajax_url: The URL to be used for the Ajax call
-                   dt_action_col: The column where the action buttons will be placed
-                   dt_bulk_actions: list of labels for the bulk actions.
-                   dt_bulk_col: The column in which the checkboxes will appear,
-                                by default it will be the column immediately
-                                before the first data item
-                   dt_bulk_selected: A list of selected items
-                   #dt_row_actions: a list of actions (each is a dict)
-                   dt_styles: dictionary of styles to be applied to a list of ids
-                              for example:
-                              {"warning" : [1,3,6,7,9],
-                               "alert" : [2,10,13]}
-        """
-
-        s3 = current.response.s3
-
-        attr = Storage()
-        if s3.datatable_ajax_source:
-            attr.dt_ajax_url = s3.datatable_ajax_source
-        # Defaults in htmlConfig() anyway:
-        #if s3.actions:
-        #    attr.dt_row_actions = s3.actions
-        if s3.dataTableBulkActions:
-            attr.dt_bulk_actions = s3.dataTableBulkActions
-        if s3.dataTable_pageLength:
-            attr.dt_pageLength = s3.dataTable_pageLength
-        attr.dt_pagination = "false" if s3.no_sspag else "true"
-        # Nothing using currently
-        #if s3.dataTable_pagingType:
-        #    attr.dt_pagingType = s3.dataTable_pagingType
-        # Nothing using currently
-        # Was used only by inv/inv_item
-        #if s3.dataTable_group:
-        #    attr.dt_group = s3.dataTable_group
-        # Nothing using currently
-        # - and not worth enabling as not used by standard CRUD
-        #if s3.dataTable_NoSearch:
-        #    attr.dt_searching = not s3.dataTable_NoSearch
-        if s3.dataTable_dom:
-            attr.dt_dom = s3.dataTable_dom
-        if s3.dataTableDisplay:
-            attr.dt_display = s3.dataTableDisplay
-        if s3.dataTableStyleDisabled or s3.dataTableStyleWarning or s3.dataTableStyleAlert:
-            attr.dt_styles = {}
-            if s3.dataTableStyleDisabled:
-                attr.dt_styles["dtdisable"] = s3.dataTableStyleDisabled
-            if s3.dataTableStyleWarning:
-                attr.dt_styles["dtwarning"] = s3.dataTableStyleWarning
-            if s3.dataTableStyleAlert:
-                attr.dt_styles["dtalert"] = s3.dataTableStyleAlert
-        return attr
-
     # -------------------------------------------------------------------------
     @staticmethod
     def export_formats(rfields = None,
@@ -440,10 +367,11 @@ class S3DataTable(object):
         """
             Calculate the export formats that can be added to the table
 
-            @param rfields: optional list of field selectors for exports
-            @param permalink: search result URL
-            @param base_url: the base URL of the datatable (without
-                             method or query vars) to construct format URLs
+            Args:
+                rfields: optional list of field selectors for exports
+                permalink: search result URL
+                base_url: the base URL of the datatable (without method or 
+                          query vars) to construct format URLs
         """
 
         T = current.T
@@ -495,7 +423,7 @@ class S3DataTable(object):
             append_icon = icons.append
             for fmt in export_formats:
 
-                # CSS classes and on-hover title
+                # CSS classes and 
                 title = None
                 if isinstance(fmt, tuple):
                     if len(fmt) >= 3:
@@ -503,16 +431,6 @@ class S3DataTable(object):
                     fmt, css = fmt[:2] if len(fmt) >= 2 else (fmt[0], "")
                 else:
                     css = ""
-
-                class_ = "dt-export export_%s" % fmt
-                if css:
-                    class_ = "%s %s" % (class_, css)
-
-                if title is None:
-                    if fmt == "map":
-                        title = T("Show on Map")
-                    else:
-                        title = EXPORT % {"format": fmt.upper()}
 
                 # Export format URL
                 if fmt in default_formats:
@@ -522,6 +440,17 @@ class S3DataTable(object):
                 if not url:
                     continue
 
+                class_ = "dt-export export_%s" % fmt
+                if css:
+                    class_ = "%s %s" % (class_, css)
+
+                # on-hover title
+                if title is None:
+                    if fmt == "map":
+                        title = T("Show on Map")
+                    else:
+                        title = EXPORT % {"format": fmt.upper()}
+
                 append_icon(DIV(_class = class_,
                                 _title = title,
                                 data = {"url": url,
@@ -529,8 +458,7 @@ class S3DataTable(object):
                                         },
                                 ))
 
-        export_options = DIV(_class = "dt-export-options",
-                             )
+        export_options = DIV(_class = "dt-export-options")
 
         # Append the permalink (if any)
         if permalink is not None:
@@ -551,110 +479,22 @@ class S3DataTable(object):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def defaultActionButtons(resource,
-                             custom_actions = None,
-                             r = None
-                             ):
-        """
-            Configure default action buttons
-
-            @param resource: the resource
-            @param r: the request, if specified, all action buttons will
-                      be linked to the controller/function of this request
-                      rather than to prefix/name of the resource
-            @param custom_actions: custom actions as list of dicts like
-                                   {"label":label, "url":url, "_class":class},
-                                   will be appended to the default actions
-
-            @ToDo: DRY with S3CRUD.action_buttons()
-        """
-
-        from .s3crud import S3CRUD
-
-        s3 = current.response.s3
-        auth = current.auth
-        actions = s3.actions = None
-
-        table = resource.table
-        has_permission = auth.s3_has_permission
-        ownership_required = auth.permission.ownership_required
-
-        labels = s3.crud_labels
-        args = ["[id]"]
-
-        # Choose controller/function to link to
-        if r is not None:
-            c = r.controller
-            f = r.function
-        else:
-            c = resource.prefix
-            f = resource.name
-
-        tablename = resource.tablename
-        get_config = current.s3db.get_config
-
-        # "Open" button
-        editable = get_config(tablename, "editable", True)
-        if editable and has_permission("update", table) and \
-           not ownership_required("update", table):
-            update_url = URL(c=c, f=f,
-                             args = args + ["update"],
-                             )
-            S3CRUD.action_button(labels.UPDATE,
-                                 update_url,
-                                 icon = "edit",
-                                 _class = "action-btn edit",
-                                 )
-        else:
-            read_url = URL(c=c, f=f,
-                           args = args,
-                           )
-            S3CRUD.action_button(labels.READ,
-                                 read_url,
-                                 icon = "file",
-                                 _class = "action-btn read",
-                                 )
-
-        # Delete button
-        # @todo: does not apply selective action (renders DELETE for
-        #        all items even if the user is only permitted to delete
-        #        some of them) => should implement "restrict", see
-        #        S3CRUD.action_buttons
-        deletable = get_config(tablename, "deletable", True)
-        if deletable and \
-           has_permission("delete", table) and \
-           not ownership_required("delete", table):
-            delete_url = URL(c=c, f=f,
-                             args = args + ["delete"],
-                             )
-            S3CRUD.action_button(labels.DELETE,
-                                 delete_url,
-                                 icon = "delete",
-                                 _class = "delete-btn",
-                                 )
-
-        # Append custom actions
-        if custom_actions:
-            actions = actions + custom_actions if actions else custom_actions
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def htmlConfig(html,
-                   id,
-                   orderby,
-                   rfields = None,
-                   cache = None,
-                   **attr
-                   ):
+    def html_config(html,
+                    id,
+                    orderby,
+                    rfields = None,
+                    cache = None,
+                    **attr):
         """
             Method to wrap the html for a dataTable in a form, add the export formats
             and the config details required by dataTables
 
-            @param html: The html table
-            @param id: The id of the table
-            @param orderby: the sort details see http://datatables.net/reference/option/order
-            @param rfields: The list of resource fields
-            @param attr: dictionary of attributes which can be passed in
+            Args:
+                html: The html table
+                id: The id of the table
+                orderby: the sort details see http://datatables.net/reference/option/order
+                rfields: The list of resource fields
+                attr: dictionary of attributes which can be passed in
                    dt_lengthMenu: The menu options for the number of records to be shown
                    dt_pageLength : The default number of records that will be shown
                    dt_dom : The Datatable DOM initialisation variable, describing
@@ -825,7 +665,8 @@ class S3DataTable(object):
             base_url = attr_get("dt_base_url", None)
             export_formats = S3DataTable.export_formats(rfields,
                                                         permalink = permalink,
-                                                        base_url = base_url)
+                                                        base_url = base_url,
+                                                        )
             # NB These can be moved around in initComplete()
             form.append(export_formats)
 
@@ -884,16 +725,21 @@ class S3DataTable(object):
     # -------------------------------------------------------------------------
     # Helper methods
     # -------------------------------------------------------------------------
-    def table(self, id, flist=None, action_col=0):
+    def table(self,
+              id,
+              flist = None,
+              action_col = 0,
+              ):
         """
             Method to render the data as an html table. This is of use if
             an html table is required without the dataTable goodness. However
             if you want html for a dataTable then use the html() method
 
-            @param id: The id of the table
-            @param flist: The list of fields
-            @param action_col: The column where action columns will be displayed
-                               (this is required by dataTables)
+            Args:
+                id: The id of the table
+                flist: The list of fields
+                action_col: The column where action columns will be displayed
+                            (this is required with Bulk Actions)
         """
 
         data = self.data
@@ -942,6 +788,7 @@ class S3DataTable(object):
 
         if current.deployment_settings.get_ui_datatables_responsive():
             table.add_class("responsive")
+
         return table
 
     # -------------------------------------------------------------------------
@@ -951,21 +798,23 @@ class S3DataTable(object):
                id,
                draw,
                flist,
-               stringify = True,
                action_col = None,
-               **attr
-               ):
+               as_json = True,
+               **attr):
         """
-            Method to render the data into a json object
+            Method to render the data into a JSON object for use by jquery.dataTables.js
 
-            @param totalrows: The total rows in the unfiltered query.
-            @param displayrows: The total rows in the filtered query.
-            @param id: The id of the table for which this ajax call will
-                       respond to.
-            @param draw: An unaltered copy of draw sent from the client used
-                          by dataTables as a draw count.
-            @param flist: The list of fields
-            @param attr: dictionary of attributes which can be passed in
+            Args:
+                totalrows: The total rows in the unfiltered query.
+                displayrows: The total rows in the filtered query.
+                id: The id of the table for which this ajax call will
+                    respond to.
+                draw: An unaltered copy of draw sent from the client used
+                      by dataTables as a draw count.
+                flist: The list of fields
+                action_col: Which column is used for Actions (only used for Bulk Actions)
+                as_json: Whether to output as JSON
+                attr: dictionary of attributes which can be passed in
                    dt_action_col: The column where the action buttons will be placed
                    dt_bulk_actions: list of labels for the bulk actions.
                    dt_bulk_col: The column in which the checkboxes will appear,
@@ -981,8 +830,10 @@ class S3DataTable(object):
             flist = self.colnames
         start = self.start
         end = self.end
-        if action_col is None:
-            action_col = attr.get("dt_action_col", 0)
+        if "BULK" in flist:
+            if action_col is None:
+                action_col = attr.get("dt_action_col", 0)
+            action_field = flist[action_col]
         structure = {}
         aadata = []
         for i in range(start, end):
@@ -991,9 +842,9 @@ class S3DataTable(object):
             for field in flist:
                 if field == "BULK":
                     details.append("<INPUT type='checkbox' class='bulkcheckbox' data-dbid='%s'>" % \
-                                   row[flist[action_col]])
+                                   row[action_field])
                 else:
-                    details.append(s3_unicode(row[field]))
+                    details.append(s3_str(row[field]))
             aadata.append(details)
         structure["dataTable_id"] = id # Is this used anywhere? Can't see it used, so could be removed?
         structure["dataTable_filter"] = self.filterString
@@ -1003,14 +854,14 @@ class S3DataTable(object):
         structure["recordsTotal"] = totalrows
         structure["recordsFiltered"] = displayrows
         structure["draw"] = draw
-        if stringify:
+        if as_json:
             from gluon.serializers import json as jsons
             return jsons(structure)
         else:
             return structure
 
 # =============================================================================
-class S3DataList(object):
+class S3DataList:
     """
         Class representing a list of data cards
         -client-side implementation in static/scripts/S3/s3.dataLists.js
@@ -1031,20 +882,19 @@ class S3DataList(object):
                  row_layout = None,
                  ):
         """
-            Constructor
-
-            @param resource: the S3Resource
-            @param list_fields: the list fields
-                                (list of field selector strings)
-            @param records: the records
-            @param start: index of the first item
-            @param limit: maximum number of items
-            @param total: total number of available items
-            @param list_id: the HTML ID for this list
-            @param layout: item renderer (optional) as function
-                           (list_id, item_id, resource, rfields, record)
-            @param row_layout: row renderer (optional) as
-                               function(list_id, resource, rowsize, items)
+            Args:
+                resource: the S3Resource
+                list_fields: the list fields
+                             (list of field selector strings)
+                records: the records
+                start: index of the first item
+                limit: maximum number of items
+                total: total number of available items
+                list_id: the HTML ID for this list
+                layout: item renderer (optional) as function
+                        (list_id, item_id, resource, rfields, record)
+                row_layout: row renderer (optional) as
+                            function(list_id, resource, rowsize, items)
         """
 
         self.resource = resource
@@ -1068,27 +918,28 @@ class S3DataList(object):
 
     # ---------------------------------------------------------------------
     def html(self,
-             start=None,
-             limit=None,
-             pagesize=None,
-             rowsize=None,
-             ajaxurl=None,
-             empty=None,
-             popup_url=None,
-             popup_title=None,
+             start = None,
+             limit = None,
+             pagesize = None,
+             rowsize = None,
+             ajaxurl = None,
+             empty = None,
+             popup_url = None,
+             popup_title = None,
              ):
         """
             Render list data as HTML (nested DIVs)
 
-            @param start: index of the first item (in this page)
-            @param limit: total number of available items
-            @param pagesize: maximum number of items per page
-            @param rowsize: number of items per row
-            @param ajaxurl: the URL to Ajax-update the datalist
-            @param empty: message to display if the list is empty
-            @param popup_url: the URL for the modal used for the 'more'
-                              button (=> we deactivate InfiniteScroll)
-            @param popup_title: the title for the modal
+            Args:
+                start: index of the first item (in this page)
+                limit: total number of available items
+                pagesize: maximum number of items per page
+                rowsize: number of items per row
+                ajaxurl: the URL to Ajax-update the datalist
+                empty: message to display if the list is empty
+                popup_url: the URL for the modal used for the 'more'
+                           button (=> we deactivate InfiniteScroll)
+                popup_title: the title for the modal
         """
 
         T = current.T
@@ -1125,7 +976,9 @@ class S3DataList(object):
             if empty is None:
                 empty = resource.crud.crud_string(resource.tablename,
                                                   "msg_no_match")
-            empty = DIV(empty, _class="dl-empty")
+            empty = DIV(empty,
+                        _class = "dl-empty",
+                        )
             if self.total > 0:
                 empty.update(_style="display:none")
             items.append(empty)
@@ -1146,7 +999,8 @@ class S3DataList(object):
                                   item_id,
                                   resource,
                                   rfields,
-                                  record)
+                                  record,
+                                  )
                     if hasattr(item, "add_class"):
                         _class = "dl-item dl-%s-cols dl-col-%s" % (rowsize, col_idx)
                         item.add_class(_class)
@@ -1158,11 +1012,14 @@ class S3DataList(object):
                     row = render_row(list_id,
                                      resource,
                                      rowsize,
-                                     row)
+                                     row,
+                                     )
                     if hasattr(row, "add_class"):
                         row.add_class(_class)
                 else:
-                    row = DIV(row, _class=_class)
+                    row = DIV(row,
+                              _class = _class,
+                              )
 
                 items.append(row)
                 row_idx += 1
@@ -1171,8 +1028,8 @@ class S3DataList(object):
             raise NotImplementedError
 
         dl = DIV(items,
-                 _class="dl",
-                 _id=list_id,
+                 _class = "dl",
+                 _id = list_id,
                  )
 
         dl_data = {"startindex": start,
@@ -1212,8 +1069,9 @@ class S3DataList(object):
         """
             Iterator to group data list items into rows
 
-            @param iterable: the items iterable
-            @param length: the number of items per row
+            Args:
+                iterable: the items iterable
+                length: the number of items per row
         """
 
         iterable = iter(iterable)
@@ -1224,7 +1082,7 @@ class S3DataList(object):
         return
 
 # =============================================================================
-class S3DataListLayout(object):
+class S3DataListLayout:
     """ DataList default layout """
 
     item_class = "thumbnail"
@@ -1232,12 +1090,10 @@ class S3DataListLayout(object):
     # ---------------------------------------------------------------------
     def __init__(self, profile=None):
         """
-            Constructor
-
-            @param profile: table name of the master resource of the
-                            profile page (if used for a profile), can be
-                            used in popup URLs to indicate the master
-                            resource
+            Args:
+                profile: table name of the master resource of the
+                         profile page (if used for a profile), can be
+                         used in popup URLs to indicate the master resource
         """
 
         self.profile = profile
@@ -1247,21 +1103,25 @@ class S3DataListLayout(object):
         """
             Wrapper for render_item.
 
-            @param list_id: the HTML ID of the list
-            @param item_id: the HTML ID of the item
-            @param resource: the S3Resource to render
-            @param rfields: the S3ResourceFields to render
-            @param record: the record as dict
+            Args:
+                list_id: the HTML ID of the list
+                item_id: the HTML ID of the item
+                resource: the S3Resource to render
+                rfields: the S3ResourceFields to render
+                record: the record as dict
         """
 
         # Render the item
-        item = DIV(_id=item_id, _class=self.item_class)
+        item = DIV(_id = item_id,
+                   _class = self.item_class,
+                   )
 
         header = self.render_header(list_id,
                                     item_id,
                                     resource,
                                     rfields,
-                                    record)
+                                    record,
+                                    )
         if header is not None:
             item.append(header)
 
@@ -1269,7 +1129,8 @@ class S3DataListLayout(object):
                                 item_id,
                                 resource,
                                 rfields,
-                                record)
+                                record,
+                                )
         if body is not None:
             item.append(body)
 
@@ -1278,13 +1139,14 @@ class S3DataListLayout(object):
     # ---------------------------------------------------------------------
     def render_header(self, list_id, item_id, resource, rfields, record):
         """
-            @todo: Render the card header
+            Render the card header
 
-            @param list_id: the HTML ID of the list
-            @param item_id: the HTML ID of the item
-            @param resource: the S3Resource to render
-            @param rfields: the S3ResourceFields to render
-            @param record: the record as dict
+            Args:
+                list_id: the HTML ID of the list
+                item_id: the HTML ID of the item
+                resource: the S3Resource to render
+                rfields: the S3ResourceFields to render
+                record: the record as dict
         """
 
         #DIV(
@@ -1300,15 +1162,16 @@ class S3DataListLayout(object):
         """
             Render the card body
 
-            @param list_id: the HTML ID of the list
-            @param item_id: the HTML ID of the item
-            @param resource: the S3Resource to render
-            @param rfields: the S3ResourceFields to render
-            @param record: the record as dict
+            Args:
+                list_id: the HTML ID of the list
+                item_id: the HTML ID of the item
+                resource: the S3Resource to render
+                rfields: the S3ResourceFields to render
+                record: the record as dict
         """
 
         pkey = str(resource._id)
-        body = DIV(_class="media-body")
+        body = DIV(_class = "media-body")
 
         render_column = self.render_column
         for rfield in rfields:
@@ -1322,17 +1185,20 @@ class S3DataListLayout(object):
                 field_class = "dl-field-%s" % rfield.fname
                 body.append(DIV(column,
                                 _class = "dl-field %s %s" % (table_class,
-                                                             field_class)))
+                                                             field_class,
+                                                             ),
+                                ))
 
         return DIV(body, _class="media")
 
     # ---------------------------------------------------------------------
     def render_icon(self, list_id, resource):
         """
-            @todo: Render a body icon
+            Render a body icon
 
-            @param list_id: the HTML ID of the list
-            @param resource: the S3Resource to render
+            Args:
+                list_id: the HTML ID of the list
+                resource: the S3Resource to render
         """
 
         return None
@@ -1340,11 +1206,12 @@ class S3DataListLayout(object):
     # ---------------------------------------------------------------------
     def render_toolbox(self, list_id, resource, record):
         """
-            @todo: Render the toolbox
+            Render the toolbox
 
-            @param list_id: the HTML ID of the list
-            @param resource: the S3Resource to render
-            @param record: the record as dict
+            Args:
+                list_id: the HTML ID of the list
+                resource: the S3Resource to render
+                record: the record as dict
         """
 
         return None
@@ -1354,9 +1221,10 @@ class S3DataListLayout(object):
         """
             Render a data column.
 
-            @param item_id: the HTML element ID of the item
-            @param rfield: the S3ResourceField for the column
-            @param record: the record (from S3Resource.select)
+            Args:
+                item_id: the HTML element ID of the item
+                rfield: the S3ResourceField for the column
+                record: the record (from S3Resource.select)
         """
 
         colname = rfield.colname
@@ -1368,11 +1236,13 @@ class S3DataListLayout(object):
 
         label = LABEL("%s:" % rfield.label,
                       _for = value_id,
-                      _class = "dl-field-label")
+                      _class = "dl-field-label",
+                      )
 
         value = SPAN(value,
                      _id = value_id,
-                     _class = "dl-field-value")
+                     _class = "dl-field-value",
+                     )
 
         return TAG[""](label, value)
 

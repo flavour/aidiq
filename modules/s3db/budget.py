@@ -103,7 +103,7 @@ class BudgetModel(S3Model):
                        }
 
         # Currently only Monthly is supported
-        monitoring_opts = {1: current.messages["NONE"],
+        monitoring_opts = {1: NONE,
                            #2: T("Annually"),
                            3: T("Monthly"),
                            #3: T("Weekly"),
@@ -147,12 +147,12 @@ class BudgetModel(S3Model):
                           Field("monitoring_frequency", "integer",
                                 default = 1,
                                 label = T("Monitoring Frequency"),
-                                represent = S3Represent(options = monitoring_opts),
+                                represent = s3_options_represent(monitoring_opts),
                                 requires = IS_IN_SET(monitoring_opts),
                                 ),
                           Field("status", "integer",
                                 default = 1,
-                                represent = S3Represent(options = status_opts),
+                                represent = s3_options_represent(status_opts),
                                 requires = IS_IN_SET(status_opts),
                                 ),
                           s3_comments(),
@@ -176,7 +176,9 @@ class BudgetModel(S3Model):
         )
 
         # Represent
-        #budget_budget_represent = S3Represent(lookup=tablename, show_link=True)
+        #budget_budget_represent = S3Represent(lookup = tablename,
+        #                                      show_link = True,
+        #                                      )
 
         # Reusable Field
         #budget_budget_id = S3ReusableField("budget_id", "reference %s" % tablename,
@@ -273,7 +275,7 @@ class BudgetAllocationModel(S3Model):
                                      #        type defined, so using that as
                                      #        label for now)
                                      label = T("Project"),
-                                     represent = S3Represent(lookup="budget_entity"),
+                                     represent = S3Represent(lookup = "budget_entity"),
                                      ),
                           # Component not instance
                           super_link("cost_item_id", "budget_cost_item",
@@ -321,7 +323,7 @@ class BudgetAllocationModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     def defaults(self):
@@ -329,7 +331,7 @@ class BudgetAllocationModel(S3Model):
             Safe defaults for model-global names in case module is disabled
         """
 
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -448,7 +450,7 @@ class BudgetMonitoringModel(S3Model):
                        )
 
         # Pass names back to global scope (s3.*)
-        return {}
+        return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -559,7 +561,7 @@ class BudgetMonitoringModel(S3Model):
             planned = row.planned
             if planned == 0.0:
                 # Can't divide by Zero
-                return current.messages["NONE"]
+                return NONE
         else:
             planned = None
         if hasattr(row, "value"):
@@ -583,11 +585,11 @@ class BudgetMonitoringModel(S3Model):
                 planned = r.planned
                 if planned == 0.0:
                     # Can't divide by Zero
-                    return current.messages["NONE"]
+                    return NONE
                 percentage = r.value / planned * 100
                 return "%s %%" % percentage
 
-        return current.messages["NONE"]
+        return NONE
 
 # =============================================================================
 class BudgetItemModel(S3Model):
@@ -696,7 +698,7 @@ class BudgetItemModel(S3Model):
                      Field("category_type", "integer", notnull=True,
                            #default = 1,
                            label = T("Category"),
-                           represent = S3Represent(options = budget_category_type_opts),
+                           represent = s3_options_represent(budget_category_type_opts),
                            requires = IS_IN_SET(budget_category_type_opts,
                                                 zero = None),
                            ),
@@ -714,7 +716,7 @@ class BudgetItemModel(S3Model):
                      Field("cost_type", "integer", notnull=True,
                            #default = 1,
                            label = T("Cost Type"),
-                           represent = S3Represent(options = budget_cost_type_opts),
+                           represent = s3_options_represent(budget_cost_type_opts),
                            requires = IS_IN_SET(budget_cost_type_opts,
                                                 zero = None),
                            ),
@@ -955,8 +957,7 @@ class BudgetItemModel(S3Model):
                             )
 
         # Represent
-        budget_bundle_represent = S3Represent(lookup=tablename,
-                                             fields=["name"])
+        budget_bundle_represent = S3Represent(lookup = tablename)
 
         # Reusable Field
         budget_bundle_id = S3ReusableField("bundle_id", "reference %s" % tablename,
@@ -1691,9 +1692,10 @@ class budget_CostItemRepresent(S3Represent):
         """
             Custom rows lookup function
 
-            @param key: the key field
-            @param values: the values to look up
-            @param fields: unused (retained for API compatibility)
+            Args:
+                key: the key field
+                values: the values to look up
+                fields: unused (retained for API compatibility)
         """
 
         db = current.db
@@ -1778,7 +1780,8 @@ class budget_CostItemRepresent(S3Represent):
         """
             Represent a row
 
-            @param row: the Row
+            Args:
+                row: the Row
         """
 
         s3db = current.s3db
@@ -1970,7 +1973,8 @@ def budget_budget_totals(budget_entity_id):
     """
         Calculate Totals for a budget
 
-        @param budget_entity_id: the budget_entity record ID
+        Args:
+            budget_entity_id: the budget_entity record ID
     """
 
     db = current.db

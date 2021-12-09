@@ -46,9 +46,6 @@ from gluon.languages import read_dict, write_dict
 from ..s3 import *
 from s3layouts import S3PopupLink
 
-# Compact JSON encoding
-SEPARATORS = (",", ":")
-
 # =============================================================================
 class DataCollectionTemplateModel(S3Model):
     """
@@ -93,7 +90,7 @@ class DataCollectionTemplateModel(S3Model):
                      Field("master", length=32,
                            default = "dc_response",
                            label = T("Used for"),
-                           represent = S3Represent(options = master_opts),
+                           represent = s3_options_represent(master_opts),
                            requires = IS_IN_SET(master_opts),
                            # Either set via Controller or on Import
                            readable = False,
@@ -263,7 +260,7 @@ class DataCollectionTemplateModel(S3Model):
                      Field("field_type", "integer", notnull=True,
                            default = 1, # string
                            label = T("Field Type"),
-                           represent = S3Represent(options = type_opts),
+                           represent = s3_options_represent(type_opts),
                            requires = IS_IN_SET(type_opts),
                            ),
                      Field("options", "json",
@@ -605,33 +602,33 @@ class DataCollectionTemplateModel(S3Model):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def dc_template_ondelete(form):
+    def dc_template_ondelete(row):
         """
             On-delete routine for dc_template:
              - Delete the associated Dynamic Table
         """
 
-        template_id = form.id
-        if not template_id:
-            return
+        if hasattr(row, "table_id"):
+            table_id = row.table_id
+        else:
+            # Read from deleted_fk
+            record_id = row.id
 
-        db = current.db
-        s3db = current.s3db
+            # Load record
+            db = current.db
+            table = db.dc_template
+            record = db(table.id == record_id).select(table.deleted_fk,
+                                                      limitby = (0, 1),
+                                                      ).first()
 
-        # Load full record
-        ttable = s3db.dc_template
-        record = db(ttable.id == template_id).select(ttable.deleted_fk,
-                                                     limitby = (0, 1),
-                                                     ).first()
+            deleted_fk = json.loads(record.deleted_fk)
+            table_id = deleted_fk.get("table_id")
 
-        deleted_fk = json.loads(record.deleted_fk)
-        table_id = deleted_fk.get("table_id")
         if table_id:
-            dtable = s3db.s3_table
-            resource = s3db.resource("s3_table",
-                                     id = table_id,
-                                     )
-            resource.delete()
+            resource = current.s3db.resource("s3_table",
+                                             id = table_id,
+                                             )
+            resource.delete(cascade = True)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1058,7 +1055,7 @@ class DataCollectionModel(S3Model):
                      Field("status", "integer",
                            default = default_status,
                            label = T("Status"),
-                           represent = S3Represent(options = status_opts),
+                           represent = s3_options_represent(status_opts),
                            requires = IS_IN_SET(status_opts),
                            readable = target_status,
                            writable = target_status,
@@ -1343,14 +1340,14 @@ class TrainingEventAssessmentModel(S3Model):
                                 default = 1,
                                 label = T("Type"),
                                 requires = IS_EMPTY_OR(IS_IN_SET(type_opts)),
-                                represent = S3Represent(options = type_opts),
+                                represent = s3_options_represent(type_opts),
                                 ),
                           *s3_meta_fields())
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return None
 
 # =============================================================================
 def dc_answer_form(r, tablename):
@@ -1637,9 +1634,11 @@ class dc_TargetReport(S3Method):
         Results in charts for quantitative questions and
                    full text of the qualitative answers
 
-        Used by IFRC bkk_training_evaluation
+        Used by:
+            IFRC bkk_training_evaluation
 
-        @ToDo: Add support for Grids
+        TODO:
+            Add support for Grids
     """
 
     # -------------------------------------------------------------------------
@@ -1647,8 +1646,9 @@ class dc_TargetReport(S3Method):
         """
             Entry point for REST API
 
-            @param r: the S3Request
-            @param attr: controller arguments
+            Args:
+                r: the S3Request
+                attr: controller arguments
         """
 
         if r.name == "target":
@@ -2362,7 +2362,7 @@ def dc_rheader(r, tabs=None):
                 if record.options:
                     return ", ".join(record.options)
                 else:
-                    return current.messages["NONE"]
+                    return NONE
 
             rheader_fields = ([(T("Question"), "name")],
                               [(T("Options"), options)],
