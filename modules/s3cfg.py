@@ -3550,6 +3550,12 @@ class S3Config(Storage):
     # -------------------------------------------------------------------------
     # Shelters
     #
+    def get_cr_shelter_code_unique(self):
+        """
+            Validate for Unique Shelter Codes
+        """
+        return self.cr.get("shelter_code_unique", False)
+
     def get_cr_day_and_night(self):
         """
             Whether Shelter Capacities/Registrations are different for Day and Night
@@ -5141,7 +5147,7 @@ class S3Config(Storage):
         return self.inv.get("generate_req_number", True)
 
     def get_inv_req_form_name(self):
-        return self.inv.get("req_form_name", "Requisition Form")
+        return self.inv.get("req_form_name", "Requisition")
 
     def get_inv_req_shortname(self):
         return self.inv.get("req_shortname", "REQ")

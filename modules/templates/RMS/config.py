@@ -56,6 +56,7 @@ def config(settings):
 
     # Uncomment to show a default cancel button in standalone create/update forms
     settings.ui.default_cancel_button = True
+    settings.ui.update_label = "Modify"
     # Limit Export Formats
     settings.ui.export_formats = ("xls",
                                   "pdf",
@@ -3931,19 +3932,7 @@ Thank you"""
             else:
                 result = True
 
-            if r.component_name == "document":
-                s3.crud_strings["doc_document"].label_create = T("File Signed Document")
-                field = current.s3db.doc_document.name
-                field.label = T("Type")
-                document_type_opts = {"REQ": T("Requisition"),
-                                      "GRN": T("GRN"),
-                                      "WB": T("Waybill"),
-                                      }
-                from s3 import s3_options_represent
-                field.requires = IS_IN_SET(document_type_opts)
-                field.represent = s3_options_represent(document_type_opts)
-
-            elif r.get_vars.get("incoming"):
+            if r.get_vars.get("incoming"):
                 s3.crud_strings.inv_recv.title_list = T("Incoming Shipments")
                 # Filter to just Shipments able to be Received
                 #    SHIP_STATUS_IN_PROCESS = 0
@@ -4118,20 +4107,7 @@ Thank you"""
             else:
                 result = True
 
-            if r.component_name == "document":
-                s3.crud_strings["doc_document"].label_create = T("File Signed Document")
-                field = current.s3db.doc_document.name
-                field.label = T("Type")
-                document_type_opts = {"PL": T("Picking List"),
-                                      "REQ": T("Requisition"),
-                                      "WB": T("Waybill"),
-                                      }
-                #from gluon import IS_IN_SET
-                from s3 import s3_options_represent
-                field.requires = IS_IN_SET(document_type_opts)
-                field.represent = s3_options_represent(document_type_opts)
-
-            elif r.get_vars.get("draft"):
+            if r.get_vars.get("draft"):
                 s3.crud_strings.inv_recv.title_list = T("Outbound Shipments")
                 # Filter to just Shipments able to be Received
                 #    SHIP_STATUS_IN_PROCESS = 0
@@ -4258,7 +4234,7 @@ Thank you"""
             #session_s3 = session.s3
             ui_language = session.s3.language
 
-            subject_T = T("%(item)s replenishment needed in %(site)s Warehouse. %(quantity)s remaining")
+            subject_T = T("%(item)s replenishment needed in %(site)s Warehouse")
             message_T = T("%(item)s replenishment needed in %(site)s Warehouse. %(quantity)s remaining. Please review at: %(url)s")
             alert_T = T("%(item)s replenishment needed in %(site)s Warehouse. %(quantity)s remaining")
 
@@ -4272,9 +4248,8 @@ Thank you"""
                 for language in languages:
                     T.force(language)
                     #session_s3.language = language # for date_represent
-                    subject = s3_str(subject_T) % {"item": item,
-                                                   "site": warehouse_name,
-                                                   "quantity": quantity,
+                    subject = s3_str(subject_T) % {"item": item[:30],
+                                                   "site": warehouse_name
                                                    }
                     message = s3_str(message_T) % {"item": item,
                                                    "site": warehouse_name,
