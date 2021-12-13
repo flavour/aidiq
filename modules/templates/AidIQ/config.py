@@ -12,6 +12,14 @@ def config(settings):
 
     T = current.T
 
+    # Custom Models
+    settings.base.custom_models = {"aidiq": "AidIQ",
+                                   }
+
+    # Custom Controllers
+    settings.base.rest_controllers = {("aidiq", "project_budget"): ("aidiq", "project_budget"),
+                                      }
+
     # Pre-Populate
     settings.base.prepopulate += ("AidIQ",)
 
@@ -27,7 +35,9 @@ def config(settings):
     # Security Policy
     settings.security.policy = 6 # Entity Realm
 
-    settings.auth.login_next = URL(c="project", f="task", vars={"mine":1})
+    settings.auth.login_next = URL(c="project", f="task",
+                                   vars = {"mine":1},
+                                   )
 
     # L10n settings
     settings.L10n.languages = OrderedDict([
@@ -90,12 +100,11 @@ def config(settings):
                                     "end_date",
                                     "calendar",
                                     "human_resource_id",
-                                    S3SQLInlineLink(
-                                        "sector",
-                                        label = T("Sectors"),
-                                        field = "sector_id",
-                                        cols = 3,
-                                        ),
+                                    S3SQLInlineLink("sector",
+                                                    label = T("Sectors"),
+                                                    field = "sector_id",
+                                                    cols = 3,
+                                                    ),
                                     "budget",
                                     "currency",
                                     "comments",
@@ -133,9 +142,11 @@ def config(settings):
 
         from gluon import DIV
 
-        current.s3db.project_task.comment = DIV(_class="tooltip",
-                                                _title="%s|%s" % (T("Detailed Description/URL"),
-                                                                  T("Please provide as much detail as you can, including the URL(s) where the bug occurs or you'd like the new feature to go.")))
+        current.s3db.project_task.comment = DIV(_class = "tooltip",
+                                                _title = "%s|%s" % (T("Detailed Description/URL"),
+                                                                    T("Please provide as much detail as you can, including the URL(s) where the bug occurs or you'd like the new feature to go."),
+                                                                    ),
+                                                )
 
 
     settings.customise_project_task_resource = customise_project_task_resource
@@ -202,11 +213,11 @@ def config(settings):
         report_options = Storage(rows = report_fields,
                                  cols = report_fields,
                                  fact = report_fields,
-                                 defaults=Storage(rows = "activity.project_id",
-                                                  cols = "activity.name",
-                                                  fact = "sum(activity.time_actual)",
-                                                  totals = True,
-                                                  )
+                                 defaults = Storage(rows = "activity.project_id",
+                                                    cols = "activity.name",
+                                                    fact = "sum(activity.time_actual)",
+                                                    totals = True,
+                                                    )
                                  )
 
         current.s3db.configure(tablename,
@@ -586,6 +597,12 @@ def config(settings):
                 restricted = True,
                 module_type = 1
             )),
+        ("aidiq", Storage(
+                name_nice = "AidIQ",
+                #description = "Custom AidIQ models",
+                restricted = True,
+                module_type = 1
+            )),
         ("hrm", Storage(
                 name_nice = T("Staff"),
                 #description = "Human Resources Management",
@@ -632,6 +649,12 @@ def config(settings):
         #("dc", Storage(
         #        name_nice = T("Surveys"),
         #        #description = "Create, enter, and manage surveys.",
+        #        restricted = True,
+        #        module_type = 5,
+        #    )),
+        #("budget", Storage(
+        #        name_nice = T("Budgets"),
+        #        #description = "Manage budgets.",
         #        restricted = True,
         #        module_type = 5,
         #    )),
