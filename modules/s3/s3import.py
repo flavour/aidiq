@@ -25,10 +25,12 @@
     WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
     OTHER DEALINGS IN THE SOFTWARE.
+
+    TODO:
+        Remove all interactive error reporting out of the _private methods,
+        and raise exceptions instead.
 """
 
-# @todo: remove all interactive error reporting out of the _private methods,
-#        and raise exceptions instead.
 __all__ = ("S3Importer",
            "S3ImportJob",
            "S3ImportItem",
@@ -3594,20 +3596,18 @@ class S3ImportJob():
             if attr == UID and uids:
                 if len(uids) == 1:
                     uid = import_uid(uids[0])
-                    query = (ktable[UID] == uid)
-                    record = db(query).select(ktable.id,
-                                              cacheable = True,
-                                              limitby = (0, 1),
-                                              ).first()
+                    record = db(ktable[UID] == uid).select(ktable.id,
+                                                           cacheable = True,
+                                                           limitby = (0, 1),
+                                                           ).first()
                     if record:
                         id_map[uid] = record.id
                 else:
                     uids_ = [import_uid(uid) for uid in uids]
-                    query = (ktable[UID].belongs(uids_))
-                    records = db(query).select(ktable.id,
-                                               ktable[UID],
-                                               limitby = (0, len(uids_)),
-                                               )
+                    records = db(ktable[UID].belongs(uids_)).select(ktable.id,
+                                                                    ktable[UID],
+                                                                    limitby = (0, len(uids_)),
+                                                                    )
                     for r in records:
                         id_map[r[UID]] = r.id
 
@@ -4361,14 +4361,6 @@ class S3BulkImporter:
                                         "templates",
                                         csvPath,
                                         )
-                    # @todo: deprecate this block once migration completed
-                    if not os.path.exists(path):
-                        # Non-standard location (legacy template)?
-                        path = os.path.join(folder,
-                                            "private",
-                                            "templates",
-                                            csvPath,
-                                            )
                 csv = os.path.join(path, csvFile)
 
             xslFileName = details[3].strip('" ')
@@ -4418,14 +4410,6 @@ class S3BulkImporter:
                                         "templates",
                                         subfolder,
                                         )
-                    # @todo: deprecate this block once migration completed
-                    if not os.path.exists(path):
-                        # Non-standard location (legacy template)?
-                        path = os.path.join(current.request.folder,
-                                            "private",
-                                            "templates",
-                                            subfolder,
-                                            )
                 filepath = os.path.join(path, filename)
 
         if len(details) >= 4:
