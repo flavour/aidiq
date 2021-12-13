@@ -88,6 +88,141 @@ def config(settings):
     }
 
     # -------------------------------------------------------------------------
+    # Comment/uncomment modules here to disable/enable them
+    settings.modules = OrderedDict([
+        # Core modules which shouldn't be disabled
+        ("default", Storage(
+                name_nice = T("Home"),
+                restricted = False, # Use ACLs to control access to this module
+                access = None,      # All Users (inc Anonymous) can see this module in the default menu & access the controller
+                module_type = None  # This item is not shown in the menu
+            )),
+        ("admin", Storage(
+                name_nice = T("Administration"),
+                #description = "Site Administration",
+                restricted = True,
+                access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
+                module_type = None  # This item is handled separately for the menu
+            )),
+        ("appadmin", Storage(
+                name_nice = T("Administration"),
+                #description = "Site Administration",
+                restricted = True,
+                module_type = None  # No Menu
+            )),
+        ("errors", Storage(
+                name_nice = T("Ticket Viewer"),
+                #description = "Needed for Breadcrumbs",
+                restricted = False,
+                module_type = None  # No Menu
+            )),
+        ("sync", Storage(
+                name_nice = T("Synchronization"),
+                #description = "Synchronization",
+                restricted = True,
+                access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
+                module_type = None  # This item is handled separately for the menu
+            )),
+        ("gis", Storage(
+                name_nice = T("Map"),
+                #description = "Situation Awareness & Geospatial Analysis",
+                restricted = True,
+                module_type = None,     # 6th item in the menu
+            )),
+        ("pr", Storage(
+                name_nice = T("Person Registry"),
+                #description = "Central point to record details on People",
+                restricted = True,
+                access = "|1|",     # Only Administrators can see this module in the default menu (access to controller is possible to all still)
+                module_type = None
+            )),
+        ("org", Storage(
+                name_nice = T("Organizations"),
+                #description = 'Lists "who is doing what & where". Allows relief agencies to coordinate their activities',
+                restricted = True,
+                module_type = None
+            )),
+        # All modules below here should be possible to disable safely
+        ("project", Storage(
+                name_nice = T("Projects"),
+                #description = "Tracking of Projects, Activities and Tasks",
+                restricted = True,
+                module_type = 1
+            )),
+        ("aidiq", Storage(
+                name_nice = "AidIQ",
+                #description = "Custom AidIQ models",
+                restricted = True,
+                module_type = 1
+            )),
+        ("hrm", Storage(
+                name_nice = T("Staff"),
+                #description = "Human Resources Management",
+                restricted = True,
+                module_type = 2,
+            )),
+        ("setup", Storage(
+                name_nice = T("Monitoring"),
+                #description = "Deployment & Monitoring of Servers & Applications",
+                restricted = True,
+                module_type = 3
+            )),
+        ("cms", Storage(
+              name_nice = T("CMS"),
+              #description = "Content Management System",
+              restricted = True,
+              module_type = 4,
+          )),
+        ("doc", Storage(
+                name_nice = T("Documents"),
+                #description = "A library of digital resources, such as photos, documents and reports",
+                restricted = True,
+                module_type = None,
+            )),
+        ("msg", Storage(
+                name_nice = T("Messaging"),
+                #description = "Sends & Receives Alerts via Email & SMS",
+                restricted = True,
+                # The user-visible functionality of this module isn't normally required. Rather it's main purpose is to be accessed from other modules.
+                module_type = None,
+            )),
+        ("proc", Storage(
+                name_nice = T("Procurement"),
+                #description = "Purchase Orders",
+                restricted = True,
+                module_type = None,
+            )),
+        ("fin", Storage(
+                name_nice = T("Finance"),
+                #description = "Payment Service",
+                restricted = True,
+                module_type = None,
+            )),
+        #("dc", Storage(
+        #        name_nice = T("Surveys"),
+        #        #description = "Create, enter, and manage surveys.",
+        #        restricted = True,
+        #        module_type = 5,
+        #    )),
+        #("budget", Storage(
+        #        name_nice = T("Budgets"),
+        #        #description = "Manage budgets.",
+        #        restricted = True,
+        #        module_type = 5,
+        #    )),
+    ])
+
+    # -------------------------------------------------------------------------
+    def customise_aidiq_project_budget_resource(r, tablename):
+
+        # Filter Milestone by Project
+        current.s3db.aidiq_project_budget.milestone_id.requires.other.set_filter(filterby = "project_id",
+                                                                                 filter_opts = (r.id,),
+                                                                                 )
+
+    settings.customise_aidiq_project_budget_resource = customise_aidiq_project_budget_resource
+
+    # -------------------------------------------------------------------------
     def customise_project_project_resource(r, tablename):
 
         from s3 import S3SQLCustomForm, S3SQLInlineLink
@@ -109,6 +244,7 @@ def config(settings):
                                     "currency",
                                     "comments",
                                     )
+
         current.s3db.configure(tablename,
                                crud_form = crud_form,
                                )
@@ -533,132 +669,6 @@ def config(settings):
 
 
     settings.customise_proc_order_resource = customise_proc_order_resource
-
-    # -------------------------------------------------------------------------
-
-    # Comment/uncomment modules here to disable/enable them
-    settings.modules = OrderedDict([
-        # Core modules which shouldn't be disabled
-        ("default", Storage(
-                name_nice = T("Home"),
-                restricted = False, # Use ACLs to control access to this module
-                access = None,      # All Users (inc Anonymous) can see this module in the default menu & access the controller
-                module_type = None  # This item is not shown in the menu
-            )),
-        ("admin", Storage(
-                name_nice = T("Administration"),
-                #description = "Site Administration",
-                restricted = True,
-                access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
-                module_type = None  # This item is handled separately for the menu
-            )),
-        ("appadmin", Storage(
-                name_nice = T("Administration"),
-                #description = "Site Administration",
-                restricted = True,
-                module_type = None  # No Menu
-            )),
-        ("errors", Storage(
-                name_nice = T("Ticket Viewer"),
-                #description = "Needed for Breadcrumbs",
-                restricted = False,
-                module_type = None  # No Menu
-            )),
-        ("sync", Storage(
-                name_nice = T("Synchronization"),
-                #description = "Synchronization",
-                restricted = True,
-                access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
-                module_type = None  # This item is handled separately for the menu
-            )),
-        ("gis", Storage(
-                name_nice = T("Map"),
-                #description = "Situation Awareness & Geospatial Analysis",
-                restricted = True,
-                module_type = None,     # 6th item in the menu
-            )),
-        ("pr", Storage(
-                name_nice = T("Person Registry"),
-                #description = "Central point to record details on People",
-                restricted = True,
-                access = "|1|",     # Only Administrators can see this module in the default menu (access to controller is possible to all still)
-                module_type = None
-            )),
-        ("org", Storage(
-                name_nice = T("Organizations"),
-                #description = 'Lists "who is doing what & where". Allows relief agencies to coordinate their activities',
-                restricted = True,
-                module_type = None
-            )),
-        # All modules below here should be possible to disable safely
-        ("project", Storage(
-                name_nice = T("Projects"),
-                #description = "Tracking of Projects, Activities and Tasks",
-                restricted = True,
-                module_type = 1
-            )),
-        ("aidiq", Storage(
-                name_nice = "AidIQ",
-                #description = "Custom AidIQ models",
-                restricted = True,
-                module_type = 1
-            )),
-        ("hrm", Storage(
-                name_nice = T("Staff"),
-                #description = "Human Resources Management",
-                restricted = True,
-                module_type = 2,
-            )),
-        ("setup", Storage(
-                name_nice = T("Monitoring"),
-                #description = "Deployment & Monitoring of Servers & Applications",
-                restricted = True,
-                module_type = 3
-            )),
-        ("cms", Storage(
-              name_nice = T("CMS"),
-              #description = "Content Management System",
-              restricted = True,
-              module_type = 4,
-          )),
-        ("doc", Storage(
-                name_nice = T("Documents"),
-                #description = "A library of digital resources, such as photos, documents and reports",
-                restricted = True,
-                module_type = None,
-            )),
-        ("msg", Storage(
-                name_nice = T("Messaging"),
-                #description = "Sends & Receives Alerts via Email & SMS",
-                restricted = True,
-                # The user-visible functionality of this module isn't normally required. Rather it's main purpose is to be accessed from other modules.
-                module_type = None,
-            )),
-        ("proc", Storage(
-                name_nice = T("Procurement"),
-                #description = "Purchase Orders",
-                restricted = True,
-                module_type = None,
-            )),
-        ("fin", Storage(
-                name_nice = T("Finance"),
-                #description = "Payment Service",
-                restricted = True,
-                module_type = None,
-            )),
-        #("dc", Storage(
-        #        name_nice = T("Surveys"),
-        #        #description = "Create, enter, and manage surveys.",
-        #        restricted = True,
-        #        module_type = 5,
-        #    )),
-        #("budget", Storage(
-        #        name_nice = T("Budgets"),
-        #        #description = "Manage budgets.",
-        #        restricted = True,
-        #        module_type = 5,
-        #    )),
-    ])
 
 # END =========================================================================
 

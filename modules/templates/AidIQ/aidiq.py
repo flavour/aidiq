@@ -28,6 +28,7 @@
 """
 
 __all__ = ("AidIQProjectBudgetModel",
+           "aidiq_update_project_budget",
            )
 
 from gluon import *
@@ -82,21 +83,118 @@ class AidIQProjectBudgetModel(S3Model):
                                 # Calculated
                                 writable = False,
                                 ),
-                          Field("time_remaining_minimum", "float",
-                                label = T("Time Remaining (Minimum)"),
+                          Field("hours_remaining", "float",
+                                label = T("Hours Remaining"),
                                 # Calculated
                                 writable = False,
                                 ),
-                          Field("time_remaining_current", "float",
-                                label = T("Time Remaining (Current Velocity)"),
+                          Field("weeks_remaining_standard", "float",
+                                label = T("Weeks Remaining (Standard)"),
+                                # Calculated
+                                writable = False,
+                                ),
+                          Field("weeks_remaining_current", "float",
+                                label = T("Weeks Remaining (Current Velocity)"),
                                 # Calculated
                                 writable = False,
                                 ),
                           *s3_meta_fields())
 
+        self.configure(tablename,
+                       onaccept = self.aidiq_project_budget_onaccept,
+                       )
+
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
         return None
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def aidiq_project_budget_onaccept(form):
+        """
+            Read the Hours recorded against a Project or Milestone
+        """
+
+        form_vars = form.vars
+
+        project_id = form_vars.project_id
+        milestone_id = form_vars.milestone_id
+
+        aidiq_update_project_budget(project_id, milestone_id)
+
+# =============================================================================
+def aidiq_update_project_budget(project_id, milestone_id=None):
+    """
+        Update the aidiq_project_budget from the Hours recorded against a Project or Milestone
+    """
+
+    db = current.db
+    s3db = current.s3db
+
+    apbtable = s3db.aidiq_project_budget
+    query = (apbtable.project_id == project_id) & \
+            (apbtable.milestone_id == milestone_id)
+    record = db(query).select(apbtable.id,
+                              apbtable.total_value,
+                              apbtable.total_overheads,
+                              apbtable.hours_contracted,
+                              limitby = (0, 1),
+                              ).first()
+    if not record:
+        # Nothing to calculate
+        return
+
+    value = record.total_value - record.total_overheads
+    hours_contracted = record.hours_contracted
+    if value and hours_contracted:
+        rate_contracted = value / hours_contracted
+    else:
+        rate_contracted = None
+
+    titable = s3db.project_time
+    tatable = s3db.project_task
+    tptable = s3db.project_task_project
+
+    query = (tptable.project_id == project_id) & \
+            (tptable.task_id == tatable.id) & \
+            (titable.task_id == tatable.id)
+    if milestone_id:
+        tmtable = s3db.project_task_milestone
+        query &= (tmtable.milestone_id == milestone_id) & \
+                 (tmtable.task_id == tatable.id)
+
+    sum = titable.hours.sum()
+    hours_used = db(query).select(sum).first()[sum]
+
+    if value and hours_used:
+        rate_effective = value / hours_used
+    else:
+        rate_effective = None
+
+    hours_remaining = hours_contracted - hours_used
+
+    if hours_remaining:
+        weeks_remaining_standard = hours_remaining / 40
+        min = titable.date.min()
+        earliest = db(query).select(min).first()[min]
+        if earliest:
+            delta = current.request.utcnow - earliest
+            weeks = delta.days / 7
+            current_velocity = hours_used / weeks
+            weeks_remaining_current = hours_remaining / current_velocity
+        else:
+            weeks_remaining_current = None
+    else:
+        weeks_remaining_standard = 0
+        weeks_remaining_current = 0
+
+    record.update_record(rate_contracted = rate_contracted,
+                         hours_used = hours_used,
+                         rate_effective = rate_effective,
+                         hours_remaining = hours_remaining,
+                         weeks_remaining_standard = weeks_remaining_standard,
+                         weeks_remaining_current = weeks_remaining_current,
+                         )
 
 # END =========================================================================
