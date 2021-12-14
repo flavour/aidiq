@@ -45,6 +45,9 @@ class AidIQProjectBudgetModel(S3Model):
 
         T = current.T
 
+        is_float_represent = IS_FLOAT_AMOUNT.represent
+        float_represent = lambda v: is_float_represent(v, precision=2)
+
         # ---------------------------------------------------------------------
         # Report on Budget by Project [/ Milestone]
         #
@@ -57,44 +60,56 @@ class AidIQProjectBudgetModel(S3Model):
                                                     ondelete = "CASCADE",
                                                     ),
                           s3_currency(),
-                          Field("total_value", "float",
+                          Field("total_value", "double",
+                                default = 0.0,
                                 label = T("Total Contract Value"),
+                                represent = float_represent,
                                 ),
                           # @ToDo: Sub-table to specify individual overheads
-                          Field("total_overheads", "float",
+                          Field("total_overheads", "double",
+                                default = 0.0,
                                 label = T("Total Overheads"),
+                                represent = float_represent,
                                 comments = T("Hosting, Travel, Sub-contracts"),
                                 ),
-                          Field("hours_contracted", "float",
+                          Field("hours_contracted", "double",
+                                default = 0,
                                 label = T("Hours Contracted"),
+                                represent = float_represent,
                                 ),
-                          Field("rate_contracted", "float",
+                          Field("rate_contracted", "double",
                                 label = T("Hourly Rate (Contracted)"),
+                                represent = float_represent,
                                 # Calculated
                                 writable = False,
                                 ),
-                          Field("hours_used", "float",
+                          Field("hours_used", "double",
                                 label = T("Hours Used"),
+                                represent = lambda v: is_float_represent(v, precision=1),
                                 # Calculated
                                 writable = False,
                                 ),
-                          Field("rate_effective", "float",
+                          Field("rate_effective", "double",
                                 label = T("Hourly Rate (Effective)"),
+                                represent = float_represent,
                                 # Calculated
                                 writable = False,
                                 ),
-                          Field("hours_remaining", "float",
+                          Field("hours_remaining", "double",
                                 label = T("Hours Remaining"),
+                                represent = lambda v: is_float_represent(v, precision=1),
                                 # Calculated
                                 writable = False,
                                 ),
-                          Field("weeks_remaining_standard", "float",
+                          Field("weeks_remaining_standard", "double",
                                 label = T("Weeks Remaining (Standard)"),
+                                represent = float_represent,
                                 # Calculated
                                 writable = False,
                                 ),
-                          Field("weeks_remaining_current", "float",
+                          Field("weeks_remaining_current", "double",
                                 label = T("Weeks Remaining (Current Velocity)"),
+                                represent = float_represent,
                                 # Calculated
                                 writable = False,
                                 ),
