@@ -73,7 +73,7 @@ class AidIQProjectBudgetModel(S3Model):
                                 comments = T("Hosting, Travel, Sub-contracts"),
                                 ),
                           Field("hours_contracted", "double",
-                                default = 0,
+                                default = 0.0,
                                 label = T("Hours Contracted"),
                                 represent = float_represent,
                                 ),

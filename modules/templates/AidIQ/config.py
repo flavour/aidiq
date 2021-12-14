@@ -213,14 +213,34 @@ def config(settings):
     ])
 
     # -------------------------------------------------------------------------
-    def customise_aidiq_project_budget_resource(r, tablename):
+    #def customise_aidiq_project_budget_resource(r, tablename):
 
-        # Filter Milestone by Project
-        current.s3db.aidiq_project_budget.milestone_id.requires.other.set_filter(filterby = "project_id",
-                                                                                 filter_opts = (r.id,),
-                                                                                 )
+    #    # Filter Milestone by Project - only works for component views!
+    #    current.s3db.aidiq_project_budget.milestone_id.requires.other.set_filter(filterby = "project_id",
+    #                                                                             filter_opts = (r.id,),
+    #                                                                             )
 
-    settings.customise_aidiq_project_budget_resource = customise_aidiq_project_budget_resource
+    #settings.customise_aidiq_project_budget_resource = customise_aidiq_project_budget_resource
+
+    # -------------------------------------------------------------------------
+    def customise_aidiq_project_budget_controller(**attr):
+
+        # Filter Milestone List to just those for the Project
+        import json
+        from s3 import SEPARATORS
+        options = {"trigger": "project_id",
+                   "target": "milestone_id",
+                   "scope": "form",
+                   "lookupPrefix": "project",
+                   "lookupResource": "milestone",
+                   "optional": True,
+                   }
+        current.response.s3.jquery_ready.append('''$.filterOptionsS3(%s)''' % \
+                            json.dumps(options, separators=SEPARATORS))
+
+        return attr
+
+    settings.customise_aidiq_project_budget_controller = customise_aidiq_project_budget_controller
 
     # -------------------------------------------------------------------------
     def customise_project_project_resource(r, tablename):
