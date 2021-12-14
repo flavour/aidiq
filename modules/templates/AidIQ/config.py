@@ -17,7 +17,7 @@ def config(settings):
                                    }
 
     # Custom Controllers
-    settings.base.rest_controllers = {("aidiq", "project_budget"): ("aidiq", "project_budget"),
+    settings.base.rest_controllers = {("project", "project_budget"): ("aidiq", "project_budget"),
                                       }
 
     # Pre-Populate

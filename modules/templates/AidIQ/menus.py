@@ -202,6 +202,61 @@ class S3OptionsMenu(default.S3OptionsMenu):
                 )
 
     # -------------------------------------------------------------------------
+    @staticmethod
+    def cms():
+        """ CMS / Content Management System """
+
+        return M(c="cms")(
+                    M("Series", f="series")(
+                        M("Create", m="create"),
+                        M("View as Pages", f="blog"),
+                    ),
+                    M("Posts", f="post")(
+                        M("Create", m="create"),
+                        M("Import", m="import"),
+                        M("View as Pages", f="page"),
+                    ),
+                )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def project():
+        """ PROJECT / Project Tracking & Management """
+
+        return M(c="project")(
+                    M("Projects", f="project")(
+                        M("Create", m="create"),
+                        M("Open Tasks for Project", vars={"tasks":1}),
+                    ),
+                    M("Tasks", f="task")(
+                        M("Create", m="create"),
+                    ),
+                    M("Daily Work", f="time")(
+                        M("My Logged Hours", vars={"mine":1}),
+                        M("My Open Tasks", f="task", vars={"mine":1}),
+                    ),
+                    M("Reports", f="report")(
+                        M("Activity Report", f="activity", m="report"),
+                        M("Budget Report", f="project_budget"),
+                        M("Last Week's Work", f="time", m="report",
+                          vars = {"rows": "person_id",
+                                  "cols": "day",
+                                  "fact": "sum(hours)",
+                                  "week": 1,
+                                  },
+                          ),
+                        M("Last Month's Work", f="time", m="report",
+                          vars = {"rows": "person_id",
+                                  "cols": "week",
+                                  "fact": "sum(hours)",
+                                  "month": 1,
+                                  },
+                          ),
+                        M("Project Time Report", f="time", m="report"),
+                     ),
+                    )
+
+    # -------------------------------------------------------------------------
     def setup(self):
         """ Setup """
 
@@ -220,23 +275,6 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         M("Servers", f="server"),
                         M("Tasks", f="monitor_task"),
                         M("Logs", f="monitor_run"),
-                    ),
-                )
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def cms():
-        """ CMS / Content Management System """
-
-        return M(c="cms")(
-                    M("Series", f="series")(
-                        M("Create", m="create"),
-                        M("View as Pages", f="blog"),
-                    ),
-                    M("Posts", f="post")(
-                        M("Create", m="create"),
-                        M("Import", m="import"),
-                        M("View as Pages", f="page"),
                     ),
                 )
 
