@@ -3694,13 +3694,13 @@ Thank you"""
                                                      ))
 
         report_options = s3db.get_config(tablename, "report_options")
-        report_options.fact += [(T("Total Weight"), "total_weight"),
-                                (T("Total Volume"), "total_volume"),
-                                ]
-        report_options.precision = {"total_value": 3,
-                                    "total_weight": 3,
-                                    "total_volume": 3,
-                                    }
+        report_options["fact"] += [(T("Total Weight"), "total_weight"),
+                                   (T("Total Volume"), "total_volume"),
+                                   ]
+        report_options["precision"] = {"total_value": 3,
+                                       "total_weight": 3,
+                                       "total_volume": 3,
+                                       }
 
         s3db.configure("inv_inv_item",
                        grouped = stock_reports,
@@ -3947,7 +3947,7 @@ Thank you"""
 
         return attr
 
-    settings.customise_inv_recv_controller = customise_inv_recv_controller
+    #settings.customise_inv_recv_controller = customise_inv_recv_controller
 
     # -------------------------------------------------------------------------
     def on_inv_send_process(record):
@@ -4107,22 +4107,33 @@ Thank you"""
             else:
                 result = True
 
-            if r.get_vars.get("draft"):
-                s3.crud_strings.inv_recv.title_list = T("Outbound Shipments")
-                # Filter to just Shipments able to be Received
-                #    SHIP_STATUS_IN_PROCESS = 0
-                from s3 import s3_set_default_filter, S3OptionsFilter
-                s3_set_default_filter("~.status",
-                                      [0],
-                                      tablename = "inv_send")
+            #if r.get_vars.get("draft"):
+            #    s3.crud_strings.inv_recv.title_list = T("Outbound Shipments")
+            #    # Filter to just Shipments able to be Received
+            #    #    SHIP_STATUS_IN_PROCESS = 0
+            #    from s3 import s3_set_default_filter
+            #    s3_set_default_filter("~.status",
+            #                          [0],
+            #                          tablename = "inv_send")
+            if r.method == "report":
+                # Filter to just Shipments in the last 2 years
+                from datetime import timedelta
+                delta = timedelta(days = 730)
+                # Date filter needs to be visible
                 filter_widgets = r.resource.get_config("filter_widgets")
-                filter_widgets.insert(1, S3OptionsFilter("status",
-                                                         label = T("Status"),
-                                                         cols = 3,
-                                                         #options = shipment_status,
-                                                         # Needs to be visible for default_filter to work
-                                                         #hidden = True,
-                                                         ))
+                for w in filter_widgets:
+                    if w.field == "date":
+                        w.opts["hidden"] = False
+                        break
+                from s3 import s3_set_default_filter
+                s3_set_default_filter("~.date",
+                                      {"ge": r.utcnow - delta,
+                                       },
+                                      tablename = "inv_send")
+                # Filter to only Sent Shipments (inc Received Shipments)
+                s3_set_default_filter("~.status",
+                                      [1, 2],
+                                      tablename = "inv_send")
 
             return result
         s3.prep = custom_prep
@@ -4130,6 +4141,80 @@ Thank you"""
         return attr
 
     settings.customise_inv_send_controller = customise_inv_send_controller
+
+    # -------------------------------------------------------------------------
+    def customise_inv_track_item_controller(**attr):
+
+        s3 = current.response.s3
+
+        # Custom prep
+        standard_prep = s3.prep
+        def custom_prep(r):
+            # Call standard prep
+            if callable(standard_prep):
+                result = standard_prep(r)
+            else:
+                result = True
+
+            if r.method == "report":
+                # Configure Report Options
+                current.s3db.configure("inv_track_item",
+                                       report_options = {"rows": ["item_id",
+                                                                  "send_id$site_id",
+                                                                  "send_id$to_site_id",
+                                                                  #(T("Month"), "send_id$month"),
+                                                                  "send_id$transport_type",
+                                                                  ],
+                                                         "cols": ["item_id",
+                                                                  "send_id$site_id",
+                                                                  "send_id$to_site_id",
+                                                                  #(T("Month"), "send_id$month"),
+                                                                  "send_id$transport_type",
+                                                                  ],
+                                                         "fact": [#(T("Average Transit Time (h)"), "avg(send_id$transit_time)"),
+                                                                  (T("List of Items"), "list(item_id)"),
+                                                                  (T("Quantity of Items"), "sum(quantity)"),
+                                                                  #(T("Number of Shipments"), "count(send_id)"),
+                                                                  #(T("Value of Shipments"), "sum(send_id$total_value)"),
+                                                                  #(T("Volume of Shipments (kg)"), "sum(send_id$total_volume)"),
+                                                                  ],
+                                                         "defaults": {"rows": "item_id",
+                                                                      "cols": "send_id$site_id",
+                                                                      "fact": "sum(quantity)",
+                                                                      "chart": "barchart:rows",
+                                                                      "table": "collapse",
+                                                                      },
+                                                         },
+                                       )
+                # Filter to just Shipments in the last 2 years
+                from datetime import timedelta
+                delta = timedelta(days = 730)
+                # Date filter needs to be visible
+                filter_widgets = r.resource.get_config("filter_widgets")
+                for w in filter_widgets:
+                    if w.field == "send_id$date":
+                        w.opts["hidden"] = False
+                        break
+                from s3 import s3_set_default_filter, S3OptionsFilter
+                s3_set_default_filter("~.send_id$date",
+                                      {"ge": r.utcnow - delta,
+                                       },
+                                      tablename = "inv_track_item")
+                # Filter to only Sent Shipments (inc Received Shipments)
+                filter_widgets.insert(1, S3OptionsFilter("send_id$status",
+                                                         label = T("Status"),
+                                                         cols = 3,
+                                                         ))
+                s3_set_default_filter("~.send_id$status",
+                                      [1, 2],
+                                      tablename = "inv_track_item")
+
+            return result
+        s3.prep = custom_prep
+
+        return attr
+
+    #settings.customise_inv_track_item_controller = customise_inv_track_item_controller
 
     # -------------------------------------------------------------------------
     def stock_limit_alerts(warehouse):
@@ -4238,7 +4323,7 @@ Thank you"""
             message_T = T("%(item)s replenishment needed in %(site)s Warehouse. %(quantity)s remaining. Please review at: %(url)s")
             alert_T = T("%(item)s replenishment needed in %(site)s Warehouse. %(quantity)s remaining")
 
-            warnings = []
+            warnings = 0
 
             for alert in alerts:
                 item_id = alert[0]
@@ -4279,13 +4364,22 @@ Thank you"""
                 T.force(ui_language)
 
                 # Interactive Notification
-                alert = s3_str(alert_T) % {"item": item,
-                                           "site": warehouse_name,
-                                           "quantity": quantity,
-                                           }
-                warnings.append(alert)
+                #alert = {"item": item,
+                #         "site": warehouse_name,
+                #         "quantity": quantity,
+                #         }
+                #warnings.append(alert)
+                warnings += 1
 
-            session.warning = ", ".join(warnings)
+            if warnings == 1:
+                session.warning = s3_str(alert_T) % {"item": item,
+                                                     "site": warehouse_name,
+                                                     "quantity": quantity,
+                                                     }
+            else:
+                session.warning = s3_str(T("Replenishment of multiple items needed in %(site)s Warehouse. Check the Dashboard for details.")) % \
+                                            {"site": warehouse_name,
+                                             }
 
     # -------------------------------------------------------------------------
     def on_free_capacity_update(warehouse):
@@ -5809,13 +5903,9 @@ Thank you"""
     #                            label = T("Activity Type"),
     #                            ))
     #        report_options = resource.get_config("report_options")
-    #        report_options.rows.append("beneficiary_activity_type.activity_type_id")
+    #        report_options["rows"].append("beneficiary_activity_type.activity_type_id")
     #        # Same object so would be added twice
-    #        #report_options.cols.append("beneficiary_activity_type.activity_type_id")
-
-    #        resource.configure(filter_widgets = filter_widgets,
-    #                           report_options = report_options,
-    #                           )
+    #        #report_options["cols"].append("beneficiary_activity_type.activity_type_id")
 
     # Only used for activity_types which aren't used by HNRC
     #settings.customise_project_beneficiary_resource = customise_project_beneficiary_resource
@@ -6606,10 +6696,41 @@ Thank you"""
                 if not result:
                     return False
 
-            if not r.id:
+            req_id = r.id
+            if not req_id:
                 current.s3db.inv_req_project.project_id.represent = S3Represent(lookup = "project_project",
                                                                                 fields = ["code"],
                                                                                 )
+            elif not r.component:
+                if r.record.workflow_status in (3, 4, 5): # Approved, Completed, Cancelled
+                    # Lookup PE of Project Code
+                    s3db = current.s3db
+                    ltable = s3db.inv_req_project
+                    ptable = s3db.project_project
+                    otable = s3db.org_organisation
+                    query = (ltable.req_id == req_id) & \
+                            (ltable.project_id == ptable.id) & \
+                            (ptable.organisation_id == otable.id)
+                    org = current.db(query).select(otable.pe_id,
+                                                   limitby = (0, 1),
+                                                   ).first()
+                    if current.auth.s3_has_roles(("logs_manager",
+                                                  "logs_manager_national",
+                                                  ),
+                                                 for_pe = org.pe_id,
+                                                 ):
+                        # Allow editing of the Project Code
+                        s3db.configure("inv_req",
+                                       editable = True,
+                                       )
+                        #table = s3db.inv_req
+                        #for fname in table.fields:
+                        #    table[fname].writable = False
+
+                        #table.site_id.comment = None
+                        #table.requester_id.comment = None
+                        #table.recv_by_id.comment = None
+
             elif r.component_name == "req_item":
                 s3db = current.s3db
                 workflow_status = r.record.workflow_status
@@ -6622,7 +6743,7 @@ Thank you"""
                     if person_id in approvers and approvers[person_id]["matcher"]:
                         # Have we already approved?
                         atable = s3db.inv_req_approver_req
-                        query = (atable.req_id == r.id) & \
+                        query = (atable.req_id == req_id) & \
                                 (atable.person_id == person_id)
                         approved = current.db(query).select(atable.id,
                                                             limitby = (0, 1),

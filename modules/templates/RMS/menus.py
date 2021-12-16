@@ -56,7 +56,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
 
             # Additional Items
             menu(M("Forums", c="pr", f="forum"),
-                 M("Request Approvers", c="inv", f="req_approver"),
+                 #M("Request Approvers", c="inv", f="req_approver"),
                  M("Map Settings", c="gis", f="config"),
                  M("Content Management", c="cms", f="index"),
                  )
@@ -106,8 +106,8 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         M("Forums", c="pr", f="forum")(
                             M("Create", m="create"),
                         ),
-                       M("Request Approvers", c="inv", f="req_approver")(
-                        ),
+                       #M("Request Approvers", c="inv", f="req_approver")(
+                       # ),
                        )
 
         else:
@@ -270,15 +270,15 @@ class S3OptionsMenu(default.S3OptionsMenu):
     def inv(self):
         """ INV / Inventory """
 
-        if current.request.function == "req_approver":
-            # Accessed via Settings
-            has_role = current.auth.s3_has_role
-            if has_role("ADMIN"):
-                return self.admin()
-            elif has_role("ORG_ADMIN"):
-                return self.pr()
-            else:
-                return None
+        #if current.request.function == "req_approver":
+        #    # Accessed via Settings
+        #    has_role = current.auth.s3_has_role
+        #    if has_role("ADMIN"):
+        #        return self.admin()
+        #    elif has_role("ORG_ADMIN"):
+        #        return self.pr()
+        #    else:
+        #        return None
 
         if current.auth.s3_has_roles(("ORG_ADMIN",
                                       "wh_operator",
@@ -294,9 +294,11 @@ class S3OptionsMenu(default.S3OptionsMenu):
                             M("Kitting", f="kitting"),
                             #M("Receive a new shipment", f="recv", m="create"),
                             M("Receive a new shipment", f="recv",
-                                                        vars = {"incoming": 1}),
+                                                        #vars = {"incoming": 1},
+                                                        ),
                             M("Send a new shipment", f="send",
-                                                     vars = {"draft": 1}),
+                                                     #vars = {"draft": 1},
+                                                     ),
                         ),
                         M("Purchases", f="order_item",
                           restrict=["ORG_ADMIN",
@@ -330,6 +332,8 @@ class S3OptionsMenu(default.S3OptionsMenu):
                                       "fact": "sum(quantity)",
                                       },
                               ),
+                            M("Sent Shipments", f="send", m="report"),
+                            #M("Shipped Items", f="track_item", m="report"),
                             M("Stock Movements", f="inv_item", m="grouped",
                               vars = {"report": "movements"},
                               ),

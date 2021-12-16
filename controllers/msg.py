@@ -1742,22 +1742,18 @@ def twitter_result():
                      "lang",
                      ]
 
-    report_options = Storage(
-        rows=report_fields,
-        cols=report_fields,
-        fact=report_fields,
-        defaults=Storage(
-            rows="search_id",
-            cols="lang",
-            totals=True,
-        )
-    )
     s3db.configure(tablename,
                    deletable = False,
                    editable = False,
                    insertable = False,
                    filter_widgets = filter_widgets,
-                   report_options = report_options,
+                   report_options = {"rows": report_fields,
+                                     "cols": report_fields,
+                                     "fact": report_fields,
+                                     "defaults": {"rows": "search_id",
+                                                  "cols": "lang",
+                                                  },
+                                     },
                    )
 
     def postp(r, output):
@@ -1766,7 +1762,8 @@ def twitter_result():
             record = output["item"].record
             # Tweet link
             twitter_url = "https://twitter.com/%s/statuses/%s" % (record.from_address,
-                                                                  record.tweet_id)
+                                                                  record.tweet_id,
+                                                                  )
             script_url = "https://platform.twitter.com/widgets.js"
             # Themeable Throbber
             throbber = DIV(_class = "s3-twitter-throbber",
