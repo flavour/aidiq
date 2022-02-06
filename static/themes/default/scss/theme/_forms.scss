@@ -42,6 +42,8 @@ form {
         }
         select {
             min-width: 4rem;
+            background-position: right -0.5rem center;
+            background-size: 6px 4px;
         }
         .controls span.postfix {
             height: 1.75rem;

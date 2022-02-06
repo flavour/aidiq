@@ -118,7 +118,7 @@ class HRModel(S3Model):
 
         root_org = auth.root_org()
         if is_admin:
-            filter_opts = ()
+            filter_opts = None
         elif root_org:
             filter_opts = (root_org, None)
         else:
@@ -2097,7 +2097,7 @@ class HRSkillModel(S3Model):
 
         root_org = auth.root_org()
         if is_admin:
-            filter_opts = ()
+            filter_opts = None
         elif root_org:
             filter_opts = (root_org, None)
         else:
@@ -4826,7 +4826,7 @@ class HRProgrammeModel(S3Model):
 
         label_create = crud_strings[tablename].label_create
         if is_admin:
-            filter_opts = ()
+            filter_opts = None
         elif root_org:
             filter_opts = (root_org, None)
         else:
@@ -6743,8 +6743,7 @@ def hrm_compose():
 
     response = current.response
     representation = s3_get_extension()
-    response.headers["Content-Type"] = \
-        response.s3.content_type.get(representation, "text/html")
+    response.headers["Content-Type"] = CONTENT_TYPES.get(representation, "text/html")
     response.view = "msg/compose.html"
 
     return output

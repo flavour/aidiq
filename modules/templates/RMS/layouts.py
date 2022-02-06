@@ -3,7 +3,7 @@
 from gluon import *
 #from gluon.storage import Storage
 from s3 import *
-#from s3theme import NAV, SECTION
+from s3theme import NAV
 
 THEME = "RMS"
 
@@ -36,7 +36,18 @@ class S3MainMenuLayout(S3NavigationItem):
 
     @staticmethod
     def layout(item):
-        """ Custom Layout Method """
+        """
+            Custom Layout Method
+
+            Replicate Google Suite's look and feel
+
+            Classes use Foundation's Top-Bar Component, which wraps
+                        Foundation's Menu component
+                https://get.foundation/sites/docs/menu.html
+                https://get.foundation/sites/docs/top-bar.html
+            Also uses Foundation's Tooltip component:
+                https://get.foundation/sites/docs/tooltip.html
+        """
 
         T = current.T
         auth = current.auth
@@ -48,9 +59,6 @@ class S3MainMenuLayout(S3NavigationItem):
         # Inject JavaScript
         s3 = current.response.s3
         s3.scripts.append("/%s/static/themes/RMS/js/nav.js" % request.application)
-        # Use tooltip-f class to avoid clash with widgets.css
-        # Remove nub
-        s3.js_foundation = '''{tooltip:{tooltip_class:'.tooltip-f',tip_template:function(selector,content){var tooltipClass='';if(!$('div[data-selector="'+selector+'"]').hasClass('hd')){tooltipClass=' tooltip-m'};return '<span data-selector="'+selector+'" class="'+Foundation.libs.tooltip.settings.tooltip_class.substring(1)+tooltipClass+'">'+content+'</span>'}}}'''
 
         settings = ""
 
@@ -83,6 +91,8 @@ class S3MainMenuLayout(S3NavigationItem):
                                         _title = T("Main menu"),
                                         )
                 side_menu_control["_data-tooltip"] = ""
+                # Use tooltip-f class to avoid clash with widgets.css
+                side_menu_control["_data-tooltip-class"] = "tooltip-f"
                 side_menu_control["_aria-haspopup"] = "true"
 
             # Module Logo
@@ -149,6 +159,8 @@ class S3MainMenuLayout(S3NavigationItem):
                                   _title = module_name,
                                   )
                 module_logo["_data-tooltip"] = ""
+                # Use tooltip-f class to avoid clash with widgets.css
+                module_logo["_data-tooltip-class"] = "tooltip-f"
                 module_logo["_aria-haspopup"] = "true"
             else:
                 module_logo = ""
@@ -168,6 +180,8 @@ class S3MainMenuLayout(S3NavigationItem):
                        _title = T("RMS modules"),
                        )
             apps["_data-tooltip"] = ""
+            # Use tooltip-f class to avoid clash with widgets.css
+            apps["_data-tooltip-class"] = "tooltip-f"
             apps["_aria-haspopup"] = "true"
 
             iframe = DIV(IFRAME(_role = "presentation",
@@ -238,6 +252,8 @@ class S3MainMenuLayout(S3NavigationItem):
                                _title = T("Settings"),
                                )
                 settings["_data-tooltip"] = ""
+                # Use tooltip-f class to avoid clash with widgets.css
+                settings["_data-tooltip-class"] = "tooltip-f"
                 settings["_aria-haspopup"] = "true"
 
         # Help Menu
@@ -264,6 +280,8 @@ class S3MainMenuLayout(S3NavigationItem):
                       _title = T("Support"),
                       )
         support["_data-tooltip"] = ""
+        # Use tooltip-f class to avoid clash with widgets.css
+        support["_data-tooltip-class"] = "tooltip-f"
         support["_aria-haspopup"] = "true"
 
         # Logo
@@ -364,31 +382,40 @@ class S3MainMenuLayout(S3NavigationItem):
                            _title = T("RMS Account"),
                            )
         user_profile["_data-tooltip"] = ""
+        # Use tooltip-f class to avoid clash with widgets.css
+        user_profile["_data-tooltip-class"] = "tooltip-f"
         user_profile["_aria-haspopup"] = "true"
 
         # Overall menu
-        divs = [DIV(side_menu_control,
-                    module_logo,
-                    _class = "large-2 medium-3 small-4 columns",
-                    ),
-                DIV(DIV(support,
-                        settings,
-                        apps,
-                        DIV(logo,
-                            _class = "hdl",
-                            ),
-                        user_profile,
-                        iframe,
-                        _class = "fright",
-                        ),
-                    _class = "large-4 medium-6 small-8 columns",
-                    ),
-                ]
-
-        return TAG[""](*divs)
+        return NAV(DIV(UL(side_menu_control,
+                          module_logo,
+                          _class = "menu",
+                          ),
+                       _class = "top-bar-left",
+                       ),
+                   DIV(UL(support,
+                          settings,
+                          apps,
+                          DIV(logo,
+                              _class = "hdl",
+                              ),
+                          user_profile,
+                          iframe,
+                          _class = "menu",
+                          ),
+                       _class = "top-bar-right",
+                       ),
+                   _class = "top-bar",
+                   )
 
 # =============================================================================
 class S3AboutMenuLayout(S3NavigationItem):
+    """
+        Footer menu
+
+        Classes use Foundation's Menu component
+            https://get.foundation/sites/docs/menu.html
+    """
 
     @staticmethod
     def layout(item):
@@ -398,14 +425,16 @@ class S3AboutMenuLayout(S3NavigationItem):
             items = item.render_components()
             if items:
                 return UL(items,
-                          _class = "sub-nav about-menu left",
+                          _class = "menu", # https://get.foundation/sites/docs/menu.html
                           )
             else:
                 return "" # menu is empty
         else:
             # A menu item
             if item.enabled and item.authorized:
-                return LI(A(item.label, _href=item.url()))
+                return LI(A(item.label,
+                            _href = item.url(),
+                            ))
             else:
                 return None
 
@@ -424,7 +453,8 @@ class S3OrgMenuLayout(S3NavigationItem):
     @staticmethod
     def layout(item):
         """
-            @ToDo: Migrate to s3db.org_logo_represent
+            ToDo:
+                Migrate to s3db.org_logo_represent
         """
 
         name = "IFRC"

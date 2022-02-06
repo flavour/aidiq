@@ -436,8 +436,8 @@ def do_js(minimize,
          "sahana.js.jstree.cfg", "s3.jstree.min.js", None),
         ("Chat",
          "sahana.js.chat.cfg", "s3.chat.min.js", "--strict_mode_input=false"),
-        ("Guided Tour",
-         "sahana.js.guidedTour.cfg", "s3.guidedtour.min.js", None),
+        #("Guided Tour",
+        # "sahana.js.guidedTour.cfg", "s3.guidedtour.min.js", None),
         ("Timeline",
          "sahana.js.timeline.cfg", "s3.timeline.min.js", None),
         )
@@ -523,12 +523,12 @@ def do_js(minimize,
     try:
         os.chdir(rollup_dir)
     except FileNotFoundError:
-        info("Unable to build olgm as ol-rollup not found")
+        info("Unable to build ol6 as ol-rollup not found")
     else:
         os.system("npm install")
-        os.system("npm run-script build-olgm")
+        os.system("npm run-script build-ol6")
         output_dir = os.path.join("..", "..", "static", "scripts", "gis")
-        move_to("olgm.min.js", output_dir)
+        move_to("ol6.min.js", output_dir)
     finally:
         # Restore CWD
         os.chdir(cwd)
@@ -564,15 +564,15 @@ def do_js(minimize,
                 with openf(out_f, "w") as out:
                     out.write(minimize(inp.read()))
 
-        info("Compressing Foundation")
-        # Merge + minify
-        merged = mergejs.run("..", None, "foundation.cfg")
-        minimized = minimize(merged)
-        # Write minified file
-        with openf("foundation.min.js", "w") as outFile:
-            outFile.write(minimized)
-        # Replace target file
-        move_to("foundation.min.js", "../foundation")
+        #info("Compressing Foundation")
+        ## Merge + minify
+        #merged = mergejs.run("..", None, "foundation.cfg")
+        #minimized = minimize(merged)
+        ## Write minified file
+        #with openf("foundation.min.js", "w") as outFile:
+        #    outFile.write(minimized)
+        ## Replace target file
+        #move_to("foundation.min.js", "../foundation")
 
     if JS_VULNERABILITY:
         # Vulnerability

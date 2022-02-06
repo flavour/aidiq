@@ -1852,6 +1852,7 @@ class OrganisationRegionModel(S3Model):
                                     comment = S3PopupLink(c = "org",
                                                           f = "region",
                                                           label = T("Add Region"),
+                                                          vars = {"parent": "organisation_region"},
                                                           title = T("Region"),
                                                           tooltip = T("If you don't see the Type in the list, you can add a new one by clicking link 'Add Region'."),
                                                           ),
@@ -5131,7 +5132,7 @@ class OfficeModel(S3Model):
         is_admin = auth.s3_has_role(ADMIN)
         root_org = auth.root_org()
         if is_admin:
-            filter_opts = ()
+            filter_opts = None
         elif root_org:
             filter_opts = (root_org, None)
         else:

@@ -23,6 +23,12 @@ $datatables_bgcolor_head: #ffffff !default;
 // ============================================================================
 // STYLES
 
+// Was in older normalize, but not in current one
+table {
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+
 /* Datatables */
 #table-container {
     margin-bottom: 1.5rem;

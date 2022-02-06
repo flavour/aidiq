@@ -69,7 +69,7 @@ from gluon.storage import Storage
 from s3dal import Rows
 from .s3datetime import s3_format_datetime, s3_parse_datetime
 from .s3fields import s3_all_meta_field_names
-from .s3rest import S3Method
+from .s3rest import CONTENT_TYPES, S3Method
 from .s3rtb import S3ResourceTree
 from .s3track import S3Trackable
 from .s3utils import s3_include_ext, s3_include_underscore, s3_str
@@ -7503,12 +7503,19 @@ class MAP2(DIV):
                            ]
 
         # Load CSS now as too late in xml()
-        stylesheets = current.response.s3.stylesheets
+        s3 = current.response.s3
+        stylesheets = s3.stylesheets
         stylesheet = "gis/ol.css"
         if stylesheet not in stylesheets:
             stylesheets.append(stylesheet)
         # @ToDo: Move this to Theme
         stylesheet = "gis/ol_popup.css"
+        if stylesheet not in stylesheets:
+            stylesheets.append(stylesheet)
+        if s3.debug:
+            stylesheet = "gis/ol-layerswitcher.css"
+        else:
+            stylesheet = "gis/ol-layerswitcher.min.css"
         if stylesheet not in stylesheets:
             stylesheets.append(stylesheet)
 
@@ -7848,7 +7855,7 @@ class MAP2(DIV):
             else:
                 error_message = DIV(
                     "Map cannot display without GIS config!",  # Deliberately not T() to save unneccessary load on translators
-                    _class="mapError"
+                    _class = "mapError",
                     )
 
             self.components = [error_message]
@@ -7868,6 +7875,15 @@ class MAP2(DIV):
         script = "/%s/static/scripts/gis/ol.js" % appname
         if script not in s3.scripts:
             s3.scripts.append(script)
+
+        # LayerSwitcher
+        # Compiled into ol6.min.js
+        #if s3.debug:
+        #    script = "/%s/static/scripts/gis/ol-layerswitcher.js" % appname
+        #else:
+        #    script = "/%s/static/scripts/gis/ol-layerswitcher.min.js" % appname
+        #if script not in s3.scripts_modules:
+        #    s3.scripts_modules.append(script)
 
         # S3 GIS
         if s3.debug:
@@ -8691,7 +8707,8 @@ class LayerFeature(Layer):
                 # id is used for url_format
                 url = "%s.geojson?layer=%i&show_ids=true" % \
                     (URL(c=self.controller, f=self.function, args="report"),
-                     self.layer_id)
+                     self.layer_id,
+                     )
                 # Use gis/location controller in all reports
                 url_format = "%s/{id}.plain" % URL(c="gis", f="location")
             else:
@@ -8704,7 +8721,8 @@ class LayerFeature(Layer):
                 url = "%s.geojson?layer=%i&mcomponents=None&maxdepth=%s&show_ids=true" % \
                     (_url,
                      self.layer_id,
-                     maxdepth)
+                     maxdepth,
+                     )
                 url_format = "%s/{id}.plain" % _url
             if self.filter:
                 url = "%s&%s" % (url, self.filter)
@@ -9185,8 +9203,8 @@ class LayerOSM(Layer):
 
             if self.openlayers == 6:
                 # Mandatory attributes
-                output = {#"id": self.layer_id,
-                          #"name": self.safe_name,
+                output = {"i": self.layer_id,
+                          "n": self.safe_name,
                           #"url": self.url1,
                           }
 
@@ -10106,8 +10124,8 @@ class S3ExportPOI(S3Method):
         else:
             as_json = False
             default = "text/xml"
-        headers["Content-Type"] = s3.content_type.get(representation,
-                                                      default)
+        headers["Content-Type"] = CONTENT_TYPES.get(representation,
+                                                    default)
 
         # Find XSLT stylesheet and transform
         stylesheet = r.stylesheet()

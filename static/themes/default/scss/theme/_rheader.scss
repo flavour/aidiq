@@ -4,8 +4,8 @@
 // VARIABLES
 
 // Foundation variables used:
-//$button-bg-color
-//$button-bg-hover
+//$button-background
+//$button-background-hover
 
 // Active tab
 $rheader_tabs_bgcolor_active: #ffffff !default;
@@ -14,8 +14,8 @@ $rheader_tabs_fgcolor_active: #666666 !default;
 $rheader_tabs_fgcolor_active_hover: #666666 !default;
 
 // Inactive tabs
-$rheader_tabs_bgcolor_inactive: $button-bg-color !default;
-$rheader_tabs_bgcolor_inactive_hover: $button-bg-hover !default;
+$rheader_tabs_bgcolor_inactive: $button-background !default;
+$rheader_tabs_bgcolor_inactive_hover: $button-background-hover !default;
 $rheader_tabs_fgcolor_inactive: #ffffff !default;
 $rheader_tabs_fgcolor_inactive_hover: #ffffff !default;
 

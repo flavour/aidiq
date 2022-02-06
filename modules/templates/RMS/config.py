@@ -6066,6 +6066,153 @@ Thank you"""
     settings.customise_project_location_controller = customise_project_location_controller
 
     # -------------------------------------------------------------------------
+    def inv_req_approvers(record):
+        """
+            Return a list of Approvers for an Inventory Requisition
+
+            Looks for Logs Managers for the NS of the Project Code
+        """
+
+        db = current.db
+        s3db = current.s3db
+
+        ltable = s3db.inv_req_project
+        ptable = s3db.project_project
+        otable = s3db.org_organisation
+
+        query = (ltable.req_id == record.id) & \
+                (ltable.project_id == ptable.id) & \
+                (ptable.organisation_id == otable.id)
+
+        org = db(query).select(otable.pe_id,
+                               limitby = (0, 1),
+                               ).first()
+
+        gtable = db.auth_group
+        mtable = db.auth_membership
+        utable = db.auth_user
+        ltable = s3db.pr_person_user
+        ptable = s3db.pr_person
+
+        query = (gtable.uuid.belongs(("logs_manager",
+                                      "logs_manager_national",
+                                      ))) & \
+                (gtable.id == mtable.group_id) & \
+                (mtable.pe_id == org.pe_id) & \
+                (mtable.user_id == utable.id) & \
+                (utable.id == ltable.user_id) & \
+                (ltable.pe_id == ptable.pe_id)
+
+        approvers = db(query).select(ptable.id)
+
+        return {row.id: {"title": "Logs Manager",
+                         "matcher": True,
+                         } for row in approvers}
+
+    settings.inv.req_approvers = inv_req_approvers
+
+    # -------------------------------------------------------------------------
+    def inv_req_approvers_to_notify(record):
+        """
+            Return a list of Approvers to Notify for an Inventory Requisition
+
+            Looks for Logs Managers for the NS of the Project Code
+        """
+
+        db = current.db
+        s3db = current.s3db
+
+        ltable = s3db.inv_req_project
+        ptable = s3db.project_project
+        otable = s3db.org_organisation
+
+        query = (ltable.req_id == record.id) & \
+                (ltable.project_id == ptable.id) & \
+                (ptable.organisation_id == otable.id)
+
+        org = db(query).select(otable.pe_id,
+                               limitby = (0, 1),
+                               ).first()
+
+        gtable = db.auth_group
+        mtable = db.auth_membership
+        utable = db.auth_user
+        ltable = s3db.pr_person_user
+
+        query = (gtable.uuid.belongs(("logs_manager",
+                                      "logs_manager_national",
+                                      ))) & \
+                (gtable.id == mtable.group_id) & \
+                (mtable.pe_id == org.pe_id) & \
+                (mtable.user_id == utable.id) & \
+                (utable.id == ltable.user_id)
+
+        approvers = db(query).select(ltable.pe_id,
+                                     ltable.user_id, # For on_req_submit hook
+                                     utable.language,
+                                     )
+
+        site_id = record.site_id
+        stable = s3db.org_site
+        site_entity = db(stable.site_id == site_id).select(stable.instance_type,
+                                                           limitby = (0, 1),
+                                                           ).first()
+        itable = s3db.table(site_entity.instance_type)
+        site = db(itable.site_id == site_id).select(itable.name, # Needed later for Message construction
+                                                    itable.pe_id,
+                                                    limitby = (0, 1),
+                                                    ).first()
+
+        return approvers, site
+
+    settings.inv.req_approvers_to_notify = inv_req_approvers_to_notify
+
+    # -------------------------------------------------------------------------
+    def inv_req_is_approver(record):
+        """
+            Lookup whether the currently logged-in person is an
+            Approver for an Inventory Requisition
+
+            Looks for Logs Managers for the NS of the Project Code
+        """
+
+        db = current.db
+        s3db = current.s3db
+
+        ltable = s3db.inv_req_project
+        ptable = s3db.project_project
+        otable = s3db.org_organisation
+
+        query = (ltable.req_id == record.id) & \
+                (ltable.project_id == ptable.id) & \
+                (ptable.organisation_id == otable.id)
+
+        org = db(query).select(otable.pe_id,
+                               limitby = (0, 1),
+                               ).first()
+
+        gtable = db.auth_group
+        mtable = db.auth_membership
+
+        query = (gtable.uuid.belongs(("logs_manager",
+                                      "logs_manager_national",
+                                      ))) & \
+                (gtable.id == mtable.group_id) & \
+                (mtable.pe_id == org.pe_id) & \
+                (mtable.user_id == current.auth.user.id)
+
+        approver = db(query).select(mtable.id,
+                                    limitby = (0, 1),
+                                    ).first()
+
+        if approver:
+            return True
+        else:
+            return False
+
+    settings.inv.req_is_approver = inv_req_is_approver
+
+    # -------------------------------------------------------------------------
     def inv_req_approver_update_roles(person_id):
         """
             Update the req_approver role to have the right realms
@@ -6364,11 +6511,15 @@ Thank you"""
                             ))
         req_ref = record.req_ref
         date_required = record.date_required
-        date_represent = S3DateTime.date_represent # We want Dates not datetime which table.date_required uses
         send_email = current.msg.send_by_pe_id
         subject_T = T("Request Approved for Items from your Warehouse")
-        message_T = T("A new Request, %(reference)s, has been Approved for shipment from %(site)s by %(date_required)s. Please review at: %(url)s")
-        alert_T = T("Request %(reference)s for items from %(site)s by %(date_required)s")
+        if date_required:
+            date_represent = S3DateTime.date_represent # We want Dates not datetime which table.date_required uses
+            message_T = T("A new Request, %(reference)s, has been Approved for shipment from %(site)s by %(date_required)s. Please review at: %(url)s")
+            alert_T = T("Request %(reference)s for items from %(site)s by %(date_required)s")
+        else:
+            message_T = T("A new Request, %(reference)s, has been Approved for shipment from %(site)s. Please review at: %(url)s")
+            alert_T = T("Request %(reference)s for items from %(site)s")
 
         insert = s3db.auth_user_notification.insert
         sites = inv_operators_for_sites(site_ids)
@@ -6386,18 +6537,27 @@ Thank you"""
                 languages[language].append((row["pr_person_user.pe_id"], row["pr_person_user.user_id"]))
             for language in languages:
                 T.force(language)
-                session_s3.language = language # for date_represent
-                date = date_represent(date_required)
                 subject = "%s: %s" % (s3_str(subject_T), req_ref)
-                message = s3_str(message_T) % {"date_required": date,
+                if date_required:
+                    session_s3.language = language # for date_represent
+                    date = date_represent(date_required)
+                    message = s3_str(message_T) % {"date_required": date,
+                                                   "reference": req_ref,
+                                                   "site": site_name,
+                                                   "url": url,
+                                                   }
+                    alert = s3_str(alert_T) % {"date_required": date,
                                                "reference": req_ref,
                                                "site": site_name,
-                                               "url": url,
                                                }
-                alert = s3_str(alert_T) % {"date_required": date,
-                                           "reference": req_ref,
-                                           "site": site_name,
-                                           }
+                else:
+                    message = s3_str(message_T) % {"reference": req_ref,
+                                                   "site": site_name,
+                                                   "url": url,
+                                                   }
+                    alert = s3_str(alert_T) % {"reference": req_ref,
+                                               "site": site_name,
+                                               }
 
                 users = languages[language]
                 for user in users:
@@ -6440,13 +6600,17 @@ Thank you"""
                             ))
         req_ref = record.req_ref
         date_required = record.date_required
-        date_represent = S3DateTime.date_represent # We want Dates not datetime which table.date_required uses
         requester = s3_fullname(record.requester_id)
         site_name = site.name
         send_email = current.msg.send_by_pe_id
         subject_T = T("Request submitted for Approval")
-        message_T = T("A new Request, %(reference)s, has been submitted for Approval by %(person)s for delivery to %(site)s by %(date_required)s. Please review at: %(url)s")
-        alert_T = T("A new Request, %(reference)s, has been submitted for Approval by %(person)s for delivery to %(site)s by %(date_required)s")
+        if date_required:
+            date_represent = S3DateTime.date_represent # We want Dates not datetime which table.date_required uses
+            message_T = T("A new Request, %(reference)s, has been submitted for Approval by %(person)s for delivery to %(site)s by %(date_required)s. Please review at: %(url)s")
+            alert_T = T("A new Request, %(reference)s, has been submitted for Approval by %(person)s for delivery to %(site)s by %(date_required)s")
+        else:
+            message_T = T("A new Request, %(reference)s, has been submitted for Approval by %(person)s for delivery to %(site)s. Please review at: %(url)s")
+            alert_T = T("A new Request, %(reference)s, has been submitted for Approval by %(person)s for delivery to %(site)s")
 
         insert = s3db.auth_user_notification.insert
 
@@ -6459,20 +6623,32 @@ Thank you"""
             languages[language].append((row["pr_person_user.pe_id"], row["pr_person_user.user_id"]))
         for language in languages:
             T.force(language)
-            session_s3.language = language # for date_represent
-            date = date_represent(date_required)
             subject = "%s: %s" % (s3_str(subject_T), req_ref)
-            message = s3_str(message_T) % {"date_required": date_represent(date_required),
+            if date_required:
+                session_s3.language = language # for date_represent
+                date = date_represent(date_required)
+                message = s3_str(message_T) % {"date_required": date,
+                                               "reference": req_ref,
+                                               "person": requester,
+                                               "site": site_name,
+                                               "url": url,
+                                               }
+                alert = s3_str(alert_T) % {"date_required": date,
                                            "reference": req_ref,
                                            "person": requester,
                                            "site": site_name,
-                                           "url": url,
                                            }
-            alert = s3_str(alert_T) % {"date_required": date,
-                                       "reference": req_ref,
-                                       "person": requester,
-                                       "site": site_name,
-                                       }
+            else:
+                message = s3_str(message_T) % {"reference": req_ref,
+                                               "person": requester,
+                                               "site": site_name,
+                                               "url": url,
+                                               }
+                alert = s3_str(alert_T) % {"reference": req_ref,
+                                           "person": requester,
+                                           "site": site_name,
+                                           }
+                
 
             users = languages[language]
             for user in users:
@@ -6719,7 +6895,7 @@ Thank you"""
                                                   ),
                                                  for_pe = org.pe_id,
                                                  ):
-                        # Allow editing of the Project Code
+                        # Allow editing of the REQ (mainly for the Project Code)
                         s3db.configure("inv_req",
                                        editable = True,
                                        )
@@ -6733,32 +6909,37 @@ Thank you"""
 
             elif r.component_name == "req_item":
                 s3db = current.s3db
-                workflow_status = r.record.workflow_status
+                record = r.record
+                workflow_status = record.workflow_status
                 if workflow_status == 2: # Submitted for Approval
                     show_site_and_po = True
-                    # Are we a Logistics Approver?
-                    from s3db.inv import inv_req_approvers
-                    approvers = inv_req_approvers(r.record.site_id)
-                    person_id = current.auth.s3_logged_in_person()
-                    if person_id in approvers and approvers[person_id]["matcher"]:
-                        # Have we already approved?
-                        atable = s3db.inv_req_approver_req
-                        query = (atable.req_id == req_id) & \
-                                (atable.person_id == person_id)
-                        approved = current.db(query).select(atable.id,
-                                                            limitby = (0, 1),
-                                                            )
-                        if not approved:
-                            # Allow User to Match
-                            settings.inv.req_prompt_match = True
                 elif workflow_status == 3: # Approved
                     show_site_and_po = True
                 else:
                     show_site_and_po = False
 
                 if show_site_and_po:
+                    table = r.component.table
+                    # Are we a Logistics Approver?
+                    if inv_req_is_approver(record):
+                        # Allow User to Match
+                        settings.inv.req_prompt_match = True
+                        
+                        # Allow editing of the REQ items
+                        table.quantity.writable = True
+                        # Do via req_item_inv_item
+                        #table.site_id.writable = True
+                        # Makes the reseved items much harder...simply allow deleting/inserting instead
+                        #table.item_id.writable = True
+                        #table.item_pack_id.writable = True
+                        s3db.configure("inv_req_item",
+                                       deletable = True,
+                                       editable = True,
+                                       insertable = True,
+                                       )
+
                     # Show in read-only form
-                    r.component.table.site_id.readable = True
+                    table.site_id.readable = True
 
                     # Show in list_fields
                     oitable = s3db.inv_order_item

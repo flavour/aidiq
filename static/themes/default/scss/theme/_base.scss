@@ -2,16 +2,17 @@
 // THEME Imports and Mixins
 // ============================================================================
 // Foundation Settings for the THEME
-@import '../settings';
+// Don't import here as otherwise each theme *needs* it's own _base.scss to avoid the Theme's settings getting clobbred by the default!
+//@import '../settings';
 
 // Foundation Mixins
 $include-html-classes: false;
 $include-html-global-classes: false;
-@import "../../foundation/scss/components/global";
-@import "../../foundation/scss/components/forms";
+//@import "../../foundation/scss/components/global";
+//@import "../../foundation/scss/components/forms";
 
 // THEME Config
-@import 'theme/config';
+//@import 'theme/config';
 
 // ============================================================================
 // GLOBAL VARIABLES
