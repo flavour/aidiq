@@ -143,9 +143,9 @@ class contact(S3CustomController):
         sappend = s3.scripts.append
         if s3.cdn:
             if s3.debug:
-                sappend("http://ajax.aspnetcdn.com/ajax/jquery.validate/1.11.1/jquery.validate.js")
+                sappend("//ajax.aspnetcdn.com/ajax/jquery.validate/1.11.1/jquery.validate.js")
             else:
-                sappend("http://ajax.aspnetcdn.com/ajax/jquery.validate/1.11.1/jquery.validate.min.js")
+                sappend("//ajax.aspnetcdn.com/ajax/jquery.validate/1.11.1/jquery.validate.min.js")
 
         else:
             if s3.debug:

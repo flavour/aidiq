@@ -12,6 +12,15 @@ def config(settings):
 
     T = current.T
 
+    #settings.base.system_name = T("AidIQ")
+    #settings.base.system_name_short = T("AidIQ")
+
+    # Handled by layouts.py & _menus.scss
+    #settings.ui.menu_logo = URL(c="static", f="themes", args=["AidIQ",
+    #                                                          "img",
+    #                                                          "logo_small_light.png",
+    #                                                          ])
+
     # Custom Models
     settings.base.custom_models = {"aidiq": "AidIQ",
                                    }

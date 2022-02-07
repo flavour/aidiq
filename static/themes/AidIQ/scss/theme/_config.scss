@@ -6,10 +6,10 @@
 // MENUS
 // ============================================================================
 // Side menu border and background colors
-$side_bar_bgcolor: #f7f7f7;
+//$side_bar_bgcolor: #d7d8d9;
 //$side_bar_bgcolor_active: #e0e1e2;
 //$side_bar_border_color: #c0c1c2;
-$side_bar_divider_color: #eaeaea;
+//$side_bar_divider_color: $side_bar_border_color;
 
 // ============================================================================
 // RHEADERS
@@ -108,12 +108,12 @@ $title_background: true;
 //$title_bgcolor: #f7f8f9;
 
 // Throbber style [sunflower|simple]
-$throbber_style: simple;
+//$throbber_style: sunflower;
 
 // Footer
-$footer_bgcolor: $nightsky;
-$footer_fgcolor: $almostwhite;
+//$footer_bgcolor: transparent;
+//$footer_fgcolor: #999;
 //$footer_min_height: null;
 //$footer_top_margin: 20px;
 
-// END ========================================================================
+// END ============================================================================

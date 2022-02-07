@@ -94,12 +94,12 @@ class S3MainMenu(default.S3MainMenu):
             Top menu on public pages (website)
         """
 
-        return WM(c="default", f="index", link=False, _class="top-menu")(
-                  #WM("Home"),
-                  WM("Services", f="page", args=["services"]),
-                  WM("Solutions", f= "page", args=["solutions"]),
-                  WM("Team", f= "page", args=["team"]),
-                  WM("Contact Us", args=["contact"], _class="contact-link"),
+        return MT(c="default", f="index", link=False, _class="top-menu")(
+                  #MT("Home"),
+                  MT("Services", f="page", args=["services"]),
+                  MT("Solutions", f= "page", args=["solutions"]),
+                  MT("Team", f= "page", args=["team"]),
+                  MT("Contact Us", args=["contact"], _class="contact-link"),
                   )
 
     # -------------------------------------------------------------------------
@@ -109,16 +109,16 @@ class S3MainMenu(default.S3MainMenu):
             Bottom menu on public pages (website)
         """
 
-        menu = WM(c="default", f="index", link=False, _class="bottom-menu")(
-                  WM("AidIQ", _class="home-link"),
-                  WM("Services", f="page", args=["services"]),
-                  WM("Solutions", f= "page", args=["solutions"]),
-                  WM("Team", f= "page", args=["team"]),
-                  WM("Contact Us", args=["contact"], _class="contact-link"),
+        menu = MA(c="default", f="index", link=False, _class="bottom-menu")(
+                  MA("AidIQ", _class="home-link"),
+                  MA("Services", f="page", args=["services"]),
+                  MA("Solutions", f= "page", args=["solutions"]),
+                  MA("Team", f= "page", args=["team"]),
+                  MA("Contact Us", args=["contact"], _class="contact-link"),
                   )
 
         if current.auth.s3_logged_in():
-            menu(WM("CMS", c="cms", f="post"))
+            menu(MA("CMS", c="cms", f="post"))
 
         return menu
 

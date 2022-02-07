@@ -1,6 +1,9 @@
+@import "settings";
+
 // THEME MODULES
 @import "theme/base";       // required
 @import "theme/page";
+@import "theme/footer";
 @import "theme/forms";
 @import "theme/rheader";
 @import "theme/buttons";
@@ -9,5 +12,6 @@
 @import "theme/datalists";
 @import "theme/profile";
 @import "theme/widgets";
+//@import "theme/wizard";
+@import "theme/block-grid"; // Foundation 5 core component which was removed in Foundation 6, used on Solutions page
 @import "theme/cmsitems";
-@import "theme/misc";

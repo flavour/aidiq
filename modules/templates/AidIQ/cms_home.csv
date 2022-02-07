@@ -14,7 +14,7 @@ Series,Name,Title,Body,Module,Resource
   <h3 class='text-center' style='margin-bottom:1.4rem;'>Our Services</h3>
   <div class='row' data-equalizer>
    <div class='large-3 columns'>
-    <div class='panel' data-equalizer-watch>
+    <div class='callout' data-equalizer-watch>
      <h5>Business Analysis & Process Design</h5>
      <p>
       We work with you to identify your information management
@@ -23,7 +23,7 @@ Series,Name,Title,Body,Module,Resource
     </div>
    </div>
    <div class='large-3 columns'>
-    <div class='panel' data-equalizer-watch>
+    <div class='callout' data-equalizer-watch>
      <h5>Software Development</h5>
      <p>
       We develop software solutions to support your
@@ -32,7 +32,7 @@ Series,Name,Title,Body,Module,Resource
     </div>
    </div>
    <div class='large-3 columns'>
-    <div class='panel' data-equalizer-watch>
+    <div class='callout' data-equalizer-watch>
      <h5>Deployment and Maintenance</h5>
      <p>
       We deploy SAHANA solutions, and perform any system
@@ -42,7 +42,7 @@ Series,Name,Title,Body,Module,Resource
     </div>
    </div>
    <div class='large-3 columns'>
-    <div class='panel' data-equalizer-watch>
+    <div class='callout' data-equalizer-watch>
      <h5>Support and Training</h5>
      <p>
       We provide key user support and training, as well as
