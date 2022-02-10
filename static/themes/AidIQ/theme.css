@@ -168,6 +168,7 @@ body.rtl .username i.icon, body.rtl .username i.fa {
   background: #032743;
   padding-top: 20px;
   border-top: 1px solid #F0F0F0;
+  margin-top: 20px;
 }
 
 /* line 12, ../scss/theme/_footer.scss */
@@ -917,8 +918,8 @@ aside.columns {
 }
 /* line 52, ../scss/theme/_menus.scss */
 aside.columns a {
-  background: #f3f3f3;
   color: #666;
+  background: #f3f3f3;
 }
 /* line 56, ../scss/theme/_menus.scss */
 aside.columns a:hover {
