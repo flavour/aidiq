@@ -53,7 +53,9 @@ header.home-top {
 
 /* Bottom Menu */
 .home-footer {
-    margin-top: 0;
+    #footer {
+        margin-top: 0;
+    }
     .menu {
         li {
             font-size: .75rem;
