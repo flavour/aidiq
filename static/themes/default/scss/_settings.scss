@@ -70,10 +70,10 @@ $global-font-size: 100%;
 $global-width: rem-calc(1600);
 $global-lineheight: 1.5;
 
-// Custom Colours
+// Default Eden Colours
 $blood: #c60f13;
 $charcoal: #555555;
-//$ghost: #FAFAFA;
+//$ghost: #fafafa;
 $lightblue: #2ba6cb;
 $oil: #333333;
 //$steel: #666666;
@@ -87,7 +87,7 @@ $foundation-palette: (
   success: #3adb76,
   warning: #ffae00,
   //alert: #cc4b37,
-  alert: $blood, // $alert-color: $blood;
+  alert: $blood,
 );
 $light-gray: #e6e6e6;
 $medium-gray: #cacaca;
@@ -901,9 +901,9 @@ $tooltip-radius: $global-radius;
 
 $topbar-padding: 0.1rem;
 //$topbar-background: $light-gray;
-$topbar-background: $oil; // $topbar-bg-color: $oil;
+$topbar-background: $oil;
 //$topbar-submenu-background: $topbar-background;
-$topbar-submenu-background: #777879; // $topbar-dropdown-bg: #777879;
+$topbar-submenu-background: #777879;
 $topbar-title-spacing: 0.5rem 1rem 0.5rem 0;
 $topbar-input-width: 200px;
 $topbar-unstack-breakpoint: medium;

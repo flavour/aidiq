@@ -1,0 +1,91 @@
+// ============================================================================
+// Styles for Menus
+// ============================================================================
+// VARIABLES
+
+// ============================================================================
+// STYLES
+
+/* Top (Modules) Menu) */
+.top-bar {
+    // Menu logo
+    .logo {
+        display: inline-block;
+        font-size: 1.1rem;
+        font-weight: bold;
+        height: 35px;
+        padding: 0.625rem 0.5rem 0 0.7rem;
+    }
+    a {
+        color: $prussian-blue;
+        //font-family: Nunito;
+        font-size: 1.0625rem;
+        font-weight: bold;
+        line-height: 2.8125rem;
+    }
+    a:hover {
+        background: $white;
+    }
+    .menu .active > a {
+        background: $white;
+    }
+    .menu .active > a:hover {
+        background: $white;
+    }
+    .menu.dropdown {
+        // Display over the Alerts (98)
+        z-index: 100;
+    }
+    .menu.submenu {
+        a {
+            color: $mortar;
+            background: $zumthor;
+            font-size: 0.85rem;
+            font-weight: bold;
+            //padding: 0 .9375rem; // In _settings.scss
+        }
+        a:hover {
+            background: $persian-green;
+        }
+    }
+}
+
+/* Side (Options) Menu) */
+aside.columns {
+    font-size: 1rem;
+    padding-left: .625rem;
+    padding-right: .625rem;
+    a {
+        color: $white;
+        background: $prussian-blue;
+        font-size: 1rem;
+        padding: 2rem;
+        i {
+            color: $white;
+            font-size: 32px;
+            text-align: center !important;
+        }
+    }
+    a:hover {
+        color: $white;
+        background: $persian-green;
+    }
+    li.heading {
+        margin-top: .125rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+    li.heading:not(:first-child) {
+        border-top: 1px solid #c0c1c2;
+    }
+    .menu .active > a {
+        color: $white;
+        background: $coral;
+    }
+    .menu .active > a:hover {
+        color: $white;
+        background: $coral;
+    }
+}
+
+// END ========================================================================

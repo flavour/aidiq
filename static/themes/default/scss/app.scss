@@ -38,19 +38,19 @@
 //@include foundation-media-object;
 //@include foundation-orbit;
 //@include foundation-responsive-embed;
-//@include foundation-tabs;
+//@include foundation-tabs; // Currently just used by UCCE for 'dc' module
 //@include foundation-thumbnail;
 // Menu-based containers
 @include foundation-menu;
-//@include foundation-menu-icon;
+@include foundation-menu-icon; // For default homepage
 //@include foundation-accordion-menu;
 //@include foundation-drilldown-menu;
 @include foundation-dropdown-menu;
 
 // Layout components
-@include foundation-off-canvas;
+//@include foundation-off-canvas;
 //@include foundation-reveal;
-//@include foundation-sticky;
+//@include foundation-sticky; // Currently just used by UCCE for 'dc' module
 //@include foundation-title-bar;
 @include foundation-top-bar;
 
